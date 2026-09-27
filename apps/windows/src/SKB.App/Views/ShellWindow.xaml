@@ -1,0 +1,148 @@
+<Window x:Class="SKB.App.Views.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:SKB.App.ViewModels"
+        xmlns:views="clr-namespace:SKB.App.Views"
+        Title="SKB — Wholesale Accounting"
+        Height="760" Width="1200"
+        WindowStartupLocation="CenterScreen"
+        FlowDirection="{Binding FlowDirection, Source={StaticResource Loc}}"
+        Background="{DynamicResource CanvasBrush}">
+
+  <Window.Resources>
+    <!-- Map each page view model to its view. -->
+    <DataTemplate DataType="{x:Type vm:DashboardViewModel}"><views:DashboardView /></DataTemplate>
+    <DataTemplate DataType="{x:Type vm:SalesViewModel}"><views:SalesView /></DataTemplate>
+    <DataTemplate DataType="{x:Type vm:PartiesViewModel}"><views:PartiesView /></DataTemplate>
+    <DataTemplate DataType="{x:Type vm:PlaceholderViewModel}"><views:PlaceholderView /></DataTemplate>
+
+    <!-- Sidebar nav button -->
+    <Style x:Key="NavButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="10"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{DynamicResource Surface2Brush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsActive}" Value="True">
+          <Setter Property="Background" Value="{DynamicResource BrandSoftBrush}" />
+          <Setter Property="Foreground" Value="{DynamicResource BrandBrush}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="240" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <!-- Sidebar -->
+    <Border Grid.Column="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+            BorderThickness="0,0,1,0">
+      <DockPanel Margin="0">
+        <!-- Brand -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="16">
+          <Border Width="36" Height="36" CornerRadius="10" Background="{DynamicResource BrandBrush}">
+            <TextBlock Text="SKB" Foreground="{DynamicResource BrandFgBrush}" FontWeight="Bold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" />
+          </Border>
+          <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="{Binding [app.name], Source={StaticResource Loc}}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding [app.tagline], Source={StaticResource Loc}}" Style="{StaticResource Muted}" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Bottom: user + sign out -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="12">
+          <Border Background="{DynamicResource LineBrush}" Height="1" Margin="0,0,0,10" />
+          <StackPanel Orientation="Horizontal">
+            <Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource BrandBrush}">
+              <TextBlock Text="{Binding Initials}" Foreground="{DynamicResource BrandFgBrush}"
+                         FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding User.FullName}" FontSize="13" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding User.Email}" Style="{StaticResource Muted}" />
+            </StackPanel>
+          </StackPanel>
+          <Button Style="{StaticResource GhostButton}" Margin="0,8,0,0" HorizontalAlignment="Left"
+                  Command="{Binding SignOutCommand}"
+                  Content="{Binding [auth.signOut], Source={StaticResource Loc}}" />
+        </StackPanel>
+
+        <!-- Nav -->
+        <ItemsControl ItemsSource="{Binding NavItems}" Margin="12,6">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource NavButton}" Margin="0,2"
+                      Command="{Binding NavigateCommand}" Content="{Binding Label}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+    </Border>
+
+    <!-- Main -->
+    <DockPanel Grid.Column="1">
+      <!-- Top bar -->
+      <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,10">
+        <DockPanel>
+          <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+            <Border CornerRadius="999" Background="{DynamicResource Surface2Brush}" Padding="10,4" Margin="0,0,8,0">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                         Fill="{Binding Connection.State, Converter={StaticResource ToneFg}}" />
+                <TextBlock Margin="6,0,0,0" Text="{Binding Connection.State}" Style="{StaticResource Muted}" />
+              </StackPanel>
+            </Border>
+            <Button Style="{StaticResource GhostButton}" Command="{Binding ToggleLanguageCommand}"
+                    Content="{Binding [pref.language], Source={StaticResource Loc}}" />
+            <Button Style="{StaticResource GhostButton}" Command="{Binding ToggleThemeCommand}"
+                    Content="{Binding [pref.theme], Source={StaticResource Loc}}" Margin="6,0,0,0" />
+          </StackPanel>
+          <TextBlock VerticalAlignment="Center" Style="{StaticResource Muted}"
+                     Text="{Binding [app.tagline], Source={StaticResource Loc}}" />
+        </DockPanel>
+      </Border>
+
+      <!-- Page content -->
+      <ContentControl Content="{Binding CurrentViewModel}" Margin="0" />
+    </DockPanel>
+
+    <!-- Offline gate overlay -->
+    <Border Grid.ColumnSpan="2" Background="{DynamicResource CanvasBrush}"
+            Visibility="{Binding Connection.IsOffline, Converter={StaticResource BoolVis}}">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="380">
+        <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource DestructiveSoftBrush}"
+                HorizontalAlignment="Center">
+          <TextBlock Text="!" FontSize="30" FontWeight="Bold" Foreground="{DynamicResource DestructiveBrush}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <TextBlock Text="{Binding [offline.title], Source={StaticResource Loc}}" Style="{StaticResource H1}"
+                   HorizontalAlignment="Center" Margin="0,16,0,0" TextAlignment="Center" />
+        <TextBlock Text="{Binding [offline.body], Source={StaticResource Loc}}" Style="{StaticResource Muted}"
+                   TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

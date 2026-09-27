@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SKB.Core</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    No external NuGet packages. Everything uses the built-in .NET 8 BCL
+    (System.Text.Json, System.Net.Http) so the project restores and builds
+    with nothing to fetch beyond the .NET SDK itself.
+  -->
+
+</Project>

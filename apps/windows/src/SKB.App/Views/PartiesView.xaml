@@ -1,0 +1,38 @@
+<UserControl x:Class="SKB.App.Views.PartiesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+    <StackPanel>
+      <TextBlock Text="{Binding [nav.parties], Source={StaticResource Loc}}" Style="{StaticResource H1}"
+                 Margin="0,0,0,14" />
+
+      <ItemsControl ItemsSource="{Binding Cards}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <UniformGrid Columns="3" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+              <StackPanel>
+                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" />
+                <TextBlock Text="{Binding TypesDisplay}" Style="{StaticResource Muted}" Margin="0,2,0,0" />
+
+                <Border Background="{DynamicResource Surface2Brush}" CornerRadius="10" Padding="10" Margin="0,12,0,0">
+                  <StackPanel>
+                    <TextBlock Text="{Binding BalanceLabel}" Style="{StaticResource Muted}" />
+                    <TextBlock Text="{Binding BalanceDisplay}" FontWeight="SemiBold" FontSize="16" Margin="0,2,0,0"
+                               Foreground="{Binding Tone, Converter={StaticResource ToneFg}}" />
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Text="{Binding Phone}" Style="{StaticResource Muted}" Margin="0,10,0,0" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,24 +1,28 @@
 # SKB — Wholesale Accounting Platform
 
-An adaptive, bilingual (Arabic / English) wholesale accounting application delivered as
-**one product across every device**: a web app that also installs on iPhone, Android, and
-Windows — all talking to **your own database on your company server**.
+An adaptive, bilingual (Arabic / English) wholesale accounting application delivered across
+**every device with the best‑fit technology for each**, all talking to **your own database
+on your company server**.
 
 > **Status:** Foundation + first vertical slice (auth · security · dashboard · sales).
 > Built to grow module‑by‑module without re‑architecting.
 
 ---
 
-## The "Facebook model" — one codebase, every surface
+## One server, best‑fit client per device
 
-| Surface | How it's delivered | Store needed? |
-| --- | --- | --- |
-| **Website** | The React PWA served by any browser | — |
-| **iPhone / iPad** | Open in Safari → **Add to Home Screen** (installs full‑screen, own icon) | ❌ No App Store |
-| **Android** | Install the PWA, or sideload a **private APK** (built via Capacitor) | ❌ No Play Store |
-| **Windows** | Run the **setup / `.exe`** (built via Tauri) | ❌ No store |
+All clients share **one server** (the "brain") — data, security rules, roles, and business
+logic live there once. Each client is a fast, native‑feeling view on top.
 
-All surfaces are the *same* React app pointing at the same company server.
+| Surface | Technology | Distribution | Status |
+| --- | --- | --- | --- |
+| **Server (brain)** | TypeScript · NestJS · PostgreSQL | Company server (→ cloud later) | ✅ Built |
+| **Website + iPhone/iPad** | React **PWA** (TypeScript) | Browser · Safari “Add to Home Screen” (no App Store) | ✅ Built |
+| **Windows** | **C# / .NET 8 · WPF** (`apps/windows`) | Native `.exe` / installer | ✅ Foundation built |
+| **Android** | **Kotlin · Jetpack Compose** | Private APK (no Play Store) | ⏭️ Planned |
+
+The iPhone/iPad target stays a PWA on purpose: it installs **privately, free, with no App
+Store**, which a native iOS app cannot do.
 
 ## Security model (the top priority)
 

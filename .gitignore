@@ -31,5 +31,11 @@ pnpm-debug.log*
 # Tauri (desktop build)
 apps/desktop/src-tauri/target/
 
+# .NET (Windows app)
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+
 # Test / coverage
 coverage/

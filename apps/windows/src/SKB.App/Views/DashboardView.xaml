@@ -1,0 +1,109 @@
+<UserControl x:Class="SKB.App.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+      <StackPanel>
+        <TextBlock Text="{Binding [nav.dashboard], Source={StaticResource Loc}}" Style="{StaticResource H1}" />
+        <TextBlock Text="{Binding [app.tagline], Source={StaticResource Loc}}" Style="{StaticResource Muted}"
+                   Margin="0,2,0,16" />
+
+        <!-- KPIs -->
+        <ItemsControl ItemsSource="{Binding Kpis}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="3" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                <StackPanel>
+                  <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" />
+                  <TextBlock Text="{Binding Display}" FontSize="20" FontWeight="SemiBold" Margin="0,6,0,0"
+                             Foreground="{Binding Tone, Converter={StaticResource ToneFg}}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Recent + low stock -->
+        <Grid Margin="0,4,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.4*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+
+          <!-- Recent documents -->
+          <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,12,0">
+            <StackPanel>
+              <TextBlock Text="{Binding [dashboard.recent], Source={StaticResource Loc}}"
+                         Style="{StaticResource SectionTitle}" Margin="0,0,0,10" />
+              <ItemsControl ItemsSource="{Binding Recent}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,6">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel Grid.Column="0">
+                        <TextBlock Text="{Binding PartyName}" FontWeight="SemiBold" FontSize="13" />
+                        <TextBlock Text="{Binding Number}" Style="{StaticResource Muted}" />
+                      </StackPanel>
+                      <Border Grid.Column="1" CornerRadius="999" Padding="8,3" VerticalAlignment="Center"
+                              Background="{Binding Tone, Converter={StaticResource ToneBg}}">
+                        <TextBlock Text="{Binding StatusLabel}" FontSize="11"
+                                   Foreground="{Binding Tone, Converter={StaticResource ToneFg}}" />
+                      </Border>
+                      <TextBlock Grid.Column="2" Text="{Binding TotalDisplay}" FontWeight="SemiBold"
+                                 VerticalAlignment="Center" Margin="12,0,0,0" MinWidth="110" TextAlignment="Right" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+
+          <!-- Low stock -->
+          <Border Grid.Column="1" Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="{Binding [dashboard.lowStock], Source={StaticResource Loc}}"
+                         Style="{StaticResource SectionTitle}" Margin="0,0,0,10" />
+              <ItemsControl ItemsSource="{Binding LowStock}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,6">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel Grid.Column="0">
+                        <TextBlock Text="{Binding Name}" FontSize="13" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Sku}" Style="{StaticResource Muted}" />
+                      </StackPanel>
+                      <Border Grid.Column="1" CornerRadius="999" Padding="8,3" VerticalAlignment="Center"
+                              Background="{DynamicResource DestructiveSoftBrush}">
+                        <TextBlock Text="{Binding StockDisplay}" FontSize="11"
+                                   Foreground="{DynamicResource DestructiveBrush}" />
+                      </Border>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Loading -->
+    <Border Background="{DynamicResource CanvasBrush}"
+            Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}">
+      <TextBlock Text="{Binding [common.loading], Source={StaticResource Loc}}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Style="{StaticResource Muted}" />
+    </Border>
+  </Grid>
+</UserControl>
