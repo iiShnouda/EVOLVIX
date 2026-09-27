@@ -16,10 +16,14 @@ logic live there once. Each client is a fast, native‑feeling view on top.
 
 | Surface | Technology | Distribution | Status |
 | --- | --- | --- | --- |
-| **Server (brain)** | TypeScript · NestJS · PostgreSQL | Company server (→ cloud later) | ✅ Built |
-| **Website + iPhone/iPad** | React **PWA** (TypeScript) | Browser · Safari “Add to Home Screen” (no App Store) | ✅ Built |
-| **Windows** | **C# / .NET 8 · WPF** (`apps/windows`) | Native `.exe` / installer | ✅ Foundation built |
+| **Server (brain)** | **C# · ASP.NET Core 10 · PostgreSQL** (`apps/api`) | Windows Service (→ Linux later) | ✅ Built & tested |
+| **Website + iPhone/iPad** | React **PWA** (TypeScript) | Browser · Safari “Add to Home Screen” (no App Store) | ✅ Built & tested |
+| **Windows** | **C# / .NET 10 · WPF** (`apps/windows`) | Native `.exe` / installer | ✅ Foundation built |
 | **Android** | **Kotlin · Jetpack Compose** | Private APK (no Play Store) | ⏭️ Planned |
+
+> The C# server (`apps/api`) is the canonical/production backend. An earlier Node/NestJS
+> server (`apps/server`) is kept for reference and can be removed once you've validated .NET.
+> See `apps/api/README.md` for Windows Service, static IP/DNS, local TLS, and Linux hosting.
 
 The iPhone/iPad target stays a PWA on purpose: it installs **privately, free, with no App
 Store**, which a native iOS app cannot do.
