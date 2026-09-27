@@ -129,13 +129,7 @@ only the hosting wrapper differs.
 
 ## Note on presence transport
 
-The web client currently uses **socket.io** (from the earlier Node server); this .NET server
-exposes **SignalR** at `/hubs/presence`. REST works unchanged across all clients; wiring the
-web/desktop presence UI to SignalR (`@microsoft/signalr`) is a small follow‑up when the
-owner/CEO presence screen is built.
-
-## Relationship to the earlier Node server
-
-`apps/server` (NestJS/TypeScript) was the first working backend and is kept for reference.
-**This .NET server is now the canonical/production backend.** Point all clients here; the
-Node server can be removed once you've validated .NET in your environment.
+This server exposes **SignalR** at `/hubs/presence`. The web client still has a socket.io
+stub from an earlier iteration; wiring the web/desktop presence UI to SignalR
+(`@microsoft/signalr`) is a small follow‑up when the owner/CEO presence screen is built.
+All normal (REST) screens work across every client today.

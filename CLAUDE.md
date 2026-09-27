@@ -20,18 +20,23 @@ first‑class concern.
    cents) in the DB — never floats. Format for display only at the edge.
 5. **Bilingual by construction.** No user‑facing string is hard‑coded in a component; it
    comes from `@skb/shared` i18n keys. Layout must work in both LTR and RTL.
-6. **Types are shared.** Domain shapes live in `@skb/shared` and are imported by both
-   `web` and `server`. Change them in one place.
+6. **Types are shared where they can be.** The web/PWA shares TypeScript domain shapes via
+   `@skb/shared`. The C# server (`apps/api`) and Windows app (`apps/windows`) mirror the
+   same JSON contract in their own model classes. When an endpoint's shape changes, update
+   all three in lockstep.
 
-## Workspaces
+## Layout (one server, best‑fit client per device)
 
-- `@skb/shared` — types, i18n dictionary, zod schemas, roles/permissions, nav model, money
-  helpers, locale helpers. Zero runtime deps beyond `zod`. Built to `dist/` and consumed
-  by the other packages.
-- `@skb/server` — NestJS. Modules: `auth`, `security` (guards/interceptors), `presence`
-  (WS), `audit`, and business modules (`dashboard`, `sales`, `parties`, …). Prisma for DB.
-- `@skb/web` — React PWA. `src/design/` tokens, `src/shell/` adaptive navigation,
-  `src/pages/` screens, `src/lib/` api client + query hooks, `src/i18n/` runtime.
+- `apps/api` — **C# / ASP.NET Core 10** server (canonical backend). EF Core + Npgsql
+  (PostgreSQL), JWT auth + PBKDF2, per‑permission authorization, audit, SignalR presence.
+  Controllers: `auth`, `dashboard`, `sales`, `parties`, `presence`, `health`. This is the
+  source of truth all clients call.
+- `apps/web` — React **PWA** (also the iPhone/iPad + website surface). `src/design/` tokens,
+  `src/shell/` adaptive navigation, `src/pages/` screens, `src/lib/` api client + query
+  hooks, `src/i18n/` runtime.
+- `apps/windows` — **C# / WPF** native desktop client (`SKB.Core` + `SKB.App`).
+- `packages/shared` (`@skb/shared`) — TypeScript types, AR/EN dictionary, zod schemas,
+  roles/permissions, nav model, money/locale helpers — consumed by the web app.
 
 ## Adaptive device strategy
 
@@ -43,13 +48,18 @@ list/detail templates that render device‑appropriately.
 
 ## Adding a new module (the growth path)
 
-1. Add types + i18n keys + zod schemas in `@skb/shared`.
-2. Add the Prisma model(s) + a migration.
-3. Add a NestJS module (controller + service) behind the auth/RBAC/audit guards.
-4. Add the page under `src/pages/` using the list/detail templates + a query hook.
+1. Add the EF Core entity/entities in `apps/api` + an EF migration
+   (`dotnet ef migrations add <Name>`).
+2. Add the controller + DTOs behind `[Authorize(Policy = Permissions.…)]`, with branch
+   scoping and audit where it mutates.
+3. Add types + i18n keys in `@skb/shared` (and mirror the DTO in the Windows app's models).
+4. Add the page under `apps/web/src/pages/` using the list/detail templates + a query hook.
 5. Register it in the shared navigation model so it appears in every device's shell.
 
 ## Commands
 
-See root `package.json` scripts: `pnpm dev`, `pnpm build`, `pnpm typecheck`,
-`pnpm db:up|migrate|seed|studio`, `pnpm format`.
+- Server: `cd apps/api/src/SKB.Api && dotnet run` (migrates + seeds on startup). Migrations:
+  `dotnet ef migrations add <Name>`.
+- Web: root `package.json` scripts — `pnpm dev`, `pnpm build`, `pnpm typecheck`,
+  `pnpm db:up|down` (PostgreSQL via Docker), `pnpm format`.
+- Windows: open `apps/windows/SKB.sln` in Visual Studio.

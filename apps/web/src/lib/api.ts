@@ -1,7 +1,7 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
 import { getAccessToken, useAuth } from '../stores/auth';
 
-const API_BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api`;
+const API_BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:5080'}/api`;
 
 export class ApiError extends Error {
   constructor(

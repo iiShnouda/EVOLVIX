@@ -21,9 +21,8 @@ logic live there once. Each client is a fast, native‑feeling view on top.
 | **Windows** | **C# / .NET 10 · WPF** (`apps/windows`) | Native `.exe` / installer | ✅ Foundation built |
 | **Android** | **Kotlin · Jetpack Compose** | Private APK (no Play Store) | ⏭️ Planned |
 
-> The C# server (`apps/api`) is the canonical/production backend. An earlier Node/NestJS
-> server (`apps/server`) is kept for reference and can be removed once you've validated .NET.
-> See `apps/api/README.md` for Windows Service, static IP/DNS, local TLS, and Linux hosting.
+> The C# server (`apps/api`) is the single backend. See `apps/api/README.md` for Windows
+> Service hosting, static IP/DNS, local TLS, connection pooling, and the Linux upgrade path.
 
 The iPhone/iPad target stays a PWA on purpose: it installs **privately, free, with no App
 Store**, which a native iOS app cannot do.
@@ -34,69 +33,61 @@ Store**, which a native iOS app cannot do.
   connected to the company server, it shows a "connect to server" screen and displays
   **nothing** — no cached records, no ledgers. Only the app *code* is cached (so it launches
   fast); business data never is.
-- **Encrypted sessions**: passwords hashed with **argon2id**; short‑lived signed access
-  tokens (JWT) + opaque **refresh tokens stored hashed** in the DB; refresh material
-  encrypted at rest (AES‑256‑GCM). Every session is server‑side and **revocable**.
+- **Encrypted sessions**: passwords hashed with **PBKDF2** (ASP.NET Core `PasswordHasher`);
+  short‑lived signed access tokens (JWT) + opaque **refresh tokens stored hashed** in the DB;
+  refresh material encrypted at rest (**AES‑256‑GCM**). Every session is server‑side and
+  **revocable**.
 - **Access control**: role‑based (RBAC) + **branch scoping** enforced on the server for
-  every request — never trusted from the client.
+  every request (deny‑by‑default) — never trusted from the client.
 - **Full audit trail**: who did what, when, from which device/IP — recorded server‑side.
-- **Live presence**: a WebSocket channel tracks who is online right now. This is the
+- **Live presence**: a real‑time channel (SignalR) tracks who is online right now — the
   foundation for the future **owner/CEO view** (who's connected and what they're doing).
-- Transport hardening: Helmet headers, strict CORS allow‑list, rate limiting, and
-  request validation on every endpoint.
+- Transport hardening: strict CORS allow‑list, rate limiting, HTTPS‑ready (local TLS cert).
 
 ## Tech stack
 
 | Layer | Choice | Why |
 | --- | --- | --- |
-| Language | **TypeScript** everywhere | One language front‑to‑back → shared types, faster growth |
-| Frontend | **React 19 + Vite + Tailwind v4** (PWA) | Installable on all devices from one codebase |
-| Client data | **TanStack Query** + **Zustand** | Server state cache + UI state; no data persisted offline |
-| Backend | **NestJS** | Structured, security‑first (guards/interceptors/gateways), grows cleanly |
-| Database | **PostgreSQL** via **Prisma** | ACID‑safe for money; self‑host now, move to cloud later unchanged |
-| Realtime | **Socket.IO** (NestJS gateway) | Presence + future live activity feed |
-| Desktop pkg | **Tauri** | Tiny, secure `.exe`/installer for Windows |
-| Mobile pkg | **Capacitor** (optional APK) + PWA install | Private distribution, no stores |
+| **Server** | **C# · ASP.NET Core 10 · EF Core · PostgreSQL** | Standard, robust, secure; same language as the Windows client; Windows Service now, Linux later |
+| Website + iPhone/iPad | **React 19 · Vite · Tailwind v4** (PWA) | Installs privately on iOS with no App Store; one codebase for web + phones |
+| Client data (web) | **TanStack Query** + **Zustand** | In‑memory server cache + UI state; no business data persisted offline |
+| Windows | **C# · .NET 10 · WPF** (MVVM) | Native desktop client, best fit for the back‑office |
+| Android | **Kotlin · Jetpack Compose** (planned) | Native phone client, private APK |
+| Realtime | **SignalR** | Presence + future live activity feed |
 
 ## Repository layout
 
 ```
 skb/
-├─ packages/
-│  └─ shared/         # Domain types, AR/EN dictionary, zod schemas, roles — used by web + server
 ├─ apps/
-│  ├─ server/         # NestJS API: auth, RBAC, audit, presence, business modules (Prisma/Postgres)
-│  ├─ web/            # React PWA: design system, adaptive shell, screens
-│  └─ desktop/        # Tauri wrapper for the Windows build (added when packaging)
-├─ docker-compose.yml # PostgreSQL (same engine you'll run on the company server)
-└─ .env.example       # All configuration; copy to .env
+│  ├─ api/            # C# / ASP.NET Core 10 server — canonical backend (EF Core + PostgreSQL)
+│  ├─ web/            # React PWA: design system, adaptive shell, screens (web + iPhone/iPad)
+│  └─ windows/        # C# / WPF native desktop client (SKB.Core + SKB.App)
+├─ packages/
+│  └─ shared/         # TS domain types, AR/EN dictionary, zod schemas, roles — used by the web app
+├─ docker-compose.yml # PostgreSQL for local development
+└─ .env.example       # Postgres + web config; copy to .env
 ```
 
 ## Quick start (development)
 
 ```bash
-# 0. Prereqs: Node 22+, pnpm 10+, Docker (for Postgres)
-cp .env.example .env          # then edit secrets
+# Prereqs: .NET 10 SDK, Node 22+, pnpm 10+, PostgreSQL (or `pnpm db:up` for Docker)
+cp .env.example .env
 
-pnpm install                  # install all workspaces
-pnpm db:up                    # start PostgreSQL in Docker
-pnpm db:migrate               # create the schema
-pnpm db:seed                  # demo branches/staff/products/invoices + owner account
+# 1) Server (migrates + seeds on first run)
+cd apps/api/src/SKB.Api && dotnet run          # listens on http://localhost:5080
 
-pnpm dev                      # runs API (:3000) and web (:5173) together
+# 2) Web (in another terminal)
+pnpm install && pnpm dev                        # http://localhost:5173
 ```
 
-Then open http://localhost:5173 and sign in with the seeded owner account
-(`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD` from your `.env`).
+Open http://localhost:5173 and sign in with the seeded owner account
+(`owner@skb.local` / `ChangeMe!Owner123`).
 
-## Deploying to the company server (overview)
+## Deploying to the company server
 
-1. Install Docker (or a native PostgreSQL 16) on the server PC.
-2. Set `.env` with a strong DB password and freshly generated secrets.
-3. `pnpm db:up && pnpm db:migrate && pnpm db:seed`, then run the API server.
-4. Build the web app (`pnpm --filter @skb/web build`) and serve it (the API can serve it,
-   or use any static host on the LAN).
-5. Point client devices at the server's LAN address (`VITE_API_URL`). Later, expose it over
-   the internet (HTTPS strongly recommended) — no code changes required.
-
-See `CLAUDE.md` for developer/architecture notes.
+The server runs as a **Windows Service** (and later Linux `systemd`), behind a **static IP +
+internal DNS name** with a **local TLS certificate** and **connection pooling**. Full,
+step‑by‑step instructions are in **`apps/api/README.md`**. The Windows desktop client build
+lives in **`apps/windows/README.md`**. See `CLAUDE.md` for architecture notes.
