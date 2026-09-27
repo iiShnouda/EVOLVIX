@@ -1,0 +1,244 @@
+Implementation Plan: Adaptive Bilingual Wholesale Accounting Frontend
+1. Product goal
+Create a polished frontend-only wholesale accounting application that feels purpose-built on five device categories: iPhone, Android phone, desktop/PC, Android tablet, and iPad. The application will use standard Arabic and English business terminology, support RTL/LTR layouts, light/dark themes, and an online/offline status model.
+
+This delivery is an interactive application shell with static business data. Navigation, responsive/adaptive layout, theme switching, language switching, filters/tabs, menus, modal/sheet presentation, and connection-state demonstrations will work. Accounting records, authentication, CRUD submission, synchronization, PDF generation, and backend calls will be represented as realistic frontend states rather than persisted production workflows.
+
+2. Repository baseline
+Framework: React 19 + TypeScript + Vite 8.
+Styling: Tailwind CSS v4 through @tailwindcss/vite.
+Current app: empty src/App.tsx; global CSS only imports Tailwind.
+No existing component library or external design system is installed.
+Keep src/main.tsx, Vite configuration, and the existing application entrypoint unchanged.
+Build the product as a small local design system using React primitives, Tailwind classes, CSS variables, and reusable components.
+3. Scope and information architecture
+A. Entry and application shell
+Sign-in screen
+
+Business logo/name area.
+Email or staff ID and password fields as visual states.
+“Online” and “Local workspace” connection choices.
+Remember device, forgot password, and connection health indicators.
+Arabic/English and theme controls available before sign-in.
+Demo sign-in transitions into the dashboard without real authentication.
+Global shell
+
+Business/workspace switcher.
+Branch selector.
+Global search/command entry.
+Notifications.
+Connection/sync status: online, offline, syncing, last synced.
+Language switch: English/LTR and Arabic/RTL.
+Theme switch: light, dark, and optional system preference.
+Staff profile menu with role and active branch.
+B. Main modules
+Dashboard / لوحة التحكم
+
+Revenue, purchases, receivables, payables, low-stock, and cash-position KPI cards.
+Sales vs. purchases trend.
+Receivables/payables overview.
+Inventory health and low-stock alerts.
+Recent documents and activity feed.
+Quick actions for invoice, receipt, product, contact, and expense.
+Sales / المبيعات
+
+Quotations / عروض الأسعار.
+Sales invoices / فواتير المبيعات.
+Sales returns / مرتجعات المبيعات.
+Status filters, branch/staff filters, search, totals, and document preview.
+Purchases / المشتريات
+
+Purchase invoices / فواتير المشتريات.
+Purchase returns / مرتجعات المشتريات.
+Supplier/factory, due-date, status, branch, and staff views.
+Receipts and payments / سندات القبض والصرف
+
+Collection receipts / سندات القبض.
+Payment vouchers / سندات الصرف.
+Expenses / المصروفات.
+Cash/bank account indicator and printable receipt preview.
+Staff name displayed on each document and receipt.
+Customers and suppliers / العملاء والموردون
+
+Unified “party” directory for customers, suppliers, factories, or mixed-role accounts.
+Clear balance language:
+“They owe us / لنا عليهم” for receivables.
+“We owe them / لهم علينا” for payables.
+Party profile with balance summary, aging, transaction ledger, open documents, payments, and contact information.
+Factories appear as a supported supplier/account type instead of a disconnected accounting model.
+Inventory / المخزون
+
+Products / المنتجات.
+Categories / التصنيفات.
+Stock by branch/warehouse.
+Stock transfers / تحويلات المخزون.
+Stock adjustments / تسويات المخزون.
+Reorder status, product cost/sale price, units, SKU/barcode, and movement history.
+Staff and branches / الموظفون والفروع
+
+Staff directory, roles, active/inactive state, assigned branch, and permissions summary.
+Branch list with warehouse/cashbox association and performance snapshot.
+Add/edit/remove actions shown as frontend-only UI states.
+Analytics / التحليلات والتقارير
+
+Sales, purchases, profitability, inventory movement, top products, staff performance, branch performance, receivables, payables, and aging reports.
+Date range, branch, staff, party, category, and product filters.
+Responsive charts and summary tables with empty/loading/error visual states represented where useful.
+Settings / الإعدادات
+
+Company profile and receipt identity.
+Currency, tax behavior, number/date formatting, fiscal year, units, document numbering, and default language.
+Theme and display density.
+Branches, categories, roles, and permission summaries.
+Connection/sync preferences shown as mock settings.
+4. Standard bilingual terminology
+Use one typed translation dictionary rather than embedding mixed strings throughout components. At minimum, standardize:
+
+English	Arabic
+Dashboard	لوحة التحكم
+Customers and Suppliers	العملاء والموردون
+Customer	عميل
+Supplier	مورد
+Factory	مصنع
+Sales Invoice	فاتورة مبيعات
+Purchase Invoice	فاتورة مشتريات
+Quotation	عرض سعر
+Collection Receipt	سند قبض
+Payment Voucher	سند صرف
+Sales Return	مرتجع مبيعات
+Purchase Return	مرتجع مشتريات
+Inventory	المخزون
+Stock Transfer	تحويل مخزون
+Stock Adjustment	تسوية مخزون
+Receivables	حسابات مدينة / لنا عليهم
+Payables	حسابات دائنة / لهم علينا
+Account Statement	كشف حساب
+Balance	الرصيد
+Amount Due	المبلغ المستحق
+Staff	الموظفون
+Branches	الفروع
+Analytics and Reports	التحليلات والتقارير
+Keep accounting meaning primary; avoid literal translations that are uncommon in business software. Numerals, dates, currency placement, text alignment, icon direction, and chart labels must follow the active locale.
+
+5. Adaptive device behavior
+Use a single React application with shared data and components, but adapt navigation, density, interaction surfaces, and layout by viewport/platform class.
+
+iPhone
+Compact top bar, safe-area padding, and five-item bottom tab navigation.
+Secondary modules live in a “More” sheet.
+Stacked KPI cards and card-based record summaries instead of wide tables.
+iOS-like sheets, segmented controls, rounded grouped surfaces, and touch-sized actions.
+Android phone
+Material-inspired top app bar and bottom navigation.
+Contextual floating primary action on list screens.
+Bottom sheets for filters/actions and card-based records.
+Same information architecture as iPhone, but platform-appropriate control treatment.
+Android tablet
+Persistent navigation rail.
+Master-detail layouts for lists and document previews.
+Two- or three-column dashboard grids and touch-optimized tables.
+iPad
+Persistent sidebar with collapsible groups.
+Split views, popovers, and larger grouped surfaces.
+Respect landscape/portrait transitions and safe areas.
+Maintain touch density rather than shrinking the desktop UI.
+Desktop/PC
+Full persistent sidebar, utility header, breadcrumbs, global search, and quick-create action.
+Dense data tables, multi-column dashboards, side detail panels, and visible filter bars.
+Support common laptop, standard monitor, and wide-screen widths without excessive line length.
+Shared responsive rules
+No horizontal page scrolling at target widths.
+Tables transform into priority-based cards on phones.
+Charts preserve labels and values at all sizes.
+Dialogs become bottom sheets on phones and centered modals/popovers on larger displays.
+Navigation state and page selection remain consistent across layout changes.
+6. Visual design direction
+Create a best-in-class modern ERP visual language: confident, calm, and highly legible rather than decorative.
+
+Neutral canvas with elevated working surfaces and a restrained indigo/blue brand accent.
+Semantic colors reserved for revenue/positive, payable/warning, overdue/destructive, and informational states.
+Strong typographic hierarchy, tabular numerals for financial values, generous whitespace at large sizes, and compact-but-readable density in tables.
+Consistent radii, borders, elevation, focus rings, and motion timing through CSS variables.
+Subtle background depth and data visualization color scales that work in both themes.
+Avoid stock photography because this is an operational accounting product; use data visualization, iconography, and product UI as the primary visual content.
+Meet accessible contrast, visible focus, keyboard navigation, reduced-motion, and touch-target expectations.
+7. Component architecture
+Create reusable local components rather than placing the entire product in App.tsx.
+
+Suggested structure:
+
+src/App.tsx — top-level demo state and screen routing.
+src/components/shell/ — desktop sidebar, mobile nav, top bar, account menu, connection badge.
+src/components/ui/ — button, icon button, badge, card, input shell, tabs, select shell, table, drawer/sheet, modal, stat card, empty state, and chart shell.
+src/components/charts/ — lightweight CSS/SVG chart components for static analytics.
+src/pages/ — login, dashboard, sales, purchases, documents, parties, inventory, staff, branches, analytics, and settings.
+src/data/demo.ts — coherent mock business dataset reused across pages.
+src/i18n/translations.ts — Arabic and English labels.
+src/types.ts — document, party, product, branch, staff, and navigation types.
+src/index.css — Tailwind import, theme tokens, font stacks, RTL-aware globals, safe-area helpers, and restrained transitions.
+Use a small internal icon component set or add one verified icon package; do not use emoji as UI symbols. Favor CSS variables and semantic utility combinations over scattered literal colors.
+
+8. Demo data and state model
+Build one internally consistent wholesale-office dataset with 2–3 branches, several staff roles, customers, suppliers, factories, products/categories, invoices, receipts, stock events, and expenses.
+Reuse IDs and totals so dashboard, ledgers, inventory, and analytics tell the same story.
+Keep business data static in memory.
+Keep shell preferences in React state; optionally persist locale and theme only in localStorage so the switches survive refresh.
+Simulate connection state with a small control that cycles online, syncing, and offline.
+Simulate sign-in and logout as frontend state changes only.
+Filters and tabs can operate on mock data, but add/edit/delete/save controls present polished preview states and do not claim server persistence.
+9. Key interaction details
+Language switch updates all visible labels and toggles document direction between ltr and rtl.
+Directional icons (chevrons, row navigation, sidebar collapse) mirror in RTL; non-directional icons do not.
+Theme switch updates semantic tokens, charts, borders, shadows, and status colors—not only the page background.
+Navigation supports click/touch and keyboard interaction.
+Phone bottom navigation exposes Dashboard, Sales, Inventory, Accounts, and More; “More” contains the remaining modules.
+Desktop/tablet navigation exposes the complete module hierarchy.
+Party balances always pair amount, currency, and clear receivable/payable language to avoid ambiguous positive/negative signs.
+Document preview includes company, branch, customer/supplier, line items, totals, status, staff member, payment state, and print/download affordances.
+10. Out of scope
+Real backend, database, or API integration.
+Real user authentication or authorization enforcement.
+Production offline database, service worker synchronization, or conflict resolution.
+Real invoice numbering, accounting journal posting, tax calculation compliance, PDF creation, printing integration, or exports.
+Native iOS/Android binaries.
+AI assistant or AI-generated analysis.
+These can be added later without changing the planned information architecture if the frontend types and boundaries remain clean.
+
+11. Implementation sequence
+Establish semantic theme tokens, RTL/LTR behavior, typography, and responsive foundations in src/index.css.
+Define types, translation keys, locale helpers, navigation model, and coherent demo data.
+Build reusable UI primitives and adaptive shell components.
+Implement sign-in and shell-level demo state: route, locale, theme, device-responsive navigation, and connection state.
+Implement the dashboard and its responsive chart/stat layouts.
+Implement list/detail templates, then apply them to sales, purchases, documents, parties, inventory, staff, and branches.
+Implement analytics and settings surfaces.
+Add mobile sheets/cards, tablet master-detail behavior, iPad sidebar treatment, and desktop density refinements.
+Complete keyboard, contrast, RTL, overflow, reduced-motion, loading/empty/error-state, and screen-reader-label passes.
+Format, build, and validate all device presets in preview.
+12. Verification and acceptance criteria
+Automated checks
+Run the repository formatter through pnpm format and retain only intended changes.
+Run pnpm build; resolve all TypeScript, JSX, and Vite failures.
+Search changed UI files for accidental hard-coded one-off colors, malformed JSX, and unlocalized user-facing strings.
+Preview validation matrix
+Validate the running app at representative viewport sizes:
+
+iPhone: 390 × 844.
+Android phone: 412 × 915.
+Android tablet: 800 × 1280 and landscape.
+iPad: 1024 × 1366 and landscape.
+Desktop: 1366 × 768, 1440 × 900, and 1920 × 1080.
+For each category, verify:
+
+Navigation pattern matches the device plan.
+No page-level horizontal overflow.
+Important actions are reachable and touch targets are usable.
+Arabic switches the entire interface to correct RTL layout and standard terminology.
+English restores LTR layout.
+Light and dark themes remain legible and visually complete.
+Online/offline/sync state is visible without dominating the interface.
+Dashboard, customers/suppliers ledger, invoice/receipt preview, inventory, staff/branches, and analytics all have coherent responsive layouts.
+Staff name appears on receipt/document previews.
+Receivable and payable balances cannot be confused.
+Definition of done
+The result is a visually complete, responsive, bilingual wholesale accounting frontend that demonstrates all requested modules with coherent static data, a working adaptive shell, language/theme switching, and credible online/offline UI states across the five target device categories. It must not imply that mock authentication, persistence, synchronization, or accounting compliance are production-ready.
