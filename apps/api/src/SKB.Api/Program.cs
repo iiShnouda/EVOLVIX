@@ -14,6 +14,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Allow running as a Windows Service (no-op when launched normally or on Linux/systemd).
 builder.Host.UseWindowsService();
 
+// Cloud hosts (Render / Fly / Cloud Run) inject the listen port via $PORT.
+// Local dev uses launchSettings (:5080), so this only applies in the cloud.
+var cloudPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(cloudPort))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{cloudPort}");
+
 // --- Database (PostgreSQL) with EF Core context pooling + Npgsql connection pooling ------
 var connString = builder.Configuration.GetConnectionString("Default")
                  ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
@@ -98,6 +104,17 @@ using (var scope = app.Services.CreateScope())
     var auth = scope.ServiceProvider.GetRequiredService<AuthService>();
     await DbSeeder.SeedAsync(db, auth, app.Configuration);
 }
+
+// Behind a cloud load balancer (Render/Fly), trust the forwarded proto + client IP so
+// HTTPS is detected and rate limiting keys on the real client, not the proxy.
+var forwarded = new Microsoft.AspNetCore.Builder.ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                       | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto,
+};
+forwarded.KnownNetworks.Clear();
+forwarded.KnownProxies.Clear();
+app.UseForwardedHeaders(forwarded);
 
 // Enable HTTPS redirection only when a certificate/HTTPS endpoint is configured.
 if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
