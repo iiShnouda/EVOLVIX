@@ -44,7 +44,8 @@ export const ar: TranslationDictionary = {
   'conn.offline': 'غير متصل',
   'conn.lastSynced': 'آخر اتصال',
   'offline.title': 'غير متصل بالخادم',
-  'offline.body': 'حفاظًا على الأمان، تتوفر البيانات فقط عند الاتصال بخادم الشركة. أعد الاتصال للمتابعة.',
+  'offline.body':
+    'حفاظًا على الأمان، تتوفر البيانات فقط عند الاتصال بخادم الشركة. أعد الاتصال للمتابعة.',
   'offline.reconnect': 'إعادة الاتصال',
 
   // Language & theme

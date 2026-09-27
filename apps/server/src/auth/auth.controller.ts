@@ -20,7 +20,11 @@ export class AuthController {
   @Public()
   @Post('login')
   @UsePipes(new ZodValidationPipe(loginSchema))
-  async login(@Body() body: LoginInput, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async login(
+    @Body() body: LoginInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const result = await this.auth.login(body, this.contextFrom(req));
     this.setRefreshCookie(res, result.refreshToken, body.rememberDevice);
     return { user: result.user, accessToken: result.accessToken };
@@ -40,7 +44,11 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(@CurrentUser() user: AuthUser, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
     await this.auth.logout(raw, user, this.contextFrom(req));
     res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });

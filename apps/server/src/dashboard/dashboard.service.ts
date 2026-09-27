@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { AuthUser, DashboardData, KpiValue, SalesDocumentSummary, TrendPoint } from '@skb/shared';
+import type {
+  AuthUser,
+  DashboardData,
+  KpiValue,
+  SalesDocumentSummary,
+  TrendPoint,
+} from '@skb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { branchScope } from '../common/scope';
 import { toSummary } from '../sales/sales.mapper';
