@@ -32,9 +32,9 @@ dotnet run --project src\SKB.App
 
 Edit `src/SKB.App/appsettings.json` (copied next to the built `.exe`):
 ```json
-{ "ApiUrl": "http://192.168.1.10:3000" }
+{ "ApiUrl": "http://192.168.1.10:5080" }
 ```
-Use `http://localhost:3000` for local development, or the company server's LAN address for
+Use `http://localhost:5080` for local development, or the company server's LAN address for
 staff PCs. (Later, over the internet, use its `https://` address — no code change.)
 
 Sign in with a seeded account, e.g. `owner@skb.local` / `ChangeMe!Owner123`.

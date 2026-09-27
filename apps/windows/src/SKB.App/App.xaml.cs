@@ -43,14 +43,14 @@ public partial class App : Application
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(path));
                 if (doc.RootElement.TryGetProperty("ApiUrl", out var url))
-                    return url.GetString() ?? "http://localhost:3000";
+                    return url.GetString() ?? "http://localhost:5080";
             }
         }
         catch
         {
             // fall through to default
         }
-        return "http://localhost:3000";
+        return "http://localhost:5080";
     }
 
     /// <summary>Swap the main window to the shell after a successful sign-in.</summary>
