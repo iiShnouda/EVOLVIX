@@ -1,0 +1,39 @@
+{
+  "name": "skb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SKB — Adaptive bilingual wholesale accounting platform (web + installable apps, self-hosted server).",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @skb/server --filter @skb/web dev",
+    "dev:server": "pnpm --filter @skb/server dev",
+    "dev:web": "pnpm --filter @skb/web dev",
+    "build": "pnpm --filter @skb/shared build && pnpm --filter @skb/server build && pnpm --filter @skb/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @skb/server prisma:migrate",
+    "db:seed": "pnpm --filter @skb/server prisma:seed",
+    "db:studio": "pnpm --filter @skb/server prisma:studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "argon2",
+      "prisma",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "@nestjs/core"
+    ]
+  }
+}

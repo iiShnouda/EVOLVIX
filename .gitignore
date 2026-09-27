@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+apps/web/dev-dist/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Prisma
+apps/server/prisma/*.db
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Tauri (desktop build)
+apps/desktop/src-tauri/target/
+
+# Test / coverage
+coverage/

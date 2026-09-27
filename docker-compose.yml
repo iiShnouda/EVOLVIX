@@ -1,0 +1,26 @@
+# SKB — local/company-server database.
+# Runs the same PostgreSQL engine you'll host on the company server PC,
+# so moving to a cloud DB later is a connection-string change, not a rewrite.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: skb-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skb_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-skb}
+    ports:
+      # Exposed on the host so the API server (and, on the LAN, other machines) can reach it.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - skb-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skb} -d ${POSTGRES_DB:-skb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  skb-db-data:
+    name: skb-db-data

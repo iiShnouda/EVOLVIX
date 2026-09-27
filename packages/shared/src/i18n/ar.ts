@@ -1,0 +1,170 @@
+import type { TranslationDictionary } from './index';
+
+/**
+ * Arabic dictionary. Must cover every key in `en` (enforced by the TranslationDictionary type).
+ * Uses standard business/accounting terminology, not literal translations.
+ */
+export const ar: TranslationDictionary = {
+  // Brand / generic
+  'app.name': 'SKB',
+  'app.tagline': 'محاسبة الجملة',
+
+  // Common actions & labels
+  'common.search': 'بحث',
+  'common.filter': 'تصفية',
+  'common.all': 'الكل',
+  'common.save': 'حفظ',
+  'common.cancel': 'إلغاء',
+  'common.close': 'إغلاق',
+  'common.add': 'إضافة',
+  'common.edit': 'تعديل',
+  'common.delete': 'حذف',
+  'common.print': 'طباعة',
+  'common.download': 'تنزيل',
+  'common.back': 'رجوع',
+  'common.loading': 'جارٍ التحميل…',
+  'common.retry': 'إعادة المحاولة',
+  'common.none': 'لا يوجد',
+  'common.total': 'الإجمالي',
+  'common.date': 'التاريخ',
+  'common.status': 'الحالة',
+  'common.actions': 'إجراءات',
+  'common.branch': 'الفرع',
+  'common.staff': 'الموظف',
+  'common.amount': 'المبلغ',
+  'common.balance': 'الرصيد',
+  'common.dueDate': 'تاريخ الاستحقاق',
+  'common.empty': 'لا توجد بيانات بعد',
+  'common.errorTitle': 'حدث خطأ ما',
+  'common.errorBody': 'يرجى المحاولة مرة أخرى.',
+
+  // Connection / offline gate
+  'conn.online': 'متصل',
+  'conn.connecting': 'جارٍ الاتصال…',
+  'conn.offline': 'غير متصل',
+  'conn.lastSynced': 'آخر اتصال',
+  'offline.title': 'غير متصل بالخادم',
+  'offline.body': 'حفاظًا على الأمان، تتوفر البيانات فقط عند الاتصال بخادم الشركة. أعد الاتصال للمتابعة.',
+  'offline.reconnect': 'إعادة الاتصال',
+
+  // Language & theme
+  'pref.language': 'اللغة',
+  'pref.english': 'English',
+  'pref.arabic': 'العربية',
+  'pref.theme': 'المظهر',
+  'pref.theme.light': 'فاتح',
+  'pref.theme.dark': 'داكن',
+  'pref.theme.system': 'النظام',
+
+  // Auth
+  'auth.signIn': 'تسجيل الدخول',
+  'auth.signOut': 'تسجيل الخروج',
+  'auth.email': 'البريد الإلكتروني أو رقم الموظف',
+  'auth.password': 'كلمة المرور',
+  'auth.rememberDevice': 'تذكّر هذا الجهاز',
+  'auth.forgotPassword': 'نسيت كلمة المرور؟',
+  'auth.signingIn': 'جارٍ تسجيل الدخول…',
+  'auth.invalidCredentials': 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+  'auth.welcome': 'سجّل الدخول إلى مساحة العمل',
+  'auth.connectionOnline': 'خادم الشركة',
+  'auth.connectionHealthy': 'الخادم متاح',
+  'auth.connectionUnreachable': 'تعذّر الوصول إلى الخادم',
+  'auth.role': 'الدور',
+  'auth.activeBranch': 'الفرع النشط',
+
+  // Navigation / modules
+  'nav.dashboard': 'لوحة التحكم',
+  'nav.sales': 'المبيعات',
+  'nav.purchases': 'المشتريات',
+  'nav.receipts': 'سندات القبض والصرف',
+  'nav.parties': 'العملاء والموردون',
+  'nav.inventory': 'المخزون',
+  'nav.staff': 'الموظفون',
+  'nav.branches': 'الفروع',
+  'nav.analytics': 'التحليلات والتقارير',
+  'nav.settings': 'الإعدادات',
+  'nav.more': 'المزيد',
+
+  // Dashboard KPIs
+  'kpi.revenue': 'الإيرادات',
+  'kpi.purchases': 'المشتريات',
+  'kpi.receivables': 'حسابات مدينة',
+  'kpi.payables': 'حسابات دائنة',
+  'kpi.lowStock': 'أصناف منخفضة المخزون',
+  'kpi.cashPosition': 'الوضع النقدي',
+  'dashboard.trend': 'المبيعات مقابل المشتريات',
+  'dashboard.lowStock': 'تنبيهات انخفاض المخزون',
+  'dashboard.recent': 'أحدث المستندات',
+  'dashboard.quickActions': 'إجراءات سريعة',
+  'dashboard.newInvoice': 'فاتورة جديدة',
+  'dashboard.newReceipt': 'سند جديد',
+  'dashboard.newProduct': 'منتج جديد',
+
+  // Sales
+  'sales.title': 'المبيعات',
+  'sales.invoices': 'فواتير المبيعات',
+  'sales.quotations': 'عروض الأسعار',
+  'sales.returns': 'مرتجعات المبيعات',
+  'sales.number': 'الرقم',
+  'sales.customer': 'العميل',
+  'sales.grandTotal': 'الإجمالي',
+  'sales.paid': 'المدفوع',
+  'sales.outstanding': 'المتبقي',
+  'sales.newInvoice': 'فاتورة جديدة',
+  'sales.preview': 'معاينة المستند',
+  'sales.lineItems': 'بنود الفاتورة',
+  'sales.qty': 'الكمية',
+  'sales.unitPrice': 'سعر الوحدة',
+  'sales.discount': 'الخصم',
+  'sales.subtotal': 'الإجمالي الفرعي',
+  'sales.tax': 'الضريبة',
+  'sales.issuedBy': 'حرّرها',
+
+  // Parties
+  'parties.title': 'العملاء والموردون',
+  'parties.customer': 'عميل',
+  'parties.supplier': 'مورد',
+  'parties.factory': 'مصنع',
+  'parties.theyOweUs': 'لنا عليهم',
+  'parties.weOweThem': 'لهم علينا',
+  'parties.settled': 'مسوّى',
+  'parties.balanceSummary': 'ملخص الرصيد',
+  'parties.contact': 'معلومات الاتصال',
+
+  // Document types
+  'doc.QUOTATION': 'عرض سعر',
+  'doc.SALES_INVOICE': 'فاتورة مبيعات',
+  'doc.SALES_RETURN': 'مرتجع مبيعات',
+  'doc.PURCHASE_INVOICE': 'فاتورة مشتريات',
+  'doc.PURCHASE_RETURN': 'مرتجع مشتريات',
+  'doc.COLLECTION_RECEIPT': 'سند قبض',
+  'doc.PAYMENT_VOUCHER': 'سند صرف',
+  'doc.EXPENSE': 'مصروف',
+
+  // Document statuses
+  'status.DRAFT': 'مسودة',
+  'status.PENDING': 'قيد الانتظار',
+  'status.CONFIRMED': 'مؤكدة',
+  'status.PAID': 'مدفوعة',
+  'status.PARTIALLY_PAID': 'مدفوعة جزئيًا',
+  'status.OVERDUE': 'متأخرة',
+  'status.CANCELLED': 'ملغاة',
+  'status.RETURNED': 'مرتجعة',
+
+  // Roles
+  'role.OWNER': 'المالك',
+  'role.ADMIN': 'مدير',
+  'role.ACCOUNTANT': 'محاسب',
+  'role.SALES': 'مبيعات',
+  'role.INVENTORY': 'مخزون',
+  'role.VIEWER': 'مطالع',
+
+  // Inventory
+  'inventory.title': 'المخزون',
+  'inventory.products': 'المنتجات',
+  'inventory.sku': 'رمز الصنف',
+  'inventory.unit': 'الوحدة',
+  'inventory.stock': 'المخزون',
+  'inventory.reorder': 'حد إعادة الطلب',
+  'inventory.salePrice': 'سعر البيع',
+};

@@ -1,0 +1,170 @@
+/**
+ * English dictionary — the canonical set of keys. `ar.ts` must provide every key here
+ * (enforced by the type in `index.ts`). Keys are dotted for grouping; values are business
+ * terminology, not literal translations.
+ */
+export const en = {
+  // Brand / generic
+  'app.name': 'SKB',
+  'app.tagline': 'Wholesale Accounting',
+
+  // Common actions & labels
+  'common.search': 'Search',
+  'common.filter': 'Filter',
+  'common.all': 'All',
+  'common.save': 'Save',
+  'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.add': 'Add',
+  'common.edit': 'Edit',
+  'common.delete': 'Delete',
+  'common.print': 'Print',
+  'common.download': 'Download',
+  'common.back': 'Back',
+  'common.loading': 'Loading…',
+  'common.retry': 'Retry',
+  'common.none': 'None',
+  'common.total': 'Total',
+  'common.date': 'Date',
+  'common.status': 'Status',
+  'common.actions': 'Actions',
+  'common.branch': 'Branch',
+  'common.staff': 'Staff',
+  'common.amount': 'Amount',
+  'common.balance': 'Balance',
+  'common.dueDate': 'Due date',
+  'common.empty': 'Nothing to show yet',
+  'common.errorTitle': 'Something went wrong',
+  'common.errorBody': 'Please try again.',
+
+  // Connection / offline gate
+  'conn.online': 'Online',
+  'conn.connecting': 'Connecting…',
+  'conn.offline': 'Offline',
+  'conn.lastSynced': 'Last connected',
+  'offline.title': 'Not connected to the server',
+  'offline.body':
+    'For security, data is only available while connected to your company server. Reconnect to continue.',
+  'offline.reconnect': 'Reconnect',
+
+  // Language & theme
+  'pref.language': 'Language',
+  'pref.english': 'English',
+  'pref.arabic': 'العربية',
+  'pref.theme': 'Theme',
+  'pref.theme.light': 'Light',
+  'pref.theme.dark': 'Dark',
+  'pref.theme.system': 'System',
+
+  // Auth
+  'auth.signIn': 'Sign in',
+  'auth.signOut': 'Sign out',
+  'auth.email': 'Email or staff ID',
+  'auth.password': 'Password',
+  'auth.rememberDevice': 'Remember this device',
+  'auth.forgotPassword': 'Forgot password?',
+  'auth.signingIn': 'Signing in…',
+  'auth.invalidCredentials': 'Incorrect email or password.',
+  'auth.welcome': 'Sign in to your workspace',
+  'auth.connectionOnline': 'Company server',
+  'auth.connectionHealthy': 'Server reachable',
+  'auth.connectionUnreachable': 'Server unreachable',
+  'auth.role': 'Role',
+  'auth.activeBranch': 'Active branch',
+
+  // Navigation / modules
+  'nav.dashboard': 'Dashboard',
+  'nav.sales': 'Sales',
+  'nav.purchases': 'Purchases',
+  'nav.receipts': 'Receipts & Payments',
+  'nav.parties': 'Customers & Suppliers',
+  'nav.inventory': 'Inventory',
+  'nav.staff': 'Staff',
+  'nav.branches': 'Branches',
+  'nav.analytics': 'Analytics & Reports',
+  'nav.settings': 'Settings',
+  'nav.more': 'More',
+
+  // Dashboard KPIs
+  'kpi.revenue': 'Revenue',
+  'kpi.purchases': 'Purchases',
+  'kpi.receivables': 'Receivables',
+  'kpi.payables': 'Payables',
+  'kpi.lowStock': 'Low stock items',
+  'kpi.cashPosition': 'Cash position',
+  'dashboard.trend': 'Sales vs. purchases',
+  'dashboard.lowStock': 'Low stock alerts',
+  'dashboard.recent': 'Recent documents',
+  'dashboard.quickActions': 'Quick actions',
+  'dashboard.newInvoice': 'New invoice',
+  'dashboard.newReceipt': 'New receipt',
+  'dashboard.newProduct': 'New product',
+
+  // Sales
+  'sales.title': 'Sales',
+  'sales.invoices': 'Sales invoices',
+  'sales.quotations': 'Quotations',
+  'sales.returns': 'Sales returns',
+  'sales.number': 'Number',
+  'sales.customer': 'Customer',
+  'sales.grandTotal': 'Total',
+  'sales.paid': 'Paid',
+  'sales.outstanding': 'Outstanding',
+  'sales.newInvoice': 'New invoice',
+  'sales.preview': 'Document preview',
+  'sales.lineItems': 'Line items',
+  'sales.qty': 'Qty',
+  'sales.unitPrice': 'Unit price',
+  'sales.discount': 'Discount',
+  'sales.subtotal': 'Subtotal',
+  'sales.tax': 'Tax',
+  'sales.issuedBy': 'Issued by',
+
+  // Parties
+  'parties.title': 'Customers & Suppliers',
+  'parties.customer': 'Customer',
+  'parties.supplier': 'Supplier',
+  'parties.factory': 'Factory',
+  'parties.theyOweUs': 'They owe us',
+  'parties.weOweThem': 'We owe them',
+  'parties.settled': 'Settled',
+  'parties.balanceSummary': 'Balance summary',
+  'parties.contact': 'Contact information',
+
+  // Document types
+  'doc.QUOTATION': 'Quotation',
+  'doc.SALES_INVOICE': 'Sales invoice',
+  'doc.SALES_RETURN': 'Sales return',
+  'doc.PURCHASE_INVOICE': 'Purchase invoice',
+  'doc.PURCHASE_RETURN': 'Purchase return',
+  'doc.COLLECTION_RECEIPT': 'Collection receipt',
+  'doc.PAYMENT_VOUCHER': 'Payment voucher',
+  'doc.EXPENSE': 'Expense',
+
+  // Document statuses
+  'status.DRAFT': 'Draft',
+  'status.PENDING': 'Pending',
+  'status.CONFIRMED': 'Confirmed',
+  'status.PAID': 'Paid',
+  'status.PARTIALLY_PAID': 'Partially paid',
+  'status.OVERDUE': 'Overdue',
+  'status.CANCELLED': 'Cancelled',
+  'status.RETURNED': 'Returned',
+
+  // Roles
+  'role.OWNER': 'Owner',
+  'role.ADMIN': 'Admin',
+  'role.ACCOUNTANT': 'Accountant',
+  'role.SALES': 'Sales',
+  'role.INVENTORY': 'Inventory',
+  'role.VIEWER': 'Viewer',
+
+  // Inventory
+  'inventory.title': 'Inventory',
+  'inventory.products': 'Products',
+  'inventory.sku': 'SKU',
+  'inventory.unit': 'Unit',
+  'inventory.stock': 'Stock',
+  'inventory.reorder': 'Reorder level',
+  'inventory.salePrice': 'Sale price',
+} as const;
