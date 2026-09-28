@@ -1,63 +1,60 @@
-# Put SKB online for FREE — no credit card
+# Put SKB online in the CLOUD (your PC never involved)
 
-The app is now **one service**: the C# server also serves the website, so the whole thing
-is a single URL. Two free routes below — pick one.
+The app is now **one service** (the C# server also serves the website), so it deploys as a
+single container. Your database is free **Neon PostgreSQL** (no card). Pick one host below.
 
-> Your database can be **Neon** (free, no card) or a local PostgreSQL. Either works.
-
----
-
-## Option A — Cloudflare Tunnel (from your PC) · truly free, no card, no account
-
-Best when you'll keep a PC on (your company‑server plan anyway). Your PC runs the app;
-Cloudflare gives it a public HTTPS link with DDoS protection.
-
-1. **Run the app** (one command — builds the site into the server and starts it):
-   ```powershell
-   powershell -File scripts\run-online.ps1
-   ```
-   It serves everything on `http://localhost:5080`.
-   *(Needs PostgreSQL running — either local, or set the Neon connection string in
-   `apps/api/src/SKB.Api/appsettings.Development.json`.)*
-
-2. **Install cloudflared** (free): download from
-   https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-   (the Windows `.exe`).
-
-3. **Expose it** — in a second terminal:
-   ```powershell
-   cloudflared tunnel --url http://localhost:5080
-   ```
-   It prints a public link like `https://something.trycloudflare.com`. **That's your app
-   online** — open it, sign in with `owner@skb.local` / `ChangeMe!Owner123`. Share the link
-   with staff.
-
-   *(The quick link changes each run. For a fixed link, make a free Cloudflare account and a
-   “named tunnel” — still no card.)*
+> Reality check: in 2026 the *easy* cloud hosts verify identity with a card but **never
+> charge** the free tier ($0). The fully *no‑card* host needs a few extra steps. Both keep
+> your PC completely out of it — the server runs on the host's cloud.
 
 ---
 
-## Option B — Render (hosted, no PC needed) · free tier, but asks for a card to verify
+## Option 1 — Render · easiest · free tier is $0 (asks for a card to verify, never charges)
 
-Now a **single** service (the container builds the web + API together), so it's simpler.
-
-1. **Database:** create a free Neon PostgreSQL at https://neon.tech, copy its **`.NET`**
-   connection string.
-2. **Deploy:** https://render.com → **New ▸ Blueprint** → connect the `SKB` repo. Render
-   reads `render.yaml` and creates one service **skb**. Fill the prompts:
+1. **Database:** create a free project at https://neon.tech → copy its **`.NET`** connection string.
+2. **Deploy:** https://render.com → **New ▸ Blueprint** → connect the `SKB` repo. Render reads
+   `render.yaml` and makes **one** service. Fill the prompts:
    - `ConnectionStrings__Default` → the Neon string
-   - `Security__SessionEncryptionKey` → run `openssl rand -hex 32` and paste it
+   - `Security__SessionEncryptionKey` → run `openssl rand -hex 32` (or ask me) and paste it
    - `Seed__OwnerPassword` → a strong password
-3. **Apply.** Open `https://skb.onrender.com`, sign in. (First load after idle is slow while
-   the free service wakes.)
+3. **Apply** → open `https://skb.onrender.com`, sign in. (First load after idle is slow while the free service wakes.)
 
-*(If you don't want to give a card at all, use Option A, or a no‑card host like Hugging Face
-Spaces / Oracle Always Free — Option A is by far the simplest.)*
+The card is only ID verification — the free plan costs nothing. If you have any debit/prepaid
+card, this is by far the simplest.
+
+---
+
+## Option 2 — Hugging Face Spaces · truly no credit card (email sign‑up)
+
+Runs your container on Hugging Face's cloud. A few more steps, but no card ever.
+
+1. **Database:** free Neon project (as above) → copy the `.NET` connection string.
+2. **GitHub read‑only token** (so HF can pull your private repo): GitHub → Settings →
+   Developer settings → **Fine‑grained tokens** → new token, **read‑only**, only the `SKB`
+   repo. Copy it.
+3. **Create the Space:** https://huggingface.co → sign up (email) → **New Space** →
+   **Docker** → **Blank** → make it **Public** (the app is still protected by login).
+4. **Add two files** to the Space (via its “Files” tab → Add file):
+   - `Dockerfile` → paste the contents of `deploy/huggingface/Dockerfile` from this repo.
+   - `README.md` → paste the contents of `deploy/huggingface/README.md`.
+5. **Add secrets** (Space → Settings → *Variables and secrets*):
+   - `GH_TOKEN` → the GitHub token from step 2 (this one must be a **secret**)
+   - `ConnectionStrings__Default` → the Neon string
+   - `Security__SessionEncryptionKey` → `openssl rand -hex 32`
+   - `Cookie__Secure` → `true`
+   - `Seed__OwnerPassword` → a strong password
+6. The Space builds and starts automatically → open its URL (e.g.
+   `https://<you>-skb.hf.space`), sign in. (Free Spaces sleep when idle; first load wakes it.)
 
 ---
 
 ## Security (either option)
-HTTPS everywhere, plus the app's built‑in JWT auth, PBKDF2 password hashing, encrypted
+HTTPS is automatic on both hosts. The app adds JWT auth, PBKDF2 password hashing, encrypted
 sessions, role/branch access control, rate limiting, and a login wall (no data without an
-account). For extra DDoS/WAF, Cloudflare (Option A) already provides it; on Render you can
-put free Cloudflare in front too.
+account). Secrets live in the host's settings, never in the code. For extra DDoS/WAF you can
+put **free Cloudflare** in front of either.
+
+## (Only if you ever run your own always‑on server)
+`scripts/run-online.ps1` builds the web into the API and runs the whole app on one port, and
+`cloudflared tunnel --url http://localhost:5080` would expose it — but that runs on *your*
+machine, so use it only on a dedicated company server, not your personal PC.
