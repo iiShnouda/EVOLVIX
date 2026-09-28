@@ -7,8 +7,9 @@ the old app's screenshots; for each one this file records the **correct accounti
 business logic** (verified against standard references, see §3) so we don't rebuild
 something that is logically wrong.
 
-> Living document. More screenshots are still coming; new modules get appended to §2
-> as they arrive. Nothing here is built until it appears in §1.
+> Catalog status: **COMPLETE** — all seven top‑level menus of the old app have been
+> captured (Master Data · Purchases & Sales · Stores · Accounts · Financial Statements ·
+> Analytics · Tools). Nothing here is built until it appears in §1.
 
 ---
 
@@ -105,7 +106,37 @@ Everything below in §2 is **not yet built** — it is the target.
   a sub‑account in the chart of accounts so their balance is always the ledger balance.
 - Party statement = the account statement (§2.3) filtered to that party.
 
-### 2.5 Cross‑cutting (seen throughout the old app)
+### 2.5 Financial statements — التقارير الختامية
+- **Trial balance — ميزان المراجعة**: every account with its debit/credit balance; total
+  debits must equal total credits (the books‑are‑balanced check).
+- **Income statement — قائمة الدخل**: revenue − cost of goods sold − expenses over a period
+  → net profit/loss.
+- **Balance sheet — الميزانية**: assets = liabilities + owner's equity at a point in time.
+- **Logic:** all three are **derived** from the same general ledger, never typed in. Trial
+  balance lists ledger balances; its balance‑sheet accounts (assets/liabilities/equity) build
+  the balance sheet, its income accounts (revenue/expense) build the income statement, and
+  net profit flows into equity. (See §3.7.)
+
+### 2.6 Analytics / BI — التحليلات
+- Items × accounts analysis — تحليل أصناف/حسابات (vertical, in/out — وارد/منصرف, totals).
+- Item‑movement analysis — تحليل حركة الأصناف: top movers (أعلى حركة), monthly movement
+  (الحركة الشهرية), and **dead/slow stock — الأصناف الراكدة** (no movement in a period).
+- Sales‑movement analysis — تحليل حركة المبيعات: **net monthly sales — صافي المبيعات الشهرية**
+  and net monthly sales per client — صافي المبيعات للعملاء الشهرية.
+- Top client/supplier activity — تحليل أعلى حركات عميل/مورد.
+- **Logic:** pure read‑only queries over the ledger + stock movements; "net" always means
+  after returns and discounts. Modernized as an interactive dashboard with charts, not static
+  print‑outs.
+
+### 2.7 Tools / Administration — الأدوات
+- **Backups — نسخ احتياطية** (documented in `COMPANY-SERVER.md`; make it one‑click + scheduled).
+- Company/establishment data — بيانات المنشأة (name, logo, address, tax number — prints on docs).
+- **Users & permissions — المستخدمون** (already enforced server‑side; add the management UI).
+- Settings — الضبط (costing method, floor margin, currency, fiscal year, numbering).
+- **Lock/close transactions — إقفال الحركات** (period close, §3.6 — freezes posted history).
+- Screen preferences — إعدادات الشاشة (UI only; the one thing allowed to persist on the client).
+
+### 2.8 Cross‑cutting (seen throughout the old app)
 - Bilingual AR/EN, RTL — already a core rule.
 - Print/export every document and report (PDF), and export tables to Excel/CSV.
 - Per‑user permissions on every screen (already enforced server‑side).
@@ -148,7 +179,16 @@ doesn't require tracking individual lots. (FIFO stays a future option behind a s
 
 ### 3.6 Audit & period close
 Every mutation is written through the audit layer (who, what, when, before/after). Closing
-a fiscal period locks its entries so history is immutable — required for trustworthy books.
+a fiscal period (إقفال الحركات) locks its entries so history is immutable — required for
+trustworthy books.
+
+### 3.7 Financial statements are derived, not stored
+The general ledger is the single source. The **trial balance** lists every account's balance
+and proves total debits = total credits. Its accounts split in two: balance‑sheet accounts
+(assets, liabilities, equity) produce the **balance sheet** (assets = liabilities + equity),
+and income accounts (revenue, expense) produce the **income statement** (revenue − COGS −
+expenses = net profit), whose result rolls into equity. Because they are recomputed from the
+ledger every time, the statements can never silently disagree with the books.
 
 ---
 
@@ -181,9 +221,13 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
   in/out, account statement & balances, party balances tied to the ledger.
 - **Phase 4 — Notes & due payments.** أوراق قبض/دفع, portfolios (حوافظ), aging of due
   payments, note reports.
-- **Phase 5 — Close & polish.** Fiscal period close, PDF/Excel export on every doc/report,
-  owner presence/activity dashboard.
-- **Phase 6 — Android native client.**
+- **Phase 5 — Financial statements.** Trial balance, income statement, balance sheet
+  (all derived from the ledger, §3.7).
+- **Phase 6 — Analytics dashboard.** Item/sales movement, dead stock, net monthly sales,
+  top clients/suppliers — interactive charts.
+- **Phase 7 — Admin & close.** Users/permissions UI, company data, one‑click + scheduled
+  backups, fiscal period close, PDF/Excel export everywhere, owner presence/activity view.
+- **Phase 8 — Android native client.**
 
 ## 6. Open questions for the owner (to confirm before each phase)
 
@@ -203,3 +247,5 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
   [Finale Inventory](https://www.finaleinventory.com/blog/accounting-and-inventory-software/inventory-costing-methods/).
 - Margin vs markup / cost‑plus pricing: [Xero glossary](https://www.xero.com/us/glossary/margin-vs-markup/),
   [Cost‑plus pricing (Wikipedia)](https://en.wikipedia.org/wiki/Cost-plus_pricing).
+- Trial balance → income statement / balance sheet from the ledger: [Trial balance (Wikipedia)](https://en.wikipedia.org/wiki/Trial_balance),
+  [AccountingTools](https://www.accountingtools.com/articles/the-difference-between-the-general-ledger-and-trial-balance.html).
