@@ -79,8 +79,8 @@ public static class Strings
         ["parties.customer"] = "Customer",
         ["parties.supplier"] = "Supplier",
         ["parties.factory"] = "Factory",
-        ["parties.theyOweUs"] = "They owe us",
-        ["parties.weOweThem"] = "We owe them",
+        ["parties.theyOweUs"] = "Receivable",
+        ["parties.weOweThem"] = "Payable",
         ["parties.settled"] = "Settled",
 
         ["status.DRAFT"] = "Draft",
@@ -172,8 +172,8 @@ public static class Strings
         ["parties.customer"] = "عميل",
         ["parties.supplier"] = "مورد",
         ["parties.factory"] = "مصنع",
-        ["parties.theyOweUs"] = "لنا عليهم",
-        ["parties.weOweThem"] = "لهم علينا",
+        ["parties.theyOweUs"] = "مدين",
+        ["parties.weOweThem"] = "دائن",
         ["parties.settled"] = "مسوّى",
 
         ["status.DRAFT"] = "مسودة",

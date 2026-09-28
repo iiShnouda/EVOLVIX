@@ -125,9 +125,10 @@ export const en = {
   'parties.customer': 'Customer',
   'parties.supplier': 'Supplier',
   'parties.factory': 'Factory',
-  'parties.theyOweUs': 'They owe us',
-  'parties.weOweThem': 'We owe them',
+  'parties.theyOweUs': 'Receivable',
+  'parties.weOweThem': 'Payable',
   'parties.settled': 'Settled',
+  'parties.balance': 'Balance',
   'parties.balanceSummary': 'Balance summary',
   'parties.contact': 'Contact information',
 

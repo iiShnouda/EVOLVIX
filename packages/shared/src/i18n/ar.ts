@@ -126,9 +126,10 @@ export const ar: TranslationDictionary = {
   'parties.customer': 'عميل',
   'parties.supplier': 'مورد',
   'parties.factory': 'مصنع',
-  'parties.theyOweUs': 'لنا عليهم',
-  'parties.weOweThem': 'لهم علينا',
+  'parties.theyOweUs': 'مدين',
+  'parties.weOweThem': 'دائن',
   'parties.settled': 'مسوّى',
+  'parties.balance': 'الرصيد',
   'parties.balanceSummary': 'ملخص الرصيد',
   'parties.contact': 'معلومات الاتصال',
 

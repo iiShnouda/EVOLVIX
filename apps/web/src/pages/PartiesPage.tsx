@@ -92,7 +92,7 @@ function PartyCard({
 
       <div className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">{balLabel}</span>
+          <span className="text-xs text-muted">{t('parties.balance' as never)}</span>
           <Badge tone={balTone}>{balLabel}</Badge>
         </div>
         <p className={`mt-1 text-lg font-semibold tnum ${balColor}`}>
