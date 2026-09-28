@@ -1,0 +1,4 @@
+# Keep the Unix launcher runnable on Linux/macOS builders; Windows scripts keep CRLF.
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
