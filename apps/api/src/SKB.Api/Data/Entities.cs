@@ -121,6 +121,10 @@ public class SalesDocument
     public long TaxTotal { get; set; }
     public long GrandTotal { get; set; }
     public long PaidAmount { get; set; }
+    // Cost of goods on this document (sum of line costs) and the profit it earned.
+    // ProfitTotal = (Subtotal - DiscountTotal) - CostTotal. Tax is pass-through, not profit.
+    public long CostTotal { get; set; }
+    public long ProfitTotal { get; set; }
     public string Currency { get; set; } = "EGP";
     public string? Notes { get; set; }
 
@@ -143,9 +147,61 @@ public class DocumentLine
     public long UnitPrice { get; set; }
     public long Discount { get; set; }
     public long LineTotal { get; set; }
+    // Cost snapshot at the moment the line was posted (weighted-average cost for a sale;
+    // the purchase price for a purchase). Kept on the line so profit reports stay correct
+    // for all time even after the product's average cost later moves.
+    public long UnitCost { get; set; }
+    public long LineCost { get; set; }
+    public long LineProfit { get; set; }
 
     public Guid DocumentId { get; set; }
     public SalesDocument? Document { get; set; }
     public Guid ProductId { get; set; }
     public Product? Product { get; set; }
+}
+
+/// <summary>
+/// One physical stock change for one product in one store. The item card, valuation and
+/// movement reports are all built from these rows. Money is minor units.
+/// </summary>
+public class StockMovement
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid BranchId { get; set; }
+    public StockMovementType Type { get; set; }
+    /// <summary>Signed: positive into stock, negative out of stock.</summary>
+    public int Quantity { get; set; }
+    /// <summary>Weighted-average unit cost applied to this movement (minor units).</summary>
+    public long UnitCost { get; set; }
+    /// <summary>Product stock-on-hand after this movement (running balance for the item card).</summary>
+    public int BalanceAfter { get; set; }
+    /// <summary>Product weighted-average cost after this movement (minor units).</summary>
+    public long AvgCostAfter { get; set; }
+    public Guid? DocumentId { get; set; }
+    /// <summary>Human reference (document number) shown on the item card.</summary>
+    public string? Reference { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Company-wide settings (single row). Foundation for the Settings / الضبط screen.
+/// Costing and the profit-floor rule live here so they are configurable, not hard-coded.
+/// </summary>
+public class CompanySettings
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string CompanyName { get; set; } = "SKB Wholesale";
+    public string Currency { get; set; } = "EGP";
+    /// <summary>Suggested markup for a new sales line, e.g. 10 → price = cost + 10%.</summary>
+    public int DefaultMarkupPercent { get; set; } = 10;
+    /// <summary>
+    /// Configurable profit floor. A sale is blocked below cost × (1 + Min/100).
+    /// 0 means "never below cost" (the absolute hard floor is always cost regardless).
+    /// </summary>
+    public int MinMarkupPercent { get; set; } = 0;
+    /// <summary>Default sales tax/VAT percent applied to new invoices (0 = none).</summary>
+    public int DefaultTaxPercent { get; set; } = 0;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

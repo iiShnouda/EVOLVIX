@@ -32,6 +32,7 @@ builder.Services.AddSingleton<IPasswordHasher<Staff>, PasswordHasher<Staff>>();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<InventoryService>();
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]

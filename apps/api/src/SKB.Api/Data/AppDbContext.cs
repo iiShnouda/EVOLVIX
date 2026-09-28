@@ -15,6 +15,8 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
+    public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -22,6 +24,7 @@ public class AppDbContext : DbContext
         b.Entity<Staff>().Property(s => s.Role).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Type).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Status).HasConversion<string>();
+        b.Entity<StockMovement>().Property(m => m.Type).HasConversion<string>();
 
         b.Entity<Branch>().HasIndex(x => x.Code).IsUnique();
         b.Entity<Staff>().HasIndex(x => x.Email).IsUnique();
@@ -46,6 +49,14 @@ public class AppDbContext : DbContext
         b.Entity<DocumentLine>()
             .HasOne(l => l.Document).WithMany(d => d.Lines)
             .HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade);
+
+        // Stock movements: indexed for the item card (per product, over time) and per store.
+        b.Entity<StockMovement>().HasIndex(m => new { m.ProductId, m.CreatedAt });
+        b.Entity<StockMovement>().HasIndex(m => m.BranchId);
+        b.Entity<StockMovement>().HasIndex(m => m.DocumentId);
+        b.Entity<StockMovement>()
+            .HasOne(m => m.Product).WithMany()
+            .HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Cascade);
 
         base.OnModelCreating(b);
     }

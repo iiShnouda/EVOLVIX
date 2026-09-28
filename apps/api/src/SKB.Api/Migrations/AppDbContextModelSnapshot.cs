@@ -115,6 +115,37 @@ namespace SKB.Api.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CompanySettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DefaultMarkupPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DefaultTaxPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinMarkupPercent")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CompanySettings");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
                 {
                     b.Property<Guid>("Id")
@@ -126,6 +157,12 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("LineCost")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LineProfit")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("LineTotal")
                         .HasColumnType("bigint");
@@ -139,6 +176,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
+
+                    b.Property<long>("UnitCost")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("UnitPrice")
                         .HasColumnType("bigint");
@@ -260,6 +300,9 @@ namespace SKB.Api.Migrations
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<long>("CostTotal")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -291,6 +334,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("ProfitTotal")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid>("StaffId")
                         .HasColumnType("uuid");
@@ -421,6 +467,54 @@ namespace SKB.Api.Migrations
                     b.ToTable("Staff");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AvgCostAfter")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("BalanceAfter")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("UnitCost")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("ProductId", "CreatedAt");
+
+                    b.ToTable("StockMovements");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
                 {
                     b.HasOne("SKB.Api.Data.SalesDocument", "Document")
@@ -498,6 +592,17 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>

@@ -22,13 +22,32 @@ public record SalesSummaryDto(
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency);
 
 public record DocumentLineDto(
-    string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal);
+    string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal,
+    long UnitCost, long LineProfit);
 
 public record SalesDetailDto(
     string Id, string Number, string Type, string Status, string BranchName, string PartyName,
     string StaffName, string IssueDate, string? DueDate, DocumentLineDto[] Lines,
     long Subtotal, long DiscountTotal, long TaxTotal, long GrandTotal, long PaidAmount,
-    string Currency, string? Notes);
+    long CostTotal, long ProfitTotal, string Currency, string? Notes);
+
+// ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
+
+public record CreateInvoiceLineRequest(string ProductId, int Quantity, long UnitPrice, long Discount = 0);
+
+public record CreateSalesInvoiceRequest(
+    string PartyId, CreateInvoiceLineRequest[] Lines,
+    int? TaxPercent = null, string? Notes = null, string? DueDate = null,
+    long PaidAmount = 0, bool OverrideFloor = false);
+
+public record CreatePurchaseLineRequest(string ProductId, int Quantity, long UnitCost);
+
+public record CreatePurchaseInvoiceRequest(
+    string PartyId, CreatePurchaseLineRequest[] Lines,
+    int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0);
+
+public record CompanySettingsDto(
+    string CompanyName, string Currency, int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent);
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,

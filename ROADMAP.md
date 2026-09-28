@@ -35,8 +35,14 @@ Live at the company's cloud host; on‑prem path documented in `COMPANY-SERVER.m
   SalesDocument, DocumentLine.
 - **Screens** — Login, Dashboard, Sales (invoice list + detail), Parties.
 - **Clients** — Web/PWA (iPhone/Android/website), Windows WPF native, shared C# API.
+- **Phase 1 — Invoicing + profitability (shipped).** Sales & purchase invoices that move stock
+  at **weighted-average cost**; live **profit & margin** per line and per document; the
+  **"300 + 8%" margin discount** via price; a two-level **profit floor** (never below cost, plus a
+  configurable minimum markup with manager override); a **StockMovement** ledger (foundation for
+  the item card) and a **CompanySettings** row. New screens: sales-invoice builder, purchases list.
+  Verified end-to-end (weighted-average math, profit, floor, oversell block) via API + a browser run.
 
-Everything below in §2 is **not yet built** — it is the target.
+The remaining items in §2 are **not yet built** — they are the target.
 
 ---
 
@@ -212,9 +218,10 @@ ledger every time, the statements can never silently disagree with the books.
 Each phase = new EF entities + migration → controllers/DTOs behind permission policies with
 audit → shared types + i18n → web pages (+ Windows views) → register in the nav model.
 
-- **Phase 1 — Invoicing + profitability (recommended start).** Purchase & sales invoices
+- **Phase 1 — Invoicing + profitability. ✅ Shipped** (see §1). Purchase & sales invoices
   that move stock at weighted‑average cost, the "300 + 8%" margin discount, and profit
-  per invoice/item/client. Highest daily value; exercises money, stock, and margin logic.
+  per invoice/item/client. Next within this area: profit‑by‑client/period reports and
+  sales/purchase returns.
 - **Phase 2 — Inventory depth.** Multi‑store, transfers (إذن تحويل), stocktake/adjustment,
   item card, valuation, reorder‑level and movement reports.
 - **Phase 3 — Accounts / general ledger.** Chart of accounts, compound entries, cash

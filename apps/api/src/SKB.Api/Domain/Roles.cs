@@ -7,7 +7,10 @@ public static class Permissions
     public const string SalesView = "sales:view";
     public const string SalesCreate = "sales:create";
     public const string SalesEdit = "sales:edit";
+    /// <summary>Allowed to sell below the configured profit floor (never below cost).</summary>
+    public const string SalesOverrideFloor = "sales:override_floor";
     public const string PurchasesView = "purchases:view";
+    public const string PurchasesCreate = "purchases:create";
     public const string ReceiptsView = "receipts:view";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
@@ -24,7 +27,8 @@ public static class Permissions
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
-        DashboardView, SalesView, SalesCreate, SalesEdit, PurchasesView, ReceiptsView,
+        DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor,
+        PurchasesView, PurchasesCreate, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, BranchesView,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView,
     };
@@ -41,8 +45,9 @@ public static class RolePermissions
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
-            Permissions.PurchasesView, Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
-            Permissions.InventoryView, Permissions.AnalyticsView, Permissions.SettingsView,
+            Permissions.SalesOverrideFloor, Permissions.PurchasesView, Permissions.PurchasesCreate,
+            Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
+            Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
         },
         [Role.SALES] = new[]
         {
@@ -51,7 +56,8 @@ public static class RolePermissions
         },
         [Role.INVENTORY] = new[]
         {
-            Permissions.DashboardView, Permissions.InventoryView, Permissions.InventoryEdit, Permissions.PurchasesView,
+            Permissions.DashboardView, Permissions.InventoryView, Permissions.InventoryEdit,
+            Permissions.PurchasesView, Permissions.PurchasesCreate,
         },
         [Role.VIEWER] = new[]
         {

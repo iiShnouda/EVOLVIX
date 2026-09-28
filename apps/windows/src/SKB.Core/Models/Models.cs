@@ -78,6 +78,9 @@ public sealed class DocumentLine
     public long UnitPrice { get; set; }
     public long Discount { get; set; }
     public long LineTotal { get; set; }
+    // Cost/profit snapshot (weighted-average COGS), mirrors the API contract.
+    public long UnitCost { get; set; }
+    public long LineProfit { get; set; }
 }
 
 public sealed class SalesDocument
@@ -97,6 +100,9 @@ public sealed class SalesDocument
     public long TaxTotal { get; set; }
     public long GrandTotal { get; set; }
     public long PaidAmount { get; set; }
+    // Cost of goods and profit on the document, mirrors the API contract.
+    public long CostTotal { get; set; }
+    public long ProfitTotal { get; set; }
     public string Currency { get; set; } = "EGP";
     public string? Notes { get; set; }
 }

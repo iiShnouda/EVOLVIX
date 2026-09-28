@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatDate, formatMoney, type SalesDocumentSummary } from '@skb/shared';
 import { Badge, Card, EmptyState, PageHeader, Spinner, Button } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
+import { useAuth } from '../stores/auth';
 import { useSalesInvoices, useSalesInvoice } from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
 import { STATUS_TONE } from '../lib/status';
@@ -11,6 +13,8 @@ import { STATUS_TONE } from '../lib/status';
 export function SalesPage() {
   const { t, locale } = useT();
   const { deviceClass } = useDeviceInfo();
+  const navigate = useNavigate();
+  const canCreate = useAuth((s) => s.user?.permissions ?? []).includes('sales:create');
   const [page] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -26,9 +30,11 @@ export function SalesPage() {
         title={t('sales.invoices')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
-          <Button icon="plus" size="sm">
-            {t('sales.newInvoice')}
-          </Button>
+          canCreate ? (
+            <Button icon="plus" size="sm" onClick={() => navigate('/sales/new')}>
+              {t('sales.newInvoice')}
+            </Button>
+          ) : undefined
         }
       />
 
