@@ -45,7 +45,7 @@ image is tuned for low memory, but treat this as best‑effort.
 5. Deploy → open the app URL Back4App gives you, sign in.
 
 > Hugging Face note: **Docker Spaces are now a paid plan** (only *Static* Spaces are free), so
-> HF can't run this server for free anymore. `deploy/huggingface/` is kept only for reference.
+> HF can't run this server for free anymore.
 
 ---
 
