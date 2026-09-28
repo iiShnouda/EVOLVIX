@@ -144,7 +144,10 @@ app.UseForwardedHeaders(forwarded);
 // whole product is one deployable service on one URL. API-only mode still works when
 // wwwroot is empty. The web app then calls the API with relative "/api" paths (no CORS).
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// The Android app download is an .apk, which ASP.NET doesn't know by default (it would 404).
+var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
 
 // Enable HTTPS redirection only when a certificate/HTTPS endpoint is configured.
 if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))

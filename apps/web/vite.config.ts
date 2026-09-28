@@ -16,7 +16,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         // Explicitly never cache API data.
-        navigateFallbackDenylist: [/^\/api/],
+        // Downloads (the Android/Windows apps) must reach the server, not fall back to the app shell.
+        navigateFallbackDenylist: [/^\/api/, /^\/downloads\//],
         runtimeCaching: [],
       },
       manifest: {
@@ -27,7 +28,17 @@ export default defineConfig({
         background_color: '#0b0f14',
         display: 'standalone',
         orientation: 'any',
-        icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
+        icons: [
+          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          {
+            src: '/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
       },
       devOptions: { enabled: false },
     }),

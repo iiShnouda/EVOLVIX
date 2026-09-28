@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SKB</string>
+    <string name="dir">ltr</string>
+    <string name="offline_title">Can\'t reach the server</string>
+    <string name="offline_body">Check the internet or office network connection. Server: %1$s</string>
+    <string name="retry">Try again</string>
+    <string name="settings_title">Server address</string>
+    <string name="settings_short">Server</string>
+    <string name="settings_hint">The cloud server, or your company server on the office network (for example http://192.168.1.10:8080).</string>
+    <string name="settings_http_warning">Not encrypted: use http:// only inside the office network.</string>
+    <string name="settings_invalid">Enter an address like https://example.com or http://192.168.1.10:8080</string>
+    <string name="settings_default">Default</string>
+    <string name="save">Save</string>
+    <string name="downloading">Downloading…</string>
+</resources>

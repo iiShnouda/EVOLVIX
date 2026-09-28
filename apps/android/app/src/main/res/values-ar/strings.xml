@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SKB</string>
+    <string name="dir">rtl</string>
+    <string name="offline_title">تعذّر الوصول إلى الخادم</string>
+    <string name="offline_body">تحقق من اتصال الإنترنت أو شبكة المكتب. الخادم: %1$s</string>
+    <string name="retry">إعادة المحاولة</string>
+    <string name="settings_title">عنوان الخادم</string>
+    <string name="settings_short">الخادم</string>
+    <string name="settings_hint">الخادم السحابي، أو خادم الشركة على شبكة المكتب (مثال: http://192.168.1.10:8080).</string>
+    <string name="settings_http_warning">غير مشفّر: استخدم http:// داخل شبكة المكتب فقط.</string>
+    <string name="settings_invalid">أدخل عنواناً مثل https://example.com أو http://192.168.1.10:8080</string>
+    <string name="settings_default">الافتراضي</string>
+    <string name="save">حفظ</string>
+    <string name="downloading">جارٍ التنزيل…</string>
+</resources>

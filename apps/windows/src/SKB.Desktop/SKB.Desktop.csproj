@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    SKB for Windows: a native window onto the company server's web app (see apps/windows/README.md).
+    .NET Framework 4.8 is built into Windows 10/11 and WebView2 ships with Windows, so the app is a
+    small exe that needs nothing else installed.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>SKB</AssemblyName>
+    <RootNamespace>SKB.Desktop</RootNamespace>
+    <ApplicationIcon>skb.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Company>SKB</Company>
+    <Product>SKB</Product>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- `dynamic` (WScript.Shell shortcuts in Installer.cs). -->
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+</Project>

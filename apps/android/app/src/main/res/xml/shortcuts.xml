@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon → "Server address". -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="server"
+        android:shortcutLongLabel="@string/settings_title"
+        android:shortcutShortLabel="@string/settings_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.skb.app.SettingsActivity"
+            android:targetPackage="com.skb.app" />
+    </shortcut>
+</shortcuts>

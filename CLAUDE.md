@@ -23,13 +23,16 @@ first‑class concern.
 6. **Types are shared where they can be.** The web/PWA shares TypeScript domain shapes via
    `@skb/shared`, and the C# server (`apps/api`) mirrors the same JSON contract. When an
    endpoint's shape changes, update both in lockstep.
-7. **One client for every device (decision 2026-09-28).** The web app is the single UI for
-   phone, tablet, iPad and PC. It is installed as a PWA (on Windows through Edge or Chrome:
-   own window and desktop icon), so one server deploy updates every device. This is the
-   standard for business web apps such as Odoo, Zoho Books and QuickBooks Online.
-   - The WPF client (`apps/windows`) is **paused**: keep it building, but don't add features
-     or mirror new DTOs until it is deliberately revived.
-   - Barcode scanners work as keyboards, and printing goes through the browser.
+7. **One UI, installed per device (owner decision 2026-09-29).** The web app is the only UI.
+   - **Android:** a real app, `apps/android` (Java WebView shell, APK).
+   - **Windows:** a real app, `apps/windows/src/SKB.Desktop` (WinForms + WebView2 on .NET
+     Framework 4.8, self-installing per user).
+   - **iPhone/iPad:** the website added to the home screen (no App Store).
+   - The shells open the company server's web app. Its address is changeable (cloud or office
+     server), so **a server deploy updates every device**.
+   - Rebuild a shell only when the shell changes, and put its files in
+     `apps/web/public/downloads/`.
+   - The older WPF client (`SKB.App`/`SKB.Core`) is superseded: don't extend it.
 8. **Names are bilingual data.** Anything people name (branches, warehouses, categories,
    products, and new entities like them) implements `ILocalizedName`
    (`Name`/`NameAr`/`NameEn`/`NameSource`/`NameAuto`/`NamePending`).
@@ -47,7 +50,8 @@ first‑class concern.
 - `apps/web` — React **PWA** (also the iPhone/iPad + website surface). `src/design/` tokens,
   `src/shell/` adaptive navigation, `src/pages/` screens, `src/lib/` api client + query
   hooks, `src/i18n/` runtime.
-- `apps/windows` — **C# / WPF** native desktop client (`SKB.Core` + `SKB.App`). **Paused** (rule 7).
+- `apps/windows/src/SKB.Desktop` — the Windows app (WebView2 shell; see its README). `SKB.App`/`SKB.Core` are the superseded WPF client.
+- `apps/android` — the Android app (WebView shell; see its README; the signing key never goes in git).
 - `packages/shared` (`@skb/shared`) — TypeScript types, AR/EN dictionary, zod schemas,
   roles/permissions, nav model, money/locale helpers — consumed by the web app.
 

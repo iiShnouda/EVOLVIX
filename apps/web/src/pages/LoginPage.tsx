@@ -8,6 +8,7 @@ import { ConnectionBadge } from '../components/shell/ConnectionBadge';
 import { useT } from '../lib/i18n';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
+import { GetApps } from '../components/GetApps';
 import { useConnection } from '../stores/connection';
 
 export function LoginPage() {
@@ -150,6 +151,7 @@ export function LoginPage() {
               ? t('auth.connectionHealthy')
               : t('auth.connectionUnreachable')}
           </p>
+          <GetApps compact />
         </form>
       </div>
     </div>

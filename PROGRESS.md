@@ -108,6 +108,39 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Real apps for Android and Windows; the website for iPhone** (owner request 2026-09-29)
+- **Android** (`apps/android`, README there): a native Java app of about 20 KB.
+  - It opens the company server full screen.
+  - **Server address:** changeable from a long-press shortcut (cloud or office server; http warns).
+  - Only server pages open inside; other links open in the browser.
+  - An offline page offers Try again / Server address.
+  - Downloads, uploads and the Back button work.
+  - `allowBackup=false`.
+  - Signed with a **local release key that is never committed** (`%USERPROFILE%\.skbndroid`,
+    `apps/android/keystore.properties`). **Back both up.**
+- **Windows** (`apps/windows/src/SKB.Desktop`, README there): WinForms + WebView2 on .NET
+  Framework 4.8, both built into Windows, so it's about 300 KB zipped with nothing to install.
+  - A native window with the SKB icon that opens the server.
+  - "Server address…" is in the window menu.
+  - The same offline page.
+  - Installs itself per user (no admin): Start menu, desktop, and Settings › Apps uninstall.
+    `--portable` skips it.
+  - Tested on this PC:
+    - loads the local server
+    - shows the offline page for a dead address
+    - runs from the unzipped download
+- **Updates:** the apps show whatever the server serves, so **deploying the server updates every
+  device**.
+- **Downloads:** `apps/web/public/downloads/SKB-Android.apk` and `SKB-Windows.zip`, served by
+  the API (`.apk` MIME type added). The "Get the app" links are on the login page and in
+  Settings, hidden inside the apps. The service worker never swallows `/downloads/`.
+- **iPhone:** "Add to Home Screen" with a proper PNG `apple-touch-icon`; the PWA manifest now has
+  192/512/maskable PNG icons.
+- **Health check:** `/api/health` now reports the deployed commit (`version`) so a deploy can be
+  verified.
+- **Not yet tested on a real phone or an emulator.** There is no emulator image on the build
+  PC (about 1.5 GB to download).
+
 **AI translation of names** (owner request 2026-09-29) — DOMAIN.md §2.1b
 - **Model:** branches, warehouses, categories and products store `NameAr`/`NameEn` plus
   `NameSource` / `NameAuto` / `NamePending` (`ILocalizedName`). The rules are in `Loc.Apply`:

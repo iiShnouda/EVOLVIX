@@ -4,6 +4,7 @@ import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import { useCompanySettings, useTranslationStatus, useUpdateSettings } from '../lib/queries';
+import { GetApps } from '../components/GetApps';
 import { formatDateTime, formatNumber } from '@skb/shared';
 
 const field =
@@ -183,6 +184,13 @@ export function SettingsPage() {
       </Card>
 
       <TranslationCard />
+
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('apps.title')}
+        </h2>
+        <GetApps />
+      </Card>
 
       {canManage && (
         <div className="flex items-center gap-3">

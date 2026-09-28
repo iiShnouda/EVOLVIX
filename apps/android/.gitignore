@@ -1,0 +1,10 @@
+# Local machine and secrets — never commit.
+local.properties
+keystore.properties
+*.jks
+*.keystore
+.gradle/
+build/
+app/build/
+.idea/
+*.iml

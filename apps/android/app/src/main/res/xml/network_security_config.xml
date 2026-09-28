@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTPS everywhere by default. Plain http:// is allowed because a company server on the office
+  network (COMPANY-SERVER.md) is usually reached as http://<server-ip>:8080; the settings screen
+  warns when an address is not encrypted.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

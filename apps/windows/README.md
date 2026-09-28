@@ -1,77 +1,52 @@
-# SKB — Windows desktop app (C# / .NET 8 / WPF)
+# SKB for Windows
 
-The native Windows client for SKB. It talks to the **same server** as the web/PWA and
-Android apps — all business logic, security, and data live on the server; this is a fast,
-native desktop **view** on top.
+**`src/SKB.Desktop` is the Windows app.** It is a real installable program that opens the
+company server's SKB web app in its own window, using Edge WebView2, which is built into
+Windows 10/11.
+- All screens, rules and data stay on the server, so **it updates itself whenever the server is
+  updated**.
+- You rebuild it only when this shell changes.
+- It targets .NET Framework 4.8, which is also built into Windows. The whole app is about
+  300 KB zipped and needs nothing else installed.
 
-- **Language:** C# (.NET 8), **UI:** WPF, **pattern:** MVVM
-- **Zero external NuGet packages** — plain .NET + WPF only, so it restores and builds with
-  nothing to fetch beyond the .NET SDK.
-- Bilingual **Arabic / English** with full **RTL/LTR**, **light/dark** themes, a
-  **connection-required** offline gate (no data shown when the server is unreachable), and
-  **in-memory-only** tokens (nothing sensitive written to disk).
+> `src/SKB.App` + `src/SKB.Core` are the earlier WPF client. It has been superseded by
+> `SKB.Desktop` (owner decision 2026-09-29, CLAUDE.md rule 7) and is kept only for reference.
 
-## Requirements
+## What it does
 
-- Windows 10/11
-- **Visual Studio 2022** (17.8+) with the *.NET desktop development* workload, **or** the
-  **.NET 8 SDK** for command-line builds.
+- Opens the server address: `https://skb-d211.onrender.com` by default.
+- **Changing the server:** right-click the title bar → **Server address…**. This works for the
+  company's own server on the office network; plain http:// gets a warning.
+- **Links:** only pages of that server open inside the window. Other links open in the default
+  browser.
+- **Server unreachable:** a page offers **Try again** / **Server address**.
+- **Stored on the PC:** settings (the server address and the window position) live in
+  `HKCU\Software\SKB`, and the browser profile (the sign-in cookie) in `%LOCALAPPDATA%\SKB`.
+  No business data is stored on the PC.
+- **Installing:** running `SKB.exe` from the downloaded folder offers to **install for this
+  user**, with no admin rights:
+  - It copies the app to `%LOCALAPPDATA%\Programs\SKB`.
+  - It adds Start-menu and desktop shortcuts.
+  - It adds an entry in **Settings › Apps**, so it can be uninstalled normally.
+  - Run with `--portable` to skip installing.
+- **Language:** Arabic/English follows the Windows display language.
 
-## Open & run
-
-**Visual Studio:** open `SKB.sln`, set `SKB.App` as the startup project, press **F5**.
-
-**Command line:**
-```powershell
-cd apps\windows
-dotnet restore
-dotnet run --project src\SKB.App
-```
-
-## Point it at your server
-
-Edit `src/SKB.App/appsettings.json` (copied next to the built `.exe`):
-```json
-{ "ApiUrl": "http://192.168.1.10:5080" }
-```
-Use `http://localhost:5080` for local development, or the company server's LAN address for
-staff PCs. (Later, over the internet, use its `https://` address — no code change.)
-
-Sign in with a seeded account, e.g. `owner@skb.local` / `ChangeMe!Owner123`.
-
-## Project layout
-
-```
-apps/windows/
-├─ SKB.sln
-└─ src/
-   ├─ SKB.Core/                 # Platform-agnostic core (also reusable elsewhere)
-   │  ├─ Models/                #   DTOs mirroring the server JSON
-   │  ├─ Api/                   #   ApiClient (HttpClient + token/refresh), SessionState
-   │  ├─ Localization/          #   AR/EN dictionary
-   │  └─ Formatting.cs          #   money (minor units) / date / number formatting
-   └─ SKB.App/                  # WPF app
-      ├─ App.xaml(.cs)          #   composition root, theme + connection bootstrap
-      ├─ Themes/                #   Light.xaml, Dark.xaml, Styles.xaml
-      ├─ Infrastructure/        #   ObservableObject, RelayCommand, converters
-      ├─ Services/              #   Localizer (+RTL), ThemeManager, ConnectionMonitor
-      ├─ ViewModels/            #   Login, Shell, Dashboard, Sales, Parties, Placeholder
-      └─ Views/                 #   XAML windows/usercontrols
-```
-
-## Publish a single installer / .exe (later)
+## Build
 
 ```powershell
-dotnet publish src\SKB.App -c Release -r win-x64 --self-contained true ^
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+cd apps\windows\src\SKB.Desktop
+dotnet build -c Release
 ```
-Produces a self-contained `SKB.exe` staff can run without installing .NET. (A polished MSI
-installer can be added with WiX or Velopack when we finalize distribution.)
 
-## Status
+Output: `bin\Release\net48\`. To publish, zip these files into a `SKB\` folder as
+`apps/web/public/downloads/SKB-Windows.zip`:
+- `SKB.exe`
+- `SKB.exe.config`
+- `Microsoft.Web.WebView2.Core.dll`
+- `Microsoft.Web.WebView2.WinForms.dll`
+- `WebView2Loader.dll`
 
-Foundation + vertical slice: **sign-in → dashboard (KPIs, recent, low stock) → sales
-(list + document preview) → customers/suppliers**, with the same adaptive, bilingual,
-theming behavior as the web app. Remaining modules plug into the same server and MVVM
-structure. This project is authored to open and build in Visual Studio; it was not compiled
-in the cloud environment where it was generated (WPF builds only on Windows).
+The server then offers it on the login page and in Settings → Get the app.
+
+The exe is not code-signed (a certificate costs money), so Windows SmartScreen may warn the
+first time. Choose **More info → Run anyway**.
