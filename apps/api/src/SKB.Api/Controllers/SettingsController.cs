@@ -50,6 +50,7 @@ public sealed class SettingsController : ControllerBase
         if (req.DefaultTaxPercent is int tax) s.DefaultTaxPercent = Math.Clamp(tax, 0, 100);
         if (req.DefaultMarkupPercent is int mk) s.DefaultMarkupPercent = Math.Clamp(mk, 0, 1000);
         if (req.MinMarkupPercent is int min) s.MinMarkupPercent = Math.Clamp(min, 0, 1000);
+        if (req.TransfersRequireReceipt is bool receipt) s.TransfersRequireReceipt = receipt;
         s.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();

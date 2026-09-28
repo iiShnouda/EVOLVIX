@@ -127,6 +127,17 @@ export const stocktakeSchema = z.object({
 });
 export type StocktakeInput = z.infer<typeof stocktakeSchema>;
 
+export const createTransferSchema = z.object({
+  fromWarehouseId: z.string().uuid(),
+  toWarehouseId: z.string().uuid(),
+  lines: z
+    .array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive() }))
+    .min(1, 'Add at least one item')
+    .max(500),
+  notes: z.string().max(1000).optional(),
+});
+export type CreateTransferInput = z.infer<typeof createTransferSchema>;
+
 export const createWarehouseSchema = z.object({
   branchId: z.string().uuid(),
   name: z.string().trim().min(1).max(100),
@@ -150,5 +161,6 @@ export const updateSettingsSchema = z.object({
   defaultMarkupPercent: z.number().int().min(0).max(1000).optional(),
   minMarkupPercent: z.number().int().min(0).max(1000).optional(),
   defaultTaxPercent: z.number().int().min(0).max(100).optional(),
+  transfersRequireReceipt: z.boolean().optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

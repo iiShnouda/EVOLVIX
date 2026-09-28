@@ -18,6 +18,8 @@ public class AppDbContext : DbContext
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StockBalance> StockBalances => Set<StockBalance>();
+    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+    public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -71,6 +73,7 @@ public class AppDbContext : DbContext
         // Warehouses (مخازن) and per-warehouse stock. Restrict everywhere: a warehouse with
         // history can be deactivated, never deleted.
         b.Entity<Warehouse>().HasIndex(w => w.Code).IsUnique();
+        b.Entity<Warehouse>().Property(w => w.Kind).HasConversion<string>();
         b.Entity<Warehouse>()
             .HasOne(w => w.Branch).WithMany(br => br.Warehouses)
             .HasForeignKey(w => w.BranchId).OnDelete(DeleteBehavior.Restrict);
@@ -89,6 +92,35 @@ public class AppDbContext : DbContext
         b.Entity<DocumentLine>()
             .HasOne(l => l.Warehouse).WithMany()
             .HasForeignKey(l => l.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+
+        // Transfer permits. Warehouses and staff are Restrict: history keeps its references.
+        b.Entity<StockTransfer>().Property(t => t.Status).HasConversion<string>();
+        b.Entity<StockTransfer>().HasIndex(t => t.Number).IsUnique();
+        b.Entity<StockTransfer>().HasIndex(t => new { t.Status, t.CreatedAt });
+        b.Entity<StockTransfer>().HasIndex(t => t.FromWarehouseId);
+        b.Entity<StockTransfer>().HasIndex(t => t.ToWarehouseId);
+        b.Entity<StockTransfer>()
+            .HasOne(t => t.FromWarehouse).WithMany()
+            .HasForeignKey(t => t.FromWarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransfer>()
+            .HasOne(t => t.ToWarehouse).WithMany()
+            .HasForeignKey(t => t.ToWarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransfer>()
+            .HasOne(t => t.CreatedBy).WithMany()
+            .HasForeignKey(t => t.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransfer>()
+            .HasOne(t => t.ReceivedBy).WithMany()
+            .HasForeignKey(t => t.ReceivedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransfer>()
+            .HasOne(t => t.CancelledBy).WithMany()
+            .HasForeignKey(t => t.CancelledById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransferLine>()
+            .HasOne(l => l.Transfer).WithMany(t => t.Lines)
+            .HasForeignKey(l => l.TransferId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<StockTransferLine>()
+            .HasOne(l => l.Product).WithMany()
+            .HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockTransferLine>().HasIndex(l => l.ProductId);
 
         base.OnModelCreating(b);
     }

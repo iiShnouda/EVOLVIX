@@ -65,11 +65,12 @@ public record CreateReturnRequest(CreateReturnLineRequest[] Lines, long RefundAm
 
 public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
-    int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent);
+    int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt);
 
 public record UpdateSettingsRequest(
     string? CompanyName, string? Country, string? Currency,
-    int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent);
+    int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
+    bool? TransfersRequireReceipt = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -134,11 +135,37 @@ public record StocktakeResultDto(
 
 // ---- Branches & warehouses ----
 
+/// <param name="Kind">STORE, or TRANSIT for the system warehouse holding goods on the way.</param>
 /// <param name="ItemCount">Items with stock in this warehouse.</param>
 /// <param name="Value">Quantity × current average cost, minor units.</param>
 public record WarehouseDto(
-    string Id, string Code, string Name, string BranchId, string BranchName,
+    string Id, string Code, string Name, string BranchId, string BranchName, string Kind,
     bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value);
+
+/// <summary>A warehouse goods can be sent to (any branch), for the transfer form.</summary>
+public record WarehouseOptionDto(string Id, string Name, string BranchName);
+
+// ---- Transfer permits (إذن تحويل) ----
+
+/// <param name="UnitCost">Average cost when sent, minor units.</param>
+public record StockTransferLineDto(
+    string Id, string ProductId, string ProductName, int Quantity, long UnitCost, long Value);
+
+/// <param name="CanReceive">The caller may confirm receipt now.</param>
+/// <param name="CanCancel">The caller may cancel it now (goods go back to the source).</param>
+public record StockTransferDto(
+    string Id, string Number, string Status,
+    string FromWarehouseId, string FromWarehouseName, string FromBranchName,
+    string ToWarehouseId, string ToWarehouseName, string ToBranchName,
+    string CreatedAt, string CreatedByName,
+    string? ReceivedAt, string? ReceivedByName, string? CancelledAt, string? CancelledByName,
+    string? Notes, int Quantity, long Value, StockTransferLineDto[] Lines,
+    bool CanReceive, bool CanCancel);
+
+public record CreateTransferLineRequest(string ProductId, int Quantity);
+
+public record CreateTransferRequest(
+    string FromWarehouseId, string ToWarehouseId, CreateTransferLineRequest[] Lines, string? Notes = null);
 
 public record BranchDto(
     string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses);

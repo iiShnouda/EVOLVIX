@@ -32,9 +32,55 @@ public class Warehouse
     public string Code { get; set; } = "";
     public Guid BranchId { get; set; }
     public Branch? Branch { get; set; }
+    /// <summary>STORE, or the single system TRANSIT warehouse that holds goods on the way.</summary>
+    public WarehouseKind Kind { get; set; } = WarehouseKind.STORE;
     public bool IsDefault { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Transfer permit (إذن تحويل): goods moving from one warehouse to another, possibly across
+/// branches. Sending moves them from the source into the system TRANSIT warehouse; receiving moves
+/// them on into the destination. They stay company stock the whole time, at the same average cost.
+/// </summary>
+public class StockTransfer
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>TRF-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public TransferStatus Status { get; set; } = TransferStatus.SENT;
+    public Guid FromWarehouseId { get; set; }
+    public Warehouse? FromWarehouse { get; set; }
+    public Guid ToWarehouseId { get; set; }
+    public Warehouse? ToWarehouse { get; set; }
+    public string? Notes { get; set; }
+
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Guid? ReceivedById { get; set; }
+    public Staff? ReceivedBy { get; set; }
+    public DateTime? ReceivedAt { get; set; }
+    public Guid? CancelledById { get; set; }
+    public Staff? CancelledBy { get; set; }
+    public DateTime? CancelledAt { get; set; }
+
+    public List<StockTransferLine> Lines { get; set; } = new();
+}
+
+public class StockTransferLine
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int LineNo { get; set; }
+    public Guid TransferId { get; set; }
+    public StockTransfer? Transfer { get; set; }
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    public string ProductName { get; set; } = "";
+    public int Quantity { get; set; }
+    /// <summary>Average cost when sent (minor units): the value of the goods on the way.</summary>
+    public long UnitCost { get; set; }
 }
 
 /// <summary>
@@ -263,5 +309,10 @@ public class CompanySettings
     public int MinMarkupPercent { get; set; } = 0;
     /// <summary>Default sales tax/VAT percent applied to new invoices (0 = none).</summary>
     public int DefaultTaxPercent { get; set; } = 0;
+    /// <summary>
+    /// The receiving warehouse confirms a transfer before the goods count there (old
+    /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.
+    /// </summary>
+    public bool TransfersRequireReceipt { get; set; } = true;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

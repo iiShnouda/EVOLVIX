@@ -300,7 +300,10 @@ public sealed class InventoryController : ControllerBase
             .ToDictionaryAsync(w => w.Id);
         var docIds = moves.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
         var docTypes = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
-            .ToDictionaryAsync(d => d.Id, d => d.Type);
+            .ToDictionaryAsync(d => d.Id, d => d.Type.ToString());
+        foreach (var transferId in await _db.StockTransfers.AsNoTracking().Where(t => docIds.Contains(t.Id))
+                     .Select(t => t.Id).ToListAsync())
+            docTypes[transferId] = "STOCK_TRANSFER";
 
         return moves.Select(m =>
         {
@@ -309,7 +312,7 @@ public sealed class InventoryController : ControllerBase
                 m.Id.ToString(), m.CreatedAt.ToString("o"), m.Type.ToString(),
                 wh?.Branch ?? "", m.WarehouseId.ToString(), wh?.Name ?? "",
                 m.Reference, m.DocumentId?.ToString(),
-                m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t.ToString() : null,
+                m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t : null,
                 Math.Max(0, m.Quantity), Math.Max(0, -m.Quantity),
                 perWarehouse ? m.WarehouseBalanceAfter : m.BalanceAfter,
                 m.UnitCost, m.AvgCostAfter, m.Note);

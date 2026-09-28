@@ -28,18 +28,38 @@ public sealed class WarehousesController : ControllerBase
         _audit = audit;
     }
 
-    /// <summary>Warehouses the user may use, with what each one holds. Default first per branch.</summary>
+    /// <summary>
+    /// Warehouses the user may use, with what each one holds. Default first per branch. The system
+    /// "In transit" warehouse is left out unless <paramref name="includeTransit"/> is set.
+    /// </summary>
     [HttpGet("warehouses")]
     [Authorize(Policy = Permissions.InventoryView)]
-    public async Task<ActionResult<WarehouseDto[]>> List([FromQuery] bool activeOnly = false)
+    public async Task<ActionResult<WarehouseDto[]>> List(
+        [FromQuery] bool activeOnly = false, [FromQuery] bool includeTransit = false)
     {
         var q = _warehouses.Visible(User).AsNoTracking().Include(w => w.Branch).AsQueryable();
         if (activeOnly) q = q.Where(w => w.IsActive);
+        if (!includeTransit) q = q.Where(w => w.Kind == WarehouseKind.STORE);
         var rows = await q.ToListAsync();
         var stats = await StatsAsync();
         return Ok(rows
             .OrderBy(w => w.Branch?.Name).ThenByDescending(w => w.IsDefault).ThenBy(w => w.Name)
             .Select(w => ToDto(w, stats)).ToArray());
+    }
+
+    /// <summary>
+    /// Every open store in every branch — where goods may be sent on a transfer. Names only, so
+    /// branch-scoped staff can pick another branch as the destination.
+    /// </summary>
+    [HttpGet("warehouses/destinations")]
+    [Authorize(Policy = Permissions.InventoryEdit)]
+    public async Task<ActionResult<WarehouseOptionDto[]>> Destinations()
+    {
+        var rows = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)
+            .Where(w => w.IsActive && w.Kind == WarehouseKind.STORE)
+            .ToListAsync();
+        return Ok(rows.OrderBy(w => w.Branch?.Name).ThenByDescending(w => w.IsDefault).ThenBy(w => w.Name)
+            .Select(w => new WarehouseOptionDto(w.Id.ToString(), w.Name, w.Branch?.Name ?? "")).ToArray());
     }
 
     /// <summary>Every branch with its warehouses (active and closed).</summary>
@@ -53,6 +73,7 @@ public sealed class WarehousesController : ControllerBase
         return Ok(branches.Select(b => new BranchDto(
             b.Id.ToString(), b.Code, b.Name, b.Location, b.IsActive,
             b.Warehouses
+                .Where(w => w.Kind == WarehouseKind.STORE)
                 .OrderByDescending(w => w.IsActive).ThenByDescending(w => w.IsDefault).ThenBy(w => w.Name)
                 .Select(w => { w.Branch = b; return ToDto(w, stats); })
                 .ToArray())).ToArray());
@@ -77,7 +98,8 @@ public sealed class WarehousesController : ControllerBase
         if (await _db.Warehouses.AnyAsync(w => w.Code.ToUpper() == code))
             return BadRequest(new { message = $"Code {code} is already used.", code = "duplicate_code" });
 
-        var hasDefault = await _db.Warehouses.AnyAsync(w => w.BranchId == branchId && w.IsActive && w.IsDefault);
+        var hasDefault = await _db.Warehouses.AnyAsync(w =>
+            w.BranchId == branchId && w.IsActive && w.IsDefault && w.Kind == WarehouseKind.STORE);
         var warehouse = new Warehouse { Name = name, Code = code, BranchId = branchId, Branch = branch };
         _db.Warehouses.Add(warehouse);
         if (req.IsDefault || !hasDefault) await MakeDefaultAsync(warehouse);
@@ -91,7 +113,8 @@ public sealed class WarehousesController : ControllerBase
     [Authorize(Policy = Permissions.BranchesManage)]
     public async Task<ActionResult<WarehouseDto>> Update(Guid id, [FromBody] UpdateWarehouseRequest req)
     {
-        var warehouse = await _db.Warehouses.Include(w => w.Branch).FirstOrDefaultAsync(w => w.Id == id);
+        var warehouse = await _db.Warehouses.Include(w => w.Branch)
+            .FirstOrDefaultAsync(w => w.Id == id && w.Kind == WarehouseKind.STORE);
         if (warehouse is null) return NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" });
 
         if (req.Name is not null)
@@ -178,7 +201,7 @@ public sealed class WarehousesController : ControllerBase
     {
         var s = stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0);
         return new WarehouseDto(w.Id.ToString(), w.Code, w.Name, w.BranchId.ToString(), w.Branch?.Name ?? "",
-            w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value);
+            w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value);
     }
 
     private Task AuditAsync(string action, Warehouse w) =>

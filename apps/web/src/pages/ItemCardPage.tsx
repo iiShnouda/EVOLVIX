@@ -32,6 +32,8 @@ function daysAgo(n: number): string {
 /** Where a movement's source document lives in the app, and who may open it. */
 function documentLink(m: StockMovement): { to: string; permission: Permission } | null {
   if (!m.documentId || !m.documentType) return null;
+  if (m.documentType === 'STOCK_TRANSFER')
+    return { to: `/inventory/transfers?doc=${m.documentId}`, permission: 'inventory:view' };
   const type: DocumentType = m.documentType;
   const scope = type.startsWith('PURCHASE') ? 'purchases' : 'sales';
   const tab = type.endsWith('RETURN') ? 'tab=returns&' : '';

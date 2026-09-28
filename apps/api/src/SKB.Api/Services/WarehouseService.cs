@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
+using SKB.Api.Domain;
 
 namespace SKB.Api.Services;
 
@@ -16,22 +17,44 @@ public sealed class WarehouseService
 
     public sealed record WarehouseError(string Code, string Message);
 
-    /// <summary>Warehouses visible to <paramref name="user"/> (active or not).</summary>
+    /// <summary>
+    /// Warehouses visible to <paramref name="user"/> (active or not): their branch's stores, or all
+    /// stores for roles that see every branch — plus the system TRANSIT warehouse, which everyone
+    /// may look at but nobody posts to directly.
+    /// </summary>
     public IQueryable<Warehouse> Visible(ClaimsPrincipal user)
     {
         var q = _db.Warehouses.AsQueryable();
         if (CurrentUser.CanSeeAllBranches(user))
             return q;
         Guid.TryParse(CurrentUser.BranchId(user), out var branchId);
-        return q.Where(w => w.BranchId == branchId);
+        return q.Where(w => w.BranchId == branchId || w.Kind == WarehouseKind.TRANSIT);
     }
 
-    /// <summary>The branch's default warehouse (or its first active one if none is marked default).</summary>
+    /// <summary>The branch's default store (or its first active one if none is marked default).</summary>
     public async Task<Warehouse?> DefaultForBranchAsync(Guid branchId) =>
         await _db.Warehouses
-            .Where(w => w.BranchId == branchId && w.IsActive)
+            .Where(w => w.BranchId == branchId && w.IsActive && w.Kind == WarehouseKind.STORE)
             .OrderByDescending(w => w.IsDefault).ThenBy(w => w.Name)
             .FirstOrDefaultAsync();
+
+    /// <summary>
+    /// The single system warehouse that holds goods between sending and receiving a transfer.
+    /// Created on first use, attached to the oldest branch (it belongs to no branch in practice).
+    /// </summary>
+    public async Task<Warehouse> TransitAsync()
+    {
+        var transit = await _db.Warehouses.FirstOrDefaultAsync(w => w.Kind == WarehouseKind.TRANSIT);
+        if (transit is not null) return transit;
+        var branch = await _db.Branches.OrderBy(b => b.CreatedAt).FirstAsync();
+        transit = new Warehouse
+        {
+            Name = "In transit", Code = "TRANSIT", BranchId = branch.Id, Branch = branch,
+            Kind = WarehouseKind.TRANSIT, IsActive = true,
+        };
+        _db.Warehouses.Add(transit);
+        return transit;
+    }
 
     /// <summary>
     /// Resolve the warehouse a document line posts to: the one requested (must be active and
@@ -56,7 +79,7 @@ public sealed class WarehouseService
         {
             if (!Guid.TryParse(key, out var id))
                 return (null, new("warehouse_not_found", "Warehouse not found."));
-            warehouse = await Visible(user).FirstOrDefaultAsync(w => w.Id == id);
+            warehouse = await Visible(user).FirstOrDefaultAsync(w => w.Id == id && w.Kind == WarehouseKind.STORE);
             if (warehouse is null)
                 return (null, new("warehouse_not_found", "Warehouse not found."));
             if (!warehouse.IsActive)

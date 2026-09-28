@@ -50,6 +50,7 @@ export function SettingsPage() {
       defaultTaxPercent: form.defaultTaxPercent,
       defaultMarkupPercent: form.defaultMarkupPercent,
       minMarkupPercent: form.minMarkupPercent,
+      transfersRequireReceipt: form.transfersRequireReceipt,
     });
     setSaved(true);
   }
@@ -68,27 +69,46 @@ export function SettingsPage() {
 
       {/* Company */}
       <Card>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{t('settings.company')}</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('settings.company')}
+        </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.companyName')}</span>
-            <input className={field} disabled={disabled} value={form.companyName}
-              onChange={(e) => set({ companyName: e.target.value })} />
+            <input
+              className={field}
+              disabled={disabled}
+              value={form.companyName}
+              onChange={(e) => set({ companyName: e.target.value })}
+            />
           </label>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.country')}</span>
-            <select className={field} disabled={disabled} value={form.country} onChange={(e) => onCountry(e.target.value)}>
+            <select
+              className={field}
+              disabled={disabled}
+              value={form.country}
+              onChange={(e) => onCountry(e.target.value)}
+            >
               {COUNTRIES.map((c) => (
-                <option key={c.code} value={c.code}>{locale === 'ar' ? c.nameAr : c.nameEn}</option>
+                <option key={c.code} value={c.code}>
+                  {locale === 'ar' ? c.nameAr : c.nameEn}
+                </option>
               ))}
             </select>
           </label>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.currency')}</span>
-            <select className={field} disabled={disabled} value={form.currency}
-              onChange={(e) => set({ currency: e.target.value })}>
+            <select
+              className={field}
+              disabled={disabled}
+              value={form.currency}
+              onChange={(e) => set({ currency: e.target.value })}
+            >
               {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>{c.code} — {locale === 'ar' ? c.nameAr : c.nameEn}</option>
+                <option key={c.code} value={c.code}>
+                  {c.code} — {locale === 'ar' ? c.nameAr : c.nameEn}
+                </option>
               ))}
             </select>
           </label>
@@ -97,29 +117,68 @@ export function SettingsPage() {
 
       {/* Pricing & tax */}
       <Card>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{t('settings.pricing')}</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('settings.pricing')}
+        </h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.vat')}</span>
-            <input type="number" min={0} max={100} className={`${field} tnum`} disabled={disabled}
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className={`${field} tnum`}
+              disabled={disabled}
               value={form.defaultTaxPercent}
-              onChange={(e) => set({ defaultTaxPercent: clampInt(e.target.value, 0, 100) })} />
+              onChange={(e) => set({ defaultTaxPercent: clampInt(e.target.value, 0, 100) })}
+            />
             <span className="mt-0.5 block text-xs text-faint">{t('settings.vatHint')}</span>
           </label>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.defaultMarkup')}</span>
-            <input type="number" min={0} className={`${field} tnum`} disabled={disabled}
+            <input
+              type="number"
+              min={0}
+              className={`${field} tnum`}
+              disabled={disabled}
               value={form.defaultMarkupPercent}
-              onChange={(e) => set({ defaultMarkupPercent: clampInt(e.target.value, 0, 1000) })} />
+              onChange={(e) => set({ defaultMarkupPercent: clampInt(e.target.value, 0, 1000) })}
+            />
           </label>
           <label className="block sm:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.minMarkup')}</span>
-            <input type="number" min={0} className={`${field} tnum`} disabled={disabled}
+            <input
+              type="number"
+              min={0}
+              className={`${field} tnum`}
+              disabled={disabled}
               value={form.minMarkupPercent}
-              onChange={(e) => set({ minMarkupPercent: clampInt(e.target.value, 0, 1000) })} />
+              onChange={(e) => set({ minMarkupPercent: clampInt(e.target.value, 0, 1000) })}
+            />
             <span className="mt-0.5 block text-xs text-faint">{t('settings.minMarkupHint')}</span>
           </label>
         </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('settings.stock')}
+        </h2>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            disabled={disabled}
+            checked={form.transfersRequireReceipt}
+            onChange={(e) => set({ transfersRequireReceipt: e.target.checked })}
+          />
+          <span>
+            <span className="block text-sm">{t('settings.transfersRequireReceipt')}</span>
+            <span className="block text-xs text-faint">
+              {t('settings.transfersRequireReceiptHint')}
+            </span>
+          </span>
+        </label>
       </Card>
 
       {canManage && (
@@ -128,7 +187,9 @@ export function SettingsPage() {
             {update.isPending ? t('settings.saving') : t('settings.save')}
           </Button>
           {saved && <span className="text-sm text-positive">{t('settings.saved')}</span>}
-          {update.error && <span className="text-sm text-destructive">{(update.error as Error).message}</span>}
+          {update.error && (
+            <span className="text-sm text-destructive">{(update.error as Error).message}</span>
+          )}
         </div>
       )}
     </div>

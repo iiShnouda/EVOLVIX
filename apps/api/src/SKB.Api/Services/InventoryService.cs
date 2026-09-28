@@ -143,6 +143,25 @@ public sealed class InventoryService
         return (long)delta * product.CostPrice;
     }
 
+    /// <summary>
+    /// Move <paramref name="quantity"/> units between two warehouses (a transfer leg). The goods
+    /// stay company stock at the same average cost: the product total and average don't change,
+    /// only where the units sit. Logged as TRANSFER_OUT of <paramref name="from"/> and TRANSFER_IN
+    /// to <paramref name="to"/>. Returns the unit cost (the current average).
+    /// </summary>
+    public long Relocate(Product product, Warehouse from, Warehouse to, int quantity,
+        Guid documentId, string reference, string? note = null)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
+        if (from.Id == to.Id) throw new ArgumentException("Source and destination must differ.");
+        RequireStock(product, from, quantity);
+
+        var unitCost = product.CostPrice;
+        Move(product, from, -quantity, unitCost, StockMovementType.TRANSFER_OUT, documentId, reference, note);
+        Move(product, to, quantity, unitCost, StockMovementType.TRANSFER_IN, documentId, reference, note);
+        return unitCost;
+    }
+
     private void RequireStock(Product product, Warehouse warehouse, int quantity)
     {
         var available = Available(product.Id, warehouse.Id);

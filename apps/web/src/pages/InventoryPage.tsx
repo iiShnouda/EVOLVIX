@@ -58,11 +58,21 @@ export function InventoryPage() {
       <PageHeader
         title={t('inventory.title')}
         action={
-          canEdit ? (
-            <Button size="sm" icon="check" onClick={() => navigate('/inventory/stocktake')}>
-              {t('stocktake.action')}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="returns"
+              onClick={() => navigate('/inventory/transfers')}
+            >
+              {t('transfer.title')}
             </Button>
-          ) : undefined
+            {canEdit && (
+              <Button size="sm" icon="check" onClick={() => navigate('/inventory/stocktake')}>
+                {t('stocktake.action')}
+              </Button>
+            )}
+          </div>
         }
       />
 

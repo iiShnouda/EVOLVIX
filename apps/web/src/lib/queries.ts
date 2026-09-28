@@ -6,7 +6,11 @@ import type {
   CreateSalesInvoiceInput,
   UpdateSettingsInput,
   BranchWithWarehouses,
+  CreateTransferInput,
   CreateWarehouseInput,
+  StockTransfer,
+  TransferStatus,
+  WarehouseOption,
   UpdateWarehouseInput,
   Warehouse,
   DashboardData,
@@ -206,6 +210,59 @@ export function useBranches() {
   return useQuery({
     queryKey: ['inventory', 'branches'],
     queryFn: () => api.get<BranchWithWarehouses[]>('/branches'),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Transfer permits (إذن تحويل)
+// ---------------------------------------------------------------------------
+
+export function useTransfers(params: { page: number; status?: TransferStatus }) {
+  const query = new URLSearchParams({ page: String(params.page), pageSize: '30' });
+  if (params.status) query.set('status', params.status);
+  return useQuery({
+    queryKey: ['inventory', 'transfers', params],
+    queryFn: () => api.get<Paginated<StockTransfer>>(`/transfers?${query}`),
+  });
+}
+
+export function useTransfer(id: string | null) {
+  return useQuery({
+    queryKey: ['inventory', 'transfer', id],
+    queryFn: () => api.get<StockTransfer>(`/transfers/${id}`),
+    enabled: !!id,
+  });
+}
+
+/** Every open store in every branch — where goods may be sent. */
+export function useTransferDestinations() {
+  return useQuery({
+    queryKey: ['inventory', 'destinations'],
+    queryFn: () => api.get<WarehouseOption[]>('/warehouses/destinations'),
+  });
+}
+
+export function useCreateTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTransferInput) => api.post<StockTransfer>('/transfers', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+/** Confirm receipt (`receive`) or call it back (`cancel`). */
+export function useFinishTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'receive' | 'cancel' }) =>
+      api.post<StockTransfer>(`/transfers/${id}/${action}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['products'] });
+    },
   });
 }
 

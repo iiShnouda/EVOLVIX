@@ -299,6 +299,8 @@ export interface CompanySettings {
   minMarkupPercent: number;
   /** Default sales tax percent for new invoices (0 = none). */
   defaultTaxPercent: number;
+  /** The receiving warehouse confirms a transfer before the goods count there. */
+  transfersRequireReceipt: boolean;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -369,8 +371,8 @@ export interface StockMovement {
   warehouseName: string;
   reference?: string | null;
   documentId?: string | null;
-  /** Type of the source document, for linking to it. */
-  documentType?: DocumentType | null;
+  /** Type of the source document, for linking to it (a transfer permit is `STOCK_TRANSFER`). */
+  documentType?: DocumentType | 'STOCK_TRANSFER' | null;
   quantityIn: number;
   quantityOut: number;
   /** Running balance after this movement: in its warehouse when the card is filtered to one, else in total. */
@@ -451,6 +453,8 @@ export interface Warehouse {
   name: string;
   branchId: string;
   branchName: string;
+  /** `TRANSIT` is the system warehouse holding goods between sending and receiving a transfer. */
+  kind: 'STORE' | 'TRANSIT';
   isDefault: boolean;
   isActive: boolean;
   /** Items with stock in this warehouse. */
@@ -458,6 +462,53 @@ export interface Warehouse {
   quantity: number;
   /** quantity × current average cost, minor units. */
   value: number;
+}
+
+/** A warehouse goods can be sent to on a transfer (any branch). */
+export interface WarehouseOption {
+  id: string;
+  name: string;
+  branchName: string;
+}
+
+/** Transfer permit (إذن تحويل) lifecycle. */
+export type TransferStatus = 'SENT' | 'RECEIVED' | 'CANCELLED';
+
+export interface StockTransferLine {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  /** Average cost when sent, minor units. */
+  unitCost: number;
+  value: number;
+}
+
+export interface StockTransfer {
+  id: string;
+  /** TRF-YYYY-NNNNNN */
+  number: string;
+  status: TransferStatus;
+  fromWarehouseId: string;
+  fromWarehouseName: string;
+  fromBranchName: string;
+  toWarehouseId: string;
+  toWarehouseName: string;
+  toBranchName: string;
+  createdAt: string;
+  createdByName: string;
+  receivedAt?: string | null;
+  receivedByName?: string | null;
+  cancelledAt?: string | null;
+  cancelledByName?: string | null;
+  notes?: string | null;
+  quantity: number;
+  value: number;
+  lines: StockTransferLine[];
+  /** The current user may confirm receipt now. */
+  canReceive: boolean;
+  /** The current user may cancel it now (goods go back to the source). */
+  canCancel: boolean;
 }
 
 export interface BranchWithWarehouses {

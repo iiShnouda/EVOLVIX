@@ -43,3 +43,12 @@ public enum StockMovementType
     TRANSFER_OUT,   // left this store on a transfer permit
     TRANSFER_IN,    // arrived at this store on a transfer permit
 }
+
+/// <summary>STORE holds stock people use; TRANSIT is the system place goods sit while being transferred.</summary>
+public enum WarehouseKind { STORE, TRANSIT }
+
+/// <summary>
+/// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.
+/// RECEIVED: the destination confirmed them. CANCELLED: sent back to the source before receipt.
+/// </summary>
+public enum TransferStatus { SENT, RECEIVED, CANCELLED }

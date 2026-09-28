@@ -102,14 +102,17 @@ marked *(inferred)* come from data and column names, not from code.
   - A transfer moves goods but does not change their cost (old `chkBoxIsNotTawelInAvg` = on).
   - Receipts recompute the average; issues leave at the average (§3.3 of ROADMAP).
   - The old app computed the average **per branch**, by replaying every movement at report
-    time (`avgMor`, §8). SKB stores the average on each movement instead. Whether it should be
-    per branch is an open question for the owner.
+    time (`avgMor`, §8). SKB stores the average on each movement instead.
+  - **Decision (2026-09-28):** one average cost per item for the whole company, the standard
+    ERP choice. Example: water bought at 24 in Cairo and 26 in October gives every carton,
+    anywhere, a cost of 25. Profit per branch then depends only on the selling price.
 - **No negative stock**: an issue that would take a warehouse below zero is refused.
   - Old setting `chkBoxIsMabeaatNotOverStock` = on. In SKB this is a policy that is on by default.
 - Stock documents:
   - **Transfer** (إذن تحويل): from one warehouse to another, and it can cross branches.
-    - Lifecycle `DRAFT → SENT → RECEIVED`, or `SENT → CANCELLED`.
-    - While SENT, the goods are **in transit**: out of the source warehouse, not yet in the target.
+    - Lifecycle `SENT → RECEIVED`, or `SENT → CANCELLED` (goods go back to the source).
+    - While SENT, the goods sit in the system **"In transit"** warehouse: out of the source, not
+      yet in the target, still company stock at the same cost.
     - The receiver confirms receipt (old `chkBoxIsConfermTahwel` = on). If the policy is off, SENT and RECEIVED happen together.
   - *Van load / unload* (old `eznTahwel*Mandob*`) is **not used** by the company, so it is not built.
   - **Stocktake / adjustment** (الجرد والتسويات): built. It becomes per warehouse.
@@ -151,21 +154,58 @@ One shape for every document type:
   the party's account. `Paid` and `Remaining` are shown, as in the old app (المدفوع / الباقي).
 - **Commission** (عمولة): rep commission % × net sales. It is posted as an expense owed to the
   rep and is reversed by returns.
-- **Delivery** (التوصيل). The owner confirmed goods reach the customer in one of two ways:
-  our own delivery, or a **shipping company**. A sales invoice records:
+- **Delivery** (التوصيل). Confirmed by the owner, the company works in four ways:
+
+  | Case | How the customer pays | How goods leave |
+  |---|---|---|
+  | Pickup | in the office, any method (§2.6) | the customer takes them |
+  | Own delivery | in the office before, or to our driver | our driver |
+  | Prepaid shipping | in the office before | a shipping company |
+  | **Cash on delivery (COD)** | to the shipping company, on delivery | a shipping company, with a **waybill** (بوليصة شحن) |
+
+  A sales invoice records:
   - `DeliveryMethod`: `PICKUP` / `OWN_DELIVERY` / `SHIPPING_COMPANY`
-  - the carrier and its waybill number (رقم البوليصة)
-  - an optional shipping fee, charged to the customer as an `ADDITION` charge
+  - for a shipping company: the carrier (a party with role `CARRIER`) and a **Shipment**
+  - an optional shipping fee charged to the customer, as an `ADDITION` charge
   - a delivery status: `PENDING → OUT_FOR_DELIVERY → DELIVERED`, or `RETURNED`
-  - If the shipping company **collects the cash from the customer** (تحصيل عند الاستلام):
-    - The carrier owes that money until it pays us.
-    - A receipt from the carrier then settles those invoices.
-    - This is open to confirm with the owner.
+- **Shipment / waybill** (بوليصة الشحن): one per parcel handed to a carrier. It holds:
+  - the waybill number and carrier
+  - the invoice(s) it carries
+  - the **COD amount** to collect (0 when prepaid)
+  - the carrier's fee
+  - a status: `CREATED → PICKED_UP → DELIVERED → SETTLED`, or `RETURNED` if the customer refuses
+- **How COD money moves** (standard courier accounting):
+  1. When the carrier delivers, the customer's debt for that invoice moves to the **carrier**.
+     A clearing account, "COD with carriers", now holds the money.
+  2. The carrier later pays us for many waybills at once, **net of its fees**. A **carrier
+     settlement** (تسوية شركة الشحن) matches that payment to the waybills. The fees post as a
+     shipping expense, never as a cut in sales.
+  3. Any difference between what was due and what was paid stays open on the carrier until explained.
+  4. A refused parcel comes back: the goods return to stock through a sales return, and nothing
+     is collected.
 - **Numbering:** one prefix per type (INV, PUR, SRT, PRT, ADJ, TRF…), yearly sequence. This is built.
 
 ### 2.6 Money — الخزينة والبنوك
+- **Money accounts** (حسابات النقدية): every place money can sit. Each one is linked to its
+  ledger account:
+  - cash boxes (خزينة), including a driver's custody (عهدة)
+  - bank accounts
+  - **e-wallets**: Vodafone Cash, Orange Cash, etc. Each wallet number is its own account.
+  - the Egypt Post account (البريد المصري)
+- **Payment methods** on a receipt or payment:
+
+  | Method | Money lands in |
+  |---|---|
+  | `CASH` | a cash box |
+  | `BANK_TRANSFER`, `INSTAPAY` | a bank account (InstaPay arrives in a bank account) |
+  | `MOBILE_WALLET` | the wallet account (Vodafone Cash, Orange Cash…) |
+  | `POST` | the Egypt Post account |
+  | `CHEQUE`, `PROMISSORY_NOTE` (كمبيالة) | notes receivable / payable (§2.7), until collected |
+  | `CARRIER_COD` | the carrier's COD balance (§2.5), until settled |
+
+  Each receipt keeps a reference, such as the transfer or transaction number.
 - **Receipt** (سند قبض) from a customer and **Payment** (سند صرف) to a supplier.
-  - Each can be cash, bank or cheque (§2.7).
+  - Each uses one of the methods above; one receipt may combine several (e.g. part cash, part InstaPay).
   - Each can be **allocated** to one or more invoices. Old table `khaznaInvoice`; the old
     receipt screen shows invoice / net / remaining / paid.
   - Unallocated money stays on the party's account.
@@ -174,7 +214,8 @@ One shape for every document type:
 - **Daily cash report** (حركة اليوم): every money movement of a day per cash box. This is a query, not stored.
 
 ### 2.7 Cheques & notes — الأوراق المالية والحوافظ
-- **Note** (ورقة): direction `RECEIVABLE` (أ.ق) or `PAYABLE` (أ.د). Its fields are:
+- **Note** (ورقة): kind `CHEQUE` (شيك) or `PROMISSORY_NOTE` (كمبيالة). Direction is
+  `RECEIVABLE` (أ.ق) or `PAYABLE` (أ.د). Both kinds follow the same lifecycle. Its fields are:
   - number, bank, amount, due date (تاريخ الاستحقاق)
   - drawer (المسحوب عليه) and guarantor (الضامن)
   - party, and endorsed-to party (المظهر له)
@@ -322,7 +363,8 @@ Each step is a working slice: API, web, tests and docs together.
    - `Warehouse` under `Branch`, and `StockBalance` per warehouse.
    - Movements carry the warehouse, and invoice lines pick a warehouse.
    - Migration: every branch gets a default warehouse; all current stock goes to the oldest branch's one.
-2. **Transfers:** `DRAFT → SENT → RECEIVED`, in-transit stock, and the transfer reports.
+2. ✅ **Transfers** (shipped 2026-09-28): `SENT → RECEIVED | CANCELLED` through a system
+   "In transit" warehouse; the transfer list filters by status, warehouse, item and date.
 3. **Units, price levels & size/color:** base unit + larger units with barcodes, wholesale / consumer prices, and item models with size × color variants.
 4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep + commission, paid-now into a cash box, and delivery (own / shipping company).
 5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.

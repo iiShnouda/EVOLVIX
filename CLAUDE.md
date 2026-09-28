@@ -21,9 +21,15 @@ first‑class concern.
 5. **Bilingual by construction.** No user‑facing string is hard‑coded in a component; it
    comes from `@skb/shared` i18n keys. Layout must work in both LTR and RTL.
 6. **Types are shared where they can be.** The web/PWA shares TypeScript domain shapes via
-   `@skb/shared`. The C# server (`apps/api`) and Windows app (`apps/windows`) mirror the
-   same JSON contract in their own model classes. When an endpoint's shape changes, update
-   all three in lockstep.
+   `@skb/shared`, and the C# server (`apps/api`) mirrors the same JSON contract. When an
+   endpoint's shape changes, update both in lockstep.
+7. **One client for every device (decision 2026-09-28).** The web app is the single UI for
+   phone, tablet, iPad and PC. It is installed as a PWA (on Windows through Edge or Chrome:
+   own window and desktop icon), so one server deploy updates every device. This is the
+   standard for business web apps such as Odoo, Zoho Books and QuickBooks Online.
+   - The WPF client (`apps/windows`) is **paused**: keep it building, but don't add features
+     or mirror new DTOs until it is deliberately revived.
+   - Barcode scanners work as keyboards, and printing goes through the browser.
 
 ## Layout (one server, best‑fit client per device)
 
@@ -34,7 +40,7 @@ first‑class concern.
 - `apps/web` — React **PWA** (also the iPhone/iPad + website surface). `src/design/` tokens,
   `src/shell/` adaptive navigation, `src/pages/` screens, `src/lib/` api client + query
   hooks, `src/i18n/` runtime.
-- `apps/windows` — **C# / WPF** native desktop client (`SKB.Core` + `SKB.App`).
+- `apps/windows` — **C# / WPF** native desktop client (`SKB.Core` + `SKB.App`). **Paused** (rule 7).
 - `packages/shared` (`@skb/shared`) — TypeScript types, AR/EN dictionary, zod schemas,
   roles/permissions, nav model, money/locale helpers — consumed by the web app.
 
@@ -52,7 +58,7 @@ list/detail templates that render device‑appropriately.
    (`dotnet ef migrations add <Name>`).
 2. Add the controller + DTOs behind `[Authorize(Policy = Permissions.…)]`, with branch
    scoping and audit where it mutates.
-3. Add types + i18n keys in `@skb/shared` (and mirror the DTO in the Windows app's models).
+3. Add types + i18n keys in `@skb/shared`.
 4. Add the page under `apps/web/src/pages/` using the list/detail templates + a query hook.
 5. Register it in the shared navigation model so it appears in every device's shell.
 

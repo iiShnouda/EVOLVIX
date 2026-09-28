@@ -28,6 +28,11 @@ public static class DbSeeder
         var mainStore = new Warehouse { Name = "Downtown store", Code = "MAIN-1", Branch = main, IsDefault = true };
         var octoberStore = new Warehouse { Name = "October warehouse", Code = "WH2-1", Branch = wh, IsDefault = true };
         db.Warehouses.AddRange(mainStore, octoberStore);
+        // System warehouse holding goods between sending and receiving a transfer.
+        db.Warehouses.Add(new Warehouse
+        {
+            Name = "In transit", Code = "TRANSIT", Branch = main, Kind = WarehouseKind.TRANSIT,
+        });
 
         var ownerEmail = (config["Seed:OwnerEmail"] ?? "owner@skb.local").ToLowerInvariant();
         var ownerPassword = config["Seed:OwnerPassword"] ?? "ChangeMe!Owner123";

@@ -108,6 +108,44 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Transfers** (إذن تحويل) — DOMAIN.md §7 step 2
+- A transfer permit moves goods between warehouses, including across branches:
+  1. Sending takes them from the source into a system **"In transit"** warehouse (`Kind = TRANSIT`).
+  2. Receiving moves them into the destination.
+  3. Cancelling, while they're still in transit, moves them back to the source.
+  - The product total and average cost never change on a transfer; only the location does.
+  - In-transit goods show in valuation as their own row, and can't be sold from the source.
+- **Status:** `SENT → RECEIVED | CANCELLED`.
+  - The permit row is locked, so a receive and a cancel at the same moment can't both succeed.
+  - Company setting `TransfersRequireReceipt` (default on, as in the old app): when off, a transfer
+    arrives the moment it is sent.
+- **Who can act:**
+  - Sending needs `inventory:edit` on a source warehouse the user may use; the destination can be
+    any open store in any branch.
+  - Receiving needs `inventory:edit` on the destination; cancelling needs it on the source.
+  - Branch-scoped users see the permits that touch their branch.
+- **Endpoints:**
+  - `GET /api/transfers?status&warehouseId&productId&from&to`, `GET /api/transfers/{id}`
+  - `POST /api/transfers`, `POST /api/transfers/{id}/receive`, `POST /api/transfers/{id}/cancel`
+  - `GET /api/warehouses/destinations`
+  - Audited as `stock_transfer` create / receive / cancel.
+- **Item card:** both legs of a transfer appear, linked to the permit (`documentType = STOCK_TRANSFER`).
+- **Web:**
+  - `/inventory/transfers`: "In transit" and "All" tabs, a detail panel, confirm receipt, cancel.
+  - `/inventory/transfers/new`: send goods, capped at what the source holds.
+  - A "Transfers" button on Inventory, and the receipt switch in Settings → Stock.
+- **Fix: document numbers.** Numbers are now taken under a Postgres advisory lock per prefix.
+  Before this, two invoices of one type saved at the same moment could read the same last number,
+  and one failed on the unique index.
+- **Migration `StockTransfers`:** the transfer tables, `Warehouse.Kind`, the settings flag
+  (default on), and the transit warehouse for existing databases.
+- **Verified locally:**
+  - An old-version database was upgraded through all three new migrations: 58/58 warehouse checks
+    and 42/42 transfer checks passed.
+  - Covered: permissions, validation, receive and cancel, the race between them, receipt switched
+    off, no selling of goods in transit, parallel numbering, and the invariants.
+  - Screens were checked in AR and at phone width.
+
 **Warehouses** (المخازن) — DOMAIN.md §7 step 1
 - **Warehouse** belongs to a branch; each branch has exactly one default warehouse.
   - Stock is now held per warehouse in `StockBalance`.
@@ -175,7 +213,8 @@ Security-first, server-authoritative (no business data readable offline).
   ignore `CANCELLED` returns, so adding "cancel" later only needs the reversing stock/balance post.
 - Returns are always against an invoice; a "return without invoice" (unknown sale) isn't supported
   by design — it would let goods re-enter stock at a guessed cost.
-- Windows client mirrors the DTO contract but has **no invoice-builder or returns UI yet** (display only).
+- Windows WPF client is **paused** (CLAUDE.md rule 7). Its models stop at the warehouse
+  DTOs and don't include transfers.
 - The invoice screen reads per-warehouse stock from the inventory list (first 500 items). A
   catalogue larger than that needs a per-item stock lookup.
 - "Today" in valuation and the item card is the UTC day, not the Cairo day.
@@ -190,12 +229,15 @@ and warehouses shipped):
 2. **Verify inventory on the live DB** after deploy: item card for a seeded item starts with an
    opening balance and closes at its stock; valuation today = inventory total; post a small
    stocktake and see it on the item card.
-3. **Verify warehouses on the live DB** after deploy:
+3. **Verify warehouses and transfers on the live DB** after deploy:
    - `/branches` shows one store per branch holding all stock.
-   - An invoice can pick a warehouse.
-   - The item card shows stock per warehouse.
-4. **Transfers** (إذن تحويل, DOMAIN.md §7 step 2): `DRAFT → SENT → RECEIVED` between
-   warehouses, in-transit stock and transfer reports. Then units & price levels & size/color (step 3).
+   - Send a few items to the other branch.
+   - Confirm receipt as that branch's user.
+   - Check the item card and the valuation.
+4. **Units, price levels & size/color** (DOMAIN.md §7 step 3). Then step 4:
+   - invoice charges and reps
+   - delivery, shipments / waybills and cash on delivery
+   - the payment methods the owner listed (DOMAIN.md §2.5–2.6)
 5. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 6. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 7. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
@@ -203,11 +245,13 @@ and warehouses shipped):
 9. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
 10. **Phase 8 — Android** native client.
 
-**Open questions for the owner:**
+**Decisions (2026-09-28):**
+- Average cost is company-wide: the standard choice (DOMAIN.md §2.4).
+- One web/PWA client for every device; the WPF client is paused (CLAUDE.md rule 7).
+- Delivery covers pickup, own delivery, prepaid shipping, and cash on delivery with a waybill.
+  Payment methods: cash, bank transfer, InstaPay, Vodafone/Orange Cash, Egypt Post, cheques and
+  promissory notes (DOMAIN.md §2.5–2.6).
 - Multi-currency: EGP now, maybe later. Documents will store currency + rate from day one.
-- Does the shipping company collect cash on delivery?
-- Should the average cost be company-wide (current) or per branch (the old app)?
-- Should the Windows app become a thin window around the web app, so one server update covers every device?
 
 ## 8. Dev commands
 - **API:** `cd apps/api/src/SKB.Api && dotnet run` (migrates + seeds on startup).
