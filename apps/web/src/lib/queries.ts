@@ -3,6 +3,7 @@ import type {
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateSalesInvoiceInput,
+  UpdateSettingsInput,
   DashboardData,
   Paginated,
   Party,
@@ -95,6 +96,17 @@ export function useCompanySettings() {
     queryKey: ['settings'],
     queryFn: () => api.get<CompanySettings>('/settings'),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateSettingsInput) => api.put<CompanySettings>('/settings', input),
+    onSuccess: (data) => {
+      qc.setQueryData(['settings'], data);
+      void qc.invalidateQueries({ queryKey: ['settings'] });
+    },
   });
 }
 

@@ -25,7 +25,8 @@ public static class Mapper
         p.StockOnHand, p.ReorderLevel, p.IsActive);
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
-        s.CompanyName, s.Currency, s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent);
+        s.CompanyName, s.Country, s.Currency,
+        s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent);
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency);

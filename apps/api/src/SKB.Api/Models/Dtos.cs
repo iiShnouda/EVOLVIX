@@ -47,7 +47,12 @@ public record CreatePurchaseInvoiceRequest(
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0);
 
 public record CompanySettingsDto(
-    string CompanyName, string Currency, int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent);
+    string CompanyName, string Country, string Currency,
+    int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent);
+
+public record UpdateSettingsRequest(
+    string? CompanyName, string? Country, string? Currency,
+    int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent);
 
 // ---- Profitability report (تقارير الربحية) ----
 

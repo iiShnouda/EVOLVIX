@@ -228,4 +228,21 @@ export const ar: TranslationDictionary = {
   'report.invoices': 'الفواتير',
   'report.qty': 'الكمية',
   'report.noData': 'لا مبيعات في هذه الفترة',
+
+  // Settings (الإعدادات / الضبط)
+  'settings.title': 'الإعدادات',
+  'settings.company': 'المنشأة',
+  'settings.companyName': 'اسم المنشأة',
+  'settings.country': 'الدولة',
+  'settings.currency': 'العملة',
+  'settings.pricing': 'التسعير والضريبة',
+  'settings.vat': 'ضريبة القيمة المضافة %',
+  'settings.vatHint': 'تُطبّق على الفواتير الجديدة. اضبط نسبتك الخاصة.',
+  'settings.defaultMarkup': 'هامش الربح الافتراضي %',
+  'settings.minMarkup': 'الحد الأدنى للربح % (حد الأمان)',
+  'settings.minMarkupHint': 'يُمنع البيع بأقل منه، ولا يُسمح بأقل من التكلفة مطلقاً.',
+  'settings.save': 'حفظ الإعدادات',
+  'settings.saved': 'تم حفظ الإعدادات',
+  'settings.saving': 'جارٍ الحفظ…',
+  'settings.readonly': 'يمكن فقط للمالك أو المدير تغيير هذه الإعدادات.',
 };

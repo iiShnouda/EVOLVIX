@@ -193,6 +193,9 @@ public class CompanySettings
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string CompanyName { get; set; } = "SKB Wholesale";
+    /// <summary>ISO country code (e.g. "EG"). Drives suggested currency + VAT.</summary>
+    public string Country { get; set; } = "EG";
+    /// <summary>Base/reporting currency (ISO 4217, e.g. "EGP").</summary>
     public string Currency { get; set; } = "EGP";
     /// <summary>Suggested markup for a new sales line, e.g. 10 → price = cost + 10%.</summary>
     public int DefaultMarkupPercent { get; set; } = 10;

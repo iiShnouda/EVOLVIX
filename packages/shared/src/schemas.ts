@@ -80,3 +80,13 @@ export const createPurchaseInvoiceSchema = z.object({
   paidAmount: z.number().int().min(0).default(0),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
+
+export const updateSettingsSchema = z.object({
+  companyName: z.string().trim().min(1).max(200).optional(),
+  country: z.string().trim().length(2).optional(),
+  currency: z.string().trim().length(3).optional(),
+  defaultMarkupPercent: z.number().int().min(0).max(1000).optional(),
+  minMarkupPercent: z.number().int().min(0).max(1000).optional(),
+  defaultTaxPercent: z.number().int().min(0).max(100).optional(),
+});
+export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

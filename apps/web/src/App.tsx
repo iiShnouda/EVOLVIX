@@ -16,6 +16,7 @@ import { SalesPage } from './pages/SalesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
 import { ProfitabilityPage } from './pages/ProfitabilityPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
@@ -127,10 +128,7 @@ export default function App() {
               path="/branches"
               element={<PlaceholderPage titleKey="nav.branches" icon="branches" />}
             />
-            <Route
-              path="/settings"
-              element={<PlaceholderPage titleKey="nav.settings" icon="settings" />}
-            />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

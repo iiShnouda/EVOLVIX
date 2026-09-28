@@ -272,6 +272,9 @@ export interface ProfitReport {
 /** Company-wide pricing/costing defaults (Settings / الضبط). */
 export interface CompanySettings {
   companyName: string;
+  /** ISO country code (e.g. "EG"). */
+  country: string;
+  /** Base/reporting currency (ISO 4217). */
   currency: string;
   /** Suggested markup for a new sales line (e.g. 10 → price = cost + 10%). */
   defaultMarkupPercent: number;

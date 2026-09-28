@@ -227,4 +227,21 @@ export const en = {
   'report.invoices': 'Invoices',
   'report.qty': 'Qty',
   'report.noData': 'No sales in this period',
+
+  // Settings (الإعدادات / الضبط)
+  'settings.title': 'Settings',
+  'settings.company': 'Company',
+  'settings.companyName': 'Company name',
+  'settings.country': 'Country',
+  'settings.currency': 'Currency',
+  'settings.pricing': 'Pricing & tax',
+  'settings.vat': 'VAT / sales tax %',
+  'settings.vatHint': 'Applied to new invoices. Set your own rate.',
+  'settings.defaultMarkup': 'Default markup %',
+  'settings.minMarkup': 'Minimum markup % (profit floor)',
+  'settings.minMarkupHint': 'Sales are blocked below this; never below cost regardless.',
+  'settings.save': 'Save settings',
+  'settings.saved': 'Settings saved',
+  'settings.saving': 'Saving…',
+  'settings.readonly': 'Only an owner or admin can change these settings.',
 } as const;
