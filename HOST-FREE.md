@@ -24,27 +24,28 @@ card, this is by far the simplest.
 
 ---
 
-## Option 2 — Hugging Face Spaces · truly no credit card (email sign‑up)
+## Option 2 — Back4App Containers · truly no credit card (email sign‑up)
 
-Runs your container on Hugging Face's cloud. A few more steps, but no card ever.
+The remaining reputable no‑card host that runs a backend container. **Caveat:** the free tier
+is only **256 MB RAM**, which is tight for .NET — it may be slow or occasionally restart. The
+image is tuned for low memory, but treat this as best‑effort.
 
 1. **Database:** free Neon project (as above) → copy the `.NET` connection string.
-2. **GitHub read‑only token** (so HF can pull your private repo): GitHub → Settings →
-   Developer settings → **Fine‑grained tokens** → new token, **read‑only**, only the `SKB`
-   repo. Copy it.
-3. **Create the Space:** https://huggingface.co → sign up (email) → **New Space** →
-   **Docker** → **Blank** → make it **Public** (the app is still protected by login).
-4. **Add two files** to the Space (via its “Files” tab → Add file):
-   - `Dockerfile` → paste the contents of `deploy/huggingface/Dockerfile` from this repo.
-   - `README.md` → paste the contents of `deploy/huggingface/README.md`.
-5. **Add secrets** (Space → Settings → *Variables and secrets*):
-   - `GH_TOKEN` → the GitHub token from step 2 (this one must be a **secret**)
-   - `ConnectionStrings__Default` → the Neon string
+2. Sign up at https://www.back4app.com (email) → **Containers** → **Deploy a new app** →
+   connect GitHub and pick the **`SKB`** repo (authorize Back4App on that private repo).
+3. Settings:
+   - **Dockerfile path:** `apps/api/Dockerfile` · **Root/context:** `/` (repo root)
+   - **Branch:** `claude/nifty-dirac-lv9vbj` (or `main` once merged)
+4. **Environment variables:**
+   - `ConnectionStrings__Default` → the Neon string (use a small pool: append
+     `;Maximum Pool Size=5`)
    - `Security__SessionEncryptionKey` → `openssl rand -hex 32`
    - `Cookie__Secure` → `true`
    - `Seed__OwnerPassword` → a strong password
-6. The Space builds and starts automatically → open its URL (e.g.
-   `https://<you>-skb.hf.space`), sign in. (Free Spaces sleep when idle; first load wakes it.)
+5. Deploy → open the app URL Back4App gives you, sign in.
+
+> Hugging Face note: **Docker Spaces are now a paid plan** (only *Static* Spaces are free), so
+> HF can't run this server for free anymore. `deploy/huggingface/` is kept only for reference.
 
 ---
 
