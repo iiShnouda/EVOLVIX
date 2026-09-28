@@ -15,13 +15,16 @@ public sealed class PurchasesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly WarehouseService _warehouses;
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
 
-    public PurchasesController(AppDbContext db, InventoryService inventory, ReturnsService returns, AuditService audit)
+    public PurchasesController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
+        ReturnsService returns, AuditService audit)
     {
         _db = db;
         _inventory = inventory;
+        _warehouses = warehouses;
         _returns = returns;
         _audit = audit;
     }
@@ -79,7 +82,8 @@ public sealed class PurchasesController : ControllerBase
             q = q.Where(d => d.BranchId == branchId);
         }
         var doc = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.Lines)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.SourceDocument)
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -109,18 +113,27 @@ public sealed class PurchasesController : ControllerBase
 
         var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
 
-        var ids = req.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).ToList();
-        var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-
+        // Shape checks and the warehouse each line is received into.
+        var cache = new Dictionary<string, Warehouse>();
+        var lines = new List<(CreatePurchaseLineRequest Req, Guid ProductId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            if (!Guid.TryParse(line.ProductId, out var pid) || !products.TryGetValue(pid, out var product))
+            if (!Guid.TryParse(line.ProductId, out var pid))
                 return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
             if (line.Quantity <= 0)
-                return BadRequest(new { message = $"Quantity must be positive for {product.Name}.", code = "bad_qty" });
+                return BadRequest(new { message = "Quantity must be positive.", code = "bad_qty" });
             if (line.UnitCost < 0)
-                return BadRequest(new { message = $"Cost cannot be negative for {product.Name}.", code = "bad_cost" });
+                return BadRequest(new { message = "Cost cannot be negative.", code = "bad_cost" });
+            var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
+            if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+            lines.Add((line, pid, warehouse!));
         }
+
+        // Receipts move the weighted average, so the items are locked like any other stock change.
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
+        if (lines.Any(l => !products.TryGetValue(l.ProductId, out var pr) || !pr.IsActive))
+            return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
 
         var number = await DocumentNumbers.NextAsync(_db, DocumentType.PURCHASE_INVOICE);
         var doc = new SalesDocument
@@ -130,18 +143,20 @@ public sealed class PurchasesController : ControllerBase
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
         };
 
-        foreach (var line in req.Lines)
+        foreach (var (line, pid, warehouse) in lines)
         {
-            var product = products[Guid.Parse(line.ProductId)];
-            _inventory.Receive(product, line.Quantity, line.UnitCost, branchId,
+            var product = products[pid];
+            _inventory.Receive(product, warehouse, line.Quantity, line.UnitCost,
                 StockMovementType.PURCHASE_IN, doc.Id, number);
 
             var lineTotal = (long)line.Quantity * line.UnitCost;
             doc.Lines.Add(new DocumentLine
             {
+                LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = product.Name, Quantity = line.Quantity,
                 UnitPrice = line.UnitCost, Discount = 0, LineTotal = lineTotal,
                 UnitCost = line.UnitCost, LineCost = lineTotal, LineProfit = 0,
+                WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 
@@ -166,6 +181,7 @@ public sealed class PurchasesController : ControllerBase
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "purchase_invoice",
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),

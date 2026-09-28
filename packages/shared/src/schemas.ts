@@ -48,6 +48,8 @@ export const invoiceLineSchema = z.object({
   unitPrice: z.number().int().min(0),
   /** Optional flat line discount (minor units). */
   discount: z.number().int().min(0).default(0),
+  /** Warehouse the goods leave from; defaults to the invoice's warehouse. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 
@@ -60,6 +62,8 @@ export const createSalesInvoiceSchema = z.object({
   paidAmount: z.number().int().min(0).default(0),
   /** Request to sell below the configured floor (still never below cost). */
   overrideFloor: z.boolean().optional().default(false),
+  /** Default warehouse for every line; none = the user's branch default. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -68,6 +72,8 @@ export const purchaseLineSchema = z.object({
   quantity: z.number().int().positive(),
   /** Purchase cost per unit (minor units) — feeds the weighted-average cost. */
   unitCost: z.number().int().min(0),
+  /** Warehouse the goods arrive into; defaults to the invoice's warehouse. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -78,6 +84,8 @@ export const createPurchaseInvoiceSchema = z.object({
   notes: z.string().max(1000).optional(),
   dueDate: z.string().optional(),
   paidAmount: z.number().int().min(0).default(0),
+  /** Default warehouse for every line; none = the user's branch default. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -114,8 +122,26 @@ export type StocktakeLineInput = z.infer<typeof stocktakeLineSchema>;
 export const stocktakeSchema = z.object({
   lines: z.array(stocktakeLineSchema).min(1, 'Enter at least one counted quantity').max(1000),
   reason: z.string().max(500).optional(),
+  /** The warehouse being counted; none = the user's branch default. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type StocktakeInput = z.infer<typeof stocktakeSchema>;
+
+export const createWarehouseSchema = z.object({
+  branchId: z.string().uuid(),
+  name: z.string().trim().min(1).max(100),
+  /** Empty = automatic code from the branch code. */
+  code: z.string().trim().max(20).optional(),
+  isDefault: z.boolean().optional().default(false),
+});
+export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;
+
+export const updateWarehouseSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  isActive: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
+});
+export type UpdateWarehouseInput = z.infer<typeof updateWarehouseSchema>;
 
 export const updateSettingsSchema = z.object({
   companyName: z.string().trim().min(1).max(200).optional(),

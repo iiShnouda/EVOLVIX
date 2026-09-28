@@ -233,8 +233,8 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
   that move stock at weighted‑average cost, the "300 + 8%" margin discount, and profit
   per invoice/item/client, profitability reports, and sales/purchase returns — all shipped.
 - **Phase 2 — Inventory depth.** ✅ Item card, valuation at a date, stocktake/adjustment,
-  reorder‑level list (shipped 2026‑09‑28). Still to do: multi‑store stock, transfers
-  (إذن تحويل), movement reports.
+  reorder‑level list, multi‑store (warehouses per branch) (shipped 2026‑09‑28). Still to do:
+  transfers (إذن تحويل), movement reports.
 - **Phase 3 — Accounts / general ledger.** Chart of accounts, compound entries, cash
   in/out, account statement & balances, party balances tied to the ledger.
 - **Phase 4 — Notes & due payments.** أوراق قبض/دفع, portfolios (حوافظ), aging of due

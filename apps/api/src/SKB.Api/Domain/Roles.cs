@@ -25,6 +25,8 @@ public static class Permissions
     public const string InventoryEdit = "inventory:edit";
     public const string StaffView = "staff:view";
     public const string BranchesView = "branches:view";
+    /// <summary>Create, rename, deactivate warehouses and pick each branch's default warehouse.</summary>
+    public const string BranchesManage = "branches:manage";
     public const string AnalyticsView = "analytics:view";
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
@@ -36,7 +38,7 @@ public static class Permissions
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
-        PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, BranchesView,
+        PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView,
     };
 }

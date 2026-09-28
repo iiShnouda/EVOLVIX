@@ -17,10 +17,10 @@ public static class Mapper
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         d.Branch?.Name ?? "", d.Party?.Name ?? "", d.Staff?.FullName ?? "",
         d.IssueDate.ToString("o"), d.DueDate?.ToString("o"),
-        d.Lines.Select(l => new DocumentLineDto(
+        d.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineDto(
             l.Id.ToString(), l.ProductId.ToString(), l.ProductName, l.Quantity,
             l.UnitPrice, l.Discount, l.LineTotal, l.UnitCost, l.LineProfit,
-            ReturnedQuantity(returned, l.Id))).ToArray(),
+            ReturnedQuantity(returned, l.Id), l.WarehouseId?.ToString(), l.Warehouse?.Name)).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
         d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number);
@@ -33,10 +33,14 @@ public static class Mapper
         p.Id.ToString(), p.Sku, p.Name, p.Unit, p.CostPrice, p.SalePrice, p.Currency,
         p.StockOnHand, p.ReorderLevel, p.IsActive);
 
-    public static InventoryItemDto ToInventoryItem(Product p) => new(
-        p.Id.ToString(), p.Sku, p.Name, p.Unit, p.Category?.Name ?? "",
-        p.StockOnHand, p.ReorderLevel, p.CostPrice, p.SalePrice,
-        (long)p.StockOnHand * p.CostPrice, p.StockOnHand <= p.ReorderLevel);
+    /// <param name="quantity">Stock in one warehouse; null = the product's total across warehouses.</param>
+    public static InventoryItemDto ToInventoryItem(Product p, int? quantity = null)
+    {
+        var qty = quantity ?? p.StockOnHand;
+        return new(
+            p.Id.ToString(), p.Sku, p.Name, p.Unit, p.Category?.Name ?? "",
+            qty, p.ReorderLevel, p.CostPrice, p.SalePrice, (long)qty * p.CostPrice, qty <= p.ReorderLevel);
+    }
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,

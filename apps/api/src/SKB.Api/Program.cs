@@ -34,6 +34,7 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<ReturnsService>();
+builder.Services.AddScoped<WarehouseService>();
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]

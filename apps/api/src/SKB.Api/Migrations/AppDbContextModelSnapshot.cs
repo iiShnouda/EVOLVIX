@@ -165,6 +165,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("LineCost")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
                     b.Property<long>("LineProfit")
                         .HasColumnType("bigint");
 
@@ -190,6 +193,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("UnitPrice")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("WarehouseId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId");
@@ -197,6 +203,8 @@ namespace SKB.Api.Migrations
                     b.HasIndex("ProductId");
 
                     b.HasIndex("SourceLineId");
+
+                    b.HasIndex("WarehouseId");
 
                     b.ToTable("DocumentLines");
                 });
@@ -481,6 +489,27 @@ namespace SKB.Api.Migrations
                     b.ToTable("Staff");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.StockBalance", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ProductId", "WarehouseId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("StockBalances");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -521,6 +550,12 @@ namespace SKB.Api.Migrations
                     b.Property<long>("UnitCost")
                         .HasColumnType("bigint");
 
+                    b.Property<int>("WarehouseBalanceAfter")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BranchId");
@@ -529,7 +564,45 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("ProductId", "CreatedAt");
 
+                    b.HasIndex("WarehouseId", "ProductId", "CreatedAt");
+
                     b.ToTable("StockMovements");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Warehouse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("Warehouses");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
@@ -546,9 +619,16 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SKB.Api.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Document");
 
                     b.Navigation("Product");
+
+                    b.Navigation("Warehouse");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Product", b =>
@@ -618,6 +698,25 @@ namespace SKB.Api.Migrations
                     b.Navigation("Branch");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.StockBalance", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Warehouse");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
                 {
                     b.HasOne("SKB.Api.Data.Product", "Product")
@@ -626,7 +725,26 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SKB.Api.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Product");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Warehouse", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany("Warehouses")
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>
@@ -634,6 +752,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Documents");
 
                     b.Navigation("Staff");
+
+                    b.Navigation("Warehouses");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Category", b =>

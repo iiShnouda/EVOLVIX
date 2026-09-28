@@ -16,6 +16,40 @@ public class Branch
 
     public List<Staff> Staff { get; set; } = new();
     public List<SalesDocument> Documents { get; set; } = new();
+    public List<Warehouse> Warehouses { get; set; } = new();
+}
+
+/// <summary>
+/// A store room (مخزن) that physically holds stock. Belongs to one branch; a branch may have
+/// several. Exactly one active warehouse per branch is the branch's default, used when a document
+/// doesn't name one. A warehouse can only be deactivated once it holds no stock.
+/// </summary>
+public class Warehouse
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    /// <summary>Short unique code, e.g. "MAIN-1".</summary>
+    public string Code { get; set; } = "";
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Quantity of one product held in one warehouse. Always changed together with a
+/// <see cref="StockMovement"/> in the same transaction, under the product's row lock, so
+/// <c>Product.StockOnHand = Σ StockBalance.Quantity = Σ StockMovement.Quantity</c> for every product.
+/// </summary>
+public class StockBalance
+{
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public int Quantity { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class Staff
@@ -149,6 +183,8 @@ public class SalesDocument
 public class DocumentLine
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>1-based position on the document, so it always shows and prints in entry order.</summary>
+    public int LineNo { get; set; }
     public string ProductName { get; set; } = "";
     public int Quantity { get; set; }
     public long UnitPrice { get; set; }
@@ -164,6 +200,10 @@ public class DocumentLine
     /// <summary>For a return line: the invoice line it reverses (caps the returnable quantity).</summary>
     public Guid? SourceLineId { get; set; }
 
+    /// <summary>Warehouse the goods left from (sale) or arrived into (purchase). Returns reuse it.</summary>
+    public Guid? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+
     public Guid DocumentId { get; set; }
     public SalesDocument? Document { get; set; }
     public Guid ProductId { get; set; }
@@ -171,7 +211,7 @@ public class DocumentLine
 }
 
 /// <summary>
-/// One physical stock change for one product in one store. The item card, valuation and
+/// One physical stock change for one product in one warehouse. The item card, valuation and
 /// movement reports are all built from these rows. Money is minor units.
 /// </summary>
 public class StockMovement
@@ -179,14 +219,19 @@ public class StockMovement
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ProductId { get; set; }
     public Product? Product { get; set; }
+    /// <summary>Branch that owns the warehouse (kept for branch-level reporting).</summary>
     public Guid BranchId { get; set; }
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
     public StockMovementType Type { get; set; }
     /// <summary>Signed: positive into stock, negative out of stock.</summary>
     public int Quantity { get; set; }
     /// <summary>Weighted-average unit cost applied to this movement (minor units).</summary>
     public long UnitCost { get; set; }
-    /// <summary>Product stock-on-hand after this movement (running balance for the item card).</summary>
+    /// <summary>Product stock-on-hand after this movement, all warehouses (running balance for the item card).</summary>
     public int BalanceAfter { get; set; }
+    /// <summary>Stock of this product in this warehouse after the movement.</summary>
+    public int WarehouseBalanceAfter { get; set; }
     /// <summary>Product weighted-average cost after this movement (minor units).</summary>
     public long AvgCostAfter { get; set; }
     public Guid? DocumentId { get; set; }

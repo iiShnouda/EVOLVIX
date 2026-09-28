@@ -24,6 +24,11 @@ public static class DbSeeder
         var wh = new Branch { Name = "Warehouse Branch", Code = "WH2", Location = "6th of October — Industrial" };
         db.Branches.AddRange(main, wh);
 
+        // One store room per branch; each is its branch's default warehouse.
+        var mainStore = new Warehouse { Name = "Downtown store", Code = "MAIN-1", Branch = main, IsDefault = true };
+        var octoberStore = new Warehouse { Name = "October warehouse", Code = "WH2-1", Branch = wh, IsDefault = true };
+        db.Warehouses.AddRange(mainStore, octoberStore);
+
         var ownerEmail = (config["Seed:OwnerEmail"] ?? "owner@skb.local").ToLowerInvariant();
         var ownerPassword = config["Seed:OwnerPassword"] ?? "ChangeMe!Owner123";
         const string staffPassword = "ChangeMe!Staff123";
@@ -60,16 +65,26 @@ public static class DbSeeder
             DefaultMarkupPercent = 10, MinMarkupPercent = 0, DefaultTaxPercent = 0,
         });
 
-        // Opening stock movement per product, so the item card (كارت الصنف) has a starting point
-        // and stock valuation ties out from day one.
+        // Opening stock per product and warehouse, so the item card (كارت الصنف) has a starting
+        // point and stock valuation ties out from day one. Fast movers keep ~30% in the October
+        // warehouse; everything else sits in the downtown store.
         foreach (var p in products)
         {
-            db.StockMovements.Add(new StockMovement
+            var october = p.StockOnHand >= 100 ? p.StockOnHand * 3 / 10 : 0;
+            var running = 0;
+            foreach (var (store, qty) in new[] { (mainStore, p.StockOnHand - october), (octoberStore, october) })
             {
-                ProductId = p.Id, BranchId = main.Id, Type = StockMovementType.OPENING,
-                Quantity = p.StockOnHand, UnitCost = p.CostPrice,
-                BalanceAfter = p.StockOnHand, AvgCostAfter = p.CostPrice, Reference = "Opening balance",
-            });
+                if (qty == 0) continue;
+                running += qty;
+                db.StockBalances.Add(new StockBalance { Product = p, Warehouse = store, Quantity = qty });
+                db.StockMovements.Add(new StockMovement
+                {
+                    ProductId = p.Id, BranchId = store.Branch!.Id, WarehouseId = store.Id,
+                    Type = StockMovementType.OPENING, Quantity = qty, UnitCost = p.CostPrice,
+                    BalanceAfter = running, WarehouseBalanceAfter = qty, AvgCostAfter = p.CostPrice,
+                    Reference = "Opening balance",
+                });
+            }
         }
 
         var c1 = new Party { Name = "Al-Nour Supermarket", Types = { "CUSTOMER" }, Phone = "+20 122 111 2222", Balance = Money(18450), Currency = Currency };
@@ -91,7 +106,7 @@ public static class DbSeeder
                 ? $"PUR-2026-{(++purchaseSeq):D6}"
                 : $"INV-2026-{(++salesSeq):D6}";
 
-            var lineList = lines.Select(l =>
+            var lineList = lines.Select((l, index) =>
             {
                 var product = products[l.idx];
                 var unit = isPurchase ? product.CostPrice : product.SalePrice;
@@ -102,6 +117,7 @@ public static class DbSeeder
                 var lineProfit = isPurchase ? 0 : lineTotal - lineCost;
                 return new DocumentLine
                 {
+                    LineNo = index + 1, Warehouse = branch == main ? mainStore : octoberStore,
                     Product = product, ProductName = product.Name, Quantity = l.qty,
                     UnitPrice = unit, Discount = disc, LineTotal = lineTotal,
                     UnitCost = unitCost, LineCost = lineCost, LineProfit = lineProfit,

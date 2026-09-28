@@ -21,6 +21,7 @@ import { PartiesPage } from './pages/PartiesPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ItemCardPage } from './pages/ItemCardPage';
 import { StocktakePage } from './pages/StocktakePage';
+import { BranchesPage } from './pages/BranchesPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
@@ -114,12 +115,18 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
             <Route path="/sales/new" element={<InvoiceBuilderPage mode="sale" />} />
-            <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
+            <Route
+              path="/sales/invoices/:id/return"
+              element={<ReturnBuilderPage scope="sales" />}
+            />
             <Route path="/parties" element={<PartiesPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inventory/items/:id" element={<ItemCardPage />} />
             <Route path="/inventory/stocktake" element={<StocktakePage />} />
-            <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
+            <Route
+              path="/purchases"
+              element={<DocumentsPage key="purchases" scope="purchases" />}
+            />
             <Route path="/purchases/new" element={<InvoiceBuilderPage mode="purchase" />} />
             <Route
               path="/purchases/invoices/:id/return"
@@ -131,10 +138,7 @@ export default function App() {
             />
             <Route path="/analytics" element={<ProfitabilityPage />} />
             <Route path="/staff" element={<PlaceholderPage titleKey="nav.staff" icon="staff" />} />
-            <Route
-              path="/branches"
-              element={<PlaceholderPage titleKey="nav.branches" icon="branches" />}
-            />
+            <Route path="/branches" element={<BranchesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

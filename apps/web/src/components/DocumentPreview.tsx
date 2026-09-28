@@ -79,14 +79,17 @@ export function DocumentPreview({
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
             {isReturn && doc.sourceNumber && (
               <p className="tnum">
-                {t('return.against')}: <span className="font-medium text-fg">{doc.sourceNumber}</span>
+                {t('return.against')}:{' '}
+                <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
           </div>
         </div>
 
         <div className="mb-4 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
-          <p className="text-xs text-muted">{isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}</p>
+          <p className="text-xs text-muted">
+            {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
+          </p>
           <p className="font-medium">{doc.partyName}</p>
         </div>
 
@@ -108,6 +111,9 @@ export function DocumentPreview({
                 <tr key={l.id}>
                   <td className="p-2">
                     {l.productName}
+                    {l.warehouseName && (
+                      <span className="block text-xs text-muted">{l.warehouseName}</span>
+                    )}
                     {l.returnedQuantity > 0 && (
                       <span className="block text-xs text-warning tnum">
                         {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}

@@ -318,10 +318,10 @@ Old values are from the company's settings file. "Default" is what SKB starts wi
 
 Each step is a working slice: API, web, tests and docs together.
 
-1. **Warehouses:**
+1. ✅ **Warehouses** (shipped 2026-09-28):
    - `Warehouse` under `Branch`, and `StockBalance` per warehouse.
    - Movements carry the warehouse, and invoice lines pick a warehouse.
-   - Migration: all current stock goes to one "Main warehouse" per branch.
+   - Migration: every branch gets a default warehouse; all current stock goes to the oldest branch's one.
 2. **Transfers:** `DRAFT → SENT → RECEIVED`, in-transit stock, and the transfer reports.
 3. **Units, price levels & size/color:** base unit + larger units with barcodes, wholesale / consumer prices, and item models with size × color variants.
 4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep + commission, paid-now into a cash box, and delivery (own / shipping company).

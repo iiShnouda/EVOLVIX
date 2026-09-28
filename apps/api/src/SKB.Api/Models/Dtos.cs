@@ -24,9 +24,10 @@ public record SalesSummaryDto(
     string? SourceNumber);
 
 /// <param name="ReturnedQuantity">For an invoice line: units already returned against it (0 on a return).</param>
+/// <param name="WarehouseName">Warehouse the goods left from / arrived into.</param>
 public record DocumentLineDto(
     string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal,
-    long UnitCost, long LineProfit, int ReturnedQuantity);
+    long UnitCost, long LineProfit, int ReturnedQuantity, string? WarehouseId, string? WarehouseName);
 
 /// <param name="SourceDocumentId">For a return: the invoice it reverses.</param>
 public record SalesDetailDto(
@@ -38,18 +39,23 @@ public record SalesDetailDto(
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
-public record CreateInvoiceLineRequest(string ProductId, int Quantity, long UnitPrice, long Discount = 0);
+// Warehouse: a line may name its own; otherwise the document's WarehouseId; otherwise the
+// default warehouse of the user's branch.
+
+public record CreateInvoiceLineRequest(
+    string ProductId, int Quantity, long UnitPrice, long Discount = 0, string? WarehouseId = null);
 
 public record CreateSalesInvoiceRequest(
     string PartyId, CreateInvoiceLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null,
-    long PaidAmount = 0, bool OverrideFloor = false);
+    long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null);
 
-public record CreatePurchaseLineRequest(string ProductId, int Quantity, long UnitCost);
+public record CreatePurchaseLineRequest(string ProductId, int Quantity, long UnitCost, string? WarehouseId = null);
 
 public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
-    int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0);
+    int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
+    string? WarehouseId = null);
 
 /// <summary>One invoice line being returned. Price and cost always come from the original line.</summary>
 public record CreateReturnLineRequest(string LineId, int Quantity);
@@ -90,30 +96,57 @@ public record InventoryListDto(
     InventoryItemDto[] Items, long TotalValue, int TotalItems, int LowStockCount, string Currency);
 
 /// <param name="DocumentType">Type of the source document (for linking), if the movement came from one.</param>
+/// <param name="Balance">Running balance after the movement: in its warehouse when the card is
+/// filtered to one warehouse, otherwise across all warehouses.</param>
 public record StockMovementDto(
-    string Id, string Date, string Type, string BranchName, string? Reference,
-    string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
+    string Id, string Date, string Type, string BranchName, string WarehouseId, string WarehouseName,
+    string? Reference, string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
     long UnitCost, long AvgCostAfter, string? Note);
 
+/// <summary>Stock of one item (or of everything) held in one warehouse.</summary>
+public record WarehouseStockDto(string WarehouseId, string Name, string BranchName, int Quantity, long Value);
+
 /// <summary>Item card (كارت الصنف): every movement of one item in a period with its running balance.</summary>
+/// <remarks><c>WarehouseId</c> is set when the card is limited to one warehouse; <c>Stock</c> is
+/// today's quantity per warehouse.</remarks>
 public record ItemCardDto(
-    InventoryItemDto Item, string From, string To,
+    InventoryItemDto Item, string From, string To, string? WarehouseId,
     int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
-    StockMovementDto[] Movements, string Currency);
+    StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency);
 
 public record ValuationRowDto(string Key, string Label, int Quantity, long Value);
 
 /// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>
+/// <remarks>By category, item and warehouse. <c>WarehouseId</c> is set when limited to one warehouse.</remarks>
 public record ValuationDto(
-    string AsOf, string Currency, int Quantity, long Value, ValuationRowDto[] Categories, ValuationRowDto[] Items);
+    string AsOf, string Currency, string? WarehouseId, int Quantity, long Value,
+    ValuationRowDto[] Categories, ValuationRowDto[] Items, ValuationRowDto[] Warehouses);
 
 public record StocktakeLineRequest(string ProductId, int CountedQuantity);
 
 /// <summary>Stocktake (الجرد): the counted quantity per item; only lines that differ are posted.</summary>
-public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null);
+/// <remarks>Counts one warehouse; none given means the default warehouse of the user's branch.</remarks>
+public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null, string? WarehouseId = null);
 
 /// <param name="ValueChange">Signed total value change (gains − shrinkage), minor units.</param>
-public record StocktakeResultDto(string Reference, int ItemsChanged, long ValueChange, StockMovementDto[] Movements);
+public record StocktakeResultDto(
+    string Reference, string WarehouseName, int ItemsChanged, long ValueChange, StockMovementDto[] Movements);
+
+// ---- Branches & warehouses ----
+
+/// <param name="ItemCount">Items with stock in this warehouse.</param>
+/// <param name="Value">Quantity × current average cost, minor units.</param>
+public record WarehouseDto(
+    string Id, string Code, string Name, string BranchId, string BranchName,
+    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value);
+
+public record BranchDto(
+    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses);
+
+public record CreateWarehouseRequest(string BranchId, string Name, string? Code = null, bool IsDefault = false);
+
+/// <summary>Any field left null is unchanged.</summary>
+public record UpdateWarehouseRequest(string? Name = null, bool? IsActive = null, bool? IsDefault = null);
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,

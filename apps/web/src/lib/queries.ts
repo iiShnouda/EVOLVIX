@@ -5,6 +5,10 @@ import type {
   CreateReturnInput,
   CreateSalesInvoiceInput,
   UpdateSettingsInput,
+  BranchWithWarehouses,
+  CreateWarehouseInput,
+  UpdateWarehouseInput,
+  Warehouse,
   DashboardData,
   InventoryList,
   ItemCard,
@@ -153,31 +157,72 @@ export function useCreatePurchaseInvoice() {
 // Inventory depth (Phase 2)
 // ---------------------------------------------------------------------------
 
-export function useInventory(params: { search?: string; lowOnly?: boolean }) {
+/** Stock list — across all warehouses, or in one when `warehouseId` is set. */
+export function useInventory(params: { search?: string; lowOnly?: boolean; warehouseId?: string }) {
   const query = new URLSearchParams();
   if (params.search) query.set('search', params.search);
   if (params.lowOnly) query.set('lowOnly', 'true');
+  if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   return useQuery({
     queryKey: ['inventory', 'items', params],
     queryFn: () => api.get<InventoryList>(`/inventory/items?${query}`),
   });
 }
 
-/** Item card (كارت الصنف) for one item over [from, to] (ISO dates). */
-export function useItemCard(id: string, from: string, to: string) {
+/** Item card (كارت الصنف) for one item over [from, to] (ISO dates), optionally one warehouse. */
+export function useItemCard(id: string, from: string, to: string, warehouseId?: string) {
   const query = new URLSearchParams({ from, to });
+  if (warehouseId) query.set('warehouseId', warehouseId);
   return useQuery({
-    queryKey: ['inventory', 'card', id, from, to],
+    queryKey: ['inventory', 'card', id, from, to, warehouseId ?? ''],
     queryFn: () => api.get<ItemCard>(`/inventory/items/${id}/card?${query}`),
     enabled: !!id,
   });
 }
 
-/** Stock valuation (تقييم المخزن) at the end of `asOf` (ISO date). */
-export function useValuation(asOf: string) {
+/** Stock valuation (تقييم المخزن) at the end of `asOf` (ISO date), optionally one warehouse. */
+export function useValuation(asOf: string, warehouseId?: string) {
+  const query = new URLSearchParams({ asOf });
+  if (warehouseId) query.set('warehouseId', warehouseId);
   return useQuery({
-    queryKey: ['inventory', 'valuation', asOf],
-    queryFn: () => api.get<Valuation>(`/inventory/valuation?asOf=${encodeURIComponent(asOf)}`),
+    queryKey: ['inventory', 'valuation', asOf, warehouseId ?? ''],
+    queryFn: () => api.get<Valuation>(`/inventory/valuation?${query}`),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Branches & warehouses
+// ---------------------------------------------------------------------------
+
+/** Warehouses the user may use (the server scopes them to the user's branch where needed). */
+export function useWarehouses(activeOnly = false) {
+  return useQuery({
+    queryKey: ['inventory', 'warehouses', activeOnly],
+    queryFn: () => api.get<Warehouse[]>(`/warehouses${activeOnly ? '?activeOnly=true' : ''}`),
+  });
+}
+
+export function useBranches() {
+  return useQuery({
+    queryKey: ['inventory', 'branches'],
+    queryFn: () => api.get<BranchWithWarehouses[]>('/branches'),
+  });
+}
+
+export function useCreateWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateWarehouseInput) => api.post<Warehouse>('/warehouses', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
+  });
+}
+
+export function useUpdateWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateWarehouseInput }) =>
+      api.put<Warehouse>(`/warehouses/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
   });
 }
 

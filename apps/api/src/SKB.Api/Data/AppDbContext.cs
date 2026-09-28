@@ -16,6 +16,8 @@ public class AppDbContext : DbContext
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<StockBalance> StockBalances => Set<StockBalance>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -65,6 +67,28 @@ public class AppDbContext : DbContext
         b.Entity<StockMovement>()
             .HasOne(m => m.Product).WithMany()
             .HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Cascade);
+
+        // Warehouses (مخازن) and per-warehouse stock. Restrict everywhere: a warehouse with
+        // history can be deactivated, never deleted.
+        b.Entity<Warehouse>().HasIndex(w => w.Code).IsUnique();
+        b.Entity<Warehouse>()
+            .HasOne(w => w.Branch).WithMany(br => br.Warehouses)
+            .HasForeignKey(w => w.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockBalance>().HasKey(x => new { x.ProductId, x.WarehouseId });
+        b.Entity<StockBalance>().HasIndex(x => x.WarehouseId);
+        b.Entity<StockBalance>()
+            .HasOne(x => x.Product).WithMany()
+            .HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<StockBalance>()
+            .HasOne(x => x.Warehouse).WithMany()
+            .HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<StockMovement>().HasIndex(m => new { m.WarehouseId, m.ProductId, m.CreatedAt });
+        b.Entity<StockMovement>()
+            .HasOne(m => m.Warehouse).WithMany()
+            .HasForeignKey(m => m.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DocumentLine>()
+            .HasOne(l => l.Warehouse).WithMany()
+            .HasForeignKey(l => l.WarehouseId).OnDelete(DeleteBehavior.Restrict);
 
         base.OnModelCreating(b);
     }

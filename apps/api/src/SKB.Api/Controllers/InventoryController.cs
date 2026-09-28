@@ -11,9 +11,10 @@ namespace SKB.Api.Controllers;
 
 /// <summary>
 /// Inventory depth (Phase 2): stock list with value + reorder status, the item card (كارت الصنف),
-/// stock valuation at a date (تقييم المخزن) and stocktake adjustments (الجرد والتسويات).
-/// Everything is read from the products table and the <see cref="StockMovement"/> ledger — no
-/// stored report numbers — so it always ties to what the invoices actually did.
+/// stock valuation at a date (تقييم المخزن) and stocktake adjustments (الجرد والتسويات) — each for
+/// the whole company or one warehouse. Everything is read from the products table, the per-warehouse
+/// balances and the <see cref="StockMovement"/> ledger — no stored report numbers — so it always
+/// ties to what the documents actually did.
 /// </summary>
 [ApiController]
 [Route("api/inventory")]
@@ -22,51 +23,74 @@ public sealed class InventoryController : ControllerBase
 {
     private const int MaxStocktakeLines = 1000;
     private const int MaxCardRows = 2000;
+    private const int MaxListRows = 500;
 
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly WarehouseService _warehouses;
     private readonly AuditService _audit;
 
-    public InventoryController(AppDbContext db, InventoryService inventory, AuditService audit)
+    public InventoryController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
+        AuditService audit)
     {
         _db = db;
         _inventory = inventory;
+        _warehouses = warehouses;
         _audit = audit;
     }
 
-    /// <summary>Active items with stock, average cost, value and reorder status. Totals ignore the filter.</summary>
+    /// <summary>
+    /// Active items with stock, average cost, value and reorder status — across all warehouses, or
+    /// in one when <paramref name="warehouseId"/> is given. Totals cover that scope and ignore the
+    /// search / low-stock filter.
+    /// </summary>
     [HttpGet("items")]
     public async Task<ActionResult<InventoryListDto>> Items(
-        [FromQuery] string? search = null, [FromQuery] bool lowOnly = false)
+        [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null)
     {
-        var active = _db.Products.AsNoTracking().Where(p => p.IsActive);
-        var totalValue = await active.SumAsync(p => (long?)((long)p.StockOnHand * p.CostPrice)) ?? 0;
-        var totalItems = await active.CountAsync();
-        var lowCount = await active.CountAsync(p => p.StockOnHand <= p.ReorderLevel);
+        var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
+        if (notFound is not null) return notFound;
 
-        var q = active;
-        if (lowOnly) q = q.Where(p => p.StockOnHand <= p.ReorderLevel);
+        var products = await _db.Products.AsNoTracking().Where(p => p.IsActive)
+            .Include(p => p.Category).OrderBy(p => p.Name).ToListAsync();
+        var inWarehouse = wid is Guid w
+            ? await _db.StockBalances.AsNoTracking().Where(b => b.WarehouseId == w)
+                .ToDictionaryAsync(b => b.ProductId, b => b.Quantity)
+            : null;
+
+        var all = products
+            .Select(p => Mapper.ToInventoryItem(p, inWarehouse is null ? null : inWarehouse.GetValueOrDefault(p.Id)))
+            .ToList();
+
+        IEnumerable<InventoryItemDto> rows = all;
+        if (lowOnly) rows = rows.Where(i => i.IsLow);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.ToLower();
-            q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
-                || (p.Barcode != null && p.Barcode.ToLower().Contains(s)));
+            var s = search.Trim().ToLowerInvariant();
+            var barcodes = products.Where(p => p.Barcode != null && p.Barcode.ToLowerInvariant().Contains(s))
+                .Select(p => p.Id.ToString()).ToHashSet();
+            rows = rows.Where(i => i.Name.ToLowerInvariant().Contains(s) || i.Sku.ToLowerInvariant().Contains(s)
+                || barcodes.Contains(i.Id));
         }
-        var rows = await q.Include(p => p.Category).OrderBy(p => p.Name).Take(500).ToListAsync();
 
         return Ok(new InventoryListDto(
-            rows.Select(Mapper.ToInventoryItem).ToArray(), totalValue, totalItems, lowCount, await CurrencyAsync()));
+            rows.Take(MaxListRows).ToArray(), all.Sum(i => i.StockValue), all.Count, all.Count(i => i.IsLow),
+            await CurrencyAsync()));
     }
 
     /// <summary>
     /// Item card (كارت الصنف): opening balance before <paramref name="from"/>, every movement in the
-    /// period with its running balance, and the closing balance. Defaults to the last 30 days.
+    /// period with its running balance, and the closing balance — for all warehouses or one.
+    /// Defaults to the last 30 days. Values use the company average cost at each point in time.
     /// </summary>
     [HttpGet("items/{id:guid}/card")]
-    public async Task<ActionResult<ItemCardDto>> Card(Guid id, [FromQuery] string? from = null, [FromQuery] string? to = null)
+    public async Task<ActionResult<ItemCardDto>> Card(Guid id,
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? warehouseId = null)
     {
         var product = await _db.Products.AsNoTracking().Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
         if (product is null) return NotFound(new { message = "Item not found", code = "not_found" });
+        var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
+        if (notFound is not null) return notFound;
 
         var today = DateTime.UtcNow.Date;
         var fromDate = Utc((ParseDate(from) ?? today.AddDays(-29)).Date);
@@ -74,95 +98,130 @@ public sealed class InventoryController : ControllerBase
         if (toDate < fromDate) (fromDate, toDate) = (toDate, fromDate);
         var toExclusive = toDate.AddDays(1);
 
-        var before = await _db.StockMovements.AsNoTracking()
-            .Where(m => m.ProductId == id && m.CreatedAt < fromDate)
-            .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new { m.BalanceAfter, m.AvgCostAfter })
-            .FirstOrDefaultAsync();
-        var opening = before?.BalanceAfter ?? 0;
-        var openingAvg = before?.AvgCostAfter ?? 0;
+        var ofItem = _db.StockMovements.AsNoTracking().Where(m => m.ProductId == id);
+        var inScope = wid is Guid w ? ofItem.Where(m => m.WarehouseId == w) : ofItem;
 
-        var moves = await _db.StockMovements.AsNoTracking()
-            .Where(m => m.ProductId == id && m.CreatedAt >= fromDate && m.CreatedAt < toExclusive)
+        var before = await inScope.Where(m => m.CreatedAt < fromDate)
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => new { m.BalanceAfter, m.WarehouseBalanceAfter })
+            .FirstOrDefaultAsync();
+        var opening = before is null ? 0 : wid is null ? before.BalanceAfter : before.WarehouseBalanceAfter;
+
+        var moves = await inScope.Where(m => m.CreatedAt >= fromDate && m.CreatedAt < toExclusive)
             .OrderBy(m => m.CreatedAt)
             .Take(MaxCardRows)
             .ToListAsync();
+        var closing = moves.Count == 0 ? opening
+            : wid is null ? moves[^1].BalanceAfter : moves[^1].WarehouseBalanceAfter;
 
-        var rows = await ToMovementDtosAsync(moves);
-        var last = moves.LastOrDefault();
-        var closing = last?.BalanceAfter ?? opening;
-        var closingAvg = last?.AvgCostAfter ?? openingAvg;
+        // The average is company-wide, so it comes from the item's last movement in any warehouse.
+        async Task<long> AvgBefore(DateTime at) =>
+            await ofItem.Where(m => m.CreatedAt < at).OrderByDescending(m => m.CreatedAt)
+                .Select(m => m.AvgCostAfter).FirstOrDefaultAsync();
+
+        var stock = await _db.StockBalances.AsNoTracking()
+            .Where(b => b.ProductId == id && b.Quantity != 0)
+            .Select(b => new { b.WarehouseId, b.Warehouse!.Name, Branch = b.Warehouse.Branch!.Name, b.Quantity })
+            .OrderBy(b => b.Name)
+            .ToListAsync();
 
         return Ok(new ItemCardDto(
             Mapper.ToInventoryItem(product), fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"),
-            opening, (long)opening * openingAvg,
+            wid?.ToString(),
+            opening, (long)opening * await AvgBefore(fromDate),
             moves.Where(m => m.Quantity > 0).Sum(m => m.Quantity),
             moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
-            closing, (long)closing * closingAvg, rows, await CurrencyAsync()));
+            closing, (long)closing * await AvgBefore(toExclusive),
+            await ToMovementDtosAsync(moves, perWarehouse: wid is not null),
+            stock.Select(s => new WarehouseStockDto(s.WarehouseId.ToString(), s.Name, s.Branch, s.Quantity,
+                (long)s.Quantity * product.CostPrice)).ToArray(),
+            await CurrencyAsync()));
     }
 
     /// <summary>
     /// Stock valuation (تقييم المخزن) at the end of <paramref name="asOf"/> (default today):
-    /// quantity × weighted-average cost per item, grouped by category. For a past date it replays
-    /// the movement ledger (each item's last balance + average cost on or before that day).
+    /// quantity × weighted-average cost, by category, item and warehouse. For a past date it replays
+    /// the ledger: each item's quantity per warehouse from its last movement there on or before that
+    /// day, valued at the company average from the item's last movement anywhere.
     /// </summary>
     [HttpGet("valuation")]
-    public async Task<ActionResult<ValuationDto>> Valuation([FromQuery] string? asOf = null)
+    public async Task<ActionResult<ValuationDto>> Valuation(
+        [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null)
     {
+        var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
+        if (notFound is not null) return notFound;
+
         var today = DateTime.UtcNow.Date;
         var date = Utc((ParseDate(asOf) ?? today).Date);
-        var products = await _db.Products.AsNoTracking().Include(p => p.Category).ToListAsync();
+        var products = await _db.Products.AsNoTracking().Include(p => p.Category).ToDictionaryAsync(p => p.Id);
+        var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
 
-        Dictionary<Guid, (int Qty, long Avg)> state;
+        // (product, warehouse) → quantity, and product → average cost, at the end of the day.
+        List<(Guid Product, Guid Warehouse, int Qty)> held;
+        Dictionary<Guid, long> avg;
         if (date >= today)
         {
-            state = products.Where(p => p.IsActive).ToDictionary(p => p.Id, p => (p.StockOnHand, p.CostPrice));
+            var balances = await _db.StockBalances.AsNoTracking().Where(b => b.Quantity != 0).ToListAsync();
+            held = balances.Where(b => products.TryGetValue(b.ProductId, out var p) && p.IsActive)
+                .Select(b => (b.ProductId, b.WarehouseId, b.Quantity)).ToList();
+            avg = products.ToDictionary(kv => kv.Key, kv => kv.Value.CostPrice);
         }
         else
         {
             var end = date.AddDays(1);
-            var latest = _db.StockMovements.Where(m => m.CreatedAt < end)
-                .GroupBy(m => m.ProductId)
-                .Select(g => new { ProductId = g.Key, At = g.Max(m => m.CreatedAt) });
-            var rows = await _db.StockMovements.AsNoTracking()
-                .Join(latest, m => new { m.ProductId, At = m.CreatedAt }, l => new { l.ProductId, l.At },
-                    (m, l) => new { m.ProductId, m.BalanceAfter, m.AvgCostAfter })
+            var upTo = _db.StockMovements.AsNoTracking().Where(m => m.CreatedAt < end);
+
+            var lastPerPlace = upTo.GroupBy(m => new { m.ProductId, m.WarehouseId })
+                .Select(g => new { g.Key.ProductId, g.Key.WarehouseId, At = g.Max(m => m.CreatedAt) });
+            var places = await upTo
+                .Join(lastPerPlace, m => new { m.ProductId, m.WarehouseId, At = m.CreatedAt },
+                    l => new { l.ProductId, l.WarehouseId, l.At },
+                    (m, l) => new { m.ProductId, m.WarehouseId, m.WarehouseBalanceAfter })
                 .ToListAsync();
-            state = rows.GroupBy(r => r.ProductId)
-                .ToDictionary(g => g.Key, g => (g.First().BalanceAfter, g.First().AvgCostAfter));
+            held = places.GroupBy(r => (r.ProductId, r.WarehouseId))
+                .Select(g => (g.Key.ProductId, g.Key.WarehouseId, g.First().WarehouseBalanceAfter))
+                .Where(r => r.WarehouseBalanceAfter != 0 && products.ContainsKey(r.ProductId))
+                .ToList();
+
+            var lastPerItem = upTo.GroupBy(m => m.ProductId)
+                .Select(g => new { ProductId = g.Key, At = g.Max(m => m.CreatedAt) });
+            var costs = await upTo
+                .Join(lastPerItem, m => new { m.ProductId, At = m.CreatedAt }, l => new { l.ProductId, l.At },
+                    (m, l) => new { m.ProductId, m.AvgCostAfter })
+                .ToListAsync();
+            avg = costs.GroupBy(c => c.ProductId).ToDictionary(g => g.Key, g => g.First().AvgCostAfter);
         }
 
-        var byId = products.ToDictionary(p => p.Id);
-        var items = state
-            .Where(kv => kv.Value.Qty != 0 && byId.ContainsKey(kv.Key))
-            .Select(kv => new
-            {
-                Product = byId[kv.Key],
-                kv.Value.Qty,
-                Value = (long)kv.Value.Qty * kv.Value.Avg,
-            })
-            .ToList();
+        if (wid is Guid only) held = held.Where(h => h.Warehouse == only).ToList();
+        var lines = held.Select(h => new
+        {
+            h.Product, h.Warehouse, h.Qty,
+            Value = (long)h.Qty * avg.GetValueOrDefault(h.Product),
+        }).ToList();
 
-        var categories = items
-            .GroupBy(i => i.Product.Category?.Name ?? "")
-            .Select(g => new ValuationRowDto(g.Key, g.Key, g.Sum(i => i.Qty), g.Sum(i => i.Value)))
-            .OrderByDescending(r => r.Value)
-            .ToArray();
-        var itemRows = items
-            .OrderByDescending(i => i.Value)
-            .Select(i => new ValuationRowDto(i.Product.Id.ToString(), i.Product.Name, i.Qty, i.Value))
-            .ToArray();
+        var itemRows = lines.GroupBy(l => l.Product)
+            .Select(g => new ValuationRowDto(g.Key.ToString(), products[g.Key].Name, g.Sum(l => l.Qty), g.Sum(l => l.Value)))
+            .Where(r => r.Quantity != 0)
+            .OrderByDescending(r => r.Value).ToArray();
+        var categoryRows = lines.GroupBy(l => products[l.Product].Category?.Name ?? "")
+            .Select(g => new ValuationRowDto(g.Key, g.Key, g.Sum(l => l.Qty), g.Sum(l => l.Value)))
+            .OrderByDescending(r => r.Value).ToArray();
+        var warehouseRows = lines.GroupBy(l => l.Warehouse)
+            .Select(g => new ValuationRowDto(g.Key.ToString(), warehouses.GetValueOrDefault(g.Key, ""),
+                g.Sum(l => l.Qty), g.Sum(l => l.Value)))
+            .OrderByDescending(r => r.Value).ToArray();
 
         return Ok(new ValuationDto(
-            date.ToString("yyyy-MM-dd"), await CurrencyAsync(),
-            items.Sum(i => i.Qty), items.Sum(i => i.Value), categories, itemRows));
+            date.ToString("yyyy-MM-dd"), await CurrencyAsync(), wid?.ToString(),
+            lines.Sum(l => l.Qty), lines.Sum(l => l.Value), categoryRows, itemRows, warehouseRows));
     }
 
     /// <summary>
-    /// Stocktake (الجرد): post the counted quantity for each item. Only items whose count differs
-    /// from the books move; gains and shrinkage are valued at the current weighted-average cost.
-    /// All lines share one ADJ- reference and commit together. The item rows are locked while
-    /// posting so a sale can't slip in between reading the book quantity and writing the difference.
+    /// Stocktake (الجرد) of one warehouse: post the counted quantity for each item. Only items whose
+    /// count differs from that warehouse's books move; gains and shrinkage are valued at the current
+    /// weighted-average cost. All lines share one ADJ- reference and commit together. The items are
+    /// locked while posting so a sale can't slip in between reading the book quantity and writing
+    /// the difference.
     /// </summary>
     [HttpPost("stocktake")]
     [Authorize(Policy = Permissions.InventoryEdit)]
@@ -184,16 +243,15 @@ public sealed class InventoryController : ControllerBase
                 return BadRequest(new { message = "An item is listed twice.", code = "duplicate_line" });
         }
 
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-        var note = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim()[..Math.Min(500, req.Reason.Trim().Length)];
-        var ids = counted.Keys.ToArray();
+        var (warehouse, whError) = await _warehouses.ResolveAsync(User, req.WarehouseId);
+        if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+
+        var reason = req.Reason?.Trim();
+        var note = string.IsNullOrEmpty(reason) ? null : reason[..Math.Min(500, reason.Length)];
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM \"Products\" WHERE \"Id\" = ANY({ids}) FOR UPDATE");
-
-        var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        if (products.Count != ids.Length)
+        var products = await _inventory.LockProductsAsync(counted.Keys);
+        if (products.Count != counted.Count)
             return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
 
         var reference = await DocumentNumbers.NextAdjustmentAsync(_db);
@@ -201,10 +259,9 @@ public sealed class InventoryController : ControllerBase
         var changed = 0;
         foreach (var (pid, qty) in counted)
         {
-            var product = products[pid];
-            var delta = qty - product.StockOnHand;
+            var delta = qty - _inventory.Available(pid, warehouse!.Id);
             if (delta == 0) continue;
-            valueChange += _inventory.Adjust(product, delta, branchId, reference, note);
+            valueChange += _inventory.Adjust(products[pid], warehouse, delta, reference, note);
             changed++;
         }
         if (changed == 0)
@@ -214,29 +271,49 @@ public sealed class InventoryController : ControllerBase
         await tx.CommitAsync();
 
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "stocktake", "stock_adjustment",
-            branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            warehouse!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), reference);
 
         var posted = await _db.StockMovements.AsNoTracking()
             .Where(m => m.Reference == reference).OrderBy(m => m.CreatedAt).ToListAsync();
-        return Ok(new StocktakeResultDto(reference, changed, valueChange, await ToMovementDtosAsync(posted)));
+        return Ok(new StocktakeResultDto(reference, warehouse.Name, changed, valueChange,
+            await ToMovementDtosAsync(posted, perWarehouse: true)));
     }
 
-    private async Task<StockMovementDto[]> ToMovementDtosAsync(List<StockMovement> moves)
+    /// <summary>
+    /// Parse an optional warehouse filter. Unknown ids, and warehouses of other branches for
+    /// branch-scoped users, are 404 — the same answer, so ids can't be probed.
+    /// </summary>
+    private async Task<(Guid? Id, ActionResult? NotFound)> VisibleWarehouseAsync(string? warehouseId)
     {
-        var branchIds = moves.Select(m => m.BranchId).Distinct().ToList();
-        var branches = await _db.Branches.AsNoTracking().Where(b => branchIds.Contains(b.Id))
-            .ToDictionaryAsync(b => b.Id, b => b.Name);
+        if (string.IsNullOrWhiteSpace(warehouseId)) return (null, null);
+        if (Guid.TryParse(warehouseId, out var id) && await _warehouses.Visible(User).AnyAsync(w => w.Id == id))
+            return (id, null);
+        return (null, NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" }));
+    }
+
+    private async Task<StockMovementDto[]> ToMovementDtosAsync(List<StockMovement> moves, bool perWarehouse)
+    {
+        var warehouseIds = moves.Select(m => m.WarehouseId).Distinct().ToList();
+        var warehouses = await _db.Warehouses.AsNoTracking().Where(w => warehouseIds.Contains(w.Id))
+            .Select(w => new { w.Id, w.Name, Branch = w.Branch!.Name })
+            .ToDictionaryAsync(w => w.Id);
         var docIds = moves.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
         var docTypes = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
             .ToDictionaryAsync(d => d.Id, d => d.Type);
 
-        return moves.Select(m => new StockMovementDto(
-            m.Id.ToString(), m.CreatedAt.ToString("o"), m.Type.ToString(),
-            branches.GetValueOrDefault(m.BranchId, ""), m.Reference, m.DocumentId?.ToString(),
-            m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t.ToString() : null,
-            Math.Max(0, m.Quantity), Math.Max(0, -m.Quantity), m.BalanceAfter,
-            m.UnitCost, m.AvgCostAfter, m.Note)).ToArray();
+        return moves.Select(m =>
+        {
+            var wh = warehouses.GetValueOrDefault(m.WarehouseId);
+            return new StockMovementDto(
+                m.Id.ToString(), m.CreatedAt.ToString("o"), m.Type.ToString(),
+                wh?.Branch ?? "", m.WarehouseId.ToString(), wh?.Name ?? "",
+                m.Reference, m.DocumentId?.ToString(),
+                m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t.ToString() : null,
+                Math.Max(0, m.Quantity), Math.Max(0, -m.Quantity),
+                perWarehouse ? m.WarehouseBalanceAfter : m.BalanceAfter,
+                m.UnitCost, m.AvgCostAfter, m.Note);
+        }).ToArray();
     }
 
     private async Task<string> CurrencyAsync() =>

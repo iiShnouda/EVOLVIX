@@ -210,6 +210,9 @@ export interface DocumentLine {
   lineProfit: number;
   /** On an invoice line: units already returned against it (0 on a return document). */
   returnedQuantity: number;
+  /** Warehouse the goods left from (sale) or arrived into (purchase). */
+  warehouseId?: string | null;
+  warehouseName?: string | null;
 }
 
 export interface SalesDocument {
@@ -362,13 +365,15 @@ export interface StockMovement {
   date: string;
   type: StockMovementType;
   branchName: string;
+  warehouseId: string;
+  warehouseName: string;
   reference?: string | null;
   documentId?: string | null;
   /** Type of the source document, for linking to it. */
   documentType?: DocumentType | null;
   quantityIn: number;
   quantityOut: number;
-  /** Running stock balance after this movement. */
+  /** Running balance after this movement: in its warehouse when the card is filtered to one, else in total. */
   balance: number;
   unitCost: number;
   avgCostAfter: number;
@@ -380,6 +385,8 @@ export interface ItemCard {
   item: InventoryItem;
   from: string;
   to: string;
+  /** Set when the card is limited to one warehouse. */
+  warehouseId?: string | null;
   openingBalance: number;
   openingValue: number;
   totalIn: number;
@@ -387,7 +394,19 @@ export interface ItemCard {
   closingBalance: number;
   closingValue: number;
   movements: StockMovement[];
+  /** Today's quantity of the item in each warehouse that holds it. */
+  stock: WarehouseStock[];
   currency: string;
+}
+
+/** Stock of one item held in one warehouse. */
+export interface WarehouseStock {
+  warehouseId: string;
+  name: string;
+  branchName: string;
+  quantity: number;
+  /** quantity × current average cost, minor units. */
+  value: number;
 }
 
 export interface ValuationRow {
@@ -401,19 +420,53 @@ export interface ValuationRow {
 export interface Valuation {
   asOf: string;
   currency: string;
+  /** Set when the valuation is limited to one warehouse. */
+  warehouseId?: string | null;
   quantity: number;
   value: number;
   categories: ValuationRow[];
   items: ValuationRow[];
+  warehouses: ValuationRow[];
 }
 
 export interface StocktakeResult {
   /** ADJ- reference shared by every movement the stocktake posted. */
   reference: string;
+  /** The warehouse that was counted. */
+  warehouseName: string;
   itemsChanged: number;
   /** Signed value change (gains − shrinkage), minor units. */
   valueChange: number;
   movements: StockMovement[];
+}
+
+// ---------------------------------------------------------------------------
+// Branches & warehouses (الفروع والمخازن)
+// ---------------------------------------------------------------------------
+
+/** A store room holding stock. Each branch has exactly one default warehouse. */
+export interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+  branchId: string;
+  branchName: string;
+  isDefault: boolean;
+  isActive: boolean;
+  /** Items with stock in this warehouse. */
+  itemCount: number;
+  quantity: number;
+  /** quantity × current average cost, minor units. */
+  value: number;
+}
+
+export interface BranchWithWarehouses {
+  id: string;
+  code: string;
+  name: string;
+  location?: string | null;
+  isActive: boolean;
+  warehouses: Warehouse[];
 }
 
 // ---------------------------------------------------------------------------

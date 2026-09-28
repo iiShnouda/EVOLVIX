@@ -24,11 +24,13 @@ public sealed class ReturnsService
 {
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly WarehouseService _warehouses;
 
-    public ReturnsService(AppDbContext db, InventoryService inventory)
+    public ReturnsService(AppDbContext db, InventoryService inventory, WarehouseService warehouses)
     {
         _db = db;
         _inventory = inventory;
+        _warehouses = warehouses;
     }
 
     public sealed record ReturnError(string Code, string Message);
@@ -106,18 +108,37 @@ public sealed class ReturnsService
         if (wanted.Count == 0)
             return (null, new("no_lines", "Choose at least one item to return."));
 
-        var productIds = wanted.Select(w => w.Source.ProductId).Distinct().ToList();
-        var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        foreach (var group in wanted.GroupBy(w => w.Source.ProductId))
+        // Goods go back through the warehouse of the original line. A sales return into a warehouse
+        // that has since closed lands in the invoice branch's default warehouse instead.
+        var warehouseIds = wanted.Where(w => w.Source.WarehouseId != null)
+            .Select(w => w.Source.WarehouseId!.Value).Distinct().ToList();
+        var warehouses = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id);
+        var fallback = await _warehouses.DefaultForBranchAsync(invoice.BranchId);
+        Warehouse? WarehouseFor(DocumentLine src) =>
+            src.WarehouseId is Guid id && warehouses.TryGetValue(id, out var w) && (w.IsActive || !isSale)
+                ? w
+                : fallback;
+        var routed = new List<(DocumentLine Source, int Quantity, Warehouse Warehouse)>();
+        foreach (var (src, qty) in wanted)
+        {
+            var warehouse = WarehouseFor(src);
+            if (warehouse is null)
+                return (null, new("no_warehouse", "The invoice's branch has no active warehouse to return into."));
+            routed.Add((src, qty, warehouse));
+        }
+
+        var products = await _inventory.LockProductsAsync(wanted.Select(w => w.Source.ProductId));
+        foreach (var group in routed.GroupBy(w => (w.Source.ProductId, w.Warehouse.Id)))
         {
             var name = group.First().Source.ProductName;
-            if (!products.TryGetValue(group.Key, out var product))
+            if (!products.ContainsKey(group.Key.ProductId))
                 return (null, new("product_not_found", $"{name} no longer exists."));
             // We can only send back to the supplier goods we still hold — not ones already sold on.
             var qty = group.Sum(w => w.Quantity);
-            if (!isSale && qty > product.StockOnHand)
+            var available = _inventory.Available(group.Key.ProductId, group.Key.Id);
+            if (!isSale && qty > available)
                 return (null, new("insufficient_stock",
-                    $"Not enough {name} in stock to return: {product.StockOnHand} left, {qty} requested."));
+                    $"Not enough {name} in {group.First().Warehouse.Name} to return: {available} left, {qty} requested."));
         }
 
         // ---- Pass 2: post the return ----
@@ -130,7 +151,7 @@ public sealed class ReturnsService
             SourceDocumentId = invoice.Id,
         };
 
-        foreach (var (src, qty) in wanted)
+        foreach (var (src, qty, warehouse) in routed)
         {
             var product = products[src.ProductId];
             var already = returned.TryGetValue(src.Id, out var r) ? r : (Quantity: 0, Discount: 0L);
@@ -143,18 +164,19 @@ public sealed class ReturnsService
             var lineCost = (long)qty * src.UnitCost;
 
             if (isSale)
-                _inventory.Receive(product, qty, src.UnitCost, doc.BranchId,
+                _inventory.Receive(product, warehouse, qty, src.UnitCost,
                     StockMovementType.SALES_RETURN_IN, doc.Id, number);
             else
-                _inventory.ReturnToSupplier(product, qty, src.UnitCost, doc.BranchId,
+                _inventory.ReturnToSupplier(product, warehouse, qty, src.UnitCost,
                     StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
 
             doc.Lines.Add(new DocumentLine
             {
+                LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = src.ProductName, Quantity = qty,
                 UnitPrice = src.UnitPrice, Discount = discount, LineTotal = lineTotal,
                 UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
-                SourceLineId = src.Id,
+                SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 

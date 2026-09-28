@@ -85,6 +85,9 @@ public sealed class DocumentLine
     public long LineProfit { get; set; }
     // On an invoice line: units already returned against it.
     public int ReturnedQuantity { get; set; }
+    // Warehouse the goods left from (sale) or arrived into (purchase).
+    public string? WarehouseId { get; set; }
+    public string? WarehouseName { get; set; }
 }
 
 public sealed class SalesDocument
@@ -176,6 +179,8 @@ public sealed class StockMovement
     public string Date { get; set; } = "";
     public string Type { get; set; } = "";
     public string BranchName { get; set; } = "";
+    public string WarehouseId { get; set; } = "";
+    public string WarehouseName { get; set; } = "";
     public string? Reference { get; set; }
     public string? DocumentId { get; set; }
     public string? DocumentType { get; set; }
@@ -193,6 +198,8 @@ public sealed class ItemCard
     public InventoryItem Item { get; set; } = new();
     public string From { get; set; } = "";
     public string To { get; set; } = "";
+    // Set when the card is limited to one warehouse.
+    public string? WarehouseId { get; set; }
     public int OpeningBalance { get; set; }
     public long OpeningValue { get; set; }
     public int TotalIn { get; set; }
@@ -200,7 +207,18 @@ public sealed class ItemCard
     public int ClosingBalance { get; set; }
     public long ClosingValue { get; set; }
     public List<StockMovement> Movements { get; set; } = new();
+    // Today's quantity of the item in each warehouse that holds it.
+    public List<WarehouseStock> Stock { get; set; } = new();
     public string Currency { get; set; } = "EGP";
+}
+
+public sealed class WarehouseStock
+{
+    public string WarehouseId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string BranchName { get; set; } = "";
+    public int Quantity { get; set; }
+    public long Value { get; set; }
 }
 
 public sealed class ValuationRow
@@ -216,17 +234,49 @@ public sealed class Valuation
 {
     public string AsOf { get; set; } = "";
     public string Currency { get; set; } = "EGP";
+    // Set when the valuation is limited to one warehouse.
+    public string? WarehouseId { get; set; }
     public int Quantity { get; set; }
     public long Value { get; set; }
     public List<ValuationRow> Categories { get; set; } = new();
     public List<ValuationRow> Items { get; set; } = new();
+    public List<ValuationRow> Warehouses { get; set; } = new();
 }
 
 public sealed class StocktakeResult
 {
     public string Reference { get; set; } = "";
+    public string WarehouseName { get; set; } = "";
     public int ItemsChanged { get; set; }
     // Signed total value change (gains − shrinkage), minor units.
     public long ValueChange { get; set; }
     public List<StockMovement> Movements { get; set; } = new();
+}
+
+// ---------------------------------------------------------------------------
+// Branches & warehouses (الفروع والمخازن)
+// ---------------------------------------------------------------------------
+
+public sealed class Warehouse
+{
+    public string Id { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string BranchId { get; set; } = "";
+    public string BranchName { get; set; } = "";
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int ItemCount { get; set; }
+    public int Quantity { get; set; }
+    public long Value { get; set; }
+}
+
+public sealed class BranchWithWarehouses
+{
+    public string Id { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Location { get; set; }
+    public bool IsActive { get; set; } = true;
+    public List<Warehouse> Warehouses { get; set; } = new();
 }

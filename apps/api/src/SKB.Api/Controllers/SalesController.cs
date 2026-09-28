@@ -15,13 +15,16 @@ public sealed class SalesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly WarehouseService _warehouses;
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
 
-    public SalesController(AppDbContext db, InventoryService inventory, ReturnsService returns, AuditService audit)
+    public SalesController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
+        ReturnsService returns, AuditService audit)
     {
         _db = db;
         _inventory = inventory;
+        _warehouses = warehouses;
         _returns = returns;
         _audit = audit;
     }
@@ -87,7 +90,8 @@ public sealed class SalesController : ControllerBase
             q = q.Where(d => d.BranchId == branchId);
         }
         var doc = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.Lines)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.SourceDocument)
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -97,9 +101,10 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// Create a sales invoice: consume stock at weighted-average cost, compute profit, and enforce
-    /// the profit floor (never below cost; and never below the configured minimum markup unless the
-    /// user may override). All-or-nothing: the whole document + stock movements commit atomically.
+    /// Create a sales invoice: consume stock at weighted-average cost from each line's warehouse,
+    /// compute profit, and enforce the profit floor (never below cost; and never below the
+    /// configured minimum markup unless the user may override). All-or-nothing: the items are
+    /// row-locked, checked and posted in one transaction, so two invoices can't sell the same stock.
     /// </summary>
     [HttpPost("invoices")]
     [Authorize(Policy = Permissions.SalesCreate)]
@@ -119,25 +124,30 @@ public sealed class SalesController : ControllerBase
         var settings = await GetSettingsAsync();
         var canOverride = User.HasClaim("permission", Permissions.SalesOverrideFloor);
 
-        // Load every referenced product once (tracked, so cost/stock updates persist).
-        var ids = req.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).ToList();
-        var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-
-        // ---- Pass 1: validate everything before touching stock ----
+        // ---- Shape checks and warehouse per line (no stock read yet) ----
+        var cache = new Dictionary<string, Warehouse>();
+        var lines = new List<(CreateInvoiceLineRequest Req, Guid ProductId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            if (!Guid.TryParse(line.ProductId, out var pid) || !products.TryGetValue(pid, out var product))
+            if (!Guid.TryParse(line.ProductId, out var pid))
                 return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
             if (line.Quantity <= 0)
-                return BadRequest(new { message = $"Quantity must be positive for {product.Name}.", code = "bad_qty" });
+                return BadRequest(new { message = "Quantity must be positive.", code = "bad_qty" });
             if (line.UnitPrice < 0 || line.Discount < 0)
-                return BadRequest(new { message = $"Price/discount cannot be negative for {product.Name}.", code = "bad_price" });
-            if (line.Quantity > product.StockOnHand)
-                return BadRequest(new
-                {
-                    message = $"Not enough stock for {product.Name}: {product.StockOnHand} left, {line.Quantity} requested.",
-                    code = "insufficient_stock",
-                });
+                return BadRequest(new { message = "Price/discount cannot be negative.", code = "bad_price" });
+            var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
+            if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+            lines.Add((line, pid, warehouse!));
+        }
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
+
+        // ---- Validate everything against the locked stock before posting ----
+        foreach (var (line, pid, _) in lines)
+        {
+            if (!products.TryGetValue(pid, out var product) || !product.IsActive)
+                return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
 
             var floorError = CheckFloor(line.UnitPrice, product.CostPrice, settings.MinMarkupPercent,
                 canOverride, req.OverrideFloor);
@@ -150,8 +160,22 @@ public sealed class SalesController : ControllerBase
                     code = floorError,
                 });
         }
+        // The same item may appear on several lines: check the total asked of each warehouse.
+        foreach (var need in lines.GroupBy(l => (l.ProductId, l.Warehouse.Id)))
+        {
+            var product = products[need.Key.ProductId];
+            var warehouse = need.First().Warehouse;
+            var wanted = need.Sum(l => l.Req.Quantity);
+            var available = _inventory.Available(product.Id, warehouse.Id);
+            if (wanted > available)
+                return BadRequest(new
+                {
+                    message = $"Not enough {product.Name} in {warehouse.Name}: {available} left, {wanted} requested.",
+                    code = "insufficient_stock",
+                });
+        }
 
-        // ---- Pass 2: post the document ----
+        // ---- Post the document ----
         var number = await DocumentNumbers.NextAsync(_db, DocumentType.SALES_INVOICE);
         var doc = new SalesDocument
         {
@@ -160,19 +184,21 @@ public sealed class SalesController : ControllerBase
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
         };
 
-        foreach (var line in req.Lines)
+        foreach (var (line, pid, warehouse) in lines)
         {
-            var product = products[Guid.Parse(line.ProductId)];
-            var unitCost = _inventory.Issue(product, line.Quantity, branchId,
+            var product = products[pid];
+            var unitCost = _inventory.Issue(product, warehouse, line.Quantity,
                 StockMovementType.SALE_OUT, doc.Id, number);
 
             var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
             var lineCost = (long)line.Quantity * unitCost;
             doc.Lines.Add(new DocumentLine
             {
+                LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = product.Name, Quantity = line.Quantity,
                 UnitPrice = line.UnitPrice, Discount = line.Discount, LineTotal = lineTotal,
                 UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - lineCost,
+                WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 
@@ -200,6 +226,7 @@ public sealed class SalesController : ControllerBase
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_invoice",
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),

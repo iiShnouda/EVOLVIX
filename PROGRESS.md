@@ -108,6 +108,48 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Warehouses** (المخازن) — DOMAIN.md §7 step 1
+- **Warehouse** belongs to a branch; each branch has exactly one default warehouse.
+  - Stock is now held per warehouse in `StockBalance`.
+  - `Product.StockOnHand` is the total across warehouses.
+  - The weighted average stays company-wide per item (DOMAIN.md §2.4).
+  - Every movement records its warehouse and the running balance there
+    (`StockMovement.WarehouseId` / `WarehouseBalanceAfter`).
+  - Invariant, checked by the tests: `StockOnHand = Σ balances = Σ movements`, and per warehouse
+    balance = Σ its movements.
+- **Which warehouse a line uses:**
+  - Each invoice line picks a warehouse: the line's own, else the invoice's, else the user's
+    branch default.
+  - Branch-scoped roles can only use their own branch's warehouses. OWNER/ADMIN/ACCOUNTANT can use any.
+  - Returns go back through the original line's warehouse. A sales return into a warehouse that
+    has since closed lands in the branch default instead.
+- **Stock locking (fixes an oversell race):**
+  - Sales, purchases, returns and stocktakes now lock the items first (`InventoryService.LockProductsAsync`, `FOR UPDATE` in id order).
+  - The stock check then counts every line of the same item together, per warehouse.
+  - Before this, two sales at the same moment, or two lines of one item, could sell more than
+    was on hand.
+- **Line order:** invoice lines now keep their entry order (`DocumentLine.LineNo`). They came
+  back in random order before.
+- **Inventory screens:**
+  - The items list, item card and valuation each take an optional warehouse (`?warehouseId=`).
+  - The item card shows stock per warehouse.
+  - Valuation shows a "by warehouse" table.
+  - Stocktake and the item-card adjust box count one warehouse.
+- **Branches & warehouses page** (`/branches`): list, add, rename, make default, close, reopen.
+  - A warehouse can't be closed while it holds stock, and the default can't be closed.
+  - Endpoints: `GET /api/warehouses`, `GET /api/branches`, `POST`/`PUT /api/warehouses`.
+  - Managing warehouses needs the new permission `branches:manage` (OWNER/ADMIN).
+- **Migration `Warehouses`** on an existing database:
+  - Creates "<branch> store" as each branch's default warehouse.
+  - Puts all current stock, and all past movements and invoice lines, in the **oldest branch's** warehouse.
+  - Migration `DocumentLineOrder` numbers existing lines.
+  - The seed now splits stock between "Downtown store" and "October warehouse".
+- **Verified locally:**
+  - A database seeded by the previous version was upgraded and gave 58/58 warehouse checks,
+    including 5 parallel sales where exactly 2 succeed and nothing is oversold.
+  - A fresh database passed 46/46 returns checks and the concurrent-return test.
+  - Screens were checked in EN/AR and at phone width.
+
 **Terminology fix** (commit `fix(i18n)`)
 - Party balances use standard accounting terms: **مدين / Receivable** and **دائن / Payable**
   (were plain "لنا عليهم / لهم علينا"). Fixed in web + Windows.
@@ -134,28 +176,38 @@ Security-first, server-authoritative (no business data readable offline).
 - Returns are always against an invoice; a "return without invoice" (unknown sale) isn't supported
   by design — it would let goods re-enter stock at a guessed cost.
 - Windows client mirrors the DTO contract but has **no invoice-builder or returns UI yet** (display only).
+- The invoice screen reads per-warehouse stock from the inventory list (first 500 items). A
+  catalogue larger than that needs a per-item stock lookup.
+- "Today" in valuation and the item card is the UTC day, not the Cairo day.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 
 ## 7. What's NEXT (pick up here)
-Detailed slice order is in `DOMAIN.md` §7 (warehouses → transfers → units & prices → …).
-From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation and stocktake shipped):
+Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers → units & prices → …).
+From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation, stocktake
+and warehouses shipped):
 1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
    return to supplier) and check stock, avg cost, party balance and the profitability report.
 2. **Verify inventory on the live DB** after deploy: item card for a seeded item starts with an
    opening balance and closes at its stock; valuation today = inventory total; post a small
    stocktake and see it on the item card.
-3. **Phase 2 — rest:** multi-store stock (per-branch `StockOnHand`) and transfers (إذن تحويل)
-   between branches; then movement reports (item movement, dead stock). Stock is company-wide
-   today — transfers need a per-branch balance table first.
-4. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
-5. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
-6. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
-7. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-8. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
-9. **Phase 8 — Android** native client.
+3. **Verify warehouses on the live DB** after deploy:
+   - `/branches` shows one store per branch holding all stock.
+   - An invoice can pick a warehouse.
+   - The item card shows stock per warehouse.
+4. **Transfers** (إذن تحويل, DOMAIN.md §7 step 2): `DRAFT → SENT → RECEIVED` between
+   warehouses, in-transit stock and transfer reports. Then units & price levels & size/color (step 3).
+5. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
+6. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
+7. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
+8. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
+9. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
+10. **Phase 8 — Android** native client.
 
-**Open question for the owner:** full per-invoice multi-currency + FX — needed soon, or base
-currency is enough for now?
+**Open questions for the owner:**
+- Multi-currency: EGP now, maybe later. Documents will store currency + rate from day one.
+- Does the shipping company collect cash on delivery?
+- Should the average cost be company-wide (current) or per branch (the old app)?
+- Should the Windows app become a thin window around the web app, so one server update covers every device?
 
 ## 8. Dev commands
 - **API:** `cd apps/api/src/SKB.Api && dotnet run` (migrates + seeds on startup).

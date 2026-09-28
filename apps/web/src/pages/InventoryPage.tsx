@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatMoney, formatNumber, type InventoryItem } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { WarehouseSelect } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
@@ -19,7 +20,8 @@ type Tab = 'items' | 'valuation';
 
 /**
  * Inventory (المخزون): every item with stock, average cost, value and reorder status,
- * plus stock valuation at any date. `?low=1` opens the reorder list; `?tab=valuation` the valuation.
+ * plus stock valuation at any date — for all warehouses or one. `?low=1` opens the reorder
+ * list; `?tab=valuation` the valuation; `?wh=<id>` limits both to one warehouse.
  */
 export function InventoryPage() {
   const { t, locale } = useT();
@@ -27,18 +29,29 @@ export function InventoryPage() {
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get('tab') === 'valuation' ? 'valuation' : 'items';
   const lowOnly = params.get('low') === '1';
+  const warehouseId = params.get('wh') ?? '';
   const canEdit = useAuth((s) => s.user?.permissions ?? []).includes('inventory:edit');
 
   const [search, setSearch] = useState('');
-  const list = useInventory({ search: search.trim() || undefined, lowOnly });
+  const list = useInventory({
+    search: search.trim() || undefined,
+    lowOnly,
+    warehouseId: warehouseId || undefined,
+  });
   const currency = list.data?.currency ?? 'EGP';
 
-  function setTab(next: Tab) {
-    setParams(next === 'valuation' ? { tab: 'valuation' } : {}, { replace: true });
+  /** Change some URL params, keeping the rest (tab, low-stock filter, warehouse). */
+  function update(patch: Record<string, string | null>) {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    setParams(next, { replace: true });
   }
-  function setLowOnly(on: boolean) {
-    setParams(on ? { low: '1' } : {}, { replace: true });
-  }
+  const setTab = (next: Tab) =>
+    update({ tab: next === 'valuation' ? 'valuation' : null, low: null });
+  const setLowOnly = (on: boolean) => update({ low: on ? '1' : null });
 
   return (
     <div className="space-y-5">
@@ -54,9 +67,18 @@ export function InventoryPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Kpi label={t('inventory.stockValue')} value={formatMoney(list.data?.totalValue ?? 0, currency, locale)} />
-        <Kpi label={t('inventory.itemCount')} value={formatNumber(list.data?.totalItems ?? 0, locale)} />
-        <button onClick={() => setLowOnly(!lowOnly)} className="col-span-2 text-start lg:col-span-1">
+        <Kpi
+          label={t('inventory.stockValue')}
+          value={formatMoney(list.data?.totalValue ?? 0, currency, locale)}
+        />
+        <Kpi
+          label={t('inventory.itemCount')}
+          value={formatNumber(list.data?.totalItems ?? 0, locale)}
+        />
+        <button
+          onClick={() => setLowOnly(!lowOnly)}
+          className="col-span-2 text-start lg:col-span-1"
+        >
           <Kpi
             label={t('inventory.lowStock')}
             value={formatNumber(list.data?.lowStockCount ?? 0, locale)}
@@ -65,20 +87,32 @@ export function InventoryPage() {
         </button>
       </div>
 
-      <div role="tablist" className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1">
-        {(['items', 'valuation'] as const).map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => setTab(k)}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(k === 'items' ? 'inventory.items' : 'inventory.valuation')}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div
+          role="tablist"
+          className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {(['items', 'valuation'] as const).map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => setTab(k)}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(k === 'items' ? 'inventory.items' : 'inventory.valuation')}
+            </button>
+          ))}
+        </div>
+        <WarehouseSelect
+          className="w-full sm:w-64"
+          value={warehouseId}
+          onChange={(id) => update({ wh: id || null })}
+          allowAll
+          includeClosed
+        />
       </div>
 
       {tab === 'items' ? (
@@ -90,10 +124,12 @@ export function InventoryPage() {
           onSearch={setSearch}
           lowOnly={lowOnly}
           onLowOnly={setLowOnly}
-          onOpen={(id) => navigate(`/inventory/items/${id}`)}
+          onOpen={(id) =>
+            navigate(`/inventory/items/${id}${warehouseId ? `?wh=${warehouseId}` : ''}`)
+          }
         />
       ) : (
-        <ValuationTab />
+        <ValuationTab warehouseId={warehouseId} />
       )}
     </div>
   );
@@ -152,7 +188,10 @@ function ItemsTab({
         <ul className="divide-y divide-[var(--c-line)]">
           {items.map((p) => (
             <li key={p.id}>
-              <button onClick={() => onOpen(p.id)} className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2">
+              <button
+                onClick={() => onOpen(p.id)}
+                className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
+              >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="text-xs text-muted tnum">
@@ -175,25 +214,40 @@ function ItemsTab({
             <tr>
               <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
               <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
-              <th className="hidden p-3 text-start font-medium xl:table-cell">{t('inventory.category')}</th>
+              <th className="hidden p-3 text-start font-medium xl:table-cell">
+                {t('inventory.category')}
+              </th>
               <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
-              <th className="hidden p-3 text-end font-medium md:table-cell">{t('inventory.reorder')}</th>
-              <th className="hidden p-3 text-end font-medium md:table-cell">{t('inventory.avgCost')}</th>
+              <th className="hidden p-3 text-end font-medium md:table-cell">
+                {t('inventory.reorder')}
+              </th>
+              <th className="hidden p-3 text-end font-medium md:table-cell">
+                {t('inventory.avgCost')}
+              </th>
               <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
               <th className="p-3 text-start font-medium">{t('common.status')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--c-line)]">
             {items.map((p) => (
-              <tr key={p.id} onClick={() => onOpen(p.id)} className="cursor-pointer transition-colors hover:bg-surface-2">
+              <tr
+                key={p.id}
+                onClick={() => onOpen(p.id)}
+                className="cursor-pointer transition-colors hover:bg-surface-2"
+              >
                 <td className="p-3 text-muted tnum">{p.sku}</td>
                 <td className="p-3 font-medium">{p.name}</td>
                 <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
                 <td className="p-3 text-end font-semibold tnum">
-                  {formatNumber(p.stockOnHand, locale)} <span className="text-xs font-normal text-muted">{p.unit}</span>
+                  {formatNumber(p.stockOnHand, locale)}{' '}
+                  <span className="text-xs font-normal text-muted">{p.unit}</span>
                 </td>
-                <td className="hidden p-3 text-end text-muted tnum md:table-cell">{formatNumber(p.reorderLevel, locale)}</td>
-                <td className="hidden p-3 text-end tnum md:table-cell">{formatMoney(p.avgCost, currency, locale)}</td>
+                <td className="hidden p-3 text-end text-muted tnum md:table-cell">
+                  {formatNumber(p.reorderLevel, locale)}
+                </td>
+                <td className="hidden p-3 text-end tnum md:table-cell">
+                  {formatMoney(p.avgCost, currency, locale)}
+                </td>
                 <td className="p-3 text-end tnum">{formatMoney(p.stockValue, currency, locale)}</td>
                 <td className="p-3">
                   <StockBadge item={p} />
@@ -207,10 +261,10 @@ function ItemsTab({
   );
 }
 
-function ValuationTab() {
+function ValuationTab({ warehouseId }: { warehouseId: string }) {
   const { t, locale } = useT();
   const [asOf, setAsOf] = useState(today());
-  const valuation = useValuation(asOf);
+  const valuation = useValuation(asOf, warehouseId || undefined);
   const data = valuation.data;
   const currency = data?.currency ?? 'EGP';
 
@@ -220,11 +274,19 @@ function ValuationTab() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('inventory.asOf')}</span>
-            <input type="date" className={field} value={asOf} max={today()} onChange={(e) => setAsOf(e.target.value || today())} />
+            <input
+              type="date"
+              className={field}
+              value={asOf}
+              max={today()}
+              onChange={(e) => setAsOf(e.target.value || today())}
+            />
           </label>
           <div className="text-end">
             <p className="text-xs text-muted">{t('inventory.stockValue')}</p>
-            <p className="text-lg font-semibold tnum">{formatMoney(data?.value ?? 0, currency, locale)}</p>
+            <p className="text-lg font-semibold tnum">
+              {formatMoney(data?.value ?? 0, currency, locale)}
+            </p>
             <p className="text-xs text-muted tnum">
               {formatNumber(data?.quantity ?? 0, locale)} {t('inventory.qty')}
             </p>
@@ -243,8 +305,26 @@ function ValuationTab() {
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          <ValuationTable title={t('inventory.byCategory')} rows={data.categories} currency={currency} locale={locale} />
-          <ValuationTable title={t('inventory.byItem')} rows={data.items} currency={currency} locale={locale} />
+          {!warehouseId && data.warehouses.length > 1 && (
+            <ValuationTable
+              title={t('warehouse.byWarehouse')}
+              rows={data.warehouses}
+              currency={currency}
+              locale={locale}
+            />
+          )}
+          <ValuationTable
+            title={t('inventory.byCategory')}
+            rows={data.categories}
+            currency={currency}
+            locale={locale}
+          />
+          <ValuationTable
+            title={t('inventory.byItem')}
+            rows={data.items}
+            currency={currency}
+            locale={locale}
+          />
         </div>
       )}
     </div>
@@ -265,7 +345,9 @@ function ValuationTable({
   const { t } = useT();
   return (
     <Card padded={false} className="h-fit overflow-hidden">
-      <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </h2>
       <table className="w-full text-sm">
         <thead className="bg-surface-2 text-xs text-muted">
           <tr>
@@ -279,7 +361,9 @@ function ValuationTable({
             <tr key={r.key}>
               <td className="p-3">{r.label}</td>
               <td className="p-3 text-end tnum">{formatNumber(r.quantity, locale)}</td>
-              <td className="p-3 text-end font-medium tnum">{formatMoney(r.value, currency, locale)}</td>
+              <td className="p-3 text-end font-medium tnum">
+                {formatMoney(r.value, currency, locale)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -301,7 +385,9 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'war
   return (
     <Card>
       <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-1 text-lg font-semibold tnum ${tone === 'warning' ? 'text-warning' : ''}`}>{value}</p>
+      <p className={`mt-1 text-lg font-semibold tnum ${tone === 'warning' ? 'text-warning' : ''}`}>
+        {value}
+      </p>
     </Card>
   );
 }
