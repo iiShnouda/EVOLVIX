@@ -120,6 +120,10 @@ export const en = {
   'sales.tax': 'Tax',
   'sales.issuedBy': 'Issued by',
 
+  // Purchases
+  'purchases.invoices': 'Purchase invoices',
+  'purchases.returns': 'Purchase returns',
+
   // Parties
   'parties.title': 'Customers & Suppliers',
   'parties.customer': 'Customer',
@@ -211,6 +215,34 @@ export const en = {
   'invoice.newAvgCost': 'New avg cost',
   'invoice.back': 'Back to list',
 
+  // Returns (مرتجع مبيعات / مرتجع مشتريات)
+  'return.action': 'Return items',
+  'return.newSale': 'New sales return',
+  'return.newPurchase': 'New purchase return',
+  'return.against': 'Against invoice',
+  'return.onInvoice': 'On invoice',
+  'return.alreadyReturned': 'Returned',
+  'return.remaining': 'Can return',
+  'return.qty': 'Return qty',
+  'return.all': 'Return all',
+  'return.clear': 'Clear',
+  'return.value': 'Return value',
+  'return.costBack': 'Cost back into stock',
+  'return.costOut': 'Cost out of stock',
+  'return.profitReversed': 'Profit reversed',
+  'return.refundNow': 'Cash refunded now',
+  'return.refundFromSupplier': 'Cash received back now',
+  'return.creditHint': 'Whatever is not refunded in cash is deducted from the customer’s balance.',
+  'return.debitHint': 'Whatever is not received in cash is deducted from what we owe the supplier.',
+  'return.stockHint': 'Only goods still in stock can be sent back to the supplier.',
+  'return.save': 'Save return',
+  'return.saving': 'Saving…',
+  'return.nothingLeft': 'Everything on this invoice has already been returned.',
+  'return.pickQty': 'Enter a return quantity for at least one item.',
+  'return.notReturnable': 'This invoice can’t be returned.',
+  'return.refunded': 'Refunded',
+  'return.onAccount': 'Settled on account',
+
   // Profitability report (تقارير الربحية)
   'report.profitability': 'Profitability',
   'report.subtitle': 'Sales, cost and profit for the period',
@@ -227,6 +259,8 @@ export const en = {
   'report.invoices': 'Invoices',
   'report.qty': 'Qty',
   'report.noData': 'No sales in this period',
+  'report.returns': 'Returns',
+  'report.netOfReturns': 'net of returns',
 
   // Settings (الإعدادات / الضبط)
   'settings.title': 'Settings',

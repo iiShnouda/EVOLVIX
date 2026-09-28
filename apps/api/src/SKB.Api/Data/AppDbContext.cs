@@ -50,6 +50,14 @@ public class AppDbContext : DbContext
             .HasOne(l => l.Document).WithMany(d => d.Lines)
             .HasForeignKey(l => l.DocumentId).OnDelete(DeleteBehavior.Cascade);
 
+        // Returns point back at the invoice (and invoice line) they reverse. Restrict: an
+        // invoice that has returns against it can never be deleted out from under them.
+        b.Entity<SalesDocument>()
+            .HasOne(d => d.SourceDocument).WithMany()
+            .HasForeignKey(d => d.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>().HasIndex(d => d.SourceDocumentId);
+        b.Entity<DocumentLine>().HasIndex(l => l.SourceLineId);
+
         // Stock movements: indexed for the item card (per product, over time) and per store.
         b.Entity<StockMovement>().HasIndex(m => new { m.ProductId, m.CreatedAt });
         b.Entity<StockMovement>().HasIndex(m => m.BranchId);

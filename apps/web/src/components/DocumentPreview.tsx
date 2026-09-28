@@ -1,18 +1,25 @@
+import type { ReactNode } from 'react';
 import { formatDate, formatMoney, formatNumber, type SalesDocument } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { STATUS_TONE } from '../lib/status';
 
-/** Printable-style document preview: company, branch, party, lines, totals, staff, status. */
+/**
+ * Printable-style document preview: company, branch, party, lines, totals, staff, status.
+ * Works for invoices and returns on both the sales and purchase side.
+ */
 export function DocumentPreview({
   doc,
   loading,
   onClose,
+  action,
 }: {
   doc?: SalesDocument;
   loading?: boolean;
   onClose?: () => void;
+  /** Extra control in the header, e.g. "Return items" on an invoice. */
+  action?: ReactNode;
 }) {
   const { t, locale } = useT();
 
@@ -34,16 +41,19 @@ export function DocumentPreview({
     );
   }
 
+  const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
+  const isPurchaseSide = doc.type === 'PURCHASE_INVOICE' || doc.type === 'PURCHASE_RETURN';
   const outstanding = doc.grandTotal - doc.paidAmount;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line p-4">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
-          <span className="text-sm font-semibold tnum">{doc.number}</span>
+          <span className="truncate text-sm font-semibold tnum">{doc.number}</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
+          {action}
           <Button size="sm" variant="ghost" icon="print" aria-label={t('common.print')} />
           <Button size="sm" variant="ghost" icon="download" aria-label={t('common.download')} />
           {onClose && (
@@ -65,13 +75,18 @@ export function DocumentPreview({
             <p className="text-xs text-muted">{doc.branchName}</p>
           </div>
           <div className="text-end text-xs text-muted">
-            <p>{t('doc.SALES_INVOICE')}</p>
+            <p>{t(`doc.${doc.type}`)}</p>
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
+            {isReturn && doc.sourceNumber && (
+              <p className="tnum">
+                {t('return.against')}: <span className="font-medium text-fg">{doc.sourceNumber}</span>
+              </p>
+            )}
           </div>
         </div>
 
         <div className="mb-4 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
-          <p className="text-xs text-muted">{t('sales.customer')}</p>
+          <p className="text-xs text-muted">{isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}</p>
           <p className="font-medium">{doc.partyName}</p>
         </div>
 
@@ -91,7 +106,14 @@ export function DocumentPreview({
             <tbody className="divide-y divide-[var(--c-line)]">
               {doc.lines.map((l) => (
                 <tr key={l.id}>
-                  <td className="p-2">{l.productName}</td>
+                  <td className="p-2">
+                    {l.productName}
+                    {l.returnedQuantity > 0 && (
+                      <span className="block text-xs text-warning tnum">
+                        {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}
+                      </span>
+                    )}
+                  </td>
                   <td className="p-2 text-end tnum">{formatNumber(l.quantity, locale)}</td>
                   <td className="hidden p-2 text-end tnum sm:table-cell">
                     {formatMoney(l.unitPrice, doc.currency, locale)}
@@ -120,11 +142,14 @@ export function DocumentPreview({
             <dt>{t('sales.grandTotal')}</dt>
             <dd className="tnum">{formatMoney(doc.grandTotal, doc.currency, locale)}</dd>
           </div>
-          <Row label={t('sales.paid')} value={formatMoney(doc.paidAmount, doc.currency, locale)} />
           <Row
-            label={t('sales.outstanding')}
+            label={isReturn ? t('return.refunded') : t('sales.paid')}
+            value={formatMoney(doc.paidAmount, doc.currency, locale)}
+          />
+          <Row
+            label={isReturn ? t('return.onAccount') : t('sales.outstanding')}
             value={formatMoney(outstanding, doc.currency, locale)}
-            emphasize={outstanding > 0}
+            emphasize={!isReturn && outstanding > 0}
           />
         </dl>
       </div>

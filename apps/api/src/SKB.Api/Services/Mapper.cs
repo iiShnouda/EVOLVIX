@@ -8,17 +8,26 @@ public static class Mapper
     public static SalesSummaryDto ToSummary(SalesDocument d) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         d.Branch?.Name ?? "", d.Party?.Name ?? "", d.Staff?.FullName ?? "",
-        d.IssueDate.ToString("o"), d.DueDate?.ToString("o"), d.GrandTotal, d.PaidAmount, d.Currency);
+        d.IssueDate.ToString("o"), d.DueDate?.ToString("o"), d.GrandTotal, d.PaidAmount, d.Currency,
+        d.SourceDocument?.Number);
 
-    public static SalesDetailDto ToDetail(SalesDocument d) => new(
+    /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
+    public static SalesDetailDto ToDetail(SalesDocument d,
+        IReadOnlyDictionary<Guid, (int Quantity, long Discount)>? returned = null) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         d.Branch?.Name ?? "", d.Party?.Name ?? "", d.Staff?.FullName ?? "",
         d.IssueDate.ToString("o"), d.DueDate?.ToString("o"),
         d.Lines.Select(l => new DocumentLineDto(
             l.Id.ToString(), l.ProductId.ToString(), l.ProductName, l.Quantity,
-            l.UnitPrice, l.Discount, l.LineTotal, l.UnitCost, l.LineProfit)).ToArray(),
+            l.UnitPrice, l.Discount, l.LineTotal, l.UnitCost, l.LineProfit,
+            ReturnedQuantity(returned, l.Id))).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
-        d.CostTotal, d.ProfitTotal, d.Currency, d.Notes);
+        d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
+        d.SourceDocumentId?.ToString(), d.SourceDocument?.Number);
+
+    private static int ReturnedQuantity(
+        IReadOnlyDictionary<Guid, (int Quantity, long Discount)>? returned, Guid lineId) =>
+        returned is not null && returned.TryGetValue(lineId, out var r) ? r.Quantity : 0;
 
     public static ProductDto ToProduct(Product p) => new(
         p.Id.ToString(), p.Sku, p.Name, p.Unit, p.CostPrice, p.SalePrice, p.Currency,

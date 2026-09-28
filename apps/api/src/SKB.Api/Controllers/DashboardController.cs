@@ -28,12 +28,15 @@ public sealed class DashboardController : ControllerBase
         IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) =>
             all ? q : q.Where(d => d.BranchId == branchId);
 
-        var revenue = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Type == DocumentType.SALES_INVOICE && d.Status != DocumentStatus.CANCELLED)
-            .SumAsync(d => (long?)d.GrandTotal) ?? 0;
-        var purchases = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Type == DocumentType.PURCHASE_INVOICE && d.Status != DocumentStatus.CANCELLED)
-            .SumAsync(d => (long?)d.GrandTotal) ?? 0;
+        // Net of returns: sales returns reduce revenue, purchase returns reduce purchases.
+        var totals = await Scoped(_db.SalesDocuments)
+            .Where(d => d.Status != DocumentStatus.CANCELLED)
+            .GroupBy(d => d.Type)
+            .Select(g => new { Type = g.Key, Total = g.Sum(d => d.GrandTotal) })
+            .ToListAsync();
+        long Total(DocumentType t) => totals.FirstOrDefault(x => x.Type == t)?.Total ?? 0;
+        var revenue = Total(DocumentType.SALES_INVOICE) - Total(DocumentType.SALES_RETURN);
+        var purchases = Total(DocumentType.PURCHASE_INVOICE) - Total(DocumentType.PURCHASE_RETURN);
 
         var balances = await _db.Parties.Select(p => p.Balance).ToListAsync();
         var receivables = balances.Where(b => b > 0).Sum();
@@ -43,7 +46,7 @@ public sealed class DashboardController : ControllerBase
             .OrderBy(p => p.StockOnHand).ToListAsync();
 
         var recent = await Scoped(_db.SalesDocuments)
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .OrderByDescending(d => d.IssueDate).Take(6).ToListAsync();
 
         var kpis = new[]
@@ -66,10 +69,11 @@ public sealed class DashboardController : ControllerBase
 
     private async Task<TrendPointDto[]> BuildTrendAsync(bool all, Guid branchId)
     {
-        var since = DateTime.UtcNow.Date.AddDays(-(TrendDays - 1));
+        var since = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(-(TrendDays - 1)), DateTimeKind.Utc);
         var q = _db.SalesDocuments.Where(d =>
             d.IssueDate >= since && d.Status != DocumentStatus.CANCELLED &&
-            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE));
+            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN ||
+             d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN));
         if (!all) q = q.Where(d => d.BranchId == branchId);
 
         var rows = await q.Select(d => new { d.IssueDate, d.Type, d.GrandTotal }).ToListAsync();
@@ -82,9 +86,13 @@ public sealed class DashboardController : ControllerBase
         {
             var key = r.IssueDate.ToString("yyyy-MM-dd");
             if (!buckets.TryGetValue(key, out var b)) continue;
-            buckets[key] = r.Type == DocumentType.SALES_INVOICE
-                ? (b.Sales + r.GrandTotal, b.Purchases)
-                : (b.Sales, b.Purchases + r.GrandTotal);
+            buckets[key] = r.Type switch
+            {
+                DocumentType.SALES_INVOICE => (b.Sales + r.GrandTotal, b.Purchases),
+                DocumentType.SALES_RETURN => (b.Sales - r.GrandTotal, b.Purchases),
+                DocumentType.PURCHASE_INVOICE => (b.Sales, b.Purchases + r.GrandTotal),
+                _ => (b.Sales, b.Purchases - r.GrandTotal),
+            };
         }
 
         return buckets.OrderBy(kv => kv.Key)

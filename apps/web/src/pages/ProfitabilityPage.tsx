@@ -68,7 +68,15 @@ export function ProfitabilityPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label={t('report.revenue')} value={formatMoney(data?.revenue ?? 0, currency, locale)} />
+        <Kpi
+          label={t('report.revenue')}
+          value={formatMoney(data?.revenue ?? 0, currency, locale)}
+          hint={
+            data && data.returns > 0
+              ? `${t('report.returns')} ${formatMoney(data.returns, currency, locale)} · ${t('report.netOfReturns')}`
+              : undefined
+          }
+        />
         <Kpi label={t('report.cost')} value={formatMoney(data?.cost ?? 0, currency, locale)} />
         <Kpi
           label={t('report.profit')}
@@ -130,13 +138,24 @@ export function ProfitabilityPage() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'positive' | 'negative' | 'brand' }) {
+function Kpi({
+  label,
+  value,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: string;
+  tone?: 'positive' | 'negative' | 'brand';
+  hint?: string;
+}) {
   const color =
     tone === 'positive' ? 'text-positive' : tone === 'negative' ? 'text-destructive' : tone === 'brand' ? 'text-brand' : '';
   return (
     <Card>
       <p className="text-xs text-muted">{label}</p>
       <p className={`mt-1 text-lg font-semibold tnum ${color}`}>{value}</p>
+      {hint ? <p className="mt-0.5 text-xs text-warning tnum">{hint}</p> : null}
     </Card>
   );
 }

@@ -10,7 +10,7 @@ services:
     dockerContext: . # repo root: the image builds the web app and the API together
     plan: free
     region: frankfurt
-    branch: claude/nifty-dirac-lv9vbj
+    branch: main
     healthCheckPath: /api/health
     envVars:
       - key: ASPNETCORE_ENVIRONMENT

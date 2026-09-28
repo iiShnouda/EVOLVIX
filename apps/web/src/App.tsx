@@ -12,9 +12,9 @@ import { OfflineGate } from './components/OfflineGate';
 import { Spinner } from './components/ui';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { SalesPage } from './pages/SalesPage';
-import { PurchasesPage } from './pages/PurchasesPage';
+import { DocumentsPage } from './pages/DocumentsPage';
 import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
+import { ReturnBuilderPage } from './pages/ReturnBuilderPage';
 import { ProfitabilityPage } from './pages/ProfitabilityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
@@ -109,15 +109,20 @@ export default function App() {
           <Route element={<ProtectedApp />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/sales" element={<SalesPage />} />
+            <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
             <Route path="/sales/new" element={<InvoiceBuilderPage mode="sale" />} />
+            <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
             <Route path="/parties" element={<PartiesPage />} />
             <Route
               path="/inventory"
               element={<PlaceholderPage titleKey="nav.inventory" icon="inventory" />}
             />
-            <Route path="/purchases" element={<PurchasesPage />} />
+            <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
             <Route path="/purchases/new" element={<InvoiceBuilderPage mode="purchase" />} />
+            <Route
+              path="/purchases/invoices/:id/return"
+              element={<ReturnBuilderPage scope="purchases" />}
+            />
             <Route
               path="/receipts"
               element={<PlaceholderPage titleKey="nav.receipts" icon="receipts" />}

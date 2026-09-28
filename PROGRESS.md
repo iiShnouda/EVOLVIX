@@ -15,8 +15,10 @@ Security-first, server-authoritative (no business data readable offline).
 
 ## 2. Where it runs
 - **Live:** https://skb-d211.onrender.com (Render, single Docker service; DB on free Neon Postgres).
-- **Deploys automatically** when the working branch is pushed (Render blueprint = `render.yaml`).
-- **Working branch:** `claude/nifty-dirac-lv9vbj` — develop and push here only.
+- **Deploys automatically** when `main` is pushed (Render blueprint = `render.yaml`, `branch: main`).
+  The Render service's own Settings → Branch must also say `main` (it previously tracked
+  `claude/nifty-dirac-lv9vbj`, which is now merged and retired).
+- **Working branch:** `main` (repo `iiShnouda/SKB`).
 - **On-prem option:** `docker compose --profile full up -d --build` (see `COMPANY-SERVER.md`).
 - **Demo login:** `owner@skb.local` + the `Seed__OwnerPassword` env (dev default `ChangeMe!Owner123`).
 
@@ -54,6 +56,31 @@ Security-first, server-authoritative (no business data readable offline).
   Picking a country suggests its currency + typical VAT (overridable). `PUT /api/settings`
   (SettingsManage, audited); the invoice builder reads these defaults.
 
+**Sales & purchase returns** (مرتجع مبيعات / مرتجع مشتريات) — finishes Phase 1
+- A return is always issued **against one invoice** (`SourceDocumentId` on the document,
+  `SourceLineId` on each line). Quantity is capped per line at sold/bought − already returned;
+  the invoice row is locked (`SELECT … FOR UPDATE`) while a return posts, so two people can't
+  over-return the same invoice. Fully returned invoice → status `RETURNED`.
+- **Sales return:** goods back into stock at the line's original `UnitCost` (restores the weighted
+  average correctly), revenue/profit reversed, customer balance credited by the total minus any
+  cash refunded now (`RefundAmount`, stored in `PaidAmount`).
+- **Purchase return:** goods out at the price we paid, and that receipt is backed out of the
+  weighted average (`InventoryService.ReturnToSupplier`, exact inverse of `Receive`). Refused if
+  the goods are no longer in stock. Payable reduced by the total minus cash received back.
+- Discount and tax return **proportionally**; the return that completes a line/invoice takes
+  exactly what's left, so rounding never strands or over-returns a piastre.
+- Endpoints: `GET /api/{sales|purchases}/returns`, `GET …/returns/{id}`,
+  `POST /api/{sales|purchases}/invoices/{id}/returns` `{ lines: [{ lineId, quantity }], refundAmount, notes }`.
+- New permissions **`sales:return`** (OWNER/ADMIN/ACCOUNTANT — deliberately *not* SALES, since a
+  return moves money out) and **`purchases:return`** (OWNER/ADMIN/ACCOUNTANT/INVENTORY).
+- Profitability report + dashboard revenue/purchases/trend are now **net of returns**
+  (`ProfitReport.returns` shows the amount subtracted).
+- Web: Sales and Purchases share one `DocumentsPage` with **Invoices | Returns** tabs and a
+  preview (purchases now have a preview too); "Return items" on an invoice preview opens
+  `ReturnBuilderPage` (`/{scope}/invoices/:id/return`) with live value / cost / profit reversed.
+- Fix: `GET /api/sales/invoices/{id}` no longer returns purchase documents to `sales:view` users.
+- Migration `SalesPurchaseReturns`. Windows models mirror the new fields (no returns UI there yet).
+
 **Terminology fix** (commit `fix(i18n)`)
 - Party balances use standard accounting terms: **مدين / Receivable** and **دائن / Payable**
   (were plain "لنا عليهم / لهم علينا"). Fixed in web + Windows.
@@ -75,13 +102,17 @@ Security-first, server-authoritative (no business data readable offline).
   them needs per-currency minor units (`money.ts`) + storing currency decimals. Do this before
   enabling those currencies for real amounts.
 - Historical **seeded** documents got cost/profit backfilled at seed cost; fine for the demo.
-- No **returns** yet (sales/purchase returns) — the enum values exist, the flows don't.
-- Windows client mirrors the DTO contract but has **no invoice-builder UI yet** (display only).
+- Returns can't be cancelled/voided yet (no cancel flow for any document). Queries already
+  ignore `CANCELLED` returns, so adding "cancel" later only needs the reversing stock/balance post.
+- Returns are always against an invoice; a "return without invoice" (unknown sale) isn't supported
+  by design — it would let goods re-enter stock at a guessed cost.
+- Windows client mirrors the DTO contract but has **no invoice-builder or returns UI yet** (display only).
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 
 ## 7. What's NEXT (pick up here)
-From `ROADMAP.md`, in suggested order:
-1. **Finish Phase 1:** sales/purchase **returns** (restock + reverse profit + party balance).
+From `ROADMAP.md`, in suggested order (Phase 1 is complete — returns shipped):
+1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
+   return to supplier) and check stock, avg cost, party balance and the profitability report.
 2. **Phase 2 — Inventory depth:** item card (كارت الصنف) from `StockMovement` (already recorded),
    stock valuation, multi-store transfers (إذن تحويل), stocktake/adjustment, reorder alerts.
 3. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
@@ -108,4 +139,4 @@ currency is enough for now?
 - Money as integer minor units. Bilingual by construction (no hard-coded user strings).
 - Update the JSON contract in all three (api / web-shared / windows) together when a shape changes.
 - **Secrets never in the repo** — only in the host's env vars (Render / `.env` on-prem).
-- Push only to `claude/nifty-dirac-lv9vbj`.
+- Work on `main`; pushing `main` deploys to Render.

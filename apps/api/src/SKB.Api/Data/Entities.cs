@@ -135,6 +135,13 @@ public class SalesDocument
     public Guid StaffId { get; set; }
     public Staff? Staff { get; set; }
 
+    /// <summary>
+    /// For a return (SALES_RETURN / PURCHASE_RETURN): the invoice it reverses. A return is
+    /// always issued against one original invoice so it can never return more than was sold/bought.
+    /// </summary>
+    public Guid? SourceDocumentId { get; set; }
+    public SalesDocument? SourceDocument { get; set; }
+
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -153,6 +160,9 @@ public class DocumentLine
     public long UnitCost { get; set; }
     public long LineCost { get; set; }
     public long LineProfit { get; set; }
+
+    /// <summary>For a return line: the invoice line it reverses (caps the returnable quantity).</summary>
+    public Guid? SourceLineId { get; set; }
 
     public Guid DocumentId { get; set; }
     public SalesDocument? Document { get; set; }

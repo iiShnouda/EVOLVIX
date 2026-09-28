@@ -81,6 +81,26 @@ export const createPurchaseInvoiceSchema = z.object({
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
+// ---------------------------------------------------------------------------
+// Returns (مرتجع مبيعات / مرتجع مشتريات). Always against one original invoice; price and
+// cost come from the original line on the server, so the client only sends quantities.
+// ---------------------------------------------------------------------------
+
+export const returnLineSchema = z.object({
+  /** The invoice line being returned. */
+  lineId: z.string().uuid(),
+  quantity: z.number().int().min(0),
+});
+export type ReturnLineInput = z.infer<typeof returnLineSchema>;
+
+export const createReturnSchema = z.object({
+  lines: z.array(returnLineSchema).min(1, 'Choose at least one item to return'),
+  /** Cash settled now (minor units); the rest goes on the party's account. */
+  refundAmount: z.number().int().min(0).default(0),
+  notes: z.string().max(1000).optional(),
+});
+export type CreateReturnInput = z.infer<typeof createReturnSchema>;
+
 export const updateSettingsSchema = z.object({
   companyName: z.string().trim().min(1).max(200).optional(),
   country: z.string().trim().length(2).optional(),

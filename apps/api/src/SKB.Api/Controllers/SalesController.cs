@@ -15,24 +15,37 @@ public sealed class SalesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly ReturnsService _returns;
     private readonly AuditService _audit;
 
-    public SalesController(AppDbContext db, InventoryService inventory, AuditService audit)
+    public SalesController(AppDbContext db, InventoryService inventory, ReturnsService returns, AuditService audit)
     {
         _db = db;
         _inventory = inventory;
+        _returns = returns;
         _audit = audit;
     }
 
     [HttpGet("invoices")]
-    public async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
+    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, [FromQuery] string? status = null)
+        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
+        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status);
+
+    /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
+    [HttpGet("returns")]
+    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
+        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status);
+
+    private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
+        DocumentType type, int page, int pageSize, string? search, string? status)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.SALES_INVOICE);
+        var q = _db.SalesDocuments.Where(d => d.Type == type);
         if (!CurrentUser.CanSeeAllBranches(User))
         {
             Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -48,7 +61,7 @@ public sealed class SalesController : ControllerBase
 
         var total = await q.CountAsync();
         var rows = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .OrderByDescending(d => d.IssueDate)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
@@ -57,10 +70,17 @@ public sealed class SalesController : ControllerBase
             rows.Select(Mapper.ToSummary).ToArray(), total, page, pageSize));
     }
 
+    /// <summary>
+    /// One sales invoice or sales return. Limited to sales documents — purchase documents are
+    /// behind purchases:view and must not be readable through this endpoint. For an invoice,
+    /// each line carries the quantity already returned so the client can offer only what's left.
+    /// </summary>
     [HttpGet("invoices/{id:guid}")]
+    [HttpGet("returns/{id:guid}")]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
-        var q = _db.SalesDocuments.Where(d => d.Id == id);
+        var q = _db.SalesDocuments.Where(d => d.Id == id &&
+            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN));
         if (!CurrentUser.CanSeeAllBranches(User))
         {
             Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -68,9 +88,12 @@ public sealed class SalesController : ControllerBase
         }
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.Lines)
+            .Include(d => d.SourceDocument)
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
-        return Ok(Mapper.ToDetail(doc));
+
+        var returned = doc.Type == DocumentType.SALES_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
+        return Ok(Mapper.ToDetail(doc, returned));
     }
 
     /// <summary>
@@ -129,7 +152,7 @@ public sealed class SalesController : ControllerBase
         }
 
         // ---- Pass 2: post the document ----
-        var number = await NextNumberAsync(DocumentType.SALES_INVOICE);
+        var number = await DocumentNumbers.NextAsync(_db, DocumentType.SALES_INVOICE);
         var doc = new SalesDocument
         {
             Number = number, Type = DocumentType.SALES_INVOICE, BranchId = branchId,
@@ -188,6 +211,40 @@ public sealed class SalesController : ControllerBase
         return Created($"/api/sales/invoices/{doc.Id}", Mapper.ToDetail(doc));
     }
 
+    /// <summary>
+    /// Sales return (مرتجع مبيعات) against invoice <paramref name="id"/>: restock at the original
+    /// cost, reverse revenue + profit, credit the customer (minus any cash refunded now).
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/returns")]
+    [Authorize(Policy = Permissions.SalesReturn)]
+    public async Task<ActionResult<SalesDetailDto>> CreateReturn(Guid id, [FromBody] CreateReturnRequest req)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        Guid? scope = null;
+        if (!CurrentUser.CanSeeAllBranches(User))
+        {
+            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
+            scope = branchId;
+        }
+
+        var (doc, error) = await _returns.CreateAsync(id, DocumentType.SALES_INVOICE, req, scope, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
+            doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+
+        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.SourceDocument).LoadAsync();
+        return Created($"/api/sales/returns/{doc.Id}", Mapper.ToDetail(doc));
+    }
+
     // Never below cost; and never below cost×(1+min/100) unless the user may override.
     private static string? CheckFloor(long unitPrice, long unitCost, int minMarkup, bool canOverride, bool overrideRequested)
     {
@@ -199,17 +256,6 @@ public sealed class SalesController : ControllerBase
 
     private async Task<CompanySettings> GetSettingsAsync() =>
         await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
-
-    private async Task<string> NextNumberAsync(DocumentType type)
-    {
-        var year = DateTime.UtcNow.Year;
-        var prefix = type == DocumentType.PURCHASE_INVOICE ? $"PUR-{year}-" : $"INV-{year}-";
-        var last = await _db.SalesDocuments.Where(d => d.Number.StartsWith(prefix))
-            .OrderByDescending(d => d.Number).Select(d => d.Number).FirstOrDefaultAsync();
-        var seq = 1;
-        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
-        return $"{prefix}{seq:D6}";
-    }
 
     private static DateTime? ParseDate(string? s) =>
         DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;

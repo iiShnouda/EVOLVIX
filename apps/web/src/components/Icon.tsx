@@ -38,9 +38,11 @@ const PATHS: Record<string, string> = {
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   building:
     'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M8 7h.01M12 7h.01M8 11h.01M12 11h.01M16 21V9h2a2 2 0 0 1 2 2v10',
+  // Return / credit note: a "back" arrow curling home.
+  returns: 'M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
 };
 
-const DIRECTIONAL = new Set(['chevronRight', 'logout']);
+const DIRECTIONAL = new Set(['chevronRight', 'logout', 'returns']);
 
 export interface IconProps {
   name: string;

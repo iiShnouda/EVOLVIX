@@ -19,7 +19,9 @@ public sealed class ReportsController : ControllerBase
 
     /// <summary>
     /// Profitability report (تقارير الربحية). Sums net sales, cost of goods and profit for
-    /// confirmed sales invoices in a date range, broken down by customer, product, or day.
+    /// non-cancelled sales invoices in a date range, broken down by customer, product, or day.
+    /// "Net" means after returns: a sales return in the period counts negative (its revenue, cost
+    /// and profit are all reversed), dated on the day the goods came back.
     /// Revenue = subtotal − discount (tax excluded); profit is the stored per-document/-line profit.
     /// </summary>
     [HttpGet("profitability")]
@@ -37,35 +39,48 @@ public sealed class ReportsController : ControllerBase
         Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
         var scoped = !CurrentUser.CanSeeAllBranches(User);
 
+        const DocumentType Invoice = DocumentType.SALES_INVOICE;
+        const DocumentType Return = DocumentType.SALES_RETURN;
+
         var docs = _db.SalesDocuments.Where(d =>
-            d.Type == DocumentType.SALES_INVOICE && d.Status != DocumentStatus.CANCELLED &&
+            (d.Type == Invoice || d.Type == Return) && d.Status != DocumentStatus.CANCELLED &&
             d.IssueDate >= fromDate && d.IssueDate < toExclusive);
         if (scoped) docs = docs.Where(d => d.BranchId == branchId);
 
         var currency = await docs.Select(d => d.Currency).FirstOrDefaultAsync() ?? "EGP";
-        var revenue = await docs.SumAsync(d => (long?)(d.Subtotal - d.DiscountTotal)) ?? 0;
-        var cost = await docs.SumAsync(d => (long?)d.CostTotal) ?? 0;
-        var profit = await docs.SumAsync(d => (long?)d.ProfitTotal) ?? 0;
-        var invoices = await docs.CountAsync();
+        var revenue = await docs.SumAsync(d =>
+            (long?)(d.Type == Return ? -(d.Subtotal - d.DiscountTotal) : d.Subtotal - d.DiscountTotal)) ?? 0;
+        var cost = await docs.SumAsync(d => (long?)(d.Type == Return ? -d.CostTotal : d.CostTotal)) ?? 0;
+        var profit = await docs.SumAsync(d => (long?)(d.Type == Return ? -d.ProfitTotal : d.ProfitTotal)) ?? 0;
+        var invoices = await docs.CountAsync(d => d.Type == Invoice);
+        var returns = await docs.Where(d => d.Type == Return)
+            .SumAsync(d => (long?)(d.Subtotal - d.DiscountTotal)) ?? 0;
 
         ProfitRowDto[] rows;
         if (by == "product")
         {
             var lines = _db.DocumentLines.Where(l =>
-                l.Document!.Type == DocumentType.SALES_INVOICE && l.Document.Status != DocumentStatus.CANCELLED &&
+                (l.Document!.Type == Invoice || l.Document.Type == Return) &&
+                l.Document.Status != DocumentStatus.CANCELLED &&
                 l.Document.IssueDate >= fromDate && l.Document.IssueDate < toExclusive);
             if (scoped) lines = lines.Where(l => l.Document!.BranchId == branchId);
 
+            // Flatten the sign first so the grouped aggregates don't reach through a navigation.
             var grouped = await lines
-                .GroupBy(l => new { l.ProductId, l.ProductName })
+                .Select(l => new
+                {
+                    l.ProductId, l.ProductName, l.LineTotal, l.LineCost, l.LineProfit, l.Quantity,
+                    Sign = l.Document!.Type == Return ? -1 : 1,
+                })
+                .GroupBy(x => new { x.ProductId, x.ProductName })
                 .Select(g => new
                 {
                     g.Key.ProductId,
                     g.Key.ProductName,
-                    Revenue = g.Sum(l => l.LineTotal),
-                    Cost = g.Sum(l => l.LineCost),
-                    Profit = g.Sum(l => l.LineProfit),
-                    Quantity = g.Sum(l => l.Quantity),
+                    Revenue = g.Sum(x => x.Sign * x.LineTotal),
+                    Cost = g.Sum(x => x.Sign * x.LineCost),
+                    Profit = g.Sum(x => x.Sign * x.LineProfit),
+                    Quantity = g.Sum(x => x.Sign * x.Quantity),
                 })
                 .ToListAsync();
             rows = grouped
@@ -81,10 +96,10 @@ public sealed class ReportsController : ControllerBase
                 .Select(g => new
                 {
                     Day = g.Key,
-                    Revenue = g.Sum(d => d.Subtotal - d.DiscountTotal),
-                    Cost = g.Sum(d => d.CostTotal),
-                    Profit = g.Sum(d => d.ProfitTotal),
-                    Invoices = g.Count(),
+                    Revenue = g.Sum(d => d.Type == Return ? -(d.Subtotal - d.DiscountTotal) : d.Subtotal - d.DiscountTotal),
+                    Cost = g.Sum(d => d.Type == Return ? -d.CostTotal : d.CostTotal),
+                    Profit = g.Sum(d => d.Type == Return ? -d.ProfitTotal : d.ProfitTotal),
+                    Invoices = g.Sum(d => d.Type == Invoice ? 1 : 0),
                 })
                 .ToListAsync();
             rows = grouped
@@ -102,10 +117,10 @@ public sealed class ReportsController : ControllerBase
                 {
                     g.Key.PartyId,
                     g.Key.Name,
-                    Revenue = g.Sum(d => d.Subtotal - d.DiscountTotal),
-                    Cost = g.Sum(d => d.CostTotal),
-                    Profit = g.Sum(d => d.ProfitTotal),
-                    Invoices = g.Count(),
+                    Revenue = g.Sum(d => d.Type == Return ? -(d.Subtotal - d.DiscountTotal) : d.Subtotal - d.DiscountTotal),
+                    Cost = g.Sum(d => d.Type == Return ? -d.CostTotal : d.CostTotal),
+                    Profit = g.Sum(d => d.Type == Return ? -d.ProfitTotal : d.ProfitTotal),
+                    Invoices = g.Sum(d => d.Type == Invoice ? 1 : 0),
                 })
                 .ToListAsync();
             rows = grouped
@@ -117,7 +132,7 @@ public sealed class ReportsController : ControllerBase
 
         return Ok(new ProfitReportDto(
             fromDate.ToString("yyyy-MM-dd"), toExclusive.AddDays(-1).ToString("yyyy-MM-dd"),
-            by, currency, revenue, cost, profit, invoices, rows));
+            by, currency, revenue, cost, profit, invoices, returns, rows));
     }
 
     private static DateTime? ParseDate(string? s) =>

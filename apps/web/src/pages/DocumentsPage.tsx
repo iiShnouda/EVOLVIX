@@ -1,42 +1,109 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { formatDate, formatMoney, type SalesDocumentSummary } from '@skb/shared';
-import { Badge, Card, EmptyState, PageHeader, Spinner, Button } from '../components/ui';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  formatDate,
+  formatMoney,
+  type SalesDocument,
+  type SalesDocumentSummary,
+  type TranslationKey,
+} from '@skb/shared';
+import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
-import { useSalesInvoices, useSalesInvoice } from '../lib/queries';
+import { useDocument, useDocumentList, type DocKind, type DocScope } from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
 import { STATUS_TONE } from '../lib/status';
 
-export function SalesPage() {
+const TAB_LABEL: Record<DocScope, Record<DocKind, TranslationKey>> = {
+  sales: { invoices: 'sales.invoices', returns: 'sales.returns' },
+  purchases: { invoices: 'purchases.invoices', returns: 'purchases.returns' },
+};
+
+/** An invoice that still has something left to return (and isn't cancelled). */
+function isReturnable(doc: SalesDocument | undefined): doc is SalesDocument {
+  return (
+    !!doc &&
+    (doc.type === 'SALES_INVOICE' || doc.type === 'PURCHASE_INVOICE') &&
+    doc.status !== 'CANCELLED' &&
+    doc.lines.some((l) => l.quantity > l.returnedQuantity)
+  );
+}
+
+/**
+ * Sales or purchases: invoices and returns in one master-detail screen.
+ * `?tab=returns` opens the returns list (used after saving a return).
+ */
+export function DocumentsPage({ scope }: { scope: DocScope }) {
+  const isSales = scope === 'sales';
   const { t, locale } = useT();
   const { deviceClass } = useDeviceInfo();
   const navigate = useNavigate();
-  const canCreate = useAuth((s) => s.user?.permissions ?? []).includes('sales:create');
-  const [page] = useState(1);
+  const [params, setParams] = useSearchParams();
+  const kind: DocKind = params.get('tab') === 'returns' ? 'returns' : 'invoices';
+
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
+  const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const list = useSalesInvoices({ page });
-  const detail = useSalesInvoice(selectedId);
+  const list = useDocumentList(scope, kind, { page: 1 });
+  const detail = useDocument(scope, selectedId);
   const isPhone = deviceClass === 'phone';
-
   const rows = list.data?.items ?? [];
+
+  function switchKind(next: DocKind) {
+    setSelectedId(null);
+    setParams(next === 'returns' ? { tab: 'returns' } : {}, { replace: true });
+  }
+
+  const returnAction =
+    canReturn && isReturnable(detail.data) ? (
+      <Button
+        size="sm"
+        variant="secondary"
+        icon="returns"
+        onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
+      >
+        {t('return.action')}
+      </Button>
+    ) : undefined;
+
+  const partyLabel = isSales ? t('sales.customer') : t('invoice.supplier');
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title={t('sales.invoices')}
+        title={t(isSales ? 'nav.sales' : 'nav.purchases')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
           canCreate ? (
-            <Button icon="plus" size="sm" onClick={() => navigate('/sales/new')}>
-              {t('sales.newInvoice')}
+            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
+              {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
             </Button>
           ) : undefined
         }
       />
+
+      <div
+        role="tablist"
+        className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+      >
+        {(['invoices', 'returns'] as const).map((k) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={kind === k}
+            onClick={() => switchKind(k)}
+            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+              kind === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+            }`}
+          >
+            {t(TAB_LABEL[scope][k])}
+          </button>
+        ))}
+      </div>
 
       <div className={`grid gap-4 ${isPhone ? '' : 'lg:grid-cols-[1fr_minmax(340px,420px)]'}`}>
         {/* List */}
@@ -46,7 +113,7 @@ export function SalesPage() {
               <Spinner size={26} />
             </div>
           ) : rows.length === 0 ? (
-            <EmptyState title={t('common.empty')} icon="sales" />
+            <EmptyState title={t('common.empty')} icon={kind === 'returns' ? 'returns' : scope} />
           ) : isPhone ? (
             <ul className="divide-y divide-[var(--c-line)]">
               {rows.map((doc) => (
@@ -59,6 +126,7 @@ export function SalesPage() {
                       <span className="block truncate font-medium">{doc.partyName}</span>
                       <span className="text-xs text-muted tnum">
                         {doc.number} · {formatDate(doc.issueDate, locale)}
+                        {doc.sourceNumber && <> · {doc.sourceNumber}</>}
                       </span>
                     </span>
                     <span className="text-end">
@@ -76,7 +144,12 @@ export function SalesPage() {
               <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                 <tr>
                   <th className="p-3 text-start font-medium">{t('sales.number')}</th>
-                  <th className="p-3 text-start font-medium">{t('sales.customer')}</th>
+                  <th className="p-3 text-start font-medium">{partyLabel}</th>
+                  {kind === 'returns' && (
+                    <th className="hidden p-3 text-start font-medium md:table-cell">
+                      {t('return.against')}
+                    </th>
+                  )}
                   <th className="hidden p-3 text-start font-medium md:table-cell">
                     {t('common.date')}
                   </th>
@@ -86,9 +159,10 @@ export function SalesPage() {
               </thead>
               <tbody className="divide-y divide-[var(--c-line)]">
                 {rows.map((doc) => (
-                  <SalesRow
+                  <DocumentRow
                     key={doc.id}
                     doc={doc}
+                    showSource={kind === 'returns'}
                     selected={doc.id === selectedId}
                     onSelect={() => setSelectedId(doc.id)}
                     locale={locale}
@@ -103,7 +177,11 @@ export function SalesPage() {
         {/* Detail (side panel on tablet/desktop) */}
         {!isPhone && (
           <Card padded={false} className="sticky top-20 h-[calc(100vh-7rem)] overflow-hidden">
-            <DocumentPreview doc={detail.data} loading={detail.isFetching && !!selectedId} />
+            <DocumentPreview
+              doc={detail.data}
+              loading={detail.isFetching && !!selectedId}
+              action={returnAction}
+            />
           </Card>
         )}
       </div>
@@ -116,6 +194,7 @@ export function SalesPage() {
               doc={detail.data}
               loading={detail.isFetching}
               onClose={() => setSelectedId(null)}
+              action={returnAction}
             />
           </div>
         </div>
@@ -124,14 +203,16 @@ export function SalesPage() {
   );
 }
 
-function SalesRow({
+function DocumentRow({
   doc,
+  showSource,
   selected,
   onSelect,
   locale,
   statusLabel,
 }: {
   doc: SalesDocumentSummary;
+  showSource: boolean;
   selected: boolean;
   onSelect: () => void;
   locale: 'en' | 'ar';
@@ -149,6 +230,9 @@ function SalesRow({
           <span className="truncate">{doc.partyName}</span>
         </span>
       </td>
+      {showSource && (
+        <td className="hidden p-3 text-muted tnum md:table-cell">{doc.sourceNumber ?? '—'}</td>
+      )}
       <td className="hidden p-3 text-muted tnum md:table-cell">
         {formatDate(doc.issueDate, locale)}
       </td>

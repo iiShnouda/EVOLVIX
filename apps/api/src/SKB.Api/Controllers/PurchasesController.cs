@@ -15,23 +15,35 @@ public sealed class PurchasesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
+    private readonly ReturnsService _returns;
     private readonly AuditService _audit;
 
-    public PurchasesController(AppDbContext db, InventoryService inventory, AuditService audit)
+    public PurchasesController(AppDbContext db, InventoryService inventory, ReturnsService returns, AuditService audit)
     {
         _db = db;
         _inventory = inventory;
+        _returns = returns;
         _audit = audit;
     }
 
     [HttpGet("invoices")]
-    public async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null)
+    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null) =>
+        ListAsync(DocumentType.PURCHASE_INVOICE, page, pageSize, search);
+
+    /// <summary>Purchase returns (مرتجعات المشتريات), newest first.</summary>
+    [HttpGet("returns")]
+    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null) =>
+        ListAsync(DocumentType.PURCHASE_RETURN, page, pageSize, search);
+
+    private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
+        DocumentType type, int page, int pageSize, string? search)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.PURCHASE_INVOICE);
+        var q = _db.SalesDocuments.Where(d => d.Type == type);
         if (!CurrentUser.CanSeeAllBranches(User))
         {
             Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -45,7 +57,7 @@ public sealed class PurchasesController : ControllerBase
 
         var total = await q.CountAsync();
         var rows = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .OrderByDescending(d => d.IssueDate)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
@@ -54,10 +66,13 @@ public sealed class PurchasesController : ControllerBase
             rows.Select(Mapper.ToSummary).ToArray(), total, page, pageSize));
     }
 
+    /// <summary>One purchase invoice or purchase return (invoice lines carry the returned quantity).</summary>
     [HttpGet("invoices/{id:guid}")]
+    [HttpGet("returns/{id:guid}")]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
-        var q = _db.SalesDocuments.Where(d => d.Id == id && d.Type == DocumentType.PURCHASE_INVOICE);
+        var q = _db.SalesDocuments.Where(d => d.Id == id &&
+            (d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN));
         if (!CurrentUser.CanSeeAllBranches(User))
         {
             Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -65,9 +80,12 @@ public sealed class PurchasesController : ControllerBase
         }
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.Lines)
+            .Include(d => d.SourceDocument)
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
-        return Ok(Mapper.ToDetail(doc));
+
+        var returned = doc.Type == DocumentType.PURCHASE_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
+        return Ok(Mapper.ToDetail(doc, returned));
     }
 
     /// <summary>
@@ -104,7 +122,7 @@ public sealed class PurchasesController : ControllerBase
                 return BadRequest(new { message = $"Cost cannot be negative for {product.Name}.", code = "bad_cost" });
         }
 
-        var number = await NextNumberAsync();
+        var number = await DocumentNumbers.NextAsync(_db, DocumentType.PURCHASE_INVOICE);
         var doc = new SalesDocument
         {
             Number = number, Type = DocumentType.PURCHASE_INVOICE, BranchId = branchId,
@@ -159,15 +177,39 @@ public sealed class PurchasesController : ControllerBase
         return Created($"/api/purchases/invoices/{doc.Id}", Mapper.ToDetail(doc));
     }
 
-    private async Task<string> NextNumberAsync()
+    /// <summary>
+    /// Purchase return (مرتجع مشتريات) against invoice <paramref name="id"/>: goods leave stock at
+    /// the price we paid, the weighted average is backed out, and the payable drops (minus any cash
+    /// the supplier refunds now). Refused for goods no longer in stock.
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/returns")]
+    [Authorize(Policy = Permissions.PurchasesReturn)]
+    public async Task<ActionResult<SalesDetailDto>> CreateReturn(Guid id, [FromBody] CreateReturnRequest req)
     {
-        var year = DateTime.UtcNow.Year;
-        var prefix = $"PUR-{year}-";
-        var last = await _db.SalesDocuments.Where(d => d.Number.StartsWith(prefix))
-            .OrderByDescending(d => d.Number).Select(d => d.Number).FirstOrDefaultAsync();
-        var seq = 1;
-        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
-        return $"{prefix}{seq:D6}";
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        Guid? scope = null;
+        if (!CurrentUser.CanSeeAllBranches(User))
+        {
+            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
+            scope = branchId;
+        }
+
+        var (doc, error) = await _returns.CreateAsync(id, DocumentType.PURCHASE_INVOICE, req, scope, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "purchase_return",
+            doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+
+        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
+        await _db.Entry(doc).Reference(d => d.SourceDocument).LoadAsync();
+        return Created($"/api/purchases/returns/{doc.Id}", Mapper.ToDetail(doc));
     }
 
     private static DateTime? ParseDate(string? s) =>

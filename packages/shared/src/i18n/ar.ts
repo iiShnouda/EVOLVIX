@@ -121,6 +121,10 @@ export const ar: TranslationDictionary = {
   'sales.tax': 'الضريبة',
   'sales.issuedBy': 'حرّرها',
 
+  // Purchases
+  'purchases.invoices': 'فواتير المشتريات',
+  'purchases.returns': 'مرتجعات المشتريات',
+
   // Parties
   'parties.title': 'العملاء والموردون',
   'parties.customer': 'عميل',
@@ -212,6 +216,34 @@ export const ar: TranslationDictionary = {
   'invoice.newAvgCost': 'متوسط التكلفة الجديد',
   'invoice.back': 'العودة للقائمة',
 
+  // Returns (مرتجع مبيعات / مرتجع مشتريات)
+  'return.action': 'إرجاع أصناف',
+  'return.newSale': 'مرتجع مبيعات جديد',
+  'return.newPurchase': 'مرتجع مشتريات جديد',
+  'return.against': 'مقابل الفاتورة',
+  'return.onInvoice': 'بالفاتورة',
+  'return.alreadyReturned': 'مرتجع سابقًا',
+  'return.remaining': 'المتاح للإرجاع',
+  'return.qty': 'كمية المرتجع',
+  'return.all': 'إرجاع الكل',
+  'return.clear': 'مسح',
+  'return.value': 'قيمة المرتجع',
+  'return.costBack': 'التكلفة المُعادة للمخزون',
+  'return.costOut': 'التكلفة الخارجة من المخزون',
+  'return.profitReversed': 'الربح المخصوم',
+  'return.refundNow': 'المردود نقدًا الآن',
+  'return.refundFromSupplier': 'المستلم نقدًا من المورد الآن',
+  'return.creditHint': 'ما لا يُرد نقدًا يُخصم من رصيد العميل.',
+  'return.debitHint': 'ما لا يُستلم نقدًا يُخصم من المستحق للمورد.',
+  'return.stockHint': 'لا يمكن إرجاع إلا البضاعة الموجودة حاليًا بالمخزون.',
+  'return.save': 'حفظ المرتجع',
+  'return.saving': 'جارٍ الحفظ…',
+  'return.nothingLeft': 'تم إرجاع كل أصناف هذه الفاتورة بالفعل.',
+  'return.pickQty': 'أدخل كمية مرتجع لصنف واحد على الأقل.',
+  'return.notReturnable': 'لا يمكن إرجاع هذه الفاتورة.',
+  'return.refunded': 'المردود',
+  'return.onAccount': 'مُسوّى على الحساب',
+
   // Profitability report (تقارير الربحية)
   'report.profitability': 'الربحية',
   'report.subtitle': 'المبيعات والتكلفة والربح خلال الفترة',
@@ -228,6 +260,8 @@ export const ar: TranslationDictionary = {
   'report.invoices': 'الفواتير',
   'report.qty': 'الكمية',
   'report.noData': 'لا مبيعات في هذه الفترة',
+  'report.returns': 'المرتجعات',
+  'report.netOfReturns': 'بعد خصم المرتجعات',
 
   // Settings (الإعدادات / الضبط)
   'settings.title': 'الإعدادات',

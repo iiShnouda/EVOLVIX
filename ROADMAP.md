@@ -45,6 +45,10 @@ Live at the company's cloud host; on‑prem path documented in `COMPANY-SERVER.m
   range, broken down by customer / product / day (the old app's تقارير الربحية).
 - **Settings (shipped).** `/settings` — owner/admin edit VAT %, base currency, country, default
   markup and the minimum-markup floor. Country selection suggests currency + typical VAT.
+- **Sales & purchase returns (shipped).** مرتجع مبيعات / مرتجع مشتريات against one invoice:
+  restock at the original cost (sales) or back the receipt out of the weighted average
+  (purchases), reverse revenue/profit, credit the party, proportional discount + tax. Reports and
+  dashboard are net of returns. Own permissions (`sales:return`, `purchases:return`).
 
 The remaining items in §2 are **not yet built** — they are the target. A running handoff of
 state and next steps lives in **`PROGRESS.md`**.
@@ -225,8 +229,7 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
 
 - **Phase 1 — Invoicing + profitability. ✅ Shipped** (see §1). Purchase & sales invoices
   that move stock at weighted‑average cost, the "300 + 8%" margin discount, and profit
-  per invoice/item/client. Next within this area: profit‑by‑client/period reports and
-  sales/purchase returns.
+  per invoice/item/client, profitability reports, and sales/purchase returns — all shipped.
 - **Phase 2 — Inventory depth.** Multi‑store, transfers (إذن تحويل), stocktake/adjustment,
   item card, valuation, reorder‑level and movement reports.
 - **Phase 3 — Accounts / general ledger.** Chart of accounts, compound entries, cash

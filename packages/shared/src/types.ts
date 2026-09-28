@@ -45,8 +45,10 @@ export type Permission =
   | 'sales:create'
   | 'sales:edit'
   | 'sales:override_floor'
+  | 'sales:return'
   | 'purchases:view'
   | 'purchases:create'
+  | 'purchases:return'
   | 'receipts:view'
   | 'receipts:create'
   | 'parties:view'
@@ -206,6 +208,8 @@ export interface DocumentLine {
   unitCost: number;
   /** Line profit = lineTotal - (quantity * unitCost), minor units. */
   lineProfit: number;
+  /** On an invoice line: units already returned against it (0 on a return document). */
+  returnedQuantity: number;
 }
 
 export interface SalesDocument {
@@ -228,13 +232,20 @@ export interface SalesDocument {
   discountTotal: number;
   taxTotal: number;
   grandTotal: number;
+  /**
+   * Cash settled now, minor units. On an invoice: paid by the customer / to the supplier.
+   * On a return: refunded to the customer / received back from the supplier.
+   */
   paidAmount: number;
   /** Cost of goods on the document (sum of line costs), minor units. */
   costTotal: number;
   /** Profit = (subtotal - discountTotal) - costTotal, minor units. Tax is pass-through. */
   profitTotal: number;
   currency: string;
-  notes?: string;
+  notes?: string | null;
+  /** For a return: the invoice it reverses. */
+  sourceDocumentId?: string | null;
+  sourceNumber?: string | null;
   createdAt: string;
 }
 
@@ -242,15 +253,15 @@ export interface SalesDocument {
 export interface ProfitRow {
   key: string;
   label: string;
-  /** Net sales (subtotal − discount), minor units. */
+  /** Net sales (subtotal − discount, minus returns), minor units. */
   revenue: number;
-  /** Cost of goods sold, minor units. */
+  /** Cost of goods sold (net of returns), minor units. */
   cost: number;
   /** Profit = revenue − cost, minor units. */
   profit: number;
   /** Invoice count (customer/day groupings). */
   invoices: number;
-  /** Units sold (product grouping). */
+  /** Units sold net of returns (product grouping). */
   quantity: number;
 }
 
@@ -262,10 +273,13 @@ export interface ProfitReport {
   to: string;
   by: ProfitGroupBy;
   currency: string;
+  /** Net sales: invoices minus returns, after discount, before tax. */
   revenue: number;
   cost: number;
   profit: number;
   invoices: number;
+  /** Value of sales returns in the period (already subtracted from `revenue`). */
+  returns: number;
   rows: ProfitRow[];
 }
 
@@ -298,6 +312,8 @@ export interface SalesDocumentSummary {
   grandTotal: number;
   paidAmount: number;
   currency: string;
+  /** For a return: the invoice number it reverses. */
+  sourceNumber?: string | null;
 }
 
 // ---------------------------------------------------------------------------

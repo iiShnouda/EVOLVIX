@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CompanySettings,
   CreatePurchaseInvoiceInput,
+  CreateReturnInput,
   CreateSalesInvoiceInput,
   UpdateSettingsInput,
   DashboardData,
@@ -22,20 +23,34 @@ export function useDashboard() {
   });
 }
 
-export function useSalesInvoices(params: { page: number; search?: string; status?: string }) {
+// ---------------------------------------------------------------------------
+// Documents: sales / purchase invoices and their returns share one shape.
+// ---------------------------------------------------------------------------
+
+/** Which side of the business a document belongs to (also its API prefix). */
+export type DocScope = 'sales' | 'purchases';
+/** Invoices or the returns issued against them. */
+export type DocKind = 'invoices' | 'returns';
+
+export function useDocumentList(
+  scope: DocScope,
+  kind: DocKind,
+  params: { page: number; search?: string; status?: string },
+) {
   const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
   return useQuery({
-    queryKey: ['sales', params],
-    queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/sales/invoices?${query}`),
+    queryKey: [scope, kind, params],
+    queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/${scope}/${kind}?${query}`),
   });
 }
 
-export function useSalesInvoice(id: string | null) {
+/** One invoice or return. Invoice lines carry `returnedQuantity`. */
+export function useDocument(scope: DocScope, id: string | null) {
   return useQuery({
-    queryKey: ['sales', 'detail', id],
-    queryFn: () => api.get<SalesDocument>(`/sales/invoices/${id}`),
+    queryKey: [scope, 'detail', id],
+    queryFn: () => api.get<SalesDocument>(`/${scope}/invoices/${id}`),
     enabled: !!id,
   });
 }
@@ -62,15 +77,6 @@ export function usePresence(enabled: boolean) {
 // ---------------------------------------------------------------------------
 // Invoicing (Phase 1)
 // ---------------------------------------------------------------------------
-
-export function usePurchaseInvoices(params: { page: number; search?: string }) {
-  const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
-  if (params.search) query.set('search', params.search);
-  return useQuery({
-    queryKey: ['purchases', params],
-    queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/purchases/invoices?${query}`),
-  });
-}
 
 /** Product search for the invoice line picker. `search` empty → recent/first products. */
 export function useProductSearch(search: string, inStockOnly = false) {
@@ -110,17 +116,21 @@ export function useUpdateSettings() {
   });
 }
 
+/** Everything a posted document can change: its lists, stock, balances and reports. */
+function invalidateAfterPosting(qc: ReturnType<typeof useQueryClient>, scope: DocScope) {
+  void qc.invalidateQueries({ queryKey: [scope] });
+  void qc.invalidateQueries({ queryKey: ['dashboard'] });
+  void qc.invalidateQueries({ queryKey: ['products'] });
+  void qc.invalidateQueries({ queryKey: ['parties'] });
+  void qc.invalidateQueries({ queryKey: ['report'] });
+}
+
 export function useCreateSalesInvoice() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateSalesInvoiceInput) =>
       api.post<SalesDocument>('/sales/invoices', input),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['sales'] });
-      void qc.invalidateQueries({ queryKey: ['dashboard'] });
-      void qc.invalidateQueries({ queryKey: ['products'] });
-      void qc.invalidateQueries({ queryKey: ['parties'] });
-    },
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
   });
 }
 
@@ -129,11 +139,16 @@ export function useCreatePurchaseInvoice() {
   return useMutation({
     mutationFn: (input: CreatePurchaseInvoiceInput) =>
       api.post<SalesDocument>('/purchases/invoices', input),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['purchases'] });
-      void qc.invalidateQueries({ queryKey: ['dashboard'] });
-      void qc.invalidateQueries({ queryKey: ['products'] });
-      void qc.invalidateQueries({ queryKey: ['parties'] });
-    },
+    onSuccess: () => invalidateAfterPosting(qc, 'purchases'),
+  });
+}
+
+/** Post a sales return / purchase return against one invoice. */
+export function useCreateReturn(scope: DocScope) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ invoiceId, input }: { invoiceId: string; input: CreateReturnInput }) =>
+      api.post<SalesDocument>(`/${scope}/invoices/${invoiceId}/returns`, input),
+    onSuccess: () => invalidateAfterPosting(qc, scope),
   });
 }

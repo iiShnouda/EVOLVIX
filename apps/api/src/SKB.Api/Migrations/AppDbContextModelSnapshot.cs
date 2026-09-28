@@ -181,6 +181,9 @@ namespace SKB.Api.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("SourceLineId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("UnitCost")
                         .HasColumnType("bigint");
 
@@ -192,6 +195,8 @@ namespace SKB.Api.Migrations
                     b.HasIndex("DocumentId");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("SourceLineId");
 
                     b.ToTable("DocumentLines");
                 });
@@ -342,6 +347,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("ProfitTotal")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StaffId")
                         .HasColumnType("uuid");
 
@@ -369,6 +377,8 @@ namespace SKB.Api.Migrations
                         .IsUnique();
 
                     b.HasIndex("PartyId");
+
+                    b.HasIndex("SourceDocumentId");
 
                     b.HasIndex("StaffId");
 
@@ -563,6 +573,11 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SKB.Api.Data.SalesDocument", "SourceDocument")
+                        .WithMany()
+                        .HasForeignKey("SourceDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SKB.Api.Data.Staff", "Staff")
                         .WithMany()
                         .HasForeignKey("StaffId")
@@ -572,6 +587,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("Party");
+
+                    b.Navigation("SourceDocument");
 
                     b.Navigation("Staff");
                 });

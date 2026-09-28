@@ -67,6 +67,8 @@ public sealed class SalesDocumentSummary
     public long GrandTotal { get; set; }
     public long PaidAmount { get; set; }
     public string Currency { get; set; } = "EGP";
+    // For a return (SALES_RETURN / PURCHASE_RETURN): the invoice number it reverses.
+    public string? SourceNumber { get; set; }
 }
 
 public sealed class DocumentLine
@@ -81,6 +83,8 @@ public sealed class DocumentLine
     // Cost/profit snapshot (weighted-average COGS), mirrors the API contract.
     public long UnitCost { get; set; }
     public long LineProfit { get; set; }
+    // On an invoice line: units already returned against it.
+    public int ReturnedQuantity { get; set; }
 }
 
 public sealed class SalesDocument
@@ -105,6 +109,9 @@ public sealed class SalesDocument
     public long ProfitTotal { get; set; }
     public string Currency { get; set; } = "EGP";
     public string? Notes { get; set; }
+    // For a return: the invoice it reverses.
+    public string? SourceDocumentId { get; set; }
+    public string? SourceNumber { get; set; }
 }
 
 public sealed class DashboardData
