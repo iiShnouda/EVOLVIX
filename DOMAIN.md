@@ -39,7 +39,7 @@ marked *(inferred)* come from data and column names, not from code.
 ### 2.1 Organization & access — الفروع والمخازن والصلاحيات
 - **Branch** (فرع): has a name, phone and address.
 - **Warehouse** (مخزن): belongs to one branch, and a branch can have several.
-  - `Kind` is one of `STORE` or `VAN`. A VAN is a sales rep's vehicle, assigned to one rep.
+  - Every warehouse is a normal store. The owner confirmed reps do **not** sell from a van (see §2.5, Delivery).
   - Old example: المخزن الرئيسى, مخزن 2 and الهرم sit under different branches.
 - **CashBox** (خزينة) and **BankAccount** (بنك): each belongs to a branch and links to a ledger account.
 - **Staff**: has a role, as today.
@@ -75,7 +75,10 @@ marked *(inferred)* come from data and column names, not from code.
 - **Tracking flags**, each off unless the company turns it on:
   - `TrackExpiry`: stock is kept per batch with an expiry date.
   - `TrackSerials`: each unit has a serial number.
-  - `HasVariants`: size and color.
+  - `HasVariants`: size and color. **The company needs this**, as confirmed by the owner.
+    - A *model* (e.g. "Shirt X") has variants, one per size × color.
+    - Each variant has its own SKU, barcode and stock, and prices default to the model's.
+    - Reports can group by model or show each variant.
 
 ### 2.3 Parties — العملاء والموردين
 - **Party**: one table, whose roles are `CUSTOMER` and/or `SUPPLIER` (as today). A party also has:
@@ -86,7 +89,8 @@ marked *(inferred)* come from data and column names, not from code.
 - Each party links to one **ledger sub-account**, created automatically under Customers or Suppliers.
   - Its balance *is* that account's balance.
   - A party statement (كشف حساب) is the account statement.
-- **Sales rep** (مندوب): a Staff member with a commission % (old `emo`), and optionally their own VAN warehouse.
+- **Sales rep** (مندوب): a Staff member with a commission % (old `emo`).
+- **Shipping company** (شركة شحن): a party with the `CARRIER` role, used for deliveries (§2.5).
 
 ### 2.4 Stock — المخزون
 - **StockBalance**: one row per item per warehouse, plus the batch when expiry is tracked.
@@ -97,6 +101,9 @@ marked *(inferred)* come from data and column names, not from code.
 - **Average cost** is **company-wide per item**:
   - A transfer moves goods but does not change their cost (old `chkBoxIsNotTawelInAvg` = on).
   - Receipts recompute the average; issues leave at the average (§3.3 of ROADMAP).
+  - The old app computed the average **per branch**, by replaying every movement at report
+    time (`avgMor`, §8). SKB stores the average on each movement instead. Whether it should be
+    per branch is an open question for the owner.
 - **No negative stock**: an issue that would take a warehouse below zero is refused.
   - Old setting `chkBoxIsMabeaatNotOverStock` = on. In SKB this is a policy that is on by default.
 - Stock documents:
@@ -104,8 +111,7 @@ marked *(inferred)* come from data and column names, not from code.
     - Lifecycle `DRAFT → SENT → RECEIVED`, or `SENT → CANCELLED`.
     - While SENT, the goods are **in transit**: out of the source warehouse, not yet in the target.
     - The receiver confirms receipt (old `chkBoxIsConfermTahwel` = on). If the policy is off, SENT and RECEIVED happen together.
-  - **Van load / unload**: a transfer to or from a `VAN` warehouse, so no extra tables are needed.
-    - Old tables: `eznTahwelToMandobTawzee` and `eznTahwelFromMandobToStock`.
+  - *Van load / unload* (old `eznTahwel*Mandob*`) is **not used** by the company, so it is not built.
   - **Stocktake / adjustment** (الجرد والتسويات): built. It becomes per warehouse.
   - **Opening stock** (رصيد أول المدة): one document per warehouse at go-live.
 
@@ -145,6 +151,16 @@ One shape for every document type:
   the party's account. `Paid` and `Remaining` are shown, as in the old app (المدفوع / الباقي).
 - **Commission** (عمولة): rep commission % × net sales. It is posted as an expense owed to the
   rep and is reversed by returns.
+- **Delivery** (التوصيل). The owner confirmed goods reach the customer in one of two ways:
+  our own delivery, or a **shipping company**. A sales invoice records:
+  - `DeliveryMethod`: `PICKUP` / `OWN_DELIVERY` / `SHIPPING_COMPANY`
+  - the carrier and its waybill number (رقم البوليصة)
+  - an optional shipping fee, charged to the customer as an `ADDITION` charge
+  - a delivery status: `PENDING → OUT_FOR_DELIVERY → DELIVERED`, or `RETURNED`
+  - If the shipping company **collects the cash from the customer** (تحصيل عند الاستلام):
+    - The carrier owes that money until it pays us.
+    - A receipt from the carrier then settles those invoices.
+    - This is open to confirm with the owner.
 - **Numbering:** one prefix per type (INV, PUR, SRT, PRT, ADJ, TRF…), yearly sequence. This is built.
 
 ### 2.6 Money — الخزينة والبنوك
@@ -184,16 +200,19 @@ One shape for every document type:
 - **Period lock** (إقفال الحركات): nothing can be posted, edited or cancelled on or before the lock date.
 
 ### 2.9 Later modules — only if the company uses them
-Each one is off until confirmed with the owner.
+Owner's answers (2026-09-28):
+- **Payroll & attendance: yes.**
+- Production and maintenance: not used.
+- Currency: EGP only for now, **maybe others later**.
 
 | Module | Old tables | SKB shape |
 |---|---|---|
-| Production (أمر شغل) | `amrShoghl`, `twsifAmrShoghlMain/Sub` | Bill of materials (components + waste %), then a production order that consumes RAW and produces FINISHED at the summed cost. |
-| Maintenance jobs (صيانة) | `fixJob` | A job card per customer item, with parts (stock out) and labour (service line), invoiced on close. |
-| Payroll & attendance | `P_*`, `FP` (fingerprint devices) | A separate module: shifts, attendance import, rules (late / absence / overtime), salary run posting one journal entry. |
+| Production (أمر شغل) — *not used* | `amrShoghl`, `twsifAmrShoghlMain/Sub` | Bill of materials (components + waste %), then a production order that consumes RAW and produces FINISHED at the summed cost. |
+| Maintenance jobs (صيانة) — *not used* | `fixJob` | A job card per customer item, with parts (stock out) and labour (service line), invoiced on close. |
+| **Payroll & attendance — used** | `P_*`, `FP` (fingerprint devices) | A separate module: shifts, attendance import, rules (late / absence / overtime), salary run posting one journal entry. |
 | Item exchange (استبدال) | `estbdal*` | A sales return + sales invoice pair created together. |
 | Customer follow-up | `motabetAmyl` | Notes and reminders on a party. |
-| Multi-currency | `crc`, `crcVal` | A currency and rate per document; the ledger posts in base currency (PROGRESS §6). |
+| Multi-currency — *maybe later* | `crc`, `crcVal` | Every document stores a currency + rate from day one: EGP and rate 1 today, so turning currencies on later needs no data migration. The ledger always posts in the base currency, and exchange differences (old `getDiffCrc`) post to an FX gain/loss account. |
 
 ---
 
@@ -236,7 +255,8 @@ their stock movements. Cancelling a document posts the exact reverse; nothing is
 | `price`, `itemPrice`, `priceList*`, `priceLevels` | price levels, lists, quantity breaks | `PriceLevel`, `ItemPrice`, `PriceList`, `QuantityBreak` |
 | `stock`, `stockSerials` | on-hand per item/warehouse/expiry, serials | `StockBalance` (+ `Batch`, `Serial` when enabled) |
 | `mabeaat`, `sheraa`, `morMabeaat`, `morSheraa`, `MOrder`, `SOrder` (+`Items`) | sales / purchases / returns / orders | `Document` + `DocumentLine` + `DocumentCharge` |
-| `tahwel`, `tahwelItems`, `eznTahwel*Mandob*` | transfers, van load/unload | `Transfer` + lines (VAN warehouses) |
+| `tahwel`, `tahwelItems` | transfers | `Transfer` + lines |
+| `eznTahwel*Mandob*` | van load/unload | *not used* |
 | `taswya`, `taswyaItem` | stock adjustments | stocktake (built) |
 | `khaznaEsn`, `khaznaAction`, `khaznaInvoice`, `khaznaType` | cash receipts/payments, allocations | `Receipt` / `Payment` + `Allocation` |
 | `masrof`, `masrofSub` | expense categories | `ExpenseCategory` (2 levels) |
@@ -265,8 +285,8 @@ Old values are from the company's settings file. "Default" is what SKB starts wi
 | `chkBarCode` = on | barcodes | *(always on)* | — |
 | `chkExpirDate` = off | expiry tracking | `items.trackExpiry` | false |
 | `chkBoxIsSerial` | serial numbers | `items.trackSerials` | false |
-| `chkBoxSizeColor` = off | size/color variants | `items.variants` | false |
-| `chkCrc` = off | multi-currency | `money.multiCurrency` | false |
+| `chkBoxSizeColor` = off | size/color variants | `items.variants` | **true** (owner needs it) |
+| `chkCrc` = off | multi-currency | `money.multiCurrency` | false (schema ready, §2.9) |
 | `chkTaklefa` = off | extra costs added to a purchase | `purchases.landedCosts` | false |
 | `chkLastPrice` = off | suggest the last price for this party | `pricing.suggestLastPrice` | true |
 | `chkBoxIsTalbya` = off | purchase / sales orders | `documents.orders` | false |
@@ -303,10 +323,39 @@ Each step is a working slice: API, web, tests and docs together.
    - Movements carry the warehouse, and invoice lines pick a warehouse.
    - Migration: all current stock goes to one "Main warehouse" per branch.
 2. **Transfers:** `DRAFT → SENT → RECEIVED`, in-transit stock, and the transfer reports.
-3. **Units & price levels:** base unit + larger units with barcodes, and wholesale / consumer prices.
-4. **Invoice charges & reps:** the discount/tax list, bonus lines, sales rep + commission, and paid-now into a cash box.
+3. **Units, price levels & size/color:** base unit + larger units with barcodes, wholesale / consumer prices, and item models with size × color variants.
+4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep + commission, paid-now into a cash box, and delivery (own / shipping company).
 5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.
 6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
 7. **Cheques & portfolios.**
 8. **Financial statements**, then analytics (ROADMAP Phases 5–6).
-9. Optional modules (§2.9) as confirmed.
+9. Payroll & attendance (§2.9).
+
+---
+
+## 8. What the old database's own code shows
+
+The old database held about 40 of its own SQL functions. They were read as text from
+`company.MDF`, without attaching or changing it. Most are small helpers (null → 0, joining
+columns into text). The ones that carry business logic:
+
+| Function | What it does | SKB |
+|---|---|---|
+| `avgMor(branch, item, date)` | Replays one item's movements in date order. A receipt recomputes `avg = total value / total qty`; an issue leaves at the current avg. | Same method (ROADMAP §3.3), but stored on each movement (`AvgCostAfter`) instead of replayed with a cursor on every report. |
+| `getStockOrderM` / `getStockOrderS` / `getReqOrder` | Remaining on an order = Σ ordered − Σ delivered (`quantityT` on invoices), **per item per party**, not per order. | Each invoice line links to the order line it fulfils, so every order shows its own ordered / delivered / remaining. |
+| `getMadInvoice(invoice)` | Paid amount of an invoice = Σ receipt allocations to it (`khaznaInvoice`). | Same idea: `Paid` = Σ allocations (§2.6). |
+| `getWehdaCount`, `getItemMinWehdaPrice` | Converts a balance or price between an item's units, using the unit factors. | `ItemUnit.Factor`; stock is always stored in the base unit (§2.2). |
+| `getMaxExpID` | Gives each (item, expiry date) its own batch number. | `Batch` per item + expiry, when `items.trackExpiry` is on. |
+| `getDiffCrc` | Currency difference: an amount at the document's rate, revalued at the latest rate. | Later, with multi-currency. |
+| `getHesabLevel`, `hesabSort`, `getHesabMain` | Walk the account tree by its code path (`0-1-2-17`). | A parent ID on each account; the code is only a label. |
+
+Document type codes used inside these functions:
+- `301` = sales invoice
+- `303` = purchase invoice
+- `328` = purchase order (طلبية شراء)
+- `329` = sales order (طلبية بيع)
+- `308` = cheque deposited to a cash box (seen in the cash log)
+
+**Old bug not to copy:** `getDetailsInvoice` prints the first tax's label next to the second
+tax's amount.
+
