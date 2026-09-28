@@ -41,8 +41,13 @@ Live at the company's cloud host; on‑prem path documented in `COMPANY-SERVER.m
   configurable minimum markup with manager override); a **StockMovement** ledger (foundation for
   the item card) and a **CompanySettings** row. New screens: sales-invoice builder, purchases list.
   Verified end-to-end (weighted-average math, profit, floor, oversell block) via API + a browser run.
+- **Profitability report (shipped).** `/analytics` — net sales, cost, profit and margin over a date
+  range, broken down by customer / product / day (the old app's تقارير الربحية).
+- **Settings (shipped).** `/settings` — owner/admin edit VAT %, base currency, country, default
+  markup and the minimum-markup floor. Country selection suggests currency + typical VAT.
 
-The remaining items in §2 are **not yet built** — they are the target.
+The remaining items in §2 are **not yet built** — they are the target. A running handoff of
+state and next steps lives in **`PROGRESS.md`**.
 
 ---
 

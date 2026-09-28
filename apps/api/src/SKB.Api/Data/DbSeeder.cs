@@ -56,7 +56,7 @@ public static class DbSeeder
         // Company settings (single row): costing + profit-floor defaults, editable later in Settings.
         db.CompanySettings.Add(new CompanySettings
         {
-            CompanyName = "SKB Wholesale", Currency = Currency,
+            CompanyName = "SKB Wholesale", Country = "EG", Currency = Currency,
             DefaultMarkupPercent = 10, MinMarkupPercent = 0, DefaultTaxPercent = 0,
         });
 

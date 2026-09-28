@@ -3,11 +3,13 @@ import type {
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateSalesInvoiceInput,
+  UpdateSettingsInput,
   DashboardData,
   Paginated,
   Party,
   PresenceEntry,
   Product,
+  ProfitReport,
   SalesDocument,
   SalesDocumentSummary,
 } from '@skb/shared';
@@ -81,11 +83,30 @@ export function useProductSearch(search: string, inStockOnly = false) {
   });
 }
 
+export function useProfitReport(params: { from: string; to: string; by: string }) {
+  const query = new URLSearchParams({ from: params.from, to: params.to, by: params.by });
+  return useQuery({
+    queryKey: ['report', 'profit', params],
+    queryFn: () => api.get<ProfitReport>(`/reports/profitability?${query}`),
+  });
+}
+
 export function useCompanySettings() {
   return useQuery({
     queryKey: ['settings'],
     queryFn: () => api.get<CompanySettings>('/settings'),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateSettingsInput) => api.put<CompanySettings>('/settings', input),
+    onSuccess: (data) => {
+      qc.setQueryData(['settings'], data);
+      void qc.invalidateQueries({ queryKey: ['settings'] });
+    },
   });
 }
 
