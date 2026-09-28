@@ -16,6 +16,8 @@ something that is logically wrong.
 ## 0. How to read this
 
 - Arabic labels are kept next to each feature so they match what you saw in the old app.
+- **`DOMAIN.md`** is the companion design: how SKB models each of these features (entities,
+  rules, journal postings), reorganized from the old app's database and settings.
 - **"Logic"** lines are the accounting rule the feature must obey. These are the parts
   that are easy to get wrong, so they are stated explicitly.
 - Money is always **integer minor units** (piastres). Never floats. (CLAUDE.md rule #4.)

@@ -2,7 +2,8 @@
 
 A running record of what is built, the decisions behind it, and what's next — so any new
 session (or teammate) can pick up without losing context. Pair this with **`ROADMAP.md`**
-(the full feature catalog of the old ERP) and **`CLAUDE.md`** (the non-negotiable rules).
+(the full feature catalog of the old ERP), **`DOMAIN.md`** (how SKB models it: entities, rules,
+postings, build order) and **`CLAUDE.md`** (the non-negotiable rules).
 
 _Last updated: 2026-09-28._
 
@@ -136,6 +137,7 @@ Security-first, server-authoritative (no business data readable offline).
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 
 ## 7. What's NEXT (pick up here)
+Detailed slice order is in `DOMAIN.md` §7 (warehouses → transfers → units & prices → …).
 From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation and stocktake shipped):
 1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
    return to supplier) and check stock, avg cost, party balance and the profitability report.
