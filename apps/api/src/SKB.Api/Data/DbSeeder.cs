@@ -53,6 +53,25 @@ public static class DbSeeder
         };
         db.Products.AddRange(products);
 
+        // Company settings (single row): costing + profit-floor defaults, editable later in Settings.
+        db.CompanySettings.Add(new CompanySettings
+        {
+            CompanyName = "SKB Wholesale", Currency = Currency,
+            DefaultMarkupPercent = 10, MinMarkupPercent = 0, DefaultTaxPercent = 0,
+        });
+
+        // Opening stock movement per product, so the item card (كارت الصنف) has a starting point
+        // and stock valuation ties out from day one.
+        foreach (var p in products)
+        {
+            db.StockMovements.Add(new StockMovement
+            {
+                ProductId = p.Id, BranchId = main.Id, Type = StockMovementType.OPENING,
+                Quantity = p.StockOnHand, UnitCost = p.CostPrice,
+                BalanceAfter = p.StockOnHand, AvgCostAfter = p.CostPrice, Reference = "Opening balance",
+            });
+        }
+
         var c1 = new Party { Name = "Al-Nour Supermarket", Types = { "CUSTOMER" }, Phone = "+20 122 111 2222", Balance = Money(18450), Currency = Currency };
         var c2 = new Party { Name = "City Mart Chain", Types = { "CUSTOMER" }, Phone = "+20 122 333 4444", Balance = Money(7320), Currency = Currency };
         var c3 = new Party { Name = "Green Valley Grocery", Types = { "CUSTOMER" }, Phone = "+20 122 555 6666", Balance = 0, Currency = Currency };
@@ -77,10 +96,15 @@ public static class DbSeeder
                 var product = products[l.idx];
                 var unit = isPurchase ? product.CostPrice : product.SalePrice;
                 var disc = Money(l.disc);
+                var lineTotal = (long)l.qty * unit - disc;
+                var unitCost = product.CostPrice;             // weighted-average cost snapshot
+                var lineCost = (long)l.qty * unitCost;
+                var lineProfit = isPurchase ? 0 : lineTotal - lineCost;
                 return new DocumentLine
                 {
                     Product = product, ProductName = product.Name, Quantity = l.qty,
-                    UnitPrice = unit, Discount = disc, LineTotal = l.qty * unit - disc,
+                    UnitPrice = unit, Discount = disc, LineTotal = lineTotal,
+                    UnitCost = unitCost, LineCost = lineCost, LineProfit = lineProfit,
                 };
             }).ToList();
 
@@ -89,6 +113,8 @@ public static class DbSeeder
             var taxable = subtotal - discountTotal;
             var tax = (long)Math.Round(taxable * Vat);
             var grand = taxable + tax;
+            var costTotal = lineList.Sum(l => l.LineCost);
+            var profitTotal = isPurchase ? 0 : taxable - costTotal;
             var issue = DateTime.UtcNow.Date.AddDays(-issuedAgo).AddHours(10);
 
             return new SalesDocument
@@ -96,6 +122,7 @@ public static class DbSeeder
                 Number = number, Type = type, Status = status, Branch = branch, Party = party, Staff = staff,
                 IssueDate = issue, DueDate = dueInDays is null ? null : issue.AddDays(dueInDays.Value),
                 Subtotal = subtotal, DiscountTotal = discountTotal, TaxTotal = tax, GrandTotal = grand,
+                CostTotal = costTotal, ProfitTotal = profitTotal,
                 PaidAmount = (long)Math.Round(grand * paidRatio), Currency = Currency, Lines = lineList,
             };
         }

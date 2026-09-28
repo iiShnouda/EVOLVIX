@@ -36,3 +36,47 @@ export const presenceUpdateSchema = z.object({
   currentView: z.string().max(64).optional(),
 });
 export type PresenceUpdate = z.infer<typeof presenceUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Invoicing (Phase 1). Money fields are integer minor units.
+// ---------------------------------------------------------------------------
+
+export const invoiceLineSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  /** Selling price per unit (minor units). */
+  unitPrice: z.number().int().min(0),
+  /** Optional flat line discount (minor units). */
+  discount: z.number().int().min(0).default(0),
+});
+export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
+
+export const createSalesInvoiceSchema = z.object({
+  partyId: z.string().uuid(),
+  lines: z.array(invoiceLineSchema).min(1, 'Add at least one line item'),
+  taxPercent: z.number().int().min(0).max(100).optional(),
+  notes: z.string().max(1000).optional(),
+  dueDate: z.string().optional(),
+  paidAmount: z.number().int().min(0).default(0),
+  /** Request to sell below the configured floor (still never below cost). */
+  overrideFloor: z.boolean().optional().default(false),
+});
+export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
+
+export const purchaseLineSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  /** Purchase cost per unit (minor units) — feeds the weighted-average cost. */
+  unitCost: z.number().int().min(0),
+});
+export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
+
+export const createPurchaseInvoiceSchema = z.object({
+  partyId: z.string().uuid(),
+  lines: z.array(purchaseLineSchema).min(1, 'Add at least one line item'),
+  taxPercent: z.number().int().min(0).max(100).optional(),
+  notes: z.string().max(1000).optional(),
+  dueDate: z.string().optional(),
+  paidAmount: z.number().int().min(0).default(0),
+});
+export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;

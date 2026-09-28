@@ -13,6 +13,8 @@ import { Spinner } from './components/ui';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SalesPage } from './pages/SalesPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
@@ -106,15 +108,14 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/sales" element={<SalesPage />} />
+            <Route path="/sales/new" element={<InvoiceBuilderPage mode="sale" />} />
             <Route path="/parties" element={<PartiesPage />} />
             <Route
               path="/inventory"
               element={<PlaceholderPage titleKey="nav.inventory" icon="inventory" />}
             />
-            <Route
-              path="/purchases"
-              element={<PlaceholderPage titleKey="nav.purchases" icon="purchases" />}
-            />
+            <Route path="/purchases" element={<PurchasesPage />} />
+            <Route path="/purchases/new" element={<InvoiceBuilderPage mode="purchase" />} />
             <Route
               path="/receipts"
               element={<PlaceholderPage titleKey="nav.receipts" icon="receipts" />}

@@ -44,6 +44,7 @@ export type Permission =
   | 'sales:view'
   | 'sales:create'
   | 'sales:edit'
+  | 'sales:override_floor'
   | 'purchases:view'
   | 'purchases:create'
   | 'receipts:view'
@@ -201,6 +202,10 @@ export interface DocumentLine {
   discount: number;
   /** quantity * unitPrice - discount (+ tax), in minor units. */
   lineTotal: number;
+  /** Weighted-average cost per unit at posting time (COGS per unit), minor units. */
+  unitCost: number;
+  /** Line profit = lineTotal - (quantity * unitCost), minor units. */
+  lineProfit: number;
 }
 
 export interface SalesDocument {
@@ -224,9 +229,25 @@ export interface SalesDocument {
   taxTotal: number;
   grandTotal: number;
   paidAmount: number;
+  /** Cost of goods on the document (sum of line costs), minor units. */
+  costTotal: number;
+  /** Profit = (subtotal - discountTotal) - costTotal, minor units. Tax is pass-through. */
+  profitTotal: number;
   currency: string;
   notes?: string;
   createdAt: string;
+}
+
+/** Company-wide pricing/costing defaults (Settings / الضبط). */
+export interface CompanySettings {
+  companyName: string;
+  currency: string;
+  /** Suggested markup for a new sales line (e.g. 10 → price = cost + 10%). */
+  defaultMarkupPercent: number;
+  /** Profit floor: sales blocked below cost × (1 + min/100); 0 = never below cost. */
+  minMarkupPercent: number;
+  /** Default sales tax percent for new invoices (0 = none). */
+  defaultTaxPercent: number;
 }
 
 /** Lightweight row for list views (no line items). */

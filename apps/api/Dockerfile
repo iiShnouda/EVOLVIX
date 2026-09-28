@@ -27,6 +27,10 @@ WORKDIR /app
 COPY --from=api /app ./
 COPY --from=web /src/apps/web/dist ./wwwroot
 ENV ASPNETCORE_ENVIRONMENT=Production
+# Low-memory friendly (helps tiny free tiers like Back4App's 256 MB; harmless elsewhere):
+# workstation GC + conservative heap use.
+ENV DOTNET_gcServer=0
+ENV DOTNET_GCConserveMemory=9
 # Cloud hosts inject $PORT (honored in Program.cs); 8080 is the local default.
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "SKB.Api.dll"]
