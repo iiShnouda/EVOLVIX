@@ -211,4 +211,21 @@ export const ar: TranslationDictionary = {
   'invoice.receiveCost': 'تكلفة الشراء',
   'invoice.newAvgCost': 'متوسط التكلفة الجديد',
   'invoice.back': 'العودة للقائمة',
+
+  // Profitability report (تقارير الربحية)
+  'report.profitability': 'الربحية',
+  'report.subtitle': 'المبيعات والتكلفة والربح خلال الفترة',
+  'report.from': 'من',
+  'report.to': 'إلى',
+  'report.by': 'التجميع حسب',
+  'report.byCustomer': 'العميل',
+  'report.byProduct': 'الصنف',
+  'report.byDay': 'اليوم',
+  'report.revenue': 'صافي المبيعات',
+  'report.cost': 'التكلفة',
+  'report.profit': 'الربح',
+  'report.margin': 'نسبة الربح',
+  'report.invoices': 'الفواتير',
+  'report.qty': 'الكمية',
+  'report.noData': 'لا مبيعات في هذه الفترة',
 };

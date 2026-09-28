@@ -210,4 +210,21 @@ export const en = {
   'invoice.receiveCost': 'Purchase cost',
   'invoice.newAvgCost': 'New avg cost',
   'invoice.back': 'Back to list',
+
+  // Profitability report (تقارير الربحية)
+  'report.profitability': 'Profitability',
+  'report.subtitle': 'Sales, cost and profit for the period',
+  'report.from': 'From',
+  'report.to': 'To',
+  'report.by': 'Group by',
+  'report.byCustomer': 'Customer',
+  'report.byProduct': 'Product',
+  'report.byDay': 'Day',
+  'report.revenue': 'Net sales',
+  'report.cost': 'Cost',
+  'report.profit': 'Profit',
+  'report.margin': 'Margin',
+  'report.invoices': 'Invoices',
+  'report.qty': 'Qty',
+  'report.noData': 'No sales in this period',
 } as const;

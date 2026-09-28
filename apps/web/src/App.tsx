@@ -15,6 +15,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { SalesPage } from './pages/SalesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
+import { ProfitabilityPage } from './pages/ProfitabilityPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
@@ -120,10 +121,7 @@ export default function App() {
               path="/receipts"
               element={<PlaceholderPage titleKey="nav.receipts" icon="receipts" />}
             />
-            <Route
-              path="/analytics"
-              element={<PlaceholderPage titleKey="nav.analytics" icon="analytics" />}
-            />
+            <Route path="/analytics" element={<ProfitabilityPage />} />
             <Route path="/staff" element={<PlaceholderPage titleKey="nav.staff" icon="staff" />} />
             <Route
               path="/branches"

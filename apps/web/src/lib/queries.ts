@@ -8,6 +8,7 @@ import type {
   Party,
   PresenceEntry,
   Product,
+  ProfitReport,
   SalesDocument,
   SalesDocumentSummary,
 } from '@skb/shared';
@@ -78,6 +79,14 @@ export function useProductSearch(search: string, inStockOnly = false) {
   return useQuery({
     queryKey: ['products', search, inStockOnly],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
+  });
+}
+
+export function useProfitReport(params: { from: string; to: string; by: string }) {
+  const query = new URLSearchParams({ from: params.from, to: params.to, by: params.by });
+  return useQuery({
+    queryKey: ['report', 'profit', params],
+    queryFn: () => api.get<ProfitReport>(`/reports/profitability?${query}`),
   });
 }
 

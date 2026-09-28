@@ -238,6 +238,37 @@ export interface SalesDocument {
   createdAt: string;
 }
 
+/** One row of the profitability report (a customer, a product, or a day). */
+export interface ProfitRow {
+  key: string;
+  label: string;
+  /** Net sales (subtotal − discount), minor units. */
+  revenue: number;
+  /** Cost of goods sold, minor units. */
+  cost: number;
+  /** Profit = revenue − cost, minor units. */
+  profit: number;
+  /** Invoice count (customer/day groupings). */
+  invoices: number;
+  /** Units sold (product grouping). */
+  quantity: number;
+}
+
+export type ProfitGroupBy = 'customer' | 'product' | 'day';
+
+/** Profitability report (تقارير الربحية) over a date range. */
+export interface ProfitReport {
+  from: string;
+  to: string;
+  by: ProfitGroupBy;
+  currency: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  invoices: number;
+  rows: ProfitRow[];
+}
+
 /** Company-wide pricing/costing defaults (Settings / الضبط). */
 export interface CompanySettings {
   companyName: string;

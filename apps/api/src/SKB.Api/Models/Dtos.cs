@@ -49,6 +49,15 @@ public record CreatePurchaseInvoiceRequest(
 public record CompanySettingsDto(
     string CompanyName, string Currency, int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent);
 
+// ---- Profitability report (تقارير الربحية) ----
+
+public record ProfitRowDto(
+    string Key, string Label, long Revenue, long Cost, long Profit, int Invoices, int Quantity);
+
+public record ProfitReportDto(
+    string From, string To, string By, string Currency,
+    long Revenue, long Cost, long Profit, int Invoices, ProfitRowDto[] Rows);
+
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
     SalesSummaryDto[] RecentDocuments, string Currency);
