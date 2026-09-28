@@ -21,6 +21,33 @@ services:
       timeout: 5s
       retries: 10
 
+  # The whole app (web + C# API in one image), for running on your own company server.
+  # Started only with the "full" profile:  docker compose --profile full up -d --build
+  # Everything then lives on THIS machine — data in the skb-db-data volume, no cloud.
+  app:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: skb-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      # Talks to the db service over the private Docker network (host name "db").
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=${POSTGRES_DB:-skb};Username=${POSTGRES_USER:-skb};Password=${POSTGRES_PASSWORD:-skb_dev_password};Pooling=true;Maximum Pool Size=20"
+      Jwt__AccessSecret: "${JWT_ACCESS_SECRET:-change_me_to_a_long_random_secret}"
+      Security__SessionEncryptionKey: "${SESSION_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+      Cookie__Secure: "${COOKIE_SECURE:-false}"
+      Seed__OwnerEmail: "${SEED_OWNER_EMAIL:-owner@skb.local}"
+      Seed__OwnerPassword: "${SEED_OWNER_PASSWORD:-ChangeMe!Owner123}"
+    ports:
+      # Staff on the LAN reach the app at http://<this-server-ip>:8080
+      - "${APP_PORT:-8080}:8080"
+
 volumes:
   skb-db-data:
     name: skb-db-data
