@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/bin
+**/obj
+**/.vs
+.git
+**/appsettings.Development.json
+**/appsettings.Production.json
+apps/api/src/SKB.Api/wwwroot
+apps/windows
+**/*.md

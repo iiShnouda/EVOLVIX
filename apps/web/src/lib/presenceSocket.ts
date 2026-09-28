@@ -3,7 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 import { useLocation } from 'react-router-dom';
 import { getAccessToken, useAuth } from '../stores/auth';
 
-const WS_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5080';
+const WS_BASE = import.meta.env.VITE_API_URL ?? '';
 
 const viewOf = (pathname: string): string => pathname.split('/')[1] || 'dashboard';
 

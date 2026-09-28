@@ -1,7 +1,9 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
 import { getAccessToken, useAuth } from '../stores/auth';
 
-const API_BASE = `${import.meta.env.VITE_API_URL ?? 'http://localhost:5080'}/api`;
+// Default to a relative "/api" (same-origin) so the API can serve the web app as one unit.
+// In split-server dev the Vite proxy forwards /api to the API; in a split deploy set VITE_API_URL.
+const API_BASE = `${import.meta.env.VITE_API_URL ?? ''}/api`;
 
 export class ApiError extends Error {
   constructor(

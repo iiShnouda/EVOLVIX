@@ -42,9 +42,18 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // In split-server dev the app uses relative "/api"; forward it to the API on :5080.
+    proxy: {
+      '/api': { target: 'http://localhost:5080', changeOrigin: true },
+      '/hubs': { target: 'http://localhost:5080', changeOrigin: true, ws: true },
+    },
   },
   preview: {
     port: 4173,
     host: true,
+    proxy: {
+      '/api': { target: 'http://localhost:5080', changeOrigin: true },
+      '/hubs': { target: 'http://localhost:5080', changeOrigin: true, ws: true },
+    },
   },
 });

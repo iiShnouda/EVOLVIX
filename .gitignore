@@ -41,3 +41,6 @@ certs/
 
 # Test / coverage
 coverage/
+
+# Combined build: web copied into the API's wwwroot at build time
+apps/api/src/SKB.Api/wwwroot/

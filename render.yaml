@@ -1,14 +1,13 @@
-# SKB — free cloud deploy on Render (API + web). Database is free Neon PostgreSQL (external).
-# Create Render account → New → Blueprint → connect this repo. Render reads this file and
-# creates both services. It prompts for the values marked `sync: false` (see DEPLOY.md).
+# SKB — free cloud deploy on Render. ONE service: the C# API serves the web app too.
+# Database is free Neon PostgreSQL (external). Create Render account → New → Blueprint →
+# connect this repo. Render prompts for the `sync: false` values (see HOST-FREE.md).
 
 services:
-  # --- C# API server (Docker) ---
   - type: web
-    name: skb-api
+    name: skb
     runtime: docker
     dockerfilePath: apps/api/Dockerfile
-    dockerContext: apps/api
+    dockerContext: . # repo root: the image builds the web app and the API together
     plan: free
     region: frankfurt
     branch: claude/nifty-dirac-lv9vbj
@@ -16,41 +15,19 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
-      - key: ConnectionStrings__Default   # paste the Neon .NET connection string
+      - key: ConnectionStrings__Default # paste the Neon .NET connection string
         sync: false
-      - key: Jwt__AccessSecret            # Render generates a strong random value
+      - key: Jwt__AccessSecret # Render generates a strong random value
         generateValue: true
       - key: Jwt__AccessTtlSeconds
         value: "900"
       - key: Jwt__RefreshTtlSeconds
         value: "2592000"
-      - key: Security__SessionEncryptionKey  # paste 64 hex chars (openssl rand -hex 32)
+      - key: Security__SessionEncryptionKey # paste 64 hex chars (openssl rand -hex 32)
         sync: false
       - key: Cookie__Secure
         value: "true"
-      - key: Cors__Origins__0             # the web URL, e.g. https://skb-web.onrender.com
-        sync: false
       - key: Seed__OwnerEmail
         value: owner@skb.local
-      - key: Seed__OwnerPassword          # choose a strong owner password
+      - key: Seed__OwnerPassword # choose a strong owner password
         sync: false
-
-  # --- React web app (static site + PWA) ---
-  - type: web
-    name: skb-web
-    runtime: static
-    region: frankfurt
-    branch: claude/nifty-dirac-lv9vbj
-    buildCommand: corepack enable && pnpm install && pnpm --filter @skb/shared build && pnpm --filter @skb/web build
-    staticPublishPath: apps/web/dist
-    envVars:
-      - key: VITE_API_URL                 # the API URL, e.g. https://skb-api.onrender.com
-        sync: false
-    routes:
-      - type: rewrite                     # SPA: send all paths to index.html
-        source: /*
-        destination: /index.html
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: DENY

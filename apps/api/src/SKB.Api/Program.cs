@@ -116,6 +116,12 @@ forwarded.KnownNetworks.Clear();
 forwarded.KnownProxies.Clear();
 app.UseForwardedHeaders(forwarded);
 
+// Serve the built web app (if present in wwwroot) from the SAME origin as the API, so the
+// whole product is one deployable service on one URL. API-only mode still works when
+// wwwroot is empty. The web app then calls the API with relative "/api" paths (no CORS).
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 // Enable HTTPS redirection only when a certificate/HTTPS endpoint is configured.
 if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
     app.UseHttpsRedirection();
@@ -127,5 +133,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<PresenceHub>("/hubs/presence");
+// SPA fallback: any non-API, non-file route serves index.html so client-side routing works.
+app.MapFallbackToFile("index.html");
 
 app.Run();
