@@ -1,0 +1,33 @@
+# SKB — free cloud deploy on Render. ONE service: the C# API serves the web app too.
+# Database is free Neon PostgreSQL (external). Create Render account → New → Blueprint →
+# connect this repo. Render prompts for the `sync: false` values (see HOST-FREE.md).
+
+services:
+  - type: web
+    name: skb
+    runtime: docker
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: . # repo root: the image builds the web app and the API together
+    plan: free
+    region: frankfurt
+    branch: claude/nifty-dirac-lv9vbj
+    healthCheckPath: /api/health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__Default # paste the Neon .NET connection string
+        sync: false
+      - key: Jwt__AccessSecret # Render generates a strong random value
+        generateValue: true
+      - key: Jwt__AccessTtlSeconds
+        value: "900"
+      - key: Jwt__RefreshTtlSeconds
+        value: "2592000"
+      - key: Security__SessionEncryptionKey # paste 64 hex chars (openssl rand -hex 32)
+        sync: false
+      - key: Cookie__Secure
+        value: "true"
+      - key: Seed__OwnerEmail
+        value: owner@skb.local
+      - key: Seed__OwnerPassword # choose a strong owner password
+        sync: false

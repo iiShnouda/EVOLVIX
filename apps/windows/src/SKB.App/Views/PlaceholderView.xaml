@@ -1,0 +1,17 @@
+<UserControl x:Class="SKB.App.Views.PlaceholderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Margin="20">
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420">
+      <Border Width="56" Height="56" CornerRadius="14" Background="{DynamicResource BrandSoftBrush}"
+              HorizontalAlignment="Center">
+        <TextBlock Text="SKB" Foreground="{DynamicResource BrandBrush}" FontWeight="Bold"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Border>
+      <TextBlock Text="{Binding Title}" Style="{StaticResource H1}" HorizontalAlignment="Center"
+                 Margin="0,16,0,0" TextAlignment="Center" />
+      <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"
+                 Text="This module is part of the planned build and connects to the same secure server and data model. The foundation (auth, security, roles, layout) already supports it." />
+    </StackPanel>
+  </Grid>
+</UserControl>

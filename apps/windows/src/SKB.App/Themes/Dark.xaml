@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Dark theme brushes (same keys as Light.xaml). -->
+  <SolidColorBrush x:Key="CanvasBrush" Color="#0B0F14" />
+  <SolidColorBrush x:Key="SurfaceBrush" Color="#131A22" />
+  <SolidColorBrush x:Key="Surface2Brush" Color="#1B232D" />
+  <SolidColorBrush x:Key="LineBrush" Color="#273140" />
+  <SolidColorBrush x:Key="FgBrush" Color="#EEF2F7" />
+  <SolidColorBrush x:Key="MutedBrush" Color="#A4AFC0" />
+  <SolidColorBrush x:Key="FaintBrush" Color="#6C788C" />
+
+  <SolidColorBrush x:Key="BrandBrush" Color="#7C74FF" />
+  <SolidColorBrush x:Key="BrandFgBrush" Color="#0B0F14" />
+  <SolidColorBrush x:Key="BrandSoftBrush" Color="#241F4D" />
+
+  <SolidColorBrush x:Key="PositiveBrush" Color="#35C07A" />
+  <SolidColorBrush x:Key="PositiveSoftBrush" Color="#12281F" />
+  <SolidColorBrush x:Key="WarningBrush" Color="#E0A94A" />
+  <SolidColorBrush x:Key="WarningSoftBrush" Color="#2E2416" />
+  <SolidColorBrush x:Key="DestructiveBrush" Color="#F26B60" />
+  <SolidColorBrush x:Key="DestructiveSoftBrush" Color="#2F1A18" />
+  <SolidColorBrush x:Key="InfoBrush" Color="#5B9BFF" />
+  <SolidColorBrush x:Key="InfoSoftBrush" Color="#16233D" />
+</ResourceDictionary>

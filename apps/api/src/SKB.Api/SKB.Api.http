@@ -1,0 +1,6 @@
+@SKB.Api_HostAddress = http://localhost:5153
+
+GET {{SKB.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

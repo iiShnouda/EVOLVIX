@@ -1,0 +1,151 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Semantic design tokens. Colors are defined as CSS variables per theme, and
+   exposed to Tailwind via @theme inline so utilities like `bg-surface`,
+   `text-fg`, `border-line` resolve to the LIVE variable — switching the
+   `data-theme` attribute on <html> re-themes everything (charts, borders,
+   shadows, status colors), not just the page background.
+--------------------------------------------------------------------------- */
+@theme inline {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-line);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+  --color-brand: var(--c-brand);
+  --color-brand-fg: var(--c-brand-fg);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-positive: var(--c-positive);
+  --color-positive-soft: var(--c-positive-soft);
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-destructive: var(--c-destructive);
+  --color-destructive-soft: var(--c-destructive-soft);
+  --color-info: var(--c-info);
+  --color-info-soft: var(--c-info-soft);
+
+  --radius-app: 0.75rem;
+  --font-sans:
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans Arabic',
+    'Cairo', sans-serif;
+}
+
+:root {
+  /* Light theme */
+  --c-canvas: #f5f6f8;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f2f5;
+  --c-line: #e2e5ea;
+  --c-fg: #10151c;
+  --c-muted: #55607a;
+  --c-faint: #8a93a6;
+  --c-brand: #4f46e5;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #eceafe;
+  --c-positive: #0f9d58;
+  --c-positive-soft: #e4f5ec;
+  --c-warning: #b7791f;
+  --c-warning-soft: #fbf1de;
+  --c-destructive: #d1382c;
+  --c-destructive-soft: #fbe6e4;
+  --c-info: #2563eb;
+  --c-info-soft: #e4edfd;
+
+  --shadow-card: 0 1px 2px rgba(16, 21, 28, 0.04), 0 1px 3px rgba(16, 21, 28, 0.06);
+  --shadow-pop: 0 8px 30px rgba(16, 21, 28, 0.12);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --c-canvas: #0b0f14;
+  --c-surface: #131a22;
+  --c-surface-2: #1b232d;
+  --c-line: #273140;
+  --c-fg: #eef2f7;
+  --c-muted: #a4afc0;
+  --c-faint: #6c788c;
+  --c-brand: #7c74ff;
+  --c-brand-fg: #0b0f14;
+  --c-brand-soft: #241f4d;
+  --c-positive: #35c07a;
+  --c-positive-soft: #12281f;
+  --c-warning: #e0a94a;
+  --c-warning-soft: #2e2416;
+  --c-destructive: #f26b60;
+  --c-destructive-soft: #2f1a18;
+  --c-info: #5b9bff;
+  --c-info-soft: #16233d;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 10px 40px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--c-line);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--c-canvas);
+  color: var(--c-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numerals for all financial figures. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Safe-area helpers for notched iPhones / Android. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+}
+
+/* Directional icon mirroring in RTL (chevrons, arrows, sidebar toggles). */
+[dir='rtl'] .flip-rtl {
+  transform: scaleX(-1);
+}
+
+/* Visible, consistent focus ring for keyboard users. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-line);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

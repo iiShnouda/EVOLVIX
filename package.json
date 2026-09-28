@@ -1,0 +1,30 @@
+{
+  "name": "skb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SKB — Adaptive bilingual wholesale accounting platform (C# server + web/PWA + native clients).",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @skb/web dev",
+    "dev:web": "pnpm --filter @skb/web dev",
+    "build": "pnpm --filter @skb/shared build && pnpm --filter @skb/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
