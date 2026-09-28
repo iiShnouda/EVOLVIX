@@ -28,21 +28,23 @@ public sealed class InventoryController : ControllerBase
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
     private readonly WarehouseService _warehouses;
+    private readonly StockValuation _valuation;
     private readonly AuditService _audit;
 
     public InventoryController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        AuditService audit)
+        StockValuation valuation, AuditService audit)
     {
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
+        _valuation = valuation;
         _audit = audit;
     }
 
     /// <summary>
     /// Active items with stock, average cost, value and reorder status — across all warehouses, or
-    /// in one when <paramref name="warehouseId"/> is given. Totals cover that scope and ignore the
-    /// search / low-stock filter.
+    /// in one when <paramref name="warehouseId"/> is given (then cost is that branch's). Totals cover
+    /// that scope and ignore the search / low-stock filter.
     /// </summary>
     [HttpGet("items")]
     public async Task<ActionResult<InventoryListDto>> Items(
@@ -53,14 +55,20 @@ public sealed class InventoryController : ControllerBase
 
         var products = await _db.Products.AsNoTracking().Where(p => p.IsActive)
             .Include(p => p.Category).OrderBy(p => p.Name).ToListAsync();
-        var inWarehouse = wid is Guid w
-            ? await _db.StockBalances.AsNoTracking().Where(b => b.WarehouseId == w)
-                .ToDictionaryAsync(b => b.ProductId, b => b.Quantity)
-            : null;
+        var state = await _valuation.CurrentAsync();
 
-        var all = products
-            .Select(p => Mapper.ToInventoryItem(p, inWarehouse is null ? null : inWarehouse.GetValueOrDefault(p.Id)))
-            .ToList();
+        var all = products.Select(p =>
+        {
+            if (wid is Guid w)
+            {
+                var (qty, value) = state.Of(p.Id, w);
+                var cost = state.PoolOfWarehouse.TryGetValue(w, out var pool)
+                           && state.AvgCost.TryGetValue((p.Id, pool), out var c) ? c : p.CostPrice;
+                return Mapper.ToInventoryItem(p, qty, cost, value);
+            }
+            var total = state.Of(p.Id);
+            return Mapper.ToInventoryItem(p, p.StockOnHand, p.CostPrice, total.Value);
+        }).ToList();
 
         IEnumerable<InventoryItemDto> rows = all;
         if (lowOnly) rows = rows.Where(i => i.IsLow);
@@ -81,7 +89,7 @@ public sealed class InventoryController : ControllerBase
     /// <summary>
     /// Item card (كارت الصنف): opening balance before <paramref name="from"/>, every movement in the
     /// period with its running balance, and the closing balance — for all warehouses or one.
-    /// Defaults to the last 30 days. Values use the company average cost at each point in time.
+    /// Defaults to the last 30 days. Values use each branch's average cost at that point in time.
     /// </summary>
     [HttpGet("items/{id:guid}/card")]
     public async Task<ActionResult<ItemCardDto>> Card(Guid id,
@@ -100,49 +108,43 @@ public sealed class InventoryController : ControllerBase
 
         var ofItem = _db.StockMovements.AsNoTracking().Where(m => m.ProductId == id);
         var inScope = wid is Guid w ? ofItem.Where(m => m.WarehouseId == w) : ofItem;
-
-        var before = await inScope.Where(m => m.CreatedAt < fromDate)
-            .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new { m.BalanceAfter, m.WarehouseBalanceAfter })
-            .FirstOrDefaultAsync();
-        var opening = before is null ? 0 : wid is null ? before.BalanceAfter : before.WarehouseBalanceAfter;
-
         var moves = await inScope.Where(m => m.CreatedAt >= fromDate && m.CreatedAt < toExclusive)
             .OrderBy(m => m.CreatedAt)
             .Take(MaxCardRows)
             .ToListAsync();
-        var closing = moves.Count == 0 ? opening
-            : wid is null ? moves[^1].BalanceAfter : moves[^1].WarehouseBalanceAfter;
 
-        // The average is company-wide, so it comes from the item's last movement in any warehouse.
-        async Task<long> AvgBefore(DateTime at) =>
-            await ofItem.Where(m => m.CreatedAt < at).OrderByDescending(m => m.CreatedAt)
-                .Select(m => m.AvgCostAfter).FirstOrDefaultAsync();
+        var opening = (await _valuation.AtAsync(fromDate, id)).Of(id, wid);
+        var closing = (await _valuation.AtAsync(toExclusive, id)).Of(id, wid);
+        var now = await _valuation.CurrentAsync(id);
+        var names = await _db.Warehouses.AsNoTracking()
+            .Select(x => new { x.Id, x.Name, Branch = x.Branch!.Name }).ToDictionaryAsync(x => x.Id);
+        var stock = now.Quantity
+            .Where(kv => kv.Key.Product == id && kv.Value != 0)
+            .Select(kv => new WarehouseStockDto(kv.Key.Warehouse.ToString(), names[kv.Key.Warehouse].Name,
+                names[kv.Key.Warehouse].Branch, kv.Value, now.ValueOf(id, kv.Key.Warehouse)))
+            .OrderBy(x => x.Name)
+            .ToArray();
 
-        var stock = await _db.StockBalances.AsNoTracking()
-            .Where(b => b.ProductId == id && b.Quantity != 0)
-            .Select(b => new { b.WarehouseId, b.Warehouse!.Name, Branch = b.Warehouse.Branch!.Name, b.Quantity })
-            .OrderBy(b => b.Name)
-            .ToListAsync();
+        var item = wid is Guid only
+            ? Mapper.ToInventoryItem(product, now.Of(id, only).Quantity,
+                now.CostIn(id, only) is var c && c > 0 ? c : product.CostPrice, now.Of(id, only).Value)
+            : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
 
         return Ok(new ItemCardDto(
-            Mapper.ToInventoryItem(product), fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"),
-            wid?.ToString(),
-            opening, (long)opening * await AvgBefore(fromDate),
+            item, fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"), wid?.ToString(),
+            opening.Quantity, opening.Value,
             moves.Where(m => m.Quantity > 0).Sum(m => m.Quantity),
             moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
-            closing, (long)closing * await AvgBefore(toExclusive),
+            closing.Quantity, closing.Value,
             await ToMovementDtosAsync(moves, perWarehouse: wid is not null),
-            stock.Select(s => new WarehouseStockDto(s.WarehouseId.ToString(), s.Name, s.Branch, s.Quantity,
-                (long)s.Quantity * product.CostPrice)).ToArray(),
-            await CurrencyAsync()));
+            stock, await CurrencyAsync()));
     }
 
     /// <summary>
     /// Stock valuation (تقييم المخزن) at the end of <paramref name="asOf"/> (default today):
-    /// quantity × weighted-average cost, by category, item and warehouse. For a past date it replays
-    /// the ledger: each item's quantity per warehouse from its last movement there on or before that
-    /// day, valued at the company average from the item's last movement anywhere.
+    /// each warehouse's quantity × its branch's average cost, by category, item and warehouse. For a
+    /// past date it replays the ledger (each warehouse's balance and each branch's average after
+    /// their last movement on or before that day).
     /// </summary>
     [HttpGet("valuation")]
     public async Task<ActionResult<ValuationDto>> Valuation(
@@ -155,49 +157,17 @@ public sealed class InventoryController : ControllerBase
         var date = Utc((ParseDate(asOf) ?? today).Date);
         var products = await _db.Products.AsNoTracking().Include(p => p.Category).ToDictionaryAsync(p => p.Id);
         var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
+        var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(date.AddDays(1));
 
-        // (product, warehouse) → quantity, and product → average cost, at the end of the day.
-        List<(Guid Product, Guid Warehouse, int Qty)> held;
-        Dictionary<Guid, long> avg;
-        if (date >= today)
-        {
-            var balances = await _db.StockBalances.AsNoTracking().Where(b => b.Quantity != 0).ToListAsync();
-            held = balances.Where(b => products.TryGetValue(b.ProductId, out var p) && p.IsActive)
-                .Select(b => (b.ProductId, b.WarehouseId, b.Quantity)).ToList();
-            avg = products.ToDictionary(kv => kv.Key, kv => kv.Value.CostPrice);
-        }
-        else
-        {
-            var end = date.AddDays(1);
-            var upTo = _db.StockMovements.AsNoTracking().Where(m => m.CreatedAt < end);
-
-            var lastPerPlace = upTo.GroupBy(m => new { m.ProductId, m.WarehouseId })
-                .Select(g => new { g.Key.ProductId, g.Key.WarehouseId, At = g.Max(m => m.CreatedAt) });
-            var places = await upTo
-                .Join(lastPerPlace, m => new { m.ProductId, m.WarehouseId, At = m.CreatedAt },
-                    l => new { l.ProductId, l.WarehouseId, l.At },
-                    (m, l) => new { m.ProductId, m.WarehouseId, m.WarehouseBalanceAfter })
-                .ToListAsync();
-            held = places.GroupBy(r => (r.ProductId, r.WarehouseId))
-                .Select(g => (g.Key.ProductId, g.Key.WarehouseId, g.First().WarehouseBalanceAfter))
-                .Where(r => r.WarehouseBalanceAfter != 0 && products.ContainsKey(r.ProductId))
-                .ToList();
-
-            var lastPerItem = upTo.GroupBy(m => m.ProductId)
-                .Select(g => new { ProductId = g.Key, At = g.Max(m => m.CreatedAt) });
-            var costs = await upTo
-                .Join(lastPerItem, m => new { m.ProductId, At = m.CreatedAt }, l => new { l.ProductId, l.At },
-                    (m, l) => new { m.ProductId, m.AvgCostAfter })
-                .ToListAsync();
-            avg = costs.GroupBy(c => c.ProductId).ToDictionary(g => g.Key, g => g.First().AvgCostAfter);
-        }
-
-        if (wid is Guid only) held = held.Where(h => h.Warehouse == only).ToList();
-        var lines = held.Select(h => new
-        {
-            h.Product, h.Warehouse, h.Qty,
-            Value = (long)h.Qty * avg.GetValueOrDefault(h.Product),
-        }).ToList();
+        var lines = state.Quantity
+            .Where(kv => products.TryGetValue(kv.Key.Product, out var p) && (date < today || p.IsActive)
+                         && (wid is null || kv.Key.Warehouse == wid))
+            .Select(kv => new
+            {
+                kv.Key.Product, kv.Key.Warehouse, Qty = kv.Value,
+                Value = state.ValueOf(kv.Key.Product, kv.Key.Warehouse),
+            })
+            .ToList();
 
         var itemRows = lines.GroupBy(l => l.Product)
             .Select(g => new ValuationRowDto(g.Key.ToString(), products[g.Key].Name, g.Sum(l => l.Qty), g.Sum(l => l.Value)))

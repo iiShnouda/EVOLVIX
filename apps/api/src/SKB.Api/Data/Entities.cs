@@ -40,6 +40,24 @@ public class Warehouse
 }
 
 /// <summary>
+/// Weighted-average cost of one product in one **cost pool** (DOMAIN.md §2.4, owner decision
+/// 2026-09-29: cost is per branch). Every store warehouse of a branch shares the branch's pool
+/// (<c>PoolId</c> = the BranchId); the system transit warehouse is its own pool (<c>PoolId</c> =
+/// that warehouse's Id), so goods on the way keep exactly the cost they left with. A pool's
+/// quantity is the sum of its warehouses' balances.
+/// </summary>
+public class StockCost
+{
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    /// <summary>A BranchId, or the transit warehouse's Id.</summary>
+    public Guid PoolId { get; set; }
+    /// <summary>Weighted-average unit cost in this pool (minor units).</summary>
+    public long AvgCost { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// Transfer permit (إذن تحويل): goods moving from one warehouse to another, possibly across
 /// branches. Sending moves them from the source into the system TRANSIT warehouse; receiving moves
 /// them on into the destination. They stay company stock the whole time, at the same average cost.
@@ -174,6 +192,11 @@ public class Product
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
     public string Unit { get; set; } = "pc";
+    /// <summary>
+    /// Company-wide average cost (minor units) = total stock value ÷ total quantity, kept in step
+    /// with the per-branch pools (<see cref="StockCost"/>). For company-level display; every
+    /// posting uses the pool of the warehouse involved.
+    /// </summary>
     public long CostPrice { get; set; }
     public long SalePrice { get; set; }
     public string Currency { get; set; } = "EGP";
@@ -278,7 +301,7 @@ public class StockMovement
     public int BalanceAfter { get; set; }
     /// <summary>Stock of this product in this warehouse after the movement.</summary>
     public int WarehouseBalanceAfter { get; set; }
-    /// <summary>Product weighted-average cost after this movement (minor units).</summary>
+    /// <summary>Average cost of the movement's cost pool (its branch, or transit) after it (minor units).</summary>
     public long AvgCostAfter { get; set; }
     public Guid? DocumentId { get; set; }
     /// <summary>Human reference (document number) shown on the item card.</summary>

@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<StockBalance> StockBalances => Set<StockBalance>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+    public DbSet<StockCost> StockCosts => Set<StockCost>();
     public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
 
@@ -92,6 +93,12 @@ public class AppDbContext : DbContext
         b.Entity<DocumentLine>()
             .HasOne(l => l.Warehouse).WithMany()
             .HasForeignKey(l => l.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+
+        // Per-branch average cost. PoolId is a BranchId or the transit warehouse id, so no FK on it.
+        b.Entity<StockCost>().HasKey(c => new { c.ProductId, c.PoolId });
+        b.Entity<StockCost>()
+            .HasOne(c => c.Product).WithMany()
+            .HasForeignKey(c => c.ProductId).OnDelete(DeleteBehavior.Cascade);
 
         // Transfer permits. Warehouses and staff are Restrict: history keeps its references.
         b.Entity<StockTransfer>().Property(t => t.Status).HasConversion<string>();

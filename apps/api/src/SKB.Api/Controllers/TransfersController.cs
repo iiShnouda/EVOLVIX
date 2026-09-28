@@ -151,7 +151,8 @@ public sealed class TransfersController : ControllerBase
         if (!settings.TransfersRequireReceipt)
         {
             foreach (var line in transfer.Lines)
-                _inventory.Relocate(products[line.ProductId], transit, destination, line.Quantity, transfer.Id, transfer.Number);
+                _inventory.Relocate(products[line.ProductId], transit, destination, line.Quantity, transfer.Id,
+                    transfer.Number, line.UnitCost);
             transfer.Status = TransferStatus.RECEIVED;
             transfer.ReceivedById = staffId;
             transfer.ReceivedAt = DateTime.UtcNow;
@@ -202,8 +203,9 @@ public sealed class TransfersController : ControllerBase
         var transit = await _warehouses.TransitAsync();
         var products = await _inventory.LockProductsAsync(transfer.Lines.Select(l => l.ProductId));
         foreach (var line in transfer.Lines.OrderBy(l => l.LineNo))
+            // The goods arrive (or come back) at exactly the cost they left with.
             _inventory.Relocate(products[line.ProductId], transit, target, line.Quantity, transfer.Id, transfer.Number,
-                receive ? null : "Cancelled");
+                line.UnitCost, receive ? null : "Cancelled");
 
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
         if (receive)

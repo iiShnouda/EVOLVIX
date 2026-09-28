@@ -45,10 +45,12 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const warehouseStock = useInventory({ warehouseId: warehouseId || undefined });
   const stockHere = useMemo(() => {
     if (!warehouseId || !warehouseStock.data) return null;
-    return new Map(warehouseStock.data.items.map((i) => [i.id, i.stockOnHand]));
+    return new Map(warehouseStock.data.items.map((i) => [i.id, { qty: i.stockOnHand, cost: i.avgCost }]));
   }, [warehouseId, warehouseStock.data]);
   /** Units of `p` in the chosen warehouse (company total until that list has loaded). */
-  const available = (p: Product) => (stockHere ? (stockHere.get(p.id) ?? 0) : p.stockOnHand);
+  const available = (p: Product) => (stockHere ? (stockHere.get(p.id)?.qty ?? 0) : p.stockOnHand);
+  /** Cost is per branch: the average cost where the goods leave from / arrive into. */
+  const costOf = (p: Product) => stockHere?.get(p.id)?.cost ?? p.costPrice;
 
   const [search, setSearch] = useState('');
   const productList = useProductSearch(search);
@@ -74,7 +76,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
       const existing = prev.find((l) => l.product.id === p.id);
       if (existing)
         return prev.map((l) => (l.product.id === p.id ? { ...l, quantity: l.quantity + 1 } : l));
-      const price = isSale ? Math.round(p.costPrice * (1 + defaultMarkup / 100)) : p.costPrice;
+      const cost = costOf(p);
+      const price = isSale ? Math.round(cost * (1 + defaultMarkup / 100)) : cost;
       return [...prev, { product: p, quantity: 1, price }];
     });
     setSearch('');
@@ -89,7 +92,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
 
   // --- live computation ---
   const rows = lines.map((l) => {
-    const cost = l.product.costPrice; // weighted-average cost
+    const cost = costOf(l.product); // weighted-average cost of the warehouse's branch
     const lineTotal = l.quantity * l.price;
     const lineCost = l.quantity * cost;
     const lineProfit = lineTotal - lineCost;
@@ -248,7 +251,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                           <span className="block truncate font-medium">{p.name}</span>
                           <span className="text-xs text-muted tnum">
                             {p.sku} · {formatNumber(available(p), locale)} {t('invoice.inStock')} ·{' '}
-                            {t('invoice.cost')} {formatMoney(p.costPrice, currency, locale)}
+                            {t('invoice.cost')} {formatMoney(costOf(p), currency, locale)}
                           </span>
                         </span>
                         <Icon name="plus" size={16} className="text-brand" />

@@ -33,13 +33,17 @@ public static class Mapper
         p.Id.ToString(), p.Sku, p.Name, p.Unit, p.CostPrice, p.SalePrice, p.Currency,
         p.StockOnHand, p.ReorderLevel, p.IsActive);
 
-    /// <param name="quantity">Stock in one warehouse; null = the product's total across warehouses.</param>
-    public static InventoryItemDto ToInventoryItem(Product p, int? quantity = null)
+    /// <summary>
+    /// An inventory row. Defaults to the company view (total stock at the company average); pass the
+    /// quantity, cost and value of one warehouse for a warehouse view (cost is that branch's).
+    /// </summary>
+    public static InventoryItemDto ToInventoryItem(Product p, int? quantity = null, long? avgCost = null, long? value = null)
     {
         var qty = quantity ?? p.StockOnHand;
+        var cost = avgCost ?? p.CostPrice;
         return new(
             p.Id.ToString(), p.Sku, p.Name, p.Unit, p.Category?.Name ?? "",
-            qty, p.ReorderLevel, p.CostPrice, p.SalePrice, (long)qty * p.CostPrice, qty <= p.ReorderLevel);
+            qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty <= p.ReorderLevel);
     }
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(

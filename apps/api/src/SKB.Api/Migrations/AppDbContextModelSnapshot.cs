@@ -513,6 +513,25 @@ namespace SKB.Api.Migrations
                     b.ToTable("StockBalances");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.StockCost", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PoolId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AvgCost")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ProductId", "PoolId");
+
+                    b.ToTable("StockCosts");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -817,6 +836,17 @@ namespace SKB.Api.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.StockCost", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>

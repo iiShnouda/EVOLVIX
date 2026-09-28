@@ -188,7 +188,8 @@ export const ar: TranslationDictionary = {
   'inventory.byItem': 'حسب الصنف',
   'inventory.qty': 'الكمية',
   'inventory.value': 'القيمة',
-  'inventory.valuationHint': 'الكمية × متوسط التكلفة المرجّح في نهاية اليوم المختار.',
+  'inventory.valuationHint':
+    'الكمية × متوسط التكلفة المرجّح لكل فرع في نهاية اليوم المختار. التكلفة محسوبة لكل فرع على حدة.',
 
   // Item card (كارت الصنف)
   'itemCard.title': 'كارت الصنف',

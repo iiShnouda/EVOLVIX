@@ -187,7 +187,8 @@ export const en = {
   'inventory.byItem': 'By item',
   'inventory.qty': 'Qty',
   'inventory.value': 'Value',
-  'inventory.valuationHint': 'Quantity × weighted-average cost at the end of the chosen day.',
+  'inventory.valuationHint':
+    "Quantity × each branch's weighted-average cost at the end of the chosen day. Cost is kept per branch.",
 
   // Item card (كارت الصنف)
   'itemCard.title': 'Item card',

@@ -108,6 +108,38 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Per-branch cost** (owner decision 2026-09-29)
+- Each branch has its own weighted-average cost per item. The data lives in `StockCost`:
+  - one pool per branch
+  - plus the transit warehouse as its own pool
+- **Postings:**
+  - Purchases, sales, returns and stocktakes post at the cost of the warehouse's branch.
+  - The profit floor on a sale uses that cost too.
+  - Transfers carry the source branch's cost into the destination branch's average, and cancelling restores it exactly.
+- `Product.CostPrice` is kept as the company average (total value ÷ quantity) for company-level screens.
+- **Read side:** a new `StockValuation` service values stock now or at any past moment from
+  per-warehouse balances and per-pool averages (Postgres `DISTINCT ON` replay). The following
+  all use it and tie to each other:
+  - the inventory list, per warehouse and in total
+  - the item card
+  - valuation
+  - warehouse totals
+- The invoice screen shows the cost of the chosen warehouse's branch. Example: Cola costs
+  96.00 in Downtown and 104.23 in October.
+- **Migration `BranchCost`:** every branch holding an item starts at today's company average;
+  goods in transit get their permit cost.
+- **Rate limiting fix:**
+  - Signed-in requests are now limited per user (600/min), not per internet address. Before, a
+    whole office sharing one address could throttle itself.
+  - Anonymous requests (login) stay at 120/min per address.
+  - Both limits are configurable (`RateLimit:UserPerMinute` / `IpPerMinute`).
+- **Verified:**
+  - An old-version database upgraded through every migration passed: warehouses 58/58,
+    transfers 42/42, per-branch cost 35/35.
+  - A fresh database passed: returns 46/46, the concurrent-return race, transfers 42/42,
+    cost 35/35.
+  - A browser check of branch costs on the invoice screen.
+
 **Transfers** (إذن تحويل) — DOMAIN.md §7 step 2
 - A transfer permit moves goods between warehouses, including across branches:
   1. Sending takes them from the source into a system **"In transit"** warehouse (`Kind = TRANSIT`).
@@ -246,7 +278,7 @@ and warehouses shipped):
 10. **Phase 8 — Android** native client.
 
 **Decisions (2026-09-28):**
-- Average cost is company-wide: the standard choice (DOMAIN.md §2.4).
+- **Average cost is per branch** (owner, 2026-09-29), with the transit warehouse as its own cost pool (DOMAIN.md §2.4).
 - One web/PWA client for every device; the WPF client is paused (CLAUDE.md rule 7).
 - Delivery covers pickup, own delivery, prepaid shipping, and cash on delivery with a waybill.
   Payment methods: cash, bank transfer, InstaPay, Vodafone/Orange Cash, Egypt Post, cheques and

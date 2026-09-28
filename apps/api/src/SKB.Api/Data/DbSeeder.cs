@@ -82,6 +82,8 @@ public static class DbSeeder
                 if (qty == 0) continue;
                 running += qty;
                 db.StockBalances.Add(new StockBalance { Product = p, Warehouse = store, Quantity = qty });
+                // Cost is per branch; each branch starts at the item's opening cost.
+                db.StockCosts.Add(new StockCost { Product = p, PoolId = store.Branch!.Id, AvgCost = p.CostPrice });
                 db.StockMovements.Add(new StockMovement
                 {
                     ProductId = p.Id, BranchId = store.Branch!.Id, WarehouseId = store.Id,

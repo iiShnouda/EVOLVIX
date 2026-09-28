@@ -19,12 +19,15 @@ public sealed class WarehousesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly WarehouseService _warehouses;
+    private readonly StockValuation _valuation;
     private readonly AuditService _audit;
 
-    public WarehousesController(AppDbContext db, WarehouseService warehouses, AuditService audit)
+    public WarehousesController(AppDbContext db, WarehouseService warehouses, StockValuation valuation,
+        AuditService audit)
     {
         _db = db;
         _warehouses = warehouses;
+        _valuation = valuation;
         _audit = audit;
     }
 
@@ -187,14 +190,13 @@ public sealed class WarehousesController : ControllerBase
 
     private sealed record Stats(int Items, int Quantity, long Value);
 
-    /// <summary>What each warehouse holds today: items in stock, units, value at the current average cost.</summary>
+    /// <summary>What each warehouse holds today: items in stock, units, value at its branch's average cost.</summary>
     private async Task<Dictionary<Guid, Stats>> StatsAsync()
     {
-        var rows = await _db.StockBalances.AsNoTracking().Where(b => b.Quantity != 0)
-            .Select(b => new { b.WarehouseId, b.Quantity, Cost = b.Product!.CostPrice })
-            .ToListAsync();
-        return rows.GroupBy(r => r.WarehouseId).ToDictionary(g => g.Key, g => new Stats(
-            g.Count(r => r.Quantity > 0), g.Sum(r => r.Quantity), g.Sum(r => (long)r.Quantity * r.Cost)));
+        var state = await _valuation.CurrentAsync();
+        return state.Quantity.GroupBy(kv => kv.Key.Warehouse).ToDictionary(g => g.Key, g => new Stats(
+            g.Count(kv => kv.Value > 0), g.Sum(kv => kv.Value),
+            g.Sum(kv => state.ValueOf(kv.Key.Product, kv.Key.Warehouse))));
     }
 
     private static WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)

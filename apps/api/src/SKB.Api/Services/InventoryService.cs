@@ -5,30 +5,41 @@ using SKB.Api.Domain;
 namespace SKB.Api.Services;
 
 /// <summary>
-/// Stock costing and movement. Uses the **moving weighted-average** method (§3.3 of ROADMAP):
-/// on every receipt the product's average cost is recomputed; on every issue the goods leave
-/// stock at the current average, and that amount becomes the cost of goods sold (COGS).
+/// Stock costing and movement, using the **moving weighted-average** method (§3.3 of ROADMAP)
+/// **per branch** (owner decision 2026-09-29, DOMAIN.md §2.4).
 ///
-/// Stock is held per warehouse (<see cref="StockBalance"/>); the average cost is company-wide per
-/// product (DOMAIN.md §2.4). Every change updates the product total, the warehouse balance and
-/// appends a <see cref="StockMovement"/>, so the three always agree.
+/// Cost pools: all store warehouses of one branch share that branch's average cost; the system
+/// transit warehouse is a pool of its own (<see cref="StockCost"/>). A pool's quantity is the sum
+/// of its warehouses' balances. A receipt recomputes its pool's average; an issue leaves at the
+/// pool's average (that becomes COGS). Moving goods to another pool (a transfer leg) takes them out
+/// at a cost and brings them in at the same cost, so value is never created or lost.
+/// <c>Product.CostPrice</c> is kept as the company-wide average (total value ÷ total quantity) for
+/// display.
+///
+/// Every change updates the product total, the warehouse balance and the pool, and appends a
+/// <see cref="StockMovement"/>, so <c>StockOnHand = Σ balances = Σ movements</c> always holds.
 ///
 /// Usage: inside a transaction, call <see cref="LockProductsAsync"/> first. It row-locks the
-/// products and loads their balances, so the availability checks and the updates that follow
-/// can't race another document touching the same items. The mutating methods don't save — the
-/// caller owns the transaction so a whole document commits atomically. Money is minor units.
+/// products and loads their balances and pools, so the checks and updates that follow can't race
+/// another document touching the same items. Nothing here saves — the caller owns the transaction
+/// so a whole document commits atomically. Money is minor units.
 /// </summary>
 public sealed class InventoryService
 {
     private readonly AppDbContext _db;
     private readonly Dictionary<(Guid Product, Guid Warehouse), StockBalance> _balances = new();
-    private readonly HashSet<Guid> _locked = new();
+    private readonly Dictionary<(Guid Product, Guid Pool), StockCost> _pools = new();
+    private readonly Dictionary<Guid, Guid> _poolOfWarehouse = new();
+    private readonly Dictionary<Guid, Product> _locked = new();
 
     public InventoryService(AppDbContext db) => _db = db;
 
+    /// <summary>The cost pool a warehouse belongs to: its branch, or itself for the transit warehouse.</summary>
+    public static Guid PoolOf(Warehouse w) => w.Kind == WarehouseKind.TRANSIT ? w.Id : w.BranchId;
+
     /// <summary>
     /// Lock <paramref name="productIds"/> until the transaction ends (in id order, so two documents
-    /// never deadlock) and load them tracked with their warehouse balances. Must run inside a
+    /// never deadlock) and load them tracked with their balances and cost pools. Must run inside a
     /// transaction and before these products are loaded any other way in this request.
     /// </summary>
     public async Task<Dictionary<Guid, Product>> LockProductsAsync(IEnumerable<Guid> productIds)
@@ -43,9 +54,14 @@ public sealed class InventoryService
             $"SELECT 1 FROM \"Products\" WHERE \"Id\" = ANY({ids}) ORDER BY \"Id\" FOR UPDATE");
 
         var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        var balances = await _db.StockBalances.Where(b => ids.Contains(b.ProductId)).ToListAsync();
-        foreach (var b in balances) _balances[(b.ProductId, b.WarehouseId)] = b;
-        foreach (var id in products.Keys) _locked.Add(id);
+        foreach (var b in await _db.StockBalances.Where(b => ids.Contains(b.ProductId)).ToListAsync())
+            _balances[(b.ProductId, b.WarehouseId)] = b;
+        foreach (var c in await _db.StockCosts.Where(c => ids.Contains(c.ProductId)).ToListAsync())
+            _pools[(c.ProductId, c.PoolId)] = c;
+        foreach (var w in await _db.Warehouses.AsNoTracking()
+                     .Select(w => new { w.Id, w.BranchId, w.Kind }).ToListAsync())
+            _poolOfWarehouse[w.Id] = w.Kind == WarehouseKind.TRANSIT ? w.Id : w.BranchId;
+        foreach (var (id, p) in products) _locked[id] = p;
         return products;
     }
 
@@ -56,10 +72,12 @@ public sealed class InventoryService
         return _balances.TryGetValue((productId, warehouseId), out var b) ? b.Quantity : 0;
     }
 
+    /// <summary>Current average cost of a locked product in the pool of <paramref name="warehouse"/>.</summary>
+    public long CostAt(Product product, Warehouse warehouse) => Pool(product, PoolOf(warehouse)).AvgCost;
+
     /// <summary>
     /// Receive <paramref name="quantity"/> units at <paramref name="unitCost"/> into
-    /// <paramref name="warehouse"/> and recompute the product's weighted-average cost.
-    /// Returns the new average cost.
+    /// <paramref name="warehouse"/> and recompute that pool's weighted-average cost. Returns it.
     /// </summary>
     public long Receive(Product product, Warehouse warehouse, int quantity, long unitCost,
         StockMovementType type, Guid? documentId, string? reference)
@@ -67,25 +85,16 @@ public sealed class InventoryService
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
         if (unitCost < 0) throw new ArgumentOutOfRangeException(nameof(unitCost), "Cost cannot be negative.");
 
-        long oldQty = product.StockOnHand;
-        long newQty = oldQty + quantity;
-
-        // new_avg = (old_qty*old_avg + recv_qty*recv_cost) / (old_qty + recv_qty), to nearest minor unit.
-        long newAvg = oldQty <= 0
-            ? unitCost
-            : (long)decimal.Round(
-                (oldQty * product.CostPrice + (long)quantity * unitCost) / (decimal)newQty,
-                MidpointRounding.AwayFromZero);
-
-        product.CostPrice = newAvg;
+        var pool = Pool(product, PoolOf(warehouse));
+        AddIn(pool, PoolQty(product.Id, pool.PoolId), quantity, unitCost);
         Move(product, warehouse, quantity, unitCost, type, documentId, reference);
-        return newAvg;
+        return pool.AvgCost;
     }
 
     /// <summary>
-    /// Issue <paramref name="quantity"/> units out of <paramref name="warehouse"/> at the current
-    /// weighted-average cost. Returns the unit cost used (the COGS per unit). The average cost is
-    /// unchanged by an issue. Refuses to take a warehouse below zero.
+    /// Issue <paramref name="quantity"/> units out of <paramref name="warehouse"/> at its pool's
+    /// average cost. Returns the unit cost used (COGS per unit). The average is unchanged by an
+    /// issue. Refuses to take a warehouse below zero.
     /// </summary>
     public long Issue(Product product, Warehouse warehouse, int quantity,
         StockMovementType type, Guid? documentId, string? reference)
@@ -93,17 +102,16 @@ public sealed class InventoryService
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
         RequireStock(product, warehouse, quantity);
 
-        long unitCost = product.CostPrice;
+        var unitCost = Pool(product, PoolOf(warehouse)).AvgCost;
         Move(product, warehouse, -quantity, unitCost, type, documentId, reference);
         return unitCost;
     }
 
     /// <summary>
     /// Send <paramref name="quantity"/> units back to the supplier from <paramref name="warehouse"/>
-    /// at the price we originally paid (<paramref name="unitCost"/>), and back that receipt out of the
-    /// weighted average: <c>new_avg = (qty·avg − ret_qty·ret_cost) / (qty − ret_qty)</c>. This is the
-    /// exact inverse of <see cref="Receive"/>, so a purchase followed by its full return leaves the
-    /// average where it was. Refused when the warehouse no longer holds the goods.
+    /// at the price we originally paid (<paramref name="unitCost"/>), and back that receipt out of
+    /// the pool's average: <c>new_avg = (qty·avg − ret_qty·ret_cost) / (qty − ret_qty)</c> — the
+    /// exact inverse of <see cref="Receive"/>. Refused when the warehouse no longer holds the goods.
     /// </summary>
     public long ReturnToSupplier(Product product, Warehouse warehouse, int quantity, long unitCost,
         StockMovementType type, Guid? documentId, string? reference)
@@ -112,54 +120,114 @@ public sealed class InventoryService
         if (unitCost < 0) throw new ArgumentOutOfRangeException(nameof(unitCost), "Cost cannot be negative.");
         RequireStock(product, warehouse, quantity);
 
-        long oldQty = product.StockOnHand;
-        long newQty = oldQty - quantity;
-
-        // With nothing left the average is meaningless, so keep the last one (the next receipt resets it).
-        // A return priced far above the current average could push the remainder negative; cost can't be.
-        if (newQty > 0)
-        {
-            var remaining = (oldQty * product.CostPrice - (long)quantity * unitCost) / (decimal)newQty;
-            product.CostPrice = Math.Max(0, (long)decimal.Round(remaining, MidpointRounding.AwayFromZero));
-        }
-
+        var pool = Pool(product, PoolOf(warehouse));
+        TakeOut(pool, PoolQty(product.Id, pool.PoolId), quantity, unitCost);
         Move(product, warehouse, -quantity, unitCost, type, documentId, reference);
-        return product.CostPrice;
+        return pool.AvgCost;
     }
 
     /// <summary>
     /// Stocktake / correction (الجرد والتسويات) in one warehouse: move stock by
-    /// <paramref name="delta"/> units (positive = found more than the books say, negative =
-    /// shrinkage). Both sides are valued at the current weighted-average cost, so the average itself
-    /// doesn't change — only the quantity and therefore the stock value. Returns the value change
-    /// (minor units, signed).
+    /// <paramref name="delta"/> units at the pool's average cost (the average itself doesn't change,
+    /// only the quantity and so the value). Returns the value change (minor units, signed).
     /// </summary>
     public long Adjust(Product product, Warehouse warehouse, int delta, string reference, string? note)
     {
         if (delta == 0) throw new ArgumentOutOfRangeException(nameof(delta), "An adjustment must change the quantity.");
         if (delta < 0) RequireStock(product, warehouse, -delta);
 
-        Move(product, warehouse, delta, product.CostPrice, StockMovementType.ADJUSTMENT, null, reference, note);
-        return (long)delta * product.CostPrice;
+        var unitCost = Pool(product, PoolOf(warehouse)).AvgCost;
+        Move(product, warehouse, delta, unitCost, StockMovementType.ADJUSTMENT, null, reference, note);
+        return (long)delta * unitCost;
     }
 
     /// <summary>
-    /// Move <paramref name="quantity"/> units between two warehouses (a transfer leg). The goods
-    /// stay company stock at the same average cost: the product total and average don't change,
-    /// only where the units sit. Logged as TRANSFER_OUT of <paramref name="from"/> and TRANSFER_IN
-    /// to <paramref name="to"/>. Returns the unit cost (the current average).
+    /// Move <paramref name="quantity"/> units between two warehouses (a transfer leg), logged as
+    /// TRANSFER_OUT of <paramref name="from"/> and TRANSFER_IN to <paramref name="to"/>. The units
+    /// leave at <paramref name="unitCost"/> (default: the source pool's average) and arrive at the
+    /// same cost, so the company's stock value is unchanged. Between two pools the source average is
+    /// backed out exactly and the destination average recomputed; within one pool nothing changes.
+    /// Returns the unit cost used.
     /// </summary>
     public long Relocate(Product product, Warehouse from, Warehouse to, int quantity,
-        Guid documentId, string reference, string? note = null)
+        Guid documentId, string reference, long? unitCost = null, string? note = null)
     {
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
         if (from.Id == to.Id) throw new ArgumentException("Source and destination must differ.");
         RequireStock(product, from, quantity);
 
-        var unitCost = product.CostPrice;
-        Move(product, from, -quantity, unitCost, StockMovementType.TRANSFER_OUT, documentId, reference, note);
-        Move(product, to, quantity, unitCost, StockMovementType.TRANSFER_IN, documentId, reference, note);
-        return unitCost;
+        var source = Pool(product, PoolOf(from));
+        var cost = unitCost ?? source.AvgCost;
+        var target = Pool(product, PoolOf(to));
+        if (source.PoolId != target.PoolId)
+        {
+            TakeOut(source, PoolQty(product.Id, source.PoolId), quantity, cost);
+            AddIn(target, PoolQty(product.Id, target.PoolId), quantity, cost);
+        }
+        Move(product, from, -quantity, cost, StockMovementType.TRANSFER_OUT, documentId, reference, note);
+        Move(product, to, quantity, cost, StockMovementType.TRANSFER_IN, documentId, reference, note);
+        return cost;
+    }
+
+    // ------------------------------------------------------------------ pools
+
+    /// <summary>new_avg = (Q·A + q·u) / (Q + q), to the nearest minor unit; an empty pool takes u.</summary>
+    private static void AddIn(StockCost pool, int poolQty, int quantity, long unitCost)
+    {
+        pool.AvgCost = poolQty <= 0
+            ? unitCost
+            : (long)decimal.Round(
+                (poolQty * (decimal)pool.AvgCost + (decimal)quantity * unitCost) / (poolQty + quantity),
+                MidpointRounding.AwayFromZero);
+        pool.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// new_avg = (Q·A − q·u) / (Q − q), the inverse of <see cref="AddIn"/>. With nothing left the
+    /// average is kept (the next receipt resets it); it never goes below zero.
+    /// </summary>
+    private static void TakeOut(StockCost pool, int poolQty, int quantity, long unitCost)
+    {
+        var left = poolQty - quantity;
+        if (left > 0)
+        {
+            var remaining = (poolQty * (decimal)pool.AvgCost - (decimal)quantity * unitCost) / left;
+            pool.AvgCost = Math.Max(0, (long)decimal.Round(remaining, MidpointRounding.AwayFromZero));
+        }
+        pool.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>The pool row, created on first use at the company average (the best estimate).</summary>
+    private StockCost Pool(Product product, Guid poolId)
+    {
+        EnsureLocked(product.Id);
+        if (!_pools.TryGetValue((product.Id, poolId), out var pool))
+        {
+            pool = new StockCost { ProductId = product.Id, PoolId = poolId, AvgCost = product.CostPrice };
+            _db.StockCosts.Add(pool);
+            _pools[(product.Id, poolId)] = pool;
+        }
+        return pool;
+    }
+
+    private int PoolQty(Guid productId, Guid poolId) =>
+        _balances.Where(kv => kv.Key.Product == productId
+                              && _poolOfWarehouse.TryGetValue(kv.Key.Warehouse, out var p) && p == poolId)
+            .Sum(kv => kv.Value.Quantity);
+
+    /// <summary>Company average = Σ(pool qty × pool avg) ÷ total qty; unchanged when nothing is left.</summary>
+    private void RefreshCompanyCost(Product product)
+    {
+        long qty = 0;
+        decimal value = 0;
+        foreach (var ((pid, poolId), pool) in _pools)
+        {
+            if (pid != product.Id) continue;
+            var q = PoolQty(pid, poolId);
+            qty += q;
+            value += (decimal)q * pool.AvgCost;
+        }
+        if (qty > 0) product.CostPrice = (long)decimal.Round(value / qty, MidpointRounding.AwayFromZero);
     }
 
     private void RequireStock(Product product, Warehouse warehouse, int quantity)
@@ -172,7 +240,7 @@ public sealed class InventoryService
 
     private void EnsureLocked(Guid productId)
     {
-        if (!_locked.Contains(productId))
+        if (!_locked.ContainsKey(productId))
             throw new InvalidOperationException("Lock the product (LockProductsAsync) before changing its stock.");
     }
 
@@ -181,6 +249,7 @@ public sealed class InventoryService
         StockMovementType type, Guid? documentId, string? reference, string? note = null)
     {
         EnsureLocked(product.Id);
+        _poolOfWarehouse.TryAdd(warehouse.Id, PoolOf(warehouse));
         if (!_balances.TryGetValue((product.Id, warehouse.Id), out var balance))
         {
             balance = new StockBalance { ProductId = product.Id, WarehouseId = warehouse.Id };
@@ -191,6 +260,7 @@ public sealed class InventoryService
         balance.Quantity += signedQty;
         balance.UpdatedAt = DateTime.UtcNow;
         product.StockOnHand += signedQty;
+        RefreshCompanyCost(product);
 
         _db.StockMovements.Add(new StockMovement
         {
@@ -202,7 +272,7 @@ public sealed class InventoryService
             UnitCost = unitCost,
             BalanceAfter = product.StockOnHand,
             WarehouseBalanceAfter = balance.Quantity,
-            AvgCostAfter = product.CostPrice,
+            AvgCostAfter = Pool(product, PoolOf(warehouse)).AvgCost,
             DocumentId = documentId,
             Reference = reference,
             Note = note,

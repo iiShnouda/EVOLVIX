@@ -144,12 +144,13 @@ public sealed class SalesController : ControllerBase
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
 
         // ---- Validate everything against the locked stock before posting ----
-        foreach (var (line, pid, _) in lines)
+        foreach (var (line, pid, warehouse) in lines)
         {
             if (!products.TryGetValue(pid, out var product) || !product.IsActive)
                 return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
 
-            var floorError = CheckFloor(line.UnitPrice, product.CostPrice, settings.MinMarkupPercent,
+            // Cost is per branch: the floor is judged against the cost where the goods leave from.
+            var floorError = CheckFloor(line.UnitPrice, _inventory.CostAt(product, warehouse), settings.MinMarkupPercent,
                 canOverride, req.OverrideFloor);
             if (floorError is not null)
                 return BadRequest(new

@@ -98,14 +98,25 @@ marked *(inferred)* come from data and column names, not from code.
   - `Product.StockOnHand` becomes the sum across warehouses.
 - **StockMovement** (the ledger, already built) gains `WarehouseId` and later `BatchId`.
   - The item card can then be filtered by warehouse.
-- **Average cost** is **company-wide per item**:
-  - A transfer moves goods but does not change their cost (old `chkBoxIsNotTawelInAvg` = on).
-  - Receipts recompute the average; issues leave at the average (§3.3 of ROADMAP).
-  - The old app computed the average **per branch**, by replaying every movement at report
-    time (`avgMor`, §8). SKB stores the average on each movement instead.
-  - **Decision (2026-09-28):** one average cost per item for the whole company, the standard
-    ERP choice. Example: water bought at 24 in Cairo and 26 in October gives every carton,
-    anywhere, a cost of 25. Profit per branch then depends only on the selling price.
+- **Average cost is per branch** (owner decision 2026-09-29, like the old app's `avgMor`):
+  - **Cost pools:** all store warehouses of one branch share the branch's average cost for an
+    item (`StockCost`, `PoolId` = the BranchId). The system transit warehouse is a pool of its
+    own, so goods on the way keep exactly the cost they left with.
+  - **Example:** water bought at 24 in Cairo and 26 in October keeps those costs in each
+    branch. A sale in October costs 26, so each branch's profit is its real profit.
+  - **Receipts and issues:** a receipt recomputes its pool's average; an issue (sale,
+    shrinkage) leaves at the pool's average.
+  - **Purchase returns:** a purchase return backs the original price out of that pool.
+  - **Transfers** (DOMAIN §2.4 transfers): goods leave the source branch at its average, and the
+    destination branch's average is recomputed with them at that cost.
+    - Sending never changes the source average.
+    - Cancelling restores it exactly.
+    - Within one branch, a transfer doesn't touch cost at all.
+  - `Product.CostPrice` is the company average (total value ÷ total quantity), for
+    company-level screens only. Every posting, the profit floor, and every warehouse view uses
+    the pool of the warehouse involved.
+  - SKB stores the pool's average on each movement (`AvgCostAfter`), so past valuations replay
+    the ledger instead of recomputing from scratch like the old app.
 - **No negative stock**: an issue that would take a warehouse below zero is refused.
   - Old setting `chkBoxIsMabeaatNotOverStock` = on. In SKB this is a policy that is on by default.
 - Stock documents:

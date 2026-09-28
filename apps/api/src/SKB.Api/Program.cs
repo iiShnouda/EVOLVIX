@@ -35,6 +35,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<ReturnsService>();
 builder.Services.AddScoped<WarehouseService>();
+builder.Services.AddScoped<StockValuation>();
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]
@@ -85,14 +86,24 @@ var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
-// --- Rate limiting (120 req/min/IP) -----------------------------------------------------
+// --- Rate limiting ----------------------------------------------------------------------
+// Signed-in requests are limited per user, so a whole office sharing one internet address
+// doesn't throttle itself; anonymous requests (login, health) per client IP, which also caps
+// password guessing. Limits per minute are configurable (RateLimit:UserPerMinute / IpPerMinute).
+var userPerMinute = builder.Configuration.GetValue("RateLimit:UserPerMinute", 600);
+var ipPerMinute = builder.Configuration.GetValue("RateLimit:IpPerMinute", 120);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
+    {
+        var userId = ctx.User.FindFirst("sub")?.Value;
+        return userId is not null
+            ? RateLimitPartition.GetFixedWindowLimiter("user:" + userId,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = userPerMinute, Window = TimeSpan.FromMinutes(1) })
+            : RateLimitPartition.GetFixedWindowLimiter("ip:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "anon"),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = ipPerMinute, Window = TimeSpan.FromMinutes(1) });
+    });
 });
 
 builder.Services.AddControllers();
@@ -130,8 +141,8 @@ if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
     app.UseHttpsRedirection();
 
 app.UseCors();
+app.UseAuthentication();   // before the limiter, so it can key on the signed-in user
 app.UseRateLimiter();
-app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

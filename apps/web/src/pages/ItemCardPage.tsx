@@ -339,7 +339,10 @@ function AdjustCard({
   const defaultWarehouse = useDefaultWarehouseId();
   const [picked, setPicked] = useState(initialWarehouseId);
   const warehouseId = picked || defaultWarehouse;
-  const bookQty = stock.find((s) => s.warehouseId === warehouseId)?.quantity ?? 0;
+  const held = stock.find((s) => s.warehouseId === warehouseId);
+  const bookQty = held?.quantity ?? 0;
+  // Cost is per branch: value the difference at this warehouse's cost when it holds the item.
+  const unitCost = held && held.quantity > 0 ? Math.round(held.value / held.quantity) : avgCost;
   const [counted, setCounted] = useState('');
   const [reason, setReason] = useState('');
   const error = stocktake.error as ApiError | null;
@@ -385,7 +388,7 @@ function AdjustCard({
           <p className={`text-xs tnum ${diff > 0 ? 'text-positive' : 'text-warning'}`}>
             {diff > 0 ? t('stocktake.gain') : t('stocktake.loss')}:{' '}
             {formatNumber(Math.abs(diff), locale)} · {t('stocktake.valueImpact')}{' '}
-            {formatMoney(diff * avgCost, currency, locale)}
+            {formatMoney(diff * unitCost, currency, locale)}
           </p>
         )}
         <label className="block">
