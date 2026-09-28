@@ -1,5 +1,6 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
 import { getAccessToken, useAuth } from '../stores/auth';
+import { usePrefs } from '../stores/prefs';
 
 // Default to a relative "/api" (same-origin) so the API can serve the web app as one unit.
 // In split-server dev the Vite proxy forwards /api to the API; in a split deploy set VITE_API_URL.
@@ -32,6 +33,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      // Names of branches, warehouses, items… come back in the screen language.
+      'Accept-Language': usePrefs.getState().locale,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },

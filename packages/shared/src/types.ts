@@ -462,6 +462,29 @@ export interface Warehouse {
   quantity: number;
   /** quantity × current average cost, minor units. */
   value: number;
+  /** Both languages of the name, for the edit form. */
+  names: LocalizedName;
+}
+
+/**
+ * A name kept in Arabic and English. People type one; the other is filled by AI translation
+ * (`auto` names that side) and stays editable. `pending` while the translation hasn't arrived —
+ * until then both languages show the typed text.
+ */
+export interface LocalizedName {
+  ar: string | null;
+  en: string | null;
+  source: 'ar' | 'en';
+  auto: 'ar' | 'en' | null;
+  pending: boolean;
+}
+
+/** AI translation of names: set up or not, how many names wait, and the last problem. */
+export interface TranslationStatus {
+  configured: boolean;
+  pending: number;
+  lastError: string | null;
+  lastSuccessAt: string | null;
 }
 
 /** A warehouse goods can be sent to on a transfer (any branch). */
@@ -518,6 +541,7 @@ export interface BranchWithWarehouses {
   location?: string | null;
   isActive: boolean;
   warehouses: Warehouse[];
+  names: LocalizedName;
 }
 
 // ---------------------------------------------------------------------------

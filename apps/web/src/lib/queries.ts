@@ -6,7 +6,10 @@ import type {
   CreateSalesInvoiceInput,
   UpdateSettingsInput,
   BranchWithWarehouses,
+  CreateBranchInput,
   CreateTransferInput,
+  TranslationStatus,
+  UpdateBranchInput,
   CreateWarehouseInput,
   StockTransfer,
   TransferStatus,
@@ -206,10 +209,12 @@ export function useWarehouses(activeOnly = false) {
   });
 }
 
-export function useBranches() {
+/** `poll`: refresh every few seconds (e.g. while AI translations are on the way). */
+export function useBranches(poll = false) {
   return useQuery({
     queryKey: ['inventory', 'branches'],
     queryFn: () => api.get<BranchWithWarehouses[]>('/branches'),
+    refetchInterval: poll ? 5_000 : false,
   });
 }
 
@@ -263,6 +268,32 @@ export function useFinishTransfer() {
       void qc.invalidateQueries({ queryKey: ['inventory'] });
       void qc.invalidateQueries({ queryKey: ['products'] });
     },
+  });
+}
+
+export function useCreateBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateBranchInput) => api.post<BranchWithWarehouses>('/branches', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
+  });
+}
+
+export function useUpdateBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateBranchInput }) =>
+      api.put<BranchWithWarehouses>(`/branches/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
+  });
+}
+
+/** Refreshes on its own while names are waiting, so AI translations appear without reloading. */
+export function useTranslationStatus() {
+  return useQuery({
+    queryKey: ['settings', 'translation'],
+    queryFn: () => api.get<TranslationStatus>('/settings/translation'),
+    refetchInterval: (q) => ((q.state.data?.pending ?? 0) > 0 ? 10_000 : false),
   });
 }
 

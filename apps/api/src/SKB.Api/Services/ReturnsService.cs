@@ -138,7 +138,7 @@ public sealed class ReturnsService
             var available = _inventory.Available(group.Key.ProductId, group.Key.Id);
             if (!isSale && qty > available)
                 return (null, new("insufficient_stock",
-                    $"Not enough {name} in {group.First().Warehouse.Name} to return: {available} left, {qty} requested."));
+                    $"Not enough {name} in {Loc.Name(group.First().Warehouse)} to return: {available} left, {qty} requested."));
         }
 
         // ---- Pass 2: post the return ----

@@ -7,7 +7,7 @@ public static class Mapper
 {
     public static SalesSummaryDto ToSummary(SalesDocument d) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
-        d.Branch?.Name ?? "", d.Party?.Name ?? "", d.Staff?.FullName ?? "",
+        Loc.Name(d.Branch), d.Party?.Name ?? "", d.Staff?.FullName ?? "",
         d.IssueDate.ToString("o"), d.DueDate?.ToString("o"), d.GrandTotal, d.PaidAmount, d.Currency,
         d.SourceDocument?.Number);
 
@@ -15,12 +15,12 @@ public static class Mapper
     public static SalesDetailDto ToDetail(SalesDocument d,
         IReadOnlyDictionary<Guid, (int Quantity, long Discount)>? returned = null) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
-        d.Branch?.Name ?? "", d.Party?.Name ?? "", d.Staff?.FullName ?? "",
+        Loc.Name(d.Branch), d.Party?.Name ?? "", d.Staff?.FullName ?? "",
         d.IssueDate.ToString("o"), d.DueDate?.ToString("o"),
         d.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineDto(
             l.Id.ToString(), l.ProductId.ToString(), l.ProductName, l.Quantity,
             l.UnitPrice, l.Discount, l.LineTotal, l.UnitCost, l.LineProfit,
-            ReturnedQuantity(returned, l.Id), l.WarehouseId?.ToString(), l.Warehouse?.Name)).ToArray(),
+            ReturnedQuantity(returned, l.Id), l.WarehouseId?.ToString(), l.Warehouse is null ? null : Loc.Name(l.Warehouse))).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
         d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number);
@@ -30,7 +30,7 @@ public static class Mapper
         returned is not null && returned.TryGetValue(lineId, out var r) ? r.Quantity : 0;
 
     public static ProductDto ToProduct(Product p) => new(
-        p.Id.ToString(), p.Sku, p.Name, p.Unit, p.CostPrice, p.SalePrice, p.Currency,
+        p.Id.ToString(), p.Sku, Loc.Name(p), p.Unit, p.CostPrice, p.SalePrice, p.Currency,
         p.StockOnHand, p.ReorderLevel, p.IsActive);
 
     /// <summary>
@@ -42,7 +42,7 @@ public static class Mapper
         var qty = quantity ?? p.StockOnHand;
         var cost = avgCost ?? p.CostPrice;
         return new(
-            p.Id.ToString(), p.Sku, p.Name, p.Unit, p.Category?.Name ?? "",
+            p.Id.ToString(), p.Sku, Loc.Name(p), p.Unit, Loc.Name(p.Category),
             qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty <= p.ReorderLevel);
     }
 
@@ -52,4 +52,8 @@ public static class Mapper
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency);
+
+    /// <summary>Both languages of a name, for edit forms.</summary>
+    public static LocalizedNameDto ToNames(ILocalizedName e) =>
+        new(e.NameAr, e.NameEn, e.NameSource, e.NameAuto, e.NamePending);
 }

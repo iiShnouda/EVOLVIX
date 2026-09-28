@@ -15,6 +15,26 @@ public static class DbSeeder
 
     private static long Money(double major) => (long)Math.Round(major * 100);
 
+    private static readonly Dictionary<string, string> ArabicNames = new()
+    {
+        ["Main Branch"] = "الفرع الرئيسي",
+        ["Warehouse Branch"] = "فرع المخازن",
+        ["Downtown store"] = "مخزن وسط البلد",
+        ["October warehouse"] = "مخزن أكتوبر",
+        ["Beverages"] = "مشروبات",
+        ["Snacks"] = "وجبات خفيفة",
+        ["Cleaning"] = "منظفات",
+        ["Packaging"] = "مواد تغليف",
+        ["Mineral Water 1.5L (Pack of 6)"] = "مياه معدنية 1.5 لتر (عبوة 6)",
+        ["Cola 330ml (Case of 24)"] = "كولا 330 مل (كرتونة 24)",
+        ["Salted Chips 25g (Box of 40)"] = "شيبسي مملح 25 جم (علبة 40)",
+        ["Biscuits Assorted (Box of 24)"] = "بسكويت مشكل (علبة 24)",
+        ["Dish Soap 1L (Pack of 12)"] = "سائل أطباق 1 لتر (عبوة 12)",
+        ["Bleach 2L (Pack of 8)"] = "كلور 2 لتر (عبوة 8)",
+        ["Carton Box Large (Bundle of 25)"] = "كرتونة كبيرة (ربطة 25)",
+        ["Stretch Wrap Roll"] = "رول استرتش",
+    };
+
     public static async Task SeedAsync(AppDbContext db, AuthService auth, IConfiguration config)
     {
         await db.Database.MigrateAsync();
@@ -31,7 +51,8 @@ public static class DbSeeder
         // System warehouse holding goods between sending and receiving a transfer.
         db.Warehouses.Add(new Warehouse
         {
-            Name = "In transit", Code = "TRANSIT", Branch = main, Kind = WarehouseKind.TRANSIT,
+            Name = "In transit", NameEn = "In transit", NameAr = "في الطريق",
+            Code = "TRANSIT", Branch = main, Kind = WarehouseKind.TRANSIT,
         });
 
         var ownerEmail = (config["Seed:OwnerEmail"] ?? "owner@skb.local").ToLowerInvariant();
@@ -62,6 +83,15 @@ public static class DbSeeder
             new() { Sku = "PKG-002", Name = "Stretch Wrap Roll", Category = packaging, Unit = "roll", CostPrice = Money(60), SalePrice = Money(92), Currency = Currency, StockOnHand = 8, ReorderLevel = 20 },
         };
         db.Products.AddRange(products);
+
+        // Demo names in both languages, typed by people (no translation needed).
+        foreach (ILocalizedName e in new ILocalizedName[] { main, wh, mainStore, octoberStore, beverages, snacks, cleaning, packaging }
+                     .Concat(products))
+        {
+            e.NameEn = e.Name;
+            e.NameAr = ArabicNames.GetValueOrDefault(e.Name);
+            e.NameSource = "en";
+        }
 
         // Company settings (single row): costing + profit-floor defaults, editable later in Settings.
         db.CompanySettings.Add(new CompanySettings

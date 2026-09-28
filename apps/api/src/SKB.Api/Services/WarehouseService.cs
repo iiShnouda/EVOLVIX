@@ -49,7 +49,8 @@ public sealed class WarehouseService
         var branch = await _db.Branches.OrderBy(b => b.CreatedAt).FirstAsync();
         transit = new Warehouse
         {
-            Name = "In transit", Code = "TRANSIT", BranchId = branch.Id, Branch = branch,
+            Name = "In transit", NameEn = "In transit", NameAr = "في الطريق",
+            Code = "TRANSIT", BranchId = branch.Id, Branch = branch,
             Kind = WarehouseKind.TRANSIT, IsActive = true,
         };
         _db.Warehouses.Add(transit);
@@ -83,7 +84,7 @@ public sealed class WarehouseService
             if (warehouse is null)
                 return (null, new("warehouse_not_found", "Warehouse not found."));
             if (!warehouse.IsActive)
-                return (null, new("warehouse_inactive", $"{warehouse.Name} is closed and can't be used."));
+                return (null, new("warehouse_inactive", $"{Loc.Name(warehouse)} is closed and can't be used."));
         }
 
         if (cache is not null) cache[key] = warehouse;

@@ -108,6 +108,42 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**AI translation of names** (owner request 2026-09-29) — DOMAIN.md §2.1b
+- **Model:** branches, warehouses, categories and products store `NameAr`/`NameEn` plus
+  `NameSource` / `NameAuto` / `NamePending` (`ILocalizedName`). The rules are in `Loc.Apply`:
+  - A person's text is never overwritten.
+  - An AI translation follows its source until a person corrects it.
+- **`TranslationWorker`** (background service): translates waiting names in batches through any
+  OpenAI-compatible API (default CodeCraft `https://codecraftapi.com/v1`).
+  - Offline or on failure, it backs off from 10s up to 5 min and keeps names waiting.
+  - A save wakes it at once.
+  - Model: `Translation__Model`, or the first cheap-looking one from `/v1/models`.
+  - **Key:** set `Translation__ApiKey` on the server (Render dashboard). It is never sent to browsers.
+- **Language:** the API answers in `Accept-Language` (the web app sends the screen language and
+  refetches when it changes).
+  - Every list, card, valuation, transfer and invoice name follows the screen language.
+  - Inventory and product search match both languages.
+- **Branches & warehouses page:**
+  - Add a branch (it gets a "Main store" automatically) and edit a branch.
+  - Create forms show one name field in the screen language.
+  - Edit forms show both languages, with an "AI" mark and "Translating…" while waiting.
+  - Settings shows whether translation is on, how many names wait, and the last problem.
+- Endpoints: `POST`/`PUT /api/branches`, `GET /api/settings/translation`. Name fields
+  `nameAr`/`nameEn` (a plain `name` still works, taken in the request language).
+- **Migration `LocalizedNames`:** existing names become the English source with Arabic
+  waiting. The seed has Arabic names.
+- **Verified:** translation 24/24 against a stand-in AI server:
+  - backfill
+  - Arabic-only create
+  - the edit rules
+  - search in both languages
+  - **offline: waits, falls back, catches up once the service is back**
+  - localized invoices and item card
+
+  The other suites still pass on both an upgraded and a fresh database. The browser flow was
+  checked in Arabic, exactly as requested: only the Arabic field while creating, then both in
+  edit with the AI English.
+
 **Per-branch cost** (owner decision 2026-09-29)
 - Each branch has its own weighted-average cost per item. The data lives in `StockCost`:
   - one pool per branch

@@ -31,3 +31,9 @@ services:
         value: owner@skb.local
       - key: Seed__OwnerPassword # choose a strong owner password
         sync: false
+      # AI translation of names (branches, warehouses, categories, products). Paste your
+      # CodeCraft key (cc_…) from codecraftapi.com/dashboard; leave empty to keep it off.
+      - key: Translation__ApiKey
+        sync: false
+      - key: Translation__BaseUrl
+        value: https://codecraftapi.com/v1

@@ -5,10 +5,15 @@ namespace SKB.Api.Data;
 // Money is stored as integer MINOR UNITS (piastres) in bigint columns — never floats.
 // All DateTimes are UTC (timestamptz).
 
-public class Branch
+public class Branch : ILocalizedName
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
     public string Code { get; set; } = "";
     public string? Location { get; set; }
     public bool IsActive { get; set; } = true;
@@ -24,10 +29,15 @@ public class Branch
 /// several. Exactly one active warehouse per branch is the branch's default, used when a document
 /// doesn't name one. A warehouse can only be deactivated once it holds no stock.
 /// </summary>
-public class Warehouse
+public class Warehouse : ILocalizedName
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
     /// <summary>Short unique code, e.g. "MAIN-1".</summary>
     public string Code { get; set; } = "";
     public Guid BranchId { get; set; }
@@ -179,18 +189,28 @@ public class Party
     public List<SalesDocument> Documents { get; set; } = new();
 }
 
-public class Category
+public class Category : ILocalizedName
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
     public List<Product> Products { get; set; } = new();
 }
 
-public class Product
+public class Product : ILocalizedName
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
     public string Unit { get; set; } = "pc";
     /// <summary>
     /// Company-wide average cost (minor units) = total stock value ÷ total quantity, kept in step

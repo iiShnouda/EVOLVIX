@@ -30,6 +30,13 @@ first‑class concern.
    - The WPF client (`apps/windows`) is **paused**: keep it building, but don't add features
      or mirror new DTOs until it is deliberately revived.
    - Barcode scanners work as keyboards, and printing goes through the browser.
+8. **Names are bilingual data.** Anything people name (branches, warehouses, categories,
+   products, and new entities like them) implements `ILocalizedName`
+   (`Name`/`NameAr`/`NameEn`/`NameSource`/`NameAuto`/`NamePending`).
+   - Update names only through `Loc.Apply`, and call `TranslationQueue.Notify()` after saving.
+   - Map them to DTOs with `Loc.Name(entity)`. The server answers in the caller's
+     `Accept-Language`.
+   - Create forms show one name field (the screen language); edit forms show both (`NameFields`).
 
 ## Layout (one server, best‑fit client per device)
 

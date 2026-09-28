@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Localization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -36,6 +38,14 @@ builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<ReturnsService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
+
+// AI translation of names (branches, warehouses, categories, products). Off until an API key is
+// configured (Translation__ApiKey); names then wait as "pending" and show as typed.
+builder.Services.Configure<TranslationOptions>(builder.Configuration.GetSection("Translation"));
+builder.Services.AddSingleton<TranslationQueue>();
+builder.Services.AddSingleton<TranslationStatus>();
+builder.Services.AddHttpClient<AiTranslator>(c => c.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddHostedService<TranslationWorker>();
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]
@@ -139,6 +149,15 @@ app.UseStaticFiles();
 // Enable HTTPS redirection only when a certificate/HTTPS endpoint is configured.
 if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
     app.UseHttpsRedirection();
+
+// Names come back in the caller's language (Accept-Language: ar|en). Only the UI culture follows
+// the header; number and date formatting on the server stay invariant English.
+app.UseRequestLocalization(new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture("en"),
+    SupportedCultures = new[] { new CultureInfo("en") },
+    SupportedUICultures = new[] { new CultureInfo("en"), new CultureInfo("ar") },
+});
 
 app.UseCors();
 app.UseAuthentication();   // before the limiter, so it can key on the signed-in user

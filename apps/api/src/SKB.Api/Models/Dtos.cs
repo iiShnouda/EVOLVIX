@@ -138,9 +138,16 @@ public record StocktakeResultDto(
 /// <param name="Kind">STORE, or TRANSIT for the system warehouse holding goods on the way.</param>
 /// <param name="ItemCount">Items with stock in this warehouse.</param>
 /// <param name="Value">Quantity × current average cost, minor units.</param>
+/// <param name="Names">Both languages of the name, for the edit form.</param>
 public record WarehouseDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string Kind,
-    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value);
+    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value, LocalizedNameDto Names);
+
+/// <summary>
+/// A name in both languages. <c>Source</c> is the language it was typed in; <c>Auto</c> the side
+/// filled by AI (null when people typed both); <c>Pending</c> while the other side awaits translation.
+/// </summary>
+public record LocalizedNameDto(string? Ar, string? En, string Source, string? Auto, bool Pending);
 
 /// <summary>A warehouse goods can be sent to (any branch), for the transfer form.</summary>
 public record WarehouseOptionDto(string Id, string Name, string BranchName);
@@ -168,12 +175,29 @@ public record CreateTransferRequest(
     string FromWarehouseId, string ToWarehouseId, CreateTransferLineRequest[] Lines, string? Notes = null);
 
 public record BranchDto(
-    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses);
+    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses,
+    LocalizedNameDto Names);
 
-public record CreateWarehouseRequest(string BranchId, string Name, string? Code = null, bool IsDefault = false);
+// Names: send the language(s) typed. On create, one is enough — the other is translated by AI.
+// A plain `Name` (older clients) counts as typed in the request's language.
+
+public record CreateWarehouseRequest(
+    string BranchId, string? NameAr = null, string? NameEn = null, string? Code = null, bool IsDefault = false,
+    string? Name = null);
 
 /// <summary>Any field left null is unchanged.</summary>
-public record UpdateWarehouseRequest(string? Name = null, bool? IsActive = null, bool? IsDefault = null);
+public record UpdateWarehouseRequest(
+    string? NameAr = null, string? NameEn = null, bool? IsActive = null, bool? IsDefault = null, string? Name = null);
+
+/// <summary>A new branch also gets its default store.</summary>
+public record CreateBranchRequest(
+    string? NameAr = null, string? NameEn = null, string? Code = null, string? Location = null, string? Name = null);
+
+/// <summary>Any field left null is unchanged.</summary>
+public record UpdateBranchRequest(string? NameAr = null, string? NameEn = null, string? Location = null, string? Name = null);
+
+/// <summary>AI translation of names: whether it is set up, and what is waiting.</summary>
+public record TranslationStatusDto(bool Configured, int Pending, string? LastError, string? LastSuccessAt);
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,

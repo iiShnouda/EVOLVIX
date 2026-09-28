@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
@@ -38,6 +38,19 @@ function useApplyPrefs(): void {
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, [locale, theme]);
+}
+
+/** Names come from the server in the screen language: refetch everything when it changes. */
+function useRefetchOnLocale(): void {
+  const locale = usePrefs((s) => s.locale);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    void queryClient.invalidateQueries();
+  }, [locale]);
 }
 
 /** Silent session restore: try the refresh cookie once on load. */
@@ -104,6 +117,7 @@ function LoginRoute() {
 
 export default function App() {
   useApplyPrefs();
+  useRefetchOnLocale();
   useConnectionMonitor();
   useBootstrapAuth();
 

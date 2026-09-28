@@ -51,6 +51,24 @@ marked *(inferred)* come from data and column names, not from code.
   - sell below the floor margin
   - post opening balances
 
+### 2.1b Names in two languages (owner request 2026-09-29)
+- **Which names:** branches, warehouses, categories and products each keep an Arabic and an
+  English name. Parties are left out on purpose: they are people's and companies' names, and
+  would be sent to a third-party service.
+- **Creating:** people type the name in the screen language only.
+- **Translating:** after saving, a background worker asks an AI service (CodeCraft,
+  OpenAI-compatible; the key is in server config only) for the other language. It marks that
+  side as machine-made (`NameAuto`).
+- **Editing:** the form shows both languages.
+  - Correcting the machine translation makes it the person's text, never overwritten again.
+  - Changing the typed side re-translates the other side only while that side is still machine-made.
+- **Offline:** when the server has no internet, names wait (`NamePending`) and both languages
+  show the text as typed. The worker retries with growing waits and translates everything
+  waiting once it gets through.
+- **Language of answers:** the server answers in the caller's `Accept-Language`. Search
+  matches either language.
+- **Snapshots:** document lines keep the name as it was when posted.
+
 ### 2.2 Catalog — الأصناف
 - **Item** (صنف): SKU, name, category, brand (ماركة) and `Kind`. The kind is one of:
   - `STOCK`: normal goods.

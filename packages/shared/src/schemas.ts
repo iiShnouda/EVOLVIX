@@ -138,9 +138,15 @@ export const createTransferSchema = z.object({
 });
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 
+/** Names: send the language(s) typed; on create one is enough — the server translates the other. */
+const nameFields = {
+  nameAr: z.string().trim().max(100).optional(),
+  nameEn: z.string().trim().max(100).optional(),
+};
+
 export const createWarehouseSchema = z.object({
   branchId: z.string().uuid(),
-  name: z.string().trim().min(1).max(100),
+  ...nameFields,
   /** Empty = automatic code from the branch code. */
   code: z.string().trim().max(20).optional(),
   isDefault: z.boolean().optional().default(false),
@@ -148,11 +154,24 @@ export const createWarehouseSchema = z.object({
 export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;
 
 export const updateWarehouseSchema = z.object({
-  name: z.string().trim().min(1).max(100).optional(),
+  ...nameFields,
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
 });
 export type UpdateWarehouseInput = z.infer<typeof updateWarehouseSchema>;
+
+export const createBranchSchema = z.object({
+  ...nameFields,
+  code: z.string().trim().max(20).optional(),
+  location: z.string().trim().max(200).optional(),
+});
+export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+
+export const updateBranchSchema = z.object({
+  ...nameFields,
+  location: z.string().trim().max(200).optional(),
+});
+export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
 
 export const updateSettingsSchema = z.object({
   companyName: z.string().trim().min(1).max(200).optional(),

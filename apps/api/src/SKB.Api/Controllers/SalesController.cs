@@ -156,8 +156,8 @@ public sealed class SalesController : ControllerBase
                 return BadRequest(new
                 {
                     message = floorError == "below_cost"
-                        ? $"{product.Name}: price is below cost — selling at a loss is never allowed."
-                        : $"{product.Name}: price is below the minimum profit floor. Ask a manager to override.",
+                        ? $"{Loc.Name(product)}: price is below cost — selling at a loss is never allowed."
+                        : $"{Loc.Name(product)}: price is below the minimum profit floor. Ask a manager to override.",
                     code = floorError,
                 });
         }
@@ -171,7 +171,7 @@ public sealed class SalesController : ControllerBase
             if (wanted > available)
                 return BadRequest(new
                 {
-                    message = $"Not enough {product.Name} in {warehouse.Name}: {available} left, {wanted} requested.",
+                    message = $"Not enough {Loc.Name(product)} in {Loc.Name(warehouse)}: {available} left, {wanted} requested.",
                     code = "insufficient_stock",
                 });
         }

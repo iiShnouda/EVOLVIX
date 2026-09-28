@@ -92,6 +92,22 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("NameAr")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAuto")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameEn")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NamePending")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NameSource")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
@@ -107,6 +123,22 @@ namespace SKB.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAr")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAuto")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameEn")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NamePending")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NameSource")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -281,6 +313,22 @@ namespace SKB.Api.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAr")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAuto")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameEn")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NamePending")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NameSource")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -713,6 +761,22 @@ namespace SKB.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAr")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameAuto")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NameEn")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("NamePending")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NameSource")
                         .IsRequired()
                         .HasColumnType("text");
 

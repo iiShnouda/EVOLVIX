@@ -28,6 +28,8 @@ public sealed class ProductsController : ControllerBase
         {
             var s = search.ToLower();
             q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
+                || (p.NameAr != null && p.NameAr.ToLower().Contains(s))
+                || (p.NameEn != null && p.NameEn.ToLower().Contains(s))
                 || (p.Barcode != null && p.Barcode.ToLower().Contains(s)));
         }
         var rows = await q.OrderBy(p => p.Name).Take(limit).ToListAsync();

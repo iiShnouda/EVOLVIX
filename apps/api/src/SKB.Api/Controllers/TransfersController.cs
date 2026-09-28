@@ -94,7 +94,7 @@ public sealed class TransfersController : ControllerBase
         if (destination is null)
             return BadRequest(new { message = "Choose where the goods are going.", code = "destination_not_found" });
         if (!destination.IsActive)
-            return BadRequest(new { message = $"{destination.Name} is closed.", code = "warehouse_inactive" });
+            return BadRequest(new { message = $"{Loc.Name(destination)} is closed.", code = "warehouse_inactive" });
         if (destination.Id == source!.Id)
             return BadRequest(new { message = "Source and destination must be different warehouses.", code = "same_warehouse" });
 
@@ -123,7 +123,7 @@ public sealed class TransfersController : ControllerBase
             if (qty > available)
                 return BadRequest(new
                 {
-                    message = $"Not enough {product.Name} in {source.Name}: {available} left, {qty} requested.",
+                    message = $"Not enough {Loc.Name(product)} in {Loc.Name(source)}: {available} left, {qty} requested.",
                     code = "insufficient_stock",
                 });
         }
@@ -270,8 +270,8 @@ public sealed class TransfersController : ControllerBase
             .ToArray();
         return new StockTransferDto(
             t.Id.ToString(), t.Number, t.Status.ToString(),
-            t.FromWarehouseId.ToString(), t.FromWarehouse?.Name ?? "", t.FromWarehouse?.Branch?.Name ?? "",
-            t.ToWarehouseId.ToString(), t.ToWarehouse?.Name ?? "", t.ToWarehouse?.Branch?.Name ?? "",
+            t.FromWarehouseId.ToString(), Loc.Name(t.FromWarehouse), Loc.Name(t.FromWarehouse?.Branch),
+            t.ToWarehouseId.ToString(), Loc.Name(t.ToWarehouse), Loc.Name(t.ToWarehouse?.Branch),
             t.CreatedAt.ToString("o"), t.CreatedBy?.FullName ?? "",
             t.ReceivedAt?.ToString("o"), t.ReceivedBy?.FullName, t.CancelledAt?.ToString("o"), t.CancelledBy?.FullName,
             t.Notes, lines.Sum(l => l.Quantity), lines.Sum(l => l.Value), lines,

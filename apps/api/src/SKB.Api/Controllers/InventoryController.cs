@@ -74,11 +74,12 @@ public sealed class InventoryController : ControllerBase
         if (lowOnly) rows = rows.Where(i => i.IsLow);
         if (!string.IsNullOrWhiteSpace(search))
         {
+            // Match either language of the name, the SKU or the barcode.
             var s = search.Trim().ToLowerInvariant();
-            var barcodes = products.Where(p => p.Barcode != null && p.Barcode.ToLowerInvariant().Contains(s))
+            bool Has(string? v) => v is not null && v.ToLowerInvariant().Contains(s);
+            var hits = products.Where(p => Has(p.Name) || Has(p.NameAr) || Has(p.NameEn) || Has(p.Sku) || Has(p.Barcode))
                 .Select(p => p.Id.ToString()).ToHashSet();
-            rows = rows.Where(i => i.Name.ToLowerInvariant().Contains(s) || i.Sku.ToLowerInvariant().Contains(s)
-                || barcodes.Contains(i.Id));
+            rows = rows.Where(i => hits.Contains(i.Id));
         }
 
         return Ok(new InventoryListDto(
@@ -116,12 +117,11 @@ public sealed class InventoryController : ControllerBase
         var opening = (await _valuation.AtAsync(fromDate, id)).Of(id, wid);
         var closing = (await _valuation.AtAsync(toExclusive, id)).Of(id, wid);
         var now = await _valuation.CurrentAsync(id);
-        var names = await _db.Warehouses.AsNoTracking()
-            .Select(x => new { x.Id, x.Name, Branch = x.Branch!.Name }).ToDictionaryAsync(x => x.Id);
+        var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch).ToDictionaryAsync(x => x.Id);
         var stock = now.Quantity
             .Where(kv => kv.Key.Product == id && kv.Value != 0)
-            .Select(kv => new WarehouseStockDto(kv.Key.Warehouse.ToString(), names[kv.Key.Warehouse].Name,
-                names[kv.Key.Warehouse].Branch, kv.Value, now.ValueOf(id, kv.Key.Warehouse)))
+            .Select(kv => new WarehouseStockDto(kv.Key.Warehouse.ToString(), Loc.Name(names[kv.Key.Warehouse]),
+                Loc.Name(names[kv.Key.Warehouse].Branch), kv.Value, now.ValueOf(id, kv.Key.Warehouse)))
             .OrderBy(x => x.Name)
             .ToArray();
 
@@ -156,7 +156,7 @@ public sealed class InventoryController : ControllerBase
         var today = DateTime.UtcNow.Date;
         var date = Utc((ParseDate(asOf) ?? today).Date);
         var products = await _db.Products.AsNoTracking().Include(p => p.Category).ToDictionaryAsync(p => p.Id);
-        var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
+        var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
         var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(date.AddDays(1));
 
         var lines = state.Quantity
@@ -170,10 +170,10 @@ public sealed class InventoryController : ControllerBase
             .ToList();
 
         var itemRows = lines.GroupBy(l => l.Product)
-            .Select(g => new ValuationRowDto(g.Key.ToString(), products[g.Key].Name, g.Sum(l => l.Qty), g.Sum(l => l.Value)))
+            .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(products[g.Key]), g.Sum(l => l.Qty), g.Sum(l => l.Value)))
             .Where(r => r.Quantity != 0)
             .OrderByDescending(r => r.Value).ToArray();
-        var categoryRows = lines.GroupBy(l => products[l.Product].Category?.Name ?? "")
+        var categoryRows = lines.GroupBy(l => Loc.Name(products[l.Product].Category))
             .Select(g => new ValuationRowDto(g.Key, g.Key, g.Sum(l => l.Qty), g.Sum(l => l.Value)))
             .OrderByDescending(r => r.Value).ToArray();
         var warehouseRows = lines.GroupBy(l => l.Warehouse)
@@ -246,7 +246,7 @@ public sealed class InventoryController : ControllerBase
 
         var posted = await _db.StockMovements.AsNoTracking()
             .Where(m => m.Reference == reference).OrderBy(m => m.CreatedAt).ToListAsync();
-        return Ok(new StocktakeResultDto(reference, warehouse.Name, changed, valueChange,
+        return Ok(new StocktakeResultDto(reference, Loc.Name(warehouse), changed, valueChange,
             await ToMovementDtosAsync(posted, perWarehouse: true)));
     }
 
@@ -265,8 +265,8 @@ public sealed class InventoryController : ControllerBase
     private async Task<StockMovementDto[]> ToMovementDtosAsync(List<StockMovement> moves, bool perWarehouse)
     {
         var warehouseIds = moves.Select(m => m.WarehouseId).Distinct().ToList();
-        var warehouses = await _db.Warehouses.AsNoTracking().Where(w => warehouseIds.Contains(w.Id))
-            .Select(w => new { w.Id, w.Name, Branch = w.Branch!.Name })
+        var warehouses = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)
+            .Where(w => warehouseIds.Contains(w.Id))
             .ToDictionaryAsync(w => w.Id);
         var docIds = moves.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
         var docTypes = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
@@ -280,7 +280,7 @@ public sealed class InventoryController : ControllerBase
             var wh = warehouses.GetValueOrDefault(m.WarehouseId);
             return new StockMovementDto(
                 m.Id.ToString(), m.CreatedAt.ToString("o"), m.Type.ToString(),
-                wh?.Branch ?? "", m.WarehouseId.ToString(), wh?.Name ?? "",
+                Loc.Name(wh?.Branch), m.WarehouseId.ToString(), Loc.Name(wh),
                 m.Reference, m.DocumentId?.ToString(),
                 m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t : null,
                 Math.Max(0, m.Quantity), Math.Max(0, -m.Quantity),
