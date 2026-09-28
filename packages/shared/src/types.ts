@@ -317,6 +317,106 @@ export interface SalesDocumentSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Inventory depth (Phase 2): stock list, item card, valuation, stocktake
+// ---------------------------------------------------------------------------
+
+export type StockMovementType =
+  | 'OPENING'
+  | 'PURCHASE_IN'
+  | 'SALE_OUT'
+  | 'SALES_RETURN_IN'
+  | 'PURCHASE_RETURN_OUT'
+  | 'ADJUSTMENT'
+  | 'TRANSFER_OUT'
+  | 'TRANSFER_IN';
+
+export interface InventoryItem {
+  id: string;
+  sku: string;
+  name: string;
+  unit: string;
+  categoryName: string;
+  stockOnHand: number;
+  reorderLevel: number;
+  /** Current weighted-average unit cost, minor units. */
+  avgCost: number;
+  salePrice: number;
+  /** stockOnHand × avgCost, minor units. */
+  stockValue: number;
+  /** On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب). */
+  isLow: boolean;
+}
+
+export interface InventoryList {
+  items: InventoryItem[];
+  /** Value of all active stock, regardless of the list filter. */
+  totalValue: number;
+  totalItems: number;
+  lowStockCount: number;
+  currency: string;
+}
+
+/** One row of the item card: a physical stock change with the balance after it. */
+export interface StockMovement {
+  id: string;
+  date: string;
+  type: StockMovementType;
+  branchName: string;
+  reference?: string | null;
+  documentId?: string | null;
+  /** Type of the source document, for linking to it. */
+  documentType?: DocumentType | null;
+  quantityIn: number;
+  quantityOut: number;
+  /** Running stock balance after this movement. */
+  balance: number;
+  unitCost: number;
+  avgCostAfter: number;
+  note?: string | null;
+}
+
+/** Item card (كارت الصنف) for one item over a period. */
+export interface ItemCard {
+  item: InventoryItem;
+  from: string;
+  to: string;
+  openingBalance: number;
+  openingValue: number;
+  totalIn: number;
+  totalOut: number;
+  closingBalance: number;
+  closingValue: number;
+  movements: StockMovement[];
+  currency: string;
+}
+
+export interface ValuationRow {
+  key: string;
+  label: string;
+  quantity: number;
+  value: number;
+}
+
+/** Stock valuation (تقييم المخزن) at the end of `asOf`: quantity × weighted-average cost. */
+export interface Valuation {
+  asOf: string;
+  currency: string;
+  quantity: number;
+  value: number;
+  categories: ValuationRow[];
+  items: ValuationRow[];
+}
+
+export interface StocktakeResult {
+  /** ADJ- reference shared by every movement the stocktake posted. */
+  reference: string;
+  itemsChanged: number;
+  /** Signed value change (gains − shrinkage), minor units. */
+  valueChange: number;
+  movements: StockMovement[];
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 

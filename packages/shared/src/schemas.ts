@@ -101,6 +101,22 @@ export const createReturnSchema = z.object({
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 
+// ---------------------------------------------------------------------------
+// Stocktake (الجرد): counted quantity per item; only differences are posted.
+// ---------------------------------------------------------------------------
+
+export const stocktakeLineSchema = z.object({
+  productId: z.string().uuid(),
+  countedQuantity: z.number().int().min(0),
+});
+export type StocktakeLineInput = z.infer<typeof stocktakeLineSchema>;
+
+export const stocktakeSchema = z.object({
+  lines: z.array(stocktakeLineSchema).min(1, 'Enter at least one counted quantity').max(1000),
+  reason: z.string().max(500).optional(),
+});
+export type StocktakeInput = z.infer<typeof stocktakeSchema>;
+
 export const updateSettingsSchema = z.object({
   companyName: z.string().trim().min(1).max(200).optional(),
   country: z.string().trim().length(2).optional(),

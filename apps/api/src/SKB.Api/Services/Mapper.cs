@@ -33,6 +33,11 @@ public static class Mapper
         p.Id.ToString(), p.Sku, p.Name, p.Unit, p.CostPrice, p.SalePrice, p.Currency,
         p.StockOnHand, p.ReorderLevel, p.IsActive);
 
+    public static InventoryItemDto ToInventoryItem(Product p) => new(
+        p.Id.ToString(), p.Sku, p.Name, p.Unit, p.Category?.Name ?? "",
+        p.StockOnHand, p.ReorderLevel, p.CostPrice, p.SalePrice,
+        (long)p.StockOnHand * p.CostPrice, p.StockOnHand <= p.ReorderLevel);
+
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent);

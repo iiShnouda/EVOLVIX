@@ -140,3 +140,93 @@ public sealed class PartyDto
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
 }
+
+// ---------------------------------------------------------------------------
+// Inventory depth (Phase 2): stock list, item card, valuation, stocktake.
+// ---------------------------------------------------------------------------
+
+public sealed class InventoryItem
+{
+    public string Id { get; set; } = "";
+    public string Sku { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Unit { get; set; } = "";
+    public string CategoryName { get; set; } = "";
+    public int StockOnHand { get; set; }
+    public int ReorderLevel { get; set; }
+    public long AvgCost { get; set; }
+    public long SalePrice { get; set; }
+    public long StockValue { get; set; }
+    public bool IsLow { get; set; }
+}
+
+public sealed class InventoryList
+{
+    public List<InventoryItem> Items { get; set; } = new();
+    // Value of all active stock, regardless of the list filter.
+    public long TotalValue { get; set; }
+    public int TotalItems { get; set; }
+    public int LowStockCount { get; set; }
+    public string Currency { get; set; } = "EGP";
+}
+
+public sealed class StockMovement
+{
+    public string Id { get; set; } = "";
+    public string Date { get; set; } = "";
+    public string Type { get; set; } = "";
+    public string BranchName { get; set; } = "";
+    public string? Reference { get; set; }
+    public string? DocumentId { get; set; }
+    public string? DocumentType { get; set; }
+    public int QuantityIn { get; set; }
+    public int QuantityOut { get; set; }
+    public int Balance { get; set; }
+    public long UnitCost { get; set; }
+    public long AvgCostAfter { get; set; }
+    public string? Note { get; set; }
+}
+
+// Item card (كارت الصنف): opening, movements with running balance, closing.
+public sealed class ItemCard
+{
+    public InventoryItem Item { get; set; } = new();
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    public int OpeningBalance { get; set; }
+    public long OpeningValue { get; set; }
+    public int TotalIn { get; set; }
+    public int TotalOut { get; set; }
+    public int ClosingBalance { get; set; }
+    public long ClosingValue { get; set; }
+    public List<StockMovement> Movements { get; set; } = new();
+    public string Currency { get; set; } = "EGP";
+}
+
+public sealed class ValuationRow
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Quantity { get; set; }
+    public long Value { get; set; }
+}
+
+// Stock valuation (تقييم المخزن) at the end of AsOf.
+public sealed class Valuation
+{
+    public string AsOf { get; set; } = "";
+    public string Currency { get; set; } = "EGP";
+    public int Quantity { get; set; }
+    public long Value { get; set; }
+    public List<ValuationRow> Categories { get; set; } = new();
+    public List<ValuationRow> Items { get; set; } = new();
+}
+
+public sealed class StocktakeResult
+{
+    public string Reference { get; set; } = "";
+    public int ItemsChanged { get; set; }
+    // Signed total value change (gains − shrinkage), minor units.
+    public long ValueChange { get; set; }
+    public List<StockMovement> Movements { get; set; } = new();
+}

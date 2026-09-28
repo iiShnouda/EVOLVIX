@@ -76,6 +76,45 @@ public record ProfitReportDto(
     string From, string To, string By, string Currency,
     long Revenue, long Cost, long Profit, int Invoices, long Returns, ProfitRowDto[] Rows);
 
+// ---- Inventory (Phase 2): stock list, item card, valuation, stocktake ----
+
+/// <param name="AvgCost">Current weighted-average unit cost (minor units).</param>
+/// <param name="StockValue">StockOnHand × AvgCost (minor units).</param>
+/// <param name="IsLow">On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب).</param>
+public record InventoryItemDto(
+    string Id, string Sku, string Name, string Unit, string CategoryName,
+    int StockOnHand, int ReorderLevel, long AvgCost, long SalePrice, long StockValue, bool IsLow);
+
+/// <param name="TotalValue">Value of all active stock, regardless of the list filter.</param>
+public record InventoryListDto(
+    InventoryItemDto[] Items, long TotalValue, int TotalItems, int LowStockCount, string Currency);
+
+/// <param name="DocumentType">Type of the source document (for linking), if the movement came from one.</param>
+public record StockMovementDto(
+    string Id, string Date, string Type, string BranchName, string? Reference,
+    string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
+    long UnitCost, long AvgCostAfter, string? Note);
+
+/// <summary>Item card (كارت الصنف): every movement of one item in a period with its running balance.</summary>
+public record ItemCardDto(
+    InventoryItemDto Item, string From, string To,
+    int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
+    StockMovementDto[] Movements, string Currency);
+
+public record ValuationRowDto(string Key, string Label, int Quantity, long Value);
+
+/// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>
+public record ValuationDto(
+    string AsOf, string Currency, int Quantity, long Value, ValuationRowDto[] Categories, ValuationRowDto[] Items);
+
+public record StocktakeLineRequest(string ProductId, int CountedQuantity);
+
+/// <summary>Stocktake (الجرد): the counted quantity per item; only lines that differ are posted.</summary>
+public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null);
+
+/// <param name="ValueChange">Signed total value change (gains − shrinkage), minor units.</param>
+public record StocktakeResultDto(string Reference, int ItemsChanged, long ValueChange, StockMovementDto[] Movements);
+
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
     SalesSummaryDto[] RecentDocuments, string Currency);

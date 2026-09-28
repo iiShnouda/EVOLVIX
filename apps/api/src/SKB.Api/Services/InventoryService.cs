@@ -91,8 +91,25 @@ public sealed class InventoryService
         return product.CostPrice;
     }
 
+    /// <summary>
+    /// Stocktake / correction (الجرد والتسويات): move stock by <paramref name="delta"/> units
+    /// (positive = found more than the books say, negative = shrinkage). Both sides are valued at
+    /// the current weighted-average cost, so the average itself doesn't change — only the quantity
+    /// and therefore the stock value. Returns the value change (minor units, signed).
+    /// </summary>
+    public long Adjust(Product product, int delta, Guid branchId, string reference, string? note)
+    {
+        if (delta == 0) throw new ArgumentOutOfRangeException(nameof(delta), "An adjustment must change the quantity.");
+        if (product.StockOnHand + delta < 0)
+            throw new InvalidOperationException($"{product.Name} can't go below zero stock.");
+
+        product.StockOnHand += delta;
+        AddMovement(product, delta, product.CostPrice, branchId, StockMovementType.ADJUSTMENT, null, reference, note);
+        return (long)delta * product.CostPrice;
+    }
+
     private void AddMovement(Product product, int signedQty, long unitCost, Guid branchId,
-        StockMovementType type, Guid? documentId, string? reference)
+        StockMovementType type, Guid? documentId, string? reference, string? note = null)
     {
         _db.StockMovements.Add(new StockMovement
         {
@@ -105,6 +122,7 @@ public sealed class InventoryService
             AvgCostAfter = product.CostPrice,
             DocumentId = documentId,
             Reference = reference,
+            Note = note,
         });
     }
 }

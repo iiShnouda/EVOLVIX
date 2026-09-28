@@ -18,6 +18,9 @@ import { ReturnBuilderPage } from './pages/ReturnBuilderPage';
 import { ProfitabilityPage } from './pages/ProfitabilityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
+import { InventoryPage } from './pages/InventoryPage';
+import { ItemCardPage } from './pages/ItemCardPage';
+import { StocktakePage } from './pages/StocktakePage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
@@ -113,10 +116,9 @@ export default function App() {
             <Route path="/sales/new" element={<InvoiceBuilderPage mode="sale" />} />
             <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
             <Route path="/parties" element={<PartiesPage />} />
-            <Route
-              path="/inventory"
-              element={<PlaceholderPage titleKey="nav.inventory" icon="inventory" />}
-            />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/inventory/items/:id" element={<ItemCardPage />} />
+            <Route path="/inventory/stocktake" element={<StocktakePage />} />
             <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
             <Route path="/purchases/new" element={<InvoiceBuilderPage mode="purchase" />} />
             <Route

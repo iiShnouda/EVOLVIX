@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -47,7 +47,12 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?doc=<id>` (e.g. from an item card) opens that document straight away.
+  const linkedId = params.get('doc');
+  const [selectedId, setSelectedId] = useState<string | null>(linkedId);
+  useEffect(() => {
+    if (linkedId) setSelectedId(linkedId);
+  }, [linkedId]);
   const list = useDocumentList(scope, kind, { page: 1 });
   const detail = useDocument(scope, selectedId);
   const isPhone = deviceClass === 'phone';

@@ -6,6 +6,11 @@ import type {
   CreateSalesInvoiceInput,
   UpdateSettingsInput,
   DashboardData,
+  InventoryList,
+  ItemCard,
+  StocktakeInput,
+  StocktakeResult,
+  Valuation,
   Paginated,
   Party,
   PresenceEntry,
@@ -121,6 +126,7 @@ function invalidateAfterPosting(qc: ReturnType<typeof useQueryClient>, scope: Do
   void qc.invalidateQueries({ queryKey: [scope] });
   void qc.invalidateQueries({ queryKey: ['dashboard'] });
   void qc.invalidateQueries({ queryKey: ['products'] });
+  void qc.invalidateQueries({ queryKey: ['inventory'] });
   void qc.invalidateQueries({ queryKey: ['parties'] });
   void qc.invalidateQueries({ queryKey: ['report'] });
 }
@@ -140,6 +146,50 @@ export function useCreatePurchaseInvoice() {
     mutationFn: (input: CreatePurchaseInvoiceInput) =>
       api.post<SalesDocument>('/purchases/invoices', input),
     onSuccess: () => invalidateAfterPosting(qc, 'purchases'),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Inventory depth (Phase 2)
+// ---------------------------------------------------------------------------
+
+export function useInventory(params: { search?: string; lowOnly?: boolean }) {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.lowOnly) query.set('lowOnly', 'true');
+  return useQuery({
+    queryKey: ['inventory', 'items', params],
+    queryFn: () => api.get<InventoryList>(`/inventory/items?${query}`),
+  });
+}
+
+/** Item card (كارت الصنف) for one item over [from, to] (ISO dates). */
+export function useItemCard(id: string, from: string, to: string) {
+  const query = new URLSearchParams({ from, to });
+  return useQuery({
+    queryKey: ['inventory', 'card', id, from, to],
+    queryFn: () => api.get<ItemCard>(`/inventory/items/${id}/card?${query}`),
+    enabled: !!id,
+  });
+}
+
+/** Stock valuation (تقييم المخزن) at the end of `asOf` (ISO date). */
+export function useValuation(asOf: string) {
+  return useQuery({
+    queryKey: ['inventory', 'valuation', asOf],
+    queryFn: () => api.get<Valuation>(`/inventory/valuation?asOf=${encodeURIComponent(asOf)}`),
+  });
+}
+
+export function useStocktake() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StocktakeInput) => api.post<StocktakeResult>('/inventory/stocktake', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['products'] });
+      void qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
   });
 }
 

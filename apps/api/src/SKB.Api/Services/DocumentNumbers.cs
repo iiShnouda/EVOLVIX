@@ -25,4 +25,15 @@ public static class DocumentNumbers
         if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
         return $"{prefix}{seq:D6}";
     }
+
+    /// <summary>Next stocktake reference, e.g. ADJ-2026-000007 (kept on the stock movements it posts).</summary>
+    public static async Task<string> NextAdjustmentAsync(AppDbContext db)
+    {
+        var prefix = $"ADJ-{DateTime.UtcNow.Year}-";
+        var last = await db.StockMovements.Where(m => m.Reference != null && m.Reference.StartsWith(prefix))
+            .OrderByDescending(m => m.Reference).Select(m => m.Reference).FirstOrDefaultAsync();
+        var seq = 1;
+        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
+        return $"{prefix}{seq:D6}";
+    }
 }

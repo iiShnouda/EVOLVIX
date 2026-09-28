@@ -81,6 +81,32 @@ Security-first, server-authoritative (no business data readable offline).
 - Fix: `GET /api/sales/invoices/{id}` no longer returns purchase documents to `sales:view` users.
 - Migration `SalesPurchaseReturns`. Windows models mirror the new fields (no returns UI there yet).
 
+**Inventory depth, first slice** (المخزون — Phase 2)
+- **Inventory page** (`/inventory`): every item with stock, average cost, value and reorder status;
+  KPIs for total stock value / item count / items at reorder level (`?low=1` filters to those).
+  `GET /api/inventory/items?search&lowOnly` — totals always cover all active stock.
+- **Item card** (كارت الصنف, `/inventory/items/:id`): opening balance before the period, every
+  movement in it with running balance and cost, closing balance and value. Each movement links to
+  its invoice/return (`/sales?doc=<id>`, `/purchases?tab=returns&doc=<id>`, …) when the viewer may
+  see it. `GET /api/inventory/items/{id}/card?from&to` (default last 30 days).
+- **Stock valuation** (تقييم المخزن, Inventory → Stock valuation tab): quantity × weighted-average
+  cost at the end of any date, by category and by item. Today reads the live stock; a past date
+  reads each item's last movement before that day (`BalanceAfter`, `AvgCostAfter`).
+  `GET /api/inventory/valuation?asOf=YYYY-MM-DD`.
+- **Stocktake / adjustment** (الجرد والتسويات, `/inventory/stocktake`, plus a one-item "Adjust
+  stock" box on the item card): enter the counted quantity; only differences post, as
+  `ADJUSTMENT` movements at the current average cost (average unchanged), all under one
+  `ADJ-YYYY-NNNNNN` reference with the reason stored in the new `StockMovement.Note`.
+  Items are row-locked while posting, so concurrent counts serialise. `POST /api/inventory/stocktake`
+  (`inventory:edit` — OWNER/ADMIN/INVENTORY; audited as `stocktake`).
+- Migration `InventoryStocktake` adds `Note` and **backfills a missing `OPENING` movement** for any
+  item whose stock ≠ Σ movements (databases seeded before the ledger existed), dated just before the
+  item's first movement with its cost recovered from that movement — so item cards and past
+  valuations tie out on the live DB. No-op on a fresh DB; idempotent.
+- Windows models mirror the new DTOs (display-only there).
+- Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
+  past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
+
 **Terminology fix** (commit `fix(i18n)`)
 - Party balances use standard accounting terms: **مدين / Receivable** and **دائن / Payable**
   (were plain "لنا عليهم / لهم علينا"). Fixed in web + Windows.
@@ -110,17 +136,21 @@ Security-first, server-authoritative (no business data readable offline).
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 
 ## 7. What's NEXT (pick up here)
-From `ROADMAP.md`, in suggested order (Phase 1 is complete — returns shipped):
+From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation and stocktake shipped):
 1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
    return to supplier) and check stock, avg cost, party balance and the profitability report.
-2. **Phase 2 — Inventory depth:** item card (كارت الصنف) from `StockMovement` (already recorded),
-   stock valuation, multi-store transfers (إذن تحويل), stocktake/adjustment, reorder alerts.
-3. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
-4. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
-5. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
-6. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-7. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
-8. **Phase 8 — Android** native client.
+2. **Verify inventory on the live DB** after deploy: item card for a seeded item starts with an
+   opening balance and closes at its stock; valuation today = inventory total; post a small
+   stocktake and see it on the item card.
+3. **Phase 2 — rest:** multi-store stock (per-branch `StockOnHand`) and transfers (إذن تحويل)
+   between branches; then movement reports (item movement, dead stock). Stock is company-wide
+   today — transfers need a per-branch balance table first.
+4. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
+5. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
+6. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
+7. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
+8. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
+9. **Phase 8 — Android** native client.
 
 **Open question for the owner:** full per-invoice multi-currency + FX — needed soon, or base
 currency is enough for now?

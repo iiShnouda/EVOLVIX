@@ -192,6 +192,8 @@ public class StockMovement
     public Guid? DocumentId { get; set; }
     /// <summary>Human reference (document number) shown on the item card.</summary>
     public string? Reference { get; set; }
+    /// <summary>Free-text reason, e.g. why a stocktake adjustment was posted.</summary>
+    public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
