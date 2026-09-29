@@ -1,4 +1,5 @@
 import { useDeferredValue, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   balanceView,
   formatMoney,
@@ -152,7 +153,10 @@ function PartyCard({
 }) {
   const { t, locale } = useT();
   const can = useCan();
+  const navigate = useNavigate();
   const bal = balanceView(party.balance, party.currency);
+  const money = (kind: 'receipt' | 'payment') =>
+    navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
   const balLabel =
     bal.direction === 'receivable'
       ? t('parties.theyOweUs')
@@ -210,6 +214,21 @@ function PartyCard({
 
       {levels.length > 0 && (
         <PriceLevelPicker party={party} levels={levels} canSet={can('parties:set_price_level')} />
+      )}
+
+      {party.isActive && (can('receipts:create') || can('payments:create')) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {can('receipts:create') && (
+            <Button size="sm" variant="secondary" onClick={() => money('receipt')}>
+              {t('money.receive')}
+            </Button>
+          )}
+          {can('payments:create') && (
+            <Button size="sm" variant="ghost" onClick={() => money('payment')}>
+              {t('money.pay')}
+            </Button>
+          )}
+        </div>
       )}
 
       {(party.phone || party.address) && (

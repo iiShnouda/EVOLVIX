@@ -55,6 +55,26 @@ public static class DbSeeder
         var stock = new Staff { FullName = "Sara Stock", Email = "sara@skb.local", Role = Role.INVENTORY, Branch = wh, PasswordHash = auth.HashPassword(staffPassword), Phone = "+20 100 000 0004" };
         db.Staff.AddRange(owner, accountant, sales, stock);
 
+        // Money accounts (DOMAIN.md §2.6): each branch's cash box, a bank account and a wallet, with
+        // what was in them when the company started using SKB.
+        MoneyAccount Opening(MoneyAccount account, double amount)
+        {
+            account.Currency = Currency;
+            account.Balance = Money(amount);
+            account.LastSeq = 1;
+            db.MoneyMovements.Add(new MoneyMovement
+            {
+                Account = account, Seq = 1, Amount = account.Balance, BalanceAfter = account.Balance,
+                Kind = MoneyMovementKind.OPENING, Notes = "Opening balance", CreatedBy = owner,
+            });
+            return account;
+        }
+        db.MoneyAccounts.AddRange(
+            Opening(new MoneyAccount { Name = "Main cash box", Kind = MoneyAccountKind.CASH_BOX, Branch = main, IsDefault = true }, 25000),
+            Opening(new MoneyAccount { Name = "October cash box", Kind = MoneyAccountKind.CASH_BOX, Branch = wh, IsDefault = true }, 8000),
+            Opening(new MoneyAccount { Name = "Company bank account", Kind = MoneyAccountKind.BANK, Branch = main, BankName = "National Bank", Number = "1234-5678-90" }, 120000),
+            Opening(new MoneyAccount { Name = "Vodafone Cash", Kind = MoneyAccountKind.WALLET, Branch = main, Number = "010 0000 0009" }, 3500));
+
         var beverages = new Category { Name = "Beverages" };
         var snacks = new Category { Name = "Snacks" };
         var cleaning = new Category { Name = "Cleaning" };

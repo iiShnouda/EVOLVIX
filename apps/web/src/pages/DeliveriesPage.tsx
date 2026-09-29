@@ -14,6 +14,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
+import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -815,6 +816,7 @@ function NewSettlementSheet({ onClose }: { onClose: () => void }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [fees, setFees] = useState('');
   const [received, setReceived] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [notes, setNotes] = useState('');
   const create = useCreateSettlement();
 
@@ -836,6 +838,7 @@ function NewSettlementSheet({ onClose }: { onClose: () => void }) {
         fees: feesMinor,
         received: receivedMinor,
         notes: notes.trim() || undefined,
+        accountId: receivedMinor > 0 && accountId ? accountId : undefined,
       });
       onClose();
     } catch {
@@ -930,6 +933,16 @@ function NewSettlementSheet({ onClose }: { onClose: () => void }) {
                   onChange={(e) => setReceived(e.target.value)}
                 />
               </label>
+              {receivedMinor > 0 && (
+                <div className="sm:col-span-2">
+                  <MoneyAccountPicker
+                    className={input}
+                    label={t('money.receivedInto')}
+                    value={accountId}
+                    onChange={setAccountId}
+                  />
+                </div>
+              )}
               <label className="block sm:col-span-2">
                 <span className="mb-1 block text-xs text-muted">{t('invoice.notes')}</span>
                 <input

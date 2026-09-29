@@ -99,8 +99,16 @@ public sealed class WarehousesController : ControllerBase
             Branch = branch, Code = await NextWarehouseCodeAsync(code), IsDefault = true,
             Name = Loc.Lang == "ar" ? "المخزن الرئيسي" : "Main store",
         };
+        // …and its cash box, where paid-now amounts land (DOMAIN.md §2.6).
+        var cashBox = new MoneyAccount
+        {
+            Branch = branch, Kind = MoneyAccountKind.CASH_BOX, IsDefault = true,
+            Name = Loc.Lang == "ar" ? "الخزينة الرئيسية" : "Main cash box",
+            Currency = await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP",
+        };
         _db.Branches.Add(branch);
         _db.Warehouses.Add(store);
+        _db.MoneyAccounts.Add(cashBox);
         await _db.SaveChangesAsync();
 
         await AuditAsync("create", "branch", branch.Id, branch.Id);

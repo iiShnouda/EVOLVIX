@@ -35,6 +35,12 @@ public class AppDbContext : DbContext
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentInvoice> ShipmentInvoices => Set<ShipmentInvoice>();
     public DbSet<CarrierSettlement> CarrierSettlements => Set<CarrierSettlement>();
+    public DbSet<MoneyAccount> MoneyAccounts => Set<MoneyAccount>();
+    public DbSet<MoneyMovement> MoneyMovements => Set<MoneyMovement>();
+    public DbSet<Voucher> Vouchers => Set<Voucher>();
+    public DbSet<VoucherLine> VoucherLines => Set<VoucherLine>();
+    public DbSet<VoucherAllocation> VoucherAllocations => Set<VoucherAllocation>();
+    public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -48,6 +54,63 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>()
             .HasOne(d => d.Rep).WithMany()
             .HasForeignKey(d => d.RepId).OnDelete(DeleteBehavior.Restrict);
+
+        // Money (DOMAIN.md §2.6): accounts, their movements, and vouchers with lines and allocations.
+        // Restrict everywhere: money history keeps its references.
+        b.Entity<MoneyAccount>().Property(a => a.Kind).HasConversion<string>();
+        b.Entity<MoneyAccount>().HasOne(a => a.Branch).WithMany()
+            .HasForeignKey(a => a.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyAccount>().HasOne(a => a.Custodian).WithMany()
+            .HasForeignKey(a => a.CustodianId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyAccount>().HasIndex(a => a.BranchId).HasFilter("\"IsDefault\"").IsUnique();
+        b.Entity<MoneyMovement>().Property(m => m.Kind).HasConversion<string>();
+        b.Entity<MoneyMovement>().Property(m => m.Method).HasConversion<string>();
+        b.Entity<MoneyMovement>().HasOne(m => m.Account).WithMany()
+            .HasForeignKey(m => m.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyMovement>().HasOne(m => m.Voucher).WithMany()
+            .HasForeignKey(m => m.VoucherId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyMovement>().HasOne(m => m.Party).WithMany()
+            .HasForeignKey(m => m.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyMovement>().HasOne(m => m.CreatedBy).WithMany()
+            .HasForeignKey(m => m.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<MoneyMovement>().HasIndex(m => new { m.AccountId, m.Seq }).IsUnique();
+        b.Entity<MoneyMovement>().HasIndex(m => new { m.AccountId, m.CreatedAt });
+        b.Entity<MoneyMovement>().HasIndex(m => m.DocumentId);
+        b.Entity<Voucher>().Property(v => v.Type).HasConversion<string>();
+        b.Entity<Voucher>().Property(v => v.Status).HasConversion<string>();
+        b.Entity<Voucher>().HasIndex(v => v.Number).IsUnique();
+        b.Entity<Voucher>().HasIndex(v => new { v.Type, v.CreatedAt });
+        b.Entity<Voucher>().HasOne(v => v.Branch).WithMany()
+            .HasForeignKey(v => v.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.Party).WithMany()
+            .HasForeignKey(v => v.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.ExpenseCategory).WithMany()
+            .HasForeignKey(v => v.ExpenseCategoryId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.FromAccount).WithMany()
+            .HasForeignKey(v => v.FromAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.ToAccount).WithMany()
+            .HasForeignKey(v => v.ToAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.CreatedBy).WithMany()
+            .HasForeignKey(v => v.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Voucher>().HasOne(v => v.CancelledBy).WithMany()
+            .HasForeignKey(v => v.CancelledById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<VoucherLine>().Property(l => l.Method).HasConversion<string>();
+        b.Entity<VoucherLine>().HasOne(l => l.Voucher).WithMany(v => v.Lines)
+            .HasForeignKey(l => l.VoucherId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VoucherLine>().HasOne(l => l.Account).WithMany()
+            .HasForeignKey(l => l.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<VoucherAllocation>().HasKey(x => new { x.VoucherId, x.DocumentId });
+        b.Entity<VoucherAllocation>().HasIndex(x => x.DocumentId);
+        b.Entity<VoucherAllocation>().HasOne(x => x.Voucher).WithMany(v => v.Allocations)
+            .HasForeignKey(x => x.VoucherId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<VoucherAllocation>().HasOne(x => x.Document).WithMany()
+            .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ExpenseCategory>().HasOne(c => c.Parent).WithMany()
+            .HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>().HasOne(d => d.PaidAccount).WithMany()
+            .HasForeignKey(d => d.PaidAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<CarrierSettlement>().HasOne(x => x.Account).WithMany()
+            .HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
 
         // Delivery (DOMAIN.md §2.5): method and status on the sale, shipments with a waybill, and
         // carrier settlements. Restrict everywhere: history keeps its references.

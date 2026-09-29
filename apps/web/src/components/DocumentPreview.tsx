@@ -89,6 +89,12 @@ export function DocumentPreview({
                 {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
               </p>
             )}
+            {doc.paidAccountName && doc.paidAmount > 0 && (
+              <p>
+                {t('money.paidInto')}:{' '}
+                <span className="font-medium text-fg">{doc.paidAccountName}</span>
+              </p>
+            )}
             {doc.priceLevelName && (
               <p>
                 {t('invoice.priceLevel')}:{' '}

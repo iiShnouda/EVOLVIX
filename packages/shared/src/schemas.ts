@@ -94,6 +94,8 @@ export const createSalesInvoiceSchema = z.object({
   driverId: z.string().uuid().optional(),
   /** Shipping company: the carrier (a party of type CARRIER). */
   carrierId: z.string().uuid().optional(),
+  /** Where the paid-now amount goes; none = the branch's cash box. */
+  paidAccountId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -126,6 +128,8 @@ export const createPurchaseInvoiceSchema = z.object({
     .array(z.lazy(() => chargeSchema))
     .max(20)
     .optional(),
+  /** Where the paid-now amount comes from; none = the branch's cash box. */
+  paidAccountId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -146,6 +150,8 @@ export const createReturnSchema = z.object({
   /** Cash settled now (minor units); the rest goes on the party's account. */
   refundAmount: z.number().int().min(0).default(0),
   notes: z.string().max(1000).optional(),
+  /** The money account the refund goes through; none = the branch's cash box. */
+  refundAccountId: z.string().uuid().optional(),
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 
@@ -386,4 +392,62 @@ export interface CreateSettlementInput {
   fees: number;
   received: number;
   notes?: string;
+  /** Where the carrier's payment went; none = the branch's cash box. */
+  accountId?: string;
+}
+
+// ---- Money (DOMAIN step 5) ----
+
+export interface CreateMoneyAccountInput {
+  name: string;
+  kind: 'CASH_BOX' | 'CUSTODY' | 'BANK' | 'WALLET' | 'POST';
+  branchId: string;
+  custodianId?: string;
+  number?: string;
+  bankName?: string;
+  /** Minor units already in it. */
+  openingBalance?: number;
+  isDefault?: boolean;
+}
+
+export interface UpdateMoneyAccountInput {
+  name?: string;
+  number?: string;
+  bankName?: string;
+  custodianId?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  /** Only for an account nothing has moved through yet. */
+  openingBalance?: number;
+}
+
+export interface VoucherLineInput {
+  method: 'CASH' | 'BANK_TRANSFER' | 'INSTAPAY' | 'MOBILE_WALLET' | 'POST';
+  accountId: string;
+  /** Minor units. */
+  amount: number;
+  reference?: string;
+}
+
+/** A receipt, payment or expense. */
+export interface CreateVoucherInput {
+  partyId?: string;
+  categoryId?: string;
+  lines: VoucherLineInput[];
+  allocations?: { documentId: string; amount: number }[];
+  notes?: string;
+}
+
+export interface CreateCashTransferInput {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  notes?: string;
+}
+
+export interface ExpenseCategoryInput {
+  name?: string;
+  /** '' = make it a main category. */
+  parentId?: string;
+  isActive?: boolean;
 }

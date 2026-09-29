@@ -78,6 +78,9 @@ public sealed class PartiesController : ControllerBase
     {
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
         if (party is null) return NotFound(new { message = "Party not found", code = "not_found" });
+        // Locked first, so "balance is zero" still holds when the account closes.
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await MoneyService.LockPartiesAsync(_db, party.Id);
         var error = await ApplyAsync(party, req.Name, req.Types, req.Phone, req.Email, req.TaxNumber, req.Address, isNew: false);
         if (error is not null) return error;
         if (req.IsActive == false && party.IsActive)
@@ -92,6 +95,7 @@ public sealed class PartiesController : ControllerBase
         }
         else if (req.IsActive == true) party.IsActive = true;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         await AuditAsync("update", id);
         return Ok(Mapper.ToParty(party));
     }

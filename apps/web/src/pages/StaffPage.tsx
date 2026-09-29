@@ -39,6 +39,12 @@ const SECTION_OF: Record<string, string> = {
   units: 'catalog',
   variant_options: 'catalog',
   roles: 'staff',
+  payments: 'receipts',
+  expenses: 'receipts',
+  cash: 'receipts',
+  vouchers: 'receipts',
+  money_accounts: 'receipts',
+  expense_categories: 'receipts',
   audit: 'system',
   presence: 'system',
 };

@@ -64,6 +64,16 @@ import type {
   SetDeliveryStatusInput,
   CreateShipmentInput,
   CreateSettlementInput,
+  MoneyAccount,
+  AccountStatement,
+  Voucher,
+  OpenInvoice,
+  ExpenseCategory,
+  CreateMoneyAccountInput,
+  UpdateMoneyAccountInput,
+  CreateVoucherInput,
+  CreateCashTransferInput,
+  ExpenseCategoryInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -722,5 +732,119 @@ export function useCreateSettlement() {
       void qc.invalidateQueries({ queryKey: ['delivery'] });
       void qc.invalidateQueries({ queryKey: ['parties'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Money (DOMAIN.md §2.6): accounts, vouchers, expense categories
+// ---------------------------------------------------------------------------
+
+/** Money moved: balances, invoices, parties and the dashboard all change. */
+function invalidateAfterMoney(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['money'] });
+  invalidateAfterPosting(qc, 'sales');
+  void qc.invalidateQueries({ queryKey: ['purchases'] });
+  void qc.invalidateQueries({ queryKey: ['delivery'] });
+}
+
+export function useMoneyAccounts(enabled = true) {
+  return useQuery({
+    queryKey: ['money', 'accounts'],
+    queryFn: () => api.get<MoneyAccount[]>('/money-accounts'),
+    enabled,
+  });
+}
+
+export function useAccountStatement(id: string, from: string, to: string) {
+  return useQuery({
+    queryKey: ['money', 'statement', id, from, to],
+    queryFn: () =>
+      api.get<AccountStatement>(
+        `/money-accounts/${id}/movements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+    enabled: !!id,
+  });
+}
+
+export function useCreateMoneyAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateMoneyAccountInput) =>
+      api.post<MoneyAccount>('/money-accounts', input),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+export function useUpdateMoneyAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateMoneyAccountInput }) =>
+      api.put<MoneyAccount>(`/money-accounts/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['money'] }),
+  });
+}
+
+export function useVouchers(params: { type?: string; status?: string; partyId?: string }) {
+  const query = new URLSearchParams({ pageSize: '100' });
+  if (params.type) query.set('type', params.type);
+  if (params.status) query.set('status', params.status);
+  if (params.partyId) query.set('partyId', params.partyId);
+  return useQuery({
+    queryKey: ['money', 'vouchers', params],
+    queryFn: () => api.get<Paginated<Voucher>>(`/vouchers?${query}`),
+  });
+}
+
+export function useOpenInvoices(partyId: string, side: 'sales' | 'purchases', enabled = true) {
+  return useQuery({
+    queryKey: ['money', 'open', partyId, side],
+    queryFn: () => api.get<OpenInvoice[]>(`/parties/${partyId}/open-invoices?side=${side}`),
+    enabled: enabled && !!partyId,
+  });
+}
+
+export type VoucherKind = 'receipts' | 'payments' | 'expenses';
+
+export function useCreateVoucher() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, input }: { kind: VoucherKind; input: CreateVoucherInput }) =>
+      api.post<Voucher>(`/${kind}`, input),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+export function useCreateCashTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateCashTransferInput) => api.post<Voucher>('/cash-transfers', input),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+export function useCancelVoucher() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<Voucher>(`/vouchers/${id}/cancel`, {}),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+export function useExpenseCategories(enabled = true) {
+  return useQuery({
+    queryKey: ['money', 'categories'],
+    queryFn: () => api.get<ExpenseCategory[]>('/expense-categories'),
+    enabled,
+  });
+}
+
+export function useSaveExpenseCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: ExpenseCategoryInput }) =>
+      id
+        ? api.put<ExpenseCategory>(`/expense-categories/${id}`, input)
+        : api.post<ExpenseCategory>('/expense-categories', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['money', 'categories'] }),
   });
 }

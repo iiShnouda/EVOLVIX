@@ -17,6 +17,7 @@ import {
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
+import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
@@ -145,6 +146,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const [addition, setAddition] = useState('');
   const [additionLabel, setAdditionLabel] = useState('');
   const [paidNow, setPaidNow] = useState('');
+  const [paidAccountId, setPaidAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
 
@@ -323,6 +325,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
+          paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
           deliveryMethod: delivery.method,
           deliveryAddress:
             delivery.method !== 'PICKUP' && delivery.address.trim()
@@ -351,6 +354,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
           priceLevelId,
+          paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
         });
         navigate('/purchases');
       }
@@ -790,6 +794,14 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                   onChange={(e) => setPaidNow(e.target.value)}
                 />
               </label>
+              {Number(paidNow) > 0 && (
+                <MoneyAccountPicker
+                  className={field}
+                  label={t(isSale ? 'money.receivedInto' : 'money.paidInto')}
+                  value={paidAccountId}
+                  onChange={setPaidAccountId}
+                />
+              )}
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
                 <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />

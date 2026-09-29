@@ -25,12 +25,14 @@ public sealed class ReturnsService
     private readonly AppDbContext _db;
     private readonly InventoryService _inventory;
     private readonly WarehouseService _warehouses;
+    private readonly MoneyService _money;
 
-    public ReturnsService(AppDbContext db, InventoryService inventory, WarehouseService warehouses)
+    public ReturnsService(AppDbContext db, InventoryService inventory, WarehouseService warehouses, MoneyService money)
     {
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
+        _money = money;
     }
 
     public sealed record ReturnError(string Code, string Message);
@@ -254,7 +256,19 @@ public sealed class ReturnsService
         // Balance sign: > 0 they owe us (receivable), < 0 we owe them (payable).
         // A sales return lowers what the customer owes; a purchase return lowers what we owe the supplier.
         var onAccount = grand - doc.PaidAmount;
+        await MoneyService.LockPartiesAsync(_db, invoice.PartyId);
         invoice.Party!.Balance += isSale ? -onAccount : onAccount;
+
+        // A refund moves money: out of a money account to the customer, or back in from the supplier.
+        if (doc.PaidAmount > 0)
+        {
+            var (account, moneyError) = await _money.ForDocumentAsync(req.RefundAccountId, invoice.BranchId, branchScope);
+            moneyError ??= _money.Move(account!, isSale ? -doc.PaidAmount : doc.PaidAmount,
+                isSale ? MoneyMovementKind.SALES_REFUND : MoneyMovementKind.PURCHASE_REFUND, staffId, number,
+                documentId: doc.Id, partyId: invoice.PartyId);
+            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
+            doc.PaidAccountId = account!.Id;
+        }
 
         if (completesInvoice) invoice.Status = DocumentStatus.RETURNED;
 

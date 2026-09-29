@@ -18,15 +18,17 @@ public sealed class SalesController : ControllerBase
     private readonly WarehouseService _warehouses;
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
+    private readonly MoneyService _money;
 
     public SalesController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        ReturnsService returns, AuditService audit)
+        ReturnsService returns, AuditService audit, MoneyService money)
     {
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
         _returns = returns;
         _audit = audit;
+        _money = money;
     }
 
     [HttpGet("invoices")]
@@ -95,6 +97,7 @@ public sealed class SalesController : ControllerBase
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
             .Include(d => d.Charges).Include(d => d.Rep).Include(d => d.Driver).Include(d => d.Carrier)
+            .Include(d => d.PaidAccount)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -325,7 +328,18 @@ public sealed class SalesController : ControllerBase
             : DocumentStatus.CONFIRMED;
 
         // The customer owes us the unpaid balance (receivable → positive).
+        await MoneyService.LockPartiesAsync(_db, party.Id);
         party.Balance += grand - doc.PaidAmount;
+
+        // Money paid now lands in a money account: the one picked, else the branch's cash box.
+        if (doc.PaidAmount > 0)
+        {
+            var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, MoneyService.ScopeOf(User));
+            if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+            doc.PaidAccountId = account!.Id;
+            _money.Move(account, doc.PaidAmount, MoneyMovementKind.SALE_PAID, staffId, doc.Number,
+                documentId: doc.Id, partyId: party.Id);
+        }
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();

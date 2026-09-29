@@ -62,7 +62,7 @@ public record SalesDetailDto(
     string? SourceDocumentId, string? SourceNumber, string? PriceLevelId, string? PriceLevelName,
     long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName,
     string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
-    string? CarrierId, string? CarrierName);
+    string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -90,7 +90,8 @@ public record CreateSalesInvoiceRequest(
     int? TaxPercent = null, string? Notes = null, string? DueDate = null,
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
-    string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null);
+    string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
+    string? PaidAccountId = null);
 
 public record CreatePurchaseLineRequest(
     string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
@@ -99,7 +100,8 @@ public record CreatePurchaseLineRequest(
 public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
-    string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null);
+    string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
+    string? PaidAccountId = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
 public record RepOptionDto(string Id, string Name, string BranchId);
@@ -108,7 +110,9 @@ public record RepOptionDto(string Id, string Name, string BranchId);
 public record CreateReturnLineRequest(string LineId, int Quantity);
 
 /// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
-public record CreateReturnRequest(CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null);
+/// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
+public record CreateReturnRequest(
+    CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null);
 
 public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
@@ -285,12 +289,15 @@ public record DeliveryActionDto(DeliveryDto Delivery, string[] Returns, string[]
 
 public record CarrierSettlementDto(
     string Id, string Number, string CarrierId, string CarrierName, long CodTotal, long Fees, long Received,
-    long Difference, string? Notes, string CreatedAt, string CreatedByName, string[] Shipments, string Currency);
+    long Difference, string? Notes, string CreatedAt, string CreatedByName, string[] Shipments, string Currency,
+    string? AccountName = null);
 
 /// <param name="Fees">What the carrier kept as its fees (minor units).</param>
 /// <param name="Received">What the carrier paid us (minor units).</param>
+/// <param name="AccountId">Where the carrier's payment went (none = the branch's cash box).</param>
 public record CreateSettlementRequest(
-    string? CarrierId, string[]? ShipmentIds, long Fees = 0, long Received = 0, string? Notes = null);
+    string? CarrierId, string[]? ShipmentIds, long Fees = 0, long Received = 0, string? Notes = null,
+    string? AccountId = null);
 
 /// <param name="SalesPriceLevelId">The customer's own price level (null = the default sales level).</param>
 /// <param name="PurchasePriceLevelId">The supplier's own price level (null = the default purchase level).</param>
@@ -435,3 +442,66 @@ public record PermissionInfoDto(string Key, string Group);
 public record PresenceEntryDto(
     string UserId, string FullName, string Role, string BranchId, string? CurrentView,
     string ConnectedAt, string LastSeenAt);
+
+// ---- Money (DOMAIN.md §2.6): accounts, vouchers, allocations, expense categories ----
+
+public record MoneyAccountDto(
+    string Id, string Name, string Kind, string BranchId, string BranchName, string? CustodianId,
+    string? CustodianName, string? Number, string? BankName, long Balance, string Currency, bool IsDefault,
+    bool IsActive, bool HasMovements);
+
+/// <param name="OpeningBalance">Money already in it (minor units), posted as its first movement.</param>
+public record CreateMoneyAccountRequest(
+    string? Name, string? Kind, string? BranchId, string? CustodianId = null, string? Number = null,
+    string? BankName = null, long OpeningBalance = 0, bool IsDefault = false);
+
+/// <summary>A field left null is unchanged. Closing needs a zero balance.</summary>
+/// <param name="OpeningBalance">What is in it, for an account that has no movements yet (e.g. a new
+/// branch's cash box).</param>
+public record UpdateMoneyAccountRequest(
+    string? Name = null, string? Number = null, string? BankName = null, string? CustodianId = null,
+    bool? IsDefault = null, bool? IsActive = null, long? OpeningBalance = null);
+
+public record MoneyMovementDto(
+    string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,
+    string? Reference, string? MethodReference, string? PartyName, string? Notes, string CreatedByName,
+    string? VoucherId);
+
+/// <summary>An account's movements over a period (a day = the daily cash report, حركة اليوم).</summary>
+public record AccountStatementDto(
+    MoneyAccountDto Account, string From, string To, long Opening, long TotalIn, long TotalOut, long Closing,
+    MoneyMovementDto[] Movements);
+
+public record VoucherLineRequest(string? Method, string? AccountId, long Amount, string? Reference = null);
+
+public record AllocationRequest(string? DocumentId, long Amount);
+
+/// <summary>A receipt, payment or expense. Allocations are for receipts and payments only.</summary>
+public record CreateVoucherRequest(
+    string? PartyId, VoucherLineRequest[]? Lines, AllocationRequest[]? Allocations = null, string? Notes = null,
+    string? CategoryId = null);
+
+public record CreateCashTransferRequest(string? FromAccountId, string? ToAccountId, long Amount, string? Notes = null);
+
+public record VoucherLineDto(string Method, string AccountId, string AccountName, long Amount, string? Reference);
+
+public record VoucherAllocationDto(string DocumentId, string Number, long Amount);
+
+/// <param name="Unallocated">Of a receipt or payment, what is on the party's account, not on an invoice.</param>
+public record VoucherDto(
+    string Id, string Number, string Type, string Status, string BranchName, string? PartyId, string? PartyName,
+    string? CategoryId, string? CategoryName, string? FromAccountName, string? ToAccountName, long Amount,
+    long Unallocated, string? Notes, string CreatedAt, string CreatedByName, string? CancelledAt,
+    string? CancelledByName, VoucherLineDto[] Lines, VoucherAllocationDto[] Allocations, string Currency);
+
+/// <summary>An invoice a receipt or payment can settle.</summary>
+/// <param name="OnCodParcel">In a cash-on-delivery parcel not delivered yet: the carrier collects it.</param>
+public record OpenInvoiceDto(
+    string DocumentId, string Number, string Type, string IssueDate, string? DueDate, string BranchName,
+    long GrandTotal, long PaidAmount, long Outstanding, bool OnCodParcel);
+
+public record ExpenseCategoryDto(string Id, string Name, string? ParentId, string? ParentName, bool IsActive);
+
+public record CreateExpenseCategoryRequest(string? Name, string? ParentId = null);
+
+public record UpdateExpenseCategoryRequest(string? Name = null, string? ParentId = null, bool? IsActive = null);

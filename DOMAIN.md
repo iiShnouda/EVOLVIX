@@ -247,6 +247,11 @@ One shape for every document type:
 - **Cash transfer:** cash box ↔ cash box, or cash box ↔ bank (سحب / إيداع).
 - **Expense** (مصروف): a category and sub-category (old `masrof` / `masrofSub`), paid from a cash box or bank.
 - **Daily cash report** (حركة اليوم): every money movement of a day per cash box. This is a query, not stored.
+- **Built (step 5):** `MoneyAccount` (kinds CASH_BOX, CUSTODY, BANK, WALLET, POST; a default cash
+  box per branch), `MoneyMovement` (signed, numbered per account, balance after; an account never
+  goes below zero), `Voucher` (RECEIPT / PAYMENT / EXPENSE / TRANSFER, cancel reverses it) with
+  `VoucherLine` (method + account) and `VoucherAllocation` (invoice + amount), `ExpenseCategory`
+  (main + sub). Cheques and promissory notes come with §2.7; ledger postings with §2.8.
 
 ### 2.7 Cheques & notes — الأوراق المالية والحوافظ
 - **Note** (ورقة): kind `CHEQUE` (شيك) or `PROMISSORY_NOTE` (كمبيالة). Direction is
@@ -407,7 +412,10 @@ Each step is a working slice: API, web, tests and docs together.
    bonus lines and the sales rep, no commission (4a); delivery by our driver or a shipping company,
    parcels with cash on delivery, refused parcels and carrier settlements, and adding / editing
    parties (4b). Paid-now and settlement cash into a cash box come with step 5.
-5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.
+5. ✅ **Cash boxes, banks, receipts, payments, expenses** (shipped 2026-09-29): money accounts
+   per branch with opening balances (never below zero), receipts and payments in several ways at
+   once with allocation to invoices, expenses by category, transfers, cancelling, the daily cash
+   statement; paid-now, refunds and carrier settlements go through an account.
 6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
 7. **Cheques & portfolios.**
 8. **Financial statements**, then analytics (ROADMAP Phases 5–6).

@@ -35,7 +35,8 @@ public static class Mapper
         d.AdditionTotal, d.Charges.OrderBy(c => c.Seq).Select(Charges.ToDto).ToArray(),
         d.RepId?.ToString(), d.Rep?.FullName,
         d.DeliveryMethod.ToString(), d.DeliveryStatus?.ToString(), d.DeliveryAddress,
-        d.DriverId?.ToString(), d.Driver?.FullName, d.CarrierId?.ToString(), d.Carrier?.Name);
+        d.DriverId?.ToString(), d.Driver?.FullName, d.CarrierId?.ToString(), d.Carrier?.Name,
+        d.PaidAccountId?.ToString(), d.PaidAccount is null ? null : Loc.Name(d.PaidAccount));
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)

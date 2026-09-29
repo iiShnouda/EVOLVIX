@@ -38,6 +38,10 @@ public sealed class DashboardController : ControllerBase
         var revenue = Total(DocumentType.SALES_INVOICE) - Total(DocumentType.SALES_RETURN);
         var purchases = Total(DocumentType.PURCHASE_INVOICE) - Total(DocumentType.PURCHASE_RETURN);
 
+        // Cash position: what the money accounts hold (cash boxes, custody, banks, wallets).
+        var cash = await _db.MoneyAccounts.Where(a => a.IsActive && (all || a.BranchId == branchId))
+            .SumAsync(a => (long?)a.Balance) ?? 0;
+
         var balances = await _db.Parties.Select(p => p.Balance).ToListAsync();
         var receivables = balances.Where(b => b > 0).Sum();
         var payables = balances.Where(b => b < 0).Sum(b => -b);
@@ -58,7 +62,7 @@ public sealed class DashboardController : ControllerBase
             new KpiDto("kpi.receivables", receivables, true, Currency, "positive", null),
             new KpiDto("kpi.payables", payables, true, Currency, "warning", null),
             new KpiDto("kpi.lowStock", lowStock.Count, false, null, lowStock.Count > 0 ? "destructive" : "neutral", null),
-            new KpiDto("kpi.cashPosition", revenue - purchases, true, Currency, "neutral", null),
+            new KpiDto("kpi.cashPosition", cash, true, Currency, "neutral", null),
         };
 
         return Ok(new DashboardDto(

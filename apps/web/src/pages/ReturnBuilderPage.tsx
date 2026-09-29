@@ -5,6 +5,7 @@ import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui'
 import { useT } from '../lib/i18n';
 import { ApiError } from '../lib/api';
 import { useCreateReturn, useDocument, type DocScope } from '../lib/queries';
+import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -38,6 +39,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const [qty, setQty] = useState<Record<string, number>>({});
   const [inBase, setInBase] = useState<Record<string, boolean>>({});
   const [refund, setRefund] = useState('');
+  const [refundAccountId, setRefundAccountId] = useState('');
   const [notes, setNotes] = useState('');
 
   const backTo = `/${scope}`;
@@ -129,6 +131,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
         input: {
           lines: rows.filter((r) => r.q > 0).map((r) => ({ lineId: r.line.id, quantity: r.q })),
           refundAmount: refundMinor,
+          refundAccountId: refundMinor > 0 && refundAccountId ? refundAccountId : undefined,
           notes: notes.trim() || undefined,
         },
       });
@@ -324,6 +327,14 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                   onChange={(e) => setRefund(e.target.value)}
                 />
               </label>
+              {refundMinor > 0 && (
+                <MoneyAccountPicker
+                  className={field}
+                  label={t('money.refundThrough')}
+                  value={refundAccountId}
+                  onChange={setRefundAccountId}
+                />
+              )}
               <p className="text-xs text-faint">
                 {isSale ? t('return.creditHint') : t('return.debitHint')}
               </p>

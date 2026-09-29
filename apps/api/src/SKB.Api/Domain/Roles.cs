@@ -18,7 +18,22 @@ public static class Permissions
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
     public const string PurchasesReturn = "purchases:return";
+    /// <summary>See money accounts, their movements (daily cash) and vouchers.</summary>
     public const string ReceiptsView = "receipts:view";
+    /// <summary>Record money received from a customer or other party (سند قبض).</summary>
+    public const string ReceiptsCreate = "receipts:create";
+    /// <summary>Record money paid to a supplier or other party (سند صرف).</summary>
+    public const string PaymentsCreate = "payments:create";
+    /// <summary>Record an expense (مصروف) paid from a money account.</summary>
+    public const string ExpensesCreate = "expenses:create";
+    /// <summary>Move money between accounts (cash box ↔ cash box, deposit / withdraw at the bank).</summary>
+    public const string CashTransfer = "cash:transfer";
+    /// <summary>Cancel a receipt, payment, expense or transfer (its money moves back).</summary>
+    public const string VouchersCancel = "vouchers:cancel";
+    /// <summary>Add and edit cash boxes, custody, bank accounts and wallets (with an opening balance).</summary>
+    public const string MoneyAccountsManage = "money_accounts:manage";
+    /// <summary>Add and rename expense categories.</summary>
+    public const string ExpenseCategoriesManage = "expense_categories:manage";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
     /// <summary>Add a customer, supplier, factory or shipping company.</summary>
@@ -97,6 +112,8 @@ public static class Permissions
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
         PartiesCreate, DeliveryView, DeliveryManage, DeliverySettle,
+        ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
+        MoneyAccountsManage, ExpenseCategoriesManage,
     };
 }
 
@@ -123,6 +140,9 @@ public static class RolePermissions
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
             Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
+            Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
+            Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
+            Permissions.ExpenseCategoriesManage,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).

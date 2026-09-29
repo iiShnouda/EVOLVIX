@@ -90,7 +90,14 @@ export type Permission =
   | 'parties:create'
   | 'delivery:view'
   | 'delivery:manage'
-  | 'delivery:settle';
+  | 'delivery:settle'
+  // Money (DOMAIN step 5)
+  | 'payments:create'
+  | 'expenses:create'
+  | 'cash:transfer'
+  | 'vouchers:cancel'
+  | 'money_accounts:manage'
+  | 'expense_categories:manage';
 
 export interface Staff {
   id: string;
@@ -348,6 +355,9 @@ export interface SalesDocument {
   driverName?: string | null;
   carrierId?: string | null;
   carrierName?: string | null;
+  /** The money account the paid-now amount (or a return's refund) went through. */
+  paidAccountId?: string | null;
+  paidAccountName?: string | null;
   createdAt: string;
 }
 
@@ -435,6 +445,152 @@ export interface CarrierSettlement {
   createdByName: string;
   shipments: string[];
   currency: string;
+  /** The money account the carrier's payment went into. */
+  accountName?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Money (DOMAIN.md §2.6): accounts, vouchers, allocations, expense categories
+// ---------------------------------------------------------------------------
+
+export type MoneyAccountKind = 'CASH_BOX' | 'CUSTODY' | 'BANK' | 'WALLET' | 'POST';
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'INSTAPAY' | 'MOBILE_WALLET' | 'POST';
+export type VoucherType = 'RECEIPT' | 'PAYMENT' | 'EXPENSE' | 'TRANSFER';
+export type VoucherStatus = 'POSTED' | 'CANCELLED';
+export type MoneyMovementKind =
+  | 'OPENING'
+  | 'RECEIPT'
+  | 'PAYMENT'
+  | 'EXPENSE'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'SALE_PAID'
+  | 'PURCHASE_PAID'
+  | 'SALES_REFUND'
+  | 'PURCHASE_REFUND'
+  | 'CARRIER_SETTLEMENT'
+  | 'CANCELLATION';
+
+/** Which kinds of account each payment method lands in (the server checks the same). */
+export const METHOD_ACCOUNT_KINDS: Record<PaymentMethod, MoneyAccountKind[]> = {
+  CASH: ['CASH_BOX', 'CUSTODY'],
+  BANK_TRANSFER: ['BANK'],
+  INSTAPAY: ['BANK'],
+  MOBILE_WALLET: ['WALLET'],
+  POST: ['POST'],
+};
+
+/** A cash box, custody, bank account, wallet or post account, and what it holds. */
+export interface MoneyAccount {
+  id: string;
+  name: string;
+  kind: MoneyAccountKind;
+  branchId: string;
+  branchName: string;
+  custodianId: string | null;
+  custodianName: string | null;
+  number: string | null;
+  bankName: string | null;
+  /** Minor units; never below zero. */
+  balance: number;
+  currency: string;
+  /** The branch's default cash box: paid-now amounts land here unless another is picked. */
+  isDefault: boolean;
+  isActive: boolean;
+  /** Money has moved through it; an opening balance can be set only before that. */
+  hasMovements: boolean;
+}
+
+export interface MoneyMovement {
+  id: string;
+  seq: number;
+  createdAt: string;
+  kind: MoneyMovementKind;
+  /** Signed: + in, − out. */
+  amount: number;
+  balanceAfter: number;
+  method: PaymentMethod | null;
+  reference: string | null;
+  methodReference: string | null;
+  partyName: string | null;
+  notes: string | null;
+  createdByName: string;
+  voucherId: string | null;
+}
+
+/** An account's movements over a period; one day = the daily cash report. */
+export interface AccountStatement {
+  account: MoneyAccount;
+  from: string;
+  to: string;
+  opening: number;
+  totalIn: number;
+  totalOut: number;
+  closing: number;
+  movements: MoneyMovement[];
+}
+
+export interface VoucherLine {
+  method: PaymentMethod;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  reference: string | null;
+}
+
+export interface VoucherAllocation {
+  documentId: string;
+  number: string;
+  amount: number;
+}
+
+/** A receipt, payment, expense or transfer between accounts. */
+export interface Voucher {
+  id: string;
+  number: string;
+  type: VoucherType;
+  status: VoucherStatus;
+  branchName: string;
+  partyId: string | null;
+  partyName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  fromAccountName: string | null;
+  toAccountName: string | null;
+  amount: number;
+  /** Of a receipt or payment, what stays on the party's account (not on an invoice). */
+  unallocated: number;
+  notes: string | null;
+  createdAt: string;
+  createdByName: string;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
+  lines: VoucherLine[];
+  allocations: VoucherAllocation[];
+  currency: string;
+}
+
+/** An invoice a receipt or payment can settle. */
+export interface OpenInvoice {
+  documentId: string;
+  number: string;
+  type: DocumentType;
+  issueDate: string;
+  dueDate: string | null;
+  branchName: string;
+  grandTotal: number;
+  paidAmount: number;
+  outstanding: number;
+  /** In a cash-on-delivery parcel on its way: the carrier collects it. */
+  onCodParcel: boolean;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  parentId: string | null;
+  parentName: string | null;
+  isActive: boolean;
 }
 
 /** After a delivery step: the sales returns posted for refused goods, and any that failed. */

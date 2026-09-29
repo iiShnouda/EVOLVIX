@@ -32,12 +32,14 @@ public sealed class DeliveryController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
+    private readonly MoneyService _money;
 
-    public DeliveryController(AppDbContext db, ReturnsService returns, AuditService audit)
+    public DeliveryController(AppDbContext db, ReturnsService returns, AuditService audit, MoneyService money)
     {
         _db = db;
         _returns = returns;
         _audit = audit;
+        _money = money;
     }
 
     private static readonly ShipmentStatus[] Live =
@@ -315,7 +317,7 @@ public sealed class DeliveryController : ControllerBase
     public async Task<ActionResult<CarrierSettlementDto[]>> Settlements([FromQuery] string? carrierId = null)
     {
         var q = _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier).Include(x => x.CreatedBy)
-            .Include(x => x.Shipments).AsQueryable();
+            .Include(x => x.Account).Include(x => x.Shipments).AsQueryable();
         if (Guid.TryParse(carrierId, out var carrier)) q = q.Where(x => x.CarrierId == carrier);
         if (!CurrentUser.CanSeeAllBranches(User))
         {
@@ -370,15 +372,25 @@ public sealed class DeliveryController : ControllerBase
             s.Status = ShipmentStatus.SETTLED;
             s.Settlement = settlement;
         }
-        // The carrier owed the parcels' COD; it has paid what it paid, and kept its fees.
+        // The carrier owed the parcels' COD; it has paid what it paid, and kept its fees. What it paid
+        // lands in a money account (the one picked, else the branch's cash box).
+        await MoneyService.LockPartiesAsync(_db, carrierId);
         carrier.Balance -= req.Received + req.Fees;
+        if (req.Received > 0)
+        {
+            var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, shipments[0].BranchId, MoneyService.ScopeOf(User));
+            if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
+            settlement.AccountId = account!.Id;
+            _money.Move(account, req.Received, MoneyMovementKind.CARRIER_SETTLEMENT, Me(), settlement.Number,
+                partyId: carrierId, settlementId: settlement.Id);
+        }
         _db.CarrierSettlements.Add(settlement);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("create", "carrier_settlement", settlement.Id, shipments[0].BranchId);
 
         var saved = await _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier).Include(x => x.CreatedBy)
-            .Include(x => x.Shipments).FirstAsync(x => x.Id == settlement.Id);
+            .Include(x => x.Account).Include(x => x.Shipments).FirstAsync(x => x.Id == settlement.Id);
         return Created($"/api/carrier-settlements/{settlement.Id}", ToDto(saved, await CurrencyAsync()));
     }
 
@@ -394,6 +406,7 @@ public sealed class DeliveryController : ControllerBase
             .Include(x => x.Invoices).ThenInclude(i => i.Document)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (s is null) return NotFound(new { message = "Shipment not found.", code = "not_found" });
+        await MoneyService.LockPartiesAsync(_db, s.PartyId, s.CarrierId);
         var problem = apply(s);
         if (problem is not null) return Bad("bad_transition", problem);
         s.Status = next;
@@ -472,18 +485,8 @@ public sealed class DeliveryController : ControllerBase
     /// What the customer still owes on each invoice: grand total − paid, less what its sales returns
     /// put back on the customer's account (a return credits the account, not the invoice).
     /// </summary>
-    private async Task<Dictionary<Guid, long>> OwedAsync(IReadOnlyCollection<SalesDocument> docs)
-    {
-        var ids = docs.Select(d => d.Id).ToList();
-        var credited = await _db.SalesDocuments.AsNoTracking()
-            .Where(r => r.SourceDocumentId != null && ids.Contains(r.SourceDocumentId.Value)
-                        && r.Type == DocumentType.SALES_RETURN && r.Status != DocumentStatus.CANCELLED)
-            .GroupBy(r => r.SourceDocumentId!.Value)
-            .Select(g => new { Id = g.Key, OnAccount = g.Sum(r => r.GrandTotal - r.PaidAmount) })
-            .ToDictionaryAsync(x => x.Id, x => x.OnAccount);
-        return docs.ToDictionary(d => d.Id,
-            d => Math.Max(0, d.GrandTotal - d.PaidAmount - credited.GetValueOrDefault(d.Id)));
-    }
+    private Task<Dictionary<Guid, long>> OwedAsync(IReadOnlyCollection<SalesDocument> docs) =>
+        MoneyService.OutstandingAsync(_db, docs);
 
     private static DeliveryDto ToDelivery(SalesDocument d, Shipment? s, long owed) => new(
         d.Id.ToString(), d.Number, d.IssueDate.ToString("o"), d.PartyId.ToString(), d.Party?.Name ?? "",
@@ -505,7 +508,8 @@ public sealed class DeliveryController : ControllerBase
     private static CarrierSettlementDto ToDto(CarrierSettlement x, string currency) => new(
         x.Id.ToString(), x.Number, x.CarrierId.ToString(), x.Carrier?.Name ?? "", x.CodTotal, x.Fees, x.Received,
         x.Difference, x.Notes, x.CreatedAt.ToString("o"), x.CreatedBy?.FullName ?? "",
-        x.Shipments.OrderBy(s => s.Number).Select(s => s.Number).ToArray(), currency);
+        x.Shipments.OrderBy(s => s.Number).Select(s => s.Number).ToArray(), currency,
+        x.Account is null ? null : Loc.Name(x.Account));
 
     private async Task<string> CurrencyAsync() =>
         await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";

@@ -87,6 +87,49 @@ public enum DeliveryStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED, RETURNED }
 /// </summary>
 public enum ShipmentStatus { CREATED, PICKED_UP, DELIVERED, SETTLED, RETURNED, CANCELLED }
 
+/// <summary>Where money sits (DOMAIN.md §2.6).</summary>
+public enum MoneyAccountKind
+{
+    CASH_BOX, // خزينة
+    CUSTODY,  // عهدة: cash a staff member (e.g. a driver) holds for the company
+    BANK,     // حساب بنكي; InstaPay lands here too
+    WALLET,   // محفظة: Vodafone Cash, Orange Cash… one account per wallet number
+    POST,     // البريد المصري
+}
+
+/// <summary>How money was paid or received; each method lands in one kind of account.</summary>
+public enum PaymentMethod
+{
+    CASH,          // cash box or custody
+    BANK_TRANSFER, // bank
+    INSTAPAY,      // bank
+    MOBILE_WALLET, // wallet
+    POST,          // Egypt Post account
+}
+
+/// <summary>A money voucher (سند): receipt, payment, expense, or a transfer between accounts.</summary>
+public enum VoucherType { RECEIPT, PAYMENT, EXPENSE, TRANSFER }
+
+/// <summary>A posted voucher can be cancelled; its money movements are then reversed.</summary>
+public enum VoucherStatus { POSTED, CANCELLED }
+
+/// <summary>Why money moved in or out of an account.</summary>
+public enum MoneyMovementKind
+{
+    OPENING,            // opening balance of a new account
+    RECEIPT,            // سند قبض
+    PAYMENT,            // سند صرف
+    EXPENSE,            // مصروف
+    TRANSFER_IN,
+    TRANSFER_OUT,
+    SALE_PAID,          // paid now on a sales invoice
+    PURCHASE_PAID,      // paid now on a purchase invoice
+    SALES_REFUND,       // cash handed back on a sales return
+    PURCHASE_REFUND,    // cash received back on a purchase return
+    CARRIER_SETTLEMENT, // a shipping company paying for its COD parcels
+    CANCELLATION,       // reverses a cancelled voucher
+}
+
 /// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.
 /// RECEIVED: the destination confirmed them. CANCELLED: sent back to the source before receipt.

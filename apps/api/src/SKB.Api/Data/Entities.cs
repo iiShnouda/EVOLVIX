@@ -422,6 +422,9 @@ public class SalesDocument
     /// <summary>The shipping company, for delivery by carrier (a party with the CARRIER role).</summary>
     public Guid? CarrierId { get; set; }
     public Party? Carrier { get; set; }
+    /// <summary>The money account the paid-now amount (or a return's refund) went into or out of.</summary>
+    public Guid? PaidAccountId { get; set; }
+    public MoneyAccount? PaidAccount { get; set; }
 
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -543,10 +546,146 @@ public class CarrierSettlement
     /// <summary>CodTotal − Fees − Received: still owed by the carrier (negative if it paid more).</summary>
     public long Difference { get; set; }
     public string? Notes { get; set; }
+    /// <summary>The account the carrier's payment went into.</summary>
+    public Guid? AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
     public Guid CreatedById { get; set; }
     public Staff? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<Shipment> Shipments { get; set; } = new();
+}
+
+/// <summary>
+/// A place money sits (DOMAIN.md §2.6): a cash box, a staff member's custody, a bank account, a
+/// mobile wallet or the Egypt Post account. It belongs to a branch. <see cref="Balance"/> is the
+/// sum of its movements and never goes below zero.
+/// </summary>
+public class MoneyAccount : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public MoneyAccountKind Kind { get; set; } = MoneyAccountKind.CASH_BOX;
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    /// <summary>For custody: the staff member holding the cash.</summary>
+    public Guid? CustodianId { get; set; }
+    public Staff? Custodian { get; set; }
+    /// <summary>Bank account, wallet or post account number.</summary>
+    public string? Number { get; set; }
+    /// <summary>For a bank account: the bank.</summary>
+    public string? BankName { get; set; }
+    /// <summary>Minor units; = Σ movements.</summary>
+    public long Balance { get; set; }
+    /// <summary>The last movement's number on this account (movements are numbered 1, 2, 3…).</summary>
+    public long LastSeq { get; set; }
+    public string Currency { get; set; } = "EGP";
+    /// <summary>The branch's default cash box: paid-now amounts land here unless another is picked.</summary>
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Money in (+) or out (−) of one account, with the balance it left behind.</summary>
+public class MoneyMovement
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
+    /// <summary>Its number on the account: movements are read in this order.</summary>
+    public long Seq { get; set; }
+    /// <summary>Signed, minor units: + in, − out.</summary>
+    public long Amount { get; set; }
+    public long BalanceAfter { get; set; }
+    public MoneyMovementKind Kind { get; set; }
+    public PaymentMethod? Method { get; set; }
+    public Guid? VoucherId { get; set; }
+    public Voucher? Voucher { get; set; }
+    /// <summary>The invoice or return whose paid-now / refund this is.</summary>
+    public Guid? DocumentId { get; set; }
+    public Guid? SettlementId { get; set; }
+    public Guid? PartyId { get; set; }
+    public Party? Party { get; set; }
+    /// <summary>Document number, e.g. RCV-2026-000003 or INV-2026-000120.</summary>
+    public string? Reference { get; set; }
+    /// <summary>The transfer / transaction number typed on a receipt.</summary>
+    public string? MethodReference { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A money voucher (سند): a receipt from a party (قبض), a payment to a party (صرف), an expense
+/// (مصروف), or a transfer between two accounts. Receipts and payments can be allocated to
+/// invoices; what isn't allocated stays on the party's account.
+/// </summary>
+public class Voucher
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>RCV-, PAY-, EXP- or CTR-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public VoucherType Type { get; set; }
+    public VoucherStatus Status { get; set; } = VoucherStatus.POSTED;
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    public Guid? PartyId { get; set; }
+    public Party? Party { get; set; }
+    public Guid? ExpenseCategoryId { get; set; }
+    public ExpenseCategory? ExpenseCategory { get; set; }
+    /// <summary>Transfer: from this account…</summary>
+    public Guid? FromAccountId { get; set; }
+    public MoneyAccount? FromAccount { get; set; }
+    /// <summary>…to this one.</summary>
+    public Guid? ToAccountId { get; set; }
+    public MoneyAccount? ToAccount { get; set; }
+    /// <summary>Total, minor units (= Σ lines, or the transfer amount).</summary>
+    public long Amount { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Guid? CancelledById { get; set; }
+    public Staff? CancelledBy { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public List<VoucherLine> Lines { get; set; } = new();
+    public List<VoucherAllocation> Allocations { get; set; } = new();
+}
+
+/// <summary>One way a voucher was paid: part cash, part InstaPay…</summary>
+public class VoucherLine
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VoucherId { get; set; }
+    public Voucher? Voucher { get; set; }
+    /// <summary>1-based order on the voucher.</summary>
+    public int LineNo { get; set; }
+    public PaymentMethod Method { get; set; }
+    public Guid AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
+    public long Amount { get; set; }
+    /// <summary>Transfer / transaction number.</summary>
+    public string? Reference { get; set; }
+}
+
+/// <summary>The part of a receipt or payment that settles one invoice.</summary>
+public class VoucherAllocation
+{
+    public Guid VoucherId { get; set; }
+    public Voucher? Voucher { get; set; }
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    public long Amount { get; set; }
+}
+
+/// <summary>What an expense was for (old masrof / masrofSub): a category, optionally under another.</summary>
+public class ExpenseCategory : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public Guid? ParentId { get; set; }
+    public ExpenseCategory? Parent { get; set; }
+    public bool IsActive { get; set; } = true;
 }
 
 /// <summary>

@@ -10,7 +10,9 @@ import {
 } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { TrendChart } from '../components/charts/TrendChart';
+import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { useDashboard } from '../lib/queries';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
 
@@ -25,6 +27,8 @@ const KPI_ICON: Record<string, string> = {
 
 export function DashboardPage() {
   const { t, locale } = useT();
+  const can = useCan();
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useDashboard();
 
   if (isLoading) {
@@ -54,12 +58,21 @@ export function DashboardPage() {
         subtitle={t('app.tagline')}
         action={
           <div className="hidden gap-2 sm:flex">
-            <Button icon="plus" size="sm">
-              {t('dashboard.newInvoice')}
-            </Button>
-            <Button icon="plus" size="sm" variant="secondary">
-              {t('dashboard.newReceipt')}
-            </Button>
+            {can('sales:create') && (
+              <Button icon="plus" size="sm" onClick={() => navigate('/sales/new')}>
+                {t('dashboard.newInvoice')}
+              </Button>
+            )}
+            {can('receipts:create') && (
+              <Button
+                icon="plus"
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate('/receipts?tab=vouchers&new=receipt')}
+              >
+                {t('dashboard.newReceipt')}
+              </Button>
+            )}
           </div>
         }
       />

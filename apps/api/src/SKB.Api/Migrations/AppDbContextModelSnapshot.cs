@@ -106,6 +106,9 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("CarrierId")
                         .HasColumnType("uuid");
 
@@ -135,6 +138,8 @@ namespace SKB.Api.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
 
                     b.HasIndex("CarrierId");
 
@@ -310,6 +315,29 @@ namespace SKB.Api.Migrations
                     b.ToTable("DocumentLines");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.ExpenseCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.ToTable("ExpenseCategories");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -405,6 +433,132 @@ namespace SKB.Api.Migrations
                     b.HasIndex("UnitId");
 
                     b.ToTable("ModelUnits");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.MoneyAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Balance")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CustodianId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("LastSeq")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\"");
+
+                    b.HasIndex("CustodianId");
+
+                    b.ToTable("MoneyAccounts");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.MoneyMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("BalanceAfter")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Method")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MethodReference")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Seq")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("SettlementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VoucherId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("PartyId");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("AccountId", "CreatedAt");
+
+                    b.HasIndex("AccountId", "Seq")
+                        .IsUnique();
+
+                    b.ToTable("MoneyMovements");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
@@ -672,6 +826,9 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("PaidAccountId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("PaidAmount")
                         .HasColumnType("bigint");
 
@@ -719,6 +876,8 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Number")
                         .IsUnique();
+
+                    b.HasIndex("PaidAccountId");
 
                     b.HasIndex("PartyId");
 
@@ -1171,6 +1330,133 @@ namespace SKB.Api.Migrations
                     b.ToTable("VariantOptions");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Voucher", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ExpenseCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FromAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ToAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CancelledById");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("ExpenseCategoryId");
+
+                    b.HasIndex("FromAccountId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("PartyId");
+
+                    b.HasIndex("ToAccountId");
+
+                    b.HasIndex("Type", "CreatedAt");
+
+                    b.ToTable("Vouchers");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.VoucherAllocation", b =>
+                {
+                    b.Property<Guid>("VoucherId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("VoucherId", "DocumentId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("VoucherAllocations");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.VoucherLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("VoucherId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("VoucherId");
+
+                    b.ToTable("VoucherLines");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Warehouse", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1213,6 +1499,11 @@ namespace SKB.Api.Migrations
 
             modelBuilder.Entity("SKB.Api.Data.CarrierSettlement", b =>
                 {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SKB.Api.Data.Party", "Carrier")
                         .WithMany()
                         .HasForeignKey("CarrierId")
@@ -1224,6 +1515,8 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Account");
 
                     b.Navigation("Carrier");
 
@@ -1272,6 +1565,16 @@ namespace SKB.Api.Migrations
                     b.Navigation("Unit");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ExpenseCategory", b =>
+                {
+                    b.HasOne("SKB.Api.Data.ExpenseCategory", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>
@@ -1346,6 +1649,57 @@ namespace SKB.Api.Migrations
                     b.Navigation("Model");
 
                     b.Navigation("Unit");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.MoneyAccount", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "Custodian")
+                        .WithMany()
+                        .HasForeignKey("CustodianId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Custodian");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.MoneyMovement", b =>
+                {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Party", "Party")
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Voucher", "Voucher")
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Party");
+
+                    b.Navigation("Voucher");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
@@ -1426,6 +1780,11 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("DriverId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "PaidAccount")
+                        .WithMany()
+                        .HasForeignKey("PaidAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SKB.Api.Data.Party", "Party")
                         .WithMany("Documents")
                         .HasForeignKey("PartyId")
@@ -1458,6 +1817,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Carrier");
 
                     b.Navigation("Driver");
+
+                    b.Navigation("PaidAccount");
 
                     b.Navigation("Party");
 
@@ -1662,6 +2023,98 @@ namespace SKB.Api.Migrations
                     b.Navigation("Transfer");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Voucher", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CancelledBy")
+                        .WithMany()
+                        .HasForeignKey("CancelledById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.ExpenseCategory", "ExpenseCategory")
+                        .WithMany()
+                        .HasForeignKey("ExpenseCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "FromAccount")
+                        .WithMany()
+                        .HasForeignKey("FromAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Party", "Party")
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "ToAccount")
+                        .WithMany()
+                        .HasForeignKey("ToAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CancelledBy");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("ExpenseCategory");
+
+                    b.Navigation("FromAccount");
+
+                    b.Navigation("Party");
+
+                    b.Navigation("ToAccount");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.VoucherAllocation", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Voucher", "Voucher")
+                        .WithMany("Allocations")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.VoucherLine", b =>
+                {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Voucher", "Voucher")
+                        .WithMany("Lines")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Voucher");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Warehouse", b =>
                 {
                     b.HasOne("SKB.Api.Data.Branch", "Branch")
@@ -1728,6 +2181,13 @@ namespace SKB.Api.Migrations
 
             modelBuilder.Entity("SKB.Api.Data.StockTransfer", b =>
                 {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Voucher", b =>
+                {
+                    b.Navigation("Allocations");
+
                     b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618

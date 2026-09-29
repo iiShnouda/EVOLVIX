@@ -71,6 +71,23 @@ public static class DocumentNumbers
         return Next(prefix, last);
     }
 
+    /// <summary>Next voucher number: RCV- (receipt), PAY- (payment), EXP- (expense), CTR- (cash transfer).</summary>
+    public static async Task<string> NextVoucherAsync(AppDbContext db, VoucherType type)
+    {
+        var code = type switch
+        {
+            VoucherType.RECEIPT => "RCV",
+            VoucherType.PAYMENT => "PAY",
+            VoucherType.EXPENSE => "EXP",
+            _ => "CTR",
+        };
+        var prefix = $"{code}-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.Vouchers.Where(v => v.Number.StartsWith(prefix))
+            .OrderByDescending(v => v.Number).Select(v => v.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
     private static string Next(string prefix, string? last)
     {
         var seq = 1;

@@ -108,6 +108,56 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Cash boxes, banks, receipts, payments and expenses** (الخزينة والبنوك) — DOMAIN.md §7 step 5
+- **Money accounts** (`MoneyAccount`): cash box, custody (a staff member's cash, e.g. a driver),
+  bank account, mobile wallet, Egypt Post. Each belongs to a branch; one cash box per branch is the
+  default. An account is added with what is in it (an **opening balance**); an account nothing
+  has moved through yet (e.g. a migrated cash box) can be given its opening balance later.
+  - Every amount in or out is a `MoneyMovement`, numbered per account (`Seq`) with the balance it
+    left. **No account ever goes below zero** (`insufficient_funds`); rows are locked in id order.
+  - The account statement for a period (`GET /api/money-accounts/{id}/movements?from&to`) is also
+    the **daily cash report** (one day). Days are UTC for now.
+- **Vouchers** (`Voucher`, numbered RCV- / PAY- / EXP- / CTR-):
+  - **Receipt** from a party (سند قبض) and **payment** to one (سند صرف), paid in up to 10 ways at
+    once (cash, bank transfer, InstaPay, mobile wallet, post; each method only into its kind of
+    account), with the transfer number.
+  - Each can **settle invoices** of that party (sales for receipts, purchases for payments), up
+    to what is still owed after payments and returns; the rest stays on the party's account. An
+    invoice in a cash-on-delivery parcel on its way can't take a receipt (the carrier collects it).
+  - **Expense** by category (starter Arabic categories, with sub-categories), and **transfer**
+    between accounts (deposit / withdraw at the bank, cash box to cash box).
+  - **Cancel** any voucher: the money moves back (the account must still hold it), the party's
+    balance and the invoices it settled are restored.
+- **Money now moves with documents:** paid-now on a sales or purchase invoice, a return's refund
+  and a carrier settlement's payment go through a money account (picked, else the branch's cash
+  box). A purchase paid from a box that doesn't hold it is refused. New branches get a cash box.
+- **Fix (race):** a party's balance is now locked before any change (invoices, returns, parcels,
+  settlements, vouchers). Before, two invoices for one customer at the same moment could lose one
+  amount from the balance.
+- **Dashboard:** "Cash position" is now what the money accounts hold. Its "New invoice / New
+  receipt" buttons now open those screens (they did nothing before).
+- **Permissions:** `receipts:create`, `payments:create`, `expenses:create`, `cash:transfer`,
+  `vouchers:cancel`, `money_accounts:manage`, `expense_categories:manage` (all for Accountant);
+  seeing needs `receipts:view`. Branch-scoped people see and use only their branch's accounts,
+  invoices and vouchers.
+- **Web:** "Cash & Banks" (`/receipts`, الخزينة والبنوك): accounts by branch with balances,
+  statements, add / edit / default / close; vouchers with detail and cancel; receipt / payment /
+  expense forms with several payment lines and "settle oldest first"; transfers; expense
+  categories. An account picker appears for paid-now, refunds and carrier settlements; parties have
+  Receive / Pay buttons; the invoice preview shows where money was paid.
+- **Migration `MoneyVouchers`:** the money tables, `SalesDocuments.PaidAccountId`,
+  `CarrierSettlements.AccountId`; every existing branch gets an empty default cash box (the owner
+  enters its opening balance); past paid amounts are not replayed. Starter expense categories.
+- **Verified:**
+  - `scripts/checks/money.test.mjs`: 162/162 on a fresh and on an upgraded database, including
+    three payments racing for one cash box (one fits), two receipts racing for one invoice, and
+    four sales to one customer at once (no amount lost).
+  - Delivery (160), catalog (210), charges (70) and staff (57) still pass; 38 database invariants
+    hold, including balance = Σ movements, movements chained by `Seq`, no negative balance,
+    voucher money = its lines, and allocations within the voucher and the party.
+  - In the browser (AR/EN, phone): a receipt with "settle oldest first", voucher detail,
+    statement, paid-now account picker.
+
 **Delivery, shipping companies and cash on delivery** (التوصيل وشركات الشحن) — DOMAIN.md §7 step 4b
 - **Parties can be added and edited** (`POST`/`PUT /api/parties`): name (one field, unique among
   open accounts), types (customer, supplier, factory, **shipping company** = `CARRIER`), phone,
@@ -519,8 +569,10 @@ own permission, and roles bundle them
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
-- Carrier settlements move the carrier's balance only: the cash received isn't in a cash box and
-  the fees aren't an expense until steps 5–6. A driver's cash in hand isn't tracked yet either.
+- A carrier's fees on a settlement stay on the settlement (no expense voucher) until the ledger
+  (step 6) posts them.
+- Money days (statements, daily cash) are UTC days, not Cairo days.
+- An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
   screens use `lib/errors.ts` to show it in Arabic too.
 
@@ -548,8 +600,12 @@ and warehouses shipped):
    - ~~delivery, shipments / waybills and cash on delivery~~ done (4b)
    - **Verify on the live DB** after deploy: add a shipping company, sell with it, make a parcel,
      deliver it with COD, settle it with a fee.
-   - Next is DOMAIN.md §7 step 5: cash boxes, banks, receipts, payments and expenses (paid-now
-     and carrier settlements then land in a cash box; the carrier's fees become an expense).
+   - ~~cash boxes, banks, receipts, payments, expenses~~ done (step 5)
+   - **Verify on the live DB** after deploy: each branch has an empty cash box — enter the real
+     opening balance (Edit → opening balance, allowed until money first moves through it), add the
+     bank accounts and wallets, take a receipt against an invoice, pay a supplier, record an expense.
+   - Next is DOMAIN.md §7 step 6: the ledger (account tree, automatic postings, account
+     statements, opening balances).
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
