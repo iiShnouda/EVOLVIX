@@ -588,6 +588,23 @@ namespace SKB.Api.Migrations
                     b.ToTable("ProductModels");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.RolePermissionSet", b =>
+                {
+                    b.Property<string>("Role")
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("Permissions")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Role");
+
+                    b.ToTable("RolePermissionSets");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -750,6 +767,10 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.PrimitiveCollection<List<string>>("GrantedPermissions")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -759,6 +780,10 @@ namespace SKB.Api.Migrations
 
                     b.Property<string>("Phone")
                         .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("RevokedPermissions")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Role")
                         .IsRequired()

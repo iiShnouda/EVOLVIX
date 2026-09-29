@@ -380,7 +380,7 @@ Old values are from the company's settings file. "Default" is what SKB starts wi
 
 | Old flag (screen `ac`) | SKB |
 |---|---|
-| `chkCanView/Add/Edit/Del/Print` | `<module>:view/create/edit/cancel/print` per module |
+| `chkCanView/Add/Edit/Del/Print` | `<module>:view/create/edit/cancel/print` per module. **Built (2026-09-29):** roles bundle permissions and the owner edits them per role and per person (grant / take away) on the Staff screen; OWNER always has all. |
 | `chkBoxFar*`, `chkBoxMakhzan*`, `chkBoxKhazna*`, `chkBoxMandob*`, `chkBoxAmin*` | **scopes**: allowed branches / warehouses / cash boxes / reps |
 | `chkBoxShowPriceT/B/MInReport` | `prices:view-cost` (supply price and average cost are hidden without it) |
 | `chkBoxIsPriceUpdate`, `chkBoxIsPriceComboEnable` | `sales:change_price`, `sales:choose_price_level` (and `purchases:…` for purchases) — built |

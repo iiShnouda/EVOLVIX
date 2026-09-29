@@ -24,15 +24,12 @@ public sealed class TokenService
         _config = config;
     }
 
-    public static AuthUserDto ToDto(Staff staff)
-    {
-        var perms = RolePermissions.For(staff.Role);
-        return new AuthUserDto(
-            staff.Id.ToString(), staff.FullName, staff.Email, staff.Role.ToString(),
-            staff.BranchId.ToString(), perms);
-    }
+    /// <param name="permissions">The person's effective permissions (<see cref="PermissionService"/>).</param>
+    public static AuthUserDto ToDto(Staff staff, string[] permissions) => new(
+        staff.Id.ToString(), staff.FullName, staff.Email, staff.Role.ToString(),
+        staff.BranchId.ToString(), permissions);
 
-    public string IssueAccessToken(Staff staff)
+    public string IssueAccessToken(Staff staff, string[] permissions)
     {
         var secret = _config["Jwt:AccessSecret"]!;
         var ttl = int.Parse(_config["Jwt:AccessTtlSeconds"] ?? "900");
@@ -47,7 +44,7 @@ public sealed class TokenService
             new("branchId", staff.BranchId.ToString()),
             new("name", staff.FullName),
         };
-        foreach (var p in RolePermissions.For(staff.Role))
+        foreach (var p in permissions)
             claims.Add(new Claim("permission", p));
 
         var token = new JwtSecurityToken(

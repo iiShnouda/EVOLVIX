@@ -30,11 +30,14 @@ public class AppDbContext : DbContext
     public DbSet<ProductModel> ProductModels => Set<ProductModel>();
     public DbSet<ModelUnit> ModelUnits => Set<ModelUnit>();
     public DbSet<ModelPrice> ModelPrices => Set<ModelPrice>();
+    public DbSet<RolePermissionSet> RolePermissionSets => Set<RolePermissionSet>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         // Store enums as readable strings in Postgres.
         b.Entity<Staff>().Property(s => s.Role).HasConversion<string>();
+        b.Entity<RolePermissionSet>().HasKey(r => r.Role);
+        b.Entity<RolePermissionSet>().Property(r => r.Role).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Type).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Status).HasConversion<string>();
         b.Entity<StockMovement>().Property(m => m.Type).HasConversion<string>();

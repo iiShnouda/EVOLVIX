@@ -339,6 +339,33 @@ public record UpdateModelRequest(
     int? ReorderLevel = null, bool? IsActive = null, string[]? AddSizeIds = null, string[]? AddColorIds = null,
     ItemUnitRequest[]? Units = null);
 
+// ---- Staff & permissions (owner decision 2026-09-29: every action has its own permission) ----
+
+/// <param name="Permissions">What the person may do now: their role's, plus granted, minus revoked.</param>
+public record StaffDto(
+    string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
+    bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions);
+
+public record CreateStaffRequest(
+    string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null);
+
+/// <summary>Any field left null is unchanged. A password here replaces the person's password.</summary>
+public record UpdateStaffRequest(
+    string? FullName = null, string? Email = null, string? Role = null, string? BranchId = null,
+    string? Phone = null, bool? IsActive = null, string? Password = null);
+
+/// <summary>A person's own changes to their role's permissions.</summary>
+public record StaffPermissionsRequest(string[]? Granted, string[]? Revoked);
+
+/// <param name="Custom">The owner changed this role from the default.</param>
+/// <param name="Editable">False for OWNER, which always has every permission.</param>
+public record RoleDto(string Role, string[] Permissions, bool Custom, bool Editable, int Staff);
+
+public record UpdateRoleRequest(string[]? Permissions);
+
+/// <param name="Group">The module it belongs to (the part before the colon).</param>
+public record PermissionInfoDto(string Key, string Group);
+
 public record PresenceEntryDto(
     string UserId, string FullName, string Role, string BranchId, string? CurrentView,
     string ConnectedAt, string LastSeenAt);

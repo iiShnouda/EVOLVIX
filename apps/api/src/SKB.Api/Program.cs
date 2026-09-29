@@ -38,6 +38,7 @@ builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<ReturnsService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
+builder.Services.AddScoped<PermissionService>();
 
 // AI translation of names (branches, warehouses, categories, products). Off until an API key is
 // configured (Translation__ApiKey); names then wait as "pending" and show as typed.

@@ -108,6 +108,40 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Staff & permissions** (الموظفون والصلاحيات) — owner decision 2026-09-29: every action has its
+own permission, and roles bundle them
+- **People** (`/staff`): add a person (name, email, role, branch, phone, password), edit them,
+  set a new password (it signs them out elsewhere), deactivate or reactivate (ends their sessions).
+- **Per person:** tick or untick single permissions against their role. The extra ones are
+  `GrantedPermissions`, the removed ones `RevokedPermissions` on `Staff`; the screen marks them
+  "added" / "removed".
+- **Roles:** change what a whole role may do (`RolePermissionSet`), or put it back to the default.
+  The OWNER role always has every permission and can't be edited.
+- **Where permissions come from:** `PermissionService`. A person gets their role's permissions,
+  plus the granted ones, minus the revoked ones. They go into the access token at sign-in and at
+  every refresh, so a change reaches the person within 15 minutes. `/api/auth/me` now reads them
+  from the token.
+- **Safety rules (server-side):**
+  - Nobody can give or take a permission they don't hold themselves.
+  - Only an owner can make or edit an owner.
+  - At least one active owner always remains.
+  - Nobody can deactivate themselves, change their own role, or change their own role's or their own permissions.
+- **New permissions:** `staff:manage` (people) and `roles:manage` (roles and per-person
+  permissions), for Owner and Admin.
+- **Endpoints:**
+  - `GET /api/staff`, `POST /api/staff`, `PUT /api/staff/{id}`, `PUT /api/staff/{id}/permissions`
+  - `GET /api/roles`, `PUT /api/roles/{role}`, `POST /api/roles/{role}/reset`, `GET /api/permissions`
+  - All audited.
+- **Web:** every permission has an Arabic and English label, grouped by screen.
+- **Migration `StaffPermissions`:** empty grant and revoke lists for everyone; no role changes.
+- **Verified:**
+  - `scripts/checks/staff.test.mjs`: 57/57 on a fresh database and 57/57 on an upgraded one. It
+    covers validation, grants and revokes reaching the token, role edit and reset, admins
+    blocked from escalating or touching owners, self-lockout, password reset, and deactivation.
+  - The catalog suite still passes 209/209 on both.
+  - In the browser, in Arabic and at phone width: the permission list, and ticking a permission
+    for Karim reaches his next sign-in.
+
 **Units, price levels and size/color** (الوحدات، مستويات الأسعار، المقاس واللون) — DOMAIN.md §7 step 3
 - **Units:** every item has a **base unit** (factor 1, the smallest unit sold; stock and every
   movement count in it) and larger units that hold a number of base units (carton = 24).
@@ -407,8 +441,9 @@ Security-first, server-authoritative (no business data readable offline).
   catalogue larger than that needs a per-item stock lookup.
 - "Today" in valuation and the item card is the UTC day, not the Cairo day.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
-- **Roles and permissions are fixed in code** (`Roles.cs`). The owner wants to give each action to
-  people one by one, so a Users & permissions screen is needed (Phase 7, maybe sooner).
+- Branch scope is still by role (Owner/Admin/Accountant see every branch). Scopes per person
+  (allowed branches / warehouses / cash boxes, DOMAIN.md §2.1) come later.
+- A permission change reaches a signed-in person at their next token refresh (up to 15 minutes).
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
@@ -439,7 +474,7 @@ and warehouses shipped):
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
 9. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-10. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
+10. **Phase 7 — Admin & close:** ~~users UI~~ (done: Staff & permissions), backups, period close, PDF/Excel export, owner presence view.
 11. ~~**Phase 8 — Android**~~ done: a real Android app ships (see above).
 
 **Decisions (2026-09-29, owner):**

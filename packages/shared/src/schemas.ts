@@ -291,3 +291,28 @@ export const setPartyPriceLevelsSchema = z.object({
   purchasePriceLevelId: z.string().optional(),
 });
 export type SetPartyPriceLevelsInput = z.infer<typeof setPartyPriceLevelsSchema>;
+
+// ---------------------------------------------------------------------------
+// Staff & permissions
+// ---------------------------------------------------------------------------
+
+export const createStaffSchema = z.object({
+  fullName: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(200),
+  password: z.string().min(8).max(200),
+  role: z.enum(['OWNER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'INVENTORY', 'VIEWER']),
+  branchId: z.string().uuid(),
+  phone: z.string().trim().max(40).optional(),
+});
+export type CreateStaffInput = z.infer<typeof createStaffSchema>;
+
+export const updateStaffSchema = createStaffSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;
+
+export const staffPermissionsSchema = z.object({
+  granted: z.array(z.string()),
+  revoked: z.array(z.string()),
+});
+export type StaffPermissionsInput = z.infer<typeof staffPermissionsSchema>;

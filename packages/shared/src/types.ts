@@ -57,6 +57,7 @@ export type Permission =
   | 'inventory:edit'
   | 'staff:view'
   | 'staff:manage'
+  | 'roles:manage'
   | 'branches:view'
   | 'branches:manage'
   | 'analytics:view'
@@ -740,6 +741,45 @@ export interface BranchWithWarehouses {
   isActive: boolean;
   warehouses: Warehouse[];
   names: LocalizedName;
+}
+
+// ---------------------------------------------------------------------------
+// Staff & permissions
+// ---------------------------------------------------------------------------
+
+/** A person who can sign in, with what they may do. */
+export interface StaffMember {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  branchId: string;
+  branchName: string;
+  phone?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  /** Permissions given to this person on top of their role's. */
+  granted: Permission[];
+  /** Permissions of their role this person does not get. */
+  revoked: Permission[];
+  /** What they may do now. */
+  permissions: Permission[];
+}
+
+export interface RoleInfo {
+  role: Role;
+  permissions: Permission[];
+  /** The owner changed it from the default. */
+  custom: boolean;
+  /** False for OWNER, which always has every permission. */
+  editable: boolean;
+  /** Active people with this role. */
+  staff: number;
+}
+
+export interface PermissionInfo {
+  key: Permission;
+  group: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -139,8 +139,25 @@ public class Staff
     public Guid BranchId { get; set; }
     public Branch? Branch { get; set; }
 
+    /// <summary>Permissions this person has on top of their role's.</summary>
+    public List<string> GrantedPermissions { get; set; } = new();
+    /// <summary>Permissions of their role this person does not get.</summary>
+    public List<string> RevokedPermissions { get; set; } = new();
+
     public List<Session> Sessions { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// The permissions a role gives, as the owner set them (owner decision 2026-09-29: roles bundle
+/// permissions, and every action has its own). A role without a row uses the default in
+/// <c>RolePermissions</c>. The OWNER role always has every permission and has no row.
+/// </summary>
+public class RolePermissionSet
+{
+    public Role Role { get; set; }
+    public List<string> Permissions { get; set; } = new();
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class Session

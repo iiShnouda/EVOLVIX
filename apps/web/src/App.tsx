@@ -28,6 +28,7 @@ import { CatalogSetupPage } from './pages/CatalogSetupPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
 import { ModelsPage } from './pages/ModelsPage';
 import { ModelEditorPage } from './pages/ModelEditorPage';
+import { StaffPage } from './pages/StaffPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
@@ -165,7 +166,7 @@ export default function App() {
               element={<PlaceholderPage titleKey="nav.receipts" icon="receipts" />}
             />
             <Route path="/analytics" element={<ProfitabilityPage />} />
-            <Route path="/staff" element={<PlaceholderPage titleKey="nav.staff" icon="staff" />} />
+            <Route path="/staff" element={<StaffPage />} />
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

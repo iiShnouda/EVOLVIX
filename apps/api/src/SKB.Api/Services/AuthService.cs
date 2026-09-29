@@ -13,13 +13,16 @@ public sealed class AuthService
     private readonly TokenService _tokens;
     private readonly AuditService _audit;
     private readonly IPasswordHasher<Staff> _hasher;
+    private readonly PermissionService _permissions;
 
-    public AuthService(AppDbContext db, TokenService tokens, AuditService audit, IPasswordHasher<Staff> hasher)
+    public AuthService(AppDbContext db, TokenService tokens, AuditService audit, IPasswordHasher<Staff> hasher,
+        PermissionService permissions)
     {
         _db = db;
         _tokens = tokens;
         _audit = audit;
         _hasher = hasher;
+        _permissions = permissions;
     }
 
     public string HashPassword(string plain) => _hasher.HashPassword(new Staff(), plain);
@@ -40,11 +43,12 @@ public sealed class AuthService
             return null;
         }
 
-        var access = _tokens.IssueAccessToken(staff);
+        var permissions = await _permissions.ForAsync(staff);
+        var access = _tokens.IssueAccessToken(staff, permissions);
         var refresh = await _tokens.CreateSessionAsync(staff.Id, ctx);
         await _audit.RecordAsync(staff.Id.ToString(), staff.FullName, "auth.login", "auth",
             staff.BranchId.ToString(), ctx.Ip, ctx.UserAgent);
-        return new LoginResult(TokenService.ToDto(staff), access, refresh);
+        return new LoginResult(TokenService.ToDto(staff, permissions), access, refresh);
     }
 
     public async Task<LoginResult?> RefreshAsync(string rawToken, SessionContext ctx)
@@ -52,7 +56,8 @@ public sealed class AuthService
         var rotated = await _tokens.RotateSessionAsync(rawToken, ctx);
         if (rotated is null) return null;
         var (staff, refresh) = rotated.Value;
-        var access = _tokens.IssueAccessToken(staff);
-        return new LoginResult(TokenService.ToDto(staff), access, refresh);
+        var permissions = await _permissions.ForAsync(staff);
+        var access = _tokens.IssueAccessToken(staff, permissions);
+        return new LoginResult(TokenService.ToDto(staff, permissions), access, refresh);
     }
 }

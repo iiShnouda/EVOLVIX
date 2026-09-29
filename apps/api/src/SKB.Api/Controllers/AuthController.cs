@@ -80,7 +80,7 @@ public sealed class AuthController : ControllerBase
             User.FindFirst("email")?.Value ?? "",
             role.ToString(),
             CurrentUser.BranchId(User),
-            RolePermissions.For(role));
+            User.FindAll("permission").Select(c => c.Value).ToArray());
         return Ok(dto);
     }
 

@@ -48,6 +48,12 @@ import type {
   CreateModelInput,
   UpdateModelInput,
   SetPartyPriceLevelsInput,
+  StaffMember,
+  RoleInfo,
+  PermissionInfo,
+  CreateStaffInput,
+  UpdateStaffInput,
+  StaffPermissionsInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -515,5 +521,68 @@ export function useSetPartyPriceLevels() {
     mutationFn: ({ id, input }: { id: string; input: SetPartyPriceLevelsInput }) =>
       api.put<Party>(`/parties/${id}/price-levels`, input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['parties'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Staff & permissions
+// ---------------------------------------------------------------------------
+
+export function useStaff() {
+  return useQuery({ queryKey: ['staff', 'list'], queryFn: () => api.get<StaffMember[]>('/staff') });
+}
+
+export function useRoles() {
+  return useQuery({ queryKey: ['staff', 'roles'], queryFn: () => api.get<RoleInfo[]>('/roles') });
+}
+
+export function usePermissionCatalog() {
+  return useQuery({
+    queryKey: ['staff', 'permissions'],
+    queryFn: () => api.get<PermissionInfo[]>('/permissions'),
+    staleTime: 60 * 60_000,
+  });
+}
+
+export function useCreateStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateStaffInput) => api.post<StaffMember>('/staff', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useUpdateStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateStaffInput }) =>
+      api.put<StaffMember>(`/staff/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useSetStaffPermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: StaffPermissionsInput }) =>
+      api.put<StaffMember>(`/staff/${id}/permissions`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useUpdateRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ role, permissions }: { role: string; permissions: string[] }) =>
+      api.put<RoleInfo>(`/roles/${role}`, { permissions }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useResetRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (role: string) => api.post<RoleInfo>(`/roles/${role}/reset`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
   });
 }

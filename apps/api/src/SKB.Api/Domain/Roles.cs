@@ -24,6 +24,10 @@ public static class Permissions
     public const string InventoryView = "inventory:view";
     public const string InventoryEdit = "inventory:edit";
     public const string StaffView = "staff:view";
+    /// <summary>Add staff, change their role, branch or password, and deactivate them.</summary>
+    public const string StaffManage = "staff:manage";
+    /// <summary>Change what each role may do, and give or take permissions from one person.</summary>
+    public const string RolesManage = "roles:manage";
     public const string BranchesView = "branches:view";
     /// <summary>Create, rename, deactivate warehouses and pick each branch's default warehouse.</summary>
     public const string BranchesManage = "branches:manage";
@@ -62,7 +66,8 @@ public static class Permissions
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
-        PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, BranchesView, BranchesManage,
+        PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage,
+        BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
