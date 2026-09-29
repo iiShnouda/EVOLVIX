@@ -86,6 +86,11 @@ import type {
   Portfolio,
   CreateNoteInput,
   NoteStepInput,
+  IncomeStatement,
+  BalanceSheet,
+  MonthlySales,
+  TopParty,
+  ItemMovement,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -1033,5 +1038,53 @@ export function useDepositNotes() {
     mutationFn: (input: { noteIds: string[]; accountId: string }) =>
       api.post<Portfolio>('/notes/deposit', input),
     onSuccess: () => invalidateAfterNote(qc),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Financial statements & analytics (DOMAIN step 8)
+// ---------------------------------------------------------------------------
+
+export function useIncomeStatement(from: string, to: string) {
+  return useQuery({
+    queryKey: ['ledger', 'income', from, to],
+    queryFn: () =>
+      api.get<IncomeStatement>(
+        `/ledger/income-statement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+  });
+}
+
+export function useBalanceSheet(asOf: string) {
+  return useQuery({
+    queryKey: ['ledger', 'balance', asOf],
+    queryFn: () => api.get<BalanceSheet>(`/ledger/balance-sheet?asOf=${encodeURIComponent(asOf)}`),
+  });
+}
+
+export function useMonthlySales(months: number) {
+  return useQuery({
+    queryKey: ['report', 'monthly', months],
+    queryFn: () => api.get<MonthlySales[]>(`/analytics/monthly?months=${months}`),
+  });
+}
+
+export function useTopParties(from: string, to: string, side: 'customers' | 'suppliers') {
+  return useQuery({
+    queryKey: ['report', 'top', from, to, side],
+    queryFn: () =>
+      api.get<TopParty[]>(
+        `/analytics/top-parties?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&side=${side}&limit=15`,
+      ),
+  });
+}
+
+export function useItemMovement(from: string, to: string) {
+  return useQuery({
+    queryKey: ['report', 'items', from, to],
+    queryFn: () =>
+      api.get<ItemMovement>(
+        `/analytics/item-movement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=20`,
+      ),
   });
 }

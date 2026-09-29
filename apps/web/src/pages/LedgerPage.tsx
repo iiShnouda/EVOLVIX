@@ -4,6 +4,7 @@ import {
   formatDate,
   formatMoney,
   toMinor,
+  type FinancialRow,
   type JournalEntry,
   type LedgerAccount,
   type TranslationKey,
@@ -15,6 +16,8 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
+  useBalanceSheet,
+  useIncomeStatement,
   useJournal,
   useLedgerAccounts,
   useLockDate,
@@ -25,11 +28,13 @@ import {
   useTrialBalance,
 } from '../lib/queries';
 
-type Tab = 'accounts' | 'journal' | 'trial';
+type Tab = 'accounts' | 'journal' | 'trial' | 'income' | 'balance';
 const TABS: { key: Tab; label: TranslationKey }[] = [
   { key: 'accounts', label: 'ledger.tabAccounts' },
   { key: 'journal', label: 'ledger.tabJournal' },
   { key: 'trial', label: 'ledger.tabTrial' },
+  { key: 'income', label: 'ledger.tabIncome' },
+  { key: 'balance', label: 'ledger.tabBalance' },
 ];
 /** Groups whose accounts come from customers, suppliers, cash boxes and categories. */
 const AUTO_GROUPS = ['CASH', 'BANKS', 'CUSTOMERS', 'CARRIERS', 'SUPPLIERS', 'OPERATING_EXPENSES'];
@@ -87,6 +92,8 @@ export function LedgerPage() {
       {tab === 'accounts' && <AccountsTab />}
       {tab === 'journal' && <JournalTab />}
       {tab === 'trial' && <TrialTab />}
+      {tab === 'income' && <IncomeTab />}
+      {tab === 'balance' && <BalanceTab />}
     </div>
   );
 }
@@ -810,6 +817,207 @@ function TrialTab() {
             </tbody>
           </table>
         </Card>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------ financial statements */
+
+/** Rows under a heading, grouped by their group (e.g. current assets), with a total line. */
+function StatementBlock({
+  title,
+  rows,
+  total,
+  currency,
+  strong,
+}: {
+  title: string;
+  rows: FinancialRow[];
+  total: number;
+  currency: string;
+  strong?: boolean;
+}) {
+  const { t, locale } = useT();
+  const groups = new Map<string, FinancialRow[]>();
+  for (const r of rows)
+    groups.set(r.groupName ?? '', [...(groups.get(r.groupName ?? '') ?? []), r]);
+  return (
+    <div>
+      <h3 className="mb-1 text-sm font-semibold">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted">{t('fin.nothing')}</p>
+      ) : (
+        [...groups.entries()].map(([group, list]) => (
+          <div key={group} className="mb-1">
+            {group && <p className="mt-1 text-xs text-muted">{group}</p>}
+            <ul>
+              {list.map((r) => (
+                <li
+                  key={r.accountId}
+                  className="flex items-center justify-between gap-3 py-0.5 text-sm"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="text-xs text-muted tnum">{r.code}</span> {r.name}
+                  </span>
+                  <span className="shrink-0 tnum">{formatMoney(r.amount, currency, locale)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+      <div
+        className={`mt-1 flex justify-between border-t border-line pt-1 text-sm ${strong ? 'font-semibold' : 'font-medium'}`}
+      >
+        <span>{t('ledger.total')}</span>
+        <span className="tnum">{formatMoney(total, currency, locale)}</span>
+      </div>
+    </div>
+  );
+}
+
+function TotalLine({
+  label,
+  value,
+  currency,
+  big,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  big?: boolean;
+}) {
+  const { locale } = useT();
+  return (
+    <div
+      className={`flex justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 ${big ? 'text-base font-semibold' : 'text-sm font-medium'}`}
+    >
+      <span>{label}</span>
+      <span className={`tnum ${value < 0 ? 'text-destructive' : ''}`}>
+        {formatMoney(value, currency, locale)}
+      </span>
+    </div>
+  );
+}
+
+/** Income statement (قائمة الدخل): revenue − cost of sales = gross profit; − expenses = net profit. */
+function IncomeTab() {
+  const { t } = useT();
+  const [from, setFrom] = useState(yearStart());
+  const [to, setTo] = useState(today());
+  const { data, isLoading, error } = useIncomeStatement(from, to);
+  return (
+    <div className="space-y-3">
+      <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+      {error && <p className="text-sm text-destructive">{errorText(t, error)}</p>}
+      {isLoading || !data ? (
+        <Loading />
+      ) : (
+        <Card className="max-w-2xl space-y-4">
+          <StatementBlock
+            title={t('fin.revenue')}
+            rows={data.rows.filter((r) => r.section === 'REVENUE')}
+            total={data.revenue}
+            currency={data.currency}
+          />
+          <StatementBlock
+            title={t('fin.cogs')}
+            rows={data.rows.filter((r) => r.section === 'COGS')}
+            total={data.cogs}
+            currency={data.currency}
+          />
+          <TotalLine
+            label={t('fin.grossProfit')}
+            value={data.grossProfit}
+            currency={data.currency}
+          />
+          <StatementBlock
+            title={t('fin.expenses')}
+            rows={data.rows.filter((r) => r.section === 'EXPENSE')}
+            total={data.expenses}
+            currency={data.currency}
+          />
+          <TotalLine
+            label={data.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit')}
+            value={data.netProfit}
+            currency={data.currency}
+            big
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** Balance sheet (الميزانية العمومية): assets = liabilities + equity (with the profit to date). */
+function BalanceTab() {
+  const { t, locale } = useT();
+  const [asOf, setAsOf] = useState(today());
+  const { data, isLoading } = useBalanceSheet(asOf);
+  const balanced = data ? data.assets === data.liabilities + data.equity : true;
+  return (
+    <div className="space-y-3">
+      <label className="block w-fit">
+        <span className="mb-1 block text-xs text-muted">{t('fin.asOf')}</span>
+        <input
+          className={small}
+          type="date"
+          value={asOf}
+          max={today()}
+          onChange={(e) => setAsOf(e.target.value)}
+        />
+      </label>
+      {isLoading || !data ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card className="space-y-4">
+              <StatementBlock
+                title={t('fin.assets')}
+                rows={data.rows.filter((r) => r.section === 'ASSET')}
+                total={data.assets}
+                currency={data.currency}
+                strong
+              />
+            </Card>
+            <Card className="space-y-4">
+              <StatementBlock
+                title={t('fin.liabilities')}
+                rows={data.rows.filter((r) => r.section === 'LIABILITY')}
+                total={data.liabilities}
+                currency={data.currency}
+              />
+              <StatementBlock
+                title={t('fin.equity')}
+                rows={[
+                  ...data.rows.filter((r) => r.section === 'EQUITY'),
+                  {
+                    accountId: 'profit',
+                    code: '',
+                    name: t('fin.profitToDate'),
+                    section: 'EQUITY',
+                    groupName: null,
+                    amount: data.profitToDate,
+                  },
+                ]}
+                total={data.equity}
+                currency={data.currency}
+              />
+              <TotalLine
+                label={t('fin.liabilitiesEquity')}
+                value={data.liabilities + data.equity}
+                currency={data.currency}
+                big
+              />
+            </Card>
+          </div>
+          <p className={`text-sm ${balanced ? 'text-positive' : 'text-destructive'}`}>
+            {balanced ? t('fin.balanced') : t('fin.unbalanced')} · {t('fin.assets')}{' '}
+            <span className="tnum">{formatMoney(data.assets, data.currency, locale)}</span>
+          </p>
+        </>
       )}
     </div>
   );

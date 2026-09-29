@@ -583,3 +583,33 @@ public record NotesSummaryDto(
     long ReceivableOpen, long ReceivableOverdue, long ReceivableDueWeek, long PayableOpen, long PayableOverdue,
     long PayableDueWeek, string Currency);
 
+// ---- Financial statements (DOMAIN.md §7 step 8) ----
+
+/// <param name="Section">REVENUE, COGS, EXPENSE (income statement) or ASSET, LIABILITY, EQUITY (balance sheet).</param>
+/// <param name="GroupName">The account's group under its section (e.g. current assets), if any.</param>
+/// <param name="Amount">In the section's natural direction: revenue / liabilities / equity as credits, the rest as debits.</param>
+public record FinancialRowDto(string AccountId, string Code, string Name, string Section, string? GroupName, long Amount);
+
+public record IncomeStatementDto(
+    string From, string To, FinancialRowDto[] Rows, long Revenue, long Cogs, long GrossProfit, long Expenses,
+    long NetProfit, string Currency);
+
+/// <param name="ProfitToDate">Revenue − expenses so far, not yet closed into retained earnings.</param>
+public record BalanceSheetDto(
+    string AsOf, FinancialRowDto[] Rows, long Assets, long Liabilities, long Equity, long ProfitToDate, string Currency);
+
+// ---- Analytics (DOMAIN.md §7 step 8, ROADMAP §2.6) ----
+
+/// <param name="Month">yyyy-MM.</param>
+/// <param name="NetSales">Sales − sales returns, after discounts, before tax.</param>
+public record MonthlySalesDto(string Month, long Sales, long Returns, long NetSales, long NetPurchases, int Invoices);
+
+public record TopPartyDto(string PartyId, string Name, long Net, int Documents, double Share);
+
+public record ItemMoveDto(string ProductId, string Sku, string Name, int QuantityOut, int QuantityIn, long SalesValue);
+
+/// <param name="LastSale">When it last sold (any time), or null if never.</param>
+public record DeadItemDto(string ProductId, string Sku, string Name, int Stock, long StockValue, string? LastSale);
+
+public record ItemMovementDto(string From, string To, ItemMoveDto[] TopMovers, DeadItemDto[] DeadStock, string Currency);
+

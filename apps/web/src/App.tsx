@@ -15,7 +15,6 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
 import { ReturnBuilderPage } from './pages/ReturnBuilderPage';
-import { ProfitabilityPage } from './pages/ProfitabilityPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { InventoryPage } from './pages/InventoryPage';
@@ -33,6 +32,7 @@ import { DeliveriesPage } from './pages/DeliveriesPage';
 import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
@@ -168,7 +168,7 @@ export default function App() {
             <Route path="/receipts" element={<MoneyPage />} />
             <Route path="/ledger" element={<LedgerPage />} />
             <Route path="/notes" element={<NotesPage />} />
-            <Route path="/analytics" element={<ProfitabilityPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/settings" element={<SettingsPage />} />

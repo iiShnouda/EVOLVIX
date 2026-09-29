@@ -108,6 +108,29 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Financial statements and analytics** (التقارير الختامية والتحليلات) — DOMAIN.md §7 step 8
+- **Income statement** (قائمة الدخل, `GET /api/ledger/income-statement?from&to`): revenue (sales
+  less sales returns, other income, stocktake gains) − cost of goods sold = gross profit;
+  − expenses (by category, shipping, purchase expenses, stocktake losses, rounding) = net profit.
+- **Balance sheet** (الميزانية العمومية, `GET /api/ledger/balance-sheet?asOf`): assets, liabilities
+  and equity by group; the profit to date (not yet closed into retained earnings) shows as its own
+  equity line, so assets = liabilities + equity always. Both come straight from the ledger.
+- **Analytics** (`/api/analytics`, `analytics:view`; branch-scoped people see their branch):
+  - **Monthly sales**: sales, returns, net sales, net purchases and invoice count per month
+    (3–24 months), with a chart.
+  - **Top customers / suppliers** in a period by net business, with their share.
+  - **Item movement**: the top-moving items (net units sold, units bought, net sales value) and
+    **dead stock** (الأصناف الراكدة): items in stock that didn't sell in the period, their value
+    at cost and when they last sold.
+- **Web:** the Accounts page gains "Income statement" and "Balance sheet" tabs; Analytics
+  (`/analytics`) becomes tabs: Profitability, Monthly sales, Top customers & suppliers, Item
+  movement.
+- **Verified:** `scripts/checks/statements.test.mjs` 54/54 — the statements hold together (gross,
+  net, assets = liabilities + equity, profit to date = income since go-live), a new sale /
+  purchase / expense moves them by exactly their amounts, the analytics numbers (net of a return),
+  dead stock, and permissions. All other suites still pass. In the browser (AR): both statements
+  and the analytics tabs.
+
 **Cheques & promissory notes** (الأوراق المالية) — DOMAIN.md §7 step 7
 - **Notes receivable** (أوراق قبض, `NR-`): a cheque or promissory note taken from a customer
   (number, bank, amount, due date, drawer, guarantor). Receiving it lowers what the customer owes
@@ -690,8 +713,9 @@ and warehouses shipped):
    - **Verify on the live DB** after deploy: the opening entry at go-live, a customer's statement,
      the trial balance balancing.
    - ~~cheques & promissory notes, portfolios~~ done (step 7)
-   - Next is DOMAIN.md §7 step 8: financial statements (income statement, balance sheet) and
-     analytics.
+   - ~~financial statements and analytics~~ done (step 8)
+   - Next is DOMAIN.md §7 step 9: payroll & attendance (§2.9) — only if the company uses it;
+     ask the owner first. Then ROADMAP Phase 7 (backups, period close, PDF/Excel export).
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

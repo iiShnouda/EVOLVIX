@@ -209,6 +209,91 @@ public sealed class LedgerController : ControllerBase
         return Ok(new TrialBalanceDto(fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), rows, await CurrencyAsync()));
     }
 
+    // ------------------------------------------------------------------ financial statements
+
+    /// <summary>
+    /// Income statement (قائمة الدخل) for a period, straight from the ledger: revenue (net of
+    /// sales returns) − cost of goods sold = gross profit; − expenses = net profit.
+    /// </summary>
+    [HttpGet("income-statement")]
+    public async Task<ActionResult<IncomeStatementDto>> IncomeStatement([FromQuery] string? from = null, [FromQuery] string? to = null)
+    {
+        if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
+            return Bad("bad_range", "Choose up to five years, the start before the end.");
+        var net = await NetByAccountAsync(l => l.Entry!.Date >= start && l.Entry.Date < end);
+        var (accounts, groupOf) = await ChartAsync();
+        var rows = new List<FinancialRowDto>();
+        foreach (var a in accounts.Where(a => !a.IsGroup && a.Type is LedgerAccountType.REVENUE or LedgerAccountType.EXPENSE))
+        {
+            var n = net.GetValueOrDefault(a.Id);
+            if (n == 0) continue;
+            var section = a.Type == LedgerAccountType.REVENUE ? "REVENUE" : a.SystemKey == LedgerKeys.Cogs ? "COGS" : "EXPENSE";
+            rows.Add(new(a.Id.ToString(), a.Code, NameOf(a), section, groupOf(a), section == "REVENUE" ? -n : n));
+        }
+        var revenue = rows.Where(r => r.Section == "REVENUE").Sum(r => r.Amount);
+        var cogs = rows.Where(r => r.Section == "COGS").Sum(r => r.Amount);
+        var expenses = rows.Where(r => r.Section == "EXPENSE").Sum(r => r.Amount);
+        return Ok(new IncomeStatementDto(fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), rows.ToArray(),
+            revenue, cogs, revenue - cogs, expenses, revenue - cogs - expenses, await CurrencyAsync()));
+    }
+
+    /// <summary>
+    /// Balance sheet (الميزانية) at the end of a day: assets = liabilities + equity, where equity
+    /// includes the profit to date (revenue − expenses not yet closed into retained earnings).
+    /// </summary>
+    [HttpGet("balance-sheet")]
+    public async Task<ActionResult<BalanceSheetDto>> BalanceSheet([FromQuery] string? asOf = null)
+    {
+        var day = DateOnly.TryParse(asOf, out var d) ? d : DateOnly.FromDateTime(DateTime.UtcNow);
+        var end = day.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var net = await NetByAccountAsync(l => l.Entry!.Date < end);
+        var (accounts, groupOf) = await ChartAsync();
+        var rows = new List<FinancialRowDto>();
+        long profit = 0;
+        foreach (var a in accounts.Where(a => !a.IsGroup))
+        {
+            var n = net.GetValueOrDefault(a.Id);
+            if (n == 0) continue;
+            switch (a.Type)
+            {
+                case LedgerAccountType.REVENUE:
+                case LedgerAccountType.EXPENSE:
+                    profit -= n;
+                    break;
+                case LedgerAccountType.ASSET:
+                    rows.Add(new(a.Id.ToString(), a.Code, NameOf(a), "ASSET", groupOf(a), n));
+                    break;
+                default:
+                    rows.Add(new(a.Id.ToString(), a.Code, NameOf(a), a.Type.ToString(), groupOf(a), -n));
+                    break;
+            }
+        }
+        return Ok(new BalanceSheetDto(day.ToString("yyyy-MM-dd"), rows.ToArray(),
+            rows.Where(r => r.Section == "ASSET").Sum(r => r.Amount),
+            rows.Where(r => r.Section == "LIABILITY").Sum(r => r.Amount),
+            rows.Where(r => r.Section == "EQUITY").Sum(r => r.Amount) + profit, profit, await CurrencyAsync()));
+    }
+
+    /// <summary>Debits − credits per account, over the lines that pass <paramref name="filter"/>.</summary>
+    private Task<Dictionary<Guid, long>> NetByAccountAsync(System.Linq.Expressions.Expression<Func<JournalLine, bool>> filter) =>
+        _db.JournalLines.Where(filter).GroupBy(l => l.AccountId)
+            .Select(g => new { g.Key, Net = g.Sum(l => l.Debit - l.Credit) })
+            .ToDictionaryAsync(x => x.Key, x => x.Net);
+
+    /// <summary>The chart, and for each account the name of its group just under the top level (e.g. current assets).</summary>
+    private async Task<(List<LedgerAccount> Accounts, Func<LedgerAccount, string?> GroupOf)> ChartAsync()
+    {
+        var accounts = await WithLinks(_db.LedgerAccounts).OrderBy(a => a.Code).ToListAsync();
+        var byId = accounts.ToDictionary(a => a.Id);
+        string? GroupOf(LedgerAccount a)
+        {
+            var node = a;
+            while (node.ParentId is Guid p && byId.TryGetValue(p, out var parent) && parent.ParentId != null) node = parent;
+            return node.Id == a.Id || node.ParentId == null ? null : NameOf(node);
+        }
+        return (accounts, GroupOf);
+    }
+
     // ------------------------------------------------------------------ journal
 
     [HttpGet("entries")]

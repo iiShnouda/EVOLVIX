@@ -15,7 +15,8 @@ function startOfMonth(): string {
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-export function ProfitabilityPage() {
+/** The profitability report; `embedded` drops its own page title (it sits in a tab of Analytics). */
+export function ProfitabilityPage({ embedded = false }: { embedded?: boolean }) {
   const { t, locale } = useT();
   const [from, setFrom] = useState(startOfMonth());
   const [to, setTo] = useState(isoDate(new Date()));
@@ -36,7 +37,9 @@ export function ProfitabilityPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title={t('report.profitability')} subtitle={t('report.subtitle')} />
+      {!embedded && (
+        <PageHeader title={t('report.profitability')} subtitle={t('report.subtitle')} />
+      )}
 
       {/* Controls */}
       <Card>

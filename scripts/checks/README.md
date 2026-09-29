@@ -10,6 +10,7 @@ live company server.
 | `charges.test.mjs` | Invoice charges (discount chain, VAT, additions), bonus lines, sales reps, their permissions, exact returns, supplier discounts in the average cost. |
 | `delivery.test.mjs` | Parties add/edit/close, the delivery method on a sale, own deliveries, parcels with cash on delivery, refused parcels (returns), carrier settlements, permissions, branch scoping and races (DOMAIN.md step 4b). |
 | `ledger.test.mjs` | Chart of accounts, the entry every document posts (line by line), account and party statements, trial balance, manual entries and reversal, the period lock and permissions (DOMAIN.md step 6). |
+| `statements.test.mjs` | Income statement and balance sheet from the ledger (and how a sale, purchase and expense move them), monthly sales, top customers / suppliers, item movement and dead stock, permissions (DOMAIN.md step 8). |
 | `notes.test.mjs` | Cheques & promissory notes: receive / issue with invoices, deposit portfolios, collect, pay, bounce, endorse, cancel — each step's balances, money and journal entry — permissions, scoping and a race (DOMAIN.md step 7). |
 | `money.test.mjs` | Money accounts, receipts and payments with allocation, expenses, transfers, cancelling, paid-now / refunds / settlements through accounts, the no-negative rule, permissions, branch scoping and races (DOMAIN.md step 5). |
 | `staff.test.mjs` | Staff & permissions: people, roles, per-person grants/revokes, and the safety rules (no self-escalation, owners protected, no self-lockout). |

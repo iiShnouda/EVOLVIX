@@ -8,11 +8,15 @@ export function TrendChart({
   data,
   locale,
   currency,
+  labels = 'weekday',
 }: {
   data: TrendPoint[];
   locale: Locale;
   currency: string;
+  /** Label each bar group by weekday (daily data) or by month (monthly data). */
+  labels?: 'weekday' | 'month';
 }) {
+  // Negative totals (a month with more returns than sales) draw as empty bars.
   const max = Math.max(1, ...data.flatMap((d) => [d.sales, d.purchases]));
   const barsPerGroup = 2;
   const groupGap = 14;
@@ -44,8 +48,8 @@ export function TrendChart({
         ))}
         {data.map((d, i) => {
           const x = groupGap + i * (groupW + groupGap);
-          const salesH = (d.sales / max) * chartH;
-          const purchH = (d.purchases / max) * chartH;
+          const salesH = (Math.max(0, d.sales) / max) * chartH;
+          const purchH = (Math.max(0, d.purchases) / max) * chartH;
           return (
             <g key={d.date}>
               <rect
@@ -76,9 +80,10 @@ export function TrendChart({
                 fontSize={10}
                 fill="var(--c-faint)"
               >
-                {new Date(d.date).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', {
-                  weekday: 'short',
-                })}
+                {new Date(d.date).toLocaleDateString(
+                  locale === 'ar' ? 'ar-EG' : 'en-US',
+                  labels === 'month' ? { month: 'short' } : { weekday: 'short' },
+                )}
               </text>
             </g>
           );

@@ -1329,3 +1329,83 @@ export interface NotesSummary {
   payableDueWeek: number;
   currency: string;
 }
+
+// ---------------------------------------------------------------------------
+// Financial statements & analytics (DOMAIN step 8)
+// ---------------------------------------------------------------------------
+
+export interface FinancialRow {
+  accountId: string;
+  code: string;
+  name: string;
+  /** REVENUE, COGS, EXPENSE (income statement) or ASSET, LIABILITY, EQUITY (balance sheet). */
+  section: 'REVENUE' | 'COGS' | 'EXPENSE' | 'ASSET' | 'LIABILITY' | 'EQUITY';
+  groupName: string | null;
+  /** In the section's natural direction. */
+  amount: number;
+}
+
+export interface IncomeStatement {
+  from: string;
+  to: string;
+  rows: FinancialRow[];
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  expenses: number;
+  netProfit: number;
+  currency: string;
+}
+
+export interface BalanceSheet {
+  asOf: string;
+  rows: FinancialRow[];
+  assets: number;
+  liabilities: number;
+  /** Including the profit to date. */
+  equity: number;
+  /** Revenue − expenses so far, not yet closed into retained earnings. */
+  profitToDate: number;
+  currency: string;
+}
+
+export interface MonthlySales {
+  /** yyyy-MM. */
+  month: string;
+  sales: number;
+  returns: number;
+  netSales: number;
+  netPurchases: number;
+  invoices: number;
+}
+
+export interface TopParty {
+  partyId: string;
+  name: string;
+  net: number;
+  documents: number;
+  /** Percent of the listed total. */
+  share: number;
+}
+
+export interface ItemMovement {
+  from: string;
+  to: string;
+  topMovers: {
+    productId: string;
+    sku: string;
+    name: string;
+    quantityOut: number;
+    quantityIn: number;
+    salesValue: number;
+  }[];
+  deadStock: {
+    productId: string;
+    sku: string;
+    name: string;
+    stock: number;
+    stockValue: number;
+    lastSale: string | null;
+  }[];
+  currency: string;
+}

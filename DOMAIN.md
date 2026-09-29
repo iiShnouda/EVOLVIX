@@ -427,7 +427,9 @@ Each step is a working slice: API, web, tests and docs together.
 7. ✅ **Cheques & portfolios** (shipped 2026-09-29): notes receivable and payable with the full
    lifecycle (deposit portfolios, collect, pay, bounce, endorse, cancel), allocation to
    invoices, history, journal entries and a due view.
-8. **Financial statements**, then analytics (ROADMAP Phases 5–6).
+8. ✅ **Financial statements**, then analytics (shipped 2026-09-29): income statement and balance
+   sheet from the ledger; monthly net sales, top customers / suppliers, item movement and dead
+   stock.
 9. Payroll & attendance (§2.9).
 
 ---
