@@ -32,6 +32,7 @@ const ALL: Permission[] = [
   'settings:manage',
   'audit:view',
   'presence:view',
+  'backup:create',
   'products:create',
   'products:edit',
   'prices:edit',
@@ -94,9 +95,9 @@ const ITEMS: Permission[] = [
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  // Founder/owner: everything, including the audit + presence (who's online) views.
+  // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
-  ADMIN: ALL.filter((p) => p !== 'audit:view'),
+  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create'),
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',

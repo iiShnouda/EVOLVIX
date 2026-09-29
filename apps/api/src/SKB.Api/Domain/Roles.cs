@@ -88,6 +88,8 @@ public static class Permissions
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
     public const string AuditView = "audit:view";
+    /// <summary>Download a backup of everything (the owner's alone by default).</summary>
+    public const string BackupCreate = "backup:create";
     public const string PresenceView = "presence:view";
 
     // ---- Catalog (owner decision 2026-09-29: every action has its own permission) ----
@@ -135,7 +137,7 @@ public static class Permissions
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage,
         BranchesView, BranchesManage,
-        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView,
+        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
@@ -157,7 +159,7 @@ public static class RolePermissions
     public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
-        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView).ToArray(),
+        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate).ToArray(),
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,

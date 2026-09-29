@@ -1,13 +1,21 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using SKB.Api.Domain;
 using SKB.Api.Services;
 
 namespace SKB.Api.Hubs;
 
-/// <summary>SignalR hub for live presence. Requires a valid access token (JWT).</summary>
+/// <summary>
+/// SignalR hub for live presence. Every signed-in window connects (a valid access token is
+/// required) and reports the screen it shows; people who may see presence
+/// (<c>presence:view</c>) are told when anything changes. Nothing but "changed" is broadcast:
+/// the list itself comes from <c>GET /api/presence</c>, which checks the permission.
+/// </summary>
 [Authorize]
 public sealed class PresenceHub : Hub
 {
+    public const string Viewers = "presence-viewers";
+    private const int MaxView = 40;
     private readonly PresenceTracker _tracker;
 
     public PresenceHub(PresenceTracker tracker) => _tracker = tracker;
@@ -18,32 +26,36 @@ public sealed class PresenceHub : Hub
         var userId = user.FindFirst("sub")?.Value;
         if (userId is not null)
         {
-            _tracker.Connect(
-                userId,
-                user.Identity?.Name ?? user.FindFirst("email")?.Value ?? "",
+            var http = Context.GetHttpContext();
+            _tracker.Connect(new PresenceTracker.Connection(
+                Context.ConnectionId, userId,
+                user.FindFirst("name")?.Value ?? user.FindFirst("email")?.Value ?? "",
                 user.FindFirst("role")?.Value ?? "VIEWER",
                 user.FindFirst("branchId")?.Value ?? "",
-                Context.ConnectionId);
-            await Clients.All.SendAsync("presence:changed");
+                PresenceTracker.DeviceOf(http?.Request.Headers.UserAgent.ToString()),
+                http?.Connection.RemoteIpAddress?.ToString(),
+                DateTime.UtcNow, null, DateTime.UtcNow));
+            if (user.HasClaim("permission", Permissions.PresenceView))
+                await Groups.AddToGroupAsync(Context.ConnectionId, Viewers);
+            await Clients.Group(Viewers).SendAsync("presence:changed");
         }
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var userId = Context.User?.FindFirst("sub")?.Value;
-        if (userId is not null)
-        {
-            _tracker.Disconnect(userId, Context.ConnectionId);
-            await Clients.All.SendAsync("presence:changed");
-        }
+        _tracker.Disconnect(Context.ConnectionId);
+        await Clients.Group(Viewers).SendAsync("presence:changed");
         await base.OnDisconnectedAsync(exception);
     }
 
-    public Task UpdateView(string currentView)
+    /// <summary>The window shows another screen (a route key such as "sales"), or is in use.</summary>
+    public async Task UpdateView(string currentView)
     {
-        var userId = Context.User?.FindFirst("sub")?.Value;
-        if (userId is not null) _tracker.Touch(userId, currentView);
-        return Task.CompletedTask;
+        var view = new string((currentView ?? "").Where(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_')
+            .Take(MaxView).ToArray());
+        // Just "still here" doesn't need telling: the viewers' list refreshes on its own.
+        if (_tracker.Touch(Context.ConnectionId, view.Length == 0 ? null : view))
+            await Clients.Group(Viewers).SendAsync("presence:changed");
     }
 }

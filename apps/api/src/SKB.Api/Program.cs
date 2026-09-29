@@ -41,6 +41,9 @@ builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
+builder.Services.AddScoped<BackupService>();
+builder.Services.AddSingleton<BackupScheduler>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
 
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
@@ -116,6 +119,13 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+
+// --- Server commands: "backup <file>" and "restore <file>" run and exit (no web server) ----
+if (args.Length > 0 && args[0] is "backup" or "restore")
+{
+    Environment.ExitCode = await BackupCommands.RunAsync(app.Services, args);
+    return;
+}
 
 // --- Migrate + seed on startup ----------------------------------------------------------
 using (var scope = app.Services.CreateScope())

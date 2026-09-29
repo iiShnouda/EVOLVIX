@@ -45,7 +45,16 @@ const allTime = ok(
   'income since the start',
   await owner.get('/ledger/income-statement?from=2022-01-01'),
 );
-eq('profit to date = income since the start', bs0.profitToDate, allTime.netProfit);
+// Closed years moved their profit into retained earnings, so it's no longer "to date".
+const closedProfit = (await owner.get('/ledger/closed-years')).data.reduce(
+  (s, c) => s + c.netProfit,
+  0,
+);
+eq(
+  'profit to date = income since the start, less closed years',
+  bs0.profitToDate,
+  allTime.netProfit - closedProfit,
+);
 const tb = ok('trial balance', await owner.get(`/ledger/trial-balance?from=${year}`));
 const tbRevenue = tb.rows
   .filter((r) => r.type === 'REVENUE')

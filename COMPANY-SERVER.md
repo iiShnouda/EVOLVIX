@@ -36,14 +36,36 @@ PC/phone on the same office network. Sign in with `owner@skb.local` + your `SEED
 Everything is in the Docker volume **`skb-db-data`** on this server's disk — in your building,
 under your control. Nothing is sent to any cloud.
 
-## Back it up (important for accounting data)
+## Backups (important for accounting data)
+**Automatic:** every day at 2:00 (server time), the app writes a backup into the `backups` folder
+next to `docker-compose.yml`, and keeps the newest 14.
+- Set `BACKUP_PASSPHRASE` in `.env` so they're encrypted (recommended). Keep the passphrase
+  somewhere safe: without it a backup can't be opened, by anyone.
+- The time, how many to keep and the folder are `BACKUP_HOUR`, `BACKUP_KEEP` and `BACKUP_DIR`.
+- **Copy the `backups` folder to an external drive or another machine regularly.** A backup on
+  the same disk doesn't survive that disk failing.
+
+**One click:** the owner opens **Settings → Backups** and downloads a backup now, encrypted with a
+passphrase they choose. The same card lists the automatic backups and downloads them.
+
+**Restore** (always into a new, empty database; the current one is left alone):
 ```bash
-# One-off backup to a file:
-docker exec skb-db pg_dump -U skb skb > skb-backup-$(date +%F).sql
-# Restore:
-cat skb-backup-YYYY-MM-DD.sql | docker exec -i skb-db psql -U skb -d skb
+docker compose --profile full stop app
+docker exec skb-db createdb -U skb skb_restored
+docker compose --profile full run --rm \
+  -e ConnectionStrings__Default="Host=db;Port=5432;Database=skb_restored;Username=skb;Password=<POSTGRES_PASSWORD>" \
+  -e SKB_BACKUP_PASSPHRASE='<the passphrase>' \
+  app restore /backups/skb-20260930-020000.skbak
+# Then set POSTGRES_DB=skb_restored in .env and start the app again:
+docker compose --profile full up -d
 ```
-Copy the backup file to a safe place (external drive / another machine) on a schedule.
+- The restore checks every row and link. It refuses a wrong passphrase, a damaged file, or a
+  database that isn't empty.
+- It then brings the data up to the app's version. Everyone signs in again afterwards.
+- Leave out `SKB_BACKUP_PASSPHRASE` to type it instead (it isn't shown).
+- `app backup /backups/<name>.skbak` makes a backup from the command line the same way.
+
+(A plain `docker exec skb-db pg_dump -U skb skb > skb.sql` still works too, as a second copy.)
 
 ## Make it reachable by a stable name (optional)
 - Give the server a **static LAN IP** (router DHCP reservation).

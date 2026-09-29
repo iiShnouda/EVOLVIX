@@ -127,9 +127,24 @@ only the hosting wrapper differs.
 `GET /api/health`, `GET /api/dashboard`, `GET /api/sales/invoices[/{id}]`,
 `GET /api/parties[/{id}]`, `GET /api/presence`, and the SignalR hub at `/hubs/presence`.
 
-## Note on presence transport
+## Presence transport
 
-This server exposes **SignalR** at `/hubs/presence`. The web client still has a socket.io
-stub from an earlier iteration; wiring the web/desktop presence UI to SignalR
-(`@microsoft/signalr`) is a small follow‑up when the owner/CEO presence screen is built.
-All normal (REST) screens work across every client today.
+This server exposes **SignalR** at `/hubs/presence`. The web app (`src/lib/presence.ts`) speaks
+its JSON protocol directly over a WebSocket, with no client library:
+- Each window reports its screen and, while in use, that it's still there.
+- People with `presence:view` are only told that something changed. They read the list from
+  `GET /api/presence`.
+
+## Backups
+
+`dotnet SKB.Api.dll backup <file>` and `dotnet SKB.Api.dll restore <file>` run instead of the
+web server, against the configured database. The passphrase comes from `SKB_BACKUP_PASSPHRASE`,
+or is typed. A restore only goes into a new, empty database.
+
+Daily automatic backups use:
+- `Backup__Folder` (turns them on)
+- `Backup__Hour` (default 2)
+- `Backup__Keep` (default 14)
+- `Backup__Passphrase` (encrypts them)
+
+See `COMPANY-SERVER.md`.

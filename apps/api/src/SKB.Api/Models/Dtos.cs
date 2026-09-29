@@ -443,9 +443,14 @@ public record UpdateRoleRequest(string[]? Permissions);
 /// <param name="Group">The module it belongs to (the part before the colon).</param>
 public record PermissionInfoDto(string Key, string Group);
 
+/// <summary>One open app window of a person who is online.</summary>
+/// <param name="Device">ANDROID_APP, WINDOWS_APP, IPHONE, ANDROID_BROWSER, WINDOWS_BROWSER, MAC_BROWSER or BROWSER.</param>
+public record PresenceWindowDto(string Device, string? Ip, string? CurrentView, string ConnectedAt, string LastActiveAt);
+
+/// <summary>A person online now: their most recently used window's screen, and all their windows.</summary>
 public record PresenceEntryDto(
-    string UserId, string FullName, string Role, string BranchId, string? CurrentView,
-    string ConnectedAt, string LastSeenAt);
+    string UserId, string FullName, string Role, string BranchId, string? BranchName, string? CurrentView,
+    string ConnectedAt, string LastActiveAt, PresenceWindowDto[] Windows);
 
 // ---- Money (DOMAIN.md §2.6): accounts, vouchers, allocations, expense categories ----
 
@@ -637,4 +642,16 @@ public record CloseYearRequest(int Year);
 
 /// <param name="NetProfit">The year's revenue − expenses moved into retained earnings.</param>
 public record ClosedYearDto(int Year, string EntryId, long NetProfit, string ClosedAt, string ClosedByName);
+
+// ---- Backups ----
+
+public record DownloadBackupRequest(string? Passphrase);
+
+public record BackupFileDto(string Name, long Size, string CreatedAt);
+
+/// <param name="Automatic">Daily backups to a folder on the server are on.</param>
+/// <param name="Encrypted">The automatic backups are encrypted (a passphrase is set on the server).</param>
+public record BackupStatusDto(
+    bool Automatic, string? Folder, int Hour, int Keep, bool Encrypted, string? LastRunAt, string? LastFile,
+    string? LastError, string? NextRunAt, BackupFileDto[] Files);
 

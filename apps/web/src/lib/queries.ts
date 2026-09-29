@@ -95,6 +95,8 @@ import type {
   ClosedYear,
   AuditEntry,
   AuditFacets,
+  BackupStatus,
+  BackupFile,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -1141,5 +1143,17 @@ export function useAuditFacets() {
   return useQuery({
     queryKey: ['audit', 'facets'],
     queryFn: () => api.get<AuditFacets>('/audit/facets'),
+  });
+}
+
+export function useBackupStatus() {
+  return useQuery({ queryKey: ['backups'], queryFn: () => api.get<BackupStatus>('/backups') });
+}
+
+export function useRunBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<BackupFile>('/backups/run'),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ['backups'] }),
   });
 }

@@ -13,6 +13,11 @@ apps/web/dev-dist/
 .env.*
 !.env.example
 
+# Backups hold all the company's data: never in git
+backups/
+*.skbak
+skb-*.zip
+
 # Prisma
 apps/server/prisma/*.db
 

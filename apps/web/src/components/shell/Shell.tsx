@@ -5,7 +5,7 @@ import { Icon } from '../Icon';
 import { useT } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
 import { useDeviceInfo } from '../../lib/device';
-import { usePresenceReporter } from '../../lib/presenceSocket';
+import { usePresenceReporter } from '../../lib/presence';
 import { ConnectionBadge } from './ConnectionBadge';
 import { PrefControls } from './PrefControls';
 import { AccountMenu } from './AccountMenu';

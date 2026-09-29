@@ -64,6 +64,7 @@ export type Permission =
   | 'settings:view'
   | 'settings:manage'
   | 'audit:view'
+  | 'backup:create'
   | 'presence:view'
   // Catalog (owner decision 2026-09-29: every action has its own permission)
   | 'products:create'
@@ -1115,15 +1116,62 @@ export type ConnectionState = 'online' | 'connecting' | 'offline';
 // Audit & presence (server‑authoritative, foundation for owner/CEO view)
 // ---------------------------------------------------------------------------
 
+/** Which app a window is. */
+export type PresenceDevice =
+  | 'ANDROID_APP'
+  | 'WINDOWS_APP'
+  | 'IPHONE'
+  | 'ANDROID_BROWSER'
+  | 'WINDOWS_BROWSER'
+  | 'MAC_BROWSER'
+  | 'BROWSER';
+
+/** One open app window of a person who is online. */
+export interface PresenceWindow {
+  device: PresenceDevice;
+  ip: string | null;
+  /** The screen it shows (a navigation key such as "sales"). */
+  currentView: string | null;
+  connectedAt: string;
+  lastActiveAt: string;
+}
+
+/** A person online now (المتصلون الآن), with every window they have open. */
 export interface PresenceEntry {
   userId: string;
   fullName: string;
   role: Role;
   branchId: string;
-  /** What the user is currently looking at (route key), if reported. */
-  currentView?: string;
+  branchName: string | null;
+  /** The screen of their most recently used window. */
+  currentView: string | null;
   connectedAt: string;
-  lastSeenAt: string;
+  /** Last time they used the app (a window shows it while it's in use). */
+  lastActiveAt: string;
+  windows: PresenceWindow[];
+}
+
+export interface BackupFile {
+  name: string;
+  size: number;
+  createdAt: string;
+}
+
+/** Backups (النسخ الاحتياطي): the automatic ones on the server, and what's there. */
+export interface BackupStatus {
+  /** Daily backups to a folder on the server are on. */
+  automatic: boolean;
+  folder: string | null;
+  /** Hour of the day (server time) they run. */
+  hour: number;
+  keep: number;
+  /** A passphrase is set on the server, so they're encrypted. */
+  encrypted: boolean;
+  lastRunAt: string | null;
+  lastFile: string | null;
+  lastError: string | null;
+  nextRunAt: string | null;
+  files: BackupFile[];
 }
 
 // ---------------------------------------------------------------------------

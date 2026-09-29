@@ -80,8 +80,41 @@ async function tryRefresh(): Promise<boolean> {
   return refreshInFlight;
 }
 
+/** A file from the server (e.g. a backup): GET, or POST with a JSON body. Held only in memory. */
+async function download(
+  path: string,
+  body?: unknown,
+  retried = false,
+): Promise<{ name: string; bytes: Uint8Array }> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 401 && !retried) {
+    if (await tryRefresh()) return download(path, body, true);
+    useAuth.getState().clear();
+  }
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, payload.message ?? res.statusText, payload.code);
+  }
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const name =
+    /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] ??
+    /filename="?([^";]+)"?/i.exec(disposition)?.[1] ??
+    'download';
+  return { name: decodeURIComponent(name), bytes: new Uint8Array(await res.arrayBuffer()) };
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
+  download,
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
 

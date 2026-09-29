@@ -6,13 +6,16 @@ import { useAuth } from '../stores/auth';
 import { useCompanySettings, useUpdateSettings } from '../lib/queries';
 import { errorText } from '../lib/errors';
 import { GetApps } from '../components/GetApps';
+import { BackupsCard } from '../components/BackupsCard';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 export function SettingsPage() {
   const { t, locale } = useT();
-  const canManage = useAuth((s) => s.user?.permissions ?? []).includes('settings:manage');
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const canManage = permissions.includes('settings:manage');
+  const canBackup = permissions.includes('backup:create');
   const query = useCompanySettings();
   const update = useUpdateSettings();
 
@@ -266,6 +269,8 @@ export function SettingsPage() {
           )}
         </div>
       )}
+
+      {canBackup && <BackupsCard />}
     </div>
   );
 }

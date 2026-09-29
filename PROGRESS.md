@@ -108,6 +108,41 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Who's online, and backups** (المتصلون الآن، النسخ الاحتياطي) — finishes ROADMAP Phase 7
+- **Who's online** (`/presence`, `presence:view`, owner and admin):
+  - Shows each person signed in now: branch, the app they're on (Android app, Windows app,
+    iPhone, browser), the screen they're looking at, whether they're active or idle and for how
+    long, and every window they have open.
+  - It updates live.
+  - The web app now speaks SignalR's protocol straight over a WebSocket (`lib/presence.ts`),
+    replacing the socket.io stub that never connected; `socket.io-client` is removed.
+  - The hub needs a valid sign-in. Screen names are cleaned. Only people who may see presence
+    are told that something changed, and the list itself comes from `GET /api/presence`.
+- **Backups** (Settings → Backups, `backup:create`, the owner's alone):
+  - **Download now**: everything, read in one consistent snapshot while people keep working.
+    It's encrypted with a passphrase the owner types: AES-256-GCM in 1 MB chunks, key from
+    PBKDF2-SHA256. A changed, reordered or cut-off file is refused.
+  - **Automatic**: daily at `Backup__Hour` into `Backup__Folder`, keeping the newest
+    `Backup__Keep`, and encrypted with `Backup__Passphrase`. A day missed while the server was
+    off is made at start-up. The card lists them, downloads them, and backs up now.
+    `docker-compose.yml` turns it on for the company server (`./backups`).
+  - **Restore** is a server command (`SKB.Api restore <file>`), never a web button:
+    - It goes only into a new, empty database: first the backup's schema, then every table,
+      with all links re-checked, then an upgrade to the current version.
+    - A wrong passphrase, a damaged file or a non-empty database is refused, with nothing
+      written.
+    - Signed-in sessions aren't in backups, so everyone signs in again.
+  - `SKB.Api backup <file>` makes one from the command line.
+  - Downloads and runs are audited. Backup files are git-ignored.
+- **Verified:**
+  - `system.test.mjs`: 43 checks, presence over a real WebSocket and the backup API.
+  - After a full round, a backup restored into a new database matches the original in every
+    table (`restore-check.mjs`), passes the invariants, and takes new sales, vouchers and
+    reports.
+  - Also checked: the API-downloaded backup restores; a wrong passphrase leaves the database
+    untouched.
+  - Both on a fresh and an upgraded older database. All other suites still pass.
+
 **Admin & close** (الإدارة والإقفال) — ROADMAP Phase 7
 - **Company profile** (بيانات المنشأة) in Settings: address, phone, email, tax number and
   commercial register.
@@ -776,13 +811,16 @@ and warehouses shipped):
      statement (and save one as PDF), export the trial balance to Excel, look at aging.
      **Update the Android app** on phones (1.1.0) so printing and Excel work there.
    - Close last year only when the owner is ready: it can't be undone.
+   - ~~Who's online, backups~~ done: Phase 7 is complete.
+   - **On the company server:** set `BACKUP_PASSPHRASE` in `.env` and copy the `backups` folder
+     off the machine regularly. **On the cloud:** download a backup from Settings regularly.
    - Left: DOMAIN.md §7 step 9, payroll & attendance (§2.9) — only if the company uses it; ask
-     the owner first. Then backups (needs Docker to test the image change).
+     the owner first.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
 9. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-10. **Phase 7 — Admin & close:** ~~users UI~~ (done: Staff & permissions), ~~period close, PDF/Excel export, activity log~~ (done), backups, owner presence view.
+10. ~~**Phase 7 — Admin & close**~~ done: users UI, period close, PDF/Excel export, activity log, backups, owner presence view.
 11. ~~**Phase 8 — Android**~~ done: a real Android app ships (see above).
 
 **Decisions (2026-09-29, owner):**

@@ -1,56 +1,59 @@
-using System.Collections.Concurrent;
-using SKB.Api.Models;
-
 namespace SKB.Api.Services;
 
 /// <summary>
-/// In-memory registry of who is currently connected. Ephemeral by design (durable history
-/// lives in the audit log). Backs the future owner/CEO "who is online" view.
+/// In-memory registry of who is connected right now, one entry per open app window (a person may
+/// have the phone app and a computer open at once). Ephemeral by design: durable history lives
+/// in the audit log. Backs the owner's "who's online" view.
 /// </summary>
 public sealed class PresenceTracker
 {
-    private sealed class Entry
+    public sealed record Connection(
+        string ConnectionId, string UserId, string FullName, string Role, string BranchId, string Device,
+        string? Ip, DateTime ConnectedAt, string? CurrentView, DateTime LastActiveAt);
+
+    private readonly object _gate = new();
+    private readonly Dictionary<string, Connection> _connections = new();
+
+    public void Connect(Connection c)
     {
-        public required string FullName { get; init; }
-        public required string Role { get; init; }
-        public required string BranchId { get; init; }
-        public string? CurrentView { get; set; }
-        public DateTime ConnectedAt { get; init; } = DateTime.UtcNow;
-        public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
-        public HashSet<string> Connections { get; } = new();
+        lock (_gate) _connections[c.ConnectionId] = c;
     }
 
-    private readonly ConcurrentDictionary<string, Entry> _byUser = new();
-
-    public void Connect(string userId, string fullName, string role, string branchId, string connectionId)
+    public void Disconnect(string connectionId)
     {
-        var entry = _byUser.GetOrAdd(userId, _ => new Entry { FullName = fullName, Role = role, BranchId = branchId });
-        lock (entry.Connections)
+        lock (_gate) _connections.Remove(connectionId);
+    }
+
+    /// <summary>The window moved to another screen, or its person is using it. True when the screen changed.</summary>
+    public bool Touch(string connectionId, string? currentView)
+    {
+        lock (_gate)
         {
-            entry.Connections.Add(connectionId);
-            entry.LastSeenAt = DateTime.UtcNow;
+            if (!_connections.TryGetValue(connectionId, out var c)) return false;
+            _connections[connectionId] = c with
+            {
+                CurrentView = currentView ?? c.CurrentView, LastActiveAt = DateTime.UtcNow,
+            };
+            return currentView is not null && currentView != c.CurrentView;
         }
     }
 
-    public void Disconnect(string userId, string connectionId)
+    public IReadOnlyList<Connection> Snapshot()
     {
-        if (!_byUser.TryGetValue(userId, out var entry)) return;
-        lock (entry.Connections)
-        {
-            entry.Connections.Remove(connectionId);
-            if (entry.Connections.Count == 0) _byUser.TryRemove(userId, out _);
-        }
+        lock (_gate) return _connections.Values.ToList();
     }
 
-    public void Touch(string userId, string? currentView)
+    /// <summary>Which app a window is, from its user agent (the Android and Windows apps add their own tag).</summary>
+    public static string DeviceOf(string? userAgent)
     {
-        if (!_byUser.TryGetValue(userId, out var entry)) return;
-        entry.LastSeenAt = DateTime.UtcNow;
-        if (currentView is not null) entry.CurrentView = currentView;
+        var ua = userAgent ?? "";
+        if (ua.Contains("SKBAndroid", StringComparison.Ordinal)) return "ANDROID_APP";
+        if (ua.Contains("SKBDesktop", StringComparison.Ordinal)) return "WINDOWS_APP";
+        if (ua.Contains("iPhone", StringComparison.Ordinal) || ua.Contains("iPad", StringComparison.Ordinal))
+            return "IPHONE";
+        if (ua.Contains("Android", StringComparison.Ordinal)) return "ANDROID_BROWSER";
+        if (ua.Contains("Windows", StringComparison.Ordinal)) return "WINDOWS_BROWSER";
+        if (ua.Contains("Macintosh", StringComparison.Ordinal)) return "MAC_BROWSER";
+        return "BROWSER";
     }
-
-    public IReadOnlyList<PresenceEntryDto> List() =>
-        _byUser.Select(kv => new PresenceEntryDto(
-            kv.Key, kv.Value.FullName, kv.Value.Role, kv.Value.BranchId, kv.Value.CurrentView,
-            kv.Value.ConnectedAt.ToString("o"), kv.Value.LastSeenAt.ToString("o"))).ToList();
 }

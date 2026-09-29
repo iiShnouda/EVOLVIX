@@ -47,6 +47,7 @@ const SECTION_OF: Record<string, string> = {
   expense_categories: 'receipts',
   audit: 'system',
   presence: 'system',
+  backup: 'system',
 };
 const SECTIONS = [
   'dashboard',

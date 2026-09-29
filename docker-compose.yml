@@ -44,6 +44,15 @@ services:
       Cookie__Secure: "${COOKIE_SECURE:-false}"
       Seed__OwnerEmail: "${SEED_OWNER_EMAIL:-owner@skb.local}"
       Seed__OwnerPassword: "${SEED_OWNER_PASSWORD:-ChangeMe!Owner123}"
+      # Automatic backups: every day at BACKUP_HOUR (server time) into ./backups, newest BACKUP_KEEP
+      # kept, encrypted when BACKUP_PASSPHRASE is set. See COMPANY-SERVER.md.
+      TZ: "${TZ:-Africa/Cairo}"
+      Backup__Folder: /backups
+      Backup__Hour: "${BACKUP_HOUR:-2}"
+      Backup__Keep: "${BACKUP_KEEP:-14}"
+      Backup__Passphrase: "${BACKUP_PASSPHRASE:-}"
+    volumes:
+      - "${BACKUP_DIR:-./backups}:/backups"
     ports:
       # Staff on the LAN reach the app at http://<this-server-ip>:8080
       - "${APP_PORT:-8080}:8080"

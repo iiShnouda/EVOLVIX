@@ -129,6 +129,13 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'branches:view',
   },
   {
+    key: 'presence',
+    labelKey: 'nav.presence',
+    icon: 'presence',
+    path: '/presence',
+    permission: 'presence:view',
+  },
+  {
     key: 'audit',
     labelKey: 'nav.audit',
     icon: 'audit',
