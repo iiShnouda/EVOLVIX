@@ -14,6 +14,8 @@ public static class Permissions
     /// a return moves money back out, so it is not granted to the SALES role by default.
     /// </summary>
     public const string SalesReturn = "sales:return";
+    /// <summary>Make and cancel price quotations (turning one into an invoice needs sales:create).</summary>
+    public const string SalesQuote = "sales:quote";
     public const string PurchasesView = "purchases:view";
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
@@ -133,7 +135,7 @@ public static class Permissions
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
-        DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn,
+        DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage,
         BranchesView, BranchesManage,
@@ -163,7 +165,7 @@ public static class RolePermissions
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
-            Permissions.SalesOverrideFloor, Permissions.SalesReturn,
+            Permissions.SalesOverrideFloor, Permissions.SalesReturn, Permissions.SalesQuote,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
@@ -188,6 +190,7 @@ public static class RolePermissions
         [Role.SALES] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
+            Permissions.SalesQuote,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
         },

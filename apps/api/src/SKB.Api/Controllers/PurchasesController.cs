@@ -309,5 +309,7 @@ public sealed class PurchasesController : ControllerBase
     }
 
     private static DateTime? ParseDate(string? s) =>
-        DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
+        DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d)
+            ? d : null;
 }

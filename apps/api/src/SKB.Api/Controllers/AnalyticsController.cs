@@ -78,6 +78,61 @@ public sealed class AnalyticsController : ControllerBase
     }
 
     /// <summary>
+    /// Sales performance (أداء المبيعات) in a period, by person — the invoice's sales rep, else who
+    /// issued it — or by branch: net sales after returns, profit, invoices, customers served, the
+    /// average invoice, returns, what was paid on the spot, and quotations made / won. A return
+    /// counts against whoever made the sale it returns.
+    /// </summary>
+    [HttpGet("performance")]
+    public async Task<ActionResult<PerformanceDto>> Performance(
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "rep")
+    {
+        var (start, end) = Period(from, to);
+        var byBranch = by.Equals("branch", StringComparison.OrdinalIgnoreCase);
+        var docs = await Docs()
+            .Where(d => (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN)
+                        && d.IssueDate >= start && d.IssueDate < end)
+            .Select(d => new
+            {
+                d.Type,
+                Key = byBranch
+                    ? (d.Type == DocumentType.SALES_RETURN && d.SourceDocument != null ? d.SourceDocument.BranchId : d.BranchId)
+                    : (d.Type == DocumentType.SALES_RETURN && d.SourceDocument != null
+                        ? d.SourceDocument.RepId ?? d.SourceDocument.StaffId
+                        : d.RepId ?? d.StaffId),
+                d.PartyId, Net = d.Subtotal - d.DiscountTotal, d.ProfitTotal, d.PaidAmount,
+            }).ToListAsync();
+        var quotes = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION && d.IssueDate >= start && d.IssueDate < end);
+        if (Scope() is Guid b) quotes = quotes.Where(d => d.BranchId == b);
+        var quoteRows = await quotes.Select(d => new { Key = byBranch ? d.BranchId : d.RepId ?? d.StaffId, d.Status }).ToListAsync();
+
+        var keys = docs.Select(d => d.Key).Concat(quoteRows.Select(q => q.Key)).Distinct().ToList();
+        var names = byBranch
+            ? (await _db.Branches.AsNoTracking().Where(x => keys.Contains(x.Id)).ToListAsync()).ToDictionary(x => x.Id, x => Loc.Name(x))
+            : await _db.Staff.AsNoTracking().Where(x => keys.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.FullName);
+        var rows = keys.Select(k =>
+        {
+            var mine = docs.Where(d => d.Key == k).ToList();
+            var invoices = mine.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
+            var returns = mine.Where(d => d.Type == DocumentType.SALES_RETURN).ToList();
+            var net = invoices.Sum(d => d.Net) - returns.Sum(d => d.Net);
+            var profit = invoices.Sum(d => d.ProfitTotal) - returns.Sum(d => d.ProfitTotal);
+            var myQuotes = quoteRows.Where(q => q.Key == k).ToList();
+            return new PerformanceRowDto(k.ToString(), names.GetValueOrDefault(k, ""), net, profit, invoices.Count,
+                invoices.Select(d => d.PartyId).Distinct().Count(), invoices.Count == 0 ? 0 : net / invoices.Count,
+                returns.Sum(d => d.Net), invoices.Sum(d => d.PaidAmount), myQuotes.Count,
+                myQuotes.Count(q => q.Status == DocumentStatus.CONFIRMED), 0);
+        }).ToList();
+        var totalNet = rows.Sum(r => r.NetSales);
+        var result = rows.Select(r => r with { Share = totalNet > 0 ? Math.Round(100.0 * r.NetSales / totalNet, 1) : 0 })
+            .OrderByDescending(r => r.NetSales).ThenBy(r => r.Name).ToArray();
+        var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
+        return Ok(new PerformanceDto(byBranch ? "branch" : "rep", start.ToString("yyyy-MM-dd"),
+            end.AddDays(-1).ToString("yyyy-MM-dd"), result, totalNet, rows.Sum(r => r.Profit), rows.Sum(r => r.Invoices),
+            currency));
+    }
+
+    /// <summary>
     /// Items that moved most in a period (net units sold), and dead stock: items in stock that
     /// didn't sell at all in the period (الأصناف الراكدة), with their value at cost.
     /// </summary>

@@ -13,6 +13,7 @@ public static class DocumentNumbers
         DocumentType.PURCHASE_INVOICE => $"PUR-{year}-",
         DocumentType.SALES_RETURN => $"SRT-{year}-",
         DocumentType.PURCHASE_RETURN => $"PRT-{year}-",
+        DocumentType.QUOTATION => $"QT-{year}-",
         _ => $"DOC-{year}-",
     };
 

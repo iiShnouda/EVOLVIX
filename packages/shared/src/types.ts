@@ -46,6 +46,7 @@ export type Permission =
   | 'sales:edit'
   | 'sales:override_floor'
   | 'sales:return'
+  | 'sales:quote'
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
@@ -374,6 +375,9 @@ export interface SalesDocument {
   /** The money account the paid-now amount (or a return's refund) went through. */
   paidAccountId?: string | null;
   paidAccountName?: string | null;
+  /** A quotation that became an invoice: that invoice. */
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
   createdAt: string;
 }
 
@@ -1510,4 +1514,34 @@ export interface ClosedYear {
   netProfit: number;
   closedAt: string;
   closedByName: string;
+}
+
+/** One person's (or branch's) sales in a period (أداء المبيعات). */
+export interface PerformanceRow {
+  id: string;
+  name: string;
+  /** Net of discounts and returns. */
+  netSales: number;
+  profit: number;
+  invoices: number;
+  customers: number;
+  averageInvoice: number;
+  returns: number;
+  /** Paid on the spot with the invoices. */
+  collected: number;
+  quotes: number;
+  quotesWon: number;
+  /** Percent of all net sales. */
+  share: number;
+}
+
+export interface Performance {
+  by: 'rep' | 'branch';
+  from: string;
+  to: string;
+  rows: PerformanceRow[];
+  netSales: number;
+  profit: number;
+  invoices: number;
+  currency: string;
 }

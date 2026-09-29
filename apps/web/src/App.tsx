@@ -140,7 +140,7 @@ export default function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
-            <Route path="/sales/new" element={<InvoiceBuilderPage mode="sale" />} />
+            <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
             <Route
               path="/sales/invoices/:id/return"
               element={<ReturnBuilderPage scope="sales" />}
@@ -162,7 +162,14 @@ export default function App() {
               path="/purchases"
               element={<DocumentsPage key="purchases" scope="purchases" />}
             />
-            <Route path="/purchases/new" element={<InvoiceBuilderPage mode="purchase" />} />
+            <Route
+              path="/purchases/new"
+              element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
+            />
+            <Route
+              path="/sales/quotes/new"
+              element={<InvoiceBuilderPage key="quote" mode="quote" />}
+            />
             <Route
               path="/purchases/invoices/:id/return"
               element={<ReturnBuilderPage scope="purchases" />}

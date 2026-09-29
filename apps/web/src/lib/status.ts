@@ -19,3 +19,32 @@ export const KPI_TONE_MAP: Record<string, Tone> = {
   info: 'info',
   neutral: 'neutral',
 };
+
+/** Where a quotation stands: open, became an invoice, cancelled, or past its date. */
+export type QuoteState = 'OPEN' | 'WON' | 'CANCELLED' | 'EXPIRED';
+
+export const QUOTE_TONE: Record<QuoteState, Tone> = {
+  OPEN: 'info',
+  WON: 'positive',
+  CANCELLED: 'neutral',
+  EXPIRED: 'warning',
+};
+
+export function quoteState(doc: { status: DocumentStatus; dueDate?: string | null }): QuoteState {
+  if (doc.status === 'CONFIRMED') return 'WON';
+  if (doc.status === 'CANCELLED') return 'CANCELLED';
+  const today = new Date().toISOString().slice(0, 10);
+  return doc.dueDate && doc.dueDate.slice(0, 10) < today ? 'EXPIRED' : 'OPEN';
+}
+
+/** A document's status label key and tone (a quotation has its own states). */
+export function statusOf(doc: { type: string; status: DocumentStatus; dueDate?: string | null }): {
+  key: string;
+  tone: Tone;
+} {
+  if (doc.type === 'QUOTATION') {
+    const s = quoteState(doc);
+    return { key: `quote.state.${s}`, tone: QUOTE_TONE[s] };
+  }
+  return { key: `status.${doc.status}`, tone: STATUS_TONE[doc.status] };
+}

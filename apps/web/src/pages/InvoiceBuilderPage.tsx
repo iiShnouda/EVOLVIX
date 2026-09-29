@@ -25,6 +25,7 @@ import { errorText } from '../lib/errors';
 import {
   useCompanySettings,
   useCreatePurchaseInvoice,
+  useCreateQuotation,
   useCreateSalesInvoice,
   useInventory,
   useParties,
@@ -60,14 +61,18 @@ const field =
 let nextKey = 0;
 
 /**
- * Sales / purchase invoice builder. Each line is in one of the item's units (piece, carton…); its
+ * Sales / purchase invoice builder, and (mode "quote") the price quotation builder: a quotation is
+ * priced the same way but has no payment or delivery, may promise more than is in stock, and holds
+ * its prices until its date. Each line is in one of the item's units (piece, carton…); its
  * price comes from the invoice's price level — the party's own, else the default — and, for an item
  * without a price, from cost × (1 + default markup) (sales) or the average cost (purchases). Typing
  * another price or picking another level needs its own permission; the server checks the same.
  * Live cost, markup and profit use the cost of the chosen warehouse's branch.
  */
-export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
-  const isSale = mode === 'sale';
+export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quote' }) {
+  const isQuote = mode === 'quote';
+  const isSale = mode !== 'purchase';
+  const backTo = isQuote ? '/sales?tab=quotations' : isSale ? '/sales' : '/purchases';
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
@@ -149,11 +154,19 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const [paidAccountId, setPaidAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
+  const [validUntil, setValidUntil] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10);
+  });
 
   const createSale = useCreateSalesInvoice();
   const createPurchase = useCreatePurchaseInvoice();
-  const pending = createSale.isPending || createPurchase.isPending;
-  const serverError = (createSale.error ?? createPurchase.error) as ApiError | null;
+  const createQuote = useCreateQuotation();
+  const pending = createSale.isPending || createPurchase.isPending || createQuote.isPending;
+  const serverError = (createSale.error ??
+    createPurchase.error ??
+    createQuote.error) as ApiError | null;
 
   const currency = settings.data?.currency ?? 'EGP';
   const minMarkup = settings.data?.minMarkupPercent ?? 0;
@@ -298,16 +311,38 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
     lines.length > 0 &&
     !hasBelowCost &&
     !hasBlockedFloor &&
-    !hasOverStock &&
+    (isQuote || !hasOverStock) &&
     !outcome.error &&
-    !(isSale && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
+    !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
+    !(isQuote && !validUntil) &&
     !pending;
 
   async function save() {
     const paidAmount = paidNow === '' ? 0 : toMinor(Number(paidNow));
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
-      if (isSale) {
+      if (isQuote) {
+        await createQuote.mutateAsync({
+          partyId,
+          lines: rows.map((r) => ({
+            productId: r.line.product.id,
+            unitId: r.line.unitId || undefined,
+            quantity: r.line.quantity,
+            unitPrice: r.price,
+            discount: 0,
+            isBonus: r.line.bonus || undefined,
+          })),
+          charges: chargeInputs,
+          paidAmount: 0,
+          overrideFloor,
+          notes: notes || undefined,
+          warehouseId: warehouseId || undefined,
+          priceLevelId,
+          repId: repId || undefined,
+          dueDate: validUntil,
+        });
+        navigate(backTo);
+      } else if (isSale) {
         await createSale.mutateAsync({
           partyId,
           lines: rows.map((r) => ({
@@ -369,14 +404,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={t(isSale ? 'invoice.newSale' : 'invoice.newPurchase')}
+        title={t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')}
+        subtitle={isQuote ? t('quote.newHint') : undefined}
         action={
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="close"
-            onClick={() => navigate(isSale ? '/sales' : '/purchases')}
-          >
+          <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
             {t('invoice.back')}
           </Button>
         }
@@ -442,7 +473,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             )}
           </Card>
 
-          {isSale && (
+          {isSale && !isQuote && (
             <DeliveryCard
               value={delivery}
               onChange={setDelivery}
@@ -651,7 +682,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
 
                     {(r.belowCost || r.belowFloor || r.overStock) && (
                       <p
-                        className={`mt-2 text-xs ${r.belowCost || r.overStock ? 'text-destructive' : 'text-warning'}`}
+                        className={`mt-2 text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
                       >
                         {r.overStock
                           ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
@@ -783,18 +814,31 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             </dl>
 
             <div className="mt-3 space-y-2">
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={`${field} tnum`}
-                  value={paidNow}
-                  onChange={(e) => setPaidNow(e.target.value)}
-                />
-              </label>
-              {Number(paidNow) > 0 && (
+              {isQuote ? (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('quote.validUntil')}</span>
+                  <input
+                    type="date"
+                    className={`${field} tnum`}
+                    min={new Date().toISOString().slice(0, 10)}
+                    value={validUntil}
+                    onChange={(e) => setValidUntil(e.target.value)}
+                  />
+                </label>
+              ) : (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={paidNow}
+                    onChange={(e) => setPaidNow(e.target.value)}
+                  />
+                </label>
+              )}
+              {!isQuote && Number(paidNow) > 0 && (
                 <MoneyAccountPicker
                   className={field}
                   label={t(isSale ? 'money.receivedInto' : 'money.paidInto')}
@@ -837,7 +881,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
               disabled={!canSave}
               onClick={save}
             >
-              {pending ? t('invoice.saving') : t('invoice.save')}
+              {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
             </Button>
             {isSale && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>

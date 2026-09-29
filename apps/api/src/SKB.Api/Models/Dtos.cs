@@ -62,7 +62,8 @@ public record SalesDetailDto(
     string? SourceDocumentId, string? SourceNumber, string? PriceLevelId, string? PriceLevelName,
     long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName,
     string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
-    string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null);
+    string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
+    string? InvoiceId = null, string? InvoiceNumber = null);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -92,6 +93,15 @@ public record CreateSalesInvoiceRequest(
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
     string? PaidAccountId = null);
+
+/// <summary>
+/// Turning a quotation into an invoice: its lines, prices and charges come from the quotation; this
+/// says what's decided now — where the goods leave from (else each line's warehouse), payment and delivery.
+/// </summary>
+public record ConvertQuotationRequest(
+    string? WarehouseId = null, long PaidAmount = 0, string? PaidAccountId = null, string? DeliveryMethod = null,
+    string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null, bool OverrideFloor = false,
+    string? DueDate = null, string? Notes = null);
 
 public record CreatePurchaseLineRequest(
     string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
@@ -614,6 +624,16 @@ public record BalanceSheetDto(
 public record MonthlySalesDto(string Month, long Sales, long Returns, long NetSales, long NetPurchases, int Invoices);
 
 public record TopPartyDto(string PartyId, string Name, long Net, int Documents, double Share);
+
+/// <param name="Collected">Paid on the spot with the invoices (later receipts aren't counted).</param>
+/// <param name="QuotesWon">Quotations of the period that became invoices.</param>
+public record PerformanceRowDto(
+    string Id, string Name, long NetSales, long Profit, int Invoices, int Customers, long AverageInvoice,
+    long Returns, long Collected, int Quotes, int QuotesWon, double Share);
+
+public record PerformanceDto(
+    string By, string From, string To, PerformanceRowDto[] Rows, long NetSales, long Profit, int Invoices,
+    string Currency);
 
 public record ItemMoveDto(string ProductId, string Sku, string Name, int QuantityOut, int QuantityIn, long SalesValue);
 

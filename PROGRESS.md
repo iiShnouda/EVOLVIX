@@ -108,6 +108,42 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Quotations, printable vouchers and sales performance** (عروض الأسعار، طباعة السندات، أداء المبيعات)
+— the last gaps from the original feature plan
+- **Price quotations** (Sales → Quotations; `sales:quote` to make or cancel one, owner /
+  accountant / sales by default):
+  - A quotation (`QT-2026-…`) is priced exactly like an invoice: the same levels, charges,
+    permissions and profit floor. It moves no stock, money or balance and posts nothing.
+  - It's valid for two weeks unless given a date, never one already past. It may promise more
+    than is in stock.
+  - **Make invoice** (`sales:create`) turns it into a sales invoice with its lines, prices, level,
+    charges and rep. What's decided then: the warehouse, payment and delivery.
+  - While it's valid its prices and discounts hold: they were approved when it was made, so sales
+    staff can invoice a price the owner quoted. After its date, prices are checked like any new
+    invoice.
+  - Stock and the profit floor are checked at conversion.
+  - It becomes one invoice only, even when two people try at once. The invoice shows "from
+    quotation", and the quotation names its invoice.
+  - Cancelling closes it.
+  - Endpoints: `GET/POST /api/sales/quotations`, `…/{id}/convert`, `…/{id}/cancel`. Quotations
+    stay out of the invoice lists, the dashboard and every report.
+- **Printable vouchers:** a receipt, payment, expense or transfer prints (or saves as PDF) as a
+  formal voucher (سند قبض / سند صرف …). It has the company letterhead and signature lines.
+- **Sales performance** (Analytics → Sales performance, `GET /api/analytics/performance?by=rep|branch`):
+  - Per person (the sale's rep, else who made it) or per branch: net sales after returns, share,
+    profit, invoices, customers, average invoice, returns, paid on the spot, and quotations won.
+  - A return counts against whoever made the sale it returns.
+  - With print and Excel.
+- **Fixed:** a due date typed as a plain date made saving an invoice fail (its time zone was
+  unknown). Dates now count as UTC.
+- **Verified:**
+  - `quotes.test.mjs`: 63 checks, covering prices and permissions, nothing moving, conversion
+    with held prices, stock at conversion, the race, expiry, cancelling, audit and performance.
+  - All other suites pass on a fresh and an upgraded database. The invariants hold, and the
+    backup / restore round trip matches.
+  - In the browser (EN/AR, phone width): quotations, making an invoice, a voucher printout,
+    and performance.
+
 **Who's online, and backups** (المتصلون الآن، النسخ الاحتياطي) — finishes ROADMAP Phase 7
 - **Who's online** (`/presence`, `presence:view`, owner and admin):
   - Shows each person signed in now: branch, the app they're on (Android app, Windows app,
@@ -814,6 +850,7 @@ and warehouses shipped):
    - ~~Who's online, backups~~ done: Phase 7 is complete.
    - **On the company server:** set `BACKUP_PASSPHRASE` in `.env` and copy the `backups` folder
      off the machine regularly. **On the cloud:** download a backup from Settings regularly.
+   - ~~Quotations, printable vouchers, sales performance~~ done.
    - Left: DOMAIN.md §7 step 9, payroll & attendance (§2.9) — only if the company uses it; ask
      the owner first.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.

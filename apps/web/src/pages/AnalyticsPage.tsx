@@ -9,12 +9,19 @@ import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useReportTools } from '../lib/report';
-import { useAging, useItemMovement, useMonthlySales, useTopParties } from '../lib/queries';
+import {
+  useAging,
+  useItemMovement,
+  useMonthlySales,
+  usePerformance,
+  useTopParties,
+} from '../lib/queries';
 
-type Tab = 'profit' | 'monthly' | 'parties' | 'aging' | 'items';
+type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items';
 const TABS: { key: Tab; label: TranslationKey }[] = [
   { key: 'profit', label: 'analytics.tabProfit' },
   { key: 'monthly', label: 'analytics.tabMonthly' },
+  { key: 'performance', label: 'analytics.tabPerformance' },
   { key: 'parties', label: 'analytics.tabParties' },
   { key: 'aging', label: 'analytics.tabAging' },
   { key: 'items', label: 'analytics.tabItems' },
@@ -60,6 +67,7 @@ export function AnalyticsPage() {
       </div>
       {tab === 'profit' && <ProfitabilityPage embedded />}
       {tab === 'monthly' && <MonthlyTab />}
+      {tab === 'performance' && <PerformanceTab />}
       {tab === 'parties' && <PartiesTab />}
       {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
@@ -235,6 +243,166 @@ function MonthlyTab() {
               </tbody>
             </table>
           </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sales performance (أداء المبيعات) by person (the sale's rep, else who made it) or by branch:
+ * net sales after returns, profit, invoices, customers, average invoice, and quotations won.
+ */
+function PerformanceTab() {
+  const { t, locale } = useT();
+  const [from, setFrom] = useState(daysAgo(29));
+  const [to, setTo] = useState(iso(new Date()));
+  const [by, setBy] = useState<'rep' | 'branch'>('rep');
+  const { data, isLoading } = usePerformance(from, to, by);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const m = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
+  const n = (v: number) => formatNumber(v, locale);
+  const byLabel = by === 'rep' ? t('perf.byPerson') : t('perf.byBranch');
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
+  const header = [
+    by === 'rep' ? t('perf.person') : t('perf.branch'),
+    t('analytics.netSales'),
+    t('perf.share'),
+    t('perf.profit'),
+    t('analytics.invoices'),
+    t('perf.customers'),
+    t('perf.average'),
+    t('analytics.returns'),
+    t('perf.collected'),
+    t('perf.quotes'),
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
+          <div className="flex gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1">
+            {(['rep', 'branch'] as const).map((b) => (
+              <button
+                key={b}
+                type="button"
+                aria-pressed={by === b}
+                onClick={() => setBy(b)}
+                className={`h-7 rounded-lg px-3 text-sm font-medium ${
+                  by === b ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+                }`}
+              >
+                {b === 'rep' ? t('perf.byPerson') : t('perf.byBranch')}
+              </button>
+            ))}
+          </div>
+        </div>
+        <ReportActions
+          disabled={!data}
+          onPrint={() =>
+            report.print(paper.current, `${t('analytics.tabPerformance')} — ${byLabel}`, period)
+          }
+          onExcel={() =>
+            data &&
+            report.excel(
+              `${t('analytics.tabPerformance')} — ${byLabel}`,
+              period,
+              header,
+              data.rows.map((r) => [
+                r.name,
+                { money: r.netSales },
+                r.share,
+                { money: r.profit },
+                r.invoices,
+                r.customers,
+                { money: r.averageInvoice },
+                { money: r.returns },
+                { money: r.collected },
+                `${r.quotesWon} / ${r.quotes}`,
+              ]),
+              [
+                t('ledger.total'),
+                { money: data.netSales },
+                100,
+                { money: data.profit },
+                data.invoices,
+              ],
+            )
+          }
+        />
+      </div>
+      {isLoading || !data ? (
+        <Loading />
+      ) : (
+        <div ref={paper} className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              [t('analytics.netSales'), m(data.netSales)],
+              [t('perf.profit'), m(data.profit)],
+              [t('analytics.invoices'), n(data.invoices)],
+            ].map(([label, value]) => (
+              <Card key={label} className="!p-3">
+                <p className="text-xs text-muted">{label}</p>
+                <p className="mt-0.5 font-semibold tnum">{value}</p>
+              </Card>
+            ))}
+          </div>
+          {data.rows.length === 0 ? (
+            <Card>
+              <EmptyState title={t('analytics.empty')} icon="analytics" />
+            </Card>
+          ) : (
+            <Card padded={false} className="overflow-x-auto">
+              <table className="w-full min-w-[48rem] text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    {header.map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-2 py-2 font-normal ${i === 0 ? 'px-3 text-start' : 'text-end'}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {data.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td className="px-3 py-1.5 font-medium">{r.name}</td>
+                      <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.netSales)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">
+                        {formatNumber(r.share, locale)}%
+                        <div className="mt-0.5 h-1 rounded-full bg-surface-2">
+                          <div
+                            className="h-1 rounded-full bg-brand"
+                            style={{ width: `${Math.max(0, Math.min(100, r.share))}%` }}
+                          />
+                        </div>
+                      </td>
+                      <td
+                        className={`px-2 py-1.5 text-end tnum ${r.profit < 0 ? 'text-destructive' : ''}`}
+                      >
+                        {m(r.profit)}
+                      </td>
+                      <td className="px-2 py-1.5 text-end tnum">{n(r.invoices)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">{n(r.customers)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">{m(r.averageInvoice)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">
+                        {r.returns ? m(r.returns) : '–'}
+                      </td>
+                      <td className="px-2 py-1.5 text-end tnum">{m(r.collected)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">
+                        {r.quotes ? `${n(r.quotesWon)} / ${n(r.quotes)}` : '–'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+          <p className="text-xs text-faint">{t('perf.hint')}</p>
         </div>
       )}
     </div>

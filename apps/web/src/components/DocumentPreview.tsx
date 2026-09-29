@@ -1,9 +1,15 @@
 import { useRef, type ReactNode } from 'react';
-import { formatDate, formatMoney, formatNumber, type SalesDocument } from '@skb/shared';
+import {
+  formatDate,
+  formatMoney,
+  formatNumber,
+  type SalesDocument,
+  type TranslationKey,
+} from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
-import { STATUS_TONE } from '../lib/status';
+import { statusOf } from '../lib/status';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 
@@ -47,6 +53,8 @@ export function DocumentPreview({
   }
 
   const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
+  const isQuote = doc.type === 'QUOTATION';
+  const status = statusOf(doc);
   const isPurchaseSide = doc.type === 'PURCHASE_INVOICE' || doc.type === 'PURCHASE_RETURN';
   const outstanding = doc.grandTotal - doc.paidAmount;
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
@@ -58,7 +66,7 @@ export function DocumentPreview({
         className="flex items-center justify-between gap-2 border-b border-line p-4"
       >
         <div className="flex min-w-0 items-center gap-2">
-          <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
+          <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
           <span className="truncate text-sm font-semibold tnum">{doc.number}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -101,6 +109,24 @@ export function DocumentPreview({
             <p className="text-sm font-semibold text-fg">{t(`doc.${doc.type}`)}</p>
             <p className="tnum font-medium text-fg">{doc.number}</p>
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
+            {isQuote && doc.dueDate && (
+              <p>
+                {t('quote.validUntil')}:{' '}
+                <span className="font-medium text-fg tnum">{formatDate(doc.dueDate, locale)}</span>
+              </p>
+            )}
+            {isQuote && doc.invoiceNumber && (
+              <p>
+                {t('quote.becameInvoice')}:{' '}
+                <span className="font-medium text-fg tnum">{doc.invoiceNumber}</span>
+              </p>
+            )}
+            {doc.type === 'SALES_INVOICE' && doc.sourceNumber && (
+              <p>
+                {t('quote.from')}:{' '}
+                <span className="font-medium text-fg tnum">{doc.sourceNumber}</span>
+              </p>
+            )}
             {isReturn && doc.sourceNumber && (
               <p className="tnum">
                 {t('return.against')}:{' '}
@@ -249,15 +275,19 @@ export function DocumentPreview({
             <dt>{t('sales.grandTotal')}</dt>
             <dd className="tnum">{formatMoney(doc.grandTotal, doc.currency, locale)}</dd>
           </div>
-          <Row
-            label={isReturn ? t('return.refunded') : t('sales.paid')}
-            value={formatMoney(doc.paidAmount, doc.currency, locale)}
-          />
-          <Row
-            label={isReturn ? t('return.onAccount') : t('sales.outstanding')}
-            value={formatMoney(outstanding, doc.currency, locale)}
-            emphasize={!isReturn && outstanding > 0}
-          />
+          {!isQuote && (
+            <>
+              <Row
+                label={isReturn ? t('return.refunded') : t('sales.paid')}
+                value={formatMoney(doc.paidAmount, doc.currency, locale)}
+              />
+              <Row
+                label={isReturn ? t('return.onAccount') : t('sales.outstanding')}
+                value={formatMoney(outstanding, doc.currency, locale)}
+                emphasize={!isReturn && outstanding > 0}
+              />
+            </>
+          )}
         </dl>
       </div>
 

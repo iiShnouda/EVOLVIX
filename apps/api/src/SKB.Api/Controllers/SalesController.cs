@@ -39,6 +39,13 @@ public sealed class SalesController : ControllerBase
         [FromQuery] string? search = null, [FromQuery] string? status = null) =>
         ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status);
 
+    /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
+    [HttpGet("quotations")]
+    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Quotations(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
+        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status);
+
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
@@ -78,16 +85,19 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// One sales invoice or sales return. Limited to sales documents — purchase documents are
+    /// One sales invoice, return or quotation. Limited to sales documents — purchase documents are
     /// behind purchases:view and must not be readable through this endpoint. For an invoice,
-    /// each line carries the quantity already returned so the client can offer only what's left.
+    /// each line carries the quantity already returned so the client can offer only what's left;
+    /// a quotation names the invoice it became.
     /// </summary>
     [HttpGet("invoices/{id:guid}")]
     [HttpGet("returns/{id:guid}")]
+    [HttpGet("quotations/{id:guid}")]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
-            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN));
+            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
+                                                  || d.Type == DocumentType.QUOTATION));
         if (!CurrentUser.CanSeeAllBranches(User))
         {
             Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -105,7 +115,13 @@ public sealed class SalesController : ControllerBase
         if (doc is null) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.SALES_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
-        return Ok(Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+        var dto = Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc));
+        if (doc.Type == DocumentType.QUOTATION
+            && await _db.SalesDocuments.AsNoTracking()
+                .Where(i => i.SourceDocumentId == doc.Id && i.Type == DocumentType.SALES_INVOICE)
+                .Select(i => new { i.Id, i.Number }).FirstOrDefaultAsync() is { } invoice)
+            dto = dto with { InvoiceId = invoice.Id.ToString(), InvoiceNumber = invoice.Number };
+        return Ok(dto);
     }
 
     /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
@@ -127,7 +143,84 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     [HttpPost("invoices")]
     [Authorize(Policy = Permissions.SalesCreate)]
-    public async Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req)
+    public Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req) =>
+        CreateCore(req, quote: false, fromQuoteId: null);
+
+    /// <summary>
+    /// A price quotation (عرض سعر): priced exactly like an invoice — same levels, charges, permissions
+    /// and profit floor — but it moves no stock, money or balance and posts nothing. It holds its
+    /// prices until <c>DueDate</c> (two weeks unless given).
+    /// </summary>
+    [HttpPost("quotations")]
+    [Authorize(Policy = Permissions.SalesQuote)]
+    public Task<ActionResult<SalesDetailDto>> CreateQuotation([FromBody] CreateSalesInvoiceRequest req) =>
+        CreateCore(req, quote: true, fromQuoteId: null);
+
+    /// <summary>
+    /// Turn an open quotation into a sales invoice with its lines, prices, level, charges and rep.
+    /// While it's valid its prices hold — they were approved when it was made; after its date they
+    /// are checked like any new invoice. Stock, the profit floor and payment are checked now.
+    /// </summary>
+    [HttpPost("quotations/{id:guid}/convert")]
+    [Authorize(Policy = Permissions.SalesCreate)]
+    public async Task<ActionResult<SalesDetailDto>> ConvertQuotation(Guid id, [FromBody] ConvertQuotationRequest req)
+    {
+        var quote = await ScopedQuotes().AsNoTracking().Include(d => d.Lines).Include(d => d.Charges)
+            .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == id);
+        if (quote is null) return NotFound(new { message = "Quotation not found.", code = "not_found" });
+        var invoice = new CreateSalesInvoiceRequest(
+            quote.PartyId.ToString(),
+            quote.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
+                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
+                req.WarehouseId ?? l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
+            Notes: req.Notes ?? quote.Notes, DueDate: req.DueDate, PaidAmount: req.PaidAmount,
+            OverrideFloor: req.OverrideFloor, PriceLevelId: quote.PriceLevelId?.ToString(),
+            Charges: quote.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
+                c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
+            RepId: quote.RepId?.ToString(), DeliveryMethod: req.DeliveryMethod, DeliveryAddress: req.DeliveryAddress,
+            DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId);
+        return await CreateCore(invoice, quote: false, fromQuoteId: id);
+    }
+
+    /// <summary>Close an open quotation without an invoice.</summary>
+    [HttpPost("quotations/{id:guid}/cancel")]
+    [Authorize(Policy = Permissions.SalesQuote)]
+    public async Task<ActionResult<SalesDetailDto>> CancelQuotation(Guid id)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var quote = await ScopedQuotes().FirstOrDefaultAsync(d => d.Id == id);
+        if (quote is null) return NotFound(new { message = "Quotation not found.", code = "not_found" });
+        if (quote.Status != DocumentStatus.PENDING)
+            return BadRequest(new { message = "This quotation is already closed.", code = "quote_closed" });
+        quote.Status = DocumentStatus.CANCELLED;
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("cancel", "quotation", quote);
+        return await GetOne(id);
+    }
+
+    private IQueryable<SalesDocument> ScopedQuotes()
+    {
+        var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION);
+        if (!CurrentUser.CanSeeAllBranches(User))
+        {
+            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
+            q = q.Where(d => d.BranchId == branchId);
+        }
+        return q;
+    }
+
+    private Task AuditAsync(string action, string resource, SalesDocument doc) =>
+        _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
+            doc.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+
+    /// <summary>
+    /// Make a sales invoice or (<paramref name="quote"/>) a quotation. With
+    /// <paramref name="fromQuoteId"/> the invoice comes from that quotation, which is closed with it.
+    /// </summary>
+    private async Task<ActionResult<SalesDetailDto>> CreateCore(CreateSalesInvoiceRequest req, bool quote, Guid? fromQuoteId)
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return BadRequest(new { message = "Add at least one line item.", code = "no_lines" });
@@ -142,19 +235,32 @@ public sealed class SalesController : ControllerBase
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
         if (party is null) return BadRequest(new { message = "Customer not found.", code = "party_not_found" });
 
+        var dueDate = ParseDate(req.DueDate);
+        if (quote && dueDate is DateTime until && until.Date < DateTime.UtcNow.Date)
+            return BadRequest(new { message = "A quotation is valid until today or later.", code = "bad_valid_until" });
+
         var settings = await GetSettingsAsync();
+        // A quotation still valid keeps what was approved on it: its prices, level, discounts, free
+        // goods and taxes. (Whether it's still open is checked under its lock below.)
+        var trusted = false;
+        if (fromQuoteId is Guid quoteId)
+        {
+            var validUntil = await _db.SalesDocuments.Where(d => d.Id == quoteId).Select(d => d.DueDate).FirstOrDefaultAsync();
+            trusted = validUntil is null || validUntil.Value.Date >= DateTime.UtcNow.Date;
+        }
         bool Can(string permission) => User.HasClaim("permission", permission);
+        bool Approved(string permission) => trusted || Can(permission);
         var canOverride = Can(Permissions.SalesOverrideFloor);
-        var canChangePrice = Can(Permissions.SalesChangePrice);
+        var canChangePrice = Approved(Permissions.SalesChangePrice);
 
         // ---- Invoice charges: discounts, taxes, additions — each needs its own permission ----
         var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
         if (chargeError is not null) return BadRequest(new { message = chargeError.Message, code = chargeError.Code });
-        if (specs!.Any(c => c.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT) && !Can(Permissions.SalesDiscount))
+        if (specs!.Any(c => c.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT) && !Approved(Permissions.SalesDiscount))
             return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
-        if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Can(Permissions.SalesAdditions))
+        if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Approved(Permissions.SalesAdditions))
             return InvoiceLines.Refuse(this, new("additions_not_allowed", "Adding charges needs permission."));
-        if (!Can(Permissions.SalesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
+        if (!Approved(Permissions.SalesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
             return InvoiceLines.Refuse(this, new("tax_not_allowed",
                 $"The tax is {settings.DefaultTaxPercent}%. Changing it needs permission."));
 
@@ -167,8 +273,9 @@ public sealed class SalesController : ControllerBase
         }
 
         // ---- Delivery: pickup, our driver, or a shipping company (DOMAIN.md §2.5) ----
+        // A quotation has no delivery: that's decided when it becomes an invoice.
         var method = DeliveryMethod.PICKUP;
-        if (!string.IsNullOrWhiteSpace(req.DeliveryMethod) && !Enum.TryParse(req.DeliveryMethod, true, out method))
+        if (!quote && !string.IsNullOrWhiteSpace(req.DeliveryMethod) && !Enum.TryParse(req.DeliveryMethod, true, out method))
             return BadRequest(new { message = "Unknown delivery method.", code = "bad_delivery" });
         Guid? driverId = null, carrierId = null;
         if (method == DeliveryMethod.OWN_DELIVERY && !string.IsNullOrWhiteSpace(req.DriverId))
@@ -195,7 +302,7 @@ public sealed class SalesController : ControllerBase
             if (shape.Error is not null) return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code });
             if (line.IsBonus)
             {
-                if (!Can(Permissions.SalesBonus))
+                if (!Approved(Permissions.SalesBonus))
                     return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
                 if (line.UnitPrice != 0 || line.Discount != 0)
                     return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
@@ -206,11 +313,20 @@ public sealed class SalesController : ControllerBase
         }
 
         await using var tx = await _db.Database.BeginTransactionAsync();
+        // The quotation first (documents before items): only one invoice can come from it.
+        SalesDocument? fromQuote = null;
+        if (fromQuoteId is Guid qid)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {qid} FOR UPDATE");
+            fromQuote = await _db.SalesDocuments.FirstAsync(d => d.Id == qid);
+            if (fromQuote.Status != DocumentStatus.PENDING)
+                return BadRequest(new { message = "This quotation is already closed.", code = "quote_closed" });
+        }
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         var book = await PriceBook.LoadAsync(_db, products.Keys);
 
         var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.SalesPriceLevelId,
-            PriceSide.SALE, Can(Permissions.SalesChoosePriceLevel));
+            PriceSide.SALE, Approved(Permissions.SalesChoosePriceLevel));
         if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
 
         // ---- Resolve units and check prices against the level ----
@@ -260,8 +376,8 @@ public sealed class SalesController : ControllerBase
                 });
         }
         // The same item may appear on several lines (even in different units): check the total
-        // asked of each warehouse, in base units.
-        foreach (var need in resolved.GroupBy(l => (l.Product.Id, l.Warehouse.Id)))
+        // asked of each warehouse, in base units. A quotation may promise more than is in stock.
+        foreach (var need in quote ? [] : resolved.GroupBy(l => (l.Product.Id, l.Warehouse.Id)))
         {
             var product = need.First().Product;
             var warehouse = need.First().Warehouse;
@@ -276,12 +392,14 @@ public sealed class SalesController : ControllerBase
         }
 
         // ---- Post the document ----
-        var number = await DocumentNumbers.NextAsync(_db, DocumentType.SALES_INVOICE);
+        var type = quote ? DocumentType.QUOTATION : DocumentType.SALES_INVOICE;
+        var number = await DocumentNumbers.NextAsync(_db, type);
         var doc = new SalesDocument
         {
-            Number = number, Type = DocumentType.SALES_INVOICE, BranchId = branchId,
+            Number = number, Type = type, BranchId = branchId,
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
-            DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
+            DueDate = dueDate ?? (quote ? DateTime.UtcNow.Date.AddDays(14) : null),
+            Currency = settings.Currency, Notes = Clean(req.Notes, 500), SourceDocumentId = fromQuoteId,
             PriceLevelId = level?.Id, RepId = repId,
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
             DeliveryAddress = deliveryAddress, DriverId = driverId, CarrierId = carrierId,
@@ -289,8 +407,9 @@ public sealed class SalesController : ControllerBase
 
         for (var i = 0; i < resolved.Count; i++)
         {
-            var (line, product, unit, baseQty, warehouse, _) = resolved[i];
-            var unitCost = _inventory.Issue(product, warehouse, baseQty,
+            var (line, product, unit, baseQty, warehouse, baseCost) = resolved[i];
+            // A quotation only estimates the profit, at today's cost.
+            var unitCost = quote ? baseCost : _inventory.Issue(product, warehouse, baseQty,
                 StockMovementType.SALE_OUT, doc.Id, number);
 
             var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
@@ -324,6 +443,17 @@ public sealed class SalesController : ControllerBase
         // Profit is what the goods brought in after every discount, minus their cost. Taxes and
         // additions (e.g. the delivery fee) are neither revenue nor cost.
         doc.ProfitTotal = net - costTotal;
+        if (quote)
+        {
+            doc.Status = DocumentStatus.PENDING;
+            _db.SalesDocuments.Add(doc);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            await AuditAsync("create", "quotation", doc);
+            await InvoiceLines.LoadForDetailAsync(_db, doc);
+            return Created($"/api/sales/quotations/{doc.Id}",
+                Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+        }
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
@@ -345,14 +475,14 @@ public sealed class SalesController : ControllerBase
                 documentId: doc.Id, partyId: party.Id);
         }
         await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
+        if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_invoice",
-            branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+        await AuditAsync("create", "sales_invoice", doc);
+        if (fromQuote is not null) await AuditAsync("convert", "quotation", fromQuote);
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
         return Created($"/api/sales/invoices/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
@@ -414,5 +544,7 @@ public sealed class SalesController : ControllerBase
     }
 
     private static DateTime? ParseDate(string? s) =>
-        DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
+        DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var d)
+            ? d : null;
 }

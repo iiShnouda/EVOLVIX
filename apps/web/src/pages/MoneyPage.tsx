@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   METHOD_ACCOUNT_KINDS,
@@ -20,6 +20,8 @@ import { Sheet } from '../components/Sheet';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { useReportTools } from '../lib/report';
+import { ReportActions } from '../components/ReportActions';
 import { useAuth } from '../stores/auth';
 import {
   useAccountStatement,
@@ -786,6 +788,9 @@ function VoucherSheet({ v, onClose }: { v: Voucher; onClose: () => void }) {
   const can = useCan();
   const cancel = useCancelVoucher();
   const money = (x: number) => formatMoney(x, v.currency, locale);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const formal = t(`voucher.print.${v.type}` as TranslationKey);
 
   return (
     <Sheet
@@ -793,12 +798,23 @@ function VoucherSheet({ v, onClose }: { v: Voucher; onClose: () => void }) {
       onClose={onClose}
       closeLabel={t('common.close')}
     >
-      <div className="space-y-3 text-sm">
-        <div className="flex flex-wrap gap-1.5">
-          <Badge tone={v.status === 'CANCELLED' ? 'neutral' : 'positive'}>
-            {t(`money.status.${v.status}`)}
-          </Badge>
-          <Badge tone="brand">{v.branchName}</Badge>
+      <div ref={paper} className="space-y-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            <Badge tone={v.status === 'CANCELLED' ? 'neutral' : 'positive'}>
+              {t(`money.status.${v.status}`)}
+            </Badge>
+            <Badge tone="brand">{v.branchName}</Badge>
+          </div>
+          <ReportActions
+            onPrint={() =>
+              report.print(
+                paper.current,
+                `${formal} ${v.number}`,
+                formatDateTime(v.createdAt, locale),
+              )
+            }
+          />
         </div>
         <p className="font-medium">{voucherTitle(v, rtl)}</p>
         <p className="text-2xl font-semibold tnum">{money(v.amount)}</p>
@@ -844,9 +860,20 @@ function VoucherSheet({ v, onClose }: { v: Voucher; onClose: () => void }) {
             </>
           )}
         </p>
+        {/* Signatures: only on paper. */}
+        <div className="hidden grid-cols-2 gap-8 pt-10 text-xs print:grid">
+          <p className="border-t border-line pt-1 text-center">
+            {v.type === 'RECEIPT'
+              ? t('voucher.signPayer')
+              : v.type === 'TRANSFER'
+                ? t('voucher.signReceiver')
+                : t('voucher.signPayee')}
+          </p>
+          <p className="border-t border-line pt-1 text-center">{t('voucher.signCashier')}</p>
+        </div>
         {cancel.error && <p className="text-destructive">{errorText(t, cancel.error)}</p>}
         {v.status === 'POSTED' && can('vouchers:cancel') && (
-          <div className="border-t border-line pt-3">
+          <div data-noprint className="border-t border-line pt-3">
             <p className="mb-2 text-xs text-muted">{t('money.cancelHint')}</p>
             <Button
               variant="danger"

@@ -12,12 +12,20 @@ import { Icon } from '../components/Icon';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
-import { useDocument, useDocumentList, type DocKind, type DocScope } from '../lib/queries';
+import {
+  useCancelQuotation,
+  useDocument,
+  useDocumentList,
+  type DocKind,
+  type DocScope,
+} from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
-import { STATUS_TONE } from '../lib/status';
+import { statusOf } from '../lib/status';
+import { errorText } from '../lib/errors';
+import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 
-const TAB_LABEL: Record<DocScope, Record<DocKind, TranslationKey>> = {
-  sales: { invoices: 'sales.invoices', returns: 'sales.returns' },
+const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
+  sales: { invoices: 'sales.invoices', returns: 'sales.returns', quotations: 'quote.tab' },
   purchases: { invoices: 'purchases.invoices', returns: 'purchases.returns' },
 };
 
@@ -32,8 +40,8 @@ function isReturnable(doc: SalesDocument | undefined): doc is SalesDocument {
 }
 
 /**
- * Sales or purchases: invoices and returns in one master-detail screen.
- * `?tab=returns` opens the returns list (used after saving a return).
+ * Sales or purchases: invoices and returns (and, for sales, price quotations) in one master-detail
+ * screen. `?tab=returns` / `?tab=quotations` opens that list.
  */
 export function DocumentsPage({ scope }: { scope: DocScope }) {
   const isSales = scope === 'sales';
@@ -41,11 +49,20 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const { deviceClass } = useDeviceInfo();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const kind: DocKind = params.get('tab') === 'returns' ? 'returns' : 'invoices';
+  const tab = params.get('tab');
+  const kind: DocKind =
+    tab === 'returns' ? 'returns' : tab === 'quotations' && isSales ? 'quotations' : 'invoices';
+  const kinds: DocKind[] = isSales
+    ? ['invoices', 'returns', 'quotations']
+    : ['invoices', 'returns'];
 
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
+  const canQuote = isSales && permissions.includes('sales:quote');
+  const [converting, setConverting] = useState(false);
+  const cancelQuote = useCancelQuotation();
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // `?doc=<id>` (e.g. from an item card) opens that document straight away.
   const linkedId = params.get('doc');
@@ -60,20 +77,60 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
 
   function switchKind(next: DocKind) {
     setSelectedId(null);
-    setParams(next === 'returns' ? { tab: 'returns' } : {}, { replace: true });
+    setParams(next === 'invoices' ? {} : { tab: next }, { replace: true });
   }
 
-  const returnAction =
-    canReturn && isReturnable(detail.data) ? (
-      <Button
-        size="sm"
-        variant="secondary"
-        icon="returns"
-        onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
-      >
-        {t('return.action')}
-      </Button>
-    ) : undefined;
+  const quote = detail.data?.type === 'QUOTATION' ? detail.data : undefined;
+  const quoteOpen = quote && quote.status === 'PENDING';
+  const quoteActions = quote ? (
+    <>
+      {quoteOpen && canCreate && (
+        <Button size="sm" icon="receipts" onClick={() => setConverting(true)}>
+          {t('quote.makeInvoice')}
+        </Button>
+      )}
+      {quoteOpen && canQuote && !confirmCancel && (
+        <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(true)}>
+          {t('quote.cancel')}
+        </Button>
+      )}
+      {quoteOpen && confirmCancel && (
+        <Button
+          size="sm"
+          variant="danger"
+          loading={cancelQuote.isPending}
+          onClick={() => cancelQuote.mutate(quote.id, { onSettled: () => setConfirmCancel(false) })}
+        >
+          {t('quote.cancelConfirm')}
+        </Button>
+      )}
+      {quote.invoiceId && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            setSelectedId(quote.invoiceId!);
+            setParams({ doc: quote.invoiceId! }, { replace: true });
+          }}
+        >
+          {quote.invoiceNumber}
+        </Button>
+      )}
+    </>
+  ) : undefined;
+
+  const returnAction = quote ? (
+    quoteActions
+  ) : canReturn && isReturnable(detail.data) ? (
+    <Button
+      size="sm"
+      variant="secondary"
+      icon="returns"
+      onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
+    >
+      {t('return.action')}
+    </Button>
+  ) : undefined;
 
   const partyLabel = isSales ? t('sales.customer') : t('invoice.supplier');
 
@@ -83,7 +140,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         title={t(isSales ? 'nav.sales' : 'nav.purchases')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
-          canCreate ? (
+          kind === 'quotations' ? (
+            canQuote ? (
+              <Button icon="plus" size="sm" onClick={() => navigate('/sales/quotes/new')}>
+                {t('quote.new')}
+              </Button>
+            ) : undefined
+          ) : canCreate ? (
             <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
               {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
             </Button>
@@ -95,7 +158,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         role="tablist"
         className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
       >
-        {(['invoices', 'returns'] as const).map((k) => (
+        {kinds.map((k) => (
           <button
             key={k}
             role="tab"
@@ -105,7 +168,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               kind === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
             }`}
           >
-            {t(TAB_LABEL[scope][k])}
+            {t(TAB_LABEL[scope][k]!)}
           </button>
         ))}
       </div>
@@ -118,7 +181,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               <Spinner size={26} />
             </div>
           ) : rows.length === 0 ? (
-            <EmptyState title={t('common.empty')} icon={kind === 'returns' ? 'returns' : scope} />
+            <EmptyState
+              title={kind === 'quotations' ? t('quote.empty') : t('common.empty')}
+              icon={kind === 'returns' ? 'returns' : scope}
+            />
           ) : isPhone ? (
             <ul className="divide-y divide-[var(--c-line)]">
               {rows.map((doc) => (
@@ -138,7 +204,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                       <span className="block text-sm font-semibold tnum">
                         {formatMoney(doc.grandTotal, doc.currency, locale)}
                       </span>
-                      <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
+                      <Badge tone={statusOf(doc).tone}>
+                        {t(statusOf(doc).key as TranslationKey)}
+                      </Badge>
                     </span>
                   </button>
                 </li>
@@ -171,7 +239,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     selected={doc.id === selectedId}
                     onSelect={() => setSelectedId(doc.id)}
                     locale={locale}
-                    statusLabel={t(`status.${doc.status}`)}
+                    statusLabel={t(statusOf(doc).key as TranslationKey)}
                   />
                 ))}
               </tbody>
@@ -190,6 +258,21 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           </Card>
         )}
       </div>
+
+      {cancelQuote.error && (
+        <p className="text-sm text-destructive">{errorText(t, cancelQuote.error)}</p>
+      )}
+      {converting && quote && (
+        <ConvertQuoteSheet
+          quote={quote}
+          onClose={() => setConverting(false)}
+          onDone={(invoice) => {
+            setConverting(false);
+            setSelectedId(invoice.id);
+            setParams({ doc: invoice.id }, { replace: true });
+          }}
+        />
+      )}
 
       {/* Detail (full-screen sheet on phone) */}
       {isPhone && selectedId && (
@@ -242,7 +325,7 @@ function DocumentRow({
         {formatDate(doc.issueDate, locale)}
       </td>
       <td className="p-3">
-        <Badge tone={STATUS_TONE[doc.status]}>{statusLabel}</Badge>
+        <Badge tone={statusOf(doc).tone}>{statusLabel}</Badge>
       </td>
       <td className="p-3 text-end font-semibold tnum">
         {formatMoney(doc.grandTotal, doc.currency, locale)}

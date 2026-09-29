@@ -97,6 +97,8 @@ import type {
   AuditFacets,
   BackupStatus,
   BackupFile,
+  Performance,
+  ConvertQuotationInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -113,8 +115,8 @@ export function useDashboard() {
 
 /** Which side of the business a document belongs to (also its API prefix). */
 export type DocScope = 'sales' | 'purchases';
-/** Invoices or the returns issued against them. */
-export type DocKind = 'invoices' | 'returns';
+/** Invoices, the returns issued against them, or (sales) price quotations. */
+export type DocKind = 'invoices' | 'returns' | 'quotations';
 
 export function useDocumentList(
   scope: DocScope,
@@ -1155,5 +1157,41 @@ export function useRunBackup() {
   return useMutation({
     mutationFn: () => api.post<BackupFile>('/backups/run'),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['backups'] }),
+  });
+}
+
+export function useCreateQuotation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSalesInvoiceInput) =>
+      api.post<SalesDocument>('/sales/quotations', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+export function useConvertQuotation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ConvertQuotationInput }) =>
+      api.post<SalesDocument>(`/sales/quotations/${id}/convert`, input),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+export function useCancelQuotation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/quotations/${id}/cancel`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+export function usePerformance(from: string, to: string, by: 'rep' | 'branch') {
+  return useQuery({
+    queryKey: ['report', 'performance', from, to, by],
+    queryFn: () =>
+      api.get<Performance>(
+        `/analytics/performance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&by=${by}`,
+      ),
   });
 }
