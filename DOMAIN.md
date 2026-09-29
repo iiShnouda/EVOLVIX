@@ -51,22 +51,15 @@ marked *(inferred)* come from data and column names, not from code.
   - sell below the floor margin
   - post opening balances
 
-### 2.1b Names in two languages (owner request 2026-09-29)
-- **Which names:** branches, warehouses, categories and products each keep an Arabic and an
-  English name. Parties are left out on purpose: they are people's and companies' names, and
-  would be sent to a third-party service.
-- **Creating:** people type the name in the screen language only.
-- **Translating:** after saving, a background worker asks an AI service (CodeCraft,
-  OpenAI-compatible; the key is in server config only) for the other language. It marks that
-  side as machine-made (`NameAuto`).
-- **Editing:** the form shows both languages.
-  - Correcting the machine translation makes it the person's text, never overwritten again.
-  - Changing the typed side re-translates the other side only while that side is still machine-made.
-- **Offline:** when the server has no internet, names wait (`NamePending`) and both languages
-  show the text as typed. The worker retries with growing waits and translates everything
-  waiting once it gets through.
-- **Language of answers:** the server answers in the caller's `Accept-Language`. Search
-  matches either language.
+### 2.1b Names: one field, as typed (owner decision 2026-09-29)
+- Everything people name (branches, warehouses, categories, units, price levels, sizes, colors,
+  models, items, parties) has **one name**, typed in Arabic or English and kept exactly as typed.
+- **Nothing is translated.** An earlier version translated names with AI into a second language;
+  the owner asked for it to be removed, and migration `SingleNames` dropped the second-language
+  columns. The name each record showed as typed stayed. The starter units and price levels the
+  system had created switched to their Arabic names (قطعة، كرتونة، سعر العملاء…).
+- Only the app's own texts (buttons, labels, messages) come in Arabic and English. A system row
+  like the "in transit" warehouse is app text, so it follows the screen language.
 - **Snapshots:** document lines keep the name as it was when posted.
 
 ### 2.2 Catalog — الأصناف
@@ -104,6 +97,7 @@ marked *(inferred)* come from data and column names, not from code.
   - `HasVariants`: size and color. **The company needs this**, as confirmed by the owner.
     - A *model* (e.g. "Shirt X") has variants, one per size × color.
     - Each variant has its own SKU, barcode and stock, and prices default to the model's.
+    Its name is "model — color / size", made from the names as typed.
     - Reports can group by model or show each variant.
 
 ### 2.3 Parties — العملاء والموردين

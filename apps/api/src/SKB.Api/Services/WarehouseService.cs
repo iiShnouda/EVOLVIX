@@ -49,7 +49,7 @@ public sealed class WarehouseService
         var branch = await _db.Branches.OrderBy(b => b.CreatedAt).FirstAsync();
         transit = new Warehouse
         {
-            Name = "In transit", NameEn = "In transit", NameAr = "في الطريق",
+            Name = "In transit",
             Code = "TRANSIT", BranchId = branch.Id, Branch = branch,
             Kind = WarehouseKind.TRANSIT, IsActive = true,
         };

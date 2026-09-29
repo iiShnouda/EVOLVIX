@@ -10,7 +10,7 @@ namespace SKB.Api.Controllers;
 
 /// <summary>
 /// Items (الأصناف): search for invoice lines (name / SKU / any unit's barcode), and the item editor —
-/// names in both languages, category, units with their barcodes, and prices per unit and level.
+/// name, category, units with their barcodes, and prices per unit and level.
 /// Adding needs <c>products:create</c>, editing <c>products:edit</c>, prices <c>prices:edit</c>.
 /// A variant (size × color of a model) takes its name, category and units from its model; here it
 /// can change its SKU, barcodes, reorder level, active state and prices.
@@ -21,18 +21,16 @@ namespace SKB.Api.Controllers;
 public sealed class ProductsController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly TranslationQueue _translations;
     private readonly AuditService _audit;
 
-    public ProductsController(AppDbContext db, TranslationQueue translations, AuditService audit)
+    public ProductsController(AppDbContext db, AuditService audit)
     {
         _db = db;
-        _translations = translations;
         _audit = audit;
     }
 
     /// <summary>
-    /// Product search for invoice lines: name (either language), SKU or barcode. An exact barcode
+    /// Product search for invoice lines: name, SKU or barcode. An exact barcode
     /// comes first with <c>matchedUnitId</c> set, so scanning a carton adds a carton.
     /// </summary>
     [HttpGet]
@@ -52,8 +50,6 @@ public sealed class ProductsController : ControllerBase
                 .Where(u => u.Barcode != null && u.Barcode.ToLower() == s && u.Product!.IsActive)
                 .FirstOrDefaultAsync();
             q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
-                || (p.NameAr != null && p.NameAr.ToLower().Contains(s))
-                || (p.NameEn != null && p.NameEn.ToLower().Contains(s))
                 || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
         }
         var rows = await q.Include(p => p.Size).Include(p => p.Color)
@@ -77,10 +73,9 @@ public sealed class ProductsController : ControllerBase
     [Authorize(Policy = Permissions.ProductsCreate)]
     public async Task<ActionResult<ProductDetailDto>> Create([FromBody] CreateProductRequest req)
     {
-        var product = new Product();
-        var (ar, en) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (!Loc.Apply(product, ar, en))
-            return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
+        var name = Loc.Clean(req.Name);
+        if (name is null) return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
+        var product = new Product { Name = name };
 
         if (!Guid.TryParse(req.CategoryId, out var categoryId) || !await _db.Categories.AnyAsync(c => c.Id == categoryId))
             return BadRequest(new { message = "Choose a category.", code = "category_not_found" });
@@ -116,7 +111,6 @@ public sealed class ProductsController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        _translations.Notify();
         await AuditAsync("create", "product", product.Id);
         return Created($"/api/products/{product.Id}", await DetailAsync(product.Id));
     }
@@ -134,12 +128,12 @@ public sealed class ProductsController : ControllerBase
             code = "variant_managed_by_model",
         });
 
-        var (ar, en) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (ar is not null || en is not null)
+        if (req.Name is not null)
         {
             if (isVariant) return variantRule;
-            if (!Loc.Apply(product, ar, en))
-                return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
+            var name = Loc.Clean(req.Name);
+            if (name is null) return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
+            product.Name = name;
         }
         if (req.CategoryId is not null)
         {
@@ -212,7 +206,6 @@ public sealed class ProductsController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        _translations.Notify();
         await AuditAsync("update", "product", id);
         return Ok(await DetailAsync(id));
     }
@@ -280,7 +273,7 @@ public sealed class ProductsController : ControllerBase
         var currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
         return new ProductDetailDto(
-            p.Id.ToString(), p.Sku, Loc.Name(p), Mapper.ToNames(p), p.CategoryId.ToString(), Loc.Name(p.Category),
+            p.Id.ToString(), p.Sku, Loc.Name(p), p.CategoryId.ToString(), Loc.Name(p.Category),
             p.ReorderLevel, p.IsActive, p.StockOnHand, p.CostPrice, await HasMovementsAsync(new[] { id }),
             p.ModelId?.ToString(), p.Model is null ? null : Loc.Name(p.Model),
             p.SizeId?.ToString(), p.Size is null ? null : Loc.Name(p.Size),

@@ -10,7 +10,6 @@ import {
   useCompanySettings,
   useCreateBranch,
   useCreateWarehouse,
-  useTranslationStatus,
   useUpdateBranch,
   useUpdateWarehouse,
 } from '../lib/queries';
@@ -18,19 +17,16 @@ import {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-const EMPTY: NameValues = { ar: '', en: '' };
+const EMPTY: NameValues = '';
 
 /**
  * Branches & warehouses (الفروع والمخازن): every branch with the warehouses that hold its stock.
  * Managers add and rename branches, add, rename, close or reopen warehouses and pick each branch's
- * default. Names are typed in the screen language; AI fills the other language after saving
- * (editable). The server refuses closing a warehouse that still holds stock or is the default.
+ * default. Names are kept exactly as typed. The server refuses closing a warehouse that still holds stock or is the default.
  */
 export function BranchesPage() {
   const { t } = useT();
-  // While AI translations are on the way, refresh the list so they appear by themselves.
-  const waiting = (useTranslationStatus().data?.pending ?? 0) > 0;
-  const branches = useBranches(waiting);
+  const branches = useBranches();
   const canManage = useAuth((s) => s.user?.permissions ?? []).includes('branches:manage');
   const currency = useCompanySettings().data?.currency ?? 'EGP';
   const [adding, setAdding] = useState(false);
@@ -68,7 +64,7 @@ export function BranchesPage() {
   );
 }
 
-/** Add a branch: its name in the screen language (AI translates it) and where it is. */
+/** Add a branch: its name (as typed) and where it is. */
 function NewBranch({ onDone }: { onDone: () => void }) {
   const { t } = useT();
   const create = useCreateBranch();
@@ -94,13 +90,7 @@ function NewBranch({ onDone }: { onDone: () => void }) {
   return (
     <Card className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_140px]">
-        <NameFields
-          mode="create"
-          values={names}
-          onChange={setNames}
-          label={t('branches.name')}
-          autoFocus
-        />
+        <NameFields values={names} onChange={setNames} label={t('branches.name')} autoFocus />
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('branches.location')}</span>
           <input className={field} value={location} onChange={(e) => setLocation(e.target.value)} />
@@ -118,12 +108,7 @@ function NewBranch({ onDone }: { onDone: () => void }) {
       <p className="text-xs text-faint">{t('branches.newHint')}</p>
       {error && <p className="text-xs text-destructive">{error.message}</p>}
       <div className="flex gap-2">
-        <Button
-          icon="check"
-          loading={create.isPending}
-          disabled={!typed.nameAr && !typed.nameEn}
-          onClick={save}
-        >
+        <Button icon="check" loading={create.isPending} disabled={!typed.name} onClick={save}>
           {t('common.save')}
         </Button>
         <Button variant="ghost" onClick={onDone}>
@@ -149,7 +134,7 @@ function BranchCard({
   const [names, setNames] = useState<NameValues>(EMPTY);
   const [code, setCode] = useState('');
   const [editing, setEditing] = useState(false);
-  const [branchNames, setBranchNames] = useState<NameValues>(namesFrom(branch.names));
+  const [branchNames, setBranchNames] = useState<NameValues>(namesFrom(branch.name));
   const [location, setLocation] = useState(branch.location ?? '');
   const error = create.error as ApiError | null;
   const editError = update.error as ApiError | null;
@@ -175,7 +160,7 @@ function BranchCard({
       await update.mutateAsync({
         id: branch.id,
         input: {
-          ...changedNames(branchNames, branch.names),
+          ...changedNames(branchNames, branch.name),
           location: location.trim() || undefined,
         },
       });
@@ -190,13 +175,7 @@ function BranchCard({
       <div className="border-b border-line p-4">
         {editing ? (
           <div className="space-y-3">
-            <NameFields
-              mode="edit"
-              values={branchNames}
-              onChange={setBranchNames}
-              names={branch.names}
-              autoFocus
-            />
+            <NameFields values={branchNames} onChange={setBranchNames} autoFocus />
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('branches.location')}</span>
               <input
@@ -220,9 +199,6 @@ function BranchCard({
             <div className="min-w-0">
               <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
                 <span className="truncate">{branch.name}</span>
-                {branch.names.pending && (
-                  <span className="text-xs font-normal text-warning">{t('names.translating')}</span>
-                )}
               </h2>
               <p className="text-xs text-muted">
                 {branch.code}
@@ -236,7 +212,7 @@ function BranchCard({
                   size="sm"
                   variant="secondary"
                   onClick={() => {
-                    setBranchNames(namesFrom(branch.names));
+                    setBranchNames(namesFrom(branch.name));
                     setLocation(branch.location ?? '');
                     setEditing(true);
                   }}
@@ -263,7 +239,6 @@ function BranchCard({
         <div className="space-y-2 border-t border-line bg-surface-2 p-4">
           <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto] sm:items-end">
             <NameFields
-              mode="create"
               values={names}
               onChange={setNames}
               label={t('warehouse.name')}
@@ -283,7 +258,7 @@ function BranchCard({
               icon="plus"
               size="md"
               loading={create.isPending}
-              disabled={!typed.nameAr && !typed.nameEn}
+              disabled={!typed.name}
               onClick={add}
             >
               {t('warehouse.add')}
@@ -311,7 +286,7 @@ function WarehouseRow({
   const { t, locale } = useT();
   const update = useUpdateWarehouse();
   const [editing, setEditing] = useState(false);
-  const [names, setNames] = useState<NameValues>(namesFrom(w.names));
+  const [names, setNames] = useState<NameValues>(namesFrom(w.name));
   const error = update.error as ApiError | null;
 
   async function run(input: Parameters<typeof update.mutateAsync>[0]['input']) {
@@ -326,16 +301,13 @@ function WarehouseRow({
   return (
     <li className={`p-4 ${w.isActive ? '' : 'opacity-60'}`}>
       {editing ? (
-        <NameFields mode="edit" values={names} onChange={setNames} names={w.names} autoFocus />
+        <NameFields values={names} onChange={setNames} autoFocus />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{w.name}</span>
           <span className="text-xs text-muted tnum">{w.code}</span>
           {w.isDefault && <Badge tone="brand">{t('warehouse.default')}</Badge>}
           {!w.isActive && <Badge>{t('warehouse.closed')}</Badge>}
-          {w.names.pending && (
-            <span className="text-xs text-warning">{t('names.translating')}</span>
-          )}
         </div>
       )}
 
@@ -353,7 +325,7 @@ function WarehouseRow({
                 size="sm"
                 icon="check"
                 loading={update.isPending}
-                onClick={() => run(changedNames(names, w.names))}
+                onClick={() => run(changedNames(names, w.name))}
               >
                 {t('common.save')}
               </Button>
@@ -367,7 +339,7 @@ function WarehouseRow({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  setNames(namesFrom(w.names));
+                  setNames(namesFrom(w.name));
                   setEditing(true);
                 }}
               >

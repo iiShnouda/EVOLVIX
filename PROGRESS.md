@@ -202,8 +202,8 @@ own permission, and roles bundle them
 - **Size × color models:** a model (e.g. "Basic T-shirt") is made in sizes × colors.
   - Each size/color is a normal item with its own SKU (`TSH-BLACK-M`), barcode and stock. So
     stock, per-branch cost, transfers, stocktake and returns all work unchanged.
-  - Its name is composed in both languages ("Basic T-shirt — Black / M") and follows the model
-    and color names, including their AI translations.
+  - Its name is composed ("Basic T-shirt — Black / M") and follows the model
+    and color names (as typed; AI translation was removed later).
   - It uses the model's units and prices until it gets prices of its own.
   - Adding sizes or colors later adds the missing items. A model keeps the dimensions it was made with.
 - **Invoices in units:** each sales / purchase line picks one of the item's units.
@@ -258,7 +258,7 @@ own permission, and roles bundle them
   - The checks cover permissions, validation, price inheritance, cartons and pieces, exact
     returns, variants, reports, and 5 parallel carton sales where exactly 2 succeed.
   - 15 database invariants hold on both (`scripts/checks/invariants.mjs`).
-  - Translation 12/12 against a stand-in AI server: variant names follow the translations.
+  - (Translation checks passed at the time; AI translation was removed later the same day.)
   - Requests from the old client (no unit fields) still work.
   - In the browser, in EN and AR and at phone width with no sideways scrolling:
     - create an item with a carton;
@@ -301,41 +301,25 @@ own permission, and roles bundle them
 - **Not yet tested on a real phone or an emulator.** There is no emulator image on the build
   PC (about 1.5 GB to download).
 
-**AI translation of names** (owner request 2026-09-29) — DOMAIN.md §2.1b
-- **Model:** branches, warehouses, categories and products store `NameAr`/`NameEn` plus
-  `NameSource` / `NameAuto` / `NamePending` (`ILocalizedName`). The rules are in `Loc.Apply`:
-  - A person's text is never overwritten.
-  - An AI translation follows its source until a person corrects it.
-- **`TranslationWorker`** (background service): translates waiting names in batches through any
-  OpenAI-compatible API (default CodeCraft `https://codecraftapi.com/v1`).
-  - Offline or on failure, it backs off from 10s up to 5 min and keeps names waiting.
-  - A save wakes it at once.
-  - Model: `Translation__Model`, or the first cheap-looking one from `/v1/models`.
-  - **Key:** set `Translation__ApiKey` on the server (Render dashboard). It is never sent to browsers.
-- **Language:** the API answers in `Accept-Language` (the web app sends the screen language and
-  refetches when it changes).
-  - Every list, card, valuation, transfer and invoice name follows the screen language.
-  - Inventory and product search match both languages.
-- **Branches & warehouses page:**
-  - Add a branch (it gets a "Main store" automatically) and edit a branch.
-  - Create forms show one name field in the screen language.
-  - Edit forms show both languages, with an "AI" mark and "Translating…" while waiting.
-  - Settings shows whether translation is on, how many names wait, and the last problem.
-- Endpoints: `POST`/`PUT /api/branches`, `GET /api/settings/translation`. Name fields
-  `nameAr`/`nameEn` (a plain `name` still works, taken in the request language).
-- **Migration `LocalizedNames`:** existing names become the English source with Arabic
-  waiting. The seed has Arabic names.
-- **Verified:** translation 24/24 against a stand-in AI server:
-  - backfill
-  - Arabic-only create
-  - the edit rules
-  - search in both languages
-  - **offline: waits, falls back, catches up once the service is back**
-  - localized invoices and item card
-
-  The other suites still pass on both an upgraded and a fresh database. The browser flow was
-  checked in Arabic, exactly as requested: only the Arabic field while creating, then both in
-  edit with the AI English.
+**Names: one field, no translation** (owner decision 2026-09-29) — DOMAIN.md §2.1b
+- The AI translation of names was **removed** at the owner's request. It had translated branch,
+  warehouse, category and item names into the other language with an AI service.
+- Every name is now one field (`INamed.Name`), typed in Arabic or English and shown exactly as
+  typed on both screen languages. Only the app's own texts are bilingual.
+- **Removed:** the translation worker, the `Translation__*` settings, `GET /api/settings/translation`
+  and its Settings card. `Translation__ApiKey` on Render can be deleted.
+- **Changed:** the second-language fields are gone from the forms and the API. Requests send
+  `name`; answers no longer carry `names`.
+- **Migration `SingleNames`:** keeps each record's name as typed and drops `NameAr`, `NameEn`,
+  `NameSource`, `NameAuto` and `NamePending` from 8 tables. The starter units and price levels
+  the system created switch to Arabic (قطعة، كرتونة، دستة، سعر العملاء، سعر الموردين). The seed
+  uses the same Arabic starters.
+- **Verified:**
+  - catalog 210/210, staff 57/57 and charges 70/70 on a fresh database and on an upgraded one.
+  - 20 invariants hold.
+  - An upgraded database has no second-language columns left.
+  - In the browser: one name field on branches, catalog setup and the item editor, and no
+    translation card in Settings.
 
 **Per-branch cost** (owner decision 2026-09-29)
 - Each branch has its own weighted-average cost per item. The data lives in `StockCost`:
@@ -507,7 +491,7 @@ and warehouses shipped):
    - A sales user can't change a price.
 5. **DOMAIN.md §7 step 4:**
    - ~~invoice charges, bonus lines and sales reps~~ done (4a; no commission)
-   - **names: one field, no translation** (owner 2026-09-29, next)
+   - ~~names: one field, no translation~~ done
    - delivery, shipments / waybills and cash on delivery (4b)
    - the payment methods the owner listed (DOMAIN.md §2.5–2.6)
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
@@ -518,6 +502,7 @@ and warehouses shipped):
 11. ~~**Phase 8 — Android**~~ done: a real Android app ships (see above).
 
 **Decisions (2026-09-29, owner):**
+- Names are one field, kept as typed in Arabic or English; nothing is translated (AI translation removed).
 - Every action has its own permission; roles bundle them (a permissions screen will let the owner assign them).
 - Price levels start as the supplier price and the customer price; more can be added.
 - Changing a level's price on an invoice, or picking another level, needs a permission.

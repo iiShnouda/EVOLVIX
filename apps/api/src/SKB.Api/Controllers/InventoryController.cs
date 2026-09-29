@@ -78,10 +78,10 @@ public sealed class InventoryController : ControllerBase
             rows = rows.Where(i => i.ModelId == model.ToString());
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // Match either language of the name, the SKU or the barcode of any of its units.
+            // Match the name, the SKU or the barcode of any of its units.
             var s = search.Trim().ToLowerInvariant();
             bool Has(string? v) => v is not null && v.ToLowerInvariant().Contains(s);
-            var hits = products.Where(p => Has(p.Name) || Has(p.NameAr) || Has(p.NameEn) || Has(p.Sku)
+            var hits = products.Where(p => Has(p.Name) || Has(p.Sku)
                                            || p.Units.Any(u => Has(u.Barcode)))
                 .Select(p => p.Id.ToString()).ToHashSet();
             rows = rows.Where(i => hits.Contains(i.Id));

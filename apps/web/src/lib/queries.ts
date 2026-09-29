@@ -9,7 +9,6 @@ import type {
   BranchWithWarehouses,
   CreateBranchInput,
   CreateTransferInput,
-  TranslationStatus,
   UpdateBranchInput,
   CreateWarehouseInput,
   StockTransfer,
@@ -241,12 +240,10 @@ export function useWarehouses(activeOnly = false) {
   });
 }
 
-/** `poll`: refresh every few seconds (e.g. while AI translations are on the way). */
-export function useBranches(poll = false) {
+export function useBranches() {
   return useQuery({
     queryKey: ['inventory', 'branches'],
     queryFn: () => api.get<BranchWithWarehouses[]>('/branches'),
-    refetchInterval: poll ? 5_000 : false,
   });
 }
 
@@ -320,15 +317,6 @@ export function useUpdateBranch() {
   });
 }
 
-/** Refreshes on its own while names are waiting, so AI translations appear without reloading. */
-export function useTranslationStatus() {
-  return useQuery({
-    queryKey: ['settings', 'translation'],
-    queryFn: () => api.get<TranslationStatus>('/settings/translation'),
-    refetchInterval: (q) => ((q.state.data?.pending ?? 0) > 0 ? 10_000 : false),
-  });
-}
-
 export function useCreateWarehouse() {
   const qc = useQueryClient();
   return useMutation({
@@ -377,39 +365,33 @@ function invalidateCatalog(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ['catalog'] });
   void qc.invalidateQueries({ queryKey: ['products'] });
   void qc.invalidateQueries({ queryKey: ['inventory'] });
-  void qc.invalidateQueries({ queryKey: ['settings', 'translation'] });
 }
 
-/** `poll`: refresh every few seconds while AI translations are on the way. */
-export function useUnits(poll = false) {
+export function useUnits() {
   return useQuery({
     queryKey: ['catalog', 'units'],
     queryFn: () => api.get<UnitOfMeasure[]>('/units'),
-    refetchInterval: poll ? 5_000 : false,
   });
 }
 
-export function useCategories(poll = false) {
+export function useCategories() {
   return useQuery({
     queryKey: ['catalog', 'categories'],
     queryFn: () => api.get<Category[]>('/categories'),
-    refetchInterval: poll ? 5_000 : false,
   });
 }
 
-export function usePriceLevels(poll = false) {
+export function usePriceLevels() {
   return useQuery({
     queryKey: ['catalog', 'price-levels'],
     queryFn: () => api.get<PriceLevel[]>('/price-levels'),
-    refetchInterval: poll ? 5_000 : false,
   });
 }
 
-export function useVariantOptions(poll = false) {
+export function useVariantOptions() {
   return useQuery({
     queryKey: ['catalog', 'variant-options'],
     queryFn: () => api.get<VariantOption[]>('/variant-options'),
-    refetchInterval: poll ? 5_000 : false,
   });
 }
 

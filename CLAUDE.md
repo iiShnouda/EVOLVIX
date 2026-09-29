@@ -33,13 +33,13 @@ first‑class concern.
    - Rebuild a shell only when the shell changes, and put its files in
      `apps/web/public/downloads/`.
    - The older WPF client (`SKB.App`/`SKB.Core`) is superseded: don't extend it.
-8. **Names are bilingual data.** Anything people name (branches, warehouses, categories,
-   products, and new entities like them) implements `ILocalizedName`
-   (`Name`/`NameAr`/`NameEn`/`NameSource`/`NameAuto`/`NamePending`).
-   - Update names only through `Loc.Apply`, and call `TranslationQueue.Notify()` after saving.
-   - Map them to DTOs with `Loc.Name(entity)`. The server answers in the caller's
-     `Accept-Language`.
-   - Create forms show one name field (the screen language); edit forms show both (`NameFields`).
+8. **Names are one field, kept as typed (owner decision 2026-09-29).** Anything people name
+   (branches, warehouses, categories, units, price levels, sizes/colors, models, items, and new
+   entities like them) has a single `Name` (`INamed`), typed in Arabic or English and shown the
+   same on both screen languages. **Nothing is translated** — no AI, no second-language field.
+   - Clean input with `Loc.Clean`, map with `Loc.Name(entity)` (it only localizes system rows such
+     as the "in transit" warehouse). Forms use the one-field `NameFields`.
+   - Only the app's own texts are bilingual: they come from `@skb/shared` i18n (rule 5).
 
 9. **Every action has its own permission (owner decision 2026-09-29).** A new feature adds its
    own `resource:action` permission(s) in `Roles.cs` + `@skb/shared` `roles.ts`, enforces them on

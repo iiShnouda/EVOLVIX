@@ -7,8 +7,7 @@ namespace SKB.Api.Services;
 
 /// <summary>
 /// Shared rules of the item catalog (DOMAIN.md §2.2): the units an item comes in, variant names and
-/// SKUs. Used by the item and model editors, and by the translation worker (variant names follow
-/// their model's and options' names in both languages).
+/// SKUs. Used by the item and model editors.
 /// </summary>
 public static class Catalog
 {
@@ -114,36 +113,17 @@ public static class Catalog
         }
     }
 
-    /// <summary>
-    /// A variant's name in both languages: "model — color / size". A side whose part isn't
-    /// translated yet borrows the other language until the translation arrives
-    /// (<see cref="RefreshVariantNamesAsync"/> recomposes it then).
-    /// </summary>
+    /// <summary>A variant's name: "model — color / size", made from their names as typed.</summary>
     public static void ComposeVariantName(Product variant, ProductModel model, VariantOption? size, VariantOption? color)
     {
-        static string? Part(ILocalizedName? e, string lang) => e is null
-            ? null
-            : lang == "ar" ? e.NameAr ?? e.NameEn ?? e.Name : e.NameEn ?? e.NameAr ?? e.Name;
-
-        string Side(string lang)
-        {
-            var options = string.Join(" / ", new[] { Part(color, lang), Part(size, lang) }
-                .Where(s => !string.IsNullOrWhiteSpace(s)));
-            var name = options.Length == 0 ? Part(model, lang) ?? "" : $"{Part(model, lang)} — {options}";
-            return name[..Math.Min(200, name.Length)];
-        }
-
-        variant.NameAr = Side("ar");
-        variant.NameEn = Side("en");
-        variant.NameSource = model.NameSource;
-        variant.NameAuto = null;
-        variant.NamePending = false;
-        variant.Name = model.NameSource == "ar" ? variant.NameAr : variant.NameEn;
+        var options = string.Join(" / ", new[] { color?.Name, size?.Name }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var name = options.Length == 0 ? model.Name : $"{model.Name} — {options}";
+        variant.Name = name[..Math.Min(Loc.MaxName, name.Length)];
     }
 
     /// <summary>
     /// Recompose the names of every variant of <paramref name="modelIds"/> or made in one of
-    /// <paramref name="optionIds"/> — after a model, size or color was renamed or translated. Saves.
+    /// <paramref name="optionIds"/> — after a model, size or color was renamed. Saves.
     /// </summary>
     public static async Task RefreshVariantNamesAsync(AppDbContext db, ICollection<Guid> modelIds,
         ICollection<Guid> optionIds, CancellationToken ct = default)
@@ -161,12 +141,12 @@ public static class Catalog
 
     /// <summary>
     /// A SKU part from a name: the Latin letters and digits of its first word, upper case, up to 6 — or
-    /// <paramref name="fallback"/> when the name has none (e.g. typed in Arabic only).
+    /// <paramref name="fallback"/> when the name has none (e.g. typed in Arabic).
     /// </summary>
-    public static string SkuPart(ILocalizedName? option, string fallback)
+    public static string SkuPart(INamed? option, string fallback)
     {
         if (option is null) return "";
-        var source = option.NameEn ?? option.Name;
+        var source = option.Name;
         foreach (var word in source.ToUpperInvariant().Split(' ', '-', '/', '_'))
         {
             var sb = new StringBuilder();

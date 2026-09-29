@@ -178,7 +178,6 @@ export interface Category {
   name: string;
   /** Active items in the category. */
   itemCount?: number;
-  names?: LocalizedName;
 }
 
 /** Where an item's price at a level came from (see the server's PriceBook). */
@@ -544,7 +543,6 @@ export interface UnitOfMeasure {
   isActive: boolean;
   /** Items that come in this unit. */
   itemCount: number;
-  names: LocalizedName;
 }
 
 export type PriceSide = 'SALE' | 'PURCHASE';
@@ -557,7 +555,6 @@ export interface PriceLevel {
   isDefault: boolean;
   sortOrder: number;
   isActive: boolean;
-  names: LocalizedName;
 }
 
 export type VariantKind = 'SIZE' | 'COLOR';
@@ -569,7 +566,6 @@ export interface VariantOption {
   name: string;
   sortOrder: number;
   isActive: boolean;
-  names: LocalizedName;
 }
 
 /** One unit x level price in an editor. `own` is set by hand; `effective` is what it charges. */
@@ -593,7 +589,6 @@ export interface ProductDetail {
   id: string;
   sku: string;
   name: string;
-  names: LocalizedName;
   categoryId: string;
   categoryName: string;
   reorderLevel: number;
@@ -642,7 +637,6 @@ export interface ModelDetail {
   id: string;
   code: string;
   name: string;
-  names: LocalizedName;
   categoryId: string;
   categoryName: string;
   reorderLevel: number;
@@ -687,29 +681,6 @@ export interface Warehouse {
   quantity: number;
   /** quantity × current average cost, minor units. */
   value: number;
-  /** Both languages of the name, for the edit form. */
-  names: LocalizedName;
-}
-
-/**
- * A name kept in Arabic and English. People type one; the other is filled by AI translation
- * (`auto` names that side) and stays editable. `pending` while the translation hasn't arrived —
- * until then both languages show the typed text.
- */
-export interface LocalizedName {
-  ar: string | null;
-  en: string | null;
-  source: 'ar' | 'en';
-  auto: 'ar' | 'en' | null;
-  pending: boolean;
-}
-
-/** AI translation of names: set up or not, how many names wait, and the last problem. */
-export interface TranslationStatus {
-  configured: boolean;
-  pending: number;
-  lastError: string | null;
-  lastSuccessAt: string | null;
 }
 
 /** A warehouse goods can be sent to on a transfer (any branch). */
@@ -766,7 +737,6 @@ export interface BranchWithWarehouses {
   location?: string | null;
   isActive: boolean;
   warehouses: Warehouse[];
-  names: LocalizedName;
 }
 
 // ---------------------------------------------------------------------------

@@ -24,13 +24,11 @@ public sealed class ModelsController : ControllerBase
     private const int MaxCode = 20;
 
     private readonly AppDbContext _db;
-    private readonly TranslationQueue _translations;
     private readonly AuditService _audit;
 
-    public ModelsController(AppDbContext db, TranslationQueue translations, AuditService audit)
+    public ModelsController(AppDbContext db, AuditService audit)
     {
         _db = db;
-        _translations = translations;
         _audit = audit;
     }
 
@@ -41,9 +39,7 @@ public sealed class ModelsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
-            q = q.Where(m => m.Name.ToLower().Contains(s) || m.Code.ToLower().Contains(s)
-                || (m.NameAr != null && m.NameAr.ToLower().Contains(s))
-                || (m.NameEn != null && m.NameEn.ToLower().Contains(s)));
+            q = q.Where(m => m.Name.ToLower().Contains(s) || m.Code.ToLower().Contains(s));
         }
         var models = await q.ToListAsync();
         var ids = models.Select(m => m.Id).ToList();
@@ -68,10 +64,9 @@ public sealed class ModelsController : ControllerBase
     [Authorize(Policy = Permissions.ProductsCreate)]
     public async Task<ActionResult<ModelDetailDto>> Create([FromBody] CreateModelRequest req)
     {
-        var model = new ProductModel();
-        var (ar, en) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (!Loc.Apply(model, ar, en))
-            return BadRequest(new { message = "The model needs a name.", code = "bad_name" });
+        var modelName = Loc.Clean(req.Name);
+        if (modelName is null) return BadRequest(new { message = "The model needs a name.", code = "bad_name" });
+        var model = new ProductModel { Name = modelName };
 
         if (!Guid.TryParse(req.CategoryId, out var categoryId) || !await _db.Categories.AnyAsync(c => c.Id == categoryId))
             return BadRequest(new { message = "Choose a category.", code = "category_not_found" });
@@ -122,7 +117,6 @@ public sealed class ModelsController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        _translations.Notify();
         await AuditAsync("create", "product_model", model.Id);
         return Created($"/api/models/{model.Id}", await DetailAsync(model.Id));
     }
@@ -137,11 +131,11 @@ public sealed class ModelsController : ControllerBase
             .Where(p => p.ModelId == id).ToListAsync();
         var renamed = false;
 
-        var (ar, en) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (ar is not null || en is not null)
+        if (req.Name is not null)
         {
-            if (!Loc.Apply(model, ar, en))
-                return BadRequest(new { message = "The model needs a name.", code = "bad_name" });
+            var name = Loc.Clean(req.Name);
+            if (name is null) return BadRequest(new { message = "The model needs a name.", code = "bad_name" });
+            model.Name = name;
             renamed = true;
         }
         if (req.CategoryId is not null)
@@ -248,7 +242,6 @@ public sealed class ModelsController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        _translations.Notify();
         await AuditAsync("update", "product_model", id);
         return Ok(await DetailAsync(id));
     }
@@ -328,7 +321,7 @@ public sealed class ModelsController : ControllerBase
             .OrderBy(o => o.SortOrder).ThenBy(o => Loc.Name(o));
 
         return new ModelDetailDto(
-            model.Id.ToString(), model.Code, Loc.Name(model), Mapper.ToNames(model),
+            model.Id.ToString(), model.Code, Loc.Name(model),
             model.CategoryId.ToString(), Loc.Name(model.Category), model.ReorderLevel, model.IsActive, hasMovements,
             units.Select(u => new ItemUnitDto(u.UnitId.ToString(), Loc.Name(u.Unit), u.Factor, null)).ToArray(),
             units.SelectMany(u => levels.Select(l =>

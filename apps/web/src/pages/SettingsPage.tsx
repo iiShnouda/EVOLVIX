@@ -3,9 +3,8 @@ import { COUNTRIES, CURRENCIES, findCountry, type CompanySettings } from '@skb/s
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
-import { useCompanySettings, useTranslationStatus, useUpdateSettings } from '../lib/queries';
+import { useCompanySettings, useUpdateSettings } from '../lib/queries';
 import { GetApps } from '../components/GetApps';
-import { formatDateTime, formatNumber } from '@skb/shared';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -183,8 +182,6 @@ export function SettingsPage() {
         </label>
       </Card>
 
-      <TranslationCard />
-
       <Card>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
           {t('apps.title')}
@@ -204,38 +201,6 @@ export function SettingsPage() {
         </div>
       )}
     </div>
-  );
-}
-
-/** AI translation of names: on or off (the key lives on the server), what waits, the last problem. */
-function TranslationCard() {
-  const { t, locale } = useT();
-  const status = useTranslationStatus().data;
-  if (!status) return null;
-  return (
-    <Card>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-        {t('settings.translation')}
-      </h2>
-      <p className={`text-sm ${status.configured ? 'text-positive' : 'text-muted'}`}>
-        {t(status.configured ? 'settings.translationOn' : 'settings.translationOff')}
-      </p>
-      <dl className="mt-2 space-y-1 text-sm">
-        <div className="flex items-center justify-between">
-          <dt className="text-muted">{t('settings.translationPending')}</dt>
-          <dd className="tnum">{formatNumber(status.pending, locale)}</dd>
-        </div>
-        {status.lastError && (
-          <div className="flex items-start justify-between gap-3">
-            <dt className="text-muted">{t('settings.translationError')}</dt>
-            <dd className="text-end text-xs text-warning">{status.lastError}</dd>
-          </div>
-        )}
-        {status.lastSuccessAt && (
-          <p className="text-xs text-faint tnum">{formatDateTime(status.lastSuccessAt, locale)}</p>
-        )}
-      </dl>
-    </Card>
   );
 }
 

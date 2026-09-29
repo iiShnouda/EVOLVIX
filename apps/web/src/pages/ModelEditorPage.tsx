@@ -56,7 +56,7 @@ export function ModelEditorPage() {
   const update = useUpdateModel();
   const setPrices = useSetModelPrices();
 
-  const [names, setNames] = useState<NameValues>({ ar: '', en: '' });
+  const [names, setNames] = useState<NameValues>('');
   const [code, setCode] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [reorder, setReorder] = useState('0');
@@ -72,7 +72,7 @@ export function ModelEditorPage() {
       ? `${m.id}:${m.variants.length}:${m.units.length}:${m.prices.map((p) => p.own).join()}:${m.name}`
       : '';
     if (!m || loaded === stamp) return;
-    setNames(namesFrom(m.names));
+    setNames(namesFrom(m.name));
     setCategoryId(m.categoryId);
     setReorder(String(m.reorderLevel));
     setRows(rowsFrom(m));
@@ -85,7 +85,7 @@ export function ModelEditorPage() {
   useEffect(() => {
     if (!isNew || rows.length > 0 || !units.data) return;
     const piece =
-      units.data.find((u) => u.names.en === 'Piece' && u.isActive) ??
+      units.data.find((u) => (u.name === 'قطعة' || u.name === 'Piece') && u.isActive) ??
       units.data.find((u) => u.isActive);
     if (piece) setRows([{ unitId: piece.id, factor: 1, barcode: '' }]);
   }, [isNew, rows.length, units.data]);
@@ -122,7 +122,7 @@ export function ModelEditorPage() {
 
   const error = (create.error ?? update.error ?? setPrices.error) as ApiError | null;
   const pending = create.isPending || update.isPending || setPrices.isPending;
-  const typedNames = changedNames(names, isNew ? null : m?.names);
+  const typedNames = changedNames(names, isNew ? null : m?.name);
   const unitsInput = unitRowsToInput(rows, false);
   const priceList = priceChanges(
     prices,
@@ -132,7 +132,7 @@ export function ModelEditorPage() {
   );
   const canSave = isNew
     ? canFields &&
-      (!!typedNames.nameAr || !!typedNames.nameEn) &&
+      !!typedNames.name &&
       !!categoryId &&
       unitRowsValid(rows) &&
       sizeIds.length + colorIds.length > 0 &&
@@ -221,10 +221,8 @@ export function ModelEditorPage() {
             </h2>
             <fieldset disabled={!canFields} className="space-y-3">
               <NameFields
-                mode={isNew ? 'create' : 'edit'}
                 values={names}
                 onChange={setNames}
-                names={m?.names}
                 label={t('model.name')}
                 placeholder={isNew ? t('model.namePlaceholder') : undefined}
                 autoFocus={isNew}

@@ -1,12 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  formatNumber,
-  type LocalizedName,
-  type Permission,
-  type PriceSide,
-  type TranslationKey,
-} from '@skb/shared';
+import { formatNumber, type Permission, type PriceSide, type TranslationKey } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
 import { useT } from '../lib/i18n';
@@ -16,7 +10,6 @@ import {
   useCategories,
   useCreateCatalogEntry,
   usePriceLevels,
-  useTranslationStatus,
   useUnits,
   useUpdateCatalogEntry,
   useVariantOptions,
@@ -37,19 +30,18 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
 interface Entry {
   id: string;
   name: string;
-  names?: LocalizedName;
   isActive?: boolean;
   itemCount?: number;
   isDefault?: boolean;
   side?: PriceSide;
 }
 
-const EMPTY: NameValues = { ar: '', en: '' };
+const EMPTY: NameValues = '';
 
 /**
  * Catalog setup (إعداد الأصناف): the company-wide lists items are built from — units of measure,
  * categories, sizes, colors and price levels. Each list has its own permission; without it the
- * list is read-only. Names are typed in the screen language and AI fills the other one.
+ * list is read-only. Names are kept exactly as typed.
  */
 export function CatalogSetupPage() {
   const { t } = useT();
@@ -57,12 +49,11 @@ export function CatalogSetupPage() {
   const can = useCan();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'units') as Tab;
-  const waiting = (useTranslationStatus().data?.pending ?? 0) > 0;
 
-  const units = useUnits(waiting);
-  const categories = useCategories(waiting);
-  const options = useVariantOptions(waiting);
-  const levels = usePriceLevels(waiting);
+  const units = useUnits();
+  const categories = useCategories();
+  const options = useVariantOptions();
+  const levels = usePriceLevels();
 
   const current = TABS.find((x) => x.key === tab)!;
   const canManage = can(current.permission);
@@ -182,7 +173,6 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
         className={`grid gap-2 sm:items-end ${tab === 'levels' ? 'sm:grid-cols-[1fr_200px_auto]' : 'sm:grid-cols-[1fr_auto]'}`}
       >
         <NameFields
-          mode="create"
           values={names}
           onChange={setNames}
           label={t(LABELS[tab].name)}
@@ -201,12 +191,7 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
             </select>
           </label>
         )}
-        <Button
-          icon="plus"
-          loading={create.isPending}
-          disabled={!typed.nameAr && !typed.nameEn}
-          onClick={add}
-        >
+        <Button icon="plus" loading={create.isPending} disabled={!typed.name} onClick={add}>
           {t('common.add')}
         </Button>
       </div>
@@ -229,7 +214,7 @@ function EntryRow({
   const { t, locale } = useT();
   const update = useUpdateCatalogEntry(list);
   const [editing, setEditing] = useState(false);
-  const [names, setNames] = useState<NameValues>(namesFrom(entry.names));
+  const [names, setNames] = useState<NameValues>(namesFrom(entry.name));
   const error = update.error as ApiError | null;
   const closable = tab !== 'categories';
 
@@ -245,7 +230,7 @@ function EntryRow({
   return (
     <li className={`p-4 ${entry.isActive === false ? 'opacity-60' : ''}`}>
       {editing ? (
-        <NameFields mode="edit" values={names} onChange={setNames} names={entry.names} autoFocus />
+        <NameFields values={names} onChange={setNames} autoFocus />
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{entry.name}</span>
@@ -256,9 +241,6 @@ function EntryRow({
           )}
           {entry.isDefault && <Badge tone="brand">{t('setup.default')}</Badge>}
           {entry.isActive === false && <Badge>{t('setup.closed')}</Badge>}
-          {entry.names?.pending && (
-            <span className="text-xs text-warning">{t('names.translating')}</span>
-          )}
           {entry.itemCount !== undefined && (
             <span className="text-xs text-muted tnum">
               {t('setup.itemCount')}: {formatNumber(entry.itemCount, locale)}
@@ -275,7 +257,7 @@ function EntryRow({
                 size="sm"
                 icon="check"
                 loading={update.isPending}
-                onClick={() => run(changedNames(names, entry.names))}
+                onClick={() => run(changedNames(names, entry.name))}
               >
                 {t('common.save')}
               </Button>
@@ -289,7 +271,7 @@ function EntryRow({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  setNames(namesFrom(entry.names));
+                  setNames(namesFrom(entry.name));
                   setEditing(true);
                 }}
               >

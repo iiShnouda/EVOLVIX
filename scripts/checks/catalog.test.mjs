@@ -12,50 +12,52 @@ const round = (x) => Math.round(x);
 // ------------------------------------------------------------------ catalog lists
 console.log('== catalog lists');
 let units = ok('units list', await owner.get('/units'));
-const byName = (list, en) => list.find((u) => u.names.en === en);
-const piece = byName(units, 'Piece'), carton = byName(units, 'Carton'), dozen = byName(units, 'Dozen');
-check('piece/carton/dozen exist', piece && carton && dozen, units.map((u) => u.names.en));
+// Starter units are named in Arabic (a database from before may still say Piece/Carton/Dozen).
+const byName = (list, ...names) => list.find((u) => names.includes(u.name));
+const piece = byName(units, 'قطعة', 'Piece'), carton = byName(units, 'كرتونة', 'Carton'), dozen = byName(units, 'دستة', 'Dozen');
+check('piece/carton/dozen exist', piece && carton && dozen, units.map((u) => u.name));
 const categories = ok('categories', await owner.get('/categories'));
 const cat = categories[0];
 let levels = ok('price levels', await owner.get('/price-levels'));
 const custLevel = levels.find((l) => l.side === 'SALE' && l.isDefault);
 const suppLevel = levels.find((l) => l.side === 'PURCHASE' && l.isDefault);
 check('default customer + supplier levels', custLevel && suppLevel, levels);
-eq('customer level arabic', custLevel.names.ar, 'سعر العملاء');
-eq('supplier level arabic', suppLevel.names.ar, 'سعر الموردين');
+eq('customer level name', custLevel.name, 'سعر العملاء');
+eq('supplier level name', suppLevel.name, 'سعر الموردين');
 
-eq('dup unit refused', (await owner.post('/units', { nameEn: 'carton' })).data?.code, 'duplicate_name');
-eq('empty unit name refused', (await owner.post('/units', { nameEn: '  ' })).data?.code, 'bad_name');
-eq('sales cannot add unit', (await karim.post('/units', { nameEn: `Sack ${tag}` })).status, 403);
-const sack = ok('inventory adds unit (AR only)', await sara.post('/units', { nameAr: `شوال ${tag}` }));
-check('AR-only unit waits for translation', sack.names.pending === true && sack.names.source === 'ar', sack.names);
-const sackEn = ok('unit in English request', await sara.lang('en').get('/units')).find((u) => u.id === sack.id);
-eq('untranslated unit shows as typed', sackEn.name, `شوال ${tag}`);
-ok('rename unit', await owner.put(`/units/${sack.id}`, { nameEn: `Sack ${tag}` }));
+eq('dup unit refused', (await owner.post('/units', { name: carton.name })).data?.code, 'duplicate_name');
+eq('empty unit name refused', (await owner.post('/units', { name: '  ' })).data?.code, 'bad_name');
+eq('sales cannot add unit', (await karim.post('/units', { name: `Sack ${tag}` })).status, 403);
+const sack = ok('inventory adds a unit in Arabic', await sara.post('/units', { name: `شوال ${tag}` }));
+eq('name kept as typed', sack.name, `شوال ${tag}`);
+const sackEn = ok('units in an English request', await sara.lang('en').get('/units')).find((u) => u.id === sack.id);
+eq('same name on an English screen (never translated)', sackEn.name, `شوال ${tag}`);
+check('no translation fields', !('names' in sackEn), sackEn);
+ok('rename unit', await owner.put(`/units/${sack.id}`, { name: `Sack ${tag}` }));
 
-eq('accountant cannot add price level', (await mona.post('/price-levels', { side: 'SALE', nameEn: `Retail ${tag}` })).status, 403);
-eq('bad side', (await owner.post('/price-levels', { side: 'X', nameEn: 'x' })).data?.code, 'bad_side');
-const retail = ok('owner adds retail level', await owner.post('/price-levels', { side: 'SALE', nameEn: `Retail ${tag}`, nameAr: `قطاعي ${tag}` }));
+eq('accountant cannot add price level', (await mona.post('/price-levels', { side: 'SALE', name: `Retail ${tag}` })).status, 403);
+eq('bad side', (await owner.post('/price-levels', { side: 'X', name: 'x' })).data?.code, 'bad_side');
+const retail = ok('owner adds retail level', await owner.post('/price-levels', { side: 'SALE', name: `Retail ${tag}` }));
 eq('new level not default', retail.isDefault, false);
-eq('dup level name', (await owner.post('/price-levels', { side: 'SALE', nameEn: `retail ${tag}` })).data?.code, 'duplicate_name');
+eq('dup level name', (await owner.post('/price-levels', { side: 'SALE', name: `retail ${tag}` })).data?.code, 'duplicate_name');
 eq('cannot close default level', (await owner.put(`/price-levels/${custLevel.id}`, { isActive: false })).data?.code, 'price_level_is_default');
 eq('cannot un-default', (await owner.put(`/price-levels/${custLevel.id}`, { isDefault: false })).data?.code, 'default_required');
 
-const size = (n) => owner.post('/variant-options', { kind: 'SIZE', nameEn: `${n}${tag}` });
+const size = (n) => owner.post('/variant-options', { kind: 'SIZE', name: `${n}${tag}` });
 const sizeS = ok('add size', await size('S')), sizeM = ok('add size', await size('M')), sizeL = ok('add size', await size('L'));
-const red = ok('add color', await owner.post('/variant-options', { kind: 'COLOR', nameEn: `Red ${tag}`, nameAr: `أحمر ${tag}` }));
-const blue = ok('add color', await owner.post('/variant-options', { kind: 'COLOR', nameEn: `Blue ${tag}`, nameAr: `أزرق ${tag}` }));
-eq('bad kind', (await owner.post('/variant-options', { kind: 'SHAPE', nameEn: 'x' })).data?.code, 'bad_kind');
+const red = ok('add color', await owner.post('/variant-options', { kind: 'COLOR', name: `Red ${tag}` }));
+const blue = ok('add color', await owner.post('/variant-options', { kind: 'COLOR', name: `Blue ${tag}` }));
+eq('bad kind', (await owner.post('/variant-options', { kind: 'SHAPE', name: 'x' })).data?.code, 'bad_kind');
 eq('dup size', (await size('S')).data?.code, 'duplicate_name');
-eq('sales cannot add size', (await karim.post('/variant-options', { kind: 'SIZE', nameEn: `Q${tag}` })).status, 403);
-const newCat = ok('inventory adds category', await sara.post('/categories', { nameEn: `Tools ${tag}` }));
-eq('sales cannot add category', (await karim.post('/categories', { nameEn: `Nope ${tag}` })).status, 403);
+eq('sales cannot add size', (await karim.post('/variant-options', { kind: 'SIZE', name: `Q${tag}` })).status, 403);
+const newCat = ok('inventory adds category', await sara.post('/categories', { name: `Tools ${tag}` }));
+eq('sales cannot add category', (await karim.post('/categories', { name: `Nope ${tag}` })).status, 403);
 
 // ------------------------------------------------------------------ items
 console.log('== items');
 const bc1 = `99${tag}001`, bc2 = `99${tag}024`;
 const itemReq = {
-  nameEn: `Juice 250ml ${tag}`, categoryId: cat.id, reorderLevel: 10,
+  name: `Juice 250ml ${tag}`, categoryId: cat.id, reorderLevel: 10,
   units: [{ unitId: piece.id, factor: 1, barcode: bc1 }, { unitId: carton.id, factor: 24, barcode: bc2 }],
   prices: [
     { unitId: piece.id, priceLevelId: custLevel.id, price: 1200 },
@@ -68,13 +70,13 @@ check('auto SKU', /^ITEM-\d{5}$/.test(juice.sku), juice.sku);
 const cell = (d, unitId, levelId) => d.prices.find((p) => p.unitId === unitId && p.priceLevelId === levelId);
 eq('piece customer price own', [cell(juice, piece.id, custLevel.id).own, cell(juice, piece.id, custLevel.id).source], [1200, 'OWN']);
 eq('carton at retail falls back to default level', [cell(juice, carton.id, retail.id).effective, cell(juice, carton.id, retail.id).source], [27000, 'DEFAULT']);
-check('name pending translation', juice.names.pending === true, juice.names);
+eq('item name as typed', juice.name, `Juice 250ml ${tag}`);
 
-eq('inventory cannot set prices', (await sara.post('/products', { ...itemReq, nameEn: `X ${tag}`, units: [{ unitId: piece.id, factor: 1 }] })).status, 403);
-const plain = ok('inventory creates item without prices', await sara.post('/products', { nameEn: `Tape ${tag}`, categoryId: newCat.id, units: [{ unitId: piece.id, factor: 1 }] }));
-eq('sales cannot create item', (await karim.post('/products', { nameEn: `Y ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }] })).status, 403);
+eq('inventory cannot set prices', (await sara.post('/products', { ...itemReq, name: `X ${tag}`, units: [{ unitId: piece.id, factor: 1 }] })).status, 403);
+const plain = ok('inventory creates item without prices', await sara.post('/products', { name: `Tape ${tag}`, categoryId: newCat.id, units: [{ unitId: piece.id, factor: 1 }] }));
+eq('sales cannot create item', (await karim.post('/products', { name: `Y ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }] })).status, 403);
 
-const bad = async (name, body, code) => eq(name, (await owner.post('/products', { nameEn: `Bad ${tag} ${name}`, categoryId: cat.id, ...body })).data?.code, code);
+const bad = async (name, body, code) => eq(name, (await owner.post('/products', { name: `Bad ${tag} ${name}`, categoryId: cat.id, ...body })).data?.code, code);
 await bad('two base units', { units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 1 }] }, 'one_base_unit');
 await bad('no base unit', { units: [{ unitId: carton.id, factor: 12 }] }, 'one_base_unit');
 await bad('factor 0', { units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 0 }] }, 'bad_factor');
@@ -87,7 +89,7 @@ await bad('unknown unit', { units: [{ unitId: '00000000-0000-0000-0000-000000000
 await bad('no units', { units: [] }, 'no_units');
 await bad('negative reorder', { reorderLevel: -1, units: [{ unitId: piece.id, factor: 1 }] }, 'bad_reorder');
 await bad('dup sku', { sku: juice.sku.toLowerCase(), units: [{ unitId: piece.id, factor: 1 }] }, 'duplicate_sku');
-eq('no category', (await owner.post('/products', { nameEn: `NoCat ${tag}`, units: [{ unitId: piece.id, factor: 1 }] })).data?.code, 'category_not_found');
+eq('no category', (await owner.post('/products', { name: `NoCat ${tag}`, units: [{ unitId: piece.id, factor: 1 }] })).data?.code, 'category_not_found');
 await bad('price for unit not on item', { units: [{ unitId: piece.id, factor: 1 }], prices: [{ unitId: carton.id, priceLevelId: custLevel.id, price: 5 }] }, 'bad_price_cell');
 await bad('negative price', { units: [{ unitId: piece.id, factor: 1 }], prices: [{ unitId: piece.id, priceLevelId: custLevel.id, price: -5 }] }, 'bad_price');
 
@@ -129,7 +131,7 @@ console.log('== purchases in cartons');
 eq('purchase unit not on item', (await owner.post('/purchases/invoices', { partyId: supplier.id, lines: [{ productId: juice.id, unitId: dozen.id, quantity: 1, unitCost: 100 }] })).data?.code, 'unit_not_found');
 eq('purchase qty 0', (await owner.post('/purchases/invoices', { partyId: supplier.id, lines: [{ productId: juice.id, quantity: 0, unitCost: 100 }] })).data?.code, 'bad_qty');
 eq('purchase qty too big', (await owner.post('/purchases/invoices', { partyId: supplier.id, lines: [{ productId: juice.id, quantity: 1000001, unitCost: 100 }] })).data?.code, 'bad_qty');
-const bulk = ok('bulk item', await owner.post('/products', { nameEn: `Bulk ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 100000 }] }));
+const bulk = ok('bulk item', await owner.post('/products', { name: `Bulk ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 100000 }] }));
 eq('base quantity overflow refused', (await owner.post('/purchases/invoices', { partyId: supplier.id, lines: [{ productId: bulk.id, unitId: carton.id, quantity: 1000000, unitCost: 1 }] })).data?.code, 'bad_qty');
 const pur = ok('buy 2 cartons @ 230.00 + 5 pieces @ 9.50', await owner.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: mainWh.id, taxPercent: 0,
@@ -138,7 +140,7 @@ const pur = ok('buy 2 cartons @ 230.00 + 5 pieces @ 9.50', await owner.post('/pu
     { productId: juice.id, quantity: 5, unitCost: 950 }],
 }));
 const cartonLine = pur.lines.find((l) => l.productId === juice.id && l.unitFactor === 24);
-eq('carton purchase line', [cartonLine.quantity, cartonLine.unitQuantity, cartonLine.unitPrice, cartonLine.lineTotal, cartonLine.lineCost, cartonLine.unitName], [48, 2, 23000, 46000, 46000, 'Carton']);
+eq('carton purchase line', [cartonLine.quantity, cartonLine.unitQuantity, cartonLine.unitPrice, cartonLine.lineTotal, cartonLine.lineCost, cartonLine.unitName], [48, 2, 23000, 46000, 46000, carton.name]);
 eq('purchase priced at supplier level', pur.priceLevelId, suppLevel.id);
 let jd = (await owner.get(`/products/${juice.id}`)).data;
 // the pool average is kept in whole piastres after each receipt: 46000/48 → 958, then (48×958 + 4750)/53 → 957
@@ -149,7 +151,7 @@ const sale = async (who, body) => who.post('/sales/invoices', { partyId: c1.id, 
 const cost = jd.costPrice;
 let r = await sale(karim, { lines: [{ productId: juice.id, unitId: carton.id, quantity: 1, unitPrice: 27000 }] });
 const s1 = ok('sales sells 1 carton at level price', r);
-eq('sale line in cartons', [s1.lines[0].quantity, s1.lines[0].unitQuantity, s1.lines[0].unitName, s1.lines[0].lineTotal], [24, 1, 'Carton', 27000]);
+eq('sale line in cartons', [s1.lines[0].quantity, s1.lines[0].unitQuantity, s1.lines[0].unitName, s1.lines[0].lineTotal], [24, 1, carton.name, 27000]);
 eq('sale profit uses piece cost × 24', s1.lines[0].lineProfit, 27000 - 24 * cost);
 eq('sale priced at customer level', s1.priceLevelId, custLevel.id);
 r = await sale(karim, { lines: [{ productId: juice.id, unitId: carton.id, quantity: 1, unitPrice: 26000 }] });
@@ -209,9 +211,9 @@ ok('buy 2 more cartons', await owner.post('/purchases/invoices', { partyId: supp
 const big = ok('sell 2 cartons with tax + discount', await sale(mona, { taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitPrice: 27000, discount: 100 }] }));
 const bl = big.lines[0];
 const ret1 = ok('return 1 whole carton', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 24 }] }));
-eq('whole carton returned in cartons', [ret1.lines[0].unitName, ret1.lines[0].unitQuantity, ret1.lines[0].unitPrice, ret1.lines[0].discount, ret1.lines[0].lineTotal], ['Carton', 1, 27000, 50, 26950]);
+eq('whole carton returned in cartons', [ret1.lines[0].unitName, ret1.lines[0].unitQuantity, ret1.lines[0].unitPrice, ret1.lines[0].discount, ret1.lines[0].lineTotal], [carton.name, 1, 27000, 50, 26950]);
 const ret2 = ok('return 5 pieces', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 5 }] }));
-eq('pieces returned in base unit', [ret2.lines[0].unitName, ret2.lines[0].unitFactor, ret2.lines[0].unitQuantity], ['Piece', 1, 5]);
+eq('pieces returned in base unit', [ret2.lines[0].unitName, ret2.lines[0].unitFactor, ret2.lines[0].unitQuantity], [piece.name, 1, 5]);
 eq('pieces gross share', ret2.lines[0].lineTotal + ret2.lines[0].discount, round(54000 * 5 / 48));
 const ret3 = ok('return the last 19 pieces', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 19 }] }));
 const rets = [ret1, ret2, ret3];
@@ -227,19 +229,19 @@ eq('over-return refused', (await owner.post(`/sales/invoices/${big.id}/returns`,
 const beforePR = (await owner.get(`/products/${juice.id}`)).data;
 const prl = cartonLine;
 const pret = ok('return 1 carton to supplier', await owner.post(`/purchases/invoices/${pur.id}/returns`, { lines: [{ lineId: prl.id, quantity: 24 }] }));
-eq('purchase return value = carton price', [pret.lines[0].lineCost, pret.lines[0].unitName], [23000, 'Carton']);
+eq('purchase return value = carton price', [pret.lines[0].lineCost, pret.lines[0].unitName], [23000, carton.name]);
 const afterPR = (await owner.get(`/products/${juice.id}`)).data;
 const expectAvg = round((beforePR.stockOnHand * beforePR.costPrice - 23000) / (beforePR.stockOnHand - 24));
 check('average backs out exact value', Math.abs(afterPR.costPrice - expectAvg) <= 1, { got: afterPR.costPrice, expectAvg });
 const pret2 = ok('return 7 pieces of the other carton', await owner.post(`/purchases/invoices/${pur.id}/returns`, { lines: [{ lineId: prl.id, quantity: 7 }] }));
-eq('partial carton to supplier in pieces', [pret2.lines[0].unitName, pret2.lines[0].lineCost], ['Piece', round(46000 * 7 / 48)]);
+eq('partial carton to supplier in pieces', [pret2.lines[0].unitName, pret2.lines[0].lineCost], [piece.name, round(46000 * 7 / 48)]);
 const pret3 = ok('return rest of that line', await owner.post(`/purchases/invoices/${pur.id}/returns`, { lines: [{ lineId: prl.id, quantity: 17 }] }));
 eq('purchase line cost returned exactly', pret.lines[0].lineCost + pret2.lines[0].lineCost + pret3.lines[0].lineCost, 46000);
 
 // ------------------------------------------------------------------ models & variants
 console.log('== models');
 const modelReq = {
-  nameEn: `Polo ${tag}`, nameAr: `بولو ${tag}`, code: `PL${tag}`, categoryId: cat.id, reorderLevel: 6,
+  name: `Polo ${tag}`, code: `PL${tag}`, categoryId: cat.id, reorderLevel: 6,
   sizeIds: [sizeS.id, sizeM.id], colorIds: [red.id, blue.id],
   units: [{ unitId: piece.id, factor: 1 }, { unitId: dozen.id, factor: 12 }],
   prices: [{ unitId: piece.id, priceLevelId: custLevel.id, price: 15000 }, { unitId: piece.id, priceLevelId: suppLevel.id, price: 9000 }],
@@ -254,7 +256,7 @@ eq('variant SKUs', m.variants.map((v) => v.sku).sort(), [`PL${tag}-BLUE-M${tag}`
 const vRedS = m.variants.find((v) => v.colorId === red.id && v.sizeId === sizeS.id);
 eq('variant name EN', vRedS.name, `Polo ${tag} — Red ${tag} / S${tag}`);
 const vAr = (await owner.lang('ar').get(`/models/${m.id}`)).data.variants.find((v) => v.productId === vRedS.productId);
-eq('variant name AR', vAr.name, `بولو ${tag} — أحمر ${tag} / S${tag}`);
+eq('variant name the same on an Arabic screen', vAr.name, `Polo ${tag} — Red ${tag} / S${tag}`);
 eq('dup model code', (await owner.post('/models', { ...modelReq })).data?.code, 'duplicate_code');
 let vd = (await owner.get(`/products/${vRedS.productId}`)).data;
 eq('variant inherits model price', [cell(vd, piece.id, custLevel.id).effective, cell(vd, piece.id, custLevel.id).source], [15000, 'MODEL']);
@@ -271,7 +273,7 @@ vd = ok('reset variant to model price', await owner.put(`/products/${vRedS.produ
 eq('back to model price', [cell(vd, piece.id, custLevel.id).effective, cell(vd, piece.id, custLevel.id).source], [14000, 'MODEL']);
 eq('inventory cannot set model prices', (await sara.put(`/models/${m.id}/prices`, { prices: [{ unitId: piece.id, priceLevelId: custLevel.id, price: 1 }] })).status, 403);
 
-eq('variant name locked', (await owner.put(`/products/${vRedS.productId}`, { nameEn: 'x' })).data?.code, 'variant_managed_by_model');
+eq('variant name locked', (await owner.put(`/products/${vRedS.productId}`, { name: 'x' })).data?.code, 'variant_managed_by_model');
 eq('variant category locked', (await owner.put(`/products/${vRedS.productId}`, { categoryId: newCat.id })).data?.code, 'variant_managed_by_model');
 eq('variant units locked', (await owner.put(`/products/${vRedS.productId}`, { units: [{ unitId: piece.id, factor: 1 }] })).data?.code, 'variant_managed_by_model');
 vd = ok('variant barcode', await owner.put(`/products/${vRedS.productId}`, { units: [{ unitId: piece.id, factor: 1, barcode: `VB${tag}` }, { unitId: dozen.id, factor: 12, barcode: `VD${tag}` }] }));
@@ -282,12 +284,12 @@ eq('scan variant dozen', [found[0].id, found[0].matchedUnitId, found[0].sizeName
 m = ok('add size L', await owner.put(`/models/${m.id}`, { addSizeIds: [sizeL.id] }));
 eq('6 variants after adding L', m.variants.length, 6);
 eq('sizes listed', m.sizes.map((s) => s.name), [`S${tag}`, `M${tag}`, `L${tag}`]);
-const colorOnly = ok('colour-only model', await owner.post('/models', { ...modelReq, code: `CO${tag}`, nameEn: `Cap ${tag}`, nameAr: undefined, sizeIds: [], prices: [] }));
+const colorOnly = ok('colour-only model', await owner.post('/models', { ...modelReq, code: `CO${tag}`, name: `Cap ${tag}`, sizeIds: [], prices: [] }));
 eq('colour-only model has 2 variants', colorOnly.variants.length, 2);
 eq('cannot add sizes to colour-only model', (await owner.put(`/models/${colorOnly.id}`, { addSizeIds: [sizeS.id] })).data?.code, 'dimension_fixed');
-m = ok('rename model', await owner.put(`/models/${m.id}`, { nameEn: `Polo Pro ${tag}` }));
+m = ok('rename model', await owner.put(`/models/${m.id}`, { name: `Polo Pro ${tag}` }));
 check('variants renamed', m.variants.every((v) => v.name.startsWith(`Polo Pro ${tag} — `)), m.variants.map((v) => v.name));
-ok('rename colour', await owner.put(`/variant-options/${red.id}`, { nameEn: `Crimson ${tag}` }));
+ok('rename colour', await owner.put(`/variant-options/${red.id}`, { name: `Crimson ${tag}` }));
 m = (await owner.get(`/models/${m.id}`)).data;
 eq('colour rename flows to variant', m.variants.find((v) => v.productId === vRedS.productId).name, `Polo Pro ${tag} — Crimson ${tag} / S${tag}`);
 
@@ -318,7 +320,7 @@ eq('model filter rows', inv.items.length, 6);
 check('inventory rows carry units', inv.items[0].units.length === 3, inv.items[0].units);
 
 console.log('== concurrency: 5 sales of 1 carton with 2 cartons in stock');
-const conc = ok('conc item', await owner.post('/products', { nameEn: `Conc ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 10 }], prices: [{ unitId: carton.id, priceLevelId: custLevel.id, price: 2000 }] }));
+const conc = ok('conc item', await owner.post('/products', { name: `Conc ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }, { unitId: carton.id, factor: 10 }], prices: [{ unitId: carton.id, priceLevelId: custLevel.id, price: 2000 }] }));
 ok('stock 20', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: mainWh.id, taxPercent: 0, lines: [{ productId: conc.id, quantity: 20, unitCost: 100 }] }));
 const results = await Promise.all([1, 2, 3, 4, 5].map(() => sale(karim, { lines: [{ productId: conc.id, unitId: carton.id, quantity: 1, unitPrice: 2000 }] })));
 eq('exactly 2 succeed', results.filter((x) => x.status === 201).length, 2);

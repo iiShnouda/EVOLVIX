@@ -40,13 +40,6 @@ builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
 
-// AI translation of names (branches, warehouses, categories, products). Off until an API key is
-// configured (Translation__ApiKey); names then wait as "pending" and show as typed.
-builder.Services.Configure<TranslationOptions>(builder.Configuration.GetSection("Translation"));
-builder.Services.AddSingleton<TranslationQueue>();
-builder.Services.AddSingleton<TranslationStatus>();
-builder.Services.AddHttpClient<AiTranslator>(c => c.Timeout = TimeSpan.FromSeconds(45));
-builder.Services.AddHostedService<TranslationWorker>();
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]

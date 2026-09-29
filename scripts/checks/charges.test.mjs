@@ -8,7 +8,7 @@ const mona = await login('mona@skb.local'); // ACCOUNTANT
 const karim = await login('karim@skb.local'); // SALES
 
 const units = (await owner.get('/units')).data;
-const piece = units.find((u) => u.names.en === 'Piece');
+const piece = units.find((u) => ['قطعة', 'Piece'].includes(u.name));
 const cat = (await owner.get('/categories')).data[0];
 const levels = (await owner.get('/price-levels')).data;
 const cust = levels.find((l) => l.side === 'SALE' && l.isDefault);
@@ -23,7 +23,7 @@ const monaId = staff.find((s) => s.email === 'mona@skb.local').id;
 // Three fresh items: A and B at cost 5.00 and 10.00, C given away as bonus.
 const make = async (name, price) =>
   ok(`item ${name}`, await owner.post('/products', {
-    nameEn: `${name} ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }],
+    name: `${name} ${tag}`, categoryId: cat.id, units: [{ unitId: piece.id, factor: 1 }],
     prices: [{ unitId: piece.id, priceLevelId: cust.id, price }],
   }));
 const A = await make('ChargeA', 1000), B = await make('ChargeB', 2000), C = await make('ChargeC', 300);

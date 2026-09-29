@@ -15,14 +15,10 @@ public sealed class SettingsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly AuditService _audit;
-    private readonly AiTranslator _translator;
-    private readonly TranslationStatus _translation;
-    public SettingsController(AppDbContext db, AuditService audit, AiTranslator translator, TranslationStatus translation)
+    public SettingsController(AppDbContext db, AuditService audit)
     {
         _db = db;
         _audit = audit;
-        _translator = translator;
-        _translation = translation;
     }
 
     /// <summary>
@@ -34,23 +30,6 @@ public sealed class SettingsController : ControllerBase
     {
         var s = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
         return Ok(Mapper.ToSettings(s));
-    }
-
-    /// <summary>AI translation of names: set up or not, how many names wait, and the last problem.</summary>
-    [HttpGet("translation")]
-    [Authorize(Policy = Permissions.SettingsView)]
-    public async Task<ActionResult<TranslationStatusDto>> Translation()
-    {
-        var pending = await _db.Branches.CountAsync(e => e.NamePending)
-            + await _db.Warehouses.CountAsync(e => e.NamePending)
-            + await _db.Categories.CountAsync(e => e.NamePending)
-            + await _db.Products.CountAsync(e => e.NamePending)
-            + await _db.Units.CountAsync(e => e.NamePending)
-            + await _db.PriceLevels.CountAsync(e => e.NamePending)
-            + await _db.ProductModels.CountAsync(e => e.NamePending)
-            + await _db.VariantOptions.CountAsync(e => e.NamePending);
-        return Ok(new TranslationStatusDto(_translator.IsConfigured, pending, _translation.LastError,
-            _translation.LastSuccessAt?.ToString("o")));
     }
 
     /// <summary>Update company settings (country, currency, VAT, markup, floor). Owner/Admin only.</summary>

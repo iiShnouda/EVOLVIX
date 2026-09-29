@@ -5,15 +5,10 @@ namespace SKB.Api.Data;
 // Money is stored as integer MINOR UNITS (piastres) in bigint columns — never floats.
 // All DateTimes are UTC (timestamptz).
 
-public class Branch : ILocalizedName
+public class Branch : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     public string Code { get; set; } = "";
     public string? Location { get; set; }
     public bool IsActive { get; set; } = true;
@@ -29,15 +24,10 @@ public class Branch : ILocalizedName
 /// several. Exactly one active warehouse per branch is the branch's default, used when a document
 /// doesn't name one. A warehouse can only be deactivated once it holds no stock.
 /// </summary>
-public class Warehouse : ILocalizedName
+public class Warehouse : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     /// <summary>Short unique code, e.g. "MAIN-1".</summary>
     public string Code { get; set; } = "";
     public Guid BranchId { get; set; }
@@ -213,31 +203,21 @@ public class Party
     public List<SalesDocument> Documents { get; set; } = new();
 }
 
-public class Category : ILocalizedName
+public class Category : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     public List<Product> Products { get; set; } = new();
 }
 
 /// <summary>
-/// A unit of measure (وحدة): piece, carton, dozen, kg… A company-wide list, named in both languages.
+/// A unit of measure (وحدة): piece, carton, dozen, kg… A company-wide list.
 /// Items say which units they come in, and how many base units each holds (<see cref="ItemUnit"/>).
 /// </summary>
-public class Unit : ILocalizedName
+public class Unit : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -264,15 +244,10 @@ public class ItemUnit
 /// A named price column (مستوى سعر), e.g. the customer price or the supplier price. Rows, so more
 /// can be added without a schema change. Each side (sales / purchases) has one default level.
 /// </summary>
-public class PriceLevel : ILocalizedName
+public class PriceLevel : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     public PriceSide Side { get; set; } = PriceSide.SALE;
     public bool IsDefault { get; set; }
     public int SortOrder { get; set; }
@@ -296,15 +271,10 @@ public class ItemPrice
 }
 
 /// <summary>A size or a color (مقاس / لون) that item models are made in. Company-wide lists.</summary>
-public class VariantOption : ILocalizedName
+public class VariantOption : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     public VariantKind Kind { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
@@ -317,15 +287,10 @@ public class VariantOption : ILocalizedName
 /// unchanged. The model holds what variants share: the category, the units (<see cref="ModelUnit"/>)
 /// and default prices (<see cref="ModelPrice"/>) that a variant uses until it is given its own.
 /// </summary>
-public class ProductModel : ILocalizedName
+public class ProductModel : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     /// <summary>Short unique code; variant SKUs start with it.</summary>
     public string Code { get; set; } = "";
     public Guid CategoryId { get; set; }
@@ -359,16 +324,11 @@ public class ModelPrice
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class Product : ILocalizedName
+public class Product : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
-    public string? NameAr { get; set; }
-    public string? NameEn { get; set; }
-    public string NameSource { get; set; } = "en";
-    public string? NameAuto { get; set; }
-    public bool NamePending { get; set; }
     /// <summary>
     /// Company-wide average cost (minor units) = total stock value ÷ total quantity, kept in step
     /// with the per-branch pools (<see cref="StockCost"/>). For company-level display; every

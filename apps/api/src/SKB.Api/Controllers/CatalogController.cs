@@ -12,21 +12,18 @@ namespace SKB.Api.Controllers;
 /// The company-wide lists items are built from (DOMAIN.md §2.2): units of measure (وحدات),
 /// categories (مجموعات), price levels (مستويات الأسعار) and the sizes and colors (مقاسات / ألوان) of
 /// item models. Anyone who sees stock can read them; each list is managed under its own permission.
-/// Names are kept in Arabic and English — typing one is enough, AI translates the other. Nothing is
-/// deleted: entries are closed, so history keeps its names.
+/// Names are kept exactly as typed. Nothing is deleted: entries are closed, so history keeps its names.
 /// </summary>
 [ApiController]
 [Route("api")]
 public sealed class CatalogController : ControllerBase
 {
     private readonly AppDbContext _db;
-    private readonly TranslationQueue _translations;
     private readonly AuditService _audit;
 
-    public CatalogController(AppDbContext db, TranslationQueue translations, AuditService audit)
+    public CatalogController(AppDbContext db, AuditService audit)
     {
         _db = db;
-        _translations = translations;
         _audit = audit;
     }
 
@@ -48,7 +45,7 @@ public sealed class CatalogController : ControllerBase
     public async Task<ActionResult<UnitDto>> CreateUnit([FromBody] CreateNamedRequest req)
     {
         var unit = new Unit();
-        var error = await NameAsync(unit, req.NameAr, req.NameEn, req.Name, _db.Units, "unit");
+        var error = await NameAsync(unit, req.Name, _db.Units, "unit");
         if (error is not null) return error;
         _db.Units.Add(unit);
         await SaveAsync("create", "unit", unit.Id);
@@ -78,7 +75,7 @@ public sealed class CatalogController : ControllerBase
         var counts = await _db.Products.Where(p => p.IsActive).GroupBy(p => p.CategoryId)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
         return Ok(categories.OrderBy(c => Loc.Name(c))
-            .Select(c => new CategoryDto(c.Id.ToString(), Loc.Name(c), counts.GetValueOrDefault(c.Id), Mapper.ToNames(c)))
+            .Select(c => new CategoryDto(c.Id.ToString(), Loc.Name(c), counts.GetValueOrDefault(c.Id)))
             .ToArray());
     }
 
@@ -87,12 +84,12 @@ public sealed class CatalogController : ControllerBase
     public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateNamedRequest req)
     {
         var category = new Category();
-        var error = await NameAsync(category, req.NameAr, req.NameEn, req.Name, _db.Categories, "category");
+        var error = await NameAsync(category, req.Name, _db.Categories, "category");
         if (error is not null) return error;
         _db.Categories.Add(category);
         await SaveAsync("create", "category", category.Id);
         return Created($"/api/categories/{category.Id}",
-            new CategoryDto(category.Id.ToString(), Loc.Name(category), 0, Mapper.ToNames(category)));
+            new CategoryDto(category.Id.ToString(), Loc.Name(category), 0));
     }
 
     [HttpPut("categories/{id:guid}")]
@@ -105,7 +102,7 @@ public sealed class CatalogController : ControllerBase
         if (error is not null) return error;
         await SaveAsync("update", "category", category.Id);
         return Ok(new CategoryDto(category.Id.ToString(), Loc.Name(category),
-            await _db.Products.CountAsync(p => p.CategoryId == id && p.IsActive), Mapper.ToNames(category)));
+            await _db.Products.CountAsync(p => p.CategoryId == id && p.IsActive)));
     }
 
     // ------------------------------------------------------------------ price levels
@@ -128,7 +125,7 @@ public sealed class CatalogController : ControllerBase
             SortOrder = (await sameSide.MaxAsync(l => (int?)l.SortOrder) ?? 0) + 1,
             IsDefault = !await sameSide.AnyAsync(l => l.IsActive && l.IsDefault),
         };
-        var error = await NameAsync(level, req.NameAr, req.NameEn, req.Name, sameSide, "price level");
+        var error = await NameAsync(level, req.Name, sameSide, "price level");
         if (error is not null) return error;
         _db.PriceLevels.Add(level);
         await SaveAsync("create", "price_level", level.Id);
@@ -141,7 +138,7 @@ public sealed class CatalogController : ControllerBase
     {
         var level = await _db.PriceLevels.FirstOrDefaultAsync(l => l.Id == id);
         if (level is null) return NotFound(new { message = "Price level not found.", code = "price_level_not_found" });
-        var error = await RenameAsync(level, new UpdateNamedRequest(req.NameAr, req.NameEn, req.Name),
+        var error = await RenameAsync(level, new UpdateNamedRequest(req.Name),
             _db.PriceLevels.Where(l => l.Side == level.Side), "price level");
         if (error is not null) return error;
         if (req.SortOrder is int order) level.SortOrder = Math.Clamp(order, 0, 1000);
@@ -210,7 +207,7 @@ public sealed class CatalogController : ControllerBase
             Kind = kind,
             SortOrder = (await sameKind.MaxAsync(o => (int?)o.SortOrder) ?? 0) + 1,
         };
-        var error = await NameAsync(option, req.NameAr, req.NameEn, req.Name, sameKind,
+        var error = await NameAsync(option, req.Name, sameKind,
             kind == VariantKind.SIZE ? "size" : "color");
         if (error is not null) return error;
         _db.VariantOptions.Add(option);
@@ -237,44 +234,38 @@ public sealed class CatalogController : ControllerBase
 
     // ------------------------------------------------------------------ helpers
 
-    private static UnitDto ToDto(Unit u, int count) =>
-        new(u.Id.ToString(), Loc.Name(u), u.IsActive, count, Mapper.ToNames(u));
+    private static UnitDto ToDto(Unit u, int count) => new(u.Id.ToString(), Loc.Name(u), u.IsActive, count);
 
     /// <summary>Name a new entry from a create form; refuse an empty name or one another entry of the list has.</summary>
-    private async Task<ActionResult?> NameAsync<T>(T entity, string? ar, string? en, string? plain,
-        IQueryable<T> list, string what) where T : class, ILocalizedName
+    private async Task<ActionResult?> NameAsync<T>(T entity, string? name, IQueryable<T> list, string what)
+        where T : class, INamed
     {
-        var (a, e) = Loc.FromRequest(ar, en, plain);
-        if (!Loc.Apply(entity, a, e))
-            return BadRequest(new { message = $"The {what} needs a name.", code = "bad_name" });
+        var clean = Loc.Clean(name);
+        if (clean is null) return BadRequest(new { message = $"The {what} needs a name.", code = "bad_name" });
+        entity.Name = clean;
         return await DuplicateAsync(entity, list, what);
     }
 
     private async Task<ActionResult?> RenameAsync<T>(T entity, UpdateNamedRequest req, IQueryable<T> list, string what)
-        where T : class, ILocalizedName
+        where T : class, INamed
     {
-        var (a, e) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (a is null && e is null) return null;
-        if (!Loc.Apply(entity, a, e))
-            return BadRequest(new { message = $"The {what} needs a name.", code = "bad_name" });
-        return await DuplicateAsync(entity, list, what);
+        if (req.Name is null) return null;
+        return await NameAsync(entity, req.Name, list, what);
     }
 
-    /// <summary>Two entries of one list can't share a name in either language (ignoring case).</summary>
+    /// <summary>Two entries of one list can't share a name (ignoring case).</summary>
     private async Task<ActionResult?> DuplicateAsync<T>(T entity, IQueryable<T> list, string what)
-        where T : class, ILocalizedName
+        where T : class, INamed
     {
-        var names = new[] { entity.NameAr, entity.NameEn }.Where(n => n is not null)
-            .Select(n => n!.ToLower()).ToArray();
+        var name = entity.Name.ToLower();
         var others = await list.AsNoTracking().ToListAsync();
-        var clash = others.FirstOrDefault(o => !ReferenceEquals(o, entity) && IdOf(o) != IdOf(entity)
-            && new[] { o.NameAr, o.NameEn }.Any(n => n is not null && names.Contains(n.ToLower())));
+        var clash = others.FirstOrDefault(o => IdOf(o) != IdOf(entity) && o.Name.ToLower() == name);
         return clash is null
             ? null
-            : BadRequest(new { message = $"There is already a {what} called {Loc.Name(clash)}.", code = "duplicate_name" });
+            : BadRequest(new { message = $"There is already a {what} called {clash.Name}.", code = "duplicate_name" });
     }
 
-    private static Guid IdOf(ILocalizedName e) => e switch
+    private static Guid IdOf(INamed e) => e switch
     {
         Unit u => u.Id,
         Category c => c.Id,
@@ -286,7 +277,6 @@ public sealed class CatalogController : ControllerBase
     private async Task SaveAsync(string action, string resource, Guid id)
     {
         await _db.SaveChangesAsync();
-        _translations.Notify();
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), id.ToString());

@@ -12,8 +12,7 @@ namespace SKB.Api.Controllers;
 /// Branches and their warehouses (الفروع والمخازن). Everyone who sees inventory can list the
 /// warehouses they may use; managing branches and warehouses (add, rename, close, choose the branch
 /// default) needs <c>branches:manage</c>. Nothing is ever deleted: a warehouse is closed, and only
-/// once it is empty. Names are kept in Arabic and English — typing one is enough, the other is
-/// translated by AI in the background (<see cref="TranslationWorker"/>).
+/// once it is empty. Names are kept exactly as typed.
 /// </summary>
 [ApiController]
 [Route("api")]
@@ -22,16 +21,14 @@ public sealed class WarehousesController : ControllerBase
     private readonly AppDbContext _db;
     private readonly WarehouseService _warehouses;
     private readonly StockValuation _valuation;
-    private readonly TranslationQueue _translations;
     private readonly AuditService _audit;
 
     public WarehousesController(AppDbContext db, WarehouseService warehouses, StockValuation valuation,
-        TranslationQueue translations, AuditService audit)
+        AuditService audit)
     {
         _db = db;
         _warehouses = warehouses;
         _valuation = valuation;
-        _translations = translations;
         _audit = audit;
     }
 
@@ -85,10 +82,9 @@ public sealed class WarehousesController : ControllerBase
     [Authorize(Policy = Permissions.BranchesManage)]
     public async Task<ActionResult<BranchDto>> CreateBranch([FromBody] CreateBranchRequest req)
     {
-        var branch = new Branch { Location = Clean(req.Location, 200) };
-        var (bAr, bEn) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (!Loc.Apply(branch, bAr, bEn))
-            return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
+        var branchName = Loc.Clean(req.Name);
+        if (branchName is null) return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
+        var branch = new Branch { Name = branchName, Location = Clean(req.Location, 200) };
 
         var code = string.IsNullOrWhiteSpace(req.Code) ? await NextBranchCodeAsync() : req.Code.Trim().ToUpperInvariant();
         if (code.Length > 20)
@@ -97,16 +93,15 @@ public sealed class WarehousesController : ControllerBase
             return BadRequest(new { message = $"Code {code} is already used.", code = "duplicate_code" });
         branch.Code = code;
 
-        // Its first store: named in both languages already, so it needs no translation.
+        // Its first store, named in the language of the screen it was added from.
         var store = new Warehouse
         {
             Branch = branch, Code = await NextWarehouseCodeAsync(code), IsDefault = true,
-            Name = "Main store", NameEn = "Main store", NameAr = "المخزن الرئيسي", NameSource = "en",
+            Name = Loc.Lang == "ar" ? "المخزن الرئيسي" : "Main store",
         };
         _db.Branches.Add(branch);
         _db.Warehouses.Add(store);
         await _db.SaveChangesAsync();
-        _translations.Notify();
 
         await AuditAsync("create", "branch", branch.Id, branch.Id);
         return Created($"/api/branches/{branch.Id}", ToDto(branch, await StatsAsync()));
@@ -118,13 +113,15 @@ public sealed class WarehousesController : ControllerBase
     {
         var branch = await _db.Branches.Include(b => b.Warehouses).FirstOrDefaultAsync(b => b.Id == id);
         if (branch is null) return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
-        var (uAr, uEn) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (!Loc.Apply(branch, uAr, uEn))
-            return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
+        if (req.Name is not null)
+        {
+            var name = Loc.Clean(req.Name);
+            if (name is null) return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
+            branch.Name = name;
+        }
         if (req.Location is not null) branch.Location = Clean(req.Location, 200);
 
         await _db.SaveChangesAsync();
-        _translations.Notify();
         await AuditAsync("update", "branch", branch.Id, branch.Id);
         return Ok(ToDto(branch, await StatsAsync()));
     }
@@ -138,10 +135,10 @@ public sealed class WarehousesController : ControllerBase
         var branch = await _db.Branches.FirstOrDefaultAsync(b => b.Id == branchId);
         if (branch is null) return BadRequest(new { message = "Choose a branch.", code = "branch_not_found" });
 
-        var warehouse = new Warehouse { BranchId = branchId, Branch = branch };
-        var (wAr, wEn) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if (!Loc.Apply(warehouse, wAr, wEn))
-            return BadRequest(new { message = "Warehouse name is required (up to 100 characters).", code = "bad_name" });
+        var warehouseName = Loc.Clean(req.Name);
+        if (warehouseName is null)
+            return BadRequest(new { message = "Warehouse name is required.", code = "bad_name" });
+        var warehouse = new Warehouse { BranchId = branchId, Branch = branch, Name = warehouseName };
 
         var code = string.IsNullOrWhiteSpace(req.Code) ? await NextWarehouseCodeAsync(branch.Code) : req.Code.Trim().ToUpperInvariant();
         if (code.Length > 20)
@@ -156,7 +153,6 @@ public sealed class WarehousesController : ControllerBase
         if (req.IsDefault || !hasDefault) await MakeDefaultAsync(warehouse);
 
         await _db.SaveChangesAsync();
-        _translations.Notify();
         await AuditAsync("create", "warehouse", warehouse.Id, warehouse.BranchId);
         return Created($"/api/warehouses/{warehouse.Id}", ToDto(warehouse, await StatsAsync()));
     }
@@ -169,9 +165,12 @@ public sealed class WarehousesController : ControllerBase
             .FirstOrDefaultAsync(w => w.Id == id && w.Kind == WarehouseKind.STORE);
         if (warehouse is null) return NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" });
 
-        var (nAr, nEn) = Loc.FromRequest(req.NameAr, req.NameEn, req.Name);
-        if ((nAr is not null || nEn is not null) && !Loc.Apply(warehouse, nAr, nEn))
-            return BadRequest(new { message = "Warehouse name is required (up to 100 characters).", code = "bad_name" });
+        if (req.Name is not null)
+        {
+            var name = Loc.Clean(req.Name);
+            if (name is null) return BadRequest(new { message = "Warehouse name is required.", code = "bad_name" });
+            warehouse.Name = name;
+        }
 
         if (req.IsActive == false && warehouse.IsActive)
         {
@@ -211,7 +210,6 @@ public sealed class WarehousesController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
-        _translations.Notify();
         await AuditAsync("update", "warehouse", warehouse.Id, warehouse.BranchId);
         return Ok(ToDto(warehouse, await StatsAsync()));
     }
@@ -265,14 +263,13 @@ public sealed class WarehousesController : ControllerBase
             .Where(w => w.Kind == WarehouseKind.STORE)
             .OrderByDescending(w => w.IsActive).ThenByDescending(w => w.IsDefault).ThenBy(w => Loc.Name(w))
             .Select(w => { w.Branch = b; return ToDto(w, stats); })
-            .ToArray(),
-        Mapper.ToNames(b));
+            .ToArray());
 
     private static WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)
     {
         var s = stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0);
         return new WarehouseDto(w.Id.ToString(), w.Code, Loc.Name(w), w.BranchId.ToString(), Loc.Name(w.Branch),
-            w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value, Mapper.ToNames(w));
+            w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value);
     }
 
     private Task AuditAsync(string action, string resource, Guid id, Guid branchId) =>

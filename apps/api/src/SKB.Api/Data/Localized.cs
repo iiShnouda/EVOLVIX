@@ -1,100 +1,41 @@
 using System.Globalization;
+using SKB.Api.Domain;
 
 namespace SKB.Api.Data;
 
 /// <summary>
-/// A name kept in Arabic and English (branches, warehouses, categories, products). People type it
-/// in one language; the other is filled by AI translation in the background (see
-/// <c>TranslationWorker</c>) and stays editable. Until it is translated — e.g. while the company
-/// server has no internet — both languages show the text as it was typed.
+/// Something people name: a branch, warehouse, category, unit, price level, size or color, model or
+/// item. Owner decision 2026-09-29: one name, typed in Arabic or English and kept exactly as typed —
+/// nothing is translated. Only the app's own texts come in both languages.
 /// </summary>
-public interface ILocalizedName
+public interface INamed
 {
-    /// <summary>The name in the language it was typed in. Used for search and document snapshots.</summary>
     string Name { get; set; }
-    string? NameAr { get; set; }
-    string? NameEn { get; set; }
-    /// <summary>"ar" or "en": the language the name was typed in.</summary>
-    string NameSource { get; set; }
-    /// <summary>"ar"/"en" when that side was filled by AI translation; null when people typed both.</summary>
-    string? NameAuto { get; set; }
-    /// <summary>The other side is waiting for (re)translation.</summary>
-    bool NamePending { get; set; }
 }
 
-/// <summary>Picks and updates localized names. The request language comes from Accept-Language.</summary>
+/// <summary>Names as the app shows them. The request language comes from Accept-Language.</summary>
 public static class Loc
 {
+    public const int MaxName = 200;
+
     /// <summary>"ar" or "en" for the current request.</summary>
     public static string Lang => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar" ? "ar" : "en";
 
-    /// <summary>The name in the request's language, falling back to the other language, then as typed.</summary>
-    public static string Name(ILocalizedName? e) => e is null ? "" : Pick(e.NameAr, e.NameEn, e.Name);
-
-    public static string Pick(string? ar, string? en, string? typed) =>
-        (Lang == "ar" ? ar ?? en : en ?? ar) ?? typed ?? "";
-
     /// <summary>
-    /// Apply names from a create or edit form. A side that is given and differs from what is stored
-    /// becomes a person's text. When exactly one side changes, the other is re-translated only if it
-    /// was machine-made or empty — a translation a person corrected is never overwritten.
-    /// Returns false when the result would have no name at all.
+    /// The name as typed. The system's own "in transit" warehouse is app text, so it follows the
+    /// screen language.
     /// </summary>
-    public static bool Apply(ILocalizedName e, string? ar, string? en)
+    public static string Name(INamed? e) => e switch
     {
-        ar = Clean(ar);
-        en = Clean(en);
-        var changedAr = ar is not null && ar != e.NameAr;
-        var changedEn = en is not null && en != e.NameEn;
+        null => "",
+        Warehouse { Kind: WarehouseKind.TRANSIT } => Lang == "ar" ? "في الطريق" : "In transit",
+        _ => e.Name,
+    };
 
-        if (changedAr && changedEn)
-        {
-            e.NameAr = ar;
-            e.NameEn = en;
-            e.NameAuto = null;
-            e.NamePending = false;
-            e.NameSource = Lang;
-        }
-        else if (changedAr || changedEn)
-        {
-            var side = changedAr ? "ar" : "en";
-            var other = side == "ar" ? "en" : "ar";
-            if (side == "ar") e.NameAr = ar; else e.NameEn = en;
-            var otherText = other == "ar" ? e.NameAr : e.NameEn;
-
-            if (e.NameAuto == side)
-            {
-                // A person corrected the machine translation: it is theirs now; the source stays.
-                e.NameAuto = null;
-            }
-            else if (otherText is null || e.NameAuto == other)
-            {
-                // A person changed the source (or typed the first name): translate the other side.
-                e.NameSource = side;
-                e.NamePending = true;
-            }
-            else
-            {
-                e.NameSource = side;
-            }
-        }
-
-        e.Name = (e.NameSource == "ar" ? e.NameAr ?? e.NameEn : e.NameEn ?? e.NameAr) ?? "";
-        return e.Name.Length > 0;
-    }
-
-    /// <summary>
-    /// Names from a request: the Arabic/English fields, or — when neither is sent — a plain name
-    /// taken as typed in the request's language.
-    /// </summary>
-    public static (string? Ar, string? En) FromRequest(string? ar, string? en, string? plain) =>
-        ar is null && en is null && plain is not null
-            ? (Lang == "ar" ? (plain, (string?)null) : (null, plain))
-            : (ar, en);
-
-    private static string? Clean(string? s)
+    /// <summary>A typed name: trimmed and at most 200 characters; null when empty.</summary>
+    public static string? Clean(string? s)
     {
         var t = s?.Trim();
-        return string.IsNullOrEmpty(t) ? null : t[..Math.Min(200, t.Length)];
+        return string.IsNullOrEmpty(t) ? null : t[..Math.Min(MaxName, t.Length)];
     }
 }

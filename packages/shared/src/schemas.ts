@@ -170,10 +170,9 @@ export const createTransferSchema = z.object({
 });
 export type CreateTransferInput = z.infer<typeof createTransferSchema>;
 
-/** Names: send the language(s) typed; on create one is enough — the server translates the other. */
+/** A name, as typed (Arabic or English); it is never translated. */
 const nameFields = {
-  nameAr: z.string().trim().max(100).optional(),
-  nameEn: z.string().trim().max(100).optional(),
+  name: z.string().trim().max(200).optional(),
 };
 
 export const createWarehouseSchema = z.object({

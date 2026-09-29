@@ -79,13 +79,9 @@ public static class Mapper
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,
         p.SalesPriceLevelId?.ToString(), p.PurchasePriceLevelId?.ToString());
 
-    /// <summary>Both languages of a name, for edit forms.</summary>
-    public static LocalizedNameDto ToNames(ILocalizedName e) =>
-        new(e.NameAr, e.NameEn, e.NameSource, e.NameAuto, e.NamePending);
-
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
-        l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive, ToNames(l));
+        l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);
 
     public static VariantOptionDto ToVariantOption(VariantOption o) => new(
-        o.Id.ToString(), o.Kind.ToString(), Loc.Name(o), o.SortOrder, o.IsActive, ToNames(o));
+        o.Id.ToString(), o.Kind.ToString(), Loc.Name(o), o.SortOrder, o.IsActive);
 }

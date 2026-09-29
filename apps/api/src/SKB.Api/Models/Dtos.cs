@@ -189,16 +189,9 @@ public record StocktakeResultDto(
 /// <param name="Kind">STORE, or TRANSIT for the system warehouse holding goods on the way.</param>
 /// <param name="ItemCount">Items with stock in this warehouse.</param>
 /// <param name="Value">Quantity × current average cost, minor units.</param>
-/// <param name="Names">Both languages of the name, for the edit form.</param>
 public record WarehouseDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string Kind,
-    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value, LocalizedNameDto Names);
-
-/// <summary>
-/// A name in both languages. <c>Source</c> is the language it was typed in; <c>Auto</c> the side
-/// filled by AI (null when people typed both); <c>Pending</c> while the other side awaits translation.
-/// </summary>
-public record LocalizedNameDto(string? Ar, string? En, string Source, string? Auto, bool Pending);
+    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value);
 
 /// <summary>A warehouse goods can be sent to (any branch), for the transfer form.</summary>
 public record WarehouseOptionDto(string Id, string Name, string BranchName);
@@ -226,29 +219,24 @@ public record CreateTransferRequest(
     string FromWarehouseId, string ToWarehouseId, CreateTransferLineRequest[] Lines, string? Notes = null);
 
 public record BranchDto(
-    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses,
-    LocalizedNameDto Names);
+    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses);
 
-// Names: send the language(s) typed. On create, one is enough — the other is translated by AI.
-// A plain `Name` (older clients) counts as typed in the request's language.
+// Names: one name, as typed (Arabic or English); it is never translated (owner decision 2026-09-29).
 
 public record CreateWarehouseRequest(
-    string BranchId, string? NameAr = null, string? NameEn = null, string? Code = null, bool IsDefault = false,
+    string BranchId, string? Code = null, bool IsDefault = false,
     string? Name = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateWarehouseRequest(
-    string? NameAr = null, string? NameEn = null, bool? IsActive = null, bool? IsDefault = null, string? Name = null);
+    bool? IsActive = null, bool? IsDefault = null, string? Name = null);
 
 /// <summary>A new branch also gets its default store.</summary>
 public record CreateBranchRequest(
-    string? NameAr = null, string? NameEn = null, string? Code = null, string? Location = null, string? Name = null);
+    string? Code = null, string? Location = null, string? Name = null);
 
 /// <summary>Any field left null is unchanged.</summary>
-public record UpdateBranchRequest(string? NameAr = null, string? NameEn = null, string? Location = null, string? Name = null);
-
-/// <summary>AI translation of names: whether it is set up, and what is waiting.</summary>
-public record TranslationStatusDto(bool Configured, int Pending, string? LastError, string? LastSuccessAt);
+public record UpdateBranchRequest(string? Location = null, string? Name = null);
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
@@ -268,32 +256,32 @@ public record SetPartyPriceLevelsRequest(string? SalesPriceLevelId = null, strin
 // ---- Catalog (الأصناف): units, categories, price levels, sizes & colors, items, models ----
 
 /// <param name="ItemCount">Items that come in this unit / belong to this category.</param>
-public record UnitDto(string Id, string Name, bool IsActive, int ItemCount, LocalizedNameDto Names);
+public record UnitDto(string Id, string Name, bool IsActive, int ItemCount);
 
-public record CategoryDto(string Id, string Name, int ItemCount, LocalizedNameDto Names);
+public record CategoryDto(string Id, string Name, int ItemCount);
 
 /// <param name="Side">SALE or PURCHASE.</param>
 public record PriceLevelDto(
-    string Id, string Name, string Side, bool IsDefault, int SortOrder, bool IsActive, LocalizedNameDto Names);
+    string Id, string Name, string Side, bool IsDefault, int SortOrder, bool IsActive);
 
 /// <param name="Kind">SIZE or COLOR.</param>
 public record VariantOptionDto(
-    string Id, string Kind, string Name, int SortOrder, bool IsActive, LocalizedNameDto Names);
+    string Id, string Kind, string Name, int SortOrder, bool IsActive);
 
-/// <summary>A new unit / category / size / color: its name in the language typed (the other is translated).</summary>
-public record CreateNamedRequest(string? NameAr = null, string? NameEn = null, string? Name = null);
+/// <summary>A new unit / category / size / color: its name, as typed.</summary>
+public record CreateNamedRequest(string? Name = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateNamedRequest(
-    string? NameAr = null, string? NameEn = null, string? Name = null, bool? IsActive = null, int? SortOrder = null);
+    string? Name = null, bool? IsActive = null, int? SortOrder = null);
 
-public record CreatePriceLevelRequest(string? Side, string? NameAr = null, string? NameEn = null, string? Name = null);
+public record CreatePriceLevelRequest(string? Side, string? Name = null);
 
 public record UpdatePriceLevelRequest(
-    string? NameAr = null, string? NameEn = null, string? Name = null,
+    string? Name = null,
     bool? IsActive = null, bool? IsDefault = null, int? SortOrder = null);
 
-public record CreateVariantOptionRequest(string? Kind, string? NameAr = null, string? NameEn = null, string? Name = null);
+public record CreateVariantOptionRequest(string? Kind, string? Name = null);
 
 /// <summary>One unit of an item: which unit, how many base units it holds (1 = the base unit), its barcode.</summary>
 public record ItemUnitRequest(string? UnitId, int Factor, string? Barcode = null);
@@ -303,7 +291,7 @@ public record PriceRequest(string? UnitId, string? PriceLevelId, long? Price);
 
 public record CreateProductRequest(
     string? CategoryId, ItemUnitRequest[]? Units,
-    string? NameAr = null, string? NameEn = null, string? Name = null, string? Sku = null,
+    string? Name = null, string? Sku = null,
     int ReorderLevel = 0, PriceRequest[]? Prices = null);
 
 /// <summary>
@@ -311,7 +299,7 @@ public record CreateProductRequest(
 /// barcodes can change here — names, category and units follow its model.
 /// </summary>
 public record UpdateProductRequest(
-    string? NameAr = null, string? NameEn = null, string? Name = null, string? Sku = null,
+    string? Name = null, string? Sku = null,
     string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
@@ -325,7 +313,7 @@ public record ItemUnitDto(string UnitId, string Name, int Factor, string? Barcod
 /// <summary>An item for the item editor, with its units and every unit × level price.</summary>
 /// <param name="HasMovements">Stock has moved: the base unit can no longer change.</param>
 public record ProductDetailDto(
-    string Id, string Sku, string Name, LocalizedNameDto Names, string CategoryId, string CategoryName,
+    string Id, string Sku, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, int StockOnHand, long CostPrice, bool HasMovements,
     string? ModelId, string? ModelName, string? SizeId, string? SizeName, string? ColorId, string? ColorName,
     ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency);
@@ -339,14 +327,14 @@ public record ModelVariantDto(
     bool IsActive, string? Barcode, bool OwnPrices, long SalePrice);
 
 public record ModelDetailDto(
-    string Id, string Code, string Name, LocalizedNameDto Names, string CategoryId, string CategoryName,
+    string Id, string Code, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, bool HasMovements, ItemUnitDto[] Units, PriceCellDto[] Prices,
     VariantOptionDto[] Sizes, VariantOptionDto[] Colors, ModelVariantDto[] Variants, string Currency);
 
 /// <summary>A new model: its variants are made for every size × color given (one list may be empty).</summary>
 public record CreateModelRequest(
     string? CategoryId, ItemUnitRequest[]? Units, string[]? SizeIds, string[]? ColorIds,
-    string? NameAr = null, string? NameEn = null, string? Name = null, string? Code = null,
+    string? Name = null, string? Code = null,
     int ReorderLevel = 0, PriceRequest[]? Prices = null);
 
 /// <summary>
@@ -354,7 +342,7 @@ public record CreateModelRequest(
 /// every variant (a variant's barcodes stay).
 /// </summary>
 public record UpdateModelRequest(
-    string? NameAr = null, string? NameEn = null, string? Name = null, string? CategoryId = null,
+    string? Name = null, string? CategoryId = null,
     int? ReorderLevel = null, bool? IsActive = null, string[]? AddSizeIds = null, string[]? AddColorIds = null,
     ItemUnitRequest[]? Units = null);
 

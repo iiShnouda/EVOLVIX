@@ -31,7 +31,7 @@ const rowsFrom = (d: ProductDetail): UnitRow[] =>
   d.units.map((u) => ({ unitId: u.unitId, factor: u.factor, barcode: u.barcode ?? '' }));
 
 /**
- * Add or edit an item (صنف): its name (typed in the screen language; AI adds the other), SKU,
+ * Add or edit an item (صنف): its name (as typed), SKU,
  * category, reorder level, the units it comes in with their barcodes, and its prices per unit and
  * price level. A size/color of a model only changes its SKU, barcodes, reorder level and prices
  * here — the rest follows the model. Each part needs its own permission.
@@ -54,7 +54,7 @@ export function ProductEditorPage() {
   const update = useUpdateProduct();
   const setPrices = useSetProductPrices();
 
-  const [names, setNames] = useState<NameValues>({ ar: '', en: '' });
+  const [names, setNames] = useState<NameValues>('');
   const [sku, setSku] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [reorder, setReorder] = useState('0');
@@ -70,7 +70,7 @@ export function ProductEditorPage() {
       loadedId === `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}`
     )
       return;
-    setNames(namesFrom(d.names));
+    setNames(namesFrom(d.name));
     setSku(d.sku);
     setCategoryId(d.categoryId);
     setReorder(String(d.reorderLevel));
@@ -83,7 +83,7 @@ export function ProductEditorPage() {
   useEffect(() => {
     if (!isNew || rows.length > 0 || !units.data) return;
     const piece =
-      units.data.find((u) => u.names.en === 'Piece' && u.isActive) ??
+      units.data.find((u) => (u.name === 'قطعة' || u.name === 'Piece') && u.isActive) ??
       units.data.find((u) => u.isActive);
     if (piece) setRows([{ unitId: piece.id, factor: 1, barcode: '' }]);
   }, [isNew, rows.length, units.data]);
@@ -105,7 +105,7 @@ export function ProductEditorPage() {
   const isVariant = !!d?.modelId;
   const error = (create.error ?? update.error ?? setPrices.error) as ApiError | null;
   const pending = create.isPending || update.isPending || setPrices.isPending;
-  const typedNames = changedNames(names, isNew ? null : d?.names);
+  const typedNames = changedNames(names, isNew ? null : d?.name);
   const unitsInput = unitRowsToInput(rows);
   const unitsValid = unitRowsValid(rows);
   const priceList = priceChanges(
@@ -116,11 +116,7 @@ export function ProductEditorPage() {
   );
 
   const canSave = isNew
-    ? canFields &&
-      (!!typedNames.nameAr || !!typedNames.nameEn) &&
-      !!categoryId &&
-      unitsValid &&
-      !pending
+    ? canFields && !!typedNames.name && !!categoryId && unitsValid && !pending
     : !pending && !!d && unitsValid;
 
   async function save() {
@@ -216,10 +212,8 @@ export function ProductEditorPage() {
               </div>
             ) : (
               <NameFields
-                mode={isNew ? 'create' : 'edit'}
                 values={names}
                 onChange={setNames}
-                names={d?.names}
                 label={t('item.name')}
                 placeholder={isNew ? t('item.namePlaceholder') : undefined}
                 autoFocus={isNew}

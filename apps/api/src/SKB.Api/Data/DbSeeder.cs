@@ -15,33 +15,14 @@ public static class DbSeeder
 
     private static long Money(double major) => (long)Math.Round(major * 100);
 
-    private static readonly Dictionary<string, string> ArabicNames = new()
+    /// <summary>
+    /// The starter units of measure. Names are kept as typed (owner decision 2026-09-29); the
+    /// company's starter lists (units, price levels) are in Arabic, its working language.
+    /// </summary>
+    private static readonly (string Key, string Name)[] DemoUnits =
     {
-        ["Main Branch"] = "الفرع الرئيسي",
-        ["Warehouse Branch"] = "فرع المخازن",
-        ["Downtown store"] = "مخزن وسط البلد",
-        ["October warehouse"] = "مخزن أكتوبر",
-        ["Beverages"] = "مشروبات",
-        ["Snacks"] = "وجبات خفيفة",
-        ["Cleaning"] = "منظفات",
-        ["Packaging"] = "مواد تغليف",
-        ["Mineral Water 1.5L (Pack of 6)"] = "مياه معدنية 1.5 لتر (عبوة 6)",
-        ["Cola 330ml (Case of 24)"] = "كولا 330 مل (كرتونة 24)",
-        ["Salted Chips 25g (Box of 40)"] = "شيبسي مملح 25 جم (علبة 40)",
-        ["Biscuits Assorted (Box of 24)"] = "بسكويت مشكل (علبة 24)",
-        ["Dish Soap 1L (Pack of 12)"] = "سائل أطباق 1 لتر (عبوة 12)",
-        ["Bleach 2L (Pack of 8)"] = "كلور 2 لتر (عبوة 8)",
-        ["Carton Box Large (Bundle of 25)"] = "كرتونة كبيرة (ربطة 25)",
-        ["Stretch Wrap Roll"] = "رول استرتش",
-        ["Apparel"] = "ملابس",
-        ["Basic T-shirt"] = "تيشيرت بيسك",
-    };
-
-    /// <summary>Units of measure the demo items come in, in both languages.</summary>
-    private static readonly (string Key, string En, string Ar)[] DemoUnits =
-    {
-        ("pc", "Piece", "قطعة"), ("pack", "Pack", "عبوة"), ("case", "Case", "صندوق"), ("box", "Box", "علبة"),
-        ("bundle", "Bundle", "ربطة"), ("roll", "Roll", "رول"), ("carton", "Carton", "كرتونة"), ("dozen", "Dozen", "دستة"),
+        ("pc", "قطعة"), ("pack", "عبوة"), ("case", "صندوق"), ("box", "علبة"),
+        ("bundle", "ربطة"), ("roll", "رول"), ("carton", "كرتونة"), ("dozen", "دستة"),
     };
 
     public static async Task SeedAsync(AppDbContext db, AuthService auth, IConfiguration config)
@@ -60,7 +41,7 @@ public static class DbSeeder
         // System warehouse holding goods between sending and receiving a transfer.
         db.Warehouses.Add(new Warehouse
         {
-            Name = "In transit", NameEn = "In transit", NameAr = "في الطريق",
+            Name = "In transit",
             Code = "TRANSIT", Branch = main, Kind = WarehouseKind.TRANSIT,
         });
 
@@ -95,26 +76,17 @@ public static class DbSeeder
         var apparel = new Category { Name = "Apparel" };
         db.Categories.Add(apparel);
 
-        // Demo names in both languages, typed by people (no translation needed).
-        foreach (ILocalizedName e in new ILocalizedName[] { main, wh, mainStore, octoberStore, beverages, snacks, cleaning, packaging, apparel }
-                     .Concat(products))
-        {
-            e.NameEn = e.Name;
-            e.NameAr = ArabicNames.GetValueOrDefault(e.Name);
-            e.NameSource = "en";
-        }
-
         // ---- Units (base unit + larger ones, a barcode each) and the two price levels ----
-        var units = DemoUnits.ToDictionary(u => u.Key, u => new Unit { Name = u.En, NameEn = u.En, NameAr = u.Ar, NameSource = "en" });
+        var units = DemoUnits.ToDictionary(u => u.Key, u => new Unit { Name = u.Name });
         db.Units.AddRange(units.Values);
         var customerPrice = new PriceLevel
         {
-            Name = "Customer price", NameEn = "Customer price", NameAr = "سعر العملاء", NameSource = "en",
+            Name = "سعر العملاء",
             Side = PriceSide.SALE, IsDefault = true, SortOrder = 1,
         };
         var supplierPrice = new PriceLevel
         {
-            Name = "Supplier price", NameEn = "Supplier price", NameAr = "سعر الموردين", NameSource = "en",
+            Name = "سعر الموردين",
             Side = PriceSide.PURCHASE, IsDefault = true, SortOrder = 1,
         };
         db.PriceLevels.AddRange(customerPrice, supplierPrice);
@@ -137,13 +109,13 @@ public static class DbSeeder
 
         // ---- A model made in sizes x colors: every variant is its own item with its own stock ----
         var sizes = new[] { "M", "L", "XL" }.Select((n, i) => new VariantOption
-            { Kind = VariantKind.SIZE, Name = n, NameEn = n, NameAr = n, NameSource = "en", SortOrder = i + 1 }).ToList();
-        var colors = new[] { ("Black", "أسود"), ("White", "أبيض") }.Select((c, i) => new VariantOption
-            { Kind = VariantKind.COLOR, Name = c.Item1, NameEn = c.Item1, NameAr = c.Item2, NameSource = "en", SortOrder = i + 1 }).ToList();
+            { Kind = VariantKind.SIZE, Name = n, SortOrder = i + 1 }).ToList();
+        var colors = new[] { "Black", "White" }.Select((c, i) => new VariantOption
+            { Kind = VariantKind.COLOR, Name = c, SortOrder = i + 1 }).ToList();
         db.VariantOptions.AddRange(sizes.Concat(colors));
         var tshirt = new ProductModel
         {
-            Name = "Basic T-shirt", NameEn = "Basic T-shirt", NameAr = ArabicNames["Basic T-shirt"], NameSource = "en",
+            Name = "Basic T-shirt",
             Code = "TSH", Category = apparel, ReorderLevel = 12,
         };
         db.ProductModels.Add(tshirt);
