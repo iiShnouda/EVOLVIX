@@ -48,6 +48,7 @@ const SECTIONS = [
   'purchases',
   'receipts',
   'parties',
+  'delivery',
   'inventory',
   'catalog',
   'branches',

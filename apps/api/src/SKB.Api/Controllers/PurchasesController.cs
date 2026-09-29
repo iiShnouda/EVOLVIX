@@ -86,7 +86,7 @@ public sealed class PurchasesController : ControllerBase
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
-            .Include(d => d.Charges).Include(d => d.Rep)
+            .Include(d => d.Charges).Include(d => d.Rep).Include(d => d.Driver).Include(d => d.Carrier)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });

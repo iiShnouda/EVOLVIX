@@ -29,6 +29,7 @@ import { ProductEditorPage } from './pages/ProductEditorPage';
 import { ModelsPage } from './pages/ModelsPage';
 import { ModelEditorPage } from './pages/ModelEditorPage';
 import { StaffPage } from './pages/StaffPage';
+import { DeliveriesPage } from './pages/DeliveriesPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
@@ -141,6 +142,7 @@ export default function App() {
               element={<ReturnBuilderPage scope="sales" />}
             />
             <Route path="/parties" element={<PartiesPage />} />
+            <Route path="/deliveries" element={<DeliveriesPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inventory/items/:id" element={<ItemCardPage />} />
             <Route path="/inventory/stocktake" element={<StocktakePage />} />

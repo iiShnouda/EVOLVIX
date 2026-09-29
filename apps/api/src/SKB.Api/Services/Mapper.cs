@@ -33,7 +33,9 @@ public static class Mapper
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number,
         d.PriceLevelId?.ToString(), d.PriceLevel is null ? null : Loc.Name(d.PriceLevel),
         d.AdditionTotal, d.Charges.OrderBy(c => c.Seq).Select(Charges.ToDto).ToArray(),
-        d.RepId?.ToString(), d.Rep?.FullName);
+        d.RepId?.ToString(), d.Rep?.FullName,
+        d.DeliveryMethod.ToString(), d.DeliveryStatus?.ToString(), d.DeliveryAddress,
+        d.DriverId?.ToString(), d.Driver?.FullName, d.CarrierId?.ToString(), d.Carrier?.Name);
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)
@@ -77,7 +79,8 @@ public static class Mapper
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,
-        p.SalesPriceLevelId?.ToString(), p.PurchasePriceLevelId?.ToString());
+        p.SalesPriceLevelId?.ToString(), p.PurchasePriceLevelId?.ToString(),
+        p.Email, p.TaxNumber, p.Address, p.IsActive);
 
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);

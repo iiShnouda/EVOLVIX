@@ -108,6 +108,55 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Delivery, shipping companies and cash on delivery** (التوصيل وشركات الشحن) — DOMAIN.md §7 step 4b
+- **Parties can be added and edited** (`POST`/`PUT /api/parties`): name (one field, unique among
+  open accounts), types (customer, supplier, factory, **shipping company** = `CARRIER`), phone,
+  email, tax number and **address**.
+  - An account can be closed only at a zero balance (`has_balance`); a closed name can be reused.
+  - `GET /api/parties?active=true` lists open accounts only (the invoice screens use it).
+- **Delivery on the sale:** each sales invoice is picked up (`PICKUP`, the default), delivered by
+  our driver (`OWN_DELIVERY`, optional driver = a staff member) or sent with a shipping company
+  (`SHIPPING_COMPANY`, carrier required). The address defaults to the customer's.
+  - Delivered sales start `PENDING`; our own go `OUT_FOR_DELIVERY` → `DELIVERED`, or `RETURNED`
+    (`PUT /api/sales/invoices/{id}/delivery`).
+- **Parcels (shipments / waybills, بوليصة):** one customer's invoices from one branch, handed to a
+  carrier (`POST /api/shipments`, number `SHP-YYYY-NNNNNN`, the carrier's waybill number optional).
+  - **Cash on delivery** defaults to what is still owed on the invoices (after payments and
+    returns); 0 = prepaid. It is shared over the invoices, oldest first.
+  - Steps: `CREATED` → `PICKED_UP` → `DELIVERED` → `SETTLED`, or `RETURNED` (refused) /
+    `CANCELLED` (before pickup). An invoice is on one live parcel at most (rows are locked).
+  - **Delivered with COD:** the customer's debt moves to the carrier, and each invoice counts its
+    share as paid (`PAID` / `PARTIALLY_PAID`).
+  - **Refused:** nothing is collected; with "put the goods back" the server posts full sales
+    returns of what is left on each invoice (needs `sales:return`).
+- **Carrier settlement** (`POST /api/carrier-settlements`, `CST-YYYY-NNNNNN`): the carrier pays for
+  many delivered COD parcels at once, keeping its fees. Its balance drops by fees + paid; any
+  difference stays on its account. Where the cash lands (a cash box) and the fees' expense
+  account come with steps 5 and 6.
+- **Permissions:** `parties:create`, `delivery:view`, `delivery:manage`, `delivery:settle`.
+  Accountant has all four; Sales has `parties:create`, view and manage; Inventory has view and
+  manage; Viewer has view. Branch-scoped roles see and move only their branch's.
+- **Web:**
+  - **Customers & Suppliers:** search, type filter, closed accounts, add / edit sheet (phone
+    bottom sheet), close / reopen.
+  - **Sales invoice:** a delivery card (pickup / our delivery / shipping company, address, driver
+    or carrier). The preview shows it.
+  - **Deliveries** (`/deliveries`, new nav item): our deliveries with their steps, parcels (new
+    parcel from a carrier's waiting invoices, COD, pickup / delivered / refused / cancel) and
+    settlements (fees, paid, difference).
+  - Server error codes on these screens show in the screen language (`lib/errors.ts`, `error.*`).
+- **Migration `DeliveryShipments`:** the sale's delivery fields (old sales become `PICKUP`),
+  `Parties.Address`, `Shipments`, `ShipmentInvoices`, `CarrierSettlements`. The seed adds a
+  shipping company ("Swift Courier") and a customer address.
+- **Verified:**
+  - `scripts/checks/delivery.test.mjs`: 160/160 on a fresh and on an upgraded database,
+    including a double-click race on "delivered" and two people shipping one invoice at once.
+  - The catalog (210), charges (70) and staff (57) suites still pass.
+  - 28 database invariants hold, including COD = Σ invoice shares, one live parcel per invoice,
+    settlement difference = COD − fees − paid, and carrier balance = COD delivered − settled.
+  - In the browser (AR/EN, phone): added a party with an Arabic name, made a parcel, refused it
+    (return posted), settled two parcels with fees and a shortfall.
+
 **Invoice charges, bonus goods and sales reps** — DOMAIN.md §7 step 4a
 - **Charges** (`DocumentCharge`): each invoice has a list of discounts, taxes and additions. Each
   one is a percent (2 decimals) or a fixed amount. They apply in this order:
@@ -470,9 +519,13 @@ own permission, and roles bundle them
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
+- Carrier settlements move the carrier's balance only: the cash received isn't in a cash box and
+  the fees aren't an expense until steps 5–6. A driver's cash in hand isn't tracked yet either.
+- Most older screens still show the server's English error message; the delivery and party
+  screens use `lib/errors.ts` to show it in Arabic too.
 
 ## 7. What's NEXT (pick up here)
-Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers ✅ → units & prices ✅ → charges & delivery → …).
+Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers ✅ → units & prices ✅ → charges & delivery ✅ → money → …).
 From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation, stocktake
 and warehouses shipped):
 1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
@@ -492,8 +545,11 @@ and warehouses shipped):
 5. **DOMAIN.md §7 step 4:**
    - ~~invoice charges, bonus lines and sales reps~~ done (4a; no commission)
    - ~~names: one field, no translation~~ done
-   - delivery, shipments / waybills and cash on delivery (4b)
-   - the payment methods the owner listed (DOMAIN.md §2.5–2.6)
+   - ~~delivery, shipments / waybills and cash on delivery~~ done (4b)
+   - **Verify on the live DB** after deploy: add a shipping company, sell with it, make a parcel,
+     deliver it with COD, settle it with a fee.
+   - Next is DOMAIN.md §7 step 5: cash boxes, banks, receipts, payments and expenses (paid-now
+     and carrier settlements then land in a cash box; the carrier's fees become an expense).
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

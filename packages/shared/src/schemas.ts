@@ -86,6 +86,14 @@ export const createSalesInvoiceSchema = z.object({
     .optional(),
   /** The sales rep credited with the sale. */
   repId: z.string().uuid().optional(),
+  /** PICKUP (default), OWN_DELIVERY or SHIPPING_COMPANY. */
+  deliveryMethod: z.enum(['PICKUP', 'OWN_DELIVERY', 'SHIPPING_COMPANY']).optional(),
+  /** Where to deliver; none = the customer's address. */
+  deliveryAddress: z.string().max(300).optional(),
+  /** Own delivery: the driver (a staff member). */
+  driverId: z.string().uuid().optional(),
+  /** Shipping company: the carrier (a party of type CARRIER). */
+  carrierId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -339,3 +347,43 @@ export const staffPermissionsSchema = z.object({
   revoked: z.array(z.string()),
 });
 export type StaffPermissionsInput = z.infer<typeof staffPermissionsSchema>;
+
+// ---- Parties and delivery (DOMAIN step 4b) ----
+
+export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'FACTORY', 'CARRIER']);
+
+export const partySchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  types: z.array(partyTypeSchema).min(1),
+  phone: z.string().max(40).optional(),
+  email: z.union([z.literal(''), z.string().email().max(200)]).optional(),
+  taxNumber: z.string().max(40).optional(),
+  address: z.string().max(300).optional(),
+});
+export type CreatePartyInput = z.infer<typeof partySchema>;
+/** On an edit, a field left out is unchanged; closing needs a zero balance. */
+export type UpdatePartyInput = Partial<CreatePartyInput> & { isActive?: boolean };
+
+export interface SetDeliveryStatusInput {
+  status: 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
+  driverId?: string;
+  /** When RETURNED: also post a full sales return (needs sales:return). */
+  createReturn?: boolean;
+}
+
+export interface CreateShipmentInput {
+  carrierId: string;
+  invoiceIds: string[];
+  waybillNo?: string;
+  /** Cash on delivery, minor units; none = everything still owed, 0 = prepaid. */
+  codAmount?: number;
+  notes?: string;
+}
+
+export interface CreateSettlementInput {
+  carrierId: string;
+  shipmentIds: string[];
+  fees: number;
+  received: number;
+  notes?: string;
+}

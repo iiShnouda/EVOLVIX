@@ -9,7 +9,10 @@ import {
   toMinor,
   type ChargeInput,
   type ChargeKind,
+  type DeliveryMethod,
+  type Party,
   type Product,
+  type RepOption,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -17,6 +20,7 @@ import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseS
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
+import { errorText } from '../lib/errors';
 import {
   useCompanySettings,
   useCreatePurchaseInvoice,
@@ -78,7 +82,25 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const reps = useReps(isSale);
   const [repId, setRepId] = useState('');
 
-  const parties = useParties({ page: 1, type: isSale ? 'CUSTOMER' : 'SUPPLIER' });
+  const parties = useParties({
+    page: 1,
+    pageSize: 100,
+    type: isSale ? 'CUSTOMER' : 'SUPPLIER',
+    active: true,
+  });
+  const carriers = useParties({
+    page: 1,
+    pageSize: 100,
+    type: 'CARRIER',
+    active: true,
+    enabled: isSale,
+  });
+  const [delivery, setDelivery] = useState<DeliveryValue>({
+    method: 'PICKUP',
+    address: '',
+    driverId: '',
+    carrierId: '',
+  });
   const [partyId, setPartyId] = useState('');
   const party = parties.data?.items.find((p) => p.id === partyId);
 
@@ -276,6 +298,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
     !hasBlockedFloor &&
     !hasOverStock &&
     !outcome.error &&
+    !(isSale && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
     !pending;
 
   async function save() {
@@ -300,6 +323,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
+          deliveryMethod: delivery.method,
+          deliveryAddress:
+            delivery.method !== 'PICKUP' && delivery.address.trim()
+              ? delivery.address.trim()
+              : undefined,
+          driverId:
+            delivery.method === 'OWN_DELIVERY' && delivery.driverId ? delivery.driverId : undefined,
+          carrierId:
+            delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
+              ? delivery.carrierId
+              : undefined,
         });
         navigate('/sales');
       } else {
@@ -403,6 +437,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
               </label>
             )}
           </Card>
+
+          {isSale && (
+            <DeliveryCard
+              value={delivery}
+              onChange={setDelivery}
+              party={party}
+              drivers={reps.data ?? []}
+              carriers={carriers.data?.items ?? []}
+            />
+          )}
 
           {/* Product search */}
           <Card>
@@ -770,7 +814,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             )}
             {serverError && (
               <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-                {serverError.message}
+                {errorText(t, serverError)}
               </p>
             )}
 
@@ -853,5 +897,114 @@ function DiscountField({
         )}
       </div>
     </div>
+  );
+}
+
+interface DeliveryValue {
+  method: DeliveryMethod;
+  address: string;
+  driverId: string;
+  carrierId: string;
+}
+
+const METHODS: DeliveryMethod[] = ['PICKUP', 'OWN_DELIVERY', 'SHIPPING_COMPANY'];
+
+/** How the goods reach the customer: picked up, our driver, or a shipping company. */
+function DeliveryCard({
+  value,
+  onChange,
+  party,
+  drivers,
+  carriers,
+}: {
+  value: DeliveryValue;
+  onChange: (v: DeliveryValue) => void;
+  party: Party | undefined;
+  drivers: RepOption[];
+  carriers: Party[];
+}) {
+  const { t } = useT();
+  const set = (patch: Partial<DeliveryValue>) => onChange({ ...value, ...patch });
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-muted">
+          <Icon name="delivery" size={16} /> {t('delivery.method')}
+        </span>
+        <div
+          role="radiogroup"
+          aria-label={t('delivery.method')}
+          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {METHODS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={value.method === m}
+              onClick={() => set({ method: m })}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                value.method === m ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(`delivery.${m}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {value.method !== 'PICKUP' && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('delivery.address')}</span>
+            <input
+              className={field}
+              value={value.address}
+              maxLength={300}
+              placeholder={party?.address || t('delivery.addressPlaceholder')}
+              onChange={(e) => set({ address: e.target.value })}
+            />
+          </label>
+          {value.method === 'OWN_DELIVERY' ? (
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('delivery.driver')}</span>
+              <select
+                className={field}
+                value={value.driverId}
+                onChange={(e) => set({ driverId: e.target.value })}
+              >
+                <option value="">{t('delivery.noDriver')}</option>
+                {drivers.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('delivery.carrier')}</span>
+              <select
+                className={field}
+                value={value.carrierId}
+                onChange={(e) => set({ carrierId: e.target.value })}
+                aria-invalid={!value.carrierId}
+              >
+                <option value="">{t('delivery.pickCarrier')}</option>
+                {carriers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {carriers.length === 0 && (
+                <span className="mt-0.5 block text-xs text-faint">{t('delivery.noCarriers')}</span>
+              )}
+            </label>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

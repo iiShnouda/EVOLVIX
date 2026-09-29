@@ -54,6 +54,16 @@ import type {
   UpdateStaffInput,
   StaffPermissionsInput,
   RepOption,
+  CreatePartyInput,
+  UpdatePartyInput,
+  DeliveryRow,
+  DeliveryAction,
+  Shipment,
+  ShipmentAction,
+  CarrierSettlement,
+  SetDeliveryStatusInput,
+  CreateShipmentInput,
+  CreateSettlementInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -96,13 +106,27 @@ export function useDocument(scope: DocScope, id: string | null) {
   });
 }
 
-export function useParties(params: { page: number; type?: string; search?: string }) {
-  const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
+export function useParties(params: {
+  page: number;
+  type?: string;
+  search?: string;
+  /** true = open accounts only, false = closed only, none = all. */
+  active?: boolean;
+  pageSize?: number;
+  enabled?: boolean;
+}) {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize ?? 20),
+  });
   if (params.type) query.set('type', params.type);
   if (params.search) query.set('search', params.search);
+  if (params.active !== undefined) query.set('active', String(params.active));
+  const { enabled = true, ...key } = params;
   return useQuery({
-    queryKey: ['parties', params],
+    queryKey: ['parties', key],
     queryFn: () => api.get<Paginated<Party>>(`/parties?${query}`),
+    enabled,
   });
 }
 
@@ -577,5 +601,126 @@ export function useReps(enabled = true) {
     queryFn: () => api.get<RepOption[]>('/sales/reps'),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Parties: add and edit (DOMAIN step 4b)
+// ---------------------------------------------------------------------------
+
+export function useCreateParty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreatePartyInput) => api.post<Party>('/parties', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['parties'] }),
+  });
+}
+
+export function useUpdateParty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdatePartyInput }) =>
+      api.put<Party>(`/parties/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['parties'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Delivery (DOMAIN.md §2.5): deliveries, parcels, carrier settlements
+// ---------------------------------------------------------------------------
+
+/** A delivery step can post returns and move money between accounts: refresh what it touches. */
+function invalidateAfterDelivery(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['delivery'] });
+  invalidateAfterPosting(qc, 'sales');
+}
+
+export function useDeliveries(params: { status?: string; method?: string }) {
+  const query = new URLSearchParams({ pageSize: '100' });
+  if (params.status) query.set('status', params.status);
+  if (params.method) query.set('method', params.method);
+  return useQuery({
+    queryKey: ['delivery', 'list', params],
+    queryFn: () => api.get<Paginated<DeliveryRow>>(`/deliveries?${query}`),
+  });
+}
+
+export function useSetDelivery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: SetDeliveryStatusInput }) =>
+      api.put<DeliveryAction>(`/sales/invoices/${id}/delivery`, input),
+    onSuccess: () => invalidateAfterDelivery(qc),
+  });
+}
+
+export function useShipments(params: { status?: string; carrierId?: string }) {
+  const query = new URLSearchParams({ pageSize: '100' });
+  if (params.status) query.set('status', params.status);
+  if (params.carrierId) query.set('carrierId', params.carrierId);
+  return useQuery({
+    queryKey: ['delivery', 'shipments', params],
+    queryFn: () => api.get<Paginated<Shipment>>(`/shipments?${query}`),
+  });
+}
+
+/** Sales sent with this carrier and not in a parcel yet. */
+export function useEligibleInvoices(carrierId: string) {
+  return useQuery({
+    queryKey: ['delivery', 'eligible', carrierId],
+    queryFn: () =>
+      api.get<DeliveryRow[]>(`/shipments/eligible?carrierId=${encodeURIComponent(carrierId)}`),
+    enabled: !!carrierId,
+  });
+}
+
+export function useCreateShipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateShipmentInput) => api.post<Shipment>('/shipments', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['delivery'] }),
+  });
+}
+
+export type ShipmentStep = 'picked-up' | 'delivered' | 'returned' | 'cancel';
+
+export function useShipmentStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      step,
+      createReturns,
+    }: {
+      id: string;
+      step: ShipmentStep;
+      createReturns?: boolean;
+    }): Promise<ShipmentAction> =>
+      step === 'returned'
+        ? api.post<ShipmentAction>(`/shipments/${id}/returned`, { createReturns: !!createReturns })
+        : api
+            .post<Shipment>(`/shipments/${id}/${step}`, {})
+            .then((shipment) => ({ shipment, returns: [], problems: [] })),
+    onSuccess: () => invalidateAfterDelivery(qc),
+  });
+}
+
+export function useSettlements(enabled = true) {
+  return useQuery({
+    queryKey: ['delivery', 'settlements'],
+    queryFn: () => api.get<CarrierSettlement[]>('/carrier-settlements'),
+    enabled,
+  });
+}
+
+export function useCreateSettlement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSettlementInput) =>
+      api.post<CarrierSettlement>('/carrier-settlements', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['delivery'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
   });
 }

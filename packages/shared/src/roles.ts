@@ -52,6 +52,10 @@ const ALL: Permission[] = [
   'purchases:bonus',
   'purchases:change_tax',
   'purchases:additions',
+  'parties:create',
+  'delivery:view',
+  'delivery:manage',
+  'delivery:settle',
 ];
 
 const PURCHASE_CHARGES: Permission[] = [
@@ -104,6 +108,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sales:change_tax',
     'sales:additions',
     ...PURCHASE_CHARGES,
+    'parties:create',
+    'delivery:view',
+    'delivery:manage',
+    'delivery:settle',
   ],
   // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
   // the customer's price level; changing a price or the level needs a manager.
@@ -115,6 +123,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'parties:view',
     'parties:edit',
     'inventory:view',
+    'parties:create',
+    'delivery:view',
+    'delivery:manage',
   ],
   INVENTORY: [
     'dashboard:view',
@@ -127,6 +138,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'purchases:change_price',
     'purchases:choose_price_level',
     ...PURCHASE_CHARGES,
+    'delivery:view',
+    'delivery:manage',
   ],
   VIEWER: [
     'dashboard:view',
@@ -136,6 +149,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'parties:view',
     'inventory:view',
     'analytics:view',
+    'delivery:view',
   ],
 };
 

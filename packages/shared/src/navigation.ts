@@ -15,7 +15,8 @@ export type IconName =
   | 'settings'
   | 'more'
   | 'audit'
-  | 'presence';
+  | 'presence'
+  | 'delivery';
 
 export interface NavItem {
   /** Stable route key, also used as the presence "currentView" identifier. */
@@ -68,6 +69,13 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/parties',
     permission: 'parties:view',
     primaryOnPhone: true,
+  },
+  {
+    key: 'deliveries',
+    labelKey: 'nav.deliveries',
+    icon: 'delivery',
+    path: '/deliveries',
+    permission: 'delivery:view',
   },
   {
     key: 'purchases',

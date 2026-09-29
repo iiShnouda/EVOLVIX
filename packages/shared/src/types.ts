@@ -85,7 +85,12 @@ export type Permission =
   | 'purchases:discount'
   | 'purchases:bonus'
   | 'purchases:change_tax'
-  | 'purchases:additions';
+  | 'purchases:additions'
+  // Parties and delivery (DOMAIN step 4b)
+  | 'parties:create'
+  | 'delivery:view'
+  | 'delivery:manage'
+  | 'delivery:settle';
 
 export interface Staff {
   id: string;
@@ -133,7 +138,8 @@ export interface Money {
 // Parties (customers / suppliers / factories)
 // ---------------------------------------------------------------------------
 
-export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'FACTORY';
+/** CARRIER = a shipping company (شركة شحن): parcels it delivers with cash on delivery go on its account. */
+export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'FACTORY' | 'CARRIER';
 
 export interface Party {
   id: string;
@@ -141,8 +147,10 @@ export interface Party {
   /** A party may hold more than one role (e.g. customer + supplier). */
   types: PartyType[];
   phone?: string;
-  email?: string;
-  taxNumber?: string;
+  email?: string | null;
+  taxNumber?: string | null;
+  /** Delivery address (new delivered sales start at it). */
+  address?: string | null;
   /**
    * Net balance in minor units.
    *  > 0  → they owe us (receivable, "لنا عليهم")
@@ -331,7 +339,115 @@ export interface SalesDocument {
   /** The sales rep credited with the sale. */
   repId?: string | null;
   repName?: string | null;
+  /** How the goods reach the customer (sales invoices). */
+  deliveryMethod?: DeliveryMethod;
+  /** Where a delivered sale stands; null when picked up. */
+  deliveryStatus?: DeliveryStatus | null;
+  deliveryAddress?: string | null;
+  driverId?: string | null;
+  driverName?: string | null;
+  carrierId?: string | null;
+  carrierName?: string | null;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Delivery (DOMAIN.md §2.5): own drivers, shipping companies, carrier settlements
+// ---------------------------------------------------------------------------
+
+/** Picked up by the customer, delivered by our driver, or sent with a shipping company. */
+export type DeliveryMethod = 'PICKUP' | 'OWN_DELIVERY' | 'SHIPPING_COMPANY';
+export type DeliveryStatus = 'PENDING' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'RETURNED';
+export type ShipmentStatus =
+  'CREATED' | 'PICKED_UP' | 'DELIVERED' | 'SETTLED' | 'RETURNED' | 'CANCELLED';
+
+/** A delivered sale and where it stands. */
+export interface DeliveryRow {
+  documentId: string;
+  number: string;
+  issueDate: string;
+  partyId: string;
+  partyName: string;
+  branchName: string;
+  method: DeliveryMethod;
+  status: DeliveryStatus | null;
+  address: string | null;
+  driverName: string | null;
+  carrierId: string | null;
+  carrierName: string | null;
+  grandTotal: number;
+  /** What the customer still owes on it (after payments and returns), minor units. */
+  outstanding: number;
+  currency: string;
+  /** The live parcel it is in, if any. */
+  shipmentId: string | null;
+  shipmentNumber: string | null;
+  shipmentStatus: ShipmentStatus | null;
+}
+
+export interface ShipmentInvoice {
+  documentId: string;
+  number: string;
+  grandTotal: number;
+  /** Of the parcel's cash on delivery, what pays this invoice. */
+  codShare: number;
+}
+
+/** A parcel (بوليصة) handed to a shipping company. */
+export interface Shipment {
+  id: string;
+  number: string;
+  waybillNo: string | null;
+  status: ShipmentStatus;
+  carrierId: string;
+  carrierName: string;
+  partyId: string;
+  partyName: string;
+  branchName: string;
+  /** Cash the carrier collects on delivery, minor units (0 = prepaid). */
+  codAmount: number;
+  notes: string | null;
+  createdAt: string;
+  createdByName: string;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  returnedAt: string | null;
+  cancelledAt: string | null;
+  settlementId: string | null;
+  settlementNumber: string | null;
+  invoices: ShipmentInvoice[];
+  currency: string;
+}
+
+/** A shipping company paying for delivered cash-on-delivery parcels, net of its fees. */
+export interface CarrierSettlement {
+  id: string;
+  number: string;
+  carrierId: string;
+  carrierName: string;
+  codTotal: number;
+  fees: number;
+  received: number;
+  /** codTotal − fees − received: still owed by the carrier. */
+  difference: number;
+  notes: string | null;
+  createdAt: string;
+  createdByName: string;
+  shipments: string[];
+  currency: string;
+}
+
+/** After a delivery step: the sales returns posted for refused goods, and any that failed. */
+export interface DeliveryAction {
+  delivery: DeliveryRow;
+  returns: string[];
+  problems: string[];
+}
+
+export interface ShipmentAction {
+  shipment: Shipment;
+  returns: string[];
+  problems: string[];
 }
 
 /** One row of the profitability report (a customer, a product, or a day). */

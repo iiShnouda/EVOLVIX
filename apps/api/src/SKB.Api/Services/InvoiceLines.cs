@@ -105,6 +105,8 @@ public static class InvoiceLines
         await db.Entry(doc).Reference(d => d.SourceDocument).LoadAsync();
         await db.Entry(doc).Reference(d => d.PriceLevel).LoadAsync();
         await db.Entry(doc).Reference(d => d.Rep).LoadAsync();
+        await db.Entry(doc).Reference(d => d.Driver).LoadAsync();
+        await db.Entry(doc).Reference(d => d.Carrier).LoadAsync();
         var unitIds = doc.Lines.Where(l => l.UnitId != null).Select(l => l.UnitId!.Value).Distinct().ToList();
         var units = await db.Units.Where(u => unitIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id);
         foreach (var line in doc.Lines)

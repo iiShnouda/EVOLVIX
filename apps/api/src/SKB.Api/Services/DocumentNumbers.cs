@@ -51,6 +51,33 @@ public static class DocumentNumbers
         return $"{prefix}{seq:D6}";
     }
 
+    /// <summary>Next shipment (waybill) number, e.g. SHP-2026-000012.</summary>
+    public static async Task<string> NextShipmentAsync(AppDbContext db)
+    {
+        var prefix = $"SHP-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.Shipments.Where(s => s.Number.StartsWith(prefix))
+            .OrderByDescending(s => s.Number).Select(s => s.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
+    /// <summary>Next carrier settlement number, e.g. CST-2026-000002.</summary>
+    public static async Task<string> NextSettlementAsync(AppDbContext db)
+    {
+        var prefix = $"CST-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.CarrierSettlements.Where(s => s.Number.StartsWith(prefix))
+            .OrderByDescending(s => s.Number).Select(s => s.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
+    private static string Next(string prefix, string? last)
+    {
+        var seq = 1;
+        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
+        return $"{prefix}{seq:D6}";
+    }
+
     /// <summary>
     /// Two documents of one type saved at the same moment would read the same last number. Inside
     /// a transaction, take a Postgres advisory lock on the prefix (released at commit/rollback) so

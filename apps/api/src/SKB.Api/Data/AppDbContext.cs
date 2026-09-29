@@ -32,6 +32,9 @@ public class AppDbContext : DbContext
     public DbSet<ModelPrice> ModelPrices => Set<ModelPrice>();
     public DbSet<RolePermissionSet> RolePermissionSets => Set<RolePermissionSet>();
     public DbSet<DocumentCharge> DocumentCharges => Set<DocumentCharge>();
+    public DbSet<Shipment> Shipments => Set<Shipment>();
+    public DbSet<ShipmentInvoice> ShipmentInvoices => Set<ShipmentInvoice>();
+    public DbSet<CarrierSettlement> CarrierSettlements => Set<CarrierSettlement>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -45,6 +48,42 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>()
             .HasOne(d => d.Rep).WithMany()
             .HasForeignKey(d => d.RepId).OnDelete(DeleteBehavior.Restrict);
+
+        // Delivery (DOMAIN.md §2.5): method and status on the sale, shipments with a waybill, and
+        // carrier settlements. Restrict everywhere: history keeps its references.
+        b.Entity<SalesDocument>().Property(d => d.DeliveryMethod).HasConversion<string>();
+        b.Entity<SalesDocument>().Property(d => d.DeliveryStatus).HasConversion<string>();
+        b.Entity<SalesDocument>()
+            .HasOne(d => d.Driver).WithMany()
+            .HasForeignKey(d => d.DriverId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>()
+            .HasOne(d => d.Carrier).WithMany()
+            .HasForeignKey(d => d.CarrierId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>().HasIndex(d => new { d.DeliveryMethod, d.DeliveryStatus });
+        b.Entity<Shipment>().Property(s => s.Status).HasConversion<string>();
+        b.Entity<Shipment>().HasIndex(s => s.Number).IsUnique();
+        b.Entity<Shipment>().HasIndex(s => new { s.CarrierId, s.Status });
+        b.Entity<Shipment>().HasOne(s => s.Carrier).WithMany()
+            .HasForeignKey(s => s.CarrierId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Shipment>().HasOne(s => s.Party).WithMany()
+            .HasForeignKey(s => s.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Shipment>().HasOne(s => s.Branch).WithMany()
+            .HasForeignKey(s => s.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Shipment>().HasOne(s => s.CreatedBy).WithMany()
+            .HasForeignKey(s => s.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Shipment>().HasOne(s => s.Settlement).WithMany(x => x.Shipments)
+            .HasForeignKey(s => s.SettlementId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ShipmentInvoice>().HasKey(x => new { x.ShipmentId, x.DocumentId });
+        b.Entity<ShipmentInvoice>().HasIndex(x => x.DocumentId);
+        b.Entity<ShipmentInvoice>().HasOne(x => x.Shipment).WithMany(s => s.Invoices)
+            .HasForeignKey(x => x.ShipmentId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ShipmentInvoice>().HasOne(x => x.Document).WithMany()
+            .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<CarrierSettlement>().HasIndex(x => x.Number).IsUnique();
+        b.Entity<CarrierSettlement>().HasOne(x => x.Carrier).WithMany()
+            .HasForeignKey(x => x.CarrierId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<CarrierSettlement>().HasOne(x => x.CreatedBy).WithMany()
+            .HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
         b.Entity<RolePermissionSet>().Property(r => r.Role).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Type).HasConversion<string>();
         b.Entity<SalesDocument>().Property(d => d.Status).HasConversion<string>();

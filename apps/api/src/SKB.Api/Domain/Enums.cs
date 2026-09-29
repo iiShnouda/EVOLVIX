@@ -2,7 +2,8 @@ namespace SKB.Api.Domain;
 
 public enum Role { OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER }
 
-public enum PartyType { CUSTOMER, SUPPLIER, FACTORY }
+/// <summary>What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).</summary>
+public enum PartyType { CUSTOMER, SUPPLIER, FACTORY, CARRIER }
 
 public enum DocumentType
 {
@@ -68,6 +69,23 @@ public enum ChargeKind
     OTHER_TAX,      // another tax, e.g. a table tax
     ADDITION,       // زيادات أخرى, e.g. a delivery fee — not revenue, not cost
 }
+
+/// <summary>How the goods of a sale reach the customer (DOMAIN.md §2.5).</summary>
+public enum DeliveryMethod
+{
+    PICKUP,           // the customer takes them
+    OWN_DELIVERY,     // our driver
+    SHIPPING_COMPANY, // a carrier, with a waybill (بوليصة شحن) — prepaid or cash on delivery
+}
+
+/// <summary>Where a delivered sale stands. Pickup sales have none.</summary>
+public enum DeliveryStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED, RETURNED }
+
+/// <summary>
+/// A parcel handed to a carrier (بوليصة الشحن): CREATED → PICKED_UP → DELIVERED → SETTLED, or
+/// RETURNED when the customer refuses it, or CANCELLED before the carrier takes it.
+/// </summary>
+public enum ShipmentStatus { CREATED, PICKED_UP, DELIVERED, SETTLED, RETURNED, CANCELLED }
 
 /// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.

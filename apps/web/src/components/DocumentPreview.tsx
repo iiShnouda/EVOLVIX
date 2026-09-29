@@ -103,6 +103,26 @@ export function DocumentPreview({
             {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
           </p>
           <p className="font-medium">{doc.partyName}</p>
+          {doc.deliveryMethod && doc.deliveryMethod !== 'PICKUP' && (
+            <div className="mt-2 border-t border-line pt-2 text-xs text-muted">
+              <p>
+                {t('delivery.method')}:{' '}
+                <span className="font-medium text-fg">{t(`delivery.${doc.deliveryMethod}`)}</span>
+                {doc.deliveryStatus && <> · {t(`delivery.status.${doc.deliveryStatus}`)}</>}
+              </p>
+              {(doc.carrierName || doc.driverName) && (
+                <p>
+                  {doc.carrierName ? t('delivery.carrier') : t('delivery.driver')}:{' '}
+                  <span className="font-medium text-fg">{doc.carrierName ?? doc.driverName}</span>
+                </p>
+              )}
+              {doc.deliveryAddress && (
+                <p className="break-words">
+                  {t('delivery.address')}: <span className="text-fg">{doc.deliveryAddress}</span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Line items */}

@@ -94,7 +94,7 @@ public sealed class SalesController : ControllerBase
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
-            .Include(d => d.Charges).Include(d => d.Rep)
+            .Include(d => d.Charges).Include(d => d.Rep).Include(d => d.Driver).Include(d => d.Carrier)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -160,6 +160,26 @@ public sealed class SalesController : ControllerBase
                 return BadRequest(new { message = "Sales rep not found.", code = "rep_not_found" });
             repId = rep;
         }
+
+        // ---- Delivery: pickup, our driver, or a shipping company (DOMAIN.md §2.5) ----
+        var method = DeliveryMethod.PICKUP;
+        if (!string.IsNullOrWhiteSpace(req.DeliveryMethod) && !Enum.TryParse(req.DeliveryMethod, true, out method))
+            return BadRequest(new { message = "Unknown delivery method.", code = "bad_delivery" });
+        Guid? driverId = null, carrierId = null;
+        if (method == DeliveryMethod.OWN_DELIVERY && !string.IsNullOrWhiteSpace(req.DriverId))
+        {
+            if (!Guid.TryParse(req.DriverId, out var driver) || !await _db.Staff.AnyAsync(s => s.Id == driver && s.IsActive))
+                return BadRequest(new { message = "Driver not found.", code = "driver_not_found" });
+            driverId = driver;
+        }
+        if (method == DeliveryMethod.SHIPPING_COMPANY)
+        {
+            if (!Guid.TryParse(req.CarrierId, out var carrier)
+                || !await _db.Parties.AnyAsync(p => p.Id == carrier && p.IsActive && p.Types.Contains(nameof(PartyType.CARRIER))))
+                return BadRequest(new { message = "Choose the shipping company.", code = "carrier_not_found" });
+            carrierId = carrier;
+        }
+        var deliveryAddress = method == DeliveryMethod.PICKUP ? null : Clean(req.DeliveryAddress, 300) ?? party.Address;
 
         // ---- Shape checks and warehouse per line (no stock read yet) ----
         var cache = new Dictionary<string, Warehouse>();
@@ -258,6 +278,8 @@ public sealed class SalesController : ControllerBase
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
             PriceLevelId = level?.Id, RepId = repId,
+            DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
+            DeliveryAddress = deliveryAddress, DriverId = driverId, CarrierId = carrierId,
         };
 
         for (var i = 0; i < resolved.Count; i++)
@@ -365,6 +387,12 @@ public sealed class SalesController : ControllerBase
 
     private async Task<CompanySettings> GetSettingsAsync() =>
         await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
+
+    private static string? Clean(string? s, int max)
+    {
+        var t = s?.Trim();
+        return string.IsNullOrEmpty(t) ? null : t[..Math.Min(max, t.Length)];
+    }
 
     private static DateTime? ParseDate(string? s) =>
         DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var d) ? d : null;

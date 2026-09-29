@@ -214,6 +214,10 @@ One shape for every document type:
   3. Any difference between what was due and what was paid stays open on the carrier until explained.
   4. A refused parcel comes back: the goods return to stock through a sales return, and nothing
      is collected.
+
+  Built (step 4b): steps 1, 3 and 4 move the party balances now. The COD share of each invoice
+  counts as paid on delivery. The clearing account, the cash box and the fees' expense account
+  post once the money and ledger steps (5, 6) exist.
 - **Numbering:** one prefix per type (INV, PUR, SRT, PRT, ADJ, TRF…), yearly sequence. This is built.
 
 ### 2.6 Money — الخزينة والبنوك
@@ -399,9 +403,10 @@ Each step is a working slice: API, web, tests and docs together.
 3. ✅ **Units, price levels & size/color** (shipped 2026-09-29): base unit + larger units with
    barcodes, the customer and supplier price levels (more can be added), prices per unit and level,
    and item models with size × color variants. Price lists and quantity breaks come later.
-4. **Invoice charges, reps & delivery:** ✅ the discount/tax/addition list, bonus lines and the
-   sales rep (no commission) shipped 2026-09-29 (4a). Still to do: delivery (own / shipping company,
-   waybills, COD). Paid-now into a cash box comes with step 5.
+4. ✅ **Invoice charges, reps & delivery** (shipped 2026-09-29): the discount/tax/addition list,
+   bonus lines and the sales rep, no commission (4a); delivery by our driver or a shipping company,
+   parcels with cash on delivery, refused parcels and carrier settlements, and adding / editing
+   parties (4b). Paid-now and settlement cash into a cash box come with step 5.
 5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.
 6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
 7. **Cheques & portfolios.**

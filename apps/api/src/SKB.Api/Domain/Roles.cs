@@ -21,6 +21,14 @@ public static class Permissions
     public const string ReceiptsView = "receipts:view";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
+    /// <summary>Add a customer, supplier, factory or shipping company.</summary>
+    public const string PartiesCreate = "parties:create";
+    /// <summary>See deliveries, shipments and carrier settlements.</summary>
+    public const string DeliveryView = "delivery:view";
+    /// <summary>Hand parcels to carriers and move deliveries along (out, delivered, returned).</summary>
+    public const string DeliveryManage = "delivery:manage";
+    /// <summary>Record a carrier paying for its cash-on-delivery parcels.</summary>
+    public const string DeliverySettle = "delivery:settle";
     public const string InventoryView = "inventory:view";
     public const string InventoryEdit = "inventory:edit";
     public const string StaffView = "staff:view";
@@ -88,6 +96,7 @@ public static class Permissions
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
+        PartiesCreate, DeliveryView, DeliveryManage, DeliverySettle,
     };
 }
 
@@ -113,6 +122,7 @@ public static class RolePermissions
             Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
+            Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).
@@ -120,6 +130,7 @@ public static class RolePermissions
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
+            Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
         },
         // Store staff add items and enter supplier invoices as printed; they don't set selling prices.
         [Role.INVENTORY] = new[]
@@ -131,9 +142,11 @@ public static class RolePermissions
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
+            Permissions.DeliveryView, Permissions.DeliveryManage,
         },
         [Role.VIEWER] = new[]
         {
+            Permissions.DeliveryView,
             Permissions.DashboardView, Permissions.SalesView, Permissions.PurchasesView, Permissions.ReceiptsView,
             Permissions.PartiesView, Permissions.InventoryView, Permissions.AnalyticsView,
         },

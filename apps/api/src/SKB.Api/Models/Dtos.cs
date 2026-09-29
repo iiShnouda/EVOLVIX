@@ -60,7 +60,9 @@ public record SalesDetailDto(
     long Subtotal, long DiscountTotal, long TaxTotal, long GrandTotal, long PaidAmount,
     long CostTotal, long ProfitTotal, string Currency, string? Notes,
     string? SourceDocumentId, string? SourceNumber, string? PriceLevelId, string? PriceLevelName,
-    long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName);
+    long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName,
+    string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
+    string? CarrierId, string? CarrierName);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -87,7 +89,8 @@ public record CreateSalesInvoiceRequest(
     string PartyId, CreateInvoiceLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null,
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
-    ChargeRequest[]? Charges = null, string? RepId = null);
+    ChargeRequest[]? Charges = null, string? RepId = null,
+    string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null);
 
 public record CreatePurchaseLineRequest(
     string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
@@ -244,11 +247,67 @@ public record DashboardDto(
 
 public record PaginatedDto<T>(T[] Items, int Total, int Page, int PageSize);
 
+// ---- Delivery (DOMAIN.md §2.5): deliveries, shipments / waybills, carrier settlements ----
+
+/// <summary>A sale that is delivered (own driver or a carrier), and where it stands.</summary>
+/// <param name="Outstanding">Grand total − paid: what the customer still owes on it.</param>
+public record DeliveryDto(
+    string DocumentId, string Number, string IssueDate, string PartyId, string PartyName, string BranchName,
+    string Method, string? Status, string? Address, string? DriverName, string? CarrierId, string? CarrierName,
+    long GrandTotal, long Outstanding, string Currency,
+    string? ShipmentId, string? ShipmentNumber, string? ShipmentStatus);
+
+/// <param name="Status">OUT_FOR_DELIVERY, DELIVERED or RETURNED.</param>
+/// <param name="CreateReturn">When RETURNED: also post a full sales return of what is left on it.</param>
+public record SetDeliveryStatusRequest(string? Status, string? DriverId = null, bool CreateReturn = false);
+
+public record ShipmentInvoiceDto(string DocumentId, string Number, long GrandTotal, long CodShare);
+
+public record ShipmentDto(
+    string Id, string Number, string? WaybillNo, string Status, string CarrierId, string CarrierName,
+    string PartyId, string PartyName, string BranchName, long CodAmount, string? Notes,
+    string CreatedAt, string CreatedByName, string? PickedUpAt, string? DeliveredAt, string? ReturnedAt,
+    string? CancelledAt, string? SettlementId, string? SettlementNumber, ShipmentInvoiceDto[] Invoices,
+    string Currency);
+
+/// <param name="CodAmount">Cash the carrier collects; null = everything still owed on the invoices, 0 = prepaid.</param>
+public record CreateShipmentRequest(
+    string? CarrierId, string[]? InvoiceIds, string? WaybillNo = null, long? CodAmount = null, string? Notes = null);
+
+/// <param name="CreateReturns">Also post full sales returns of the refused goods (needs sales:return).</param>
+public record ShipmentReturnRequest(bool CreateReturns = true);
+
+/// <param name="Returns">Numbers of the sales returns posted for refused goods.</param>
+/// <param name="Problems">Returns that couldn't be posted, with the reason.</param>
+public record ShipmentActionDto(ShipmentDto Shipment, string[] Returns, string[] Problems);
+
+public record DeliveryActionDto(DeliveryDto Delivery, string[] Returns, string[] Problems);
+
+public record CarrierSettlementDto(
+    string Id, string Number, string CarrierId, string CarrierName, long CodTotal, long Fees, long Received,
+    long Difference, string? Notes, string CreatedAt, string CreatedByName, string[] Shipments, string Currency);
+
+/// <param name="Fees">What the carrier kept as its fees (minor units).</param>
+/// <param name="Received">What the carrier paid us (minor units).</param>
+public record CreateSettlementRequest(
+    string? CarrierId, string[]? ShipmentIds, long Fees = 0, long Received = 0, string? Notes = null);
+
 /// <param name="SalesPriceLevelId">The customer's own price level (null = the default sales level).</param>
 /// <param name="PurchasePriceLevelId">The supplier's own price level (null = the default purchase level).</param>
 public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
-    string? SalesPriceLevelId, string? PurchasePriceLevelId);
+    string? SalesPriceLevelId, string? PurchasePriceLevelId,
+    string? Email, string? TaxNumber, string? Address, bool IsActive);
+
+/// <param name="Types">CUSTOMER, SUPPLIER, FACTORY and/or CARRIER (a shipping company).</param>
+public record CreatePartyRequest(
+    string? Name, string[]? Types, string? Phone = null, string? Email = null, string? TaxNumber = null,
+    string? Address = null);
+
+/// <summary>Any field left null is unchanged.</summary>
+public record UpdatePartyRequest(
+    string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
+    string? TaxNumber = null, string? Address = null, bool? IsActive = null);
 
 /// <summary>A party's own price levels. Null leaves a side unchanged; "" clears it (back to the default).</summary>
 public record SetPartyPriceLevelsRequest(string? SalesPriceLevelId = null, string? PurchasePriceLevelId = null);

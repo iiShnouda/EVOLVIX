@@ -188,6 +188,7 @@ public class Party
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? TaxNumber { get; set; }
+    public string? Address { get; set; }
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
     public bool IsActive { get; set; } = true;
@@ -410,6 +411,18 @@ public class SalesDocument
     /// <summary>Invoice-level discounts, taxes and additions, in the order they were applied.</summary>
     public List<DocumentCharge> Charges { get; set; } = new();
 
+    /// <summary>How the goods reach the customer (a sale). Pickup unless chosen.</summary>
+    public DeliveryMethod DeliveryMethod { get; set; } = DeliveryMethod.PICKUP;
+    /// <summary>Where the delivery stands; null for pickup.</summary>
+    public DeliveryStatus? DeliveryStatus { get; set; }
+    public string? DeliveryAddress { get; set; }
+    /// <summary>Our driver, for own delivery.</summary>
+    public Guid? DriverId { get; set; }
+    public Staff? Driver { get; set; }
+    /// <summary>The shipping company, for delivery by carrier (a party with the CARRIER role).</summary>
+    public Guid? CarrierId { get; set; }
+    public Party? Carrier { get; set; }
+
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -459,6 +472,81 @@ public class DocumentLine
     public SalesDocument? Document { get; set; }
     public Guid ProductId { get; set; }
     public Product? Product { get; set; }
+}
+
+/// <summary>
+/// A parcel handed to a shipping company (بوليصة الشحن), carrying one or more sales invoices of one
+/// customer. With cash on delivery (<see cref="CodAmount"/> &gt; 0) the carrier collects from the
+/// customer: when it is delivered the customer's debt moves to the carrier, and a
+/// <see cref="CarrierSettlement"/> later clears it, net of the carrier's fees.
+/// </summary>
+public class Shipment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>SHP-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    /// <summary>The carrier's own tracking / waybill number.</summary>
+    public string? WaybillNo { get; set; }
+    public ShipmentStatus Status { get; set; } = ShipmentStatus.CREATED;
+    public Guid CarrierId { get; set; }
+    public Party? Carrier { get; set; }
+    /// <summary>The customer the parcel goes to.</summary>
+    public Guid PartyId { get; set; }
+    public Party? Party { get; set; }
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    /// <summary>Cash the carrier collects on delivery (minor units); 0 when prepaid.</summary>
+    public long CodAmount { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? PickedUpAt { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+    public DateTime? ReturnedAt { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    /// <summary>The settlement that cleared its cash on delivery.</summary>
+    public Guid? SettlementId { get; set; }
+    public CarrierSettlement? Settlement { get; set; }
+    public List<ShipmentInvoice> Invoices { get; set; } = new();
+}
+
+/// <summary>A sales invoice in a shipment, and the part of the cash on delivery that pays it.</summary>
+public class ShipmentInvoice
+{
+    public Guid ShipmentId { get; set; }
+    public Shipment? Shipment { get; set; }
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    /// <summary>Of the shipment's cash on delivery, what goes to this invoice (minor units).</summary>
+    public long CodShare { get; set; }
+}
+
+/// <summary>
+/// A carrier paying us for delivered cash-on-delivery parcels (تسوية شركة الشحن), usually many
+/// at once and net of its fees. The carrier owed the parcels' COD; this takes off what it paid and
+/// its fees. Anything short stays on the carrier's balance until explained.
+/// </summary>
+public class CarrierSettlement
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>CST-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public Guid CarrierId { get; set; }
+    public Party? Carrier { get; set; }
+    /// <summary>Cash on delivery of the settled parcels (minor units).</summary>
+    public long CodTotal { get; set; }
+    /// <summary>The carrier's fees it kept (a shipping expense, not a cut in sales).</summary>
+    public long Fees { get; set; }
+    /// <summary>What the carrier actually paid us.</summary>
+    public long Received { get; set; }
+    /// <summary>CodTotal − Fees − Received: still owed by the carrier (negative if it paid more).</summary>
+    public long Difference { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<Shipment> Shipments { get; set; } = new();
 }
 
 /// <summary>

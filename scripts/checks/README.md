@@ -8,6 +8,7 @@ live company server.
 |---|---|
 | `catalog.test.mjs` | Units, price levels, prices and their permissions, size × color models, invoices and returns in cartons, reports by model, and a concurrency race (DOMAIN.md step 3). |
 | `charges.test.mjs` | Invoice charges (discount chain, VAT, additions), bonus lines, sales reps, their permissions, exact returns, supplier discounts in the average cost. |
+| `delivery.test.mjs` | Parties add/edit/close, the delivery method on a sale, own deliveries, parcels with cash on delivery, refused parcels (returns), carrier settlements, permissions, branch scoping and races (DOMAIN.md step 4b). |
 | `staff.test.mjs` | Staff & permissions: people, roles, per-person grants/revokes, and the safety rules (no self-escalation, owners protected, no self-lockout). |
 | `invariants.mjs` | Database invariants: stock = Σ balances = Σ movements, one base unit per item, line quantities and totals, returns never exceeding their line. Needs `npm i pg`. |
 
