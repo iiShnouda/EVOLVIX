@@ -81,6 +81,11 @@ import type {
   CreateLedgerAccountInput,
   UpdateLedgerAccountInput,
   CreateJournalEntryInput,
+  Note,
+  NotesSummary,
+  Portfolio,
+  CreateNoteInput,
+  NoteStepInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -958,5 +963,75 @@ export function useReverseJournalEntry() {
       void qc.invalidateQueries({ queryKey: ['ledger'] });
       void qc.invalidateQueries({ queryKey: ['parties'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cheques & promissory notes (DOMAIN.md §2.7)
+// ---------------------------------------------------------------------------
+
+export function useNotes(params: { direction: 'RECEIVABLE' | 'PAYABLE'; status?: string }) {
+  const query = new URLSearchParams({ direction: params.direction, pageSize: '100' });
+  if (params.status) query.set('status', params.status);
+  return useQuery({
+    queryKey: ['notes', 'list', params],
+    queryFn: () => api.get<Paginated<Note>>(`/notes?${query}`),
+  });
+}
+
+export function useNotesSummary() {
+  return useQuery({
+    queryKey: ['notes', 'summary'],
+    queryFn: () => api.get<NotesSummary>('/notes/summary'),
+  });
+}
+
+export function usePortfolios(enabled = true) {
+  return useQuery({
+    queryKey: ['notes', 'portfolios'],
+    queryFn: () => api.get<Portfolio[]>('/portfolios'),
+    enabled,
+  });
+}
+
+/** A note step moves balances, invoices, money and the ledger. */
+function invalidateAfterNote(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['notes'] });
+  void qc.invalidateQueries({ queryKey: ['money'] });
+  invalidateAfterPosting(qc, 'sales');
+  void qc.invalidateQueries({ queryKey: ['purchases'] });
+}
+
+export function useCreateNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      direction,
+      input,
+    }: {
+      direction: 'RECEIVABLE' | 'PAYABLE';
+      input: CreateNoteInput;
+    }) => api.post<Note>(direction === 'RECEIVABLE' ? '/notes/receive' : '/notes/issue', input),
+    onSuccess: () => invalidateAfterNote(qc),
+  });
+}
+
+export type NoteStep = 'collect' | 'pay' | 'bounce' | 'endorse' | 'cancel';
+
+export function useNoteStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, step, input }: { id: string; step: NoteStep; input: NoteStepInput }) =>
+      api.post<Note>(`/notes/${id}/${step}`, input),
+    onSuccess: () => invalidateAfterNote(qc),
+  });
+}
+
+export function useDepositNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { noteIds: string[]; accountId: string }) =>
+      api.post<Portfolio>('/notes/deposit', input),
+    onSuccess: () => invalidateAfterNote(qc),
   });
 }

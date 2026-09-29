@@ -389,10 +389,10 @@ public sealed class MoneyController : ControllerBase
         {
             party = await _db.Parties.FirstOrDefaultAsync(x => x.Id == pid && x.IsActive);
             if (party is null) return Bad("party_not_found", "Choose the customer or supplier.");
-            await MoneyService.LockPartiesAsync(_db, pid);
         }
 
-        // Invoices first (locked so two receipts can't settle the same amount twice), then accounts.
+        // Lock order everywhere: invoices, then the party, then money accounts. Invoices are locked
+        // so two receipts can't settle the same amount twice.
         var docs = new Dictionary<Guid, SalesDocument>();
         if (allocations.Count > 0)
         {
@@ -417,6 +417,7 @@ public sealed class MoneyController : ControllerBase
             }
         }
 
+        if (party is not null) await MoneyService.LockPartiesAsync(_db, party.Id);
         var accounts = await _money.LockAsync(lines.Select(l => l.AccountId));
         var scope = MoneyService.ScopeOf(User);
         foreach (var l in lines)

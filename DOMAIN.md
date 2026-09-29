@@ -424,7 +424,9 @@ Each step is a working slice: API, web, tests and docs together.
 6. ✅ **Ledger** (shipped 2026-09-29): account tree with auto sub-accounts, automatic posting of
    every document (§3), compound entries with reversal, account / party statements, trial
    balance, a go-live opening entry, and the period lock.
-7. **Cheques & portfolios.**
+7. ✅ **Cheques & portfolios** (shipped 2026-09-29): notes receivable and payable with the full
+   lifecycle (deposit portfolios, collect, pay, bounce, endorse, cancel), allocation to
+   invoices, history, journal entries and a due view.
 8. **Financial statements**, then analytics (ROADMAP Phases 5–6).
 9. Payroll & attendance (§2.9).
 

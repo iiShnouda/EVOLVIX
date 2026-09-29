@@ -131,7 +131,22 @@ public enum MoneyMovementKind
     PURCHASE_REFUND,    // cash received back on a purchase return
     CARRIER_SETTLEMENT, // a shipping company paying for its COD parcels
     CANCELLATION,       // reverses a cancelled voucher
+    NOTE_COLLECTED,     // a cheque / promissory note we held was paid to us
+    NOTE_PAID,          // a cheque / promissory note we issued was paid
 }
+
+/// <summary>Financial paper (DOMAIN.md §2.7): a cheque (شيك) or a promissory note (كمبيالة).</summary>
+public enum NoteKind { CHEQUE, PROMISSORY_NOTE }
+
+/// <summary>RECEIVABLE (أوراق قبض): we hold it and collect it. PAYABLE (أوراق دفع): we issued it and pay it.</summary>
+public enum NoteDirection { RECEIVABLE, PAYABLE }
+
+/// <summary>
+/// Receivable: IN_HAND → UNDER_COLLECTION (deposited) → COLLECTED; IN_HAND / UNDER_COLLECTION →
+/// BOUNCED; IN_HAND → ENDORSED (to a supplier) or CANCELLED (given back) or COLLECTED (cashed).
+/// Payable: ISSUED → PAID, BOUNCED or CANCELLED.
+/// </summary>
+public enum NoteStatus { IN_HAND, UNDER_COLLECTION, COLLECTED, BOUNCED, ENDORSED, CANCELLED, ISSUED, PAID }
 
 /// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.

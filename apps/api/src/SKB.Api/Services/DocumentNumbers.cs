@@ -88,6 +88,26 @@ public static class DocumentNumbers
         return Next(prefix, last);
     }
 
+    /// <summary>Next note reference: NR- (receivable) or NP- (payable), e.g. NR-2026-000012.</summary>
+    public static async Task<string> NextNoteAsync(AppDbContext db, NoteDirection direction)
+    {
+        var prefix = $"{(direction == NoteDirection.RECEIVABLE ? "NR" : "NP")}-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.Notes.Where(n => n.Ref.StartsWith(prefix))
+            .OrderByDescending(n => n.Ref).Select(n => n.Ref).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
+    /// <summary>Next deposit portfolio number, e.g. PF-2026-000003.</summary>
+    public static async Task<string> NextPortfolioAsync(AppDbContext db)
+    {
+        var prefix = $"PF-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.Portfolios.Where(p => p.Number.StartsWith(prefix))
+            .OrderByDescending(p => p.Number).Select(p => p.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
     /// <summary>Next manual journal entry number, e.g. JV-2026-000004.</summary>
     public static async Task<string> NextJournalAsync(AppDbContext db)
     {

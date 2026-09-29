@@ -14,10 +14,12 @@ public static class LedgerKeys
         OpeningEquity = "OPENING_EQUITY", RetainedEarnings = "RETAINED_EARNINGS", Revenue = "REVENUE",
         Sales = "SALES", SalesReturns = "SALES_RETURNS", OtherIncome = "OTHER_INCOME", StockGain = "STOCK_GAIN",
         Expenses = "EXPENSES", Cogs = "COGS", Operating = "OPERATING_EXPENSES", Shipping = "SHIPPING_EXPENSE",
-        PurchaseExpenses = "PURCHASE_EXPENSES", StockLoss = "STOCK_LOSS", Rounding = "ROUNDING";
+        PurchaseExpenses = "PURCHASE_EXPENSES", StockLoss = "STOCK_LOSS", Rounding = "ROUNDING",
+        NotesReceivable = "NOTES_RECEIVABLE", NotesUnderCollection = "NOTES_UNDER_COLLECTION",
+        NotesPayable = "NOTES_PAYABLE";
 
     /// <summary>Accounts that only documents post to (their own sub-ledgers keep them in step).</summary>
-    public static readonly string[] DocumentOnly = { Inventory };
+    public static readonly string[] DocumentOnly = { Inventory, NotesReceivable, NotesUnderCollection, NotesPayable };
 }
 
 /// <summary>
@@ -48,11 +50,14 @@ public sealed class LedgerService
         new("1104", LedgerKeys.Carriers, "شركات الشحن", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, true),
         new("1105", LedgerKeys.Inventory, "المخزون", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
         new("1106", LedgerKeys.VatInput, "ضريبة القيمة المضافة - مشتريات", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
+        new("1107", LedgerKeys.NotesReceivable, "أوراق القبض", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
+        new("1108", LedgerKeys.NotesUnderCollection, "أوراق برسم التحصيل", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
         new("12", LedgerKeys.FixedAssets, "الأصول الثابتة", LedgerAccountType.ASSET, LedgerKeys.Assets, true),
         new("2", LedgerKeys.Liabilities, "الخصوم", LedgerAccountType.LIABILITY, null, true),
         new("21", LedgerKeys.CurrentLiabilities, "الخصوم المتداولة", LedgerAccountType.LIABILITY, LedgerKeys.Liabilities, true),
         new("2101", LedgerKeys.Suppliers, "الموردون", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, true),
         new("2102", LedgerKeys.VatOutput, "ضريبة القيمة المضافة - مبيعات", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, false),
+        new("2103", LedgerKeys.NotesPayable, "أوراق الدفع", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, false),
         new("3", LedgerKeys.Equity, "حقوق الملكية", LedgerAccountType.EQUITY, null, true),
         new("3101", LedgerKeys.Capital, "رأس المال", LedgerAccountType.EQUITY, LedgerKeys.Equity, false),
         new("3102", LedgerKeys.OpeningEquity, "أرصدة افتتاحية", LedgerAccountType.EQUITY, LedgerKeys.Equity, false),
@@ -372,6 +377,14 @@ public sealed class LedgerService
             .Debit(await SystemAsync(LedgerKeys.Shipping), x.Fees)
             .Credit(await ForPartyAsync(carrier, PartyRole.Carrier), x.Fees + x.Received);
         if (x.Received > 0) draft.Debit(await ForMoneyAsync(into!), x.Received);
+        Post(draft);
+    }
+
+    /// <summary>One step of a cheque / note: Dr <paramref name="debit"/> · Cr <paramref name="credit"/> for its amount.</summary>
+    public void PostNote(Note note, string step, LedgerAccount debit, LedgerAccount credit, Guid staffId)
+    {
+        var draft = Begin("NOTE", note.Id, note.Ref, $"{step} {note.Ref}", note.BranchId, staffId)
+            .Debit(debit, note.Amount, note.SerialNumber).Credit(credit, note.Amount, note.SerialNumber);
         Post(draft);
     }
 

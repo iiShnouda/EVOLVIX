@@ -471,3 +471,26 @@ export interface CreateJournalEntryInput {
   description: string;
   lines: { accountId: string; debit?: number; credit?: number; memo?: string }[];
 }
+
+// ---- Cheques & promissory notes (DOMAIN step 7) ----
+
+export interface CreateNoteInput {
+  partyId: string;
+  kind: 'CHEQUE' | 'PROMISSORY_NOTE';
+  serialNumber: string;
+  /** Minor units. */
+  amount: number;
+  /** yyyy-mm-dd. */
+  dueDate: string;
+  bankName?: string;
+  drawer?: string;
+  guarantor?: string;
+  remark?: string;
+  allocations?: { documentId: string; amount: number }[];
+}
+
+export interface NoteStepInput {
+  accountId?: string;
+  partyId?: string;
+  remark?: string;
+}

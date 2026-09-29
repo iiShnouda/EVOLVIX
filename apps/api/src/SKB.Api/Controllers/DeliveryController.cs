@@ -408,6 +408,13 @@ public sealed class DeliveryController : ControllerBase
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Shipments\" WHERE \"Id\" = {id} FOR UPDATE");
+        // Then its invoices, then the parties (the lock order every money path keeps), so a return
+        // posted at the same moment can't have its invoice status overwritten.
+        var docIds = await _db.ShipmentInvoices.Where(x => x.ShipmentId == id).Select(x => x.DocumentId)
+            .OrderBy(x => x).ToArrayAsync();
+        if (docIds.Length > 0)
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = ANY({docIds}) ORDER BY \"Id\" FOR UPDATE");
         var s = await ScopedShipments().Include(x => x.Carrier).Include(x => x.Party)
             .Include(x => x.Invoices).ThenInclude(i => i.Document)
             .FirstOrDefaultAsync(x => x.Id == id);

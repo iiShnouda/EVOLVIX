@@ -66,6 +66,15 @@ const ALL: Permission[] = [
   'ledger:post',
   'ledger:manage',
   'ledger:lock',
+  'notes:view',
+  'notes:receive',
+  'notes:issue',
+  'notes:deposit',
+  'notes:collect',
+  'notes:pay',
+  'notes:bounce',
+  'notes:endorse',
+  'notes:cancel',
 ];
 
 const PURCHASE_CHARGES: Permission[] = [
@@ -131,6 +140,15 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'ledger:view',
     'ledger:post',
     'ledger:manage',
+    'notes:view',
+    'notes:receive',
+    'notes:issue',
+    'notes:deposit',
+    'notes:collect',
+    'notes:pay',
+    'notes:bounce',
+    'notes:endorse',
+    'notes:cancel',
   ],
   // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
   // the customer's price level; changing a price or the level needs a manager.

@@ -546,3 +546,40 @@ public record CreateJournalEntryRequest(string? Date, string? Description, Journ
 
 public record LockDateDto(string? LockDate);
 
+// ---- Cheques & promissory notes (DOMAIN.md §2.7) ----
+
+public record NoteEventDto(
+    string? FromStatus, string ToStatus, string? AccountName, string? PartyName, string? Remark, string StaffName,
+    string CreatedAt);
+
+public record NoteAllocationDto(string DocumentId, string Number, long Amount);
+
+/// <param name="Overdue">Past its due date and still open (in hand, under collection or issued).</param>
+public record NoteDto(
+    string Id, string Ref, string Kind, string Direction, string Status, string SerialNumber, string? BankName,
+    long Amount, string DueDate, bool Overdue, string? Drawer, string? Guarantor, string PartyId, string PartyName,
+    string? EndorsedToName, string BranchName, string? PortfolioNumber, string? AccountId, string? AccountName,
+    string? Remark, string CreatedAt, string CreatedByName, NoteAllocationDto[] Allocations, NoteEventDto[] Events,
+    string Currency);
+
+/// <param name="DueDate">yyyy-mm-dd.</param>
+public record CreateNoteRequest(
+    string? PartyId, string? Kind, string? SerialNumber, long Amount, string? DueDate, string? BankName = null,
+    string? Drawer = null, string? Guarantor = null, string? Remark = null, AllocationRequest[]? Allocations = null);
+
+public record DepositNotesRequest(string[]? NoteIds, string? AccountId);
+
+/// <param name="AccountId">Collect: where the money went (under collection: the deposit bank by default).
+/// Pay: the account it was paid from.</param>
+/// <param name="PartyId">Endorse: the supplier it goes to.</param>
+public record NoteStepRequest(string? AccountId = null, string? PartyId = null, string? Remark = null);
+
+public record PortfolioDto(
+    string Id, string Number, string AccountName, string BranchName, string CreatedAt, string CreatedByName,
+    int Count, long Total, string[] Refs, string Currency);
+
+/// <summary>What is due: open notes by when they fall due.</summary>
+public record NotesSummaryDto(
+    long ReceivableOpen, long ReceivableOverdue, long ReceivableDueWeek, long PayableOpen, long PayableOverdue,
+    long PayableDueWeek, string Currency);
+

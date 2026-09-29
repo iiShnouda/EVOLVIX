@@ -108,6 +108,39 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Cheques & promissory notes** (الأوراق المالية) — DOMAIN.md §7 step 7
+- **Notes receivable** (أوراق قبض, `NR-`): a cheque or promissory note taken from a customer
+  (number, bank, amount, due date, drawer, guarantor). Receiving it lowers what the customer owes
+  and may settle their invoices (up to what is owed; not an invoice in a COD parcel on its way).
+  - **Deposit** at a bank as a **portfolio** (حافظة, `PF-`): under collection.
+  - **Collect**: the money lands in a money account (by default the deposit bank), or cash a note
+    in hand straight into any account.
+  - **Bounce** (مرتدة) or **cancel** (given back): the customer owes it again and the invoices it
+    settled are open again. **Endorse** (تظهير) to a supplier: it pays what we owe them.
+- **Notes payable** (أوراق دفع, `NP-`): our cheque / note to a supplier; issuing it lowers what we
+  owe (and may settle purchase invoices). **Pay** from a money account (which must hold it),
+  **bounce** or **withdraw** (we owe again).
+- Every step is kept in the note's history (`NoteEvent`) and posts its journal entry: notes
+  receivable (1107), notes under collection (1108), notes payable (2103). These accounts take no
+  manual entries.
+- **Due view:** open notes sorted by due date, overdue flagged; a summary of open, overdue and
+  due-in-7-days amounts for each side.
+- **Permissions:** `notes:view`, `notes:receive`, `notes:issue`, `notes:deposit`, `notes:collect`,
+  `notes:pay`, `notes:bounce`, `notes:endorse`, `notes:cancel` (all for Accountant). Branch-scoped
+  people see their branch's notes.
+- **Web:** "Cheques & notes" (`/notes`, الأوراق المالية): receivable / payable lists with status
+  filters, tick in-hand notes to deposit them, a note's sheet with its history and next steps,
+  receive / issue forms with "settle oldest first", portfolios.
+- **Fix (locks):** every money path now locks in one order — invoices, then the party, then money
+  accounts — and a parcel's step locks its invoices too, so two actions at the same moment can't
+  deadlock or overwrite an invoice's status.
+- **Migration `NotesPortfolios`:** `Notes`, `NoteAllocations`, `NoteEvents`, `Portfolios`; the
+  three notes accounts are added to the chart at startup.
+- **Verified:** `scripts/checks/notes.test.mjs` 94/94 on a fresh and on an upgraded database
+  (every step's balances, money and entry, a double-click race on collect, scoping); all other
+  suites still pass; invariants now also check that each notes account equals its open notes.
+  In the browser: receive with "settle oldest first", deposit by ticking, collect.
+
 **The general ledger** (الحسابات العامة) — DOMAIN.md §7 step 6
 - **Chart of accounts** (`LedgerAccount`, made by code at startup, names in Arabic like the other
   starter lists): assets (cash, banks & wallets, customers, shipping companies, stock, VAT on
@@ -618,6 +651,8 @@ own permission, and roles bundle them
 - Stock at average cost can drift from the stock ledger by rounding (under a piastre a unit); a
   stock revaluation entry isn't built yet.
 - A branch-scoped person given `ledger:view` sees the whole company's ledger.
+- An endorsed note that later bounces at the supplier isn't handled yet (record it with a
+  manual entry). Notes aren't in a currency other than the company's.
 - Money days (statements, daily cash) are UTC days, not Cairo days.
 - An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
@@ -654,7 +689,9 @@ and warehouses shipped):
    - ~~the ledger (account tree, automatic postings, statements, opening balances)~~ done (step 6)
    - **Verify on the live DB** after deploy: the opening entry at go-live, a customer's statement,
      the trial balance balancing.
-   - Next is DOMAIN.md §7 step 7: cheques & promissory notes, portfolios.
+   - ~~cheques & promissory notes, portfolios~~ done (step 7)
+   - Next is DOMAIN.md §7 step 8: financial statements (income statement, balance sheet) and
+     analytics.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

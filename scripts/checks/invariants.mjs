@@ -168,7 +168,7 @@ await expectNone(
 const golive = `coalesce((select min("CreatedAt") from "JournalEntries" where "SourceType"='OPENING'), '-infinity'::timestamptz)`;
 await expectNone(
   'chart of accounts set up',
-  `select 1 where (select count(*) from "LedgerAccounts" where "SystemKey" is not null) < 29`,
+  `select 1 where (select count(*) from "LedgerAccounts" where "SystemKey" is not null) < 32`,
 );
 await expectNone(
   'every entry balances',
@@ -209,6 +209,39 @@ await expectNone(
 await expectNone(
   'the whole ledger balances',
   `select 1 from "JournalLines" having sum("Debit") <> sum("Credit")`,
+);
+// Notes (step 7): the notes accounts hold exactly the open notes, and steps follow the lifecycle.
+const notesLedger = (key) =>
+  `(select coalesce(sum(l."Debit"-l."Credit"),0) from "JournalLines" l join "LedgerAccounts" a on a."Id"=l."AccountId" where a."SystemKey"='${key}')`;
+const openNotes = (dir, status) =>
+  `(select coalesce(sum("Amount"),0) from "Notes" where "Direction"='${dir}' and "Status"='${status}')`;
+await expectNone(
+  'notes receivable = notes in hand',
+  `select 1 where ${notesLedger('NOTES_RECEIVABLE')} <> ${openNotes('RECEIVABLE', 'IN_HAND')}`,
+);
+await expectNone(
+  'notes under collection = deposited notes',
+  `select 1 where ${notesLedger('NOTES_UNDER_COLLECTION')} <> ${openNotes('RECEIVABLE', 'UNDER_COLLECTION')}`,
+);
+await expectNone(
+  'notes payable = issued notes',
+  `select 1 where -${notesLedger('NOTES_PAYABLE')} <> ${openNotes('PAYABLE', 'ISSUED')}`,
+);
+await expectNone(
+  'note statuses fit their direction',
+  `select "Ref" from "Notes" where ("Direction"='RECEIVABLE' and "Status" in ('ISSUED','PAID')) or ("Direction"='PAYABLE' and "Status" not in ('ISSUED','PAID','BOUNCED','CANCELLED')) or "Amount" <= 0`,
+);
+await expectNone(
+  "each note's steps chain from its first to its status",
+  `select n."Ref" from "Notes" n where (select e."ToStatus" from "NoteEvents" e where e."NoteId"=n."Id" order by e."CreatedAt" desc limit 1) is distinct from n."Status"::text or (select count(*) from "NoteEvents" e where e."NoteId"=n."Id" and e."FromStatus" is null) <> 1`,
+);
+await expectNone(
+  "note allocations within the note, to its party's invoices",
+  `select n."Ref" from "Notes" n join "NoteAllocations" a on a."NoteId"=n."Id" join "SalesDocuments" d on d."Id"=a."DocumentId" group by n."Id" having sum(a."Amount") > n."Amount" or bool_or(d."PartyId" <> n."PartyId") or bool_or(d."Type" <> case n."Direction" when 'RECEIVABLE' then 'SALES_INVOICE' else 'PURCHASE_INVOICE' end)`,
+);
+await expectNone(
+  'deposited notes sit in a portfolio at a bank',
+  `select n."Ref" from "Notes" n left join "MoneyAccounts" m on m."Id"=n."AccountId" where n."Status"='UNDER_COLLECTION' and (n."PortfolioId" is null or m."Kind" <> 'BANK')`,
 );
 await c.end();
 process.exit(bad ? 1 : 0);

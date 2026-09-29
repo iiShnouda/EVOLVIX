@@ -44,6 +44,10 @@ public class AppDbContext : DbContext
     public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<NoteAllocation> NoteAllocations => Set<NoteAllocation>();
+    public DbSet<NoteEvent> NoteEvents => Set<NoteEvent>();
+    public DbSet<Portfolio> Portfolios => Set<Portfolio>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -57,6 +61,44 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>()
             .HasOne(d => d.Rep).WithMany()
             .HasForeignKey(d => d.RepId).OnDelete(DeleteBehavior.Restrict);
+
+        // Notes (DOMAIN.md §2.7): cheques and promissory notes, their steps, deposit portfolios.
+        b.Entity<Note>().Property(n => n.Kind).HasConversion<string>();
+        b.Entity<Note>().Property(n => n.Direction).HasConversion<string>();
+        b.Entity<Note>().Property(n => n.Status).HasConversion<string>();
+        b.Entity<Note>().HasIndex(n => n.Ref).IsUnique();
+        b.Entity<Note>().HasIndex(n => new { n.Direction, n.Status, n.DueDate });
+        b.Entity<Note>().HasOne(n => n.Party).WithMany()
+            .HasForeignKey(n => n.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Note>().HasOne(n => n.EndorsedTo).WithMany()
+            .HasForeignKey(n => n.EndorsedToId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Note>().HasOne(n => n.Branch).WithMany()
+            .HasForeignKey(n => n.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Note>().HasOne(n => n.Portfolio).WithMany(p => p.Notes)
+            .HasForeignKey(n => n.PortfolioId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Note>().HasOne(n => n.Account).WithMany()
+            .HasForeignKey(n => n.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Note>().HasOne(n => n.CreatedBy).WithMany()
+            .HasForeignKey(n => n.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<NoteAllocation>().HasKey(x => new { x.NoteId, x.DocumentId });
+        b.Entity<NoteAllocation>().HasIndex(x => x.DocumentId);
+        b.Entity<NoteAllocation>().HasOne(x => x.Note).WithMany(n => n.Allocations)
+            .HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<NoteAllocation>().HasOne(x => x.Document).WithMany()
+            .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<NoteEvent>().Property(e => e.FromStatus).HasConversion<string>();
+        b.Entity<NoteEvent>().Property(e => e.ToStatus).HasConversion<string>();
+        b.Entity<NoteEvent>().HasOne(e => e.Note).WithMany(n => n.Events)
+            .HasForeignKey(e => e.NoteId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<NoteEvent>().HasOne(e => e.Staff).WithMany()
+            .HasForeignKey(e => e.StaffId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Portfolio>().HasIndex(p => p.Number).IsUnique();
+        b.Entity<Portfolio>().HasOne(p => p.Account).WithMany()
+            .HasForeignKey(p => p.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Portfolio>().HasOne(p => p.Branch).WithMany()
+            .HasForeignKey(p => p.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Portfolio>().HasOne(p => p.CreatedBy).WithMany()
+            .HasForeignKey(p => p.CreatedById).OnDelete(DeleteBehavior.Restrict);
 
         // Ledger (DOMAIN.md §2.8): chart of accounts, journal entries and their lines.
         b.Entity<LedgerAccount>().Property(a => a.Type).HasConversion<string>();

@@ -709,6 +709,151 @@ namespace SKB.Api.Migrations
                     b.ToTable("MoneyMovements");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Note", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("BankName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Drawer")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("EndorsedToId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Guarantor")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PortfolioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Ref")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Remark")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SerialNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("EndorsedToId");
+
+                    b.HasIndex("PartyId");
+
+                    b.HasIndex("PortfolioId");
+
+                    b.HasIndex("Ref")
+                        .IsUnique();
+
+                    b.HasIndex("Direction", "Status", "DueDate");
+
+                    b.ToTable("Notes");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NoteAllocation", b =>
+                {
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("NoteId", "DocumentId");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("NoteAllocations");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NoteEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromStatus")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Remark")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("StaffId");
+
+                    b.ToTable("NoteEvents");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
                 {
                     b.Property<Guid>("Id")
@@ -763,6 +908,42 @@ namespace SKB.Api.Migrations
                     b.HasIndex("SalesPriceLevelId");
 
                     b.ToTable("Parties");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.ToTable("Portfolios");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PriceLevel", b =>
@@ -1911,6 +2092,92 @@ namespace SKB.Api.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Note", b =>
+                {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Party", "EndorsedTo")
+                        .WithMany()
+                        .HasForeignKey("EndorsedToId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Party", "Party")
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Portfolio", "Portfolio")
+                        .WithMany("Notes")
+                        .HasForeignKey("PortfolioId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("EndorsedTo");
+
+                    b.Navigation("Party");
+
+                    b.Navigation("Portfolio");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NoteAllocation", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Note", "Note")
+                        .WithMany("Allocations")
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NoteEvent", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Note", "Note")
+                        .WithMany("Events")
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("Staff");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
                 {
                     b.HasOne("SKB.Api.Data.PriceLevel", "PurchasePriceLevel")
@@ -1926,6 +2193,33 @@ namespace SKB.Api.Migrations
                     b.Navigation("PurchasePriceLevel");
 
                     b.Navigation("SalesPriceLevel");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
+                {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Product", b =>
@@ -2359,9 +2653,21 @@ namespace SKB.Api.Migrations
                     b.Navigation("Lines");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Note", b =>
+                {
+                    b.Navigation("Allocations");
+
+                    b.Navigation("Events");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
                 {
                     b.Navigation("Documents");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
+                {
+                    b.Navigation("Notes");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Product", b =>

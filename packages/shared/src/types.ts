@@ -102,7 +102,17 @@ export type Permission =
   | 'ledger:view'
   | 'ledger:post'
   | 'ledger:manage'
-  | 'ledger:lock';
+  | 'ledger:lock'
+  // Cheques & promissory notes (DOMAIN step 7)
+  | 'notes:view'
+  | 'notes:receive'
+  | 'notes:issue'
+  | 'notes:deposit'
+  | 'notes:collect'
+  | 'notes:pay'
+  | 'notes:bounce'
+  | 'notes:endorse'
+  | 'notes:cancel';
 
 export interface Staff {
   id: string;
@@ -474,7 +484,9 @@ export type MoneyMovementKind =
   | 'SALES_REFUND'
   | 'PURCHASE_REFUND'
   | 'CARRIER_SETTLEMENT'
-  | 'CANCELLATION';
+  | 'CANCELLATION'
+  | 'NOTE_COLLECTED'
+  | 'NOTE_PAID';
 
 /** Which kinds of account each payment method lands in (the server checks the same). */
 export const METHOD_ACCOUNT_KINDS: Record<PaymentMethod, MoneyAccountKind[]> = {
@@ -1232,5 +1244,88 @@ export interface JournalEntry {
   lines: JournalLine[];
   /** A manual entry not reversed yet. */
   reversible: boolean;
+  currency: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cheques & promissory notes (DOMAIN.md §2.7)
+// ---------------------------------------------------------------------------
+
+export type NoteKind = 'CHEQUE' | 'PROMISSORY_NOTE';
+/** RECEIVABLE: we hold it and collect it. PAYABLE: we issued it and pay it. */
+export type NoteDirection = 'RECEIVABLE' | 'PAYABLE';
+export type NoteStatus =
+  | 'IN_HAND'
+  | 'UNDER_COLLECTION'
+  | 'COLLECTED'
+  | 'BOUNCED'
+  | 'ENDORSED'
+  | 'CANCELLED'
+  | 'ISSUED'
+  | 'PAID';
+
+export interface NoteEvent {
+  fromStatus: NoteStatus | null;
+  toStatus: NoteStatus;
+  accountName: string | null;
+  partyName: string | null;
+  remark: string | null;
+  staffName: string;
+  createdAt: string;
+}
+
+export interface Note {
+  id: string;
+  /** Our reference, NR-… or NP-…. */
+  ref: string;
+  kind: NoteKind;
+  direction: NoteDirection;
+  status: NoteStatus;
+  /** The number printed on the cheque / note. */
+  serialNumber: string;
+  bankName: string | null;
+  amount: number;
+  /** yyyy-mm-dd. */
+  dueDate: string;
+  /** Past due and still open. */
+  overdue: boolean;
+  drawer: string | null;
+  guarantor: string | null;
+  partyId: string;
+  partyName: string;
+  endorsedToName: string | null;
+  branchName: string;
+  portfolioNumber: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  remark: string | null;
+  createdAt: string;
+  createdByName: string;
+  allocations: { documentId: string; number: string; amount: number }[];
+  events: NoteEvent[];
+  currency: string;
+}
+
+/** A batch of notes lodged at a bank (حافظة). */
+export interface Portfolio {
+  id: string;
+  number: string;
+  accountName: string;
+  branchName: string;
+  createdAt: string;
+  createdByName: string;
+  count: number;
+  total: number;
+  refs: string[];
+  currency: string;
+}
+
+export interface NotesSummary {
+  receivableOpen: number;
+  receivableOverdue: number;
+  receivableDueWeek: number;
+  payableOpen: number;
+  payableOverdue: number;
+  payableDueWeek: number;
   currency: string;
 }

@@ -274,7 +274,7 @@ public sealed class LedgerController : ControllerBase
         if (accounts.Values.Any(a => a.MoneyAccountId != null))
             return Bad("money_account", "Money moves through receipts, payments, expenses and transfers.");
         if (accounts.Values.Any(a => a.SystemKey is not null && LedgerKeys.DocumentOnly.Contains(a.SystemKey)))
-            return Bad("stock_account", "Stock moves through purchases, sales and stocktakes.");
+            return Bad("stock_account", "Stock and cheques move only through their own documents.");
 
         // A line on a party's account changes what they owe, exactly as the ledger says.
         var partyIds = accounts.Values.Where(a => a.PartyId != null).Select(a => a.PartyId!.Value).Distinct().ToArray();

@@ -44,6 +44,26 @@ public static class Permissions
     public const string LedgerManage = "ledger:manage";
     /// <summary>Set the period lock date (nothing on or before it can change).</summary>
     public const string LedgerLock = "ledger:lock";
+
+    // ---- Cheques & promissory notes (DOMAIN.md step 7) ----
+    /// <summary>See cheques and notes, their history and deposit portfolios.</summary>
+    public const string NotesView = "notes:view";
+    /// <summary>Take a cheque / promissory note from a customer (or other party).</summary>
+    public const string NotesReceive = "notes:receive";
+    /// <summary>Issue our cheque / promissory note to a supplier (or other party).</summary>
+    public const string NotesIssue = "notes:issue";
+    /// <summary>Lodge notes at a bank for collection.</summary>
+    public const string NotesDeposit = "notes:deposit";
+    /// <summary>Record a note we held as paid to us.</summary>
+    public const string NotesCollect = "notes:collect";
+    /// <summary>Record a note we issued as paid.</summary>
+    public const string NotesPay = "notes:pay";
+    /// <summary>Record a note as bounced (مرتد); the party owes again.</summary>
+    public const string NotesBounce = "notes:bounce";
+    /// <summary>Endorse a note we hold to a supplier (تظهير).</summary>
+    public const string NotesEndorse = "notes:endorse";
+    /// <summary>Cancel a note (give it back / withdraw it).</summary>
+    public const string NotesCancel = "notes:cancel";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
     /// <summary>Add a customer, supplier, factory or shipping company.</summary>
@@ -125,6 +145,8 @@ public static class Permissions
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
         MoneyAccountsManage, ExpenseCategoriesManage,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
+        NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
+        NotesCancel,
     };
 }
 
@@ -155,6 +177,9 @@ public static class RolePermissions
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
             Permissions.ExpenseCategoriesManage,
             Permissions.LedgerView, Permissions.LedgerPost, Permissions.LedgerManage,
+            Permissions.NotesView, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
+            Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
+            Permissions.NotesCancel,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).

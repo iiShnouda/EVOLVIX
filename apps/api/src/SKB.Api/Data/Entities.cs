@@ -776,6 +776,93 @@ public class CompanySettings
 }
 
 /// <summary>
+/// A cheque or promissory note (DOMAIN.md §2.7): one we hold from a customer (receivable) or one
+/// we issued to a supplier (payable). Receiving or issuing it settles the party's account (and
+/// may settle invoices); every later step — deposit, collection, bounce, endorsement — is a
+/// <see cref="NoteEvent"/> with its journal entry.
+/// </summary>
+public class Note
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>Our reference: NR-YYYY-NNNNNN (receivable) or NP-YYYY-NNNNNN (payable).</summary>
+    public string Ref { get; set; } = "";
+    public NoteKind Kind { get; set; }
+    public NoteDirection Direction { get; set; }
+    public NoteStatus Status { get; set; }
+    /// <summary>The number printed on the cheque / note.</summary>
+    public string SerialNumber { get; set; } = "";
+    public string? BankName { get; set; }
+    /// <summary>Minor units.</summary>
+    public long Amount { get; set; }
+    /// <summary>Due date (تاريخ الاستحقاق), a day.</summary>
+    public DateTime DueDate { get; set; }
+    /// <summary>Who the cheque is drawn on / who signed the note (المسحوب عليه / الساحب).</summary>
+    public string? Drawer { get; set; }
+    public string? Guarantor { get; set; }
+    /// <summary>Received from (receivable) or issued to (payable).</summary>
+    public Guid PartyId { get; set; }
+    public Party? Party { get; set; }
+    /// <summary>The supplier a received note was endorsed to (مظهرة إلى).</summary>
+    public Guid? EndorsedToId { get; set; }
+    public Party? EndorsedTo { get; set; }
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    /// <summary>The deposit batch it was lodged in.</summary>
+    public Guid? PortfolioId { get; set; }
+    public Portfolio? Portfolio { get; set; }
+    /// <summary>The money account it was deposited at / collected into / paid from.</summary>
+    public Guid? AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
+    public string? Remark { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<NoteAllocation> Allocations { get; set; } = new();
+    public List<NoteEvent> Events { get; set; } = new();
+}
+
+/// <summary>The part of a note that settles one invoice (undone if the note bounces or is cancelled).</summary>
+public class NoteAllocation
+{
+    public Guid NoteId { get; set; }
+    public Note? Note { get; set; }
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    public long Amount { get; set; }
+}
+
+/// <summary>One step in a note's life (old table hfzaHistory).</summary>
+public class NoteEvent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid NoteId { get; set; }
+    public Note? Note { get; set; }
+    public NoteStatus? FromStatus { get; set; }
+    public NoteStatus ToStatus { get; set; }
+    public Guid? AccountId { get; set; }
+    public Guid? PartyId { get; set; }
+    public string? Remark { get; set; }
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>A batch of notes lodged together at a bank for collection (حافظة), PF-YYYY-NNNNNN.</summary>
+public class Portfolio
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Number { get; set; } = "";
+    public Guid AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<Note> Notes { get; set; } = new();
+}
+
+/// <summary>
 /// An account in the chart of accounts (دليل الحسابات — DOMAIN.md §2.8). Groups hold other
 /// accounts; only non-group accounts take entries. System accounts (<see cref="SystemKey"/>) are made
 /// by setup and can't be removed. Customers, suppliers, carriers, money accounts and expense
