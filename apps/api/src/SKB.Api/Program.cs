@@ -37,6 +37,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<ReturnsService>();
 builder.Services.AddScoped<MoneyService>();
+builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
@@ -122,6 +123,8 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var auth = scope.ServiceProvider.GetRequiredService<AuthService>();
     await DbSeeder.SeedAsync(db, auth, app.Configuration);
+    // The chart of accounts, and the go-live opening entry the first time the ledger runs.
+    await LedgerService.SetupAsync(db);
 }
 
 // Behind a cloud load balancer (Render/Fly), trust the forwarded proto + client IP so

@@ -29,12 +29,14 @@ public sealed class MoneyController : ControllerBase
     private readonly AppDbContext _db;
     private readonly MoneyService _money;
     private readonly AuditService _audit;
+    private readonly LedgerService _ledger;
 
-    public MoneyController(AppDbContext db, MoneyService money, AuditService audit)
+    public MoneyController(AppDbContext db, MoneyService money, AuditService audit, LedgerService ledger)
     {
         _db = db;
         _money = money;
         _audit = audit;
+        _ledger = ledger;
     }
 
     private static readonly ShipmentStatus[] OnTheWay = { ShipmentStatus.CREATED, ShipmentStatus.PICKED_UP };
@@ -93,6 +95,7 @@ public sealed class MoneyController : ControllerBase
         {
             var locked = await _money.LockAsync(new[] { account.Id });
             _money.Move(locked[account.Id], req.OpeningBalance, MoneyMovementKind.OPENING, Me(), null, notes: "Opening balance");
+            await _ledger.PostMoneyOpeningAsync(locked[account.Id], req.OpeningBalance, Me());
             await _db.SaveChangesAsync();
         }
         await tx.CommitAsync();
@@ -147,6 +150,7 @@ public sealed class MoneyController : ControllerBase
             if (opening < 0 || opening > InvoiceLines.MaxPrice) return Bad("bad_amount", "The opening balance can't be negative.");
             if (account.LastSeq != 0) return Bad("has_movements", "Money has already moved through this account.");
             _money.Move(account, opening, MoneyMovementKind.OPENING, Me(), null, notes: "Opening balance");
+            await _ledger.PostMoneyOpeningAsync(account, opening, Me());
         }
 
         await _db.SaveChangesAsync();
@@ -275,6 +279,7 @@ public sealed class MoneyController : ControllerBase
         var error = _money.Move(from, -req.Amount, MoneyMovementKind.TRANSFER_OUT, Me(), voucher.Number, voucherId: voucher.Id)
                     ?? _money.Move(to, req.Amount, MoneyMovementKind.TRANSFER_IN, Me(), voucher.Number, voucherId: voucher.Id);
         if (error is not null) return Bad(error.Code, error.Message);
+        await _ledger.PostVoucherAsync(voucher, null, accounts, null, Me());
         _db.Vouchers.Add(voucher);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
@@ -296,6 +301,9 @@ public sealed class MoneyController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == id);
         if (voucher is null) return NotFound(new { message = "Voucher not found.", code = "not_found" });
         if (voucher.Status != VoucherStatus.POSTED) return Bad("already_cancelled", "This voucher is already cancelled.");
+        var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
+        if (lockDate is DateTime locked && voucher.CreatedAt.Date <= locked.Date)
+            return Bad("period_locked", "The period this voucher is in is locked.");
 
         // Invoices first, then accounts: the same order every money path locks in.
         var docIds = voucher.Allocations.Select(a => a.DocumentId).OrderBy(x => x).ToArray();
@@ -324,6 +332,7 @@ public sealed class MoneyController : ControllerBase
             doc.PaidAmount = Math.Max(0, doc.PaidAmount - a.Amount);
             MoneyService.RefreshPaidStatus(doc);
         }
+        await _ledger.ReverseVoucherAsync(voucher, Me());
         voucher.Status = VoucherStatus.CANCELLED;
         voucher.CancelledAt = DateTime.UtcNow;
         voucher.CancelledById = Me();
@@ -450,6 +459,8 @@ public sealed class MoneyController : ControllerBase
             MoneyService.RefreshPaidStatus(doc);
             voucher.Allocations.Add(new VoucherAllocation { DocumentId = docId, Amount = amount });
         }
+        var category = categoryId is Guid cid ? await _db.ExpenseCategories.FirstAsync(c => c.Id == cid) : null;
+        await _ledger.PostVoucherAsync(voucher, party, accounts, category, Me());
         _db.Vouchers.Add(voucher);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();

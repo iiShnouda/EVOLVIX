@@ -30,15 +30,17 @@ public sealed class InventoryController : ControllerBase
     private readonly WarehouseService _warehouses;
     private readonly StockValuation _valuation;
     private readonly AuditService _audit;
+    private readonly LedgerService _ledger;
 
     public InventoryController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        StockValuation valuation, AuditService audit)
+        StockValuation valuation, AuditService audit, LedgerService ledger)
     {
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
         _valuation = valuation;
         _audit = audit;
+        _ledger = ledger;
     }
 
     /// <summary>
@@ -240,17 +242,21 @@ public sealed class InventoryController : ControllerBase
             return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
 
         var reference = await DocumentNumbers.NextAdjustmentAsync(_db);
-        long valueChange = 0;
+        long valueChange = 0, gains = 0, losses = 0;
         var changed = 0;
         foreach (var (pid, qty) in counted)
         {
             var delta = qty - _inventory.Available(pid, warehouse!.Id);
             if (delta == 0) continue;
-            valueChange += _inventory.Adjust(products[pid], warehouse, delta, reference, note);
+            var value = _inventory.Adjust(products[pid], warehouse, delta, reference, note);
+            valueChange += value;
+            if (value > 0) gains += value; else losses -= value;
             changed++;
         }
         if (changed == 0)
             return BadRequest(new { message = "Counted quantities match the books — nothing to post.", code = "no_change" });
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        await _ledger.PostStocktakeAsync(reference, warehouse!.BranchId, gains, losses, staffId);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();

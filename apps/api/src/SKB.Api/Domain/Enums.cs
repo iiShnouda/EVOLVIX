@@ -87,6 +87,9 @@ public enum DeliveryStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED, RETURNED }
 /// </summary>
 public enum ShipmentStatus { CREATED, PICKED_UP, DELIVERED, SETTLED, RETURNED, CANCELLED }
 
+/// <summary>The five kinds of ledger account (DOMAIN.md §2.8). Assets and expenses grow on the debit side.</summary>
+public enum LedgerAccountType { ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE }
+
 /// <summary>Where money sits (DOMAIN.md §2.6).</summary>
 public enum MoneyAccountKind
 {

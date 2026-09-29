@@ -57,6 +57,7 @@ const SECTIONS = [
   'delivery',
   'inventory',
   'catalog',
+  'ledger',
   'branches',
   'staff',
   'analytics',

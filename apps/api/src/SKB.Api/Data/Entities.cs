@@ -767,5 +767,74 @@ public class CompanySettings
     /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.
     /// </summary>
     public bool TransfersRequireReceipt { get; set; } = true;
+    /// <summary>
+    /// Period lock (إقفال الحركات): no manual entry may be dated on or before this day, and no
+    /// voucher created on or before it may be cancelled. Null = nothing locked.
+    /// </summary>
+    public DateTime? LockDate { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An account in the chart of accounts (دليل الحسابات — DOMAIN.md §2.8). Groups hold other
+/// accounts; only non-group accounts take entries. System accounts (<see cref="SystemKey"/>) are made
+/// by setup and can't be removed. Customers, suppliers, carriers, money accounts and expense
+/// categories each get their own sub-account under their group, linked back to them.
+/// </summary>
+public class LedgerAccount : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>E.g. "1103" or "1103-0007" for a sub-account.</summary>
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public LedgerAccountType Type { get; set; }
+    public Guid? ParentId { get; set; }
+    public LedgerAccount? Parent { get; set; }
+    public bool IsGroup { get; set; }
+    /// <summary>Set on accounts setup made, e.g. INVENTORY, CUSTOMERS, SALES.</summary>
+    public string? SystemKey { get; set; }
+    public Guid? PartyId { get; set; }
+    public Party? Party { get; set; }
+    public Guid? MoneyAccountId { get; set; }
+    public MoneyAccount? MoneyAccount { get; set; }
+    public Guid? ExpenseCategoryId { get; set; }
+    public ExpenseCategory? ExpenseCategory { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A journal entry (قيد): debits = credits, always. Documents post their own entries in the same
+/// transaction; a cancellation posts the exact reverse. Manual (compound) entries are numbered JV-.
+/// </summary>
+public class JournalEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>The source document's number (INV-…, RCV-…) or, for a manual entry, JV-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public DateTime Date { get; set; } = DateTime.UtcNow;
+    public string Description { get; set; } = "";
+    /// <summary>OPENING, SALES_INVOICE, SALES_RETURN, PURCHASE_INVOICE, PURCHASE_RETURN, VOUCHER,
+    /// VOUCHER_CANCEL, STOCKTAKE, SHIPMENT, CARRIER_SETTLEMENT, MONEY_OPENING, MANUAL.</summary>
+    public string SourceType { get; set; } = "";
+    public Guid? SourceId { get; set; }
+    public Guid? BranchId { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<JournalLine> Lines { get; set; } = new();
+}
+
+public class JournalLine
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EntryId { get; set; }
+    public JournalEntry? Entry { get; set; }
+    public int LineNo { get; set; }
+    public Guid AccountId { get; set; }
+    public LedgerAccount? Account { get; set; }
+    /// <summary>Minor units, ≥ 0; one of debit / credit is zero.</summary>
+    public long Debit { get; set; }
+    public long Credit { get; set; }
+    public string? Memo { get; set; }
 }

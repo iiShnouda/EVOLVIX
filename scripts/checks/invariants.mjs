@@ -164,5 +164,51 @@ await expectNone(
   'paid-now went through its account',
   `select d."Number" from "SalesDocuments" d where d."PaidAccountId" is not null and not exists (select 1 from "MoneyMovements" m where m."DocumentId"=d."Id" and m."AccountId"=d."PaidAccountId")`,
 );
+// Ledger (step 6): balanced entries, and every sub-ledger ties to its ledger accounts.
+const golive = `coalesce((select min("CreatedAt") from "JournalEntries" where "SourceType"='OPENING'), '-infinity'::timestamptz)`;
+await expectNone(
+  'chart of accounts set up',
+  `select 1 where (select count(*) from "LedgerAccounts" where "SystemKey" is not null) < 29`,
+);
+await expectNone(
+  'every entry balances',
+  `select e."Number" from "JournalEntries" e join "JournalLines" l on l."EntryId"=e."Id" group by e."Id" having sum(l."Debit") <> sum(l."Credit") union all select e."Number" from "JournalEntries" e where not exists (select 1 from "JournalLines" l where l."EntryId"=e."Id")`,
+);
+await expectNone(
+  'each line is one side, above zero',
+  `select "Id" from "JournalLines" where "Debit" < 0 or "Credit" < 0 or ("Debit" > 0) = ("Credit" > 0)`,
+);
+await expectNone(
+  'no entries on group accounts',
+  `select l."Id" from "JournalLines" l join "LedgerAccounts" a on a."Id"=l."AccountId" where a."IsGroup"`,
+);
+await expectNone(
+  'party balance = its ledger accounts',
+  `select p."Name", p."Balance", coalesce(sum(l."Debit"-l."Credit"),0) ledger from "Parties" p left join "LedgerAccounts" a on a."PartyId"=p."Id" left join "JournalLines" l on l."AccountId"=a."Id" group by p."Id" having p."Balance" <> coalesce(sum(l."Debit"-l."Credit"),0)`,
+);
+await expectNone(
+  'money account = its ledger account',
+  `select m."Name", m."Balance", coalesce(sum(l."Debit"-l."Credit"),0) ledger from "MoneyAccounts" m left join "LedgerAccounts" a on a."MoneyAccountId"=m."Id" left join "JournalLines" l on l."AccountId"=a."Id" group by m."Id" having m."Balance" <> coalesce(sum(l."Debit"-l."Credit"),0)`,
+);
+await expectNone(
+  'stock ledger ≈ stock at average cost (≤ 1 piastre a unit)',
+  `with v as (select coalesce(sum(b."Quantity"::bigint * c."AvgCost"),0) val, coalesce(sum(abs(b."Quantity")),0) units from "StockBalances" b join "Warehouses" w on w."Id"=b."WarehouseId" join "StockCosts" c on c."ProductId"=b."ProductId" and c."PoolId" = case when w."Kind"='TRANSIT' then w."Id" else w."BranchId" end), g as (select coalesce(sum(l."Debit"-l."Credit"),0) led from "JournalLines" l join "LedgerAccounts" a on a."Id"=l."AccountId" where a."SystemKey"='INVENTORY') select v.val, g.led, v.units from v, g where abs(v.val - g.led) > v.units`,
+);
+await expectNone(
+  'every document since go-live has its entry',
+  `select d."Number" from "SalesDocuments" d where d."CreatedAt" > ${golive} and d."Type" in ('SALES_INVOICE','SALES_RETURN','PURCHASE_INVOICE','PURCHASE_RETURN') and (d."GrandTotal" <> 0 or d."CostTotal" <> 0) and not exists (select 1 from "JournalEntries" e where e."SourceId"=d."Id" and e."SourceType"=d."Type"::text)`,
+);
+await expectNone(
+  'every voucher has its entry (and its reversal once cancelled)',
+  `select v."Number" from "Vouchers" v where v."CreatedAt" > ${golive} and (not exists (select 1 from "JournalEntries" e where e."SourceId"=v."Id" and e."SourceType"='VOUCHER') or (v."Status"='CANCELLED') <> exists (select 1 from "JournalEntries" e where e."SourceId"=v."Id" and e."SourceType"='VOUCHER_CANCEL'))`,
+);
+await expectNone(
+  'manual entries never touch money or stock',
+  `select e."Number" from "JournalEntries" e join "JournalLines" l on l."EntryId"=e."Id" join "LedgerAccounts" a on a."Id"=l."AccountId" where e."SourceType" in ('MANUAL','MANUAL_REVERSAL') and (a."MoneyAccountId" is not null or a."SystemKey"='INVENTORY')`,
+);
+await expectNone(
+  'the whole ledger balances',
+  `select 1 from "JournalLines" having sum("Debit") <> sum("Credit")`,
+);
 await c.end();
 process.exit(bad ? 1 : 0);

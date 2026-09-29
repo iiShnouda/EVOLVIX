@@ -279,6 +279,11 @@ One shape for every document type:
   - A **compound entry** (قيد مركب) is a manual entry with any number of lines. Old tables `kedAction` / `kedActionSub`.
 - **Opening balances** (أرصدة أول المدة): a single opening entry at go-live. Old table `RAwel`.
 - **Period lock** (إقفال الحركات): nothing can be posted, edited or cancelled on or before the lock date.
+- **Built (step 6):** `LedgerAccount` (system accounts by `SystemKey`; sub-accounts linked to a
+  party, money account or expense category), `JournalEntry` (source type + id, `JV-` numbers for
+  manual entries) and `JournalLine` (account, debit or credit). All sales taxes post to one
+  output-VAT account and all purchase taxes to one input-VAT account for now. Money accounts and
+  stock take no manual lines; a manual line on a party account moves the party's balance.
 
 ### 2.9 Later modules — only if the company uses them
 Owner's answers (2026-09-28):
@@ -416,7 +421,9 @@ Each step is a working slice: API, web, tests and docs together.
    per branch with opening balances (never below zero), receipts and payments in several ways at
    once with allocation to invoices, expenses by category, transfers, cancelling, the daily cash
    statement; paid-now, refunds and carrier settlements go through an account.
-6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
+6. ✅ **Ledger** (shipped 2026-09-29): account tree with auto sub-accounts, automatic posting of
+   every document (§3), compound entries with reversal, account / party statements, trial
+   balance, a go-live opening entry, and the period lock.
 7. **Cheques & portfolios.**
 8. **Financial statements**, then analytics (ROADMAP Phases 5–6).
 9. Payroll & attendance (§2.9).

@@ -34,6 +34,16 @@ public static class Permissions
     public const string MoneyAccountsManage = "money_accounts:manage";
     /// <summary>Add and rename expense categories.</summary>
     public const string ExpenseCategoriesManage = "expense_categories:manage";
+
+    // ---- Ledger (DOMAIN.md step 6) ----
+    /// <summary>See the chart of accounts, journal, account statements and the trial balance.</summary>
+    public const string LedgerView = "ledger:view";
+    /// <summary>Post a manual (compound) journal entry.</summary>
+    public const string LedgerPost = "ledger:post";
+    /// <summary>Add and rename ledger accounts.</summary>
+    public const string LedgerManage = "ledger:manage";
+    /// <summary>Set the period lock date (nothing on or before it can change).</summary>
+    public const string LedgerLock = "ledger:lock";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
     /// <summary>Add a customer, supplier, factory or shipping company.</summary>
@@ -114,6 +124,7 @@ public static class Permissions
         PartiesCreate, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
         MoneyAccountsManage, ExpenseCategoriesManage,
+        LedgerView, LedgerPost, LedgerManage, LedgerLock,
     };
 }
 
@@ -143,6 +154,7 @@ public static class RolePermissions
             Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
             Permissions.ExpenseCategoriesManage,
+            Permissions.LedgerView, Permissions.LedgerPost, Permissions.LedgerManage,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).

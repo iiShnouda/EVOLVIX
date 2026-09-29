@@ -62,6 +62,10 @@ const ALL: Permission[] = [
   'vouchers:cancel',
   'money_accounts:manage',
   'expense_categories:manage',
+  'ledger:view',
+  'ledger:post',
+  'ledger:manage',
+  'ledger:lock',
 ];
 
 const PURCHASE_CHARGES: Permission[] = [
@@ -124,6 +128,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'vouchers:cancel',
     'money_accounts:manage',
     'expense_categories:manage',
+    'ledger:view',
+    'ledger:post',
+    'ledger:manage',
   ],
   // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
   // the customer's price level; changing a price or the level needs a manager.

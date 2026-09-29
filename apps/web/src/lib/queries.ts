@@ -74,6 +74,13 @@ import type {
   CreateVoucherInput,
   CreateCashTransferInput,
   ExpenseCategoryInput,
+  LedgerAccount,
+  LedgerStatement,
+  TrialBalance,
+  JournalEntry,
+  CreateLedgerAccountInput,
+  UpdateLedgerAccountInput,
+  CreateJournalEntryInput,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -199,6 +206,7 @@ function invalidateAfterPosting(qc: ReturnType<typeof useQueryClient>, scope: Do
   void qc.invalidateQueries({ queryKey: ['inventory'] });
   void qc.invalidateQueries({ queryKey: ['parties'] });
   void qc.invalidateQueries({ queryKey: ['report'] });
+  void qc.invalidateQueries({ queryKey: ['ledger'] });
 }
 
 export function useCreateSalesInvoice() {
@@ -846,5 +854,109 @@ export function useSaveExpenseCategory() {
         ? api.put<ExpenseCategory>(`/expense-categories/${id}`, input)
         : api.post<ExpenseCategory>('/expense-categories', input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['money', 'categories'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ledger (DOMAIN.md §2.8): chart of accounts, statements, trial balance, journal
+// ---------------------------------------------------------------------------
+
+export function useLedgerAccounts(enabled = true) {
+  return useQuery({
+    queryKey: ['ledger', 'accounts'],
+    queryFn: () => api.get<LedgerAccount[]>('/ledger/accounts'),
+    enabled,
+  });
+}
+
+/** `kind` = 'accounts' (an account or group) or 'parties' (a customer's / supplier's statement). */
+export function useLedgerStatement(
+  kind: 'accounts' | 'parties',
+  id: string,
+  from: string,
+  to: string,
+) {
+  return useQuery({
+    queryKey: ['ledger', 'statement', kind, id, from, to],
+    queryFn: () =>
+      api.get<LedgerStatement>(
+        `/ledger/${kind}/${id}/statement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+    enabled: !!id,
+  });
+}
+
+export function useTrialBalance(from: string, to: string) {
+  return useQuery({
+    queryKey: ['ledger', 'trial', from, to],
+    queryFn: () =>
+      api.get<TrialBalance>(
+        `/ledger/trial-balance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+  });
+}
+
+export function useJournal(params: { from: string; to: string; source?: string }) {
+  const query = new URLSearchParams({ from: params.from, to: params.to, pageSize: '100' });
+  if (params.source) query.set('source', params.source);
+  return useQuery({
+    queryKey: ['ledger', 'journal', params],
+    queryFn: () => api.get<Paginated<JournalEntry>>(`/ledger/entries?${query}`),
+  });
+}
+
+export function useLockDate() {
+  return useQuery({
+    queryKey: ['ledger', 'lock'],
+    queryFn: () => api.get<{ lockDate: string | null }>('/ledger/lock'),
+  });
+}
+
+export function useSetLockDate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lockDate: string | null) =>
+      api.put<{ lockDate: string | null }>('/ledger/lock', { lockDate }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['ledger'] }),
+  });
+}
+
+export function useSaveLedgerAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id?: string;
+      input: CreateLedgerAccountInput | UpdateLedgerAccountInput;
+    }) =>
+      id
+        ? api.put<LedgerAccount>(`/ledger/accounts/${id}`, input)
+        : api.post<LedgerAccount>('/ledger/accounts', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['ledger'] }),
+  });
+}
+
+export function usePostJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateJournalEntryInput) =>
+      api.post<JournalEntry>('/ledger/entries', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ledger'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
+  });
+}
+
+export function useReverseJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<JournalEntry>(`/ledger/entries/${id}/reverse`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ledger'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
   });
 }

@@ -505,3 +505,44 @@ public record ExpenseCategoryDto(string Id, string Name, string? ParentId, strin
 public record CreateExpenseCategoryRequest(string? Name, string? ParentId = null);
 
 public record UpdateExpenseCategoryRequest(string? Name = null, string? ParentId = null, bool? IsActive = null);
+
+// ---- Ledger (DOMAIN.md §2.8): chart of accounts, statements, trial balance, journal ----
+
+/// <param name="Balance">Debits − credits (a group: of everything under it).</param>
+public record LedgerAccountDto(
+    string Id, string Code, string Name, string Type, string? ParentId, bool IsGroup, string? SystemKey,
+    string? PartyId, string? MoneyAccountId, string? ExpenseCategoryId, bool IsActive, long Debit, long Credit,
+    long Balance);
+
+public record CreateLedgerAccountRequest(string? Name, string? ParentId, bool IsGroup = false);
+
+public record UpdateLedgerAccountRequest(string? Name = null, bool? IsActive = null);
+
+/// <param name="Balance">Running balance (debits − credits) after this line.</param>
+public record LedgerLineDto(
+    string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
+    string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance);
+
+public record LedgerStatementDto(
+    string Title, string From, string To, long Opening, long TotalDebit, long TotalCredit, long Closing,
+    LedgerLineDto[] Lines, string Currency);
+
+public record TrialBalanceRowDto(
+    string AccountId, string Code, string Name, string Type, string? ParentId, long OpeningDebit,
+    long OpeningCredit, long PeriodDebit, long PeriodCredit, long ClosingDebit, long ClosingCredit);
+
+public record TrialBalanceDto(string From, string To, TrialBalanceRowDto[] Rows, string Currency);
+
+public record JournalLineDto(string AccountId, string AccountCode, string AccountName, long Debit, long Credit, string? Memo);
+
+/// <param name="Reversible">A manual entry not reversed yet.</param>
+public record JournalEntryDto(
+    string Id, string Number, string Date, string Description, string SourceType, string? SourceId,
+    string CreatedByName, string CreatedAt, JournalLineDto[] Lines, bool Reversible, string Currency);
+
+public record JournalLineRequest(string? AccountId, long Debit = 0, long Credit = 0, string? Memo = null);
+
+public record CreateJournalEntryRequest(string? Date, string? Description, JournalLineRequest[]? Lines);
+
+public record LockDateDto(string? LockDate);
+

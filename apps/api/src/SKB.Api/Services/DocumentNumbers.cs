@@ -88,6 +88,16 @@ public static class DocumentNumbers
         return Next(prefix, last);
     }
 
+    /// <summary>Next manual journal entry number, e.g. JV-2026-000004.</summary>
+    public static async Task<string> NextJournalAsync(AppDbContext db)
+    {
+        var prefix = $"JV-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.JournalEntries.Where(e => e.Number.StartsWith(prefix))
+            .OrderByDescending(e => e.Number).Select(e => e.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
     private static string Next(string prefix, string? last)
     {
         var seq = 1;

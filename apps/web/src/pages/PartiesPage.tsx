@@ -12,6 +12,7 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
+import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -157,6 +158,7 @@ function PartyCard({
   const bal = balanceView(party.balance, party.currency);
   const money = (kind: 'receipt' | 'payment') =>
     navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
+  const [statement, setStatement] = useState(false);
   const balLabel =
     bal.direction === 'receivable'
       ? t('parties.theyOweUs')
@@ -216,14 +218,20 @@ function PartyCard({
         <PriceLevelPicker party={party} levels={levels} canSet={can('parties:set_price_level')} />
       )}
 
-      {party.isActive && (can('receipts:create') || can('payments:create')) && (
+      {((party.isActive && (can('receipts:create') || can('payments:create'))) ||
+        can('ledger:view')) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {can('receipts:create') && (
+          {can('ledger:view') && (
+            <Button size="sm" variant="ghost" onClick={() => setStatement(true)}>
+              {t('ledger.partyStatement')}
+            </Button>
+          )}
+          {party.isActive && can('receipts:create') && (
             <Button size="sm" variant="secondary" onClick={() => money('receipt')}>
               {t('money.receive')}
             </Button>
           )}
-          {can('payments:create') && (
+          {party.isActive && can('payments:create') && (
             <Button size="sm" variant="ghost" onClick={() => money('payment')}>
               {t('money.pay')}
             </Button>
@@ -245,6 +253,14 @@ function PartyCard({
             </p>
           )}
         </div>
+      )}
+      {statement && (
+        <LedgerStatementSheet
+          kind="parties"
+          id={party.id}
+          title={party.name}
+          onClose={() => setStatement(false)}
+        />
       )}
     </Card>
   );

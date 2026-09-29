@@ -451,3 +451,23 @@ export interface ExpenseCategoryInput {
   parentId?: string;
   isActive?: boolean;
 }
+
+// ---- Ledger (DOMAIN step 6) ----
+
+export interface CreateLedgerAccountInput {
+  name: string;
+  parentId: string;
+  isGroup?: boolean;
+}
+
+export interface UpdateLedgerAccountInput {
+  name?: string;
+  isActive?: boolean;
+}
+
+export interface CreateJournalEntryInput {
+  /** yyyy-mm-dd; none = today. */
+  date?: string;
+  description: string;
+  lines: { accountId: string; debit?: number; credit?: number; memo?: string }[];
+}

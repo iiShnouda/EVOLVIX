@@ -16,7 +16,8 @@ export type IconName =
   | 'more'
   | 'audit'
   | 'presence'
-  | 'delivery';
+  | 'delivery'
+  | 'ledger';
 
 export interface NavItem {
   /** Stable route key, also used as the presence "currentView" identifier. */
@@ -90,6 +91,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'receipts',
     path: '/receipts',
     permission: 'receipts:view',
+  },
+  {
+    key: 'ledger',
+    labelKey: 'nav.ledger',
+    icon: 'ledger',
+    path: '/ledger',
+    permission: 'ledger:view',
   },
   {
     key: 'analytics',

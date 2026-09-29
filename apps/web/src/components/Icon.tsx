@@ -38,6 +38,8 @@ const PATHS: Record<string, string> = {
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   building:
     'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M8 7h.01M12 7h.01M8 11h.01M12 11h.01M16 21V9h2a2 2 0 0 1 2 2v10',
+  // An open ledger book.
+  ledger: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5ZM4 19V5M19 17H6M9 7h6M9 11h6',
   // A delivery truck: box, cab and two wheels.
   delivery:
     'M14 17V5H2v12h3M9 17h6M19 17h2v-4l-3-4h-4M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',

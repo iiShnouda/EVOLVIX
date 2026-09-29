@@ -41,6 +41,9 @@ public class AppDbContext : DbContext
     public DbSet<VoucherLine> VoucherLines => Set<VoucherLine>();
     public DbSet<VoucherAllocation> VoucherAllocations => Set<VoucherAllocation>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+    public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalLine> JournalLines => Set<JournalLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -54,6 +57,31 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>()
             .HasOne(d => d.Rep).WithMany()
             .HasForeignKey(d => d.RepId).OnDelete(DeleteBehavior.Restrict);
+
+        // Ledger (DOMAIN.md §2.8): chart of accounts, journal entries and their lines.
+        b.Entity<LedgerAccount>().Property(a => a.Type).HasConversion<string>();
+        b.Entity<LedgerAccount>().HasIndex(a => a.Code).IsUnique();
+        b.Entity<LedgerAccount>().HasIndex(a => a.SystemKey).IsUnique().HasFilter("\"SystemKey\" IS NOT NULL");
+        b.Entity<LedgerAccount>().HasIndex(a => new { a.ParentId, a.PartyId }).IsUnique().HasFilter("\"PartyId\" IS NOT NULL");
+        b.Entity<LedgerAccount>().HasIndex(a => a.MoneyAccountId).IsUnique().HasFilter("\"MoneyAccountId\" IS NOT NULL");
+        b.Entity<LedgerAccount>().HasIndex(a => a.ExpenseCategoryId).IsUnique().HasFilter("\"ExpenseCategoryId\" IS NOT NULL");
+        b.Entity<LedgerAccount>().HasOne(a => a.Parent).WithMany()
+            .HasForeignKey(a => a.ParentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<LedgerAccount>().HasOne(a => a.Party).WithMany()
+            .HasForeignKey(a => a.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<LedgerAccount>().HasOne(a => a.MoneyAccount).WithMany()
+            .HasForeignKey(a => a.MoneyAccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<LedgerAccount>().HasOne(a => a.ExpenseCategory).WithMany()
+            .HasForeignKey(a => a.ExpenseCategoryId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<JournalEntry>().HasIndex(e => new { e.SourceType, e.SourceId });
+        b.Entity<JournalEntry>().HasIndex(e => e.Date);
+        b.Entity<JournalEntry>().HasOne(e => e.CreatedBy).WithMany()
+            .HasForeignKey(e => e.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<JournalLine>().HasOne(l => l.Entry).WithMany(e => e.Lines)
+            .HasForeignKey(l => l.EntryId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<JournalLine>().HasOne(l => l.Account).WithMany()
+            .HasForeignKey(l => l.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<JournalLine>().HasIndex(l => l.AccountId);
 
         // Money (DOMAIN.md §2.6): accounts, their movements, and vouchers with lines and allocations.
         // Restrict everywhere: money history keeps its references.

@@ -19,9 +19,10 @@ public sealed class SalesController : ControllerBase
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
     private readonly MoneyService _money;
+    private readonly LedgerService _ledger;
 
     public SalesController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        ReturnsService returns, AuditService audit, MoneyService money)
+        ReturnsService returns, AuditService audit, MoneyService money, LedgerService ledger)
     {
         _db = db;
         _inventory = inventory;
@@ -29,6 +30,7 @@ public sealed class SalesController : ControllerBase
         _returns = returns;
         _audit = audit;
         _money = money;
+        _ledger = ledger;
     }
 
     [HttpGet("invoices")]
@@ -332,14 +334,17 @@ public sealed class SalesController : ControllerBase
         party.Balance += grand - doc.PaidAmount;
 
         // Money paid now lands in a money account: the one picked, else the branch's cash box.
+        MoneyAccount? paidInto = null;
         if (doc.PaidAmount > 0)
         {
             var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, MoneyService.ScopeOf(User));
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+            paidInto = account!;
             doc.PaidAccountId = account!.Id;
             _money.Move(account, doc.PaidAmount, MoneyMovementKind.SALE_PAID, staffId, doc.Number,
                 documentId: doc.Id, partyId: party.Id);
         }
+        await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();

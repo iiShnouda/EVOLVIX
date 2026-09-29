@@ -31,6 +31,7 @@ import { ModelEditorPage } from './pages/ModelEditorPage';
 import { StaffPage } from './pages/StaffPage';
 import { DeliveriesPage } from './pages/DeliveriesPage';
 import { MoneyPage } from './pages/MoneyPage';
+import { LedgerPage } from './pages/LedgerPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
@@ -164,6 +165,7 @@ export default function App() {
               element={<ReturnBuilderPage scope="purchases" />}
             />
             <Route path="/receipts" element={<MoneyPage />} />
+            <Route path="/ledger" element={<LedgerPage />} />
             <Route path="/analytics" element={<ProfitabilityPage />} />
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/branches" element={<BranchesPage />} />

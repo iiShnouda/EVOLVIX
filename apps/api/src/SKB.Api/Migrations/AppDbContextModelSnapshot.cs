@@ -190,6 +190,9 @@ namespace SKB.Api.Migrations
                     b.Property<int>("DefaultTaxPercent")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("LockDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("MinMarkupPercent")
                         .HasColumnType("integer");
 
@@ -391,6 +394,151 @@ namespace SKB.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ItemUnits");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.JournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("SourceType", "SourceId");
+
+                    b.ToTable("JournalEntries");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Credit")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Debit")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Memo")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("EntryId");
+
+                    b.ToTable("JournalLines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.LedgerAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ExpenseCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsGroup")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("MoneyAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SystemKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("ExpenseCategoryId")
+                        .IsUnique()
+                        .HasFilter("\"ExpenseCategoryId\" IS NOT NULL");
+
+                    b.HasIndex("MoneyAccountId")
+                        .IsUnique()
+                        .HasFilter("\"MoneyAccountId\" IS NOT NULL");
+
+                    b.HasIndex("PartyId");
+
+                    b.HasIndex("SystemKey")
+                        .IsUnique()
+                        .HasFilter("\"SystemKey\" IS NOT NULL");
+
+                    b.HasIndex("ParentId", "PartyId")
+                        .IsUnique()
+                        .HasFilter("\"PartyId\" IS NOT NULL");
+
+                    b.ToTable("LedgerAccounts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ModelPrice", b =>
@@ -1615,6 +1763,67 @@ namespace SKB.Api.Migrations
                     b.Navigation("Unit");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.JournalEntry", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.JournalLine", b =>
+                {
+                    b.HasOne("SKB.Api.Data.LedgerAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.JournalEntry", "Entry")
+                        .WithMany("Lines")
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Entry");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.LedgerAccount", b =>
+                {
+                    b.HasOne("SKB.Api.Data.ExpenseCategory", "ExpenseCategory")
+                        .WithMany()
+                        .HasForeignKey("ExpenseCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "MoneyAccount")
+                        .WithMany()
+                        .HasForeignKey("MoneyAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.LedgerAccount", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Party", "Party")
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ExpenseCategory");
+
+                    b.Navigation("MoneyAccount");
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("Party");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.ModelPrice", b =>
                 {
                     b.HasOne("SKB.Api.Data.ProductModel", "Model")
@@ -2143,6 +2352,11 @@ namespace SKB.Api.Migrations
             modelBuilder.Entity("SKB.Api.Data.Category", b =>
                 {
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Party", b =>

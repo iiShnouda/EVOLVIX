@@ -108,6 +108,51 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**The general ledger** (الحسابات العامة) — DOMAIN.md §7 step 6
+- **Chart of accounts** (`LedgerAccount`, made by code at startup, names in Arabic like the other
+  starter lists): assets (cash, banks & wallets, customers, shipping companies, stock, VAT on
+  purchases, fixed assets), liabilities (suppliers, VAT on sales), equity (capital, opening
+  balances, retained earnings), revenue (sales, sales returns, other income, stocktake gains) and
+  expenses (cost of sales, operating expenses, shipping, purchase expenses, stocktake losses,
+  rounding). Groups hold accounts; only non-group accounts take entries.
+  - Each customer, supplier, carrier, money account and expense category gets its own
+    sub-account (e.g. `1103-0007`) the first time it posts; it shows that record's current name.
+- **Go-live:** the first time the ledger runs on a company that already has data, it posts one
+  opening entry from what the books hold — each party's balance, each money account, and the
+  stock at average cost — against "opening balances". History before go-live stays in the
+  documents (the profitability report still covers it).
+- **Automatic entries (DOMAIN.md §3),** in the same transaction as the document: sales and
+  purchase invoices (with paid-now), sales and purchase returns (with refunds), receipts,
+  payments, expenses, transfers, cancelled vouchers (the exact reverse), stocktake gains and
+  losses, cash-on-delivery parcels (customer → carrier), carrier settlements (cash + shipping
+  fees), and money-account opening balances. All sales taxes post to "VAT on sales", all purchase
+  taxes to "VAT on purchases"; additions on a sale are other income, on a purchase a purchase
+  expense.
+- **Manual (compound) entries** (قيد مركب, `JV-`): any number of lines, debits = credits, dated
+  up to today. Not on money accounts or stock (vouchers and stocktakes move those); a line on a
+  customer's / supplier's account moves their balance with it. A manual entry can be reversed
+  once; a document's entry reverses by cancelling the document.
+- **Reports:** account statement (a group covers everything under it), customer / supplier
+  statement (كشف حساب), trial balance (ميزان المراجعة: opening, period, closing), the journal.
+- **Period lock** (إقفال الفترة): nothing manual can be dated, and no voucher created, on or
+  before the lock date can be changed.
+- **Permissions:** `ledger:view`, `ledger:post`, `ledger:manage` (Accountant has these three),
+  `ledger:lock` (owner / admin). The ledger is company-wide.
+- **Web:** "Accounts" (`/ledger`, الحسابات العامة): chart with balances and statements, add /
+  rename / close accounts, journal with new entry and reverse, trial balance with the period
+  lock; a Statement button on each party. Automatic entries are named by their source in the
+  screen language.
+- **Migration `Ledger`:** `LedgerAccounts`, `JournalEntries`, `JournalLines`,
+  `CompanySettings.LockDate`.
+- **Verified:**
+  - `scripts/checks/ledger.test.mjs`: 96/96 on a fresh and on an upgraded database (every
+    document's entry line by line, statements, manual entries, reversal, lock, permissions).
+  - Money (162), delivery (160), catalog (210), charges (70) and staff (57) still pass, and then
+    49 database invariants hold, among them: every entry balances, **each party's balance = its
+    ledger accounts, each money account = its ledger account**, stock ledger = stock at average
+    cost (within 1 piastre a unit), every document and voucher since go-live has its entry.
+  - In the browser (AR, phone): chart of accounts, trial balance, journal.
+
 **Cash boxes, banks, receipts, payments and expenses** (الخزينة والبنوك) — DOMAIN.md §7 step 5
 - **Money accounts** (`MoneyAccount`): cash box, custody (a staff member's cash, e.g. a driver),
   bank account, mobile wallet, Egypt Post. Each belongs to a branch; one cash box per branch is the
@@ -569,8 +614,10 @@ own permission, and roles bundle them
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
-- A carrier's fees on a settlement stay on the settlement (no expense voucher) until the ledger
-  (step 6) posts them.
+- The ledger starts at go-live: documents from before it are not replayed as entries.
+- Stock at average cost can drift from the stock ledger by rounding (under a piastre a unit); a
+  stock revaluation entry isn't built yet.
+- A branch-scoped person given `ledger:view` sees the whole company's ledger.
 - Money days (statements, daily cash) are UTC days, not Cairo days.
 - An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
@@ -604,8 +651,10 @@ and warehouses shipped):
    - **Verify on the live DB** after deploy: each branch has an empty cash box — enter the real
      opening balance (Edit → opening balance, allowed until money first moves through it), add the
      bank accounts and wallets, take a receipt against an invoice, pay a supplier, record an expense.
-   - Next is DOMAIN.md §7 step 6: the ledger (account tree, automatic postings, account
-     statements, opening balances).
+   - ~~the ledger (account tree, automatic postings, statements, opening balances)~~ done (step 6)
+   - **Verify on the live DB** after deploy: the opening entry at go-live, a customer's statement,
+     the trial balance balancing.
+   - Next is DOMAIN.md §7 step 7: cheques & promissory notes, portfolios.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

@@ -33,13 +33,16 @@ public sealed class DeliveryController : ControllerBase
     private readonly ReturnsService _returns;
     private readonly AuditService _audit;
     private readonly MoneyService _money;
+    private readonly LedgerService _ledger;
 
-    public DeliveryController(AppDbContext db, ReturnsService returns, AuditService audit, MoneyService money)
+    public DeliveryController(AppDbContext db, ReturnsService returns, AuditService audit, MoneyService money,
+        LedgerService ledger)
     {
         _db = db;
         _returns = returns;
         _audit = audit;
         _money = money;
+        _ledger = ledger;
     }
 
     private static readonly ShipmentStatus[] Live =
@@ -376,14 +379,17 @@ public sealed class DeliveryController : ControllerBase
         // lands in a money account (the one picked, else the branch's cash box).
         await MoneyService.LockPartiesAsync(_db, carrierId);
         carrier.Balance -= req.Received + req.Fees;
+        MoneyAccount? into = null;
         if (req.Received > 0)
         {
             var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, shipments[0].BranchId, MoneyService.ScopeOf(User));
             if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
+            into = account!;
             settlement.AccountId = account!.Id;
             _money.Move(account, req.Received, MoneyMovementKind.CARRIER_SETTLEMENT, Me(), settlement.Number,
                 partyId: carrierId, settlementId: settlement.Id);
         }
+        await _ledger.PostSettlementAsync(settlement, carrier, into, shipments[0].BranchId, Me());
         _db.CarrierSettlements.Add(settlement);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
@@ -409,6 +415,7 @@ public sealed class DeliveryController : ControllerBase
         await MoneyService.LockPartiesAsync(_db, s.PartyId, s.CarrierId);
         var problem = apply(s);
         if (problem is not null) return Bad("bad_transition", problem);
+        if (next == ShipmentStatus.DELIVERED && s.CodAmount > 0) await _ledger.PostCodDeliveredAsync(s, Me());
         s.Status = next;
         foreach (var si in s.Invoices) si.Document!.DeliveryStatus = invoiceStatus;
         await _db.SaveChangesAsync();

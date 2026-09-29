@@ -97,7 +97,12 @@ export type Permission =
   | 'cash:transfer'
   | 'vouchers:cancel'
   | 'money_accounts:manage'
-  | 'expense_categories:manage';
+  | 'expense_categories:manage'
+  // Ledger (DOMAIN step 6)
+  | 'ledger:view'
+  | 'ledger:post'
+  | 'ledger:manage'
+  | 'ledger:lock';
 
 export interface Staff {
   id: string;
@@ -1130,4 +1135,102 @@ export interface ApiError {
   message: string;
   /** Machine‑readable code for the client to branch on. */
   code?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Ledger (DOMAIN.md §2.8): chart of accounts, statements, trial balance, journal
+// ---------------------------------------------------------------------------
+
+export type LedgerAccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
+
+export interface LedgerAccount {
+  id: string;
+  code: string;
+  name: string;
+  type: LedgerAccountType;
+  parentId: string | null;
+  isGroup: boolean;
+  /** Set on accounts setup made (INVENTORY, CUSTOMERS, SALES…). */
+  systemKey: string | null;
+  partyId: string | null;
+  moneyAccountId: string | null;
+  expenseCategoryId: string | null;
+  isActive: boolean;
+  debit: number;
+  credit: number;
+  /** Debits − credits (a group: of everything under it). */
+  balance: number;
+}
+
+export interface LedgerLine {
+  entryId: string;
+  date: string;
+  number: string;
+  description: string;
+  sourceType: string;
+  sourceId: string | null;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  memo: string | null;
+  /** Running balance (debits − credits) after this line. */
+  balance: number;
+}
+
+export interface LedgerStatement {
+  title: string;
+  from: string;
+  to: string;
+  opening: number;
+  totalDebit: number;
+  totalCredit: number;
+  closing: number;
+  lines: LedgerLine[];
+  currency: string;
+}
+
+export interface TrialBalanceRow {
+  accountId: string;
+  code: string;
+  name: string;
+  type: LedgerAccountType;
+  parentId: string | null;
+  openingDebit: number;
+  openingCredit: number;
+  periodDebit: number;
+  periodCredit: number;
+  closingDebit: number;
+  closingCredit: number;
+}
+
+export interface TrialBalance {
+  from: string;
+  to: string;
+  rows: TrialBalanceRow[];
+  currency: string;
+}
+
+export interface JournalLine {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  memo: string | null;
+}
+
+export interface JournalEntry {
+  id: string;
+  number: string;
+  date: string;
+  description: string;
+  sourceType: string;
+  sourceId: string | null;
+  createdByName: string;
+  createdAt: string;
+  lines: JournalLine[];
+  /** A manual entry not reversed yet. */
+  reversible: boolean;
+  currency: string;
 }

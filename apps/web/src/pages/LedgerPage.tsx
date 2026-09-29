@@ -1,0 +1,816 @@
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  formatDate,
+  formatMoney,
+  toMinor,
+  type JournalEntry,
+  type LedgerAccount,
+  type TranslationKey,
+} from '@skb/shared';
+import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
+import { Sheet } from '../components/Sheet';
+import { LedgerStatementSheet, SidedMoney, entryTitle } from '../components/LedgerStatementSheet';
+import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
+import { errorText } from '../lib/errors';
+import {
+  useJournal,
+  useLedgerAccounts,
+  useLockDate,
+  usePostJournalEntry,
+  useReverseJournalEntry,
+  useSaveLedgerAccount,
+  useSetLockDate,
+  useTrialBalance,
+} from '../lib/queries';
+
+type Tab = 'accounts' | 'journal' | 'trial';
+const TABS: { key: Tab; label: TranslationKey }[] = [
+  { key: 'accounts', label: 'ledger.tabAccounts' },
+  { key: 'journal', label: 'ledger.tabJournal' },
+  { key: 'trial', label: 'ledger.tabTrial' },
+];
+/** Groups whose accounts come from customers, suppliers, cash boxes and categories. */
+const AUTO_GROUPS = ['CASH', 'BANKS', 'CUSTOMERS', 'CARRIERS', 'SUPPLIERS', 'OPERATING_EXPENSES'];
+const SOURCES = [
+  'MANUAL',
+  'SALES_INVOICE',
+  'SALES_RETURN',
+  'PURCHASE_INVOICE',
+  'PURCHASE_RETURN',
+  'VOUCHER',
+  'VOUCHER_CANCEL',
+  'STOCKTAKE',
+  'SHIPMENT',
+  'CARRIER_SETTLEMENT',
+  'MONEY_OPENING',
+  'MANUAL_REVERSAL',
+  'OPENING',
+];
+
+const input =
+  'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
+const small =
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
+const pad = (n: number) => String(n).padStart(2, '0');
+const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const yearStart = () => iso(new Date(new Date().getFullYear(), 0, 1));
+const today = () => iso(new Date());
+
+/** The general ledger: chart of accounts with balances, the journal and the trial balance. */
+export function LedgerPage() {
+  const { t } = useT();
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
+  return (
+    <div className="space-y-5">
+      <PageHeader title={t('ledger.title')} subtitle={t('ledger.subtitle')} />
+      <div
+        role="tablist"
+        className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+      >
+        {TABS.map((x) => (
+          <button
+            key={x.key}
+            role="tab"
+            aria-selected={tab === x.key}
+            onClick={() => setParams({ tab: x.key }, { replace: true })}
+            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+              tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+            }`}
+          >
+            {t(x.label)}
+          </button>
+        ))}
+      </div>
+      {tab === 'accounts' && <AccountsTab />}
+      {tab === 'journal' && <JournalTab />}
+      {tab === 'trial' && <TrialTab />}
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <div className="grid place-items-center py-16 text-muted">
+      <Spinner size={26} />
+    </div>
+  );
+}
+
+function DateRange({
+  from,
+  to,
+  setFrom,
+  setTo,
+}: {
+  from: string;
+  to: string;
+  setFrom: (v: string) => void;
+  setTo: (v: string) => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <label className="block">
+        <span className="mb-1 block text-xs text-muted">{t('ledger.from')}</span>
+        <input
+          className={small}
+          type="date"
+          value={from}
+          max={to}
+          onChange={(e) => setFrom(e.target.value)}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs text-muted">{t('ledger.to')}</span>
+        <input
+          className={small}
+          type="date"
+          value={to}
+          min={from}
+          onChange={(e) => setTo(e.target.value)}
+        />
+      </label>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- accounts */
+
+function AccountsTab() {
+  const { t } = useT();
+  const can = useCan();
+  const { data, isLoading } = useLedgerAccounts();
+  const [showEmpty, setShowEmpty] = useState(false);
+  const [statement, setStatement] = useState<LedgerAccount | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<LedgerAccount | null>(null);
+  const currency = 'EGP';
+
+  const rows = useMemo(() => {
+    const list = data ?? [];
+    const kids = new Map<string | null, LedgerAccount[]>();
+    for (const a of list) kids.set(a.parentId, [...(kids.get(a.parentId) ?? []), a]);
+    const out: { a: LedgerAccount; depth: number }[] = [];
+    const walk = (parent: string | null, depth: number) => {
+      for (const a of (kids.get(parent) ?? []).sort((x, y) => x.code.localeCompare(y.code))) {
+        if (showEmpty || a.isGroup || a.debit !== 0 || a.credit !== 0 || a.systemKey)
+          out.push({ a, depth });
+        walk(a.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  }, [data, showEmpty]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input
+            type="checkbox"
+            checked={showEmpty}
+            onChange={(e) => setShowEmpty(e.target.checked)}
+          />
+          {t('ledger.showEmpty')}
+        </label>
+        {can('ledger:manage') && (
+          <Button icon="plus" size="sm" onClick={() => setAdding(true)}>
+            {t('ledger.addAccount')}
+          </Button>
+        )}
+      </div>
+      {isLoading ? (
+        <Loading />
+      ) : (
+        <Card padded={false} className="overflow-hidden">
+          <ul className="divide-y divide-line">
+            {rows.map(({ a, depth }) => (
+              <li key={a.id} className={a.isActive ? '' : 'opacity-60'}>
+                <div className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-surface-2">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-start"
+                    style={{ paddingInlineStart: `${depth * 1}rem` }}
+                    onClick={() => setStatement(a)}
+                  >
+                    <span className="w-16 shrink-0 text-xs text-muted tnum sm:w-20">{a.code}</span>
+                    <span className={`truncate ${a.isGroup ? 'font-semibold' : ''}`}>{a.name}</span>
+                    {depth === 0 && <Badge tone="brand">{t(`ledger.type.${a.type}`)}</Badge>}
+                  </button>
+                  <span className="shrink-0 text-end">
+                    <SidedMoney value={a.balance} currency={currency} />
+                  </span>
+                  {can('ledger:manage') &&
+                    !a.systemKey &&
+                    !a.partyId &&
+                    !a.moneyAccountId &&
+                    !a.expenseCategoryId && (
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(a)}>
+                        {t('common.edit')}
+                      </Button>
+                    )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {statement && (
+        <LedgerStatementSheet
+          kind="accounts"
+          id={statement.id}
+          title={`${statement.code} ${statement.name}`}
+          onClose={() => setStatement(null)}
+        />
+      )}
+      {adding && <AccountSheet accounts={data ?? []} onClose={() => setAdding(false)} />}
+      {editing && (
+        <AccountSheet accounts={data ?? []} account={editing} onClose={() => setEditing(null)} />
+      )}
+    </div>
+  );
+}
+
+function AccountSheet({
+  accounts,
+  account,
+  onClose,
+}: {
+  accounts: LedgerAccount[];
+  account?: LedgerAccount;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const save = useSaveLedgerAccount();
+  const groups = accounts.filter(
+    (a) => a.isGroup && a.isActive && !AUTO_GROUPS.includes(a.systemKey ?? ''),
+  );
+  const [name, setName] = useState(account?.name ?? '');
+  const [parentId, setParentId] = useState(groups[0]?.id ?? '');
+  const [isGroup, setIsGroup] = useState(false);
+
+  async function run(input: Parameters<typeof save.mutateAsync>[0]['input']) {
+    try {
+      await save.mutateAsync({ id: account?.id, input });
+      onClose();
+    } catch {
+      /* shown below */
+    }
+  }
+
+  return (
+    <Sheet
+      title={account ? `${account.code} ${account.name}` : t('ledger.addAccount')}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+    >
+      <div className="space-y-3">
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted">{t('common.name')}</span>
+          <input
+            className={input}
+            value={name}
+            maxLength={200}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        {!account && (
+          <>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted">{t('ledger.parent')}</span>
+              <select
+                className={input}
+                value={parentId}
+                onChange={(e) => setParentId(e.target.value)}
+              >
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.code} {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isGroup}
+                onChange={(e) => setIsGroup(e.target.checked)}
+              />
+              {t('ledger.isGroup')}
+            </label>
+          </>
+        )}
+        {save.error && <p className="text-sm text-destructive">{errorText(t, save.error)}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {account ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={save.isPending || account.balance !== 0}
+              onClick={() => void run({ isActive: !account.isActive })}
+            >
+              {account.isActive ? t('ledger.close') : t('money.reopen')}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              icon="check"
+              loading={save.isPending}
+              disabled={!name.trim() || (!account && !parentId)}
+              onClick={() =>
+                void run(account ? { name: name.trim() } : { name: name.trim(), parentId, isGroup })
+              }
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/* --------------------------------------------------------------- journal */
+
+function JournalTab() {
+  const { t, locale } = useT();
+  const can = useCan();
+  const [from, setFrom] = useState(yearStart());
+  const [to, setTo] = useState(today());
+  const [source, setSource] = useState('');
+  const { data, isLoading } = useJournal({ from, to, source: source || undefined });
+  const [open, setOpen] = useState<JournalEntry | null>(null);
+  const [posting, setPosting] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+          <select
+            className={`${small} w-auto`}
+            value={source}
+            aria-label={t('ledger.allSources')}
+            onChange={(e) => setSource(e.target.value)}
+          >
+            <option value="">{t('ledger.allSources')}</option>
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {t(`ledger.source.${s}` as TranslationKey)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {can('ledger:post') && (
+          <Button icon="plus" size="sm" onClick={() => setPosting(true)}>
+            {t('ledger.newEntry')}
+          </Button>
+        )}
+      </div>
+      {isLoading ? (
+        <Loading />
+      ) : !data || data.items.length === 0 ? (
+        <Card>
+          <EmptyState title={t('ledger.noEntries')} icon="ledger" />
+        </Card>
+      ) : (
+        <Card padded={false} className="overflow-hidden">
+          <ul className="divide-y divide-line">
+            {data.items.map((e) => (
+              <li key={e.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-surface-2"
+                  onClick={() => setOpen(e)}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={e.sourceType.startsWith('MANUAL') ? 'info' : 'neutral'}>
+                        {t(`ledger.source.${e.sourceType}` as TranslationKey)}
+                      </Badge>
+                      <span className="text-xs text-muted tnum">{e.number}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-sm font-medium">
+                      {entryTitle(t, e.sourceType, e.description)}
+                    </p>
+                    <p className="text-xs text-faint">
+                      {formatDate(e.date, locale)} · {e.createdByName}
+                    </p>
+                  </div>
+                  <span className="shrink-0 tnum">
+                    {formatMoney(
+                      e.lines.reduce((s, l) => s + l.debit, 0),
+                      e.currency,
+                      locale,
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {open && <EntrySheet e={open} onClose={() => setOpen(null)} />}
+      {posting && <NewEntrySheet onClose={() => setPosting(false)} />}
+    </div>
+  );
+}
+
+function EntrySheet({ e, onClose }: { e: JournalEntry; onClose: () => void }) {
+  const { t, locale } = useT();
+  const can = useCan();
+  const reverse = useReverseJournalEntry();
+  const money = (v: number) => formatMoney(v, e.currency, locale);
+  return (
+    <Sheet
+      title={`${e.number} — ${formatDate(e.date, locale)}`}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      wide
+    >
+      <p className="font-medium">{entryTitle(t, e.sourceType, e.description)}</p>
+      <p className="mb-3 text-xs text-muted">
+        {t(`ledger.source.${e.sourceType}` as TranslationKey)} · {e.createdByName}
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[28rem] text-sm">
+          <thead className="text-xs text-muted">
+            <tr>
+              <th className="py-1 text-start font-normal">{t('ledger.account')}</th>
+              <th className="py-1 text-end font-normal">{t('ledger.debit')}</th>
+              <th className="py-1 text-end font-normal">{t('ledger.credit')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {e.lines.map((l, i) => (
+              <tr key={i}>
+                <td className="py-1.5">
+                  <span className="text-xs text-muted tnum">{l.accountCode}</span> {l.accountName}
+                  {l.memo && <span className="block text-xs text-faint">{l.memo}</span>}
+                </td>
+                <td className="py-1.5 text-end tnum">{l.debit ? money(l.debit) : ''}</td>
+                <td className="py-1.5 text-end tnum">{l.credit ? money(l.credit) : ''}</td>
+              </tr>
+            ))}
+            <tr className="font-semibold">
+              <td className="py-1.5">{t('ledger.total')}</td>
+              <td className="py-1.5 text-end tnum">
+                {money(e.lines.reduce((s, l) => s + l.debit, 0))}
+              </td>
+              <td className="py-1.5 text-end tnum">
+                {money(e.lines.reduce((s, l) => s + l.credit, 0))}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {reverse.error && (
+        <p className="mt-3 text-sm text-destructive">{errorText(t, reverse.error)}</p>
+      )}
+      {e.reversible && can('ledger:post') && (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 text-xs text-muted">{t('ledger.reverseHint')}</p>
+          <Button
+            variant="danger"
+            size="sm"
+            loading={reverse.isPending}
+            onClick={async () => {
+              try {
+                await reverse.mutateAsync(e.id);
+                onClose();
+              } catch {
+                /* shown above */
+              }
+            }}
+          >
+            {t('ledger.reverse')}
+          </Button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+interface LineDraft {
+  accountId: string;
+  debit: string;
+  credit: string;
+  memo: string;
+}
+
+function NewEntrySheet({ onClose }: { onClose: () => void }) {
+  const { t, locale } = useT();
+  const accounts = useLedgerAccounts();
+  const post = usePostJournalEntry();
+  const [date, setDate] = useState(today());
+  const [description, setDescription] = useState('');
+  const blank: LineDraft = { accountId: '', debit: '', credit: '', memo: '' };
+  const [lines, setLines] = useState<LineDraft[]>([blank, blank]);
+  // Money and stock move through their own documents, so they are not offered here.
+  const postable = (accounts.data ?? []).filter(
+    (a) => !a.isGroup && a.isActive && !a.moneyAccountId && a.systemKey !== 'INVENTORY',
+  );
+  const minor = (v: string) => (v.trim() === '' ? 0 : toMinor(Number(v) || 0));
+  const debit = lines.reduce((s, l) => s + minor(l.debit), 0);
+  const credit = lines.reduce((s, l) => s + minor(l.credit), 0);
+  const valid =
+    description.trim() !== '' &&
+    lines.length >= 2 &&
+    lines.every((l) => l.accountId && minor(l.debit) > 0 !== minor(l.credit) > 0) &&
+    debit === credit &&
+    debit > 0;
+  const set = (i: number, patch: Partial<LineDraft>) =>
+    setLines((cur) => cur.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+
+  async function save() {
+    try {
+      await post.mutateAsync({
+        date,
+        description: description.trim(),
+        lines: lines.map((l) => ({
+          accountId: l.accountId,
+          debit: minor(l.debit) || undefined,
+          credit: minor(l.credit) || undefined,
+          memo: l.memo.trim() || undefined,
+        })),
+      });
+      onClose();
+    } catch {
+      /* shown below */
+    }
+  }
+
+  return (
+    <Sheet title={t('ledger.newEntry')} onClose={onClose} closeLabel={t('common.close')} wide>
+      <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('ledger.date')}</span>
+            <input
+              className={input}
+              type="date"
+              value={date}
+              max={today()}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('ledger.description')}</span>
+            <input
+              className={input}
+              value={description}
+              maxLength={300}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="text-xs text-faint">{t('ledger.entryHint')}</p>
+        <div className="space-y-2">
+          {lines.map((l, i) => (
+            <div
+              key={i}
+              className="grid gap-2 rounded-[var(--radius-app)] border border-line p-2 sm:grid-cols-[1fr_7rem_7rem]"
+            >
+              <select
+                className={small}
+                aria-label={t('ledger.account')}
+                value={l.accountId}
+                onChange={(e) => set(i, { accountId: e.target.value })}
+              >
+                <option value="">{t('ledger.account')}</option>
+                {postable.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} {a.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={`${small} tnum`}
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder={t('ledger.debit')}
+                aria-label={t('ledger.debit')}
+                value={l.debit}
+                onChange={(e) =>
+                  set(i, { debit: e.target.value, credit: e.target.value ? '' : l.credit })
+                }
+              />
+              <input
+                className={`${small} tnum`}
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder={t('ledger.credit')}
+                aria-label={t('ledger.credit')}
+                value={l.credit}
+                onChange={(e) =>
+                  set(i, { credit: e.target.value, debit: e.target.value ? '' : l.debit })
+                }
+              />
+              <input
+                className={`${small} sm:col-span-2`}
+                placeholder={t('ledger.memo')}
+                maxLength={200}
+                value={l.memo}
+                onChange={(e) => set(i, { memo: e.target.value })}
+              />
+              {lines.length > 2 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="close"
+                  aria-label={t('common.delete')}
+                  onClick={() => setLines((cur) => cur.filter((_, j) => j !== i))}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="plus"
+            onClick={() => setLines((cur) => [...cur, blank])}
+          >
+            {t('ledger.addLine')}
+          </Button>
+          <span className={`tnum ${debit !== credit ? 'text-destructive' : 'text-muted'}`}>
+            {t('ledger.debit')} {formatMoney(debit, 'EGP', locale)} · {t('ledger.credit')}{' '}
+            {formatMoney(credit, 'EGP', locale)}
+            {debit !== credit &&
+              ` · ${t('ledger.difference')} ${formatMoney(Math.abs(debit - credit), 'EGP', locale)}`}
+          </span>
+        </div>
+        {post.error && <p className="text-sm text-destructive">{errorText(t, post.error)}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            icon="check"
+            loading={post.isPending}
+            disabled={!valid}
+            onClick={() => void save()}
+          >
+            {t('common.save')}
+          </Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ---------------------------------------------------------- trial balance */
+
+function TrialTab() {
+  const { t, locale } = useT();
+  const can = useCan();
+  const [from, setFrom] = useState(yearStart());
+  const [to, setTo] = useState(today());
+  const { data, isLoading, error } = useTrialBalance(from, to);
+  const lock = useLockDate();
+  const setLock = useSetLockDate();
+  const [lockTo, setLockTo] = useState('');
+  const money = (v: number) => (v ? formatMoney(v, data?.currency ?? 'EGP', locale) : '');
+  const sum = (
+    k:
+      | 'openingDebit'
+      | 'openingCredit'
+      | 'periodDebit'
+      | 'periodCredit'
+      | 'closingDebit'
+      | 'closingCredit',
+  ) => (data?.rows ?? []).reduce((s, r) => s + r[k], 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+        <Card className="flex flex-wrap items-end gap-2 !p-3 text-sm">
+          <span className="self-center text-muted">
+            {t('ledger.lock')}:{' '}
+            <span className="font-medium text-fg">
+              {lock.data?.lockDate
+                ? `${t('ledger.lockedThrough')} ${formatDate(lock.data.lockDate, locale)}`
+                : t('ledger.notLocked')}
+            </span>
+          </span>
+          {can('ledger:lock') && (
+            <>
+              <input
+                className={`${small} w-auto`}
+                type="date"
+                max={today()}
+                value={lockTo}
+                onChange={(e) => setLockTo(e.target.value)}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!lockTo || setLock.isPending}
+                onClick={() => setLock.mutate(lockTo)}
+              >
+                {t('ledger.setLock')}
+              </Button>
+              {lock.data?.lockDate && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={setLock.isPending}
+                  onClick={() => setLock.mutate(null)}
+                >
+                  {t('ledger.unlock')}
+                </Button>
+              )}
+            </>
+          )}
+          {setLock.error && <span className="text-destructive">{errorText(t, setLock.error)}</span>}
+        </Card>
+      </div>
+      {error && <p className="text-sm text-destructive">{errorText(t, error)}</p>}
+      {isLoading || !data ? (
+        <Loading />
+      ) : (
+        <Card padded={false} className="overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th rowSpan={2} className="px-3 py-2 text-start font-normal">
+                  {t('ledger.account')}
+                </th>
+                <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                  {t('ledger.opening')}
+                </th>
+                <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                  {t('ledger.period')}
+                </th>
+                <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                  {t('ledger.closing')}
+                </th>
+              </tr>
+              <tr>
+                {[0, 1, 2].flatMap((i) => [
+                  <th key={`d${i}`} className="px-2 pb-2 text-end font-normal">
+                    {t('ledger.debit')}
+                  </th>,
+                  <th key={`c${i}`} className="px-2 pb-2 text-end font-normal">
+                    {t('ledger.credit')}
+                  </th>,
+                ])}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {data.rows.map((r) => (
+                <tr key={r.accountId}>
+                  <td className="px-3 py-1.5">
+                    <span className="text-xs text-muted tnum">{r.code}</span> {r.name}
+                  </td>
+                  {[
+                    r.openingDebit,
+                    r.openingCredit,
+                    r.periodDebit,
+                    r.periodCredit,
+                    r.closingDebit,
+                    r.closingCredit,
+                  ].map((v, i) => (
+                    <td key={i} className="px-2 py-1.5 text-end tnum">
+                      {money(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="bg-surface-2 font-semibold">
+                <td className="px-3 py-2">{t('ledger.total')}</td>
+                {(
+                  [
+                    'openingDebit',
+                    'openingCredit',
+                    'periodDebit',
+                    'periodCredit',
+                    'closingDebit',
+                    'closingCredit',
+                  ] as const
+                ).map((k) => (
+                  <td key={k} className="px-2 py-2 text-end tnum">
+                    {formatMoney(sum(k), data.currency, locale)}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
