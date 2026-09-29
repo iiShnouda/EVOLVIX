@@ -33,6 +33,15 @@ public static class DbSeeder
         ["Bleach 2L (Pack of 8)"] = "كلور 2 لتر (عبوة 8)",
         ["Carton Box Large (Bundle of 25)"] = "كرتونة كبيرة (ربطة 25)",
         ["Stretch Wrap Roll"] = "رول استرتش",
+        ["Apparel"] = "ملابس",
+        ["Basic T-shirt"] = "تيشيرت بيسك",
+    };
+
+    /// <summary>Units of measure the demo items come in, in both languages.</summary>
+    private static readonly (string Key, string En, string Ar)[] DemoUnits =
+    {
+        ("pc", "Piece", "قطعة"), ("pack", "Pack", "عبوة"), ("case", "Case", "صندوق"), ("box", "Box", "علبة"),
+        ("bundle", "Bundle", "ربطة"), ("roll", "Roll", "رول"), ("carton", "Carton", "كرتونة"), ("dozen", "Dozen", "دستة"),
     };
 
     public static async Task SeedAsync(AppDbContext db, AuthService auth, IConfiguration config)
@@ -73,25 +82,93 @@ public static class DbSeeder
 
         var products = new List<Product>
         {
-            new() { Sku = "BEV-001", Name = "Mineral Water 1.5L (Pack of 6)", Category = beverages, Unit = "pack", CostPrice = Money(24), SalePrice = Money(33), Currency = Currency, StockOnHand = 480, ReorderLevel = 100 },
-            new() { Sku = "BEV-002", Name = "Cola 330ml (Case of 24)", Category = beverages, Unit = "case", CostPrice = Money(96), SalePrice = Money(126), Currency = Currency, StockOnHand = 60, ReorderLevel = 80 },
-            new() { Sku = "SNK-001", Name = "Salted Chips 25g (Box of 40)", Category = snacks, Unit = "box", CostPrice = Money(80), SalePrice = Money(112), Currency = Currency, StockOnHand = 140, ReorderLevel = 50 },
-            new() { Sku = "SNK-002", Name = "Biscuits Assorted (Box of 24)", Category = snacks, Unit = "box", CostPrice = Money(120), SalePrice = Money(168), Currency = Currency, StockOnHand = 18, ReorderLevel = 40 },
-            new() { Sku = "CLN-001", Name = "Dish Soap 1L (Pack of 12)", Category = cleaning, Unit = "pack", CostPrice = Money(144), SalePrice = Money(198), Currency = Currency, StockOnHand = 96, ReorderLevel = 30 },
-            new() { Sku = "CLN-002", Name = "Bleach 2L (Pack of 8)", Category = cleaning, Unit = "pack", CostPrice = Money(96), SalePrice = Money(140), Currency = Currency, StockOnHand = 12, ReorderLevel = 25 },
-            new() { Sku = "PKG-001", Name = "Carton Box Large (Bundle of 25)", Category = packaging, Unit = "bundle", CostPrice = Money(75), SalePrice = Money(110), Currency = Currency, StockOnHand = 300, ReorderLevel = 60 },
-            new() { Sku = "PKG-002", Name = "Stretch Wrap Roll", Category = packaging, Unit = "roll", CostPrice = Money(60), SalePrice = Money(92), Currency = Currency, StockOnHand = 8, ReorderLevel = 20 },
+            new() { Sku = "BEV-001", Name = "Mineral Water 1.5L (Pack of 6)", Category = beverages, CostPrice = Money(24), SalePrice = Money(33), Currency = Currency, StockOnHand = 480, ReorderLevel = 100 },
+            new() { Sku = "BEV-002", Name = "Cola 330ml (Case of 24)", Category = beverages, CostPrice = Money(96), SalePrice = Money(126), Currency = Currency, StockOnHand = 60, ReorderLevel = 80 },
+            new() { Sku = "SNK-001", Name = "Salted Chips 25g (Box of 40)", Category = snacks, CostPrice = Money(80), SalePrice = Money(112), Currency = Currency, StockOnHand = 140, ReorderLevel = 50 },
+            new() { Sku = "SNK-002", Name = "Biscuits Assorted (Box of 24)", Category = snacks, CostPrice = Money(120), SalePrice = Money(168), Currency = Currency, StockOnHand = 18, ReorderLevel = 40 },
+            new() { Sku = "CLN-001", Name = "Dish Soap 1L (Pack of 12)", Category = cleaning, CostPrice = Money(144), SalePrice = Money(198), Currency = Currency, StockOnHand = 96, ReorderLevel = 30 },
+            new() { Sku = "CLN-002", Name = "Bleach 2L (Pack of 8)", Category = cleaning, CostPrice = Money(96), SalePrice = Money(140), Currency = Currency, StockOnHand = 12, ReorderLevel = 25 },
+            new() { Sku = "PKG-001", Name = "Carton Box Large (Bundle of 25)", Category = packaging, CostPrice = Money(75), SalePrice = Money(110), Currency = Currency, StockOnHand = 300, ReorderLevel = 60 },
+            new() { Sku = "PKG-002", Name = "Stretch Wrap Roll", Category = packaging, CostPrice = Money(60), SalePrice = Money(92), Currency = Currency, StockOnHand = 8, ReorderLevel = 20 },
         };
         db.Products.AddRange(products);
+        var apparel = new Category { Name = "Apparel" };
+        db.Categories.Add(apparel);
 
         // Demo names in both languages, typed by people (no translation needed).
-        foreach (ILocalizedName e in new ILocalizedName[] { main, wh, mainStore, octoberStore, beverages, snacks, cleaning, packaging }
+        foreach (ILocalizedName e in new ILocalizedName[] { main, wh, mainStore, octoberStore, beverages, snacks, cleaning, packaging, apparel }
                      .Concat(products))
         {
             e.NameEn = e.Name;
             e.NameAr = ArabicNames.GetValueOrDefault(e.Name);
             e.NameSource = "en";
         }
+
+        // ---- Units (base unit + larger ones, a barcode each) and the two price levels ----
+        var units = DemoUnits.ToDictionary(u => u.Key, u => new Unit { Name = u.En, NameEn = u.En, NameAr = u.Ar, NameSource = "en" });
+        db.Units.AddRange(units.Values);
+        var customerPrice = new PriceLevel
+        {
+            Name = "Customer price", NameEn = "Customer price", NameAr = "سعر العملاء", NameSource = "en",
+            Side = PriceSide.SALE, IsDefault = true, SortOrder = 1,
+        };
+        var supplierPrice = new PriceLevel
+        {
+            Name = "Supplier price", NameEn = "Supplier price", NameAr = "سعر الموردين", NameSource = "en",
+            Side = PriceSide.PURCHASE, IsDefault = true, SortOrder = 1,
+        };
+        db.PriceLevels.AddRange(customerPrice, supplierPrice);
+
+        // Base unit of each item, plus a carton for a few (with its own, slightly better, price).
+        var baseUnitOf = new[] { "pack", "case", "box", "box", "pack", "pack", "bundle", "roll" };
+        var cartons = new Dictionary<int, (int Factor, double Price)> { [0] = (4, 128), [2] = (10, 1080), [7] = (6, 540) };
+        for (var i = 0; i < products.Count; i++)
+        {
+            var p = products[i];
+            db.ItemUnits.Add(new ItemUnit { Product = p, Unit = units[baseUnitOf[i]], Factor = 1, Barcode = $"62210000{i + 1:D5}" });
+            db.ItemPrices.Add(new ItemPrice { Product = p, UnitId = units[baseUnitOf[i]].Id, PriceLevel = customerPrice, Price = p.SalePrice });
+            db.ItemPrices.Add(new ItemPrice { Product = p, UnitId = units[baseUnitOf[i]].Id, PriceLevel = supplierPrice, Price = p.CostPrice });
+            if (cartons.TryGetValue(i, out var carton))
+            {
+                db.ItemUnits.Add(new ItemUnit { Product = p, Unit = units["carton"], Factor = carton.Factor, Barcode = $"62219000{i + 1:D5}" });
+                db.ItemPrices.Add(new ItemPrice { Product = p, UnitId = units["carton"].Id, PriceLevel = customerPrice, Price = Money(carton.Price) });
+            }
+        }
+
+        // ---- A model made in sizes x colors: every variant is its own item with its own stock ----
+        var sizes = new[] { "M", "L", "XL" }.Select((n, i) => new VariantOption
+            { Kind = VariantKind.SIZE, Name = n, NameEn = n, NameAr = n, NameSource = "en", SortOrder = i + 1 }).ToList();
+        var colors = new[] { ("Black", "أسود"), ("White", "أبيض") }.Select((c, i) => new VariantOption
+            { Kind = VariantKind.COLOR, Name = c.Item1, NameEn = c.Item1, NameAr = c.Item2, NameSource = "en", SortOrder = i + 1 }).ToList();
+        db.VariantOptions.AddRange(sizes.Concat(colors));
+        var tshirt = new ProductModel
+        {
+            Name = "Basic T-shirt", NameEn = "Basic T-shirt", NameAr = ArabicNames["Basic T-shirt"], NameSource = "en",
+            Code = "TSH", Category = apparel, ReorderLevel = 12,
+        };
+        db.ProductModels.Add(tshirt);
+        db.ModelUnits.Add(new ModelUnit { Model = tshirt, Unit = units["pc"], Factor = 1 });
+        db.ModelUnits.Add(new ModelUnit { Model = tshirt, Unit = units["dozen"], Factor = 12 });
+        db.ModelPrices.Add(new ModelPrice { Model = tshirt, UnitId = units["pc"].Id, PriceLevelId = customerPrice.Id, Price = Money(120) });
+        db.ModelPrices.Add(new ModelPrice { Model = tshirt, UnitId = units["dozen"].Id, PriceLevelId = customerPrice.Id, Price = Money(1300) });
+        db.ModelPrices.Add(new ModelPrice { Model = tshirt, UnitId = units["pc"].Id, PriceLevelId = supplierPrice.Id, Price = Money(80) });
+        var variantNo = 0;
+        foreach (var color in colors)
+            foreach (var size in sizes)
+            {
+                variantNo++;
+                var v = new Product
+                {
+                    Sku = $"TSH-{color.Name.ToUpperInvariant()}-{size.Name}", Model = tshirt, ModelId = tshirt.Id,
+                    Size = size, SizeId = size.Id, Color = color, ColorId = color.Id, Category = apparel,
+                    CostPrice = Money(80), SalePrice = Money(120), Currency = Currency, StockOnHand = 24, ReorderLevel = 12,
+                };
+                Catalog.ComposeVariantName(v, tshirt, size, color);
+                db.Products.Add(v);
+                db.ItemUnits.Add(new ItemUnit { Product = v, Unit = units["pc"], Factor = 1, Barcode = $"62230000{variantNo:D5}" });
+                db.ItemUnits.Add(new ItemUnit { Product = v, Unit = units["dozen"], Factor = 12 });
+                products.Add(v);
+            }
 
         // Company settings (single row): costing + profit-floor defaults, editable later in Settings.
         db.CompanySettings.Add(new CompanySettings
@@ -156,6 +233,7 @@ public static class DbSeeder
                 {
                     LineNo = index + 1, Warehouse = branch == main ? mainStore : octoberStore,
                     Product = product, ProductName = product.Name, Quantity = l.qty,
+                    UnitId = units[baseUnitOf[l.idx]].Id, UnitFactor = 1, UnitQuantity = l.qty,
                     UnitPrice = unit, Discount = disc, LineTotal = lineTotal,
                     UnitCost = unitCost, LineCost = lineCost, LineProfit = lineProfit,
                 };
@@ -177,6 +255,7 @@ public static class DbSeeder
                 Subtotal = subtotal, DiscountTotal = discountTotal, TaxTotal = tax, GrandTotal = grand,
                 CostTotal = costTotal, ProfitTotal = profitTotal,
                 PaidAmount = (long)Math.Round(grand * paidRatio), Currency = Currency, Lines = lineList,
+                PriceLevel = isPurchase ? supplierPrice : customerPrice,
             };
         }
 

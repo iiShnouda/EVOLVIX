@@ -34,7 +34,7 @@ public sealed class ReportsController : ControllerBase
         // Normalize to UTC midnight boundaries; Npgsql requires Kind=Utc for timestamptz.
         var fromDate = DateTime.SpecifyKind(fromRaw.Date, DateTimeKind.Utc);
         var toExclusive = DateTime.SpecifyKind(toRaw.Date.AddDays(1), DateTimeKind.Utc);
-        by = by.ToLowerInvariant() is "product" or "day" ? by.ToLowerInvariant() : "customer";
+        by = by.ToLowerInvariant() is "product" or "day" or "model" ? by.ToLowerInvariant() : "customer";
 
         Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
         var scoped = !CurrentUser.CanSeeAllBranches(User);
@@ -57,7 +57,7 @@ public sealed class ReportsController : ControllerBase
             .SumAsync(d => (long?)(d.Subtotal - d.DiscountTotal)) ?? 0;
 
         ProfitRowDto[] rows;
-        if (by == "product")
+        if (by is "product" or "model")
         {
             var lines = _db.DocumentLines.Where(l =>
                 (l.Document!.Type == Invoice || l.Document.Type == Return) &&
@@ -88,6 +88,20 @@ public sealed class ReportsController : ControllerBase
                 .Select(g => new ProfitRowDto(
                     g.ProductId.ToString(), g.ProductName, g.Revenue, g.Cost, g.Profit, 0, g.Quantity))
                 .ToArray();
+
+            if (by == "model")
+            {
+                // Size/color variants roll up to their model; other items stay as they are.
+                var ids = rows.Select(r => Guid.Parse(r.Key)).ToList();
+                var models = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id) && p.ModelId != null)
+                    .Include(p => p.Model).ToDictionaryAsync(p => p.Id.ToString(), p => p.Model!);
+                rows = rows
+                    .GroupBy(r => models.TryGetValue(r.Key, out var m) ? (m.Id.ToString(), Loc.Name(m)) : (r.Key, r.Label))
+                    .Select(g => new ProfitRowDto(g.Key.Item1, g.Key.Item2, g.Sum(r => r.Revenue), g.Sum(r => r.Cost),
+                        g.Sum(r => r.Profit), 0, g.Sum(r => r.Quantity)))
+                    .OrderByDescending(r => r.Profit)
+                    .ToArray();
+            }
         }
         else if (by == "day")
         {

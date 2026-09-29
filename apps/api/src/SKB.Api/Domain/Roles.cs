@@ -33,6 +33,30 @@ public static class Permissions
     public const string AuditView = "audit:view";
     public const string PresenceView = "presence:view";
 
+    // ---- Catalog (owner decision 2026-09-29: every action has its own permission) ----
+    /// <summary>Add items and item models (with their size × color variants).</summary>
+    public const string ProductsCreate = "products:create";
+    /// <summary>Edit items and models: names, category, units, barcodes, sizes/colors, reorder level, deactivate.</summary>
+    public const string ProductsEdit = "products:edit";
+    /// <summary>Set item and model prices at each price level.</summary>
+    public const string PricesEdit = "prices:edit";
+    /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
+    public const string PriceLevelsManage = "price_levels:manage";
+    public const string CategoriesManage = "categories:manage";
+    public const string UnitsManage = "units:manage";
+    /// <summary>Add and rename the company's sizes and colors.</summary>
+    public const string VariantOptionsManage = "variant_options:manage";
+    /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
+    public const string SalesChangePrice = "sales:change_price";
+    /// <summary>Price a sales invoice at a level other than the customer's own.</summary>
+    public const string SalesChoosePriceLevel = "sales:choose_price_level";
+    /// <summary>Buy at a cost other than the supplier price level's.</summary>
+    public const string PurchasesChangePrice = "purchases:change_price";
+    /// <summary>Price a purchase invoice at a level other than the supplier's own.</summary>
+    public const string PurchasesChoosePriceLevel = "purchases:choose_price_level";
+    /// <summary>Set a customer's or supplier's default price level.</summary>
+    public const string PartiesSetPriceLevel = "parties:set_price_level";
+
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
@@ -40,6 +64,9 @@ public static class Permissions
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView,
+        ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
+        VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
+        PurchasesChoosePriceLevel, PartiesSetPriceLevel,
     };
 }
 
@@ -58,16 +85,26 @@ public static class RolePermissions
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
+            Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.PricesEdit,
+            Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
+            Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
+            Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel, Permissions.PartiesSetPriceLevel,
         },
+        // Sales staff sell at the customer's price level; changing a price or the level needs a
+        // manager (owner decision 2026-09-29).
         [Role.SALES] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
         },
+        // Store staff add items and enter supplier invoices as printed; they don't set selling prices.
         [Role.INVENTORY] = new[]
         {
             Permissions.DashboardView, Permissions.InventoryView, Permissions.InventoryEdit,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
+            Permissions.ProductsCreate, Permissions.ProductsEdit,
+            Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
+            Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel,
         },
         [Role.VIEWER] = new[]
         {

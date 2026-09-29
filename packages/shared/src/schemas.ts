@@ -50,6 +50,8 @@ export const invoiceLineSchema = z.object({
   discount: z.number().int().min(0).default(0),
   /** Warehouse the goods leave from; defaults to the invoice's warehouse. */
   warehouseId: z.string().uuid().optional(),
+  /** One of the item's units (carton…); quantity and price are then per that unit. None = base unit. */
+  unitId: z.string().uuid().optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 
@@ -64,6 +66,8 @@ export const createSalesInvoiceSchema = z.object({
   overrideFloor: z.boolean().optional().default(false),
   /** Default warehouse for every line; none = the user's branch default. */
   warehouseId: z.string().uuid().optional(),
+  /** Price level; none = the customer's own, else the default sales level. */
+  priceLevelId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -74,6 +78,8 @@ export const purchaseLineSchema = z.object({
   unitCost: z.number().int().min(0),
   /** Warehouse the goods arrive into; defaults to the invoice's warehouse. */
   warehouseId: z.string().uuid().optional(),
+  /** One of the item's units; quantity and cost are then per that unit. None = base unit. */
+  unitId: z.string().uuid().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -86,6 +92,8 @@ export const createPurchaseInvoiceSchema = z.object({
   paidAmount: z.number().int().min(0).default(0),
   /** Default warehouse for every line; none = the user's branch default. */
   warehouseId: z.string().uuid().optional(),
+  /** Price level; none = the supplier's own, else the default purchase level. */
+  priceLevelId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -183,3 +191,103 @@ export const updateSettingsSchema = z.object({
   transfersRequireReceipt: z.boolean().optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Catalog: units, categories, price levels, sizes & colors, items, models
+// ---------------------------------------------------------------------------
+
+export const createNamedSchema = z.object({ ...nameFields });
+export type CreateNamedInput = z.infer<typeof createNamedSchema>;
+
+export const updateNamedSchema = z.object({
+  ...nameFields,
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(1000).optional(),
+});
+export type UpdateNamedInput = z.infer<typeof updateNamedSchema>;
+
+export const createPriceLevelSchema = z.object({
+  side: z.enum(['SALE', 'PURCHASE']),
+  ...nameFields,
+});
+export type CreatePriceLevelInput = z.infer<typeof createPriceLevelSchema>;
+
+export const updatePriceLevelSchema = updateNamedSchema.extend({
+  isDefault: z.boolean().optional(),
+});
+export type UpdatePriceLevelInput = z.infer<typeof updatePriceLevelSchema>;
+
+export const createVariantOptionSchema = z.object({
+  kind: z.enum(['SIZE', 'COLOR']),
+  ...nameFields,
+});
+export type CreateVariantOptionInput = z.infer<typeof createVariantOptionSchema>;
+
+/** One unit of an item: the unit, how many base units it holds (1 = base unit), its barcode. */
+export const itemUnitSchema = z.object({
+  unitId: z.string().uuid(),
+  factor: z.number().int().min(1).max(100000),
+  barcode: z.string().trim().max(64).optional(),
+});
+export type ItemUnitInput = z.infer<typeof itemUnitSchema>;
+
+/** A price for one unit at one level (minor units); null clears the item's own price. */
+export const priceSchema = z.object({
+  unitId: z.string().uuid(),
+  priceLevelId: z.string().uuid(),
+  price: z.number().int().min(0).nullable(),
+});
+export type PriceInput = z.infer<typeof priceSchema>;
+
+export const createProductSchema = z.object({
+  ...nameFields,
+  categoryId: z.string().uuid(),
+  sku: z.string().trim().max(40).optional(),
+  reorderLevel: z.number().int().min(0).default(0),
+  units: z.array(itemUnitSchema).min(1).max(10),
+  prices: z.array(priceSchema).optional(),
+});
+export type CreateProductInput = z.infer<typeof createProductSchema>;
+
+export const updateProductSchema = z.object({
+  ...nameFields,
+  categoryId: z.string().uuid().optional(),
+  sku: z.string().trim().max(40).optional(),
+  reorderLevel: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+  units: z.array(itemUnitSchema).min(1).max(10).optional(),
+});
+export type UpdateProductInput = z.infer<typeof updateProductSchema>;
+
+export const updatePricesSchema = z.object({ prices: z.array(priceSchema).min(1) });
+export type UpdatePricesInput = z.infer<typeof updatePricesSchema>;
+
+export const createModelSchema = z.object({
+  ...nameFields,
+  categoryId: z.string().uuid(),
+  code: z.string().trim().max(20).optional(),
+  reorderLevel: z.number().int().min(0).default(0),
+  sizeIds: z.array(z.string().uuid()),
+  colorIds: z.array(z.string().uuid()),
+  units: z.array(itemUnitSchema).min(1).max(10),
+  prices: z.array(priceSchema).optional(),
+});
+export type CreateModelInput = z.infer<typeof createModelSchema>;
+
+export const updateModelSchema = z.object({
+  ...nameFields,
+  categoryId: z.string().uuid().optional(),
+  reorderLevel: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+  addSizeIds: z.array(z.string().uuid()).optional(),
+  addColorIds: z.array(z.string().uuid()).optional(),
+  units: z.array(itemUnitSchema).min(1).max(10).optional(),
+});
+export type UpdateModelInput = z.infer<typeof updateModelSchema>;
+
+/** A party's own price levels: null leaves a side unchanged, "" goes back to the default. */
+export const setPartyPriceLevelsSchema = z.object({
+  salesPriceLevelId: z.string().optional(),
+  purchasePriceLevelId: z.string().optional(),
+});
+export type SetPartyPriceLevelsInput = z.infer<typeof setPartyPriceLevelsSchema>;

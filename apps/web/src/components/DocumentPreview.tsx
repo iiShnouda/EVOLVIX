@@ -83,6 +83,12 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
+            {doc.priceLevelName && (
+              <p>
+                {t('invoice.priceLevel')}:{' '}
+                <span className="font-medium text-fg">{doc.priceLevelName}</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -116,11 +122,20 @@ export function DocumentPreview({
                     )}
                     {l.returnedQuantity > 0 && (
                       <span className="block text-xs text-warning tnum">
-                        {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}
+                        {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}{' '}
+                        {l.baseUnitName}
                       </span>
                     )}
                   </td>
-                  <td className="p-2 text-end tnum">{formatNumber(l.quantity, locale)}</td>
+                  <td className="p-2 text-end tnum">
+                    {formatNumber(l.unitQuantity || l.quantity, locale)}{' '}
+                    <span className="text-xs text-muted">{l.unitName}</span>
+                    {l.unitFactor > 1 && (
+                      <span className="block text-xs text-muted">
+                        = {formatNumber(l.quantity, locale)} {l.baseUnitName}
+                      </span>
+                    )}
+                  </td>
                   <td className="hidden p-2 text-end tnum sm:table-cell">
                     {formatMoney(l.unitPrice, doc.currency, locale)}
                   </td>

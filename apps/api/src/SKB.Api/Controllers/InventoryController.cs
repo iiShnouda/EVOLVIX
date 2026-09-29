@@ -48,13 +48,15 @@ public sealed class InventoryController : ControllerBase
     /// </summary>
     [HttpGet("items")]
     public async Task<ActionResult<InventoryListDto>> Items(
-        [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null)
+        [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
+        [FromQuery] string? modelId = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
         var products = await _db.Products.AsNoTracking().Where(p => p.IsActive)
-            .Include(p => p.Category).OrderBy(p => p.Name).ToListAsync();
+            .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
+            .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
 
         var all = products.Select(p =>
@@ -72,12 +74,15 @@ public sealed class InventoryController : ControllerBase
 
         IEnumerable<InventoryItemDto> rows = all;
         if (lowOnly) rows = rows.Where(i => i.IsLow);
+        if (Guid.TryParse(modelId, out var model))
+            rows = rows.Where(i => i.ModelId == model.ToString());
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // Match either language of the name, the SKU or the barcode.
+            // Match either language of the name, the SKU or the barcode of any of its units.
             var s = search.Trim().ToLowerInvariant();
             bool Has(string? v) => v is not null && v.ToLowerInvariant().Contains(s);
-            var hits = products.Where(p => Has(p.Name) || Has(p.NameAr) || Has(p.NameEn) || Has(p.Sku) || Has(p.Barcode))
+            var hits = products.Where(p => Has(p.Name) || Has(p.NameAr) || Has(p.NameEn) || Has(p.Sku)
+                                           || p.Units.Any(u => Has(u.Barcode)))
                 .Select(p => p.Id.ToString()).ToHashSet();
             rows = rows.Where(i => hits.Contains(i.Id));
         }
@@ -96,7 +101,9 @@ public sealed class InventoryController : ControllerBase
     public async Task<ActionResult<ItemCardDto>> Card(Guid id,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? warehouseId = null)
     {
-        var product = await _db.Products.AsNoTracking().Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _db.Products.AsNoTracking().Include(p => p.Category)
+            .Include(p => p.Units).ThenInclude(u => u.Unit)
+            .FirstOrDefaultAsync(p => p.Id == id);
         if (product is null) return NotFound(new { message = "Item not found", code = "not_found" });
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -155,7 +162,8 @@ public sealed class InventoryController : ControllerBase
 
         var today = DateTime.UtcNow.Date;
         var date = Utc((ParseDate(asOf) ?? today).Date);
-        var products = await _db.Products.AsNoTracking().Include(p => p.Category).ToDictionaryAsync(p => p.Id);
+        var products = await _db.Products.AsNoTracking().Include(p => p.Category).Include(p => p.Model)
+            .ToDictionaryAsync(p => p.Id);
         var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
         var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(date.AddDays(1));
 
@@ -180,10 +188,17 @@ public sealed class InventoryController : ControllerBase
             .Select(g => new ValuationRowDto(g.Key.ToString(), warehouses.GetValueOrDefault(g.Key, ""),
                 g.Sum(l => l.Qty), g.Sum(l => l.Value)))
             .OrderByDescending(r => r.Value).ToArray();
+        // Variants rolled up to their model (only items made in sizes/colors).
+        var modelRows = lines.Where(l => products[l.Product].Model is not null)
+            .GroupBy(l => products[l.Product].ModelId!.Value)
+            .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(products[g.First().Product].Model),
+                g.Sum(l => l.Qty), g.Sum(l => l.Value)))
+            .Where(r => r.Quantity != 0)
+            .OrderByDescending(r => r.Value).ToArray();
 
         return Ok(new ValuationDto(
             date.ToString("yyyy-MM-dd"), await CurrencyAsync(), wid?.ToString(),
-            lines.Sum(l => l.Qty), lines.Sum(l => l.Value), categoryRows, itemRows, warehouseRows));
+            lines.Sum(l => l.Qty), lines.Sum(l => l.Value), categoryRows, itemRows, warehouseRows, modelRows));
     }
 
     /// <summary>

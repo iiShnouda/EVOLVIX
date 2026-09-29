@@ -186,6 +186,13 @@ public class Party
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Price level a sales invoice to this customer starts with (null = the default SALE level).</summary>
+    public Guid? SalesPriceLevelId { get; set; }
+    public PriceLevel? SalesPriceLevel { get; set; }
+    /// <summary>Price level a purchase invoice from this supplier starts with (null = the default PURCHASE level).</summary>
+    public Guid? PurchasePriceLevelId { get; set; }
+    public PriceLevel? PurchasePriceLevel { get; set; }
+
     public List<SalesDocument> Documents { get; set; } = new();
 }
 
@@ -201,6 +208,140 @@ public class Category : ILocalizedName
     public List<Product> Products { get; set; } = new();
 }
 
+/// <summary>
+/// A unit of measure (وحدة): piece, carton, dozen, kg… A company-wide list, named in both languages.
+/// Items say which units they come in, and how many base units each holds (<see cref="ItemUnit"/>).
+/// </summary>
+public class Unit : ILocalizedName
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One unit an item is bought and sold in (old <c>itemWehda</c>). Every item has exactly one
+/// <b>base unit</b> with <c>Factor</c> 1 — the smallest unit, in which stock and every movement are
+/// counted. A larger unit holds <c>Factor</c> base units (carton = 24). Each unit may carry its own
+/// barcode (unique across all items) and its own prices.
+/// </summary>
+public class ItemUnit
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid UnitId { get; set; }
+    public Unit? Unit { get; set; }
+    /// <summary>Base units in one of this unit; 1 for the base unit.</summary>
+    public int Factor { get; set; } = 1;
+    public string? Barcode { get; set; }
+}
+
+/// <summary>
+/// A named price column (مستوى سعر), e.g. the customer price or the supplier price. Rows, so more
+/// can be added without a schema change. Each side (sales / purchases) has one default level.
+/// </summary>
+public class PriceLevel : ILocalizedName
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
+    public PriceSide Side { get; set; } = PriceSide.SALE;
+    public bool IsDefault { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An item's own price for one unit at one price level (minor units). Missing prices are worked out
+/// by <c>PriceBook</c>: the model's price, then the base unit's price × factor, then the default level.
+/// </summary>
+public class ItemPrice
+{
+    public Guid ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid UnitId { get; set; }
+    public Guid PriceLevelId { get; set; }
+    public PriceLevel? PriceLevel { get; set; }
+    public long Price { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>A size or a color (مقاس / لون) that item models are made in. Company-wide lists.</summary>
+public class VariantOption : ILocalizedName
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
+    public VariantKind Kind { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An item model (موديل), e.g. "Shirt X", made in sizes × colors. Each variant is a normal
+/// <see cref="Product"/> with its own SKU, barcode and stock, so every stock rule applies to it
+/// unchanged. The model holds what variants share: the category, the units (<see cref="ModelUnit"/>)
+/// and default prices (<see cref="ModelPrice"/>) that a variant uses until it is given its own.
+/// </summary>
+public class ProductModel : ILocalizedName
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public string? NameAr { get; set; }
+    public string? NameEn { get; set; }
+    public string NameSource { get; set; } = "en";
+    public string? NameAuto { get; set; }
+    public bool NamePending { get; set; }
+    /// <summary>Short unique code; variant SKUs start with it.</summary>
+    public string Code { get; set; } = "";
+    public Guid CategoryId { get; set; }
+    public Category? Category { get; set; }
+    public int ReorderLevel { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public List<ModelUnit> Units { get; set; } = new();
+    public List<Product> Variants { get; set; } = new();
+}
+
+/// <summary>A unit every variant of a model comes in (the variants' <see cref="ItemUnit"/>s follow it).</summary>
+public class ModelUnit
+{
+    public Guid ModelId { get; set; }
+    public ProductModel? Model { get; set; }
+    public Guid UnitId { get; set; }
+    public Unit? Unit { get; set; }
+    public int Factor { get; set; } = 1;
+}
+
+/// <summary>The model's price for one unit at one level: what its variants charge unless they have their own.</summary>
+public class ModelPrice
+{
+    public Guid ModelId { get; set; }
+    public ProductModel? Model { get; set; }
+    public Guid UnitId { get; set; }
+    public Guid PriceLevelId { get; set; }
+    public long Price { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class Product : ILocalizedName
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -211,22 +352,35 @@ public class Product : ILocalizedName
     public string NameSource { get; set; } = "en";
     public string? NameAuto { get; set; }
     public bool NamePending { get; set; }
-    public string Unit { get; set; } = "pc";
     /// <summary>
     /// Company-wide average cost (minor units) = total stock value ÷ total quantity, kept in step
     /// with the per-branch pools (<see cref="StockCost"/>). For company-level display; every
     /// posting uses the pool of the warehouse involved.
     /// </summary>
     public long CostPrice { get; set; }
+    /// <summary>
+    /// The base unit's price at the default sales level (minor units), kept in step with the price
+    /// book for list screens. Invoices work prices out through <c>PriceBook</c>.
+    /// </summary>
     public long SalePrice { get; set; }
     public string Currency { get; set; } = "EGP";
+    /// <summary>Stock in base units, all warehouses.</summary>
     public int StockOnHand { get; set; }
     public int ReorderLevel { get; set; }
-    public string? Barcode { get; set; }
     public bool IsActive { get; set; } = true;
 
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
+
+    /// <summary>Set on a variant: its model, and its size and/or color. Its name is composed from them.</summary>
+    public Guid? ModelId { get; set; }
+    public ProductModel? Model { get; set; }
+    public Guid? SizeId { get; set; }
+    public VariantOption? Size { get; set; }
+    public Guid? ColorId { get; set; }
+    public VariantOption? Color { get; set; }
+
+    public List<ItemUnit> Units { get; set; } = new();
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -265,6 +419,10 @@ public class SalesDocument
     public Guid? SourceDocumentId { get; set; }
     public SalesDocument? SourceDocument { get; set; }
 
+    /// <summary>The price level the invoice was priced at (customer price, supplier price…).</summary>
+    public Guid? PriceLevelId { get; set; }
+    public PriceLevel? PriceLevel { get; set; }
+
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -275,13 +433,21 @@ public class DocumentLine
     /// <summary>1-based position on the document, so it always shows and prints in entry order.</summary>
     public int LineNo { get; set; }
     public string ProductName { get; set; } = "";
+    /// <summary>Quantity in base units (what stock moved by) = <c>UnitQuantity × UnitFactor</c>.</summary>
     public int Quantity { get; set; }
+    /// <summary>The unit the line was entered in (piece, carton…), with its size at the time.</summary>
+    public Guid? UnitId { get; set; }
+    public Unit? Unit { get; set; }
+    public int UnitFactor { get; set; } = 1;
+    /// <summary>Quantity in <see cref="UnitId"/> units, as typed.</summary>
+    public int UnitQuantity { get; set; }
+    /// <summary>Price of one <see cref="UnitId"/> unit (minor units). Gross = UnitQuantity × UnitPrice = LineTotal + Discount.</summary>
     public long UnitPrice { get; set; }
     public long Discount { get; set; }
     public long LineTotal { get; set; }
-    // Cost snapshot at the moment the line was posted (weighted-average cost for a sale;
-    // the purchase price for a purchase). Kept on the line so profit reports stay correct
-    // for all time even after the product's average cost later moves.
+    // Cost snapshot per BASE unit at the moment the line was posted (weighted-average cost for a
+    // sale; the purchase price for a purchase). Kept on the line so profit reports stay correct
+    // for all time even after the product's average cost later moves. LineCost is exact.
     public long UnitCost { get; set; }
     public long LineCost { get; set; }
     public long LineProfit { get; set; }

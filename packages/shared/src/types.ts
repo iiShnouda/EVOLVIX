@@ -63,7 +63,20 @@ export type Permission =
   | 'settings:view'
   | 'settings:manage'
   | 'audit:view'
-  | 'presence:view';
+  | 'presence:view'
+  // Catalog (owner decision 2026-09-29: every action has its own permission)
+  | 'products:create'
+  | 'products:edit'
+  | 'prices:edit'
+  | 'price_levels:manage'
+  | 'categories:manage'
+  | 'units:manage'
+  | 'variant_options:manage'
+  | 'sales:change_price'
+  | 'sales:choose_price_level'
+  | 'purchases:change_price'
+  | 'purchases:choose_price_level'
+  | 'parties:set_price_level';
 
 export interface Staff {
   id: string;
@@ -131,6 +144,10 @@ export interface Party {
   currency: string;
   isActive: boolean;
   createdAt: string;
+  /** The customer's own price level (null = the default sales level). */
+  salesPriceLevelId?: string | null;
+  /** The supplier's own price level (null = the default purchase level). */
+  purchasePriceLevelId?: string | null;
 }
 
 /** Presentation‑ready balance so the UI never guesses the sign meaning. */
@@ -150,6 +167,29 @@ export interface PartyBalanceView {
 export interface Category {
   id: string;
   name: string;
+  /** Active items in the category. */
+  itemCount?: number;
+  names?: LocalizedName;
+}
+
+/** Where an item's price at a level came from (see the server's PriceBook). */
+export type PriceSource = 'OWN' | 'MODEL' | 'BASE' | 'DEFAULT';
+
+export interface UnitPrice {
+  priceLevelId: string;
+  /** Price of one unit, minor units. */
+  price: number;
+  source: PriceSource;
+}
+
+/** A unit an item comes in (piece, carton...) with its price at each level that has one. */
+export interface ProductUnit {
+  unitId: string;
+  name: string;
+  /** Base units in one of this unit; 1 = the base unit. */
+  factor: number;
+  barcode?: string | null;
+  prices: UnitPrice[];
 }
 
 export interface Product {
@@ -157,16 +197,26 @@ export interface Product {
   sku: string;
   name: string;
   categoryId: string;
+  /** Name of the base unit; stock is counted in it. */
   unit: string;
-  /** Cost & sale price in minor units. */
+  /** Company average cost of one base unit, and the list price of one base unit (minor units). */
   costPrice: number;
   salePrice: number;
   currency: string;
-  /** Aggregate stock across branches (per‑branch stock is a separate query). */
+  /** Aggregate stock in base units across branches (per‑branch stock is a separate query). */
   stockOnHand: number;
   reorderLevel: number;
-  barcode?: string;
+  /** The base unit's barcode. */
+  barcode?: string | null;
   isActive: boolean;
+  /** Every unit the item comes in, base first. */
+  units: ProductUnit[];
+  /** Set on a size/color variant. */
+  modelId?: string | null;
+  sizeName?: string | null;
+  colorName?: string | null;
+  /** When the search text was exactly one of its barcodes: that unit (scanning a carton adds a carton). */
+  matchedUnitId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,18 +247,28 @@ export interface DocumentLine {
   id: string;
   productId: string;
   productName: string;
+  /** Quantity in base units (what stock moved by) = unitQuantity x unitFactor. */
   quantity: number;
-  /** Unit price in minor units. */
+  /** The unit the line was entered in, its size, and the quantity in it. */
+  unitId?: string | null;
+  unitName: string;
+  unitFactor: number;
+  unitQuantity: number;
+  /** The item's base unit (what `quantity` counts). */
+  baseUnitName: string;
+  /** Price of one line unit, minor units. */
   unitPrice: number;
   /** Line discount in minor units. */
   discount: number;
   /** quantity * unitPrice - discount (+ tax), in minor units. */
   lineTotal: number;
-  /** Weighted-average cost per unit at posting time (COGS per unit), minor units. */
+  /** Weighted-average cost of one base unit at posting time, minor units. */
   unitCost: number;
+  /** Exact cost of the whole line, minor units. */
+  lineCost: number;
   /** Line profit = lineTotal - (quantity * unitCost), minor units. */
   lineProfit: number;
-  /** On an invoice line: units already returned against it (0 on a return document). */
+  /** On an invoice line: base units already returned against it (0 on a return document). */
   returnedQuantity: number;
   /** Warehouse the goods left from (sale) or arrived into (purchase). */
   warehouseId?: string | null;
@@ -249,6 +309,9 @@ export interface SalesDocument {
   /** For a return: the invoice it reverses. */
   sourceDocumentId?: string | null;
   sourceNumber?: string | null;
+  /** The price level the invoice was priced at. */
+  priceLevelId?: string | null;
+  priceLevelName?: string | null;
   createdAt: string;
 }
 
@@ -268,7 +331,7 @@ export interface ProfitRow {
   quantity: number;
 }
 
-export type ProfitGroupBy = 'customer' | 'product' | 'day';
+export type ProfitGroupBy = 'customer' | 'product' | 'model' | 'day';
 
 /** Profitability report (تقارير الربحية) over a date range. */
 export interface ProfitReport {
@@ -348,8 +411,18 @@ export interface InventoryItem {
   salePrice: number;
   /** stockOnHand × avgCost, minor units. */
   stockValue: number;
+  /** Every unit the item comes in (base first), for entering quantities in cartons etc. */
+  units: UnitOption[];
+  modelId?: string | null;
   /** On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب). */
   isLow: boolean;
+}
+
+/** A unit an item comes in: its name and how many base units it holds. */
+export interface UnitOption {
+  unitId: string;
+  name: string;
+  factor: number;
 }
 
 export interface InventoryList {
@@ -429,6 +502,131 @@ export interface Valuation {
   categories: ValuationRow[];
   items: ValuationRow[];
   warehouses: ValuationRow[];
+  /** Size/color variants rolled up to their model. */
+  models: ValuationRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Catalog: units, price levels, sizes & colors, item and model editors
+// ---------------------------------------------------------------------------
+
+/** A unit of measure: piece, carton, dozen... */
+export interface UnitOfMeasure {
+  id: string;
+  name: string;
+  isActive: boolean;
+  /** Items that come in this unit. */
+  itemCount: number;
+  names: LocalizedName;
+}
+
+export type PriceSide = 'SALE' | 'PURCHASE';
+
+/** A named price column: the customer price, the supplier price... */
+export interface PriceLevel {
+  id: string;
+  name: string;
+  side: PriceSide;
+  isDefault: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  names: LocalizedName;
+}
+
+export type VariantKind = 'SIZE' | 'COLOR';
+
+/** A size or a color that item models are made in. */
+export interface VariantOption {
+  id: string;
+  kind: VariantKind;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  names: LocalizedName;
+}
+
+/** One unit x level price in an editor. `own` is set by hand; `effective` is what it charges. */
+export interface PriceCell {
+  unitId: string;
+  priceLevelId: string;
+  own: number | null;
+  effective: number | null;
+  source: PriceSource | null;
+}
+
+export interface ItemUnitRow {
+  unitId: string;
+  name: string;
+  factor: number;
+  barcode?: string | null;
+}
+
+/** An item for the item editor. */
+export interface ProductDetail {
+  id: string;
+  sku: string;
+  name: string;
+  names: LocalizedName;
+  categoryId: string;
+  categoryName: string;
+  reorderLevel: number;
+  isActive: boolean;
+  stockOnHand: number;
+  costPrice: number;
+  /** Stock has moved: the base unit can no longer change. */
+  hasMovements: boolean;
+  modelId?: string | null;
+  modelName?: string | null;
+  sizeId?: string | null;
+  sizeName?: string | null;
+  colorId?: string | null;
+  colorName?: string | null;
+  units: ItemUnitRow[];
+  prices: PriceCell[];
+  currency: string;
+}
+
+export interface ModelSummary {
+  id: string;
+  code: string;
+  name: string;
+  categoryName: string;
+  variants: number;
+  stockOnHand: number;
+  isActive: boolean;
+}
+
+export interface ModelVariant {
+  productId: string;
+  sku: string;
+  name: string;
+  sizeId?: string | null;
+  colorId?: string | null;
+  stockOnHand: number;
+  isActive: boolean;
+  barcode?: string | null;
+  /** Has prices of its own (the rest come from the model). */
+  ownPrices: boolean;
+  salePrice: number;
+}
+
+/** An item model made in sizes x colors. */
+export interface ModelDetail {
+  id: string;
+  code: string;
+  name: string;
+  names: LocalizedName;
+  categoryId: string;
+  categoryName: string;
+  reorderLevel: number;
+  isActive: boolean;
+  hasMovements: boolean;
+  units: ItemUnitRow[];
+  prices: PriceCell[];
+  sizes: VariantOption[];
+  colors: VariantOption[];
+  variants: ModelVariant[];
+  currency: string;
 }
 
 export interface StocktakeResult {

@@ -8,11 +8,15 @@ import {
   type Permission,
   type StockMovement,
   type WarehouseStock,
+  formatQuantity,
 } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
+
+const NO_PERMISSIONS: Permission[] = [];
 import { useDeviceInfo } from '../lib/device';
 import { ApiError } from '../lib/api';
 import { useItemCard, useStocktake } from '../lib/queries';
@@ -51,8 +55,10 @@ export function ItemCardPage() {
   const { t, locale } = useT();
   const navigate = useNavigate();
   const { deviceClass } = useDeviceInfo();
-  const permissions = useAuth((s) => s.user?.permissions ?? []);
-  const canEdit = permissions.includes('inventory:edit');
+  const can = useCan();
+  const permissions = useAuth((st) => st.user?.permissions ?? NO_PERMISSIONS);
+  const canEdit = can('inventory:edit');
+  const canEditItem = can('products:edit') || can('prices:edit');
 
   const [params, setParams] = useSearchParams();
   const warehouseId = params.get('wh') ?? '';
@@ -99,7 +105,29 @@ export function ItemCardPage() {
       <PageHeader
         title={item.name}
         subtitle={`${t('itemCard.title')} · ${item.sku} · ${item.categoryName}`}
-        action={back}
+        action={
+          <div className="flex flex-wrap gap-2">
+            {canEditItem && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate(`/inventory/products/${item.id}/edit`)}
+              >
+                {t('catalog.editItem')}
+              </Button>
+            )}
+            {item.modelId && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => navigate(`/inventory/models/${item.modelId}`)}
+              >
+                {t('item.openModel')}
+              </Button>
+            )}
+            {back}
+          </div>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,320px)]">
@@ -259,6 +287,22 @@ export function ItemCardPage() {
                 value={`${formatNumber(item.stockOnHand, locale)} ${item.unit}`}
                 strong
               />
+              {item.units.length > 1 && (
+                <>
+                  {item.units.some(
+                    (u) => u.factor > 1 && Math.abs(item.stockOnHand) >= u.factor,
+                  ) && (
+                    <Row label="" value={formatQuantity(item.stockOnHand, item.units, locale)} />
+                  )}
+                  <Row
+                    label={t('item.units')}
+                    value={item.units
+                      .filter((u) => u.factor > 1)
+                      .map((u) => `${u.name} = ${formatNumber(u.factor, locale)} ${item.unit}`)
+                      .join(' · ')}
+                  />
+                </>
+              )}
               <Row label={t('inventory.reorder')} value={formatNumber(item.reorderLevel, locale)} />
               <Row
                 label={t('inventory.avgCost')}

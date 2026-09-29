@@ -83,8 +83,16 @@ marked *(inferred)* come from data and column names, not from code.
   - البيع: wholesale.
   - المستهلك: consumer / retail.
 
-  In SKB these are rows in `PriceLevel`, so more can be added without a schema change.
-  - A party can have a default price level.
+  In SKB these are rows in `PriceLevel`, so more can be added without a schema change. Each level
+  prices one side: sales or purchases. **Built (2026-09-29):** the company starts with two, as the
+  owner asked ("موردين و عملاء"): **سعر العملاء** (customer price, the sales default) and
+  **سعر الموردين** (supplier price, the purchases default).
+  - A price is kept per **unit** and level (a carton needn't cost 24 pieces).
+  - A missing price is worked out: the item's own price → its model's (for a size/color) → the
+    base unit's × the factor → the same at the side's default level. An unpriced item sells at
+    cost × (1 + default markup) and buys at the average cost.
+  - A party can have a default price level (one for sales, one for purchases).
+  - Typing another price than the level's, or picking another level, needs its own permission (§6).
   - A **price list** (قائمة أسعار) can override the price for chosen items.
   - **Quantity breaks** give a discount above a quantity. Old table: `priceLevels`.
 - **Reorder band:** a minimum (حد الطلب) and an optional maximum.
@@ -181,8 +189,8 @@ One shape for every document type:
   revenue after all discounts, minus cost. Taxes never count as profit (ROADMAP §3.4).
 - **Payment on the invoice**: an amount paid now into a cash box or bank. The rest goes on
   the party's account. `Paid` and `Remaining` are shown, as in the old app (المدفوع / الباقي).
-- **Commission** (عمولة): rep commission % × net sales. It is posted as an expense owed to the
-  rep and is reversed by returns.
+- **Commission** (عمولة): **not used** — the owner confirmed reps earn no commission
+  (2026-09-29). A rep is still recorded on the invoice for reports.
 - **Delivery** (التوصيل). Confirmed by the owner, the company works in four ways:
 
   | Case | How the customer pays | How goods leave |
@@ -375,8 +383,8 @@ Old values are from the company's settings file. "Default" is what SKB starts wi
 | `chkCanView/Add/Edit/Del/Print` | `<module>:view/create/edit/cancel/print` per module |
 | `chkBoxFar*`, `chkBoxMakhzan*`, `chkBoxKhazna*`, `chkBoxMandob*`, `chkBoxAmin*` | **scopes**: allowed branches / warehouses / cash boxes / reps |
 | `chkBoxShowPriceT/B/MInReport` | `prices:view-cost` (supply price and average cost are hidden without it) |
-| `chkBoxIsPriceUpdate`, `chkBoxIsPriceComboEnable` | `sales:change-price`, `sales:choose-price-level` |
-| `chkCanAddItems` | `items:create` |
+| `chkBoxIsPriceUpdate`, `chkBoxIsPriceComboEnable` | `sales:change_price`, `sales:choose_price_level` (and `purchases:…` for purchases) — built |
+| `chkCanAddItems` | `products:create`, `products:edit`, `prices:edit`, `units:manage`, `categories:manage`, `variant_options:manage`, `price_levels:manage` — built |
 | `chkBoxShowRaseed` | `parties:view-balance` |
 | `chkBoxCanTarseed` | `setup:opening-balances` |
 | `chkIsSV`, `chkIsIntAdmin` | roles `OWNER` / `ADMIN` |
@@ -394,8 +402,11 @@ Each step is a working slice: API, web, tests and docs together.
    - Migration: every branch gets a default warehouse; all current stock goes to the oldest branch's one.
 2. ✅ **Transfers** (shipped 2026-09-28): `SENT → RECEIVED | CANCELLED` through a system
    "In transit" warehouse; the transfer list filters by status, warehouse, item and date.
-3. **Units, price levels & size/color:** base unit + larger units with barcodes, wholesale / consumer prices, and item models with size × color variants.
-4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep + commission, paid-now into a cash box, and delivery (own / shipping company).
+3. ✅ **Units, price levels & size/color** (shipped 2026-09-29): base unit + larger units with
+   barcodes, the customer and supplier price levels (more can be added), prices per unit and level,
+   and item models with size × color variants. Price lists and quantity breaks come later.
+4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep (no
+   commission), paid-now into a cash box, and delivery (own / shipping company).
 5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.
 6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
 7. **Cheques & portfolios.**

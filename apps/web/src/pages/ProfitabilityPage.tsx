@@ -29,6 +29,7 @@ export function ProfitabilityPage() {
   const groups: { key: ProfitGroupBy; label: string }[] = [
     { key: 'customer', label: t('report.byCustomer') },
     { key: 'product', label: t('report.byProduct') },
+    { key: 'model', label: t('report.byModel') },
     { key: 'day', label: t('report.byDay') },
   ];
 
@@ -41,11 +42,23 @@ export function ProfitabilityPage() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('report.from')}</span>
-            <input type="date" className={field} value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+            <input
+              type="date"
+              className={field}
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+            />
           </label>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('report.to')}</span>
-            <input type="date" className={field} value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+            <input
+              type="date"
+              className={field}
+              value={to}
+              min={from}
+              onChange={(e) => setTo(e.target.value)}
+            />
           </label>
           <div className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('report.by')}</span>
@@ -55,7 +68,9 @@ export function ProfitabilityPage() {
                   key={g.key}
                   onClick={() => setBy(g.key)}
                   className={`h-9 px-3 text-sm transition-colors ${
-                    by === g.key ? 'bg-brand text-brand-fg' : 'bg-surface text-muted hover:bg-surface-2'
+                    by === g.key
+                      ? 'bg-brand text-brand-fg'
+                      : 'bg-surface text-muted hover:bg-surface-2'
                   }`}
                 >
                   {g.label}
@@ -99,14 +114,22 @@ export function ProfitabilityPage() {
             <thead className="border-b border-line bg-surface-2 text-xs text-muted">
               <tr>
                 <th className="p-3 text-start font-medium">
-                  {by === 'customer' ? t('report.byCustomer') : by === 'product' ? t('report.byProduct') : t('report.byDay')}
+                  {by === 'customer'
+                    ? t('report.byCustomer')
+                    : by === 'product'
+                      ? t('report.byProduct')
+                      : by === 'model'
+                        ? t('report.byModel')
+                        : t('report.byDay')}
                 </th>
                 <th className="p-3 text-end font-medium">{t('report.revenue')}</th>
-                <th className="hidden p-3 text-end font-medium sm:table-cell">{t('report.cost')}</th>
+                <th className="hidden p-3 text-end font-medium sm:table-cell">
+                  {t('report.cost')}
+                </th>
                 <th className="p-3 text-end font-medium">{t('report.profit')}</th>
                 <th className="p-3 text-end font-medium">{t('report.margin')}</th>
                 <th className="hidden p-3 text-end font-medium md:table-cell">
-                  {by === 'product' ? t('report.qty') : t('report.invoices')}
+                  {by === 'product' || by === 'model' ? t('report.qty') : t('report.invoices')}
                 </th>
               </tr>
             </thead>
@@ -116,16 +139,23 @@ export function ProfitabilityPage() {
                 return (
                   <tr key={r.key} className="hover:bg-surface-2">
                     <td className="p-3 font-medium">{r.label}</td>
-                    <td className="p-3 text-end tnum">{formatMoney(r.revenue, currency, locale)}</td>
+                    <td className="p-3 text-end tnum">
+                      {formatMoney(r.revenue, currency, locale)}
+                    </td>
                     <td className="hidden p-3 text-end tnum text-muted sm:table-cell">
                       {formatMoney(r.cost, currency, locale)}
                     </td>
-                    <td className={`p-3 text-end font-semibold tnum ${r.profit >= 0 ? 'text-positive' : 'text-destructive'}`}>
+                    <td
+                      className={`p-3 text-end font-semibold tnum ${r.profit >= 0 ? 'text-positive' : 'text-destructive'}`}
+                    >
                       {formatMoney(r.profit, currency, locale)}
                     </td>
                     <td className="p-3 text-end tnum">{m.toFixed(1)}%</td>
                     <td className="hidden p-3 text-end tnum text-muted md:table-cell">
-                      {formatNumber(by === 'product' ? r.quantity : r.invoices, locale)}
+                      {formatNumber(
+                        by === 'product' || by === 'model' ? r.quantity : r.invoices,
+                        locale,
+                      )}
                     </td>
                   </tr>
                 );
@@ -150,7 +180,13 @@ function Kpi({
   hint?: string;
 }) {
   const color =
-    tone === 'positive' ? 'text-positive' : tone === 'negative' ? 'text-destructive' : tone === 'brand' ? 'text-brand' : '';
+    tone === 'positive'
+      ? 'text-positive'
+      : tone === 'negative'
+        ? 'text-destructive'
+        : tone === 'brand'
+          ? 'text-brand'
+          : '';
   return (
     <Card>
       <p className="text-xs text-muted">{label}</p>

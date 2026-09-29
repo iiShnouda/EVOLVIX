@@ -5,7 +5,7 @@ session (or teammate) can pick up without losing context. Pair this with **`ROAD
 (the full feature catalog of the old ERP), **`DOMAIN.md`** (how SKB models it: entities, rules,
 postings, build order) and **`CLAUDE.md`** (the non-negotiable rules).
 
-_Last updated: 2026-09-28._
+_Last updated: 2026-09-29._
 
 ---
 
@@ -107,6 +107,93 @@ Security-first, server-authoritative (no business data readable offline).
 - Windows models mirror the new DTOs (display-only there).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
+
+**Units, price levels and size/color** (الوحدات، مستويات الأسعار، المقاس واللون) — DOMAIN.md §7 step 3
+- **Units:** every item has a **base unit** (factor 1, the smallest unit sold; stock and every
+  movement count in it) and larger units that hold a number of base units (carton = 24).
+  - Each unit can have its **own barcode** (unique company-wide) and its own prices.
+  - Units are a company list, named in Arabic and English (`Unit`, `ItemUnit`).
+  - The base unit can't change once stock has moved. A larger unit's size can change: old
+    invoice lines keep the size they were posted with.
+- **Price levels:** the app starts with two, as the owner asked: **سعر العملاء** (customer
+  price, default for sales) and **سعر الموردين** (supplier price, default for purchases). More
+  can be added (e.g. wholesale) in Catalog setup.
+  - A customer or supplier can have **their own level**; an invoice starts at it.
+  - **Where a price comes from** (`PriceBook`, shown in grey in the editors):
+    1. the item's own price for that unit and level;
+    2. for a size/color, its model's price;
+    3. the base unit's price × the unit's count;
+    4. the same at the default level.
+  - An item with no price at all sells at cost × (1 + default markup), and buys at the average cost.
+  - `Product.SalePrice` is kept as the base unit's customer price, for list screens.
+- **Size × color models:** a model (e.g. "Basic T-shirt") is made in sizes × colors.
+  - Each size/color is a normal item with its own SKU (`TSH-BLACK-M`), barcode and stock. So
+    stock, per-branch cost, transfers, stocktake and returns all work unchanged.
+  - Its name is composed in both languages ("Basic T-shirt — Black / M") and follows the model
+    and color names, including their AI translations.
+  - It uses the model's units and prices until it gets prices of its own.
+  - Adding sizes or colors later adds the missing items. A model keeps the dimensions it was made with.
+- **Invoices in units:** each sales / purchase line picks one of the item's units.
+  - Stock moves in base units.
+  - A carton bought at 100.00 adds exactly 100.00 to the average cost (`ReceiveValue`).
+  - Scanning a carton's barcode and pressing Enter adds a carton line.
+  - The minimum-profit check now includes the line discount.
+- **Returns in units:** a whole carton comes back as a carton; part of one comes back in pieces.
+  Amount, discount and cost are shared in proportion, and the return that empties a line takes
+  exactly what is left.
+- **Permissions (owner decision 2026-09-29: every action has its own permission):**
+  - Catalog: `products:create`, `products:edit`, `prices:edit`, `price_levels:manage`,
+    `categories:manage`, `units:manage`, `variant_options:manage`.
+  - Invoices: `sales:change_price`, `sales:choose_price_level`, `purchases:change_price`,
+    `purchases:choose_price_level`.
+  - Customers and suppliers: `parties:set_price_level`.
+  - **Sales staff now sell at the level price only**: another price, a discount or another level
+    is refused (403) unless the role has the permission.
+  - Accountant: all of these except price levels. Inventory: items, units, sizes/colors and
+    purchase prices, but not selling prices.
+- **Reports:** profitability and stock valuation can group **by model**. The inventory list takes
+  `?modelId=` and shows stock as "2 Carton + 5 Piece".
+- **Web:**
+  - Inventory has **New item**, **Models** and **Catalog setup** buttons.
+  - `/inventory/products/new` and `/inventory/products/:id/edit` edit an item: names, units and
+    barcodes, and a price grid.
+  - `/inventory/models` and `/inventory/models/:id` list models and edit one, with its
+    size × color grid.
+  - `/inventory/setup` manages units, categories, sizes, colors and price levels.
+  - Customers & Suppliers has each party's price level.
+  - The invoice builder has a unit per line and a price-level picker; the price is read-only
+    without permission.
+  - The return builder takes quantities in the line's unit or in pieces.
+- **Endpoints:**
+  - `GET/POST/PUT /api/units`, `/api/categories`, `/api/price-levels`, `/api/variant-options`
+  - `GET /api/products?search` (units, prices at each level, `matchedUnitId` for a scanned barcode)
+  - `GET/POST/PUT /api/products/{id}` and `PUT /api/products/{id}/prices`
+  - `GET/POST/PUT /api/models/{id}` and `PUT /api/models/{id}/prices`
+  - `PUT /api/parties/{id}/price-levels`
+  - Invoice lines take `unitId`; invoices take `priceLevelId`.
+- **Migration `UnitsPricesVariants`** on an existing database:
+  - Every unit name items used becomes a unit (known ones in both languages), plus piece,
+    carton and dozen.
+  - Each item's old unit becomes its base unit, and its barcode moves onto it.
+  - The two price levels are added, and each item's sale price becomes its customer price.
+  - Every past invoice line is marked as entered in the base unit.
+  - The old `Product.Unit` and `Product.Barcode` columns are removed.
+- **Verified locally:**
+  - A database made by the previous version, with sales, purchases, returns, a transfer and a
+    stocktake, was upgraded. Then `scripts/checks/catalog.test.mjs` passed 209/209, and 209/209
+    again on a fresh database.
+  - The checks cover permissions, validation, price inheritance, cartons and pieces, exact
+    returns, variants, reports, and 5 parallel carton sales where exactly 2 succeed.
+  - 15 database invariants hold on both (`scripts/checks/invariants.mjs`).
+  - Translation 12/12 against a stand-in AI server: variant names follow the translations.
+  - Requests from the old client (no unit fields) still work.
+  - In the browser, in EN and AR and at phone width with no sideways scrolling:
+    - create an item with a carton;
+    - scan the carton into a purchase;
+    - a sales user sells at the locked level price;
+    - return 5 pieces of a carton;
+    - set a customer's level and see the next invoice start at it;
+    - the model's size × color grid.
 
 **Real apps for Android and Windows; the website for iPhone** (owner request 2026-09-29)
 - **Android** (`apps/android`, README there): a native Java app of about 20 KB.
@@ -320,9 +407,14 @@ Security-first, server-authoritative (no business data readable offline).
   catalogue larger than that needs a per-item stock lookup.
 - "Today" in valuation and the item card is the UTC day, not the Cairo day.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
+- **Roles and permissions are fixed in code** (`Roles.cs`). The owner wants to give each action to
+  people one by one, so a Users & permissions screen is needed (Phase 7, maybe sooner).
+- Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
+- Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
+- A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
 
 ## 7. What's NEXT (pick up here)
-Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers → units & prices → …).
+Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers ✅ → units & prices ✅ → charges & delivery → …).
 From `ROADMAP.md`, in suggested order (Phase 1 complete; Phase 2 item card, valuation, stocktake
 and warehouses shipped):
 1. **Verify returns on the live DB** after deploy (sell → partial return → full return; buy →
@@ -335,16 +427,26 @@ and warehouses shipped):
    - Send a few items to the other branch.
    - Confirm receipt as that branch's user.
    - Check the item card and the valuation.
-4. **Units, price levels & size/color** (DOMAIN.md §7 step 3). Then step 4:
-   - invoice charges and reps
+4. **Verify units, price levels and size/color on the live DB** after deploy:
+   - Catalog setup lists the old units and the two price levels.
+   - Add a carton to an item, buy and sell in cartons, and return part of one.
+   - A sales user can't change a price.
+5. **DOMAIN.md §7 step 4:**
+   - invoice charges, bonus lines and sales reps (**no commission**, owner 2026-09-29)
    - delivery, shipments / waybills and cash on delivery
    - the payment methods the owner listed (DOMAIN.md §2.5–2.6)
-5. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
-6. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
-7. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
-8. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-9. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
-10. **Phase 8 — Android** native client.
+6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
+7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
+8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
+9. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
+10. **Phase 7 — Admin & close:** users UI, backups, period close, PDF/Excel export, owner presence view.
+11. ~~**Phase 8 — Android**~~ done: a real Android app ships (see above).
+
+**Decisions (2026-09-29, owner):**
+- Every action has its own permission; roles bundle them (a permissions screen will let the owner assign them).
+- Price levels start as the supplier price and the customer price; more can be added.
+- Changing a level's price on an invoice, or picking another level, needs a permission.
+- Sales reps earn **no commission**.
 
 **Decisions (2026-09-28):**
 - **Average cost is per branch** (owner, 2026-09-29), with the transit warehouse as its own cost pool (DOMAIN.md §2.4).

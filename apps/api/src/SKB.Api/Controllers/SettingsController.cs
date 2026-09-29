@@ -44,7 +44,11 @@ public sealed class SettingsController : ControllerBase
         var pending = await _db.Branches.CountAsync(e => e.NamePending)
             + await _db.Warehouses.CountAsync(e => e.NamePending)
             + await _db.Categories.CountAsync(e => e.NamePending)
-            + await _db.Products.CountAsync(e => e.NamePending);
+            + await _db.Products.CountAsync(e => e.NamePending)
+            + await _db.Units.CountAsync(e => e.NamePending)
+            + await _db.PriceLevels.CountAsync(e => e.NamePending)
+            + await _db.ProductModels.CountAsync(e => e.NamePending)
+            + await _db.VariantOptions.CountAsync(e => e.NamePending);
         return Ok(new TranslationStatusDto(_translator.IsConfigured, pending, _translation.LastError,
             _translation.LastSuccessAt?.ToString("o")));
     }

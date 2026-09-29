@@ -22,6 +22,14 @@ public class AppDbContext : DbContext
     public DbSet<StockCost> StockCosts => Set<StockCost>();
     public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+    public DbSet<Unit> Units => Set<Unit>();
+    public DbSet<ItemUnit> ItemUnits => Set<ItemUnit>();
+    public DbSet<PriceLevel> PriceLevels => Set<PriceLevel>();
+    public DbSet<ItemPrice> ItemPrices => Set<ItemPrice>();
+    public DbSet<VariantOption> VariantOptions => Set<VariantOption>();
+    public DbSet<ProductModel> ProductModels => Set<ProductModel>();
+    public DbSet<ModelUnit> ModelUnits => Set<ModelUnit>();
+    public DbSet<ModelPrice> ModelPrices => Set<ModelPrice>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -128,6 +136,72 @@ public class AppDbContext : DbContext
             .HasOne(l => l.Product).WithMany()
             .HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<StockTransferLine>().HasIndex(l => l.ProductId);
+
+        // Units (وحدات). A barcode identifies one unit of one item, company-wide.
+        b.Entity<ItemUnit>().HasIndex(u => new { u.ProductId, u.UnitId }).IsUnique();
+        b.Entity<ItemUnit>().HasIndex(u => u.Barcode).IsUnique();
+        b.Entity<ItemUnit>()
+            .HasOne(u => u.Product).WithMany(p => p.Units)
+            .HasForeignKey(u => u.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ItemUnit>()
+            .HasOne(u => u.Unit).WithMany()
+            .HasForeignKey(u => u.UnitId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DocumentLine>()
+            .HasOne(l => l.Unit).WithMany()
+            .HasForeignKey(l => l.UnitId).OnDelete(DeleteBehavior.Restrict);
+
+        // Price levels (مستويات الأسعار) and prices. UnitId on a price has no FK of its own: the
+        // price goes with the item's (or model's) unit and is removed together with it.
+        b.Entity<PriceLevel>().Property(l => l.Side).HasConversion<string>();
+        b.Entity<ItemPrice>().HasKey(p => new { p.ProductId, p.UnitId, p.PriceLevelId });
+        b.Entity<ItemPrice>()
+            .HasOne(p => p.Product).WithMany()
+            .HasForeignKey(p => p.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ItemPrice>()
+            .HasOne(p => p.PriceLevel).WithMany()
+            .HasForeignKey(p => p.PriceLevelId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Party>()
+            .HasOne(p => p.SalesPriceLevel).WithMany()
+            .HasForeignKey(p => p.SalesPriceLevelId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Party>()
+            .HasOne(p => p.PurchasePriceLevel).WithMany()
+            .HasForeignKey(p => p.PurchasePriceLevelId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>()
+            .HasOne(d => d.PriceLevel).WithMany()
+            .HasForeignKey(d => d.PriceLevelId).OnDelete(DeleteBehavior.Restrict);
+
+        // Models (موديلات) and their size × color variants. A model has at most one variant per
+        // size/color pair; "no size" counts as a value, so NULLs are not distinct.
+        b.Entity<VariantOption>().Property(o => o.Kind).HasConversion<string>();
+        b.Entity<ProductModel>().HasIndex(m => m.Code).IsUnique();
+        b.Entity<ProductModel>()
+            .HasOne(m => m.Category).WithMany()
+            .HasForeignKey(m => m.CategoryId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ModelUnit>().HasKey(u => new { u.ModelId, u.UnitId });
+        b.Entity<ModelUnit>()
+            .HasOne(u => u.Model).WithMany(m => m.Units)
+            .HasForeignKey(u => u.ModelId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ModelUnit>()
+            .HasOne(u => u.Unit).WithMany()
+            .HasForeignKey(u => u.UnitId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ModelPrice>().HasKey(p => new { p.ModelId, p.UnitId, p.PriceLevelId });
+        b.Entity<ModelPrice>()
+            .HasOne(p => p.Model).WithMany()
+            .HasForeignKey(p => p.ModelId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ModelPrice>()
+            .HasOne<PriceLevel>().WithMany()
+            .HasForeignKey(p => p.PriceLevelId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Product>()
+            .HasOne(p => p.Model).WithMany(m => m.Variants)
+            .HasForeignKey(p => p.ModelId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Product>()
+            .HasOne(p => p.Size).WithMany()
+            .HasForeignKey(p => p.SizeId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Product>()
+            .HasOne(p => p.Color).WithMany()
+            .HasForeignKey(p => p.ColorId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Product>().HasIndex(p => new { p.ModelId, p.SizeId, p.ColorId })
+            .IsUnique().AreNullsDistinct(false).HasFilter("\"ModelId\" IS NOT NULL");
 
         base.OnModelCreating(b);
     }

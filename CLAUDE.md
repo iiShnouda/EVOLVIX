@@ -41,6 +41,11 @@ first‑class concern.
      `Accept-Language`.
    - Create forms show one name field (the screen language); edit forms show both (`NameFields`).
 
+9. **Every action has its own permission (owner decision 2026-09-29).** A new feature adds its
+   own `resource:action` permission(s) in `Roles.cs` + `@skb/shared` `roles.ts`, enforces them on
+   the server, and hides the matching UI. Roles only bundle permissions. Prices are a separate
+   permission from items; changing an invoice price or level needs one too.
+
 ## Layout (one server, best‑fit client per device)
 
 - `apps/api` — **C# / ASP.NET Core 10** server (canonical backend). EF Core + Npgsql

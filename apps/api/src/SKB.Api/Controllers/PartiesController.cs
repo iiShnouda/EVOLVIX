@@ -14,7 +14,13 @@ namespace SKB.Api.Controllers;
 public sealed class PartiesController : ControllerBase
 {
     private readonly AppDbContext _db;
-    public PartiesController(AppDbContext db) => _db = db;
+    private readonly AuditService _audit;
+
+    public PartiesController(AppDbContext db, AuditService audit)
+    {
+        _db = db;
+        _audit = audit;
+    }
 
     [HttpGet]
     public async Task<ActionResult<PaginatedDto<PartyDto>>> List(
@@ -44,6 +50,44 @@ public sealed class PartiesController : ControllerBase
     {
         var party = await _db.Parties.FindAsync(id);
         if (party is null) return NotFound(new { message = "Party not found" });
+        return Ok(Mapper.ToParty(party));
+    }
+
+    /// <summary>
+    /// A customer's / supplier's own price level: new invoices to them start at it. A null field is
+    /// left as it is; "" goes back to the default level. Needs <c>parties:set_price_level</c>.
+    /// </summary>
+    [HttpPut("{id:guid}/price-levels")]
+    [Authorize(Policy = Permissions.PartiesSetPriceLevel)]
+    public async Task<ActionResult<PartyDto>> SetPriceLevels(Guid id, [FromBody] SetPartyPriceLevelsRequest req)
+    {
+        var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
+        if (party is null) return NotFound(new { message = "Party not found", code = "not_found" });
+
+        async Task<(Guid? Id, bool Ok)> Pick(string? raw, PriceSide side)
+        {
+            if (raw == "") return (null, true);
+            if (!Guid.TryParse(raw, out var levelId)) return (null, false);
+            var ok = await _db.PriceLevels.AnyAsync(l => l.Id == levelId && l.Side == side && l.IsActive);
+            return (levelId, ok);
+        }
+
+        if (req.SalesPriceLevelId is not null)
+        {
+            var (level, ok) = await Pick(req.SalesPriceLevelId, PriceSide.SALE);
+            if (!ok) return BadRequest(new { message = "Price level not found.", code = "price_level_not_found" });
+            party.SalesPriceLevelId = level;
+        }
+        if (req.PurchasePriceLevelId is not null)
+        {
+            var (level, ok) = await Pick(req.PurchasePriceLevelId, PriceSide.PURCHASE);
+            if (!ok) return BadRequest(new { message = "Price level not found.", code = "price_level_not_found" });
+            party.PurchasePriceLevelId = level;
+        }
+        await _db.SaveChangesAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "price_levels", "party",
+            CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), id.ToString());
         return Ok(Mapper.ToParty(party));
     }
 }

@@ -48,6 +48,15 @@ public enum StockMovementType
 public enum WarehouseKind { STORE, TRANSIT }
 
 /// <summary>
+/// Which documents a price level (مستوى سعر) prices: SALE levels fill sales invoices (e.g. the
+/// customer price), PURCHASE levels fill purchase invoices (e.g. the supplier price).
+/// </summary>
+public enum PriceSide { SALE, PURCHASE }
+
+/// <summary>The two dimensions of an item model's variants (مقاس × لون).</summary>
+public enum VariantKind { SIZE, COLOR }
+
+/// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.
 /// RECEIVED: the destination confirmed them. CANCELLED: sent back to the source before receipt.
 /// </summary>

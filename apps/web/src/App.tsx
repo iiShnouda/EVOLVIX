@@ -24,6 +24,10 @@ import { StocktakePage } from './pages/StocktakePage';
 import { BranchesPage } from './pages/BranchesPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { TransferBuilderPage } from './pages/TransferBuilderPage';
+import { CatalogSetupPage } from './pages/CatalogSetupPage';
+import { ProductEditorPage } from './pages/ProductEditorPage';
+import { ModelsPage } from './pages/ModelsPage';
+import { ModelEditorPage } from './pages/ModelEditorPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
@@ -141,6 +145,12 @@ export default function App() {
             <Route path="/inventory/stocktake" element={<StocktakePage />} />
             <Route path="/inventory/transfers" element={<TransfersPage />} />
             <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
+            <Route path="/inventory/setup" element={<CatalogSetupPage />} />
+            <Route path="/inventory/products/new" element={<ProductEditorPage key="new" />} />
+            <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
+            <Route path="/inventory/models" element={<ModelsPage />} />
+            <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
+            <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
             <Route
               path="/purchases"
               element={<DocumentsPage key="purchases" scope="purchases" />}

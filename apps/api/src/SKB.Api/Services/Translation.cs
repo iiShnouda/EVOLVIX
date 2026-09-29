@@ -53,7 +53,7 @@ public sealed class AiTranslator
 {
     private const string SystemPrompt =
         "You translate short names used in an Egyptian wholesale business app (branches, warehouses, " +
-        "product categories and products) between Arabic and English. Translate the meaning naturally, " +
+        "product categories, products, units of measure, price levels, sizes and colors) between Arabic and English. Translate the meaning naturally, " +
         "the way a local business would write it. Arabic: Modern Standard Arabic, no diacritics. Keep " +
         "brand names, model numbers, sizes, units and numbers as they are (e.g. 1.5L, 330ml, 25g). " +
         "Never add notes. Reply with JSON only: {\"items\": [\"...\"]} — exactly one translation per " +
@@ -203,15 +203,24 @@ public sealed class TranslationWorker : BackgroundService
     {
         var db = services.GetRequiredService<AppDbContext>();
         var done = 0;
+        var models = new List<Guid>();
+        var options = new List<Guid>();
         done += await ProcessAsync(db, db.Branches, "branch name", translator, ct);
         done += await ProcessAsync(db, db.Warehouses, "warehouse name", translator, ct);
         done += await ProcessAsync(db, db.Categories, "product category", translator, ct);
         done += await ProcessAsync(db, db.Products, "product name", translator, ct);
+        done += await ProcessAsync(db, db.Units, "unit of measure (e.g. piece, carton, dozen)", translator, ct);
+        done += await ProcessAsync(db, db.PriceLevels, "price level (e.g. customer price, supplier price)", translator, ct);
+        done += await ProcessAsync(db, db.ProductModels, "product model name", translator, ct, models);
+        done += await ProcessAsync(db, db.VariantOptions, "clothing size or color", translator, ct, options);
+        // Variant names are made from their model's and options' names: follow the new translations.
+        await Catalog.RefreshVariantNamesAsync(db, models, options, ct);
+        db.ChangeTracker.Clear();
         return done;
     }
 
     private async Task<int> ProcessAsync<T>(AppDbContext db, DbSet<T> set, string kind, AiTranslator translator,
-        CancellationToken ct) where T : class, ILocalizedName
+        CancellationToken ct, List<Guid>? translatedIds = null) where T : class, ILocalizedName
     {
         var pending = await set.AsNoTracking().Where(e => e.NamePending).Take(_options.BatchSize).ToListAsync(ct);
         var done = 0;
@@ -236,6 +245,7 @@ public sealed class TranslationWorker : BackgroundService
                 if (to == "ar") entity.NameAr = translated[i]; else entity.NameEn = translated[i];
                 entity.NameAuto = to;
                 entity.NamePending = false;
+                translatedIds?.Add(GetId(entity));
                 done++;
             }
             await db.SaveChangesAsync(ct);
@@ -258,6 +268,10 @@ public sealed class TranslationWorker : BackgroundService
         Warehouse w => w.Id,
         Category c => c.Id,
         Product p => p.Id,
+        Unit u => u.Id,
+        PriceLevel l => l.Id,
+        ProductModel m => m.Id,
+        VariantOption o => o.Id,
         _ => throw new ArgumentOutOfRangeException(nameof(e)),
     };
 }

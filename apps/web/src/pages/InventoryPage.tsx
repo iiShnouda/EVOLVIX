@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formatMoney, formatNumber, type InventoryItem } from '@skb/shared';
+import { formatMoney, formatNumber, formatQuantity, type InventoryItem } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
-import { useAuth } from '../stores/auth';
+import { useCan } from '../lib/can';
 import { useDeviceInfo } from '../lib/device';
 import { useInventory, useValuation } from '../lib/queries';
 
@@ -30,7 +30,8 @@ export function InventoryPage() {
   const tab: Tab = params.get('tab') === 'valuation' ? 'valuation' : 'items';
   const lowOnly = params.get('low') === '1';
   const warehouseId = params.get('wh') ?? '';
-  const canEdit = useAuth((s) => s.user?.permissions ?? []).includes('inventory:edit');
+  const can = useCan();
+  const canEdit = can('inventory:edit');
 
   const [search, setSearch] = useState('');
   const list = useInventory({
@@ -59,6 +60,22 @@ export function InventoryPage() {
         title={t('inventory.title')}
         action={
           <div className="flex flex-wrap gap-2">
+            {can('products:create') && (
+              <Button size="sm" icon="plus" onClick={() => navigate('/inventory/products/new')}>
+                {t('catalog.newItem')}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => navigate('/inventory/models')}>
+              {t('catalog.models')}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="settings"
+              onClick={() => navigate('/inventory/setup')}
+            >
+              {t('catalog.setup')}
+            </Button>
             <Button
               size="sm"
               variant="secondary"
@@ -210,7 +227,7 @@ function ItemsTab({
                 </span>
                 <span className="text-end">
                   <span className="block text-sm font-semibold tnum">
-                    {formatNumber(p.stockOnHand, locale)} {p.unit}
+                    {formatQuantity(p.stockOnHand, p.units, locale)}
                   </span>
                   <StockBadge item={p} />
                 </span>
@@ -251,6 +268,11 @@ function ItemsTab({
                 <td className="p-3 text-end font-semibold tnum">
                   {formatNumber(p.stockOnHand, locale)}{' '}
                   <span className="text-xs font-normal text-muted">{p.unit}</span>
+                  {p.units.length > 1 && p.stockOnHand > 0 && (
+                    <span className="block text-xs font-normal text-muted">
+                      {formatQuantity(p.stockOnHand, p.units, locale)}
+                    </span>
+                  )}
                 </td>
                 <td className="hidden p-3 text-end text-muted tnum md:table-cell">
                   {formatNumber(p.reorderLevel, locale)}
@@ -315,6 +337,14 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
+          {data.models.length > 0 && (
+            <ValuationTable
+              title={t('inventory.byModel')}
+              rows={data.models}
+              currency={currency}
+              locale={locale}
+            />
+          )}
           {!warehouseId && data.warehouses.length > 1 && (
             <ValuationTable
               title={t('warehouse.byWarehouse')}

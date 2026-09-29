@@ -42,8 +42,10 @@ public sealed class DashboardController : ControllerBase
         var receivables = balances.Where(b => b > 0).Sum();
         var payables = balances.Where(b => b < 0).Sum(b => -b);
 
-        var lowStock = await _db.Products.Where(p => p.IsActive && p.StockOnHand <= p.ReorderLevel)
+        var lowStock = await _db.Products.AsNoTracking().Where(p => p.IsActive && p.StockOnHand <= p.ReorderLevel)
+            .Include(p => p.Size).Include(p => p.Color)
             .OrderBy(p => p.StockOnHand).ToListAsync();
+        var book = await PriceBook.LoadAsync(_db, lowStock.Select(p => p.Id));
 
         var recent = await Scoped(_db.SalesDocuments)
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
@@ -62,7 +64,7 @@ public sealed class DashboardController : ControllerBase
         return Ok(new DashboardDto(
             kpis,
             await BuildTrendAsync(all, branchId),
-            lowStock.Select(Mapper.ToProduct).ToArray(),
+            lowStock.Select(p => Mapper.ToProduct(p, book)).ToArray(),
             recent.Select(Mapper.ToSummary).ToArray(),
             Currency));
     }

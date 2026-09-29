@@ -84,17 +84,22 @@ public sealed class PurchasesController : ControllerBase
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
-            .Include(d => d.SourceDocument)
+            .Include(d => d.Lines).ThenInclude(l => l.Unit)
+            .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
+            .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.PURCHASE_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
-        return Ok(Mapper.ToDetail(doc, returned));
+        return Ok(Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
     /// <summary>
     /// Create a purchase invoice: receive stock and recompute each product's weighted-average cost.
-    /// This is what makes future sales' COGS and profit correct. Commits atomically.
+    /// This is what makes future sales' COGS and profit correct. Commits atomically. Lines may be in
+    /// any of the item's units; a carton bought at 100.00 brings exactly 100.00 into the average.
+    /// The cost comes from the supplier's price level (or the current average cost for an item
+    /// without one); another cost needs <c>purchases:change_price</c>.
     /// </summary>
     [HttpPost("invoices")]
     [Authorize(Policy = Permissions.PurchasesCreate)]
@@ -102,6 +107,8 @@ public sealed class PurchasesController : ControllerBase
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return BadRequest(new { message = "Add at least one line item.", code = "no_lines" });
+        if (req.Lines.Length > InvoiceLines.MaxLines)
+            return BadRequest(new { message = $"At most {InvoiceLines.MaxLines} lines per invoice.", code = "too_many_lines" });
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return BadRequest(new { message = "A supplier is required.", code = "no_party" });
 
@@ -112,21 +119,19 @@ public sealed class PurchasesController : ControllerBase
         if (party is null) return BadRequest(new { message = "Supplier not found.", code = "party_not_found" });
 
         var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
+        var canChangePrice = User.HasClaim("permission", Permissions.PurchasesChangePrice);
 
         // Shape checks and the warehouse each line is received into.
         var cache = new Dictionary<string, Warehouse>();
-        var lines = new List<(CreatePurchaseLineRequest Req, Guid ProductId, Warehouse Warehouse)>();
+        var lines = new List<(CreatePurchaseLineRequest Req, Guid ProductId, Guid? UnitId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            if (!Guid.TryParse(line.ProductId, out var pid))
-                return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
-            if (line.Quantity <= 0)
-                return BadRequest(new { message = "Quantity must be positive.", code = "bad_qty" });
-            if (line.UnitCost < 0)
-                return BadRequest(new { message = "Cost cannot be negative.", code = "bad_cost" });
+            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitCost, 0);
+            if (shape.Error is not null)
+                return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code == "bad_price" ? "bad_cost" : shape.Error.Code });
             var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
             if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
-            lines.Add((line, pid, warehouse!));
+            lines.Add((line, shape.ProductId, shape.UnitId, warehouse!));
         }
 
         // Receipts move the weighted average, so the items are locked like any other stock change.
@@ -134,6 +139,31 @@ public sealed class PurchasesController : ControllerBase
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         if (lines.Any(l => !products.TryGetValue(l.ProductId, out var pr) || !pr.IsActive))
             return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
+        var book = await PriceBook.LoadAsync(_db, products.Keys);
+
+        var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.PurchasePriceLevelId,
+            PriceSide.PURCHASE, User.HasClaim("permission", Permissions.PurchasesChoosePriceLevel));
+        if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
+
+        var resolved = new List<(CreatePurchaseLineRequest Req, Product Product, ItemUnit Unit, int BaseQty, Warehouse Warehouse)>();
+        foreach (var (line, pid, unitId, warehouse) in lines)
+        {
+            var product = products[pid];
+            var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
+            if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
+            if (!canChangePrice)
+            {
+                var baseCost = _inventory.CostAt(product, warehouse);
+                var expected = level is null
+                    ? baseCost * unit!.Factor
+                    : book.SuggestedPurchase(pid, unit!, level.Id, baseCost);
+                if (line.UnitCost != expected)
+                    return InvoiceLines.Refuse(this, new("price_not_allowed",
+                        $"{Loc.Name(product)}: the cost is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
+                        "Changing a cost needs permission."));
+            }
+            resolved.Add((line, product, unit!, baseQty, warehouse));
+        }
 
         var number = await DocumentNumbers.NextAsync(_db, DocumentType.PURCHASE_INVOICE);
         var doc = new SalesDocument
@@ -141,21 +171,24 @@ public sealed class PurchasesController : ControllerBase
             Number = number, Type = DocumentType.PURCHASE_INVOICE, BranchId = branchId,
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
+            PriceLevelId = level?.Id,
         };
 
-        foreach (var (line, pid, warehouse) in lines)
+        foreach (var (line, product, unit, baseQty, warehouse) in resolved)
         {
-            var product = products[pid];
-            _inventory.Receive(product, warehouse, line.Quantity, line.UnitCost,
+            var lineTotal = (long)line.Quantity * line.UnitCost;
+            _inventory.ReceiveValue(product, warehouse, baseQty, lineTotal,
                 StockMovementType.PURCHASE_IN, doc.Id, number);
 
-            var lineTotal = (long)line.Quantity * line.UnitCost;
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
-                ProductId = product.Id, ProductName = product.Name, Quantity = line.Quantity,
+                ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
+                UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
                 UnitPrice = line.UnitCost, Discount = 0, LineTotal = lineTotal,
-                UnitCost = line.UnitCost, LineCost = lineTotal, LineProfit = 0,
+                // Cost of one base unit, for display; LineCost is the exact amount paid.
+                UnitCost = (long)decimal.Round((decimal)lineTotal / baseQty, MidpointRounding.AwayFromZero),
+                LineCost = lineTotal, LineProfit = 0,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
@@ -187,10 +220,8 @@ public sealed class PurchasesController : ControllerBase
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
 
-        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
-        return Created($"/api/purchases/invoices/{doc.Id}", Mapper.ToDetail(doc));
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/purchases/invoices/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
     /// <summary>
@@ -221,11 +252,8 @@ public sealed class PurchasesController : ControllerBase
             doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
 
-        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.SourceDocument).LoadAsync();
-        return Created($"/api/purchases/returns/{doc.Id}", Mapper.ToDetail(doc));
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/purchases/returns/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
     private static DateTime? ParseDate(string? s) =>

@@ -31,6 +31,27 @@ const ALL: Permission[] = [
   'settings:manage',
   'audit:view',
   'presence:view',
+  'products:create',
+  'products:edit',
+  'prices:edit',
+  'price_levels:manage',
+  'categories:manage',
+  'units:manage',
+  'variant_options:manage',
+  'sales:change_price',
+  'sales:choose_price_level',
+  'purchases:change_price',
+  'purchases:choose_price_level',
+  'parties:set_price_level',
+];
+
+/** Catalog permissions store staff get: add items, but not set selling prices. */
+const ITEMS: Permission[] = [
+  'products:create',
+  'products:edit',
+  'categories:manage',
+  'units:manage',
+  'variant_options:manage',
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -52,10 +73,19 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'parties:view',
     'parties:edit',
     'inventory:view',
+    'inventory:edit',
     'analytics:view',
     'settings:view',
+    ...ITEMS,
+    'prices:edit',
+    'sales:change_price',
+    'sales:choose_price_level',
+    'purchases:change_price',
+    'purchases:choose_price_level',
+    'parties:set_price_level',
   ],
-  // Returns move money back out, so a salesperson can't issue them by default.
+  // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
+  // the customer's price level; changing a price or the level needs a manager.
   SALES: [
     'dashboard:view',
     'sales:view',
@@ -72,6 +102,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'purchases:view',
     'purchases:create',
     'purchases:return',
+    ...ITEMS,
+    'purchases:change_price',
+    'purchases:choose_price_level',
   ],
   VIEWER: [
     'dashboard:view',

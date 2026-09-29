@@ -35,16 +35,28 @@ public sealed class ReturnsService
 
     public sealed record ReturnError(string Code, string Message);
 
-    /// <summary>Quantity and discount already returned per invoice line (non-cancelled returns only).</summary>
-    public async Task<Dictionary<Guid, (int Quantity, long Discount)>> ReturnedByLineAsync(Guid invoiceId)
+    /// <summary>What has been returned of one invoice line: base units, and the gross, discount and cost taken back.</summary>
+    public sealed record Returned(int Quantity, long Gross, long Discount, long Cost);
+
+    private static readonly Returned Nothing = new(0, 0, 0, 0);
+
+    /// <summary>What was already returned per invoice line (non-cancelled returns only).</summary>
+    public async Task<Dictionary<Guid, Returned>> ReturnedByLineAsync(Guid invoiceId)
     {
         var rows = await _db.DocumentLines
             .Where(l => l.SourceLineId != null && l.Document!.SourceDocumentId == invoiceId
                         && l.Document.Status != DocumentStatus.CANCELLED)
             .GroupBy(l => l.SourceLineId!.Value)
-            .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity), Discount = g.Sum(l => l.Discount) })
+            .Select(g => new
+            {
+                LineId = g.Key,
+                Quantity = g.Sum(l => l.Quantity),
+                Gross = g.Sum(l => l.LineTotal + l.Discount),
+                Discount = g.Sum(l => l.Discount),
+                Cost = g.Sum(l => l.LineCost),
+            })
             .ToListAsync();
-        return rows.ToDictionary(r => r.LineId, r => (r.Quantity, r.Discount));
+        return rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.Cost));
     }
 
     public static DocumentType ReturnTypeFor(DocumentType invoiceType) => invoiceType switch
@@ -151,36 +163,56 @@ public sealed class ReturnsService
             SourceDocumentId = invoice.Id,
         };
 
+        // A part of a line returned in its own unit (whole cartons of a carton line) keeps that unit;
+        // any other part is returned in pieces of the item's base unit.
+        var productIds = routed.Select(w => w.Source.ProductId).Distinct().ToList();
+        var baseUnits = await _db.ItemUnits.AsNoTracking()
+            .Where(u => productIds.Contains(u.ProductId) && u.Factor == 1)
+            .ToDictionaryAsync(u => u.ProductId, u => u.UnitId);
+
         foreach (var (src, qty, warehouse) in routed)
         {
             var product = products[src.ProductId];
-            var already = returned.TryGetValue(src.Id, out var r) ? r : (Quantity: 0, Discount: 0L);
+            var already = returned.GetValueOrDefault(src.Id) ?? Nothing;
 
-            // Proportional share of the line's flat discount; the return that empties the line takes the rest.
-            var discount = qty == src.Quantity - already.Quantity
-                ? src.Discount - already.Discount
-                : (long)decimal.Round(src.Discount * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);
-            var lineTotal = (long)qty * src.UnitPrice - discount;
-            var lineCost = (long)qty * src.UnitCost;
+            // The return's share of the line's gross amount, discount and cost, in proportion to the
+            // base units coming back; the return that empties the line takes exactly what is left,
+            // so rounding never strands or over-returns a piastre.
+            var completesLine = qty == src.Quantity - already.Quantity;
+            long Share(long total, long done) => completesLine
+                ? total - done
+                : (long)decimal.Round(total * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);
+            var gross = Share(src.LineTotal + src.Discount, already.Gross);
+            var discount = Share(src.Discount, already.Discount);
+            var lineCost = Share(src.LineCost, already.Cost);
+            var lineTotal = gross - discount;
 
             if (isSale)
-                _inventory.Receive(product, warehouse, qty, src.UnitCost,
+                _inventory.ReceiveValue(product, warehouse, qty, lineCost,
                     StockMovementType.SALES_RETURN_IN, doc.Id, number);
             else
-                _inventory.ReturnToSupplier(product, warehouse, qty, src.UnitCost,
+                _inventory.ReturnToSupplierValue(product, warehouse, qty, lineCost,
                     StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
 
+            var factor = Math.Max(1, src.UnitFactor);
+            var inLineUnit = qty % factor == 0;
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = src.ProductName, Quantity = qty,
-                UnitPrice = src.UnitPrice, Discount = discount, LineTotal = lineTotal,
+                UnitId = inLineUnit ? src.UnitId : baseUnits.TryGetValue(product.Id, out var b) ? b : src.UnitId,
+                UnitFactor = inLineUnit ? factor : 1,
+                UnitQuantity = inLineUnit ? qty / factor : qty,
+                UnitPrice = inLineUnit
+                    ? src.UnitPrice
+                    : (long)decimal.Round((decimal)gross / qty, MidpointRounding.AwayFromZero),
+                Discount = discount, LineTotal = lineTotal,
                 UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
                 SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 
-        var subtotal = doc.Lines.Sum(l => (long)l.Quantity * l.UnitPrice);
+        var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
         var discountTotal = doc.Lines.Sum(l => l.Discount);
         var taxable = subtotal - discountTotal;
 

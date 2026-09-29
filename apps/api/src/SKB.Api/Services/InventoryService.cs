@@ -82,12 +82,25 @@ public sealed class InventoryService
     public long Receive(Product product, Warehouse warehouse, int quantity, long unitCost,
         StockMovementType type, Guid? documentId, string? reference)
     {
-        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
         if (unitCost < 0) throw new ArgumentOutOfRangeException(nameof(unitCost), "Cost cannot be negative.");
+        return ReceiveValue(product, warehouse, quantity, (long)quantity * unitCost, type, documentId, reference);
+    }
+
+    /// <summary>
+    /// Receive <paramref name="quantity"/> base units worth <paramref name="totalValue"/> in all
+    /// (minor units) — e.g. 2 cartons of 24 bought at 100.00 each bring exactly 200.00 into the pool,
+    /// even though one piece costs 4.1666…. The average is recomputed from the exact value; the
+    /// movement records the rounded cost of one unit. Returns the new average.
+    /// </summary>
+    public long ReceiveValue(Product product, Warehouse warehouse, int quantity, long totalValue,
+        StockMovementType type, Guid? documentId, string? reference)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
+        if (totalValue < 0) throw new ArgumentOutOfRangeException(nameof(totalValue), "Cost cannot be negative.");
 
         var pool = Pool(product, PoolOf(warehouse));
-        AddIn(pool, PoolQty(product.Id, pool.PoolId), quantity, unitCost);
-        Move(product, warehouse, quantity, unitCost, type, documentId, reference);
+        AddIn(pool, PoolQty(product.Id, pool.PoolId), quantity, totalValue);
+        Move(product, warehouse, quantity, UnitOf(totalValue, quantity), type, documentId, reference);
         return pool.AvgCost;
     }
 
@@ -116,15 +129,30 @@ public sealed class InventoryService
     public long ReturnToSupplier(Product product, Warehouse warehouse, int quantity, long unitCost,
         StockMovementType type, Guid? documentId, string? reference)
     {
-        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
         if (unitCost < 0) throw new ArgumentOutOfRangeException(nameof(unitCost), "Cost cannot be negative.");
+        return ReturnToSupplierValue(product, warehouse, quantity, (long)quantity * unitCost, type, documentId, reference);
+    }
+
+    /// <summary>
+    /// <see cref="ReturnToSupplier"/> for goods worth <paramref name="totalValue"/> in all — the
+    /// exact share of the purchase line being returned, so the pool gets back exactly what it paid.
+    /// </summary>
+    public long ReturnToSupplierValue(Product product, Warehouse warehouse, int quantity, long totalValue,
+        StockMovementType type, Guid? documentId, string? reference)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
+        if (totalValue < 0) throw new ArgumentOutOfRangeException(nameof(totalValue), "Cost cannot be negative.");
         RequireStock(product, warehouse, quantity);
 
         var pool = Pool(product, PoolOf(warehouse));
-        TakeOut(pool, PoolQty(product.Id, pool.PoolId), quantity, unitCost);
-        Move(product, warehouse, -quantity, unitCost, type, documentId, reference);
+        TakeOut(pool, PoolQty(product.Id, pool.PoolId), quantity, totalValue);
+        Move(product, warehouse, -quantity, UnitOf(totalValue, quantity), type, documentId, reference);
         return pool.AvgCost;
     }
+
+    /// <summary>Cost of one unit of a value spread over a quantity, to the nearest minor unit.</summary>
+    private static long UnitOf(long totalValue, int quantity) =>
+        (long)decimal.Round((decimal)totalValue / quantity, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Stocktake / correction (الجرد والتسويات) in one warehouse: move stock by
@@ -161,8 +189,8 @@ public sealed class InventoryService
         var target = Pool(product, PoolOf(to));
         if (source.PoolId != target.PoolId)
         {
-            TakeOut(source, PoolQty(product.Id, source.PoolId), quantity, cost);
-            AddIn(target, PoolQty(product.Id, target.PoolId), quantity, cost);
+            TakeOut(source, PoolQty(product.Id, source.PoolId), quantity, (long)quantity * cost);
+            AddIn(target, PoolQty(product.Id, target.PoolId), quantity, (long)quantity * cost);
         }
         Move(product, from, -quantity, cost, StockMovementType.TRANSFER_OUT, documentId, reference, note);
         Move(product, to, quantity, cost, StockMovementType.TRANSFER_IN, documentId, reference, note);
@@ -171,27 +199,30 @@ public sealed class InventoryService
 
     // ------------------------------------------------------------------ pools
 
-    /// <summary>new_avg = (Q·A + q·u) / (Q + q), to the nearest minor unit; an empty pool takes u.</summary>
-    private static void AddIn(StockCost pool, int poolQty, int quantity, long unitCost)
+    /// <summary>
+    /// new_avg = (Q·A + V) / (Q + q), where V is the value received (q·u for q units at u), to the
+    /// nearest minor unit; an empty pool takes V / q.
+    /// </summary>
+    private static void AddIn(StockCost pool, int poolQty, int quantity, long value)
     {
         pool.AvgCost = poolQty <= 0
-            ? unitCost
+            ? UnitOf(value, quantity)
             : (long)decimal.Round(
-                (poolQty * (decimal)pool.AvgCost + (decimal)quantity * unitCost) / (poolQty + quantity),
+                (poolQty * (decimal)pool.AvgCost + value) / (poolQty + quantity),
                 MidpointRounding.AwayFromZero);
         pool.UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>
-    /// new_avg = (Q·A − q·u) / (Q − q), the inverse of <see cref="AddIn"/>. With nothing left the
+    /// new_avg = (Q·A − V) / (Q − q), the inverse of <see cref="AddIn"/>. With nothing left the
     /// average is kept (the next receipt resets it); it never goes below zero.
     /// </summary>
-    private static void TakeOut(StockCost pool, int poolQty, int quantity, long unitCost)
+    private static void TakeOut(StockCost pool, int poolQty, int quantity, long value)
     {
         var left = poolQty - quantity;
         if (left > 0)
         {
-            var remaining = (poolQty * (decimal)pool.AvgCost - (decimal)quantity * unitCost) / left;
+            var remaining = (poolQty * (decimal)pool.AvgCost - value) / left;
             pool.AvgCost = Math.Max(0, (long)decimal.Round(remaining, MidpointRounding.AwayFromZero));
         }
         pool.UpdatedAt = DateTime.UtcNow;

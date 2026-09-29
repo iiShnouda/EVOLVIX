@@ -1,42 +1,81 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatMoney, formatNumber, toMajor, toMinor, type Product } from '@skb/shared';
+import {
+  formatMoney,
+  formatNumber,
+  formatQuantity,
+  toMajor,
+  toMinor,
+  type Product,
+} from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
-import { useAuth } from '../stores/auth';
-import { ApiError } from '../lib/api';
+import { useCan } from '../lib/can';
+import { api, ApiError } from '../lib/api';
 import {
   useCompanySettings,
   useCreatePurchaseInvoice,
   useCreateSalesInvoice,
   useInventory,
   useParties,
+  usePriceLevels,
   useProductSearch,
 } from '../lib/queries';
 
 interface Line {
+  /** Local id: the same item may be on two lines (e.g. cartons and pieces). */
+  key: string;
   product: Product;
+  unitId: string;
+  /** Quantity in the line's unit. */
   quantity: number;
-  /** Sale: selling price per unit. Purchase: unit cost. Minor units. */
+  /** Price of one line unit typed by hand (minor units); used only when `touched`. */
   price: number;
+  /** The price was typed; otherwise it follows the price level. */
+  touched: boolean;
 }
 
 const field =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
+let nextKey = 0;
+
+/**
+ * Sales / purchase invoice builder. Each line is in one of the item's units (piece, carton…); its
+ * price comes from the invoice's price level — the party's own, else the default — and, for an item
+ * without a price, from cost × (1 + default markup) (sales) or the average cost (purchases). Typing
+ * another price or picking another level needs its own permission; the server checks the same.
+ * Live cost, markup and profit use the cost of the chosen warehouse's branch.
+ */
 export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const isSale = mode === 'sale';
   const { t, locale } = useT();
   const navigate = useNavigate();
+  const can = useCan();
 
   const settings = useCompanySettings();
-  const permissions = useAuth((s) => s.user?.permissions ?? []);
-  const canOverride = permissions.includes('sales:override_floor');
+  const canOverride = can('sales:override_floor');
+  const canChangePrice = can(isSale ? 'sales:change_price' : 'purchases:change_price');
+  const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
 
   const parties = useParties({ page: 1, type: isSale ? 'CUSTOMER' : 'SUPPLIER' });
   const [partyId, setPartyId] = useState('');
+  const party = parties.data?.items.find((p) => p.id === partyId);
+
+  // Price level: the party's own, else the default of this side. Another needs permission.
+  const levels = usePriceLevels();
+  const sideLevels = (levels.data ?? []).filter(
+    (l) => l.side === (isSale ? 'SALE' : 'PURCHASE') && l.isActive,
+  );
+  const partyLevelId = isSale ? party?.salesPriceLevelId : party?.purchasePriceLevelId;
+  const ownLevel =
+    sideLevels.find((l) => l.id === partyLevelId) ??
+    sideLevels.find((l) => l.isDefault) ??
+    sideLevels[0];
+  const [pickedLevel, setPickedLevel] = useState('');
+  const levelId = (canChooseLevel && pickedLevel) || ownLevel?.id || '';
 
   // Goods leave from (sale) or arrive into (purchase) this warehouse; defaults to the branch's.
   const defaultWarehouse = useDefaultWarehouseId();
@@ -45,15 +84,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const warehouseStock = useInventory({ warehouseId: warehouseId || undefined });
   const stockHere = useMemo(() => {
     if (!warehouseId || !warehouseStock.data) return null;
-    return new Map(warehouseStock.data.items.map((i) => [i.id, { qty: i.stockOnHand, cost: i.avgCost }]));
+    return new Map(
+      warehouseStock.data.items.map((i) => [i.id, { qty: i.stockOnHand, cost: i.avgCost }]),
+    );
   }, [warehouseId, warehouseStock.data]);
-  /** Units of `p` in the chosen warehouse (company total until that list has loaded). */
+  /** Base units of `p` in the chosen warehouse (company total until that list has loaded). */
   const available = (p: Product) => (stockHere ? (stockHere.get(p.id)?.qty ?? 0) : p.stockOnHand);
-  /** Cost is per branch: the average cost where the goods leave from / arrive into. */
+  /** Cost is per branch: the average cost of one base unit where the goods leave / arrive. */
   const costOf = (p: Product) => stockHere?.get(p.id)?.cost ?? p.costPrice;
 
   const [search, setSearch] = useState('');
   const productList = useProductSearch(search);
+  const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
   const [taxPercent, setTaxPercent] = useState('');
@@ -71,38 +113,81 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const defaultMarkup = settings.data?.defaultMarkupPercent ?? 10;
   const effTax = taxPercent === '' ? (settings.data?.defaultTaxPercent ?? 0) : Number(taxPercent);
 
-  function addProduct(p: Product) {
+  const unitOf = (l: Pick<Line, 'product' | 'unitId'>) =>
+    l.product.units.find((u) => u.unitId === l.unitId) ?? l.product.units[0];
+
+  /** The level's price of one line unit; for an unpriced item, from cost (same rule as the server). */
+  function suggested(l: Pick<Line, 'product' | 'unitId'>): number {
+    const unit = unitOf(l);
+    const factor = unit?.factor ?? 1;
+    const levelPrice = unit?.prices.find((p) => p.priceLevelId === levelId)?.price;
+    if (levelPrice !== undefined) return levelPrice;
+    const cost = costOf(l.product) * factor;
+    return isSale ? Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100) : cost;
+  }
+  const priceOf = (l: Line) => (canChangePrice && l.touched ? l.price : suggested(l));
+
+  function addProduct(p: Product, unitId?: string | null) {
+    const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
     setLines((prev) => {
-      const existing = prev.find((l) => l.product.id === p.id);
+      const existing = prev.find((l) => l.product.id === p.id && l.unitId === unit);
       if (existing)
-        return prev.map((l) => (l.product.id === p.id ? { ...l, quantity: l.quantity + 1 } : l));
-      const cost = costOf(p);
-      const price = isSale ? Math.round(cost * (1 + defaultMarkup / 100)) : cost;
-      return [...prev, { product: p, quantity: 1, price }];
+        return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l));
+      return [
+        ...prev,
+        { key: `l${nextKey++}`, product: p, unitId: unit, quantity: 1, price: 0, touched: false },
+      ];
     });
     setSearch('');
+    searchBox.current?.focus();
   }
 
-  function updateLine(id: string, patch: Partial<Line>) {
-    setLines((prev) => prev.map((l) => (l.product.id === id ? { ...l, ...patch } : l)));
+  /** Enter in the search box: a scanned barcode (or a single match) is added at once. */
+  async function addFromSearch() {
+    const term = search.trim();
+    if (!term) return;
+    try {
+      const found = await api.get<Product[]>(`/products?search=${encodeURIComponent(term)}`);
+      const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
+      if (hit) addProduct(hit, hit.matchedUnitId);
+    } catch {
+      /* the dropdown still shows the matches */
+    }
   }
-  function removeLine(id: string) {
-    setLines((prev) => prev.filter((l) => l.product.id !== id));
+
+  function updateLine(key: string, patch: Partial<Line>) {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
+  function removeLine(key: string) {
+    setLines((prev) => prev.filter((l) => l.key !== key));
   }
 
   // --- live computation ---
+  const baseWanted = new Map<string, number>();
+  for (const l of lines) {
+    baseWanted.set(
+      l.product.id,
+      (baseWanted.get(l.product.id) ?? 0) + l.quantity * (unitOf(l)?.factor ?? 1),
+    );
+  }
   const rows = lines.map((l) => {
-    const cost = costOf(l.product); // weighted-average cost of the warehouse's branch
-    const lineTotal = l.quantity * l.price;
+    const unit = unitOf(l);
+    const factor = unit?.factor ?? 1;
+    const price = priceOf(l);
+    const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
+    const lineTotal = l.quantity * price;
     const lineCost = l.quantity * cost;
     const lineProfit = lineTotal - lineCost;
-    const markupPct = cost > 0 ? ((l.price - cost) / cost) * 100 : 0;
-    const belowCost = isSale && l.price < cost;
-    const floor = Math.round(cost * (1 + Math.max(0, minMarkup) / 100));
-    const belowFloor = isSale && !belowCost && l.price < floor;
-    const overStock = isSale && l.quantity > available(l.product);
+    const markupPct = cost > 0 ? ((price - cost) / cost) * 100 : 0;
+    const belowCost = isSale && price < cost;
+    const floor = Math.round((cost * (100 + Math.max(0, minMarkup))) / 100);
+    const belowFloor = isSale && !belowCost && price < floor;
+    const overStock = isSale && (baseWanted.get(l.product.id) ?? 0) > available(l.product);
     return {
       line: l,
+      unit,
+      factor,
+      price,
       cost,
       lineTotal,
       lineCost,
@@ -128,20 +213,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
     !!partyId && lines.length > 0 && !hasBelowCost && !hasBlockedFloor && !hasOverStock && !pending;
 
   async function save() {
-    const payload = lines.map((l) => ({
-      productId: l.product.id,
-      quantity: l.quantity,
-      price: l.price,
-    }));
     const paidAmount = paidNow === '' ? 0 : toMinor(Number(paidNow));
+    const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
       if (isSale) {
         await createSale.mutateAsync({
           partyId,
-          lines: payload.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-            unitPrice: l.price,
+          lines: rows.map((r) => ({
+            productId: r.line.product.id,
+            unitId: r.line.unitId || undefined,
+            quantity: r.line.quantity,
+            unitPrice: r.price,
             discount: 0,
           })),
           taxPercent: effTax,
@@ -149,20 +231,23 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
           overrideFloor,
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
+          priceLevelId,
         });
         navigate('/sales');
       } else {
         await createPurchase.mutateAsync({
           partyId,
-          lines: payload.map((l) => ({
-            productId: l.productId,
-            quantity: l.quantity,
-            unitCost: l.price,
+          lines: rows.map((r) => ({
+            productId: r.line.product.id,
+            unitId: r.line.unitId || undefined,
+            quantity: r.line.quantity,
+            unitCost: r.price,
           })),
           taxPercent: effTax,
           paidAmount,
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
+          priceLevelId,
         });
         navigate('/purchases');
       }
@@ -192,9 +277,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
         {/* Left: builder */}
-        <div className="space-y-4">
-          {/* Party + warehouse */}
-          <Card className="grid gap-3 sm:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+          {/* Party + warehouse + price level */}
+          <Card className="grid gap-3 sm:grid-cols-3">
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">
                 {t(isSale ? 'invoice.customer' : 'invoice.supplier')}
@@ -202,7 +287,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
               <select
                 className={field}
                 value={partyId}
-                onChange={(e) => setPartyId(e.target.value)}
+                onChange={(e) => {
+                  setPartyId(e.target.value);
+                  setPickedLevel('');
+                }}
               >
                 <option value="">
                   {t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
@@ -215,6 +303,21 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
               </select>
             </label>
             <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
+              <select
+                className={field}
+                value={levelId}
+                disabled={!canChooseLevel}
+                onChange={(e) => setPickedLevel(e.target.value)}
+              >
+                {sideLevels.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </Card>
 
           {/* Product search */}
@@ -227,10 +330,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                 <Icon name="search" size={16} />
               </span>
               <input
+                ref={searchBox}
                 className={`${field} ps-8`}
                 placeholder={t('invoice.searchProduct')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void addFromSearch();
+                  }
+                }}
               />
               {search && (
                 <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
@@ -250,8 +360,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{p.name}</span>
                           <span className="text-xs text-muted tnum">
-                            {p.sku} · {formatNumber(available(p), locale)} {t('invoice.inStock')} ·{' '}
-                            {t('invoice.cost')} {formatMoney(costOf(p), currency, locale)}
+                            {p.sku} · {formatQuantity(available(p), p.units, locale)}{' '}
+                            {t('invoice.inStock')} · {t('invoice.cost')}{' '}
+                            {formatMoney(costOf(p), currency, locale)}
                           </span>
                         </span>
                         <Icon name="plus" size={16} className="text-brand" />
@@ -261,6 +372,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                 </div>
               )}
             </div>
+            <p className="mt-1 text-xs text-faint">{t('invoice.scanHint')}</p>
 
             {/* Lines */}
             {rows.length === 0 ? (
@@ -271,7 +383,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
               <ul className="mt-3 space-y-2">
                 {rows.map((r) => (
                   <li
-                    key={r.line.product.id}
+                    key={r.line.key}
                     className="rounded-[var(--radius-app)] border border-line p-3"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -279,17 +391,22 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                         <p className="truncate text-sm font-medium">{r.line.product.name}</p>
                         <p className="text-xs text-muted tnum">
                           {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                          {r.unit && ` / ${r.unit.name}`}
                           {isSale && (
                             <>
                               {' '}
                               · {t('inventory.stock')}:{' '}
-                              {formatNumber(available(r.line.product), locale)}
+                              {formatQuantity(
+                                available(r.line.product),
+                                r.line.product.units,
+                                locale,
+                              )}
                             </>
                           )}
                         </p>
                       </div>
                       <button
-                        onClick={() => removeLine(r.line.product.id)}
+                        onClick={() => removeLine(r.line.key)}
                         className="text-faint hover:text-destructive"
                         aria-label={t('invoice.remove')}
                       >
@@ -297,7 +414,25 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                       </button>
                     </div>
 
-                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      <label className="block">
+                        <span className="mb-0.5 block text-xs text-muted">{t('invoice.unit')}</span>
+                        <select
+                          className={field}
+                          value={r.line.unitId}
+                          disabled={r.line.product.units.length < 2}
+                          onChange={(e) =>
+                            updateLine(r.line.key, { unitId: e.target.value, touched: false })
+                          }
+                        >
+                          {r.line.product.units.map((u) => (
+                            <option key={u.unitId} value={u.unitId}>
+                              {u.name}
+                              {u.factor > 1 ? ` (${u.factor})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label className="block">
                         <span className="mb-0.5 block text-xs text-muted">{t('invoice.qty')}</span>
                         <input
@@ -306,7 +441,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                           className={`${field} tnum`}
                           value={r.line.quantity}
                           onChange={(e) =>
-                            updateLine(r.line.product.id, {
+                            updateLine(r.line.key, {
                               quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
                             })
                           }
@@ -320,11 +455,14 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                           type="number"
                           min={0}
                           step="0.01"
-                          className={`${field} tnum ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
-                          value={toMajor(r.line.price)}
+                          readOnly={!canChangePrice}
+                          title={canChangePrice ? undefined : t('invoice.priceLocked')}
+                          className={`${field} tnum ${canChangePrice ? '' : 'bg-surface-2'} ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+                          value={toMajor(r.price)}
                           onChange={(e) =>
-                            updateLine(r.line.product.id, {
+                            updateLine(r.line.key, {
                               price: Math.max(0, toMinor(Number(e.target.value) || 0)),
+                              touched: true,
                             })
                           }
                         />
@@ -352,13 +490,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                         </div>
                       </div>
                     </div>
+                    {r.factor > 1 && (
+                      <p className="mt-1 text-xs text-muted tnum">
+                        = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+                      </p>
+                    )}
 
                     {(r.belowCost || r.belowFloor || r.overStock) && (
                       <p
                         className={`mt-2 text-xs ${r.belowCost || r.overStock ? 'text-destructive' : 'text-warning'}`}
                       >
                         {r.overStock
-                          ? `${t('inventory.stock')}: ${formatNumber(available(r.line.product), locale)}`
+                          ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
                           : r.belowCost
                             ? t('invoice.belowCost')
                             : t('invoice.belowFloor')}
@@ -372,7 +515,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
         </div>
 
         {/* Right: summary */}
-        <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
           <Card>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
               {t('common.total')}
@@ -469,6 +612,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             </Button>
             {isSale && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>
+            )}
+            {!canChangePrice && (
+              <p className="mt-1 text-center text-xs text-faint">{t('invoice.priceLocked')}</p>
             )}
           </Card>
         </div>

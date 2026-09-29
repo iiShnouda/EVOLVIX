@@ -92,12 +92,14 @@ public sealed class SalesController : ControllerBase
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
-            .Include(d => d.SourceDocument)
+            .Include(d => d.Lines).ThenInclude(l => l.Unit)
+            .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
+            .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.SALES_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
-        return Ok(Mapper.ToDetail(doc, returned));
+        return Ok(Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
     /// <summary>
@@ -105,6 +107,9 @@ public sealed class SalesController : ControllerBase
     /// compute profit, and enforce the profit floor (never below cost; and never below the
     /// configured minimum markup unless the user may override). All-or-nothing: the items are
     /// row-locked, checked and posted in one transaction, so two invoices can't sell the same stock.
+    /// Lines may be in any of the item's units (carton = 24 pieces moves 24 pieces of stock). Prices
+    /// come from the invoice's price level; a different price needs <c>sales:change_price</c>, and a
+    /// level other than the customer's needs <c>sales:choose_price_level</c>.
     /// </summary>
     [HttpPost("invoices")]
     [Authorize(Policy = Permissions.SalesCreate)]
@@ -112,6 +117,8 @@ public sealed class SalesController : ControllerBase
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return BadRequest(new { message = "Add at least one line item.", code = "no_lines" });
+        if (req.Lines.Length > InvoiceLines.MaxLines)
+            return BadRequest(new { message = $"At most {InvoiceLines.MaxLines} lines per invoice.", code = "too_many_lines" });
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return BadRequest(new { message = "A customer is required.", code = "no_party" });
 
@@ -123,35 +130,52 @@ public sealed class SalesController : ControllerBase
 
         var settings = await GetSettingsAsync();
         var canOverride = User.HasClaim("permission", Permissions.SalesOverrideFloor);
+        var canChangePrice = User.HasClaim("permission", Permissions.SalesChangePrice);
 
         // ---- Shape checks and warehouse per line (no stock read yet) ----
         var cache = new Dictionary<string, Warehouse>();
-        var lines = new List<(CreateInvoiceLineRequest Req, Guid ProductId, Warehouse Warehouse)>();
+        var lines = new List<(CreateInvoiceLineRequest Req, Guid ProductId, Guid? UnitId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            if (!Guid.TryParse(line.ProductId, out var pid))
-                return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
-            if (line.Quantity <= 0)
-                return BadRequest(new { message = "Quantity must be positive.", code = "bad_qty" });
-            if (line.UnitPrice < 0 || line.Discount < 0)
-                return BadRequest(new { message = "Price/discount cannot be negative.", code = "bad_price" });
+            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitPrice, line.Discount);
+            if (shape.Error is not null) return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code });
             var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
             if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
-            lines.Add((line, pid, warehouse!));
+            lines.Add((line, shape.ProductId, shape.UnitId, warehouse!));
         }
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
+        var book = await PriceBook.LoadAsync(_db, products.Keys);
+
+        var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.SalesPriceLevelId,
+            PriceSide.SALE, User.HasClaim("permission", Permissions.SalesChoosePriceLevel));
+        if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
 
         // ---- Validate everything against the locked stock before posting ----
-        foreach (var (line, pid, warehouse) in lines)
+        var resolved = new List<(CreateInvoiceLineRequest Req, Product Product, ItemUnit Unit, int BaseQty, Warehouse Warehouse)>();
+        foreach (var (line, pid, unitId, warehouse) in lines)
         {
             if (!products.TryGetValue(pid, out var product) || !product.IsActive)
                 return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
+            var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
+            if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
 
-            // Cost is per branch: the floor is judged against the cost where the goods leave from.
-            var floorError = CheckFloor(line.UnitPrice, _inventory.CostAt(product, warehouse), settings.MinMarkupPercent,
-                canOverride, req.OverrideFloor);
+            // Cost is per branch: price and floor are judged against the cost where the goods leave from.
+            var baseCost = _inventory.CostAt(product, warehouse);
+            if (!canChangePrice)
+            {
+                var expected = level is null
+                    ? InvoiceLines.MarkupPrice(baseCost, unit!.Factor, settings.DefaultMarkupPercent)
+                    : book.SuggestedSale(pid, unit!, level.Id, baseCost, settings.DefaultMarkupPercent);
+                if (line.UnitPrice != expected || line.Discount != 0)
+                    return InvoiceLines.Refuse(this, new("price_not_allowed",
+                        $"{Loc.Name(product)}: the price is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
+                        "Changing a price needs permission."));
+            }
+
+            var floorError = CheckFloor(line.Quantity, line.UnitPrice, line.Discount, baseCost * unit!.Factor,
+                settings.MinMarkupPercent, canOverride, req.OverrideFloor);
             if (floorError is not null)
                 return BadRequest(new
                 {
@@ -160,13 +184,15 @@ public sealed class SalesController : ControllerBase
                         : $"{Loc.Name(product)}: price is below the minimum profit floor. Ask a manager to override.",
                     code = floorError,
                 });
+            resolved.Add((line, product, unit, baseQty, warehouse));
         }
-        // The same item may appear on several lines: check the total asked of each warehouse.
-        foreach (var need in lines.GroupBy(l => (l.ProductId, l.Warehouse.Id)))
+        // The same item may appear on several lines (even in different units): check the total
+        // asked of each warehouse, in base units.
+        foreach (var need in resolved.GroupBy(l => (l.Product.Id, l.Warehouse.Id)))
         {
-            var product = products[need.Key.ProductId];
+            var product = need.First().Product;
             var warehouse = need.First().Warehouse;
-            var wanted = need.Sum(l => l.Req.Quantity);
+            var wanted = need.Sum(l => (long)l.BaseQty);
             var available = _inventory.Available(product.Id, warehouse.Id);
             if (wanted > available)
                 return BadRequest(new
@@ -183,27 +209,28 @@ public sealed class SalesController : ControllerBase
             Number = number, Type = DocumentType.SALES_INVOICE, BranchId = branchId,
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
+            PriceLevelId = level?.Id,
         };
 
-        foreach (var (line, pid, warehouse) in lines)
+        foreach (var (line, product, unit, baseQty, warehouse) in resolved)
         {
-            var product = products[pid];
-            var unitCost = _inventory.Issue(product, warehouse, line.Quantity,
+            var unitCost = _inventory.Issue(product, warehouse, baseQty,
                 StockMovementType.SALE_OUT, doc.Id, number);
 
             var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
-            var lineCost = (long)line.Quantity * unitCost;
+            var lineCost = (long)baseQty * unitCost;
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
-                ProductId = product.Id, ProductName = product.Name, Quantity = line.Quantity,
+                ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
+                UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
                 UnitPrice = line.UnitPrice, Discount = line.Discount, LineTotal = lineTotal,
                 UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - lineCost,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 
-        var subtotal = doc.Lines.Sum(l => (long)l.Quantity * l.UnitPrice);
+        var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
         var discountTotal = doc.Lines.Sum(l => l.Discount);
         var taxable = subtotal - discountTotal;
         var taxPercent = Math.Clamp(req.TaxPercent ?? settings.DefaultTaxPercent, 0, 100);
@@ -233,10 +260,8 @@ public sealed class SalesController : ControllerBase
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
 
-        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
-        return Created($"/api/sales/invoices/{doc.Id}", Mapper.ToDetail(doc));
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/sales/invoices/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
     /// <summary>
@@ -266,19 +291,22 @@ public sealed class SalesController : ControllerBase
             doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
 
-        await _db.Entry(doc).Reference(d => d.Branch).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Party).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.Staff).LoadAsync();
-        await _db.Entry(doc).Reference(d => d.SourceDocument).LoadAsync();
-        return Created($"/api/sales/returns/{doc.Id}", Mapper.ToDetail(doc));
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/sales/returns/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
     }
 
-    // Never below cost; and never below cost×(1+min/100) unless the user may override.
-    private static string? CheckFloor(long unitPrice, long unitCost, int minMarkup, bool canOverride, bool overrideRequested)
+    /// <summary>
+    /// Never below cost; and never below cost×(1+min/100) unless the user may override. Judged on
+    /// the line's net amount (after its discount) against <paramref name="quantity"/> × the cost of
+    /// one line unit, so a discount can't slip a line under the floor.
+    /// </summary>
+    private static string? CheckFloor(int quantity, long unitPrice, long discount, long unitCost, int minMarkup,
+        bool canOverride, bool overrideRequested)
     {
-        if (unitPrice < unitCost) return "below_cost";
-        var floor = (long)decimal.Round(unitCost * (100m + Math.Max(0, minMarkup)) / 100m, MidpointRounding.AwayFromZero);
-        if (unitPrice < floor && !(canOverride && overrideRequested)) return "below_floor";
+        var net = (decimal)quantity * unitPrice - discount;
+        if (net < (decimal)quantity * unitCost) return "below_cost";
+        var floor = decimal.Round(unitCost * (100m + Math.Max(0, minMarkup)) / 100m, MidpointRounding.AwayFromZero);
+        if (net < quantity * floor && !(canOverride && overrideRequested)) return "below_floor";
         return null;
     }
 
