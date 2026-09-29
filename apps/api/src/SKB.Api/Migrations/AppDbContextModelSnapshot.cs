@@ -185,6 +185,41 @@ namespace SKB.Api.Migrations
                     b.ToTable("CompanySettings");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("FixedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Label")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("RateBp")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Seq")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("DocumentCharges");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
                 {
                     b.Property<Guid>("Id")
@@ -194,8 +229,14 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Discount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("DocDiscount")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsBonus")
+                        .HasColumnType("boolean");
 
                     b.Property<long>("LineCost")
                         .HasColumnType("bigint");
@@ -611,6 +652,9 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<long>("AdditionTotal")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
@@ -655,6 +699,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("ProfitTotal")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("RepId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("SourceDocumentId")
                         .HasColumnType("uuid");
 
@@ -687,6 +734,8 @@ namespace SKB.Api.Migrations
                     b.HasIndex("PartyId");
 
                     b.HasIndex("PriceLevelId");
+
+                    b.HasIndex("RepId");
 
                     b.HasIndex("SourceDocumentId");
 
@@ -1130,6 +1179,17 @@ namespace SKB.Api.Migrations
                     b.ToTable("Warehouses");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", "Document")
+                        .WithMany("Charges")
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
                 {
                     b.HasOne("SKB.Api.Data.SalesDocument", "Document")
@@ -1316,6 +1376,11 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("PriceLevelId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Staff", "Rep")
+                        .WithMany()
+                        .HasForeignKey("RepId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SKB.Api.Data.SalesDocument", "SourceDocument")
                         .WithMany()
                         .HasForeignKey("SourceDocumentId")
@@ -1332,6 +1397,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Party");
 
                     b.Navigation("PriceLevel");
+
+                    b.Navigation("Rep");
 
                     b.Navigation("SourceDocument");
 
@@ -1513,6 +1580,8 @@ namespace SKB.Api.Migrations
 
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>
                 {
+                    b.Navigation("Charges");
+
                     b.Navigation("Lines");
                 });
 

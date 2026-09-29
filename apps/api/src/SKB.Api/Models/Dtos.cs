@@ -45,7 +45,12 @@ public record SalesSummaryDto(
 public record DocumentLineDto(
     string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal,
     long UnitCost, long LineProfit, int ReturnedQuantity, string? WarehouseId, string? WarehouseName,
-    string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName);
+    string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName,
+    bool IsBonus, long DocDiscount);
+
+/// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
+/// <param name="Amount">What it came to, minor units.</param>
+public record DocumentChargeDto(string Kind, decimal? Rate, long? FixedAmount, long Amount, string? Label);
 
 /// <param name="SourceDocumentId">For a return: the invoice it reverses.</param>
 /// <param name="PriceLevelName">The price level the invoice was priced at.</param>
@@ -54,7 +59,8 @@ public record SalesDetailDto(
     string StaffName, string IssueDate, string? DueDate, DocumentLineDto[] Lines,
     long Subtotal, long DiscountTotal, long TaxTotal, long GrandTotal, long PaidAmount,
     long CostTotal, long ProfitTotal, string Currency, string? Notes,
-    string? SourceDocumentId, string? SourceNumber, string? PriceLevelId, string? PriceLevelName);
+    string? SourceDocumentId, string? SourceNumber, string? PriceLevelId, string? PriceLevelName,
+    long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -65,22 +71,35 @@ public record SalesDetailDto(
 // Price level: none = the party's own level, else the side's default. Without the change-price
 // permission a line's price must be the level's price (or, for an unpriced item, the suggested one).
 
+// Charges: the invoice's discounts, taxes and additions (DOMAIN.md §2.5). When sent they are the
+// whole list (the tax too); when left out, TaxPercent — or the company's rate — is the only charge.
+// IsBonus: free goods, sent with price / cost 0.
+
 public record CreateInvoiceLineRequest(
     string ProductId, int Quantity, long UnitPrice, long Discount = 0, string? WarehouseId = null,
-    string? UnitId = null);
+    string? UnitId = null, bool IsBonus = false);
+
+/// <param name="Percent">A rate (14 = 14%, up to 2 decimals); give this or Amount.</param>
+/// <param name="Amount">A fixed amount in minor units; give this or Percent.</param>
+public record ChargeRequest(string? Kind, decimal? Percent = null, long? Amount = null, string? Label = null);
 
 public record CreateSalesInvoiceRequest(
     string PartyId, CreateInvoiceLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null,
-    long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null);
+    long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
+    ChargeRequest[]? Charges = null, string? RepId = null);
 
 public record CreatePurchaseLineRequest(
-    string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null);
+    string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
+    bool IsBonus = false);
 
 public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
-    string? WarehouseId = null, string? PriceLevelId = null);
+    string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null);
+
+/// <summary>Someone who can be credited with a sale (active staff).</summary>
+public record RepOptionDto(string Id, string Name, string BranchId);
 
 /// <summary>One invoice line being returned. Price and cost always come from the original line.</summary>
 public record CreateReturnLineRequest(string LineId, int Quantity);

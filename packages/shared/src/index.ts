@@ -1,6 +1,7 @@
 export * from './types';
 export * from './money';
 export * from './units';
+export * from './charges';
 export * from './locale';
 export * from './settings';
 export * from './roles';

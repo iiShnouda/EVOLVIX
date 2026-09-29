@@ -7,6 +7,7 @@ live company server.
 | Script | What it checks |
 |---|---|
 | `catalog.test.mjs` | Units, price levels, prices and their permissions, size × color models, invoices and returns in cartons, reports by model, and a concurrency race (DOMAIN.md step 3). |
+| `charges.test.mjs` | Invoice charges (discount chain, VAT, additions), bonus lines, sales reps, their permissions, exact returns, supplier discounts in the average cost. |
 | `staff.test.mjs` | Staff & permissions: people, roles, per-person grants/revokes, and the safety rules (no self-escalation, owners protected, no self-lockout). |
 | `translate.test.mjs` | AI translation of units, price levels, models, sizes and colors, and variant names following their model. Needs the stand-in AI server below. |
 | `invariants.mjs` | Database invariants: stock = Σ balances = Σ movements, one base unit per item, line quantities and totals, returns never exceeding their line. Needs `npm i pg`. |

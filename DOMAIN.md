@@ -405,8 +405,9 @@ Each step is a working slice: API, web, tests and docs together.
 3. ✅ **Units, price levels & size/color** (shipped 2026-09-29): base unit + larger units with
    barcodes, the customer and supplier price levels (more can be added), prices per unit and level,
    and item models with size × color variants. Price lists and quantity breaks come later.
-4. **Invoice charges, reps & delivery:** the discount/tax list, bonus lines, sales rep (no
-   commission), paid-now into a cash box, and delivery (own / shipping company).
+4. **Invoice charges, reps & delivery:** ✅ the discount/tax/addition list, bonus lines and the
+   sales rep (no commission) shipped 2026-09-29 (4a). Still to do: delivery (own / shipping company,
+   waybills, COD). Paid-now into a cash box comes with step 5.
 5. **Cash boxes, banks, receipts, payments, expenses**, with allocation to invoices.
 6. **Ledger:** account tree, automatic posting (§3), compound entries, account statement, opening balances.
 7. **Cheques & portfolios.**

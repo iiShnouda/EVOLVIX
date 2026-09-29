@@ -30,6 +30,7 @@ export function ProfitabilityPage() {
     { key: 'customer', label: t('report.byCustomer') },
     { key: 'product', label: t('report.byProduct') },
     { key: 'model', label: t('report.byModel') },
+    { key: 'rep', label: t('report.byRep') },
     { key: 'day', label: t('report.byDay') },
   ];
 
@@ -120,7 +121,9 @@ export function ProfitabilityPage() {
                       ? t('report.byProduct')
                       : by === 'model'
                         ? t('report.byModel')
-                        : t('report.byDay')}
+                        : by === 'rep'
+                          ? t('report.byRep')
+                          : t('report.byDay')}
                 </th>
                 <th className="p-3 text-end font-medium">{t('report.revenue')}</th>
                 <th className="hidden p-3 text-end font-medium sm:table-cell">

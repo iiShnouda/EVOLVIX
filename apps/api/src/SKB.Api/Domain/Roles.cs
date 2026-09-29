@@ -61,6 +61,20 @@ public static class Permissions
     /// <summary>Set a customer's or supplier's default price level.</summary>
     public const string PartiesSetPriceLevel = "parties:set_price_level";
 
+    // ---- Invoice charges (DOMAIN.md step 4) ----
+    /// <summary>Give an invoice-level discount on a sale (خصم مسموح به / خصم إضافي).</summary>
+    public const string SalesDiscount = "sales:discount";
+    /// <summary>Add free goods (بونص) to a sale.</summary>
+    public const string SalesBonus = "sales:bonus";
+    /// <summary>Charge another tax rate than the company's, or another tax, on a sale.</summary>
+    public const string SalesChangeTax = "sales:change_tax";
+    /// <summary>Add charges such as a delivery fee to a sale.</summary>
+    public const string SalesAdditions = "sales:additions";
+    public const string PurchasesDiscount = "purchases:discount";
+    public const string PurchasesBonus = "purchases:bonus";
+    public const string PurchasesChangeTax = "purchases:change_tax";
+    public const string PurchasesAdditions = "purchases:additions";
+
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
@@ -72,6 +86,8 @@ public static class Permissions
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
+        SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
+        PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
     };
 }
 
@@ -94,6 +110,9 @@ public static class RolePermissions
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
             Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel, Permissions.PartiesSetPriceLevel,
+            Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
+            Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
+            Permissions.PurchasesAdditions,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).
@@ -110,6 +129,8 @@ public static class RolePermissions
             Permissions.ProductsCreate, Permissions.ProductsEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel,
+            Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
+            Permissions.PurchasesAdditions,
         },
         [Role.VIEWER] = new[]
         {

@@ -26,11 +26,14 @@ public static class Mapper
             returned is not null && returned.TryGetValue(l.Id, out var r) ? r.Quantity : 0,
             l.WarehouseId?.ToString(), l.Warehouse is null ? null : Loc.Name(l.Warehouse),
             l.UnitId?.ToString(), Loc.Name(l.Unit), l.UnitFactor, l.UnitQuantity, l.LineCost,
-            baseUnits?.GetValueOrDefault(l.ProductId) ?? (l.UnitFactor == 1 ? Loc.Name(l.Unit) : ""))).ToArray(),
+            baseUnits?.GetValueOrDefault(l.ProductId) ?? (l.UnitFactor == 1 ? Loc.Name(l.Unit) : ""),
+            l.IsBonus, l.DocDiscount)).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
         d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number,
-        d.PriceLevelId?.ToString(), d.PriceLevel is null ? null : Loc.Name(d.PriceLevel));
+        d.PriceLevelId?.ToString(), d.PriceLevel is null ? null : Loc.Name(d.PriceLevel),
+        d.AdditionTotal, d.Charges.OrderBy(c => c.Seq).Select(Charges.ToDto).ToArray(),
+        d.RepId?.ToString(), d.Rep?.FullName);
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)

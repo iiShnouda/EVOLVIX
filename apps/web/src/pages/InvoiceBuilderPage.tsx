@@ -1,11 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  applyCharges,
   formatMoney,
   formatNumber,
   formatQuantity,
   toMajor,
   toMinor,
+  type ChargeInput,
+  type ChargeKind,
   type Product,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
@@ -22,6 +25,7 @@ import {
   useParties,
   usePriceLevels,
   useProductSearch,
+  useReps,
 } from '../lib/queries';
 
 interface Line {
@@ -35,6 +39,14 @@ interface Line {
   price: number;
   /** The price was typed; otherwise it follows the price level. */
   touched: boolean;
+  /** Free goods (بونص): no price, but the cost counts. */
+  bonus: boolean;
+}
+
+/** An invoice discount as typed: a percent or an amount. */
+interface DiscountInput {
+  mode: 'percent' | 'amount';
+  value: string;
 }
 
 const field =
@@ -59,6 +71,12 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
   const canOverride = can('sales:override_floor');
   const canChangePrice = can(isSale ? 'sales:change_price' : 'purchases:change_price');
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
+  const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
+  const canBonus = can(isSale ? 'sales:bonus' : 'purchases:bonus');
+  const canChangeTax = can(isSale ? 'sales:change_tax' : 'purchases:change_tax');
+  const canAdditions = can(isSale ? 'sales:additions' : 'purchases:additions');
+  const reps = useReps(isSale);
+  const [repId, setRepId] = useState('');
 
   const parties = useParties({ page: 1, type: isSale ? 'CUSTOMER' : 'SUPPLIER' });
   const [partyId, setPartyId] = useState('');
@@ -99,6 +117,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
 
   const [lines, setLines] = useState<Line[]>([]);
   const [taxPercent, setTaxPercent] = useState('');
+  const [discount1, setDiscount1] = useState<DiscountInput>({ mode: 'percent', value: '' });
+  const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
+  const [otherTax, setOtherTax] = useState('');
+  const [addition, setAddition] = useState('');
+  const [additionLabel, setAdditionLabel] = useState('');
   const [paidNow, setPaidNow] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
@@ -125,7 +148,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
     const cost = costOf(l.product) * factor;
     return isSale ? Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100) : cost;
   }
-  const priceOf = (l: Line) => (canChangePrice && l.touched ? l.price : suggested(l));
+  const priceOf = (l: Line) => (l.bonus ? 0 : canChangePrice && l.touched ? l.price : suggested(l));
 
   function addProduct(p: Product, unitId?: string | null) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
@@ -135,7 +158,15 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
         return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l));
       return [
         ...prev,
-        { key: `l${nextKey++}`, product: p, unitId: unit, quantity: 1, price: 0, touched: false },
+        {
+          key: `l${nextKey++}`,
+          product: p,
+          unitId: unit,
+          quantity: 1,
+          price: 0,
+          touched: false,
+          bonus: false,
+        },
       ];
     });
     setSearch('');
@@ -170,47 +201,82 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
       (baseWanted.get(l.product.id) ?? 0) + l.quantity * (unitOf(l)?.factor ?? 1),
     );
   }
-  const rows = lines.map((l) => {
+  const pre = lines.map((l) => {
     const unit = unitOf(l);
     const factor = unit?.factor ?? 1;
     const price = priceOf(l);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
-    const lineTotal = l.quantity * price;
-    const lineCost = l.quantity * cost;
-    const lineProfit = lineTotal - lineCost;
-    const markupPct = cost > 0 ? ((price - cost) / cost) * 100 : 0;
-    const belowCost = isSale && price < cost;
-    const floor = Math.round((cost * (100 + Math.max(0, minMarkup))) / 100);
-    const belowFloor = isSale && !belowCost && price < floor;
-    const overStock = isSale && (baseWanted.get(l.product.id) ?? 0) > available(l.product);
     return {
       line: l,
       unit,
       factor,
       price,
       cost,
-      lineTotal,
-      lineCost,
-      lineProfit,
-      markupPct,
-      belowCost,
-      belowFloor,
-      overStock,
+      lineTotal: l.quantity * price,
+      lineCost: l.quantity * cost,
     };
+  });
+
+  // Invoice charges, in the same order and with the same rounding as the server.
+  const round2 = (v: string) => Math.round(Number(v) * 100) / 100;
+  const chargeInputs: ChargeInput[] = [];
+  const pushDiscount = (kind: ChargeKind, d: DiscountInput) => {
+    if (d.value.trim() === '' || !(Number(d.value) > 0)) return;
+    chargeInputs.push(
+      d.mode === 'percent'
+        ? { kind, percent: round2(d.value) }
+        : { kind, amount: toMinor(Number(d.value)) },
+    );
+  };
+  pushDiscount('DISCOUNT', discount1);
+  pushDiscount('EXTRA_DISCOUNT', discount2);
+  if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
+  if (Number(otherTax) > 0) chargeInputs.push({ kind: 'OTHER_TAX', percent: round2(otherTax) });
+  if (Number(addition) > 0)
+    chargeInputs.push({
+      kind: 'ADDITION',
+      amount: toMinor(Number(addition)),
+      label: additionLabel.trim() || undefined,
+    });
+  const outcome = applyCharges(
+    pre.map((p) => p.lineTotal),
+    pre.map((p) => !p.line.bonus),
+    chargeInputs,
+  );
+
+  const rows = pre.map((p, i) => {
+    const docDiscount = outcome.allocation[i] ?? 0;
+    const net = p.lineTotal - docDiscount; // what the line really brings in
+    const lineProfit = net - p.lineCost;
+    const netUnit = p.line.quantity > 0 ? net / p.line.quantity : 0;
+    const markupPct = p.cost > 0 ? ((netUnit - p.cost) / p.cost) * 100 : 0;
+    const floorUnit = Math.round((p.cost * (100 + Math.max(0, minMarkup))) / 100);
+    const belowCost = isSale && !p.line.bonus && net < p.lineCost;
+    const belowFloor = isSale && !p.line.bonus && !belowCost && net < p.line.quantity * floorUnit;
+    const overStock =
+      isSale && (baseWanted.get(p.line.product.id) ?? 0) > available(p.line.product);
+    return { ...p, docDiscount, net, lineProfit, markupPct, belowCost, belowFloor, overStock };
   });
 
   const subtotal = rows.reduce((s, r) => s + r.lineTotal, 0);
   const costTotal = rows.reduce((s, r) => s + r.lineCost, 0);
-  const tax = Math.round((subtotal * effTax) / 100);
-  const grand = subtotal + tax;
-  const profitTotal = subtotal - costTotal;
-  const marginPct = subtotal > 0 ? (profitTotal / subtotal) * 100 : 0;
+  const netTotal = subtotal - outcome.discount;
+  const tax = outcome.tax;
+  const grand = netTotal + outcome.tax + outcome.addition;
+  const profitTotal = netTotal - costTotal;
+  const marginPct = netTotal > 0 ? (profitTotal / netTotal) * 100 : 0;
 
   const hasBelowCost = rows.some((r) => r.belowCost);
   const hasBlockedFloor = rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
   const hasOverStock = rows.some((r) => r.overStock);
   const canSave =
-    !!partyId && lines.length > 0 && !hasBelowCost && !hasBlockedFloor && !hasOverStock && !pending;
+    !!partyId &&
+    lines.length > 0 &&
+    !hasBelowCost &&
+    !hasBlockedFloor &&
+    !hasOverStock &&
+    !outcome.error &&
+    !pending;
 
   async function save() {
     const paidAmount = paidNow === '' ? 0 : toMinor(Number(paidNow));
@@ -225,13 +291,15 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             quantity: r.line.quantity,
             unitPrice: r.price,
             discount: 0,
+            isBonus: r.line.bonus || undefined,
           })),
-          taxPercent: effTax,
+          charges: chargeInputs,
           paidAmount,
           overrideFloor,
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
           priceLevelId,
+          repId: repId || undefined,
         });
         navigate('/sales');
       } else {
@@ -242,8 +310,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitCost: r.price,
+            isBonus: r.line.bonus || undefined,
           })),
-          taxPercent: effTax,
+          charges: chargeInputs,
           paidAmount,
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
@@ -279,7 +348,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
         {/* Left: builder */}
         <div className="min-w-0 space-y-4">
           {/* Party + warehouse + price level */}
-          <Card className="grid gap-3 sm:grid-cols-3">
+          <Card
+            className={`grid gap-3 ${isSale ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'}`}
+          >
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">
                 {t(isSale ? 'invoice.customer' : 'invoice.supplier')}
@@ -318,6 +389,19 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                 ))}
               </select>
             </label>
+            {isSale && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
+                <select className={field} value={repId} onChange={(e) => setRepId(e.target.value)}>
+                  <option value="">{t('invoice.noRep')}</option>
+                  {(reps.data ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </Card>
 
           {/* Product search */}
@@ -455,9 +539,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                           type="number"
                           min={0}
                           step="0.01"
-                          readOnly={!canChangePrice}
+                          readOnly={!canChangePrice || r.line.bonus}
                           title={canChangePrice ? undefined : t('invoice.priceLocked')}
-                          className={`${field} tnum ${canChangePrice ? '' : 'bg-surface-2'} ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+                          className={`${field} tnum ${canChangePrice && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
                           value={toMajor(r.price)}
                           onChange={(e) =>
                             updateLine(r.line.key, {
@@ -490,11 +574,32 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
                         </div>
                       </div>
                     </div>
-                    {r.factor > 1 && (
-                      <p className="mt-1 text-xs text-muted tnum">
-                        = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
-                      </p>
-                    )}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
+                      {r.factor > 1 && (
+                        <span>
+                          = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+                        </span>
+                      )}
+                      {r.docDiscount > 0 && (
+                        <span>
+                          {t('charge.DISCOUNT')}: −{formatMoney(r.docDiscount, currency, locale)}
+                        </span>
+                      )}
+                      {(canBonus || r.line.bonus) && (
+                        <label
+                          className="inline-flex items-center gap-1.5"
+                          title={t('invoice.bonusHint')}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={r.line.bonus}
+                            disabled={!canBonus}
+                            onChange={(e) => updateLine(r.line.key, { bonus: e.target.checked })}
+                          />
+                          {t('invoice.bonus')}
+                        </label>
+                      )}
+                    </div>
 
                     {(r.belowCost || r.belowFloor || r.overStock) && (
                       <p
@@ -522,19 +627,87 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' }) {
             </h2>
             <dl className="space-y-1.5 text-sm">
               <Row label={t('invoice.subtotal')} value={formatMoney(subtotal, currency, locale)} />
+              {(canDiscount || discount1.value || discount2.value) && (
+                <>
+                  <DiscountField
+                    label={t('charge.DISCOUNT')}
+                    value={discount1}
+                    onChange={setDiscount1}
+                    disabled={!canDiscount}
+                    amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
+                    currency={currency}
+                  />
+                  <DiscountField
+                    label={t('charge.EXTRA_DISCOUNT')}
+                    value={discount2}
+                    onChange={setDiscount2}
+                    disabled={!canDiscount}
+                    amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
+                    currency={currency}
+                  />
+                  <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+                </>
+              )}
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-muted">{t('invoice.taxPercent')}</dt>
                 <input
                   type="number"
                   min={0}
                   max={100}
+                  disabled={!canChangeTax}
                   className={`${field} tnum w-20 text-end`}
                   placeholder={String(settings.data?.defaultTaxPercent ?? 0)}
                   value={taxPercent}
                   onChange={(e) => setTaxPercent(e.target.value)}
                 />
               </div>
+              {canChangeTax && (
+                <div className="flex items-center justify-between gap-2">
+                  <dt className="text-muted">{t('charge.OTHER_TAX')} %</dt>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className={`${field} tnum w-20 text-end`}
+                    placeholder="0"
+                    value={otherTax}
+                    onChange={(e) => setOtherTax(e.target.value)}
+                  />
+                </div>
+              )}
               <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
+              {canAdditions && (
+                <div className="grid grid-cols-[1fr_96px] items-end gap-2">
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">
+                      {t('invoice.additions')}
+                    </span>
+                    <input
+                      className={field}
+                      placeholder={t('charge.labelPlaceholder')}
+                      value={additionLabel}
+                      onChange={(e) => setAdditionLabel(e.target.value)}
+                    />
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    aria-label={t('charge.amount')}
+                    className={`${field} tnum text-end`}
+                    placeholder="0"
+                    value={addition}
+                    onChange={(e) => setAddition(e.target.value)}
+                  />
+                </div>
+              )}
+              {outcome.addition > 0 && (
+                <Row
+                  label={t('invoice.additions')}
+                  value={formatMoney(outcome.addition, currency, locale)}
+                />
+              )}
+              {outcome.error && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
               <div className="my-1 border-t border-line" />
               <Row
                 label={t('invoice.grandTotal')}
@@ -628,6 +801,57 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     <div className="flex items-center justify-between">
       <dt className="text-muted">{label}</dt>
       <dd className={`tnum ${strong ? 'text-base font-semibold' : ''}`}>{value}</dd>
+    </div>
+  );
+}
+
+/** An invoice discount: a number and whether it is a percent or an amount. */
+function DiscountField({
+  label,
+  value,
+  onChange,
+  disabled,
+  amount,
+  currency,
+}: {
+  label: string;
+  value: DiscountInput;
+  onChange: (v: DiscountInput) => void;
+  disabled: boolean;
+  amount: number;
+  currency: string;
+}) {
+  const { t, locale } = useT();
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-muted">{label}</dt>
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          disabled={disabled}
+          className={`${field} tnum w-20 text-end`}
+          placeholder="0"
+          value={value.value}
+          onChange={(e) => onChange({ ...value, value: e.target.value })}
+        />
+        <select
+          className={`${field} w-auto px-1.5`}
+          disabled={disabled}
+          aria-label={label}
+          value={value.mode}
+          onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountInput['mode'] })}
+        >
+          <option value="percent">{t('charge.percent')}</option>
+          <option value="amount">{t('charge.amount')}</option>
+        </select>
+        {amount > 0 && (
+          <span className="w-24 text-end text-xs text-muted tnum">
+            −{formatMoney(amount, currency, locale)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

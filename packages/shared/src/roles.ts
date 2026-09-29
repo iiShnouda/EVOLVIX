@@ -44,6 +44,21 @@ const ALL: Permission[] = [
   'purchases:change_price',
   'purchases:choose_price_level',
   'parties:set_price_level',
+  'sales:discount',
+  'sales:bonus',
+  'sales:change_tax',
+  'sales:additions',
+  'purchases:discount',
+  'purchases:bonus',
+  'purchases:change_tax',
+  'purchases:additions',
+];
+
+const PURCHASE_CHARGES: Permission[] = [
+  'purchases:discount',
+  'purchases:bonus',
+  'purchases:change_tax',
+  'purchases:additions',
 ];
 
 /** Catalog permissions store staff get: add items, but not set selling prices. */
@@ -84,6 +99,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'purchases:change_price',
     'purchases:choose_price_level',
     'parties:set_price_level',
+    'sales:discount',
+    'sales:bonus',
+    'sales:change_tax',
+    'sales:additions',
+    ...PURCHASE_CHARGES,
   ],
   // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
   // the customer's price level; changing a price or the level needs a manager.
@@ -106,6 +126,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     ...ITEMS,
     'purchases:change_price',
     'purchases:choose_price_level',
+    ...PURCHASE_CHARGES,
   ],
   VIEWER: [
     'dashboard:view',

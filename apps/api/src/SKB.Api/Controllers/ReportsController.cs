@@ -34,7 +34,7 @@ public sealed class ReportsController : ControllerBase
         // Normalize to UTC midnight boundaries; Npgsql requires Kind=Utc for timestamptz.
         var fromDate = DateTime.SpecifyKind(fromRaw.Date, DateTimeKind.Utc);
         var toExclusive = DateTime.SpecifyKind(toRaw.Date.AddDays(1), DateTimeKind.Utc);
-        by = by.ToLowerInvariant() is "product" or "day" or "model" ? by.ToLowerInvariant() : "customer";
+        by = by.ToLowerInvariant() is "product" or "day" or "model" or "rep" ? by.ToLowerInvariant() : "customer";
 
         Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
         var scoped = !CurrentUser.CanSeeAllBranches(User);
@@ -69,7 +69,7 @@ public sealed class ReportsController : ControllerBase
             var grouped = await lines
                 .Select(l => new
                 {
-                    l.ProductId, l.ProductName, l.LineTotal, l.LineCost, l.LineProfit, l.Quantity,
+                    l.ProductId, l.ProductName, LineTotal = l.LineTotal - l.DocDiscount, l.LineCost, l.LineProfit, l.Quantity,
                     Sign = l.Document!.Type == Return ? -1 : 1,
                 })
                 .GroupBy(x => new { x.ProductId, x.ProductName })
@@ -102,6 +102,27 @@ public sealed class ReportsController : ControllerBase
                     .OrderByDescending(r => r.Profit)
                     .ToArray();
             }
+        }
+        else if (by == "rep")
+        {
+            // Sales reps (مندوب): whose sales they were. No commission (owner, 2026-09-29).
+            var grouped = await docs
+                .GroupBy(d => new { d.RepId, Name = d.Rep!.FullName })
+                .Select(g => new
+                {
+                    g.Key.RepId,
+                    g.Key.Name,
+                    Revenue = g.Sum(d => d.Type == Return ? -(d.Subtotal - d.DiscountTotal) : d.Subtotal - d.DiscountTotal),
+                    Cost = g.Sum(d => d.Type == Return ? -d.CostTotal : d.CostTotal),
+                    Profit = g.Sum(d => d.Type == Return ? -d.ProfitTotal : d.ProfitTotal),
+                    Invoices = g.Sum(d => d.Type == Invoice ? 1 : 0),
+                })
+                .ToListAsync();
+            rows = grouped
+                .OrderByDescending(g => g.Profit)
+                .Select(g => new ProfitRowDto(g.RepId?.ToString() ?? "", g.Name ?? "",
+                    g.Revenue, g.Cost, g.Profit, g.Invoices, 0))
+                .ToArray();
         }
         else if (by == "day")
         {

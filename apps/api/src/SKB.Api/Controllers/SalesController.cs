@@ -94,12 +94,21 @@ public sealed class SalesController : ControllerBase
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
+            .Include(d => d.Charges).Include(d => d.Rep)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.SALES_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
         return Ok(Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+    }
+
+    /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
+    [HttpGet("reps")]
+    public async Task<ActionResult<RepOptionDto[]>> Reps()
+    {
+        var staff = await _db.Staff.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.FullName).ToListAsync();
+        return Ok(staff.Select(s => new RepOptionDto(s.Id.ToString(), s.FullName, s.BranchId.ToString())).ToArray());
     }
 
     /// <summary>
@@ -129,8 +138,28 @@ public sealed class SalesController : ControllerBase
         if (party is null) return BadRequest(new { message = "Customer not found.", code = "party_not_found" });
 
         var settings = await GetSettingsAsync();
-        var canOverride = User.HasClaim("permission", Permissions.SalesOverrideFloor);
-        var canChangePrice = User.HasClaim("permission", Permissions.SalesChangePrice);
+        bool Can(string permission) => User.HasClaim("permission", permission);
+        var canOverride = Can(Permissions.SalesOverrideFloor);
+        var canChangePrice = Can(Permissions.SalesChangePrice);
+
+        // ---- Invoice charges: discounts, taxes, additions — each needs its own permission ----
+        var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
+        if (chargeError is not null) return BadRequest(new { message = chargeError.Message, code = chargeError.Code });
+        if (specs!.Any(c => c.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT) && !Can(Permissions.SalesDiscount))
+            return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
+        if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Can(Permissions.SalesAdditions))
+            return InvoiceLines.Refuse(this, new("additions_not_allowed", "Adding charges needs permission."));
+        if (!Can(Permissions.SalesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
+            return InvoiceLines.Refuse(this, new("tax_not_allowed",
+                $"The tax is {settings.DefaultTaxPercent}%. Changing it needs permission."));
+
+        Guid? repId = null;
+        if (!string.IsNullOrWhiteSpace(req.RepId))
+        {
+            if (!Guid.TryParse(req.RepId, out var rep) || !await _db.Staff.AnyAsync(s => s.Id == rep && s.IsActive))
+                return BadRequest(new { message = "Sales rep not found.", code = "rep_not_found" });
+            repId = rep;
+        }
 
         // ---- Shape checks and warehouse per line (no stock read yet) ----
         var cache = new Dictionary<string, Warehouse>();
@@ -139,6 +168,13 @@ public sealed class SalesController : ControllerBase
         {
             var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitPrice, line.Discount);
             if (shape.Error is not null) return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code });
+            if (line.IsBonus)
+            {
+                if (!Can(Permissions.SalesBonus))
+                    return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
+                if (line.UnitPrice != 0 || line.Discount != 0)
+                    return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
+            }
             var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
             if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
             lines.Add((line, shape.ProductId, shape.UnitId, warehouse!));
@@ -149,11 +185,12 @@ public sealed class SalesController : ControllerBase
         var book = await PriceBook.LoadAsync(_db, products.Keys);
 
         var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.SalesPriceLevelId,
-            PriceSide.SALE, User.HasClaim("permission", Permissions.SalesChoosePriceLevel));
+            PriceSide.SALE, Can(Permissions.SalesChoosePriceLevel));
         if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
 
-        // ---- Validate everything against the locked stock before posting ----
-        var resolved = new List<(CreateInvoiceLineRequest Req, Product Product, ItemUnit Unit, int BaseQty, Warehouse Warehouse)>();
+        // ---- Resolve units and check prices against the level ----
+        var resolved = new List<(CreateInvoiceLineRequest Req, Product Product, ItemUnit Unit, int BaseQty,
+            Warehouse Warehouse, long BaseCost)>();
         foreach (var (line, pid, unitId, warehouse) in lines)
         {
             if (!products.TryGetValue(pid, out var product) || !product.IsActive)
@@ -163,7 +200,7 @@ public sealed class SalesController : ControllerBase
 
             // Cost is per branch: price and floor are judged against the cost where the goods leave from.
             var baseCost = _inventory.CostAt(product, warehouse);
-            if (!canChangePrice)
+            if (!canChangePrice && !line.IsBonus)
             {
                 var expected = level is null
                     ? InvoiceLines.MarkupPrice(baseCost, unit!.Factor, settings.DefaultMarkupPercent)
@@ -173,9 +210,21 @@ public sealed class SalesController : ControllerBase
                         $"{Loc.Name(product)}: the price is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
                         "Changing a price needs permission."));
             }
+            resolved.Add((line, product, unit!, baseQty, warehouse, baseCost));
+        }
 
-            var floorError = CheckFloor(line.Quantity, line.UnitPrice, line.Discount, baseCost * unit!.Factor,
-                settings.MinMarkupPercent, canOverride, req.OverrideFloor);
+        // ---- Work out the charges and each line's share of the invoice discount ----
+        var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitPrice - r.Req.Discount).ToList();
+        var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
+        if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
+
+        // Profit floor on what each line really brings in, after its share of the invoice discount.
+        for (var i = 0; i < resolved.Count; i++)
+        {
+            var (line, product, unit, _, _, baseCost) = resolved[i];
+            if (line.IsBonus) continue;
+            var floorError = CheckFloor(line.Quantity, line.UnitPrice, line.Discount + charges!.Allocation[i],
+                baseCost * unit.Factor, settings.MinMarkupPercent, canOverride, req.OverrideFloor);
             if (floorError is not null)
                 return BadRequest(new
                 {
@@ -184,7 +233,6 @@ public sealed class SalesController : ControllerBase
                         : $"{Loc.Name(product)}: price is below the minimum profit floor. Ask a manager to override.",
                     code = floorError,
                 });
-            resolved.Add((line, product, unit, baseQty, warehouse));
         }
         // The same item may appear on several lines (even in different units): check the total
         // asked of each warehouse, in base units.
@@ -209,41 +257,46 @@ public sealed class SalesController : ControllerBase
             Number = number, Type = DocumentType.SALES_INVOICE, BranchId = branchId,
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
-            PriceLevelId = level?.Id,
+            PriceLevelId = level?.Id, RepId = repId,
         };
 
-        foreach (var (line, product, unit, baseQty, warehouse) in resolved)
+        for (var i = 0; i < resolved.Count; i++)
         {
+            var (line, product, unit, baseQty, warehouse, _) = resolved[i];
             var unitCost = _inventory.Issue(product, warehouse, baseQty,
                 StockMovementType.SALE_OUT, doc.Id, number);
 
             var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
             var lineCost = (long)baseQty * unitCost;
+            var docDiscount = charges!.Allocation[i];
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
                 UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
                 UnitPrice = line.UnitPrice, Discount = line.Discount, LineTotal = lineTotal,
-                UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - lineCost,
+                IsBonus = line.IsBonus, DocDiscount = docDiscount,
+                UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - docDiscount - lineCost,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
+        foreach (var c in charges!.Rows) doc.Charges.Add(c);
 
         var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
-        var discountTotal = doc.Lines.Sum(l => l.Discount);
-        var taxable = subtotal - discountTotal;
-        var taxPercent = Math.Clamp(req.TaxPercent ?? settings.DefaultTaxPercent, 0, 100);
-        var tax = (long)decimal.Round(taxable * taxPercent / 100m, MidpointRounding.AwayFromZero);
-        var grand = taxable + tax;
+        var discountTotal = doc.Lines.Sum(l => l.Discount) + charges.Discount;
+        var net = subtotal - discountTotal;
+        var grand = net + charges.Tax + charges.Addition;
         var costTotal = doc.Lines.Sum(l => l.LineCost);
 
         doc.Subtotal = subtotal;
         doc.DiscountTotal = discountTotal;
-        doc.TaxTotal = tax;
+        doc.TaxTotal = charges.Tax;
+        doc.AdditionTotal = charges.Addition;
         doc.GrandTotal = grand;
         doc.CostTotal = costTotal;
-        doc.ProfitTotal = taxable - costTotal;
+        // Profit is what the goods brought in after every discount, minus their cost. Taxes and
+        // additions (e.g. the delivery fee) are neither revenue nor cost.
+        doc.ProfitTotal = net - costTotal;
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID

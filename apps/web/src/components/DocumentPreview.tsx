@@ -44,6 +44,7 @@ export function DocumentPreview({
   const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
   const isPurchaseSide = doc.type === 'PURCHASE_INVOICE' || doc.type === 'PURCHASE_RETURN';
   const outstanding = doc.grandTotal - doc.paidAmount;
+  const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -81,6 +82,11 @@ export function DocumentPreview({
               <p className="tnum">
                 {t('return.against')}:{' '}
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
+              </p>
+            )}
+            {doc.repName && (
+              <p>
+                {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
               </p>
             )}
             {doc.priceLevelName && (
@@ -140,7 +146,13 @@ export function DocumentPreview({
                     {formatMoney(l.unitPrice, doc.currency, locale)}
                   </td>
                   <td className="p-2 text-end font-medium tnum">
-                    {formatMoney(l.lineTotal, doc.currency, locale)}
+                    {l.isBonus ? (
+                      <span className="text-xs font-medium text-positive">
+                        {t('invoice.bonus')}
+                      </span>
+                    ) : (
+                      formatMoney(l.lineTotal, doc.currency, locale)
+                    )}
                   </td>
                 </tr>
               ))}
@@ -154,11 +166,36 @@ export function DocumentPreview({
             label={t('sales.subtotal')}
             value={formatMoney(doc.subtotal, doc.currency, locale)}
           />
-          <Row
-            label={t('sales.discount')}
-            value={formatMoney(doc.discountTotal, doc.currency, locale)}
-          />
-          <Row label={t('sales.tax')} value={formatMoney(doc.taxTotal, doc.currency, locale)} />
+          {doc.charges.length > 0 ? (
+            // The invoice's own discounts, taxes and additions, in the order they applied.
+            <>
+              {lineDiscounts > 0 && (
+                <Row
+                  label={t('sales.discount')}
+                  value={formatMoney(-lineDiscounts, doc.currency, locale)}
+                />
+              )}
+              {doc.charges.map((c, i) => (
+                <Row
+                  key={i}
+                  label={`${c.label ?? t(`charge.${c.kind}`)}${c.rate != null ? ` (${formatNumber(c.rate, locale)}%)` : ''}`}
+                  value={formatMoney(
+                    c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT' ? -c.amount : c.amount,
+                    doc.currency,
+                    locale,
+                  )}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+              <Row
+                label={t('sales.discount')}
+                value={formatMoney(doc.discountTotal, doc.currency, locale)}
+              />
+              <Row label={t('sales.tax')} value={formatMoney(doc.taxTotal, doc.currency, locale)} />
+            </>
+          )}
           <div className="flex items-center justify-between border-t border-line pt-2 text-base font-semibold">
             <dt>{t('sales.grandTotal')}</dt>
             <dd className="tnum">{formatMoney(doc.grandTotal, doc.currency, locale)}</dd>

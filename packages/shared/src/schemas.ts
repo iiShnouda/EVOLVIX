@@ -5,6 +5,15 @@ import { z } from 'zod';
  * The server treats these as the authoritative contract.
  */
 
+/** An invoice-level charge: a percent (up to 2 decimals) or a fixed amount in minor units. */
+export const chargeSchema = z.object({
+  kind: z.enum(['DISCOUNT', 'EXTRA_DISCOUNT', 'TAX', 'OTHER_TAX', 'ADDITION']),
+  percent: z.number().min(0).max(100).optional(),
+  amount: z.number().int().min(0).optional(),
+  label: z.string().trim().max(60).optional(),
+});
+export type ChargeInputSchema = z.infer<typeof chargeSchema>;
+
 export const loginSchema = z.object({
   email: z.string().trim().min(1, 'Email or staff ID is required').max(200),
   password: z.string().min(1, 'Password is required').max(200),
@@ -52,6 +61,8 @@ export const invoiceLineSchema = z.object({
   warehouseId: z.string().uuid().optional(),
   /** One of the item's units (carton…); quantity and price are then per that unit. None = base unit. */
   unitId: z.string().uuid().optional(),
+  /** Free goods: sent with price 0. */
+  isBonus: z.boolean().optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 
@@ -68,6 +79,13 @@ export const createSalesInvoiceSchema = z.object({
   warehouseId: z.string().uuid().optional(),
   /** Price level; none = the customer's own, else the default sales level. */
   priceLevelId: z.string().uuid().optional(),
+  /** The whole list of discounts, taxes and additions (the tax too). None = taxPercent only. */
+  charges: z
+    .array(z.lazy(() => chargeSchema))
+    .max(20)
+    .optional(),
+  /** The sales rep credited with the sale. */
+  repId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -80,6 +98,8 @@ export const purchaseLineSchema = z.object({
   warehouseId: z.string().uuid().optional(),
   /** One of the item's units; quantity and cost are then per that unit. None = base unit. */
   unitId: z.string().uuid().optional(),
+  /** Free goods from the supplier: sent with cost 0. */
+  isBonus: z.boolean().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -94,6 +114,10 @@ export const createPurchaseInvoiceSchema = z.object({
   warehouseId: z.string().uuid().optional(),
   /** Price level; none = the supplier's own, else the default purchase level. */
   priceLevelId: z.string().uuid().optional(),
+  charges: z
+    .array(z.lazy(() => chargeSchema))
+    .max(20)
+    .optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 

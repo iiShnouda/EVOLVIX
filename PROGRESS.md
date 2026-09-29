@@ -108,6 +108,45 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Invoice charges, bonus goods and sales reps** — DOMAIN.md §7 step 4a
+- **Charges** (`DocumentCharge`): each invoice has a list of discounts, taxes and additions. Each
+  one is a percent (2 decimals) or a fixed amount. They apply in this order:
+  1. خصم (discount), then خصم إضافي (extra discount), each on what is left;
+  2. VAT and other taxes, on the discounted amount;
+  3. additions (e.g. delivery, freight), also on the discounted amount.
+- **Profit:** the invoice discount is shared over the lines in proportion to their nets
+  (`DocumentLine.DocDiscount`; the shares add up exactly). Profit = net after every discount −
+  cost. Taxes and additions are never revenue or cost.
+- **Purchases:** the supplier's discount comes off the goods' cost, so it lowers the weighted
+  average. Freight entered as an addition is owed to the supplier but kept out of the cost.
+- **Bonus goods (بونص):** a line with price (or cost) 0 and `IsBonus`.
+  - On a sale its cost still counts against profit, and it skips the price floor.
+  - On a purchase, free goods lower the average cost.
+- **Sales rep (مندوب):** the invoice records who the sale is credited to (`RepId`; no commission).
+  Returns keep the invoice's rep. Profitability has a **by rep** view. `GET /api/sales/reps`
+  lists who can be picked.
+- **Returns:** discounts and tax come back in proportion, and the last return takes exactly what
+  is left. Additions such as delivery are **not** refunded.
+- **Permissions:** `sales:discount`, `sales:bonus`, `sales:change_tax`, `sales:additions` and the
+  same four for purchases.
+  - Without `change_tax`, only the company's VAT rate is accepted.
+  - Accountant has all eight. Inventory has the four purchase ones. Sales staff have none.
+- **Old clients:** a request without `charges` still works; its `taxPercent` becomes the tax charge.
+- **Web:**
+  - The invoice screen has the discount and extra discount (percent or amount), VAT and other
+    tax, additions with a label, a bonus tick per line, and the rep picker. The totals are worked
+    out with the same maths as the server (`@skb/shared` `applyCharges`).
+  - The invoice preview lists each charge, bonus lines and the rep.
+- **Migration `ChargesBonusReps`:** `DocumentCharges`, `AdditionTotal`, `RepId`, `IsBonus`,
+  `DocDiscount`. Old invoices keep their totals and have no charge rows.
+- **Verified:**
+  - `scripts/checks/charges.test.mjs`: 70/70 on a fresh and on an upgraded database.
+  - The catalog (209) and staff (57) suites still pass.
+  - 21 database invariants hold, including grand = subtotal − discounts + taxes + additions,
+    discount shares = discount charges, and bonus lines are free.
+  - In the browser: a sale with a 10% discount, a delivery fee, a bonus line and a rep was posted
+    by the server exactly as the screen showed it.
+
 **Staff & permissions** (الموظفون والصلاحيات) — owner decision 2026-09-29: every action has its
 own permission, and roles bundle them
 - **People** (`/staff`): add a person (name, email, role, branch, phone, password), edit them,
@@ -467,8 +506,9 @@ and warehouses shipped):
    - Add a carton to an item, buy and sell in cartons, and return part of one.
    - A sales user can't change a price.
 5. **DOMAIN.md §7 step 4:**
-   - invoice charges, bonus lines and sales reps (**no commission**, owner 2026-09-29)
-   - delivery, shipments / waybills and cash on delivery
+   - ~~invoice charges, bonus lines and sales reps~~ done (4a; no commission)
+   - **names: one field, no translation** (owner 2026-09-29, next)
+   - delivery, shipments / waybills and cash on delivery (4b)
    - the payment methods the owner listed (DOMAIN.md §2.5–2.6)
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.

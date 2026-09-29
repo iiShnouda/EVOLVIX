@@ -54,6 +54,7 @@ import type {
   CreateStaffInput,
   UpdateStaffInput,
   StaffPermissionsInput,
+  RepOption,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -584,5 +585,15 @@ export function useResetRole() {
   return useMutation({
     mutationFn: (role: string) => api.post<RoleInfo>(`/roles/${role}/reset`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+/** Who a sale can be credited to (active staff). */
+export function useReps(enabled = true) {
+  return useQuery({
+    queryKey: ['sales', 'reps'],
+    queryFn: () => api.get<RepOption[]>('/sales/reps'),
+    enabled,
+    staleTime: 5 * 60_000,
   });
 }

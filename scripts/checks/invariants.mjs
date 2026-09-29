@@ -20,5 +20,11 @@ await expectNone('one default active level per side', `select "Side", count(*) f
 await expectNone('variant unique per model/size/color', `select "ModelId","SizeId","ColorId" from "Products" where "ModelId" is not null group by 1,2,3 having count(*)>1`);
 await expectNone('variants carry model units', `select p."Sku" from "Products" p join "ModelUnits" mu on mu."ModelId"=p."ModelId" left join "ItemUnits" iu on iu."ProductId"=p."Id" and iu."UnitId"=mu."UnitId" and iu."Factor"=mu."Factor" where iu."Id" is null`);
 await expectNone('no pending variant names', `select "Sku" from "Products" where "ModelId" is not null and "NamePending"`);
+await expectNone('grand = subtotal − discounts + taxes + additions', `select "Number" from "SalesDocuments" where "GrandTotal" <> "Subtotal" - "DiscountTotal" + "TaxTotal" + "AdditionTotal"`);
+await expectNone('discount total = Σ line + invoice discount shares', `select d."Number" from "SalesDocuments" d join "DocumentLines" l on l."DocumentId"=d."Id" group by d."Id" having d."DiscountTotal" <> sum(l."Discount" + l."DocDiscount")`);
+await expectNone('discount shares = discount charges', `select d."Number" from "SalesDocuments" d where exists (select 1 from "DocumentCharges" c where c."DocumentId"=d."Id") and (select coalesce(sum(l."DocDiscount"),0) from "DocumentLines" l where l."DocumentId"=d."Id") <> (select coalesce(sum(c."Amount"),0) from "DocumentCharges" c where c."DocumentId"=d."Id" and c."Kind" in ('DISCOUNT','EXTRA_DISCOUNT'))`);
+await expectNone('tax / additions = their charges', `select d."Number" from "SalesDocuments" d where exists (select 1 from "DocumentCharges" c where c."DocumentId"=d."Id") and (d."TaxTotal" <> (select coalesce(sum(c."Amount"),0) from "DocumentCharges" c where c."DocumentId"=d."Id" and c."Kind" in ('TAX','OTHER_TAX')) or d."AdditionTotal" <> (select coalesce(sum(c."Amount"),0) from "DocumentCharges" c where c."DocumentId"=d."Id" and c."Kind"='ADDITION'))`);
+await expectNone('sales profit = net − cost', `select "Number" from "SalesDocuments" where "Type" in ('SALES_INVOICE','SALES_RETURN') and "ProfitTotal" <> "Subtotal" - "DiscountTotal" - "CostTotal"`);
+await expectNone('bonus lines are free', `select "Id" from "DocumentLines" where "IsBonus" and ("UnitPrice" <> 0 or "LineTotal" <> 0 or "DocDiscount" <> 0)`);
 await c.end();
 process.exit(bad ? 1 : 0);

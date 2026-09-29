@@ -77,7 +77,15 @@ export type Permission =
   | 'sales:choose_price_level'
   | 'purchases:change_price'
   | 'purchases:choose_price_level'
-  | 'parties:set_price_level';
+  | 'parties:set_price_level'
+  | 'sales:discount'
+  | 'sales:bonus'
+  | 'sales:change_tax'
+  | 'sales:additions'
+  | 'purchases:discount'
+  | 'purchases:bonus'
+  | 'purchases:change_tax'
+  | 'purchases:additions';
 
 export interface Staff {
   id: string;
@@ -257,6 +265,10 @@ export interface DocumentLine {
   unitQuantity: number;
   /** The item's base unit (what `quantity` counts). */
   baseUnitName: string;
+  /** Free goods: no price, but the cost counts against profit. */
+  isBonus: boolean;
+  /** This line's share of the invoice discounts, minor units. */
+  docDiscount: number;
   /** Price of one line unit, minor units. */
   unitPrice: number;
   /** Line discount in minor units. */
@@ -313,6 +325,13 @@ export interface SalesDocument {
   /** The price level the invoice was priced at. */
   priceLevelId?: string | null;
   priceLevelName?: string | null;
+  /** Additions such as a delivery fee, minor units (owed by the party; not revenue). */
+  additionTotal: number;
+  /** Invoice-level discounts, taxes and additions, in the order applied. */
+  charges: import('./charges').DocumentCharge[];
+  /** The sales rep credited with the sale. */
+  repId?: string | null;
+  repName?: string | null;
   createdAt: string;
 }
 
@@ -332,7 +351,14 @@ export interface ProfitRow {
   quantity: number;
 }
 
-export type ProfitGroupBy = 'customer' | 'product' | 'model' | 'day';
+export type ProfitGroupBy = 'customer' | 'product' | 'model' | 'rep' | 'day';
+
+/** Someone a sale can be credited to. */
+export interface RepOption {
+  id: string;
+  name: string;
+  branchId: string;
+}
 
 /** Profitability report (تقارير الربحية) over a date range. */
 export interface ProfitReport {

@@ -86,6 +86,7 @@ public sealed class PurchasesController : ControllerBase
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
+            .Include(d => d.Charges).Include(d => d.Rep)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -119,7 +120,20 @@ public sealed class PurchasesController : ControllerBase
         if (party is null) return BadRequest(new { message = "Supplier not found.", code = "party_not_found" });
 
         var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
-        var canChangePrice = User.HasClaim("permission", Permissions.PurchasesChangePrice);
+        bool Can(string permission) => User.HasClaim("permission", permission);
+        var canChangePrice = Can(Permissions.PurchasesChangePrice);
+
+        // Invoice charges: a supplier's discount (خصم مكتسب) comes off the goods' cost; taxes and
+        // additions (e.g. freight) are owed to the supplier but are not part of the goods' cost.
+        var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
+        if (chargeError is not null) return BadRequest(new { message = chargeError.Message, code = chargeError.Code });
+        if (specs!.Any(c => c.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT) && !Can(Permissions.PurchasesDiscount))
+            return InvoiceLines.Refuse(this, new("discount_not_allowed", "Entering a supplier discount needs permission."));
+        if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Can(Permissions.PurchasesAdditions))
+            return InvoiceLines.Refuse(this, new("additions_not_allowed", "Adding charges needs permission."));
+        if (!Can(Permissions.PurchasesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
+            return InvoiceLines.Refuse(this, new("tax_not_allowed",
+                $"The tax is {settings.DefaultTaxPercent}%. Changing it needs permission."));
 
         // Shape checks and the warehouse each line is received into.
         var cache = new Dictionary<string, Warehouse>();
@@ -129,6 +143,13 @@ public sealed class PurchasesController : ControllerBase
             var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitCost, 0);
             if (shape.Error is not null)
                 return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code == "bad_price" ? "bad_cost" : shape.Error.Code });
+            if (line.IsBonus)
+            {
+                if (!Can(Permissions.PurchasesBonus))
+                    return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Entering free goods needs permission."));
+                if (line.UnitCost != 0)
+                    return BadRequest(new { message = "Free goods have no cost.", code = "bad_bonus" });
+            }
             var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
             if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
             lines.Add((line, shape.ProductId, shape.UnitId, warehouse!));
@@ -142,7 +163,7 @@ public sealed class PurchasesController : ControllerBase
         var book = await PriceBook.LoadAsync(_db, products.Keys);
 
         var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.PurchasePriceLevelId,
-            PriceSide.PURCHASE, User.HasClaim("permission", Permissions.PurchasesChoosePriceLevel));
+            PriceSide.PURCHASE, Can(Permissions.PurchasesChoosePriceLevel));
         if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
 
         var resolved = new List<(CreatePurchaseLineRequest Req, Product Product, ItemUnit Unit, int BaseQty, Warehouse Warehouse)>();
@@ -151,7 +172,7 @@ public sealed class PurchasesController : ControllerBase
             var product = products[pid];
             var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
             if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
-            if (!canChangePrice)
+            if (!canChangePrice && !line.IsBonus)
             {
                 var baseCost = _inventory.CostAt(product, warehouse);
                 var expected = level is null
@@ -165,6 +186,10 @@ public sealed class PurchasesController : ControllerBase
             resolved.Add((line, product, unit!, baseQty, warehouse));
         }
 
+        var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitCost).ToList();
+        var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
+        if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
+
         var number = await DocumentNumbers.NextAsync(_db, DocumentType.PURCHASE_INVOICE);
         var doc = new SalesDocument
         {
@@ -174,10 +199,15 @@ public sealed class PurchasesController : ControllerBase
             PriceLevelId = level?.Id,
         };
 
-        foreach (var (line, product, unit, baseQty, warehouse) in resolved)
+        for (var i = 0; i < resolved.Count; i++)
         {
+            var (line, product, unit, baseQty, warehouse) = resolved[i];
             var lineTotal = (long)line.Quantity * line.UnitCost;
-            _inventory.ReceiveValue(product, warehouse, baseQty, lineTotal,
+            var docDiscount = charges!.Allocation[i];
+            // The goods cost what was paid for them after the supplier's discount; free goods cost
+            // nothing and so lower the average.
+            var lineCost = lineTotal - docDiscount;
+            _inventory.ReceiveValue(product, warehouse, baseQty, lineCost,
                 StockMovementType.PURCHASE_IN, doc.Id, number);
 
             doc.Lines.Add(new DocumentLine
@@ -186,23 +216,25 @@ public sealed class PurchasesController : ControllerBase
                 ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
                 UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
                 UnitPrice = line.UnitCost, Discount = 0, LineTotal = lineTotal,
+                IsBonus = line.IsBonus, DocDiscount = docDiscount,
                 // Cost of one base unit, for display; LineCost is the exact amount paid.
-                UnitCost = (long)decimal.Round((decimal)lineTotal / baseQty, MidpointRounding.AwayFromZero),
-                LineCost = lineTotal, LineProfit = 0,
+                UnitCost = (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero),
+                LineCost = lineCost, LineProfit = 0,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
+        foreach (var c in charges!.Rows) doc.Charges.Add(c);
 
         var subtotal = doc.Lines.Sum(l => l.LineTotal);
-        var taxPercent = Math.Clamp(req.TaxPercent ?? settings.DefaultTaxPercent, 0, 100);
-        var tax = (long)decimal.Round(subtotal * taxPercent / 100m, MidpointRounding.AwayFromZero);
-        var grand = subtotal + tax;
+        var net = subtotal - charges.Discount;
+        var grand = net + charges.Tax + charges.Addition;
 
         doc.Subtotal = subtotal;
-        doc.DiscountTotal = 0;
-        doc.TaxTotal = tax;
+        doc.DiscountTotal = charges.Discount;
+        doc.TaxTotal = charges.Tax;
+        doc.AdditionTotal = charges.Addition;
         doc.GrandTotal = grand;
-        doc.CostTotal = subtotal;
+        doc.CostTotal = net;
         doc.ProfitTotal = 0;
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID

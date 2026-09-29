@@ -35,10 +35,13 @@ public sealed class ReturnsService
 
     public sealed record ReturnError(string Code, string Message);
 
-    /// <summary>What has been returned of one invoice line: base units, and the gross, discount and cost taken back.</summary>
-    public sealed record Returned(int Quantity, long Gross, long Discount, long Cost);
+    /// <summary>
+    /// What has been returned of one invoice line: base units, and the gross amount, line discount,
+    /// share of the invoice discount and cost taken back.
+    /// </summary>
+    public sealed record Returned(int Quantity, long Gross, long Discount, long DocDiscount, long Cost);
 
-    private static readonly Returned Nothing = new(0, 0, 0, 0);
+    private static readonly Returned Nothing = new(0, 0, 0, 0, 0);
 
     /// <summary>What was already returned per invoice line (non-cancelled returns only).</summary>
     public async Task<Dictionary<Guid, Returned>> ReturnedByLineAsync(Guid invoiceId)
@@ -53,10 +56,11 @@ public sealed class ReturnsService
                 Quantity = g.Sum(l => l.Quantity),
                 Gross = g.Sum(l => l.LineTotal + l.Discount),
                 Discount = g.Sum(l => l.Discount),
+                DocDiscount = g.Sum(l => l.DocDiscount),
                 Cost = g.Sum(l => l.LineCost),
             })
             .ToListAsync();
-        return rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.Cost));
+        return rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.DocDiscount, r.Cost));
     }
 
     public static DocumentType ReturnTypeFor(DocumentType invoiceType) => invoiceType switch
@@ -160,7 +164,7 @@ public sealed class ReturnsService
             Number = number, Type = returnType, BranchId = invoice.BranchId, PartyId = invoice.PartyId,
             StaffId = staffId, IssueDate = DateTime.UtcNow, Currency = invoice.Currency,
             Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
-            SourceDocumentId = invoice.Id,
+            SourceDocumentId = invoice.Id, RepId = invoice.RepId, PriceLevelId = invoice.PriceLevelId,
         };
 
         // A part of a line returned in its own unit (whole cartons of a carton line) keeps that unit;
@@ -184,6 +188,7 @@ public sealed class ReturnsService
                 : (long)decimal.Round(total * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);
             var gross = Share(src.LineTotal + src.Discount, already.Gross);
             var discount = Share(src.Discount, already.Discount);
+            var docDiscount = Share(src.DocDiscount, already.DocDiscount);
             var lineCost = Share(src.LineCost, already.Cost);
             var lineTotal = gross - discount;
 
@@ -206,14 +211,16 @@ public sealed class ReturnsService
                 UnitPrice = inLineUnit
                     ? src.UnitPrice
                     : (long)decimal.Round((decimal)gross / qty, MidpointRounding.AwayFromZero),
-                Discount = discount, LineTotal = lineTotal,
-                UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
+                Discount = discount, LineTotal = lineTotal, IsBonus = src.IsBonus, DocDiscount = docDiscount,
+                UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - docDiscount - lineCost : 0,
                 SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
             });
         }
 
+        // The invoice's discounts come back in the same shares they were given; its additions (e.g. a
+        // delivery fee) are not refunded by a return.
         var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
-        var discountTotal = doc.Lines.Sum(l => l.Discount);
+        var discountTotal = doc.Lines.Sum(l => l.Discount + l.DocDiscount);
         var taxable = subtotal - discountTotal;
 
         // Tax comes back in the same proportion it was charged; the return that completes the

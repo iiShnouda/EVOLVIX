@@ -57,6 +57,19 @@ public enum PriceSide { SALE, PURCHASE }
 public enum VariantKind { SIZE, COLOR }
 
 /// <summary>
+/// An invoice-level charge (DOMAIN.md §2.5), applied in this order: discounts first (each on what
+/// is left after the one before), then taxes and additions on the discounted amount.
+/// </summary>
+public enum ChargeKind
+{
+    DISCOUNT,       // خصم مسموح به (sales) / خصم مكتسب (purchases)
+    EXTRA_DISCOUNT, // خصم إضافي
+    TAX,            // VAT (ضريبة القيمة المضافة)
+    OTHER_TAX,      // another tax, e.g. a table tax
+    ADDITION,       // زيادات أخرى, e.g. a delivery fee — not revenue, not cost
+}
+
+/// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.
 /// RECEIVED: the destination confirmed them. CANCELLED: sent back to the source before receipt.
 /// </summary>

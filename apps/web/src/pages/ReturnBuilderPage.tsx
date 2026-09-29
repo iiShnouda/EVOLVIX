@@ -80,7 +80,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
     const q = Math.min(typed * step, remaining);
     // Proportional shares of the line's amount, discount and cost (the server settles the last piastre).
     const share = (total: number) => (l.quantity > 0 ? Math.round((total * q) / l.quantity) : 0);
-    const discount = share(l.discount);
+    const discount = share(l.discount) + share(l.docDiscount);
     const value = share(l.lineTotal + l.discount) - discount;
     const cost = share(l.lineCost);
     return { line: l, remaining, factor, base, step, typed, q, value, cost, profit: value - cost };
@@ -327,6 +327,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
               <p className="text-xs text-faint">
                 {isSale ? t('return.creditHint') : t('return.debitHint')}
               </p>
+              {doc.additionTotal > 0 && (
+                <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
+              )}
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
                 <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />

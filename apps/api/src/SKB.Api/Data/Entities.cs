@@ -440,6 +440,16 @@ public class SalesDocument
     public Guid? PriceLevelId { get; set; }
     public PriceLevel? PriceLevel { get; set; }
 
+    /// <summary>Additions such as a delivery fee (minor units): owed by the party, not revenue or cost.</summary>
+    public long AdditionTotal { get; set; }
+
+    /// <summary>The sales rep (مندوب) credited with a sale. No commission (owner, 2026-09-29).</summary>
+    public Guid? RepId { get; set; }
+    public Staff? Rep { get; set; }
+
+    /// <summary>Invoice-level discounts, taxes and additions, in the order they were applied.</summary>
+    public List<DocumentCharge> Charges { get; set; } = new();
+
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -469,6 +479,15 @@ public class DocumentLine
     public long LineCost { get; set; }
     public long LineProfit { get; set; }
 
+    /// <summary>Free goods (بونص): no price, but their cost still counts against the invoice's profit.</summary>
+    public bool IsBonus { get; set; }
+
+    /// <summary>
+    /// This line's share of the invoice-level discounts (minor units). Its net amount is
+    /// <c>LineTotal − DocDiscount</c>; on a purchase it also comes off the goods' cost.
+    /// </summary>
+    public long DocDiscount { get; set; }
+
     /// <summary>For a return line: the invoice line it reverses (caps the returnable quantity).</summary>
     public Guid? SourceLineId { get; set; }
 
@@ -480,6 +499,27 @@ public class DocumentLine
     public SalesDocument? Document { get; set; }
     public Guid ProductId { get; set; }
     public Product? Product { get; set; }
+}
+
+/// <summary>
+/// One invoice-level charge: a discount, a tax or an addition, with its rule (a rate or a fixed
+/// amount) and the amount it came to. See <c>Charges</c> for the order they apply in.
+/// </summary>
+public class DocumentCharge
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    /// <summary>1-based order on the document.</summary>
+    public int Seq { get; set; }
+    public ChargeKind Kind { get; set; }
+    /// <summary>The rate in basis points (1400 = 14.00%), or null for a fixed amount.</summary>
+    public int? RateBp { get; set; }
+    /// <summary>The fixed amount typed (minor units), or null for a rate.</summary>
+    public long? FixedAmount { get; set; }
+    /// <summary>What it came to (minor units, always ≥ 0; discounts are subtracted).</summary>
+    public long Amount { get; set; }
+    public string? Label { get; set; }
 }
 
 /// <summary>
