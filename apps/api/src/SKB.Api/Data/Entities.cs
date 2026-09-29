@@ -772,6 +772,14 @@ public class CompanySettings
     /// voucher created on or before it may be cancelled. Null = nothing locked.
     /// </summary>
     public DateTime? LockDate { get; set; }
+    // Company profile (بيانات المنشأة): printed on invoices, vouchers and statements.
+    public string? Address { get; set; }
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    /// <summary>Tax registration number (الرقم الضريبي).</summary>
+    public string? TaxNumber { get; set; }
+    /// <summary>Commercial register number (السجل التجاري).</summary>
+    public string? CommercialRegister { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -76,7 +76,8 @@ public static class Mapper
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,
-        s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt);
+        s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
+        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister);
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,

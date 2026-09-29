@@ -33,6 +33,7 @@ import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { ActivityPage } from './pages/ActivityPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
@@ -169,6 +170,7 @@ export default function App() {
             <Route path="/ledger" element={<LedgerPage />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/audit" element={<ActivityPage />} />
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/settings" element={<SettingsPage />} />

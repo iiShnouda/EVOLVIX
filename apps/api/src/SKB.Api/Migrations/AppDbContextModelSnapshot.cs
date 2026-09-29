@@ -172,6 +172,12 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Address")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CommercialRegister")
+                        .HasColumnType("text");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -190,11 +196,20 @@ namespace SKB.Api.Migrations
                     b.Property<int>("DefaultTaxPercent")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("LockDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("MinMarkupPercent")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TaxNumber")
+                        .HasColumnType("text");
 
                     b.Property<bool>("TransfersRequireReceipt")
                         .HasColumnType("boolean");

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -12,11 +12,15 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Sheet } from '../components/Sheet';
 import { LedgerStatementSheet, SidedMoney, entryTitle } from '../components/LedgerStatementSheet';
+import { ReportActions } from '../components/ReportActions';
+import { useReportTools, type Cell } from '../lib/report';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
   useBalanceSheet,
+  useCloseYear,
+  useClosedYears,
   useIncomeStatement,
   useJournal,
   useLedgerAccounts,
@@ -51,7 +55,9 @@ const SOURCES = [
   'CARRIER_SETTLEMENT',
   'MONEY_OPENING',
   'MANUAL_REVERSAL',
+  'NOTE',
   'OPENING',
+  'YEAR_CLOSE',
 ];
 
 const input =
@@ -689,6 +695,12 @@ function TrialTab() {
   const lock = useLockDate();
   const setLock = useSetLockDate();
   const [lockTo, setLockTo] = useState('');
+  // A closed year stays locked: the lock can't move back before its 31 December.
+  const lastClosed = Math.max(0, ...(useClosedYears().data ?? []).map((c) => c.year));
+  const lockMin = lastClosed ? `${lastClosed}-12-31` : undefined;
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   const money = (v: number) => (v ? formatMoney(v, data?.currency ?? 'EGP', locale) : '');
   const sum = (
     k:
@@ -718,6 +730,7 @@ function TrialTab() {
               <input
                 className={`${small} w-auto`}
                 type="date"
+                min={lockMin}
                 max={today()}
                 value={lockTo}
                 onChange={(e) => setLockTo(e.target.value)}
@@ -730,7 +743,7 @@ function TrialTab() {
               >
                 {t('ledger.setLock')}
               </Button>
-              {lock.data?.lockDate && (
+              {lock.data?.lockDate && !lastClosed && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -745,80 +758,198 @@ function TrialTab() {
           {setLock.error && <span className="text-destructive">{errorText(t, setLock.error)}</span>}
         </Card>
       </div>
+      <YearClose />
       {error && <p className="text-sm text-destructive">{errorText(t, error)}</p>}
+      <div className="flex justify-end">
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('ledger.tabTrial'), period)}
+          onExcel={() => {
+            if (!data) return;
+            const m = (v: number): Cell => (v ? { money: v } : null);
+            const keys = [
+              'openingDebit',
+              'openingCredit',
+              'periodDebit',
+              'periodCredit',
+              'closingDebit',
+              'closingCredit',
+            ] as const;
+            report.excel(
+              t('ledger.tabTrial'),
+              period,
+              [
+                t('ledger.code'),
+                t('ledger.account'),
+                ...[t('ledger.opening'), t('ledger.period'), t('ledger.closing')].flatMap((h) => [
+                  `${h} — ${t('ledger.debit')}`,
+                  `${h} — ${t('ledger.credit')}`,
+                ]),
+              ],
+              data.rows.map((r) => [r.code, r.name, ...keys.map((k) => m(r[k]))]),
+              [t('ledger.total'), '', ...keys.map((k) => ({ money: sum(k) }))],
+            );
+          }}
+        />
+      </div>
       {isLoading || !data ? (
         <Loading />
       ) : (
         <Card padded={false} className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-sm">
-            <thead className="bg-surface-2 text-xs text-muted">
-              <tr>
-                <th rowSpan={2} className="px-3 py-2 text-start font-normal">
-                  {t('ledger.account')}
-                </th>
-                <th colSpan={2} className="px-2 py-1 text-center font-normal">
-                  {t('ledger.opening')}
-                </th>
-                <th colSpan={2} className="px-2 py-1 text-center font-normal">
-                  {t('ledger.period')}
-                </th>
-                <th colSpan={2} className="px-2 py-1 text-center font-normal">
-                  {t('ledger.closing')}
-                </th>
-              </tr>
-              <tr>
-                {[0, 1, 2].flatMap((i) => [
-                  <th key={`d${i}`} className="px-2 pb-2 text-end font-normal">
-                    {t('ledger.debit')}
-                  </th>,
-                  <th key={`c${i}`} className="px-2 pb-2 text-end font-normal">
-                    {t('ledger.credit')}
-                  </th>,
-                ])}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {data.rows.map((r) => (
-                <tr key={r.accountId}>
-                  <td className="px-3 py-1.5">
-                    <span className="text-xs text-muted tnum">{r.code}</span> {r.name}
-                  </td>
-                  {[
-                    r.openingDebit,
-                    r.openingCredit,
-                    r.periodDebit,
-                    r.periodCredit,
-                    r.closingDebit,
-                    r.closingCredit,
-                  ].map((v, i) => (
-                    <td key={i} className="px-2 py-1.5 text-end tnum">
-                      {money(v)}
+          <div ref={paper}>
+            <table className="w-full min-w-[44rem] text-sm">
+              <thead className="bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th rowSpan={2} className="px-3 py-2 text-start font-normal">
+                    {t('ledger.account')}
+                  </th>
+                  <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                    {t('ledger.opening')}
+                  </th>
+                  <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                    {t('ledger.period')}
+                  </th>
+                  <th colSpan={2} className="px-2 py-1 text-center font-normal">
+                    {t('ledger.closing')}
+                  </th>
+                </tr>
+                <tr>
+                  {[0, 1, 2].flatMap((i) => [
+                    <th key={`d${i}`} className="px-2 pb-2 text-end font-normal">
+                      {t('ledger.debit')}
+                    </th>,
+                    <th key={`c${i}`} className="px-2 pb-2 text-end font-normal">
+                      {t('ledger.credit')}
+                    </th>,
+                  ])}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {data.rows.map((r) => (
+                  <tr key={r.accountId}>
+                    <td className="px-3 py-1.5">
+                      <span className="text-xs text-muted tnum">{r.code}</span> {r.name}
+                    </td>
+                    {[
+                      r.openingDebit,
+                      r.openingCredit,
+                      r.periodDebit,
+                      r.periodCredit,
+                      r.closingDebit,
+                      r.closingCredit,
+                    ].map((v, i) => (
+                      <td key={i} className="px-2 py-1.5 text-end tnum">
+                        {money(v)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                <tr className="bg-surface-2 font-semibold">
+                  <td className="px-3 py-2">{t('ledger.total')}</td>
+                  {(
+                    [
+                      'openingDebit',
+                      'openingCredit',
+                      'periodDebit',
+                      'periodCredit',
+                      'closingDebit',
+                      'closingCredit',
+                    ] as const
+                  ).map((k) => (
+                    <td key={k} className="px-2 py-2 text-end tnum">
+                      {formatMoney(sum(k), data.currency, locale)}
                     </td>
                   ))}
                 </tr>
-              ))}
-              <tr className="bg-surface-2 font-semibold">
-                <td className="px-3 py-2">{t('ledger.total')}</td>
-                {(
-                  [
-                    'openingDebit',
-                    'openingCredit',
-                    'periodDebit',
-                    'periodCredit',
-                    'closingDebit',
-                    'closingCredit',
-                  ] as const
-                ).map((k) => (
-                  <td key={k} className="px-2 py-2 text-end tnum">
-                    {formatMoney(sum(k), data.currency, locale)}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </div>
+  );
+}
+
+/** Year-end close (إقفال السنة): the closed years, and closing the next one. */
+function YearClose() {
+  const { t, locale } = useT();
+  const can = useCan();
+  const closed = useClosedYears();
+  const close = useCloseYear();
+  const thisYear = new Date().getFullYear();
+  // Years close in order: only those after the last closed one.
+  const last = Math.max(0, ...(closed.data ?? []).map((c) => c.year));
+  const open = [1, 2, 3, 4, 5].map((i) => thisYear - i).filter((y) => y > last);
+  const [picked, setPicked] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const year = picked !== null && open.includes(picked) ? picked : open[0];
+  const currency = 'EGP';
+
+  return (
+    <Card className="space-y-2 !p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">{t('ledger.yearClose')}</span>
+        {can('ledger:lock') && year !== undefined && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className={`${small} w-auto tnum`}
+              aria-label={t('ledger.year')}
+              value={year}
+              onChange={(e) => {
+                setPicked(Number(e.target.value));
+                setConfirming(false);
+              }}
+            >
+              {open.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            {confirming ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={close.isPending}
+                  onClick={() => close.mutate(year, { onSuccess: () => setConfirming(false) })}
+                >
+                  {t('ledger.closeYearConfirm')} {year}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>
+                {t('ledger.closeYear')}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-faint">{t('ledger.yearCloseHint')}</p>
+      {close.error && <p className="text-destructive">{errorText(t, close.error)}</p>}
+      {(closed.data ?? []).length > 0 && (
+        <ul className="divide-y divide-line">
+          {closed.data!.map((c) => (
+            <li key={c.year} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+              <span>
+                <span className="font-semibold tnum">{c.year}</span>{' '}
+                <Badge tone="neutral">{t('ledger.closed')}</Badge>
+              </span>
+              <span className="text-xs text-muted">
+                {c.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit')}{' '}
+                <span className={`tnum ${c.netProfit < 0 ? 'text-destructive' : 'text-fg'}`}>
+                  {formatMoney(Math.abs(c.netProfit), currency, locale)}
+                </span>{' '}
+                · {c.closedByName} · {formatDate(c.closedAt, locale)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -903,47 +1034,87 @@ function TotalLine({
 
 /** Income statement (قائمة الدخل): revenue − cost of sales = gross profit; − expenses = net profit. */
 function IncomeTab() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [from, setFrom] = useState(yearStart());
   const [to, setTo] = useState(today());
   const { data, isLoading, error } = useIncomeStatement(from, to);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   return (
     <div className="space-y-3">
-      <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+      <div className="flex max-w-2xl flex-wrap items-end justify-between gap-3">
+        <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('ledger.tabIncome'), period)}
+          onExcel={() => {
+            if (!data) return;
+            const block = (section: string, title: string, total: number): Cell[][] => [
+              [title],
+              ...data.rows
+                .filter((r) => r.section === section)
+                .map((r): Cell[] => [r.groupName ?? '', r.code, r.name, { money: r.amount }]),
+              ['', '', t('ledger.total'), { money: total }],
+              [],
+            ];
+            report.excel(
+              t('ledger.tabIncome'),
+              period,
+              [t('ledger.group'), t('ledger.code'), t('ledger.account'), t('fin.amount')],
+              [
+                ...block('REVENUE', t('fin.revenue'), data.revenue),
+                ...block('COGS', t('fin.cogs'), data.cogs),
+                [t('fin.grossProfit'), '', '', { money: data.grossProfit }],
+                [],
+                ...block('EXPENSE', t('fin.expenses'), data.expenses),
+              ],
+              [
+                data.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit'),
+                '',
+                '',
+                { money: data.netProfit },
+              ],
+            );
+          }}
+        />
+      </div>
       {error && <p className="text-sm text-destructive">{errorText(t, error)}</p>}
       {isLoading || !data ? (
         <Loading />
       ) : (
-        <Card className="max-w-2xl space-y-4">
-          <StatementBlock
-            title={t('fin.revenue')}
-            rows={data.rows.filter((r) => r.section === 'REVENUE')}
-            total={data.revenue}
-            currency={data.currency}
-          />
-          <StatementBlock
-            title={t('fin.cogs')}
-            rows={data.rows.filter((r) => r.section === 'COGS')}
-            total={data.cogs}
-            currency={data.currency}
-          />
-          <TotalLine
-            label={t('fin.grossProfit')}
-            value={data.grossProfit}
-            currency={data.currency}
-          />
-          <StatementBlock
-            title={t('fin.expenses')}
-            rows={data.rows.filter((r) => r.section === 'EXPENSE')}
-            total={data.expenses}
-            currency={data.currency}
-          />
-          <TotalLine
-            label={data.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit')}
-            value={data.netProfit}
-            currency={data.currency}
-            big
-          />
+        <Card className="max-w-2xl">
+          <div ref={paper} className="space-y-4">
+            <StatementBlock
+              title={t('fin.revenue')}
+              rows={data.rows.filter((r) => r.section === 'REVENUE')}
+              total={data.revenue}
+              currency={data.currency}
+            />
+            <StatementBlock
+              title={t('fin.cogs')}
+              rows={data.rows.filter((r) => r.section === 'COGS')}
+              total={data.cogs}
+              currency={data.currency}
+            />
+            <TotalLine
+              label={t('fin.grossProfit')}
+              value={data.grossProfit}
+              currency={data.currency}
+            />
+            <StatementBlock
+              title={t('fin.expenses')}
+              rows={data.rows.filter((r) => r.section === 'EXPENSE')}
+              total={data.expenses}
+              currency={data.currency}
+            />
+            <TotalLine
+              label={data.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit')}
+              value={data.netProfit}
+              currency={data.currency}
+              big
+            />
+          </div>
         </Card>
       )}
     </div>
@@ -956,23 +1127,59 @@ function BalanceTab() {
   const [asOf, setAsOf] = useState(today());
   const { data, isLoading } = useBalanceSheet(asOf);
   const balanced = data ? data.assets === data.liabilities + data.equity : true;
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const asOfText = `${t('fin.asOf')} ${formatDate(asOf, locale)}`;
   return (
     <div className="space-y-3">
-      <label className="block w-fit">
-        <span className="mb-1 block text-xs text-muted">{t('fin.asOf')}</span>
-        <input
-          className={small}
-          type="date"
-          value={asOf}
-          max={today()}
-          onChange={(e) => setAsOf(e.target.value)}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="block w-fit">
+          <span className="mb-1 block text-xs text-muted">{t('fin.asOf')}</span>
+          <input
+            className={small}
+            type="date"
+            value={asOf}
+            max={today()}
+            onChange={(e) => setAsOf(e.target.value)}
+          />
+        </label>
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('ledger.tabBalance'), asOfText)}
+          onExcel={() => {
+            if (!data) return;
+            const block = (section: string, title: string): Cell[][] => [
+              [title],
+              ...data.rows
+                .filter((r) => r.section === section)
+                .map((r): Cell[] => [r.groupName ?? '', r.code, r.name, { money: r.amount }]),
+            ];
+            report.excel(
+              t('ledger.tabBalance'),
+              asOfText,
+              [t('ledger.group'), t('ledger.code'), t('ledger.account'), t('fin.amount')],
+              [
+                ...block('ASSET', t('fin.assets')),
+                ['', '', t('ledger.total'), { money: data.assets }],
+                [],
+                ...block('LIABILITY', t('fin.liabilities')),
+                ['', '', t('ledger.total'), { money: data.liabilities }],
+                [],
+                ...block('EQUITY', t('fin.equity')),
+                ['', '', t('fin.profitToDate'), { money: data.profitToDate }],
+                ['', '', t('ledger.total'), { money: data.equity }],
+                [],
+              ],
+              [t('fin.liabilitiesEquity'), '', '', { money: data.liabilities + data.equity }],
+            );
+          }}
         />
-      </label>
+      </div>
       {isLoading || !data ? (
         <Loading />
       ) : (
-        <>
-          <div className="grid gap-3 lg:grid-cols-2">
+        <div ref={paper} className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2 print:grid-cols-2">
             <Card className="space-y-4">
               <StatementBlock
                 title={t('fin.assets')}
@@ -1017,7 +1224,7 @@ function BalanceTab() {
             {balanced ? t('fin.balanced') : t('fin.unbalanced')} · {t('fin.assets')}{' '}
             <span className="tnum">{formatMoney(data.assets, data.currency, locale)}</span>
           </p>
-        </>
+        </div>
       )}
     </div>
   );

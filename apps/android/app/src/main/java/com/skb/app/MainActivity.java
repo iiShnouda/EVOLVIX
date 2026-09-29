@@ -7,7 +7,10 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
 import android.text.TextUtils;
+import android.util.Base64;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
@@ -21,20 +24,27 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import java.io.OutputStream;
+
 /**
  * SKB for Android. The whole app — screens, rules, data — lives on the company server; this
  * activity is a secure full-screen window onto it, so the app is always the latest version the
  * moment the server is updated. Only pages of the configured server open inside the app; any
  * other link opens in the phone's browser. When the server can't be reached, a local page offers
- * to retry or change the server address.
+ * to retry or change the server address. Printing and saving files (Excel exports) go through
+ * {@link Bridge}, because a WebView can't print or save a file made in the page on its own.
  */
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 1;
     private static final int SETTINGS_REQUEST = 2;
+    private static final int SAVE_REQUEST = 3;
+    /** A file the page asked to save is at most this big. */
+    private static final int MAX_SAVE_BYTES = 20 * 1024 * 1024;
 
     private WebView web;
     private ValueCallback<Uri[]> pendingFiles;
     private String loadedServer;
+    private byte[] pendingSave;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -106,6 +116,10 @@ public class MainActivity extends Activity {
             pendingFiles = null;
         } else if (request == SETTINGS_REQUEST && result == RESULT_OK) {
             openServer();
+        } else if (request == SAVE_REQUEST) {
+            byte[] bytes = pendingSave;
+            pendingSave = null;
+            if (result == RESULT_OK && data != null && data.getData() != null && bytes != null) writeFile(data.getData(), bytes);
         } else {
             super.onActivityResult(request, result, data);
         }
@@ -159,6 +173,37 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Print what the page shows (it has laid out the printout with its print styles). */
+    private void print(String title) {
+        String name = TextUtils.isEmpty(title) ? getString(R.string.app_name) : title;
+        PrintManager pm = (PrintManager) getSystemService(PRINT_SERVICE);
+        if (pm != null) pm.print(name, web.createPrintDocumentAdapter(name), new PrintAttributes.Builder().build());
+    }
+
+    /** Ask where to save a file the page made (the phone suggests Downloads); no storage permission needed. */
+    private void save(String name, String mime, byte[] bytes) {
+        pendingSave = bytes;
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType(mime);
+        i.putExtra(Intent.EXTRA_TITLE, name);
+        try {
+            startActivityForResult(i, SAVE_REQUEST);
+        } catch (ActivityNotFoundException e) {
+            pendingSave = null;
+        }
+    }
+
+    private void writeFile(Uri uri, byte[] bytes) {
+        try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) throw new java.io.IOException("no stream");
+            out.write(bytes);
+            Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.save_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void openExternal(Uri uri) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -203,7 +248,10 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Buttons on the offline page. Harmless if a server page calls them: retry / open settings. */
+    /**
+     * Called from pages: the offline page's buttons (retry / open settings) and the server app's
+     * print and save. Only the configured server's pages load in this window.
+     */
     private final class Bridge {
         @JavascriptInterface
         public void retry() {
@@ -213,6 +261,27 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void settings() {
             runOnUiThread(MainActivity.this::openSettings);
+        }
+
+        @JavascriptInterface
+        public void print(String title) {
+            runOnUiThread(() -> MainActivity.this.print(title));
+        }
+
+        /** Save a file the page made: its name, type and contents (base64). */
+        @JavascriptInterface
+        public void saveFile(String name, String mime, String base64) {
+            if (base64 == null || base64.length() > MAX_SAVE_BYTES / 3 * 4 + 4) return;
+            final byte[] bytes;
+            try {
+                bytes = Base64.decode(base64, Base64.DEFAULT);
+            } catch (IllegalArgumentException e) {
+                return;
+            }
+            String safe = name == null ? "" : name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
+            String fileName = safe.isEmpty() ? "SKB" : safe.length() > 120 ? safe.substring(0, 120) : safe;
+            String type = mime != null && mime.matches("[a-z]+/[a-z0-9.+-]+") ? mime : "application/octet-stream";
+            runOnUiThread(() -> save(fileName, type, bytes));
         }
     }
 }

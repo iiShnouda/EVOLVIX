@@ -14,6 +14,7 @@ live company server.
 | `notes.test.mjs` | Cheques & promissory notes: receive / issue with invoices, deposit portfolios, collect, pay, bounce, endorse, cancel — each step's balances, money and journal entry — permissions, scoping and a race (DOMAIN.md step 7). |
 | `money.test.mjs` | Money accounts, receipts and payments with allocation, expenses, transfers, cancelling, paid-now / refunds / settlements through accounts, the no-negative rule, permissions, branch scoping and races (DOMAIN.md step 5). |
 | `staff.test.mjs` | Staff & permissions: people, roles, per-person grants/revokes, and the safety rules (no self-escalation, owners protected, no self-lockout). |
+| `admin.test.mjs` | Company profile, the activity log, aging of debts (every bucket with `PGURL`), the year-end close (entry, statements, lock, race) and permissions. **Run it last:** a closed year stays closed, so its close checks run once per database. |
 | `invariants.mjs` | Database invariants: stock = Σ balances = Σ movements, one base unit per item, line quantities and totals, returns never exceeding their line. Needs `npm i pg`. |
 
 ## Running

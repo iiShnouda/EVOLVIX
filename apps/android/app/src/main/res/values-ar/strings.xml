@@ -13,4 +13,6 @@
     <string name="settings_default">الافتراضي</string>
     <string name="save">حفظ</string>
     <string name="downloading">جارٍ التنزيل…</string>
+    <string name="saved">تم الحفظ</string>
+    <string name="save_failed">تعذّر حفظ الملف</string>
 </resources>

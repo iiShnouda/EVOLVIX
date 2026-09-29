@@ -29,8 +29,8 @@
 
   --radius-app: 0.75rem;
   --font-sans:
-    'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans Arabic',
-    'Cairo', sans-serif;
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans Arabic', 'Cairo',
+    sans-serif;
 }
 
 :root {
@@ -147,5 +147,109 @@ body {
   *::after {
     animation-duration: 0.001ms !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Printing (lib/print.ts): only the copy in #print-root prints, on white, in
+   the light theme whatever the screen theme is.
+--------------------------------------------------------------------------- */
+#print-root {
+  display: none;
+}
+
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    --c-canvas: #ffffff;
+    --c-surface: #ffffff;
+    --c-surface-2: #f0f2f5;
+    --c-line: #d5d9e0;
+    --c-fg: #10151c;
+    --c-muted: #55607a;
+    --c-faint: #8a93a6;
+    --c-brand: #4f46e5;
+    --c-brand-fg: #ffffff;
+    --c-brand-soft: #eceafe;
+    --c-positive: #0f7a45;
+    --c-positive-soft: #e4f5ec;
+    --c-warning: #9a6417;
+    --c-warning-soft: #fbf1de;
+    --c-destructive: #b92e23;
+    --c-destructive-soft: #fbe6e4;
+    --c-info: #2563eb;
+    --c-info-soft: #e4edfd;
+    --shadow-card: none;
+    --shadow-pop: none;
+    color-scheme: light;
+  }
+  @page {
+    margin: 12mm;
+  }
+  html,
+  body {
+    height: auto;
+    background: #fff;
+  }
+  body.printing > :not(#print-root) {
+    display: none !important;
+  }
+  body.printing #print-root {
+    display: block;
+    color: var(--c-fg);
+    font-size: 12px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #print-root * {
+    overflow: visible !important;
+    max-height: none !important;
+    box-shadow: none !important;
+  }
+  #print-root .h-full,
+  #print-root .flex-1 {
+    height: auto !important;
+    flex: none !important;
+  }
+  #print-root .sticky {
+    position: static !important;
+  }
+  #print-root tr,
+  #print-root .print-avoid {
+    break-inside: avoid;
+  }
+  #print-root thead {
+    display: table-header-group;
+  }
+  .print-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    border-bottom: 2px solid var(--c-fg);
+  }
+  .print-company {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .print-what {
+    text-align: end;
+  }
+  .print-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .print-detail {
+    font-size: 11px;
+    color: var(--c-muted);
+  }
+  .print-foot {
+    margin-top: 16px;
+    padding-top: 6px;
+    border-top: 1px solid var(--c-line);
+    font-size: 10px;
+    color: var(--c-muted);
   }
 }

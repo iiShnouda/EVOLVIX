@@ -116,12 +116,16 @@ public record CreateReturnRequest(
 
 public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
-    int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt);
+    int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
+    string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
+    string? CommercialRegister = null);
 
+/// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(
     string? CompanyName, string? Country, string? Currency,
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
-    bool? TransfersRequireReceipt = null);
+    bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
+    string? TaxNumber = null, string? CommercialRegister = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -612,4 +616,25 @@ public record ItemMoveDto(string ProductId, string Sku, string Name, int Quantit
 public record DeadItemDto(string ProductId, string Sku, string Name, int Stock, long StockValue, string? LastSale);
 
 public record ItemMovementDto(string From, string To, ItemMoveDto[] TopMovers, DeadItemDto[] DeadStock, string Currency);
+
+// ---- Admin & close: activity log, aging, year-end close ----
+
+public record AuditEntryDto(
+    string Id, string ActorId, string ActorName, string Action, string Resource, string? ResourceId,
+    string? BranchName, string? Ip, string CreatedAt);
+
+/// <summary>What a party owes (customers) or is owed (suppliers), by how old the open invoices are.</summary>
+/// <param name="OnAccount">The party's balance not tied to an open invoice (opening balances, payments on account…).</param>
+public record AgingRowDto(
+    string PartyId, string Name, long Current, long Days31To60, long Days61To90, long Over90, long Total,
+    long Balance, long OnAccount);
+
+public record AgingDto(
+    string Side, AgingRowDto[] Rows, long Current, long Days31To60, long Days61To90, long Over90, long Total,
+    string Currency);
+
+public record CloseYearRequest(int Year);
+
+/// <param name="NetProfit">The year's revenue − expenses moved into retained earnings.</param>
+public record ClosedYearDto(int Year, string EntryId, long NetProfit, string ClosedAt, string ClosedByName);
 

@@ -91,6 +91,10 @@ import type {
   MonthlySales,
   TopParty,
   ItemMovement,
+  Aging,
+  ClosedYear,
+  AuditEntry,
+  AuditFacets,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -1086,5 +1090,56 @@ export function useItemMovement(from: string, to: string) {
       api.get<ItemMovement>(
         `/analytics/item-movement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=20`,
       ),
+  });
+}
+
+export function useAging(side: 'customers' | 'suppliers') {
+  return useQuery({
+    queryKey: ['report', 'aging', side],
+    queryFn: () => api.get<Aging>(`/analytics/aging?side=${side}`),
+  });
+}
+
+export function useClosedYears() {
+  return useQuery({
+    queryKey: ['ledger', 'closed-years'],
+    queryFn: () => api.get<ClosedYear[]>('/ledger/closed-years'),
+  });
+}
+
+export function useCloseYear() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (year: number) => api.post<ClosedYear>('/ledger/close-year', { year }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['ledger'] });
+      void qc.invalidateQueries({ queryKey: ['report'] });
+    },
+  });
+}
+
+export interface AuditFilter {
+  actorId?: string;
+  resource?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  page: number;
+}
+
+export function useAuditLog(f: AuditFilter) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') q.set(k, String(v));
+  return useQuery({
+    queryKey: ['audit', f],
+    queryFn: () => api.get<Paginated<AuditEntry>>(`/audit?${q.toString()}`),
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useAuditFacets() {
+  return useQuery({
+    queryKey: ['audit', 'facets'],
+    queryFn: () => api.get<AuditFacets>('/audit/facets'),
   });
 }

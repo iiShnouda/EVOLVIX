@@ -13,4 +13,6 @@
     <string name="settings_default">Default</string>
     <string name="save">Save</string>
     <string name="downloading">Downloading…</string>
+    <string name="saved">Saved</string>
+    <string name="save_failed">Could not save the file</string>
 </resources>

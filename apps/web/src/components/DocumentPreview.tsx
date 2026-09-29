@@ -1,13 +1,16 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { formatDate, formatMoney, formatNumber, type SalesDocument } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { STATUS_TONE } from '../lib/status';
+import { printElement, safeName } from '../lib/print';
+import { useReportTools } from '../lib/report';
 
 /**
  * Printable-style document preview: company, branch, party, lines, totals, staff, status.
- * Works for invoices and returns on both the sales and purchase side.
+ * Works for invoices and returns on both the sales and purchase side. Prints (or saves as PDF)
+ * with the company's details from Settings.
  */
 export function DocumentPreview({
   doc,
@@ -22,6 +25,8 @@ export function DocumentPreview({
   action?: ReactNode;
 }) {
   const { t, locale } = useT();
+  const { company, details } = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
 
   if (loading) {
     return (
@@ -47,16 +52,28 @@ export function DocumentPreview({
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-line p-4">
+    <div ref={paper} className="flex h-full flex-col">
+      <div
+        data-noprint
+        className="flex items-center justify-between gap-2 border-b border-line p-4"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
           <span className="truncate text-sm font-semibold tnum">{doc.number}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {action}
-          <Button size="sm" variant="ghost" icon="print" aria-label={t('common.print')} />
-          <Button size="sm" variant="ghost" icon="download" aria-label={t('common.download')} />
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="print"
+            aria-label={t('common.printPdf')}
+            title={t('common.printPdf')}
+            onClick={() =>
+              paper.current &&
+              printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`))
+            }
+          />
           {onClose && (
             <button
               onClick={onClose}
@@ -71,12 +88,18 @@ export function DocumentPreview({
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-5">
         <div className="mb-5 flex items-start justify-between gap-3">
-          <div>
-            <p className="text-base font-bold">{t('app.name')}</p>
+          <div className="min-w-0">
+            <p className="text-base font-bold">{company}</p>
+            {details.map((d) => (
+              <p key={d} className="break-words text-xs text-muted">
+                <bdi>{d}</bdi>
+              </p>
+            ))}
             <p className="text-xs text-muted">{doc.branchName}</p>
           </div>
-          <div className="text-end text-xs text-muted">
-            <p>{t(`doc.${doc.type}`)}</p>
+          <div className="shrink-0 text-end text-xs text-muted">
+            <p className="text-sm font-semibold text-fg">{t(`doc.${doc.type}`)}</p>
+            <p className="tnum font-medium text-fg">{doc.number}</p>
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
             {isReturn && doc.sourceNumber && (
               <p className="tnum">

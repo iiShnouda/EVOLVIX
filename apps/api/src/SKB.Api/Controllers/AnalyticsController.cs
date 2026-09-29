@@ -133,6 +133,67 @@ public sealed class AnalyticsController : ControllerBase
             dead, currency));
     }
 
+    /// <summary>
+    /// Aging (أعمار الديون): what each customer still owes (or what we owe each supplier) on open
+    /// invoices, by the invoice's age — up to 30 days, 31–60, 61–90, over 90 — plus the part of
+    /// their balance not tied to an open invoice (e.g. an opening balance).
+    /// A payment that wasn't linked to an invoice settles the oldest open invoices first, so what
+    /// is aged never exceeds what the party really owes. Branch-scoped staff see their branch's
+    /// invoices as they stand.
+    /// </summary>
+    [HttpGet("aging")]
+    public async Task<ActionResult<AgingDto>> Aging([FromQuery] string side = "customers")
+    {
+        var suppliers = side.Equals("suppliers", StringComparison.OrdinalIgnoreCase);
+        var type = suppliers ? DocumentType.PURCHASE_INVOICE : DocumentType.SALES_INVOICE;
+        var q = _db.SalesDocuments.AsNoTracking().Where(d => d.Type == type && d.Status != DocumentStatus.CANCELLED
+                                                             && d.PaidAmount < d.GrandTotal);
+        if (Scope() is Guid b) q = q.Where(d => d.BranchId == b);
+        var scoped = Scope() is not null;
+        var docs = await q.ToListAsync();
+        var owed = await MoneyService.OutstandingAsync(_db, docs);
+        var today = DateTime.UtcNow.Date;
+        var partyIds = docs.Where(d => owed[d.Id] > 0).Select(d => d.PartyId).Distinct().ToList();
+        var role = suppliers ? "SUPPLIER" : "CUSTOMER";
+        // Owed without an open invoice (opening balances…): only the whole-company view has them.
+        var parties = await _db.Parties.AsNoTracking()
+            .Where(p => partyIds.Contains(p.Id)
+                        || (!scoped && p.Types.Contains(role) && (suppliers ? p.Balance < 0 : p.Balance > 0)))
+            .ToListAsync();
+        var byParty = docs.Where(d => owed[d.Id] > 0).ToLookup(d => d.PartyId);
+        var rows = parties.Select(party =>
+        {
+            // A payable is a negative balance; show both sides as positive amounts owed.
+            var balance = suppliers ? -party.Balance : party.Balance;
+            var open = byParty[party.Id].OrderBy(d => d.IssueDate).ThenBy(d => d.Number)
+                .Select(d => (Age: (today - d.IssueDate.Date).Days, Left: owed[d.Id])).ToList();
+            if (!scoped)
+            {
+                // Payments not linked to an invoice settle the oldest ones first.
+                var credit = Math.Max(0, open.Sum(x => x.Left) - Math.Max(0, balance));
+                for (var i = 0; i < open.Count && credit > 0; i++)
+                {
+                    var take = Math.Min(credit, open[i].Left);
+                    open[i] = (open[i].Age, open[i].Left - take);
+                    credit -= take;
+                }
+            }
+            long Bucket(int min, int max) => open.Where(x => x.Age >= min && x.Age <= max).Sum(x => x.Left);
+            var current = Bucket(int.MinValue, 30);
+            var b60 = Bucket(31, 60);
+            var b90 = Bucket(61, 90);
+            var over = Bucket(91, int.MaxValue);
+            var total = current + b60 + b90 + over;
+            return new AgingRowDto(party.Id.ToString(), party.Name, current, b60, b90, over, total, balance,
+                balance - total);
+        }).Where(r => r.Total > 0 || r.OnAccount > 0).OrderByDescending(r => r.Total).ThenByDescending(r => r.Balance)
+            .ToArray();
+        var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
+        return Ok(new AgingDto(suppliers ? "suppliers" : "customers", rows, rows.Sum(r => r.Current),
+            rows.Sum(r => r.Days31To60), rows.Sum(r => r.Days61To90), rows.Sum(r => r.Over90), rows.Sum(r => r.Total),
+            currency));
+    }
+
     private IQueryable<SalesDocument> Docs()
     {
         var q = _db.SalesDocuments.Where(d => d.Status != DocumentStatus.CANCELLED

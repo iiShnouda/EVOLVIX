@@ -226,6 +226,12 @@ export const updateSettingsSchema = z.object({
   minMarkupPercent: z.number().int().min(0).max(1000).optional(),
   defaultTaxPercent: z.number().int().min(0).max(100).optional(),
   transfersRequireReceipt: z.boolean().optional(),
+  // "" clears a company-profile field; left out = unchanged.
+  address: z.string().trim().max(300).optional(),
+  phone: z.string().trim().max(60).optional(),
+  email: z.union([z.literal(''), z.string().trim().email().max(200)]).optional(),
+  taxNumber: z.string().trim().max(60).optional(),
+  commercialRegister: z.string().trim().max(60).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

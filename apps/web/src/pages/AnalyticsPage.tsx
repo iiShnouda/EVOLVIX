@@ -1,17 +1,22 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatDate, formatMoney, formatNumber, type TranslationKey } from '@skb/shared';
 import { Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { TrendChart } from '../components/charts/TrendChart';
 import { ProfitabilityPage } from './ProfitabilityPage';
+import { ReportActions } from '../components/ReportActions';
+import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
-import { useItemMovement, useMonthlySales, useTopParties } from '../lib/queries';
+import { useCan } from '../lib/can';
+import { useReportTools } from '../lib/report';
+import { useAging, useItemMovement, useMonthlySales, useTopParties } from '../lib/queries';
 
-type Tab = 'profit' | 'monthly' | 'parties' | 'items';
+type Tab = 'profit' | 'monthly' | 'parties' | 'aging' | 'items';
 const TABS: { key: Tab; label: TranslationKey }[] = [
   { key: 'profit', label: 'analytics.tabProfit' },
   { key: 'monthly', label: 'analytics.tabMonthly' },
   { key: 'parties', label: 'analytics.tabParties' },
+  { key: 'aging', label: 'analytics.tabAging' },
   { key: 'items', label: 'analytics.tabItems' },
 ];
 const small =
@@ -24,7 +29,10 @@ const daysAgo = (n: number) => {
   return iso(d);
 };
 
-/** Analytics & reports (التحليلات والتقارير): profitability, monthly sales, top parties, item movement. */
+/**
+ * Analytics & reports (التحليلات والتقارير): profitability, monthly sales, top parties, aging of
+ * debts, item movement.
+ */
 export function AnalyticsPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
@@ -53,6 +61,7 @@ export function AnalyticsPage() {
       {tab === 'profit' && <ProfitabilityPage embedded />}
       {tab === 'monthly' && <MonthlyTab />}
       {tab === 'parties' && <PartiesTab />}
+      {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
     </div>
   );
@@ -110,26 +119,73 @@ function MonthlyTab() {
   const { data, isLoading } = useMonthlySales(months);
   const currency = 'EGP';
   const m = (v: number) => formatMoney(v, currency, locale);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const monthName = (month: string) =>
+    new Date(`${month}-15`).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+  const subtitle = `${t('analytics.months')}: ${formatNumber(months, locale)}`;
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-2 text-sm">
-        <span className="text-muted">{t('analytics.months')}</span>
-        <select
-          className={small}
-          value={months}
-          onChange={(e) => setMonths(Number(e.target.value))}
-        >
-          {[3, 6, 12, 24].map((n) => (
-            <option key={n} value={n}>
-              {formatNumber(n, locale)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted">{t('analytics.months')}</span>
+          <select
+            className={small}
+            value={months}
+            onChange={(e) => setMonths(Number(e.target.value))}
+          >
+            {[3, 6, 12, 24].map((n) => (
+              <option key={n} value={n}>
+                {formatNumber(n, locale)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('analytics.tabMonthly'), subtitle)}
+          onExcel={() =>
+            data &&
+            report.excel(
+              t('analytics.tabMonthly'),
+              subtitle,
+              [
+                t('analytics.month'),
+                t('analytics.sales'),
+                t('analytics.returns'),
+                t('analytics.netSales'),
+                t('analytics.netPurchases'),
+                t('analytics.invoices'),
+              ],
+              [...data]
+                .reverse()
+                .map((x) => [
+                  monthName(x.month),
+                  { money: x.sales },
+                  { money: x.returns },
+                  { money: x.netSales },
+                  { money: x.netPurchases },
+                  x.invoices,
+                ]),
+              [
+                t('ledger.total'),
+                { money: data.reduce((s, x) => s + x.sales, 0) },
+                { money: data.reduce((s, x) => s + x.returns, 0) },
+                { money: data.reduce((s, x) => s + x.netSales, 0) },
+                { money: data.reduce((s, x) => s + x.netPurchases, 0) },
+                data.reduce((s, x) => s + x.invoices, 0),
+              ],
+            )
+          }
+        />
+      </div>
       {isLoading || !data ? (
         <Loading />
       ) : (
-        <>
+        <div ref={paper} className="space-y-3">
           <Card>
             <div className="mb-2 flex flex-wrap gap-4 text-xs text-muted">
               <span className="flex items-center gap-1.5">
@@ -166,15 +222,7 @@ function MonthlyTab() {
               <tbody className="divide-y divide-line">
                 {[...data].reverse().map((x) => (
                   <tr key={x.month}>
-                    <td className="px-3 py-1.5">
-                      {new Date(`${x.month}-15`).toLocaleDateString(
-                        locale === 'ar' ? 'ar-EG' : 'en-US',
-                        {
-                          month: 'long',
-                          year: 'numeric',
-                        },
-                      )}
-                    </td>
+                    <td className="px-3 py-1.5">{monthName(x.month)}</td>
                     <td className="px-3 py-1.5 text-end tnum">{m(x.sales)}</td>
                     <td className="px-3 py-1.5 text-end tnum">{m(x.returns)}</td>
                     <td className="px-3 py-1.5 text-end font-medium tnum">{m(x.netSales)}</td>
@@ -187,7 +235,172 @@ function MonthlyTab() {
               </tbody>
             </table>
           </Card>
-        </>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Aging of debts (أعمار الديون): what each customer owes — or what we owe each supplier — on open
+ * invoices, by how old the invoice is.
+ */
+function AgingTab() {
+  const { t, locale } = useT();
+  const can = useCan();
+  const [side, setSide] = useState<'customers' | 'suppliers'>('customers');
+  const { data, isLoading } = useAging(side);
+  const [statement, setStatement] = useState<{ id: string; name: string } | null>(null);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const m = (v: number) => (v ? formatMoney(v, data?.currency ?? 'EGP', locale) : '–');
+  const sideLabel = side === 'customers' ? t('analytics.customers') : t('analytics.suppliers');
+  const cols = [
+    t('aging.current'),
+    t('aging.d31_60'),
+    t('aging.d61_90'),
+    t('aging.over90'),
+  ] as const;
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1">
+          {(['customers', 'suppliers'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={side === s}
+              onClick={() => setSide(s)}
+              className={`h-8 rounded-lg px-3 text-sm font-medium ${
+                side === s ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {s === 'customers' ? t('aging.customers') : t('aging.suppliers')}
+            </button>
+          ))}
+        </div>
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('analytics.tabAging'), sideLabel)}
+          onExcel={() =>
+            data &&
+            report.excel(
+              t('analytics.tabAging'),
+              sideLabel,
+              [
+                t('common.name'),
+                ...cols,
+                t('aging.total'),
+                t('aging.balance'),
+                t('aging.onAccount'),
+              ],
+              data.rows.map((r) => [
+                r.name,
+                { money: r.current },
+                { money: r.days31To60 },
+                { money: r.days61To90 },
+                { money: r.over90 },
+                { money: r.total },
+                { money: r.balance },
+                { money: r.onAccount },
+              ]),
+              [
+                t('ledger.total'),
+                { money: data.current },
+                { money: data.days31To60 },
+                { money: data.days61To90 },
+                { money: data.over90 },
+                { money: data.total },
+              ],
+            )
+          }
+        />
+      </div>
+      {isLoading || !data ? (
+        <Loading />
+      ) : (
+        <div ref={paper} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {[
+              [cols[0], data.current, ''],
+              [cols[1], data.days31To60, ''],
+              [cols[2], data.days61To90, 'text-warning'],
+              [cols[3], data.over90, 'text-destructive'],
+              [t('aging.total'), data.total, 'font-semibold'],
+            ].map(([label, value, tone]) => (
+              <Card key={label as string} className="!p-3">
+                <p className="text-xs text-muted">{label as string}</p>
+                <p className={`mt-0.5 tnum ${tone as string}`}>
+                  {formatMoney(value as number, data.currency, locale)}
+                </p>
+              </Card>
+            ))}
+          </div>
+          {data.rows.length === 0 ? (
+            <Card>
+              <EmptyState title={t('aging.empty')} icon="parties" />
+            </Card>
+          ) : (
+            <Card padded={false} className="overflow-x-auto">
+              <table className="w-full min-w-[40rem] text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="px-3 py-2 text-start font-normal">{t('common.name')}</th>
+                    {cols.map((c) => (
+                      <th key={c} className="px-2 py-2 text-end font-normal">
+                        {c}
+                      </th>
+                    ))}
+                    <th className="px-2 py-2 text-end font-normal">{t('aging.total')}</th>
+                    <th className="px-3 py-2 text-end font-normal">{t('aging.balance')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {data.rows.map((r) => (
+                    <tr key={r.partyId}>
+                      <td className="px-3 py-1.5">
+                        {can('ledger:view') ? (
+                          <button
+                            type="button"
+                            className="text-start hover:text-brand hover:underline"
+                            onClick={() => setStatement({ id: r.partyId, name: r.name })}
+                          >
+                            {r.name}
+                          </button>
+                        ) : (
+                          r.name
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-end tnum">{m(r.current)}</td>
+                      <td className="px-2 py-1.5 text-end tnum">{m(r.days31To60)}</td>
+                      <td className="px-2 py-1.5 text-end tnum text-warning">{m(r.days61To90)}</td>
+                      <td className="px-2 py-1.5 text-end tnum text-destructive">{m(r.over90)}</td>
+                      <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.total)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">
+                        {formatMoney(r.balance, data.currency, locale)}
+                        {r.onAccount !== 0 && (
+                          <span className="block text-xs text-muted">
+                            {t('aging.onAccount')}:{' '}
+                            {formatMoney(r.onAccount, data.currency, locale)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+          <p className="text-xs text-faint">{t('aging.hint')}</p>
+        </div>
+      )}
+      {statement && (
+        <LedgerStatementSheet
+          kind="parties"
+          id={statement.id}
+          title={statement.name}
+          onClose={() => setStatement(null)}
+        />
       )}
     </div>
   );

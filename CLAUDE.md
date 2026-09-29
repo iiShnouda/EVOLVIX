@@ -51,7 +51,7 @@ first‑class concern.
 - `apps/api` — **C# / ASP.NET Core 10** server (canonical backend). EF Core + Npgsql
   (PostgreSQL), JWT auth + PBKDF2, per‑permission authorization, audit, SignalR presence.
   Controllers: `auth`, `dashboard`, `sales`, `purchases`, `products`, `parties`, `delivery`,
-  `reports`, `settings`, `presence`, `health` (and catalog, inventory, staff, …). This is the source of truth all clients call.
+  `reports`, `settings`, `audit`, `presence`, `health` (and catalog, inventory, staff, …). This is the source of truth all clients call.
 - `apps/web` — React **PWA** (also the iPhone/iPad + website surface). `src/design/` tokens,
   `src/shell/` adaptive navigation, `src/pages/` screens, `src/lib/` api client + query
   hooks, `src/i18n/` runtime.

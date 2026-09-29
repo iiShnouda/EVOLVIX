@@ -51,6 +51,19 @@ public sealed class SettingsController : ControllerBase
         if (req.DefaultMarkupPercent is int mk) s.DefaultMarkupPercent = Math.Clamp(mk, 0, 1000);
         if (req.MinMarkupPercent is int min) s.MinMarkupPercent = Math.Clamp(min, 0, 1000);
         if (req.TransfersRequireReceipt is bool receipt) s.TransfersRequireReceipt = receipt;
+        if (req.CompanyName is not null && req.CompanyName.Trim().Length > 200)
+            return BadRequest(new { message = "The name is too long.", code = "bad_name" });
+        if (req.Address is not null) s.Address = Text(req.Address, 300);
+        if (req.Phone is not null) s.Phone = Text(req.Phone, 60);
+        if (req.TaxNumber is not null) s.TaxNumber = Text(req.TaxNumber, 60);
+        if (req.CommercialRegister is not null) s.CommercialRegister = Text(req.CommercialRegister, 60);
+        if (req.Email is not null)
+        {
+            var e = Text(req.Email, 200)?.ToLowerInvariant();
+            if (e is not null && !(System.Net.Mail.MailAddress.TryCreate(e, out var a) && a.Address == e))
+                return BadRequest(new { message = "Enter a valid email.", code = "bad_email" });
+            s.Email = e;
+        }
         s.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -59,5 +72,11 @@ public sealed class SettingsController : ControllerBase
             Request.Headers.UserAgent.ToString(), s.Id.ToString());
 
         return Ok(Mapper.ToSettings(s));
+    }
+
+    private static string? Text(string s, int max)
+    {
+        var t = s.Trim();
+        return t.Length == 0 ? null : t[..Math.Min(max, t.Length)];
     }
 }

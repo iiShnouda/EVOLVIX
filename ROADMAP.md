@@ -245,6 +245,8 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
   top clients/suppliers — interactive charts.
 - **Phase 7 — Admin & close.** Users/permissions UI, company data, one‑click + scheduled
   backups, fiscal period close, PDF/Excel export everywhere, owner presence/activity view.
+  (Done 2026-09-29: permissions UI, company data, year-end close, print/PDF and Excel export,
+  aging, activity log. Left: backups, presence view.)
 - **Phase 8 — Android native client.**
 
 ## 6. Open questions for the owner (to confirm before each phase)

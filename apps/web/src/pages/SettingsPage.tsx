@@ -4,6 +4,7 @@ import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import { useCompanySettings, useUpdateSettings } from '../lib/queries';
+import { errorText } from '../lib/errors';
 import { GetApps } from '../components/GetApps';
 
 const field =
@@ -52,6 +53,11 @@ export function SettingsPage() {
       defaultMarkupPercent: form.defaultMarkupPercent,
       minMarkupPercent: form.minMarkupPercent,
       transfersRequireReceipt: form.transfersRequireReceipt,
+      address: form.address ?? '',
+      phone: form.phone ?? '',
+      email: form.email ?? '',
+      taxNumber: form.taxNumber ?? '',
+      commercialRegister: form.commercialRegister ?? '',
     });
     setSaved(true);
   }
@@ -113,6 +119,66 @@ export function SettingsPage() {
               ))}
             </select>
           </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.address')}</span>
+            <input
+              className={field}
+              dir="auto"
+              disabled={disabled}
+              maxLength={300}
+              value={form.address ?? ''}
+              onChange={(e) => set({ address: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.phone')}</span>
+            <input
+              className={field}
+              dir="ltr"
+              inputMode="tel"
+              disabled={disabled}
+              maxLength={60}
+              value={form.phone ?? ''}
+              onChange={(e) => set({ phone: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.email')}</span>
+            <input
+              className={field}
+              dir="ltr"
+              type="email"
+              disabled={disabled}
+              maxLength={200}
+              value={form.email ?? ''}
+              onChange={(e) => set({ email: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.taxNumber')}</span>
+            <input
+              className={`${field} tnum`}
+              dir="ltr"
+              disabled={disabled}
+              maxLength={60}
+              value={form.taxNumber ?? ''}
+              onChange={(e) => set({ taxNumber: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">
+              {t('settings.commercialRegister')}
+            </span>
+            <input
+              className={`${field} tnum`}
+              dir="ltr"
+              disabled={disabled}
+              maxLength={60}
+              value={form.commercialRegister ?? ''}
+              onChange={(e) => set({ commercialRegister: e.target.value })}
+            />
+          </label>
+          <p className="text-xs text-faint sm:col-span-2">{t('settings.profileHint')}</p>
         </div>
       </Card>
 
@@ -196,7 +262,7 @@ export function SettingsPage() {
           </Button>
           {saved && <span className="text-sm text-positive">{t('settings.saved')}</span>}
           {update.error && (
-            <span className="text-sm text-destructive">{(update.error as Error).message}</span>
+            <span className="text-sm text-destructive">{errorText(t, update.error)}</span>
           )}
         </div>
       )}

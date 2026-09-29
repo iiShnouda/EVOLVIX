@@ -108,6 +108,61 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Admin & close** (الإدارة والإقفال) — ROADMAP Phase 7
+- **Company profile** (بيانات المنشأة) in Settings: address, phone, email, tax number and
+  commercial register.
+  - `PUT /api/settings` takes them (a field left out is unchanged, `""` clears it; the email is
+    checked and kept in lower case). Migration `CompanyProfile`.
+  - They're printed at the top of invoices, returns, statements and reports.
+- **Print / save as PDF** on invoices and returns, account and party statements, the trial
+  balance, income statement, balance sheet, monthly sales and aging.
+  - `lib/print.ts` copies one part of the screen into `#print-root`. Only that prints, always in
+    the light theme, under the company letterhead with "printed by … on …".
+  - The browser's print dialog also saves a PDF, named after the document or report.
+- **Excel export** (a real `.xlsx`, not CSV) on the same reports and the activity log.
+  - `lib/xlsx.ts` writes it with no library: right-to-left in Arabic, money with thousands
+    separators, and a bold header and totals row.
+  - Every cell is text or a number, never a formula.
+  - Checked by opening the file in Microsoft Excel.
+- **Android app 1.1.0** (versionCode 2): the WebView can't print or save a file made in the page,
+  so the app's bridge now does both. `SKBApp.print` uses Android printing; `SKBApp.saveFile`
+  opens a "save as" (no storage permission). Same signing key; the new APK is in
+  `apps/web/public/downloads/`. Windows (WebView2) and iPhone use the browser's own print/save.
+- **Aging of debts** (أعمار الديون, `GET /api/analytics/aging?side=customers|suppliers`, Analytics
+  → "Aging of debts"):
+  - Shows what each customer owes (or what we owe each supplier) on open invoices, by invoice
+    age: up to 30 days, 31–60, 61–90, over 90.
+  - A payment not linked to an invoice settles the oldest open invoices first, so the aged total
+    never exceeds the balance.
+  - Money owed without an open invoice (e.g. an opening balance) shows as "not on an invoice".
+  - A customer in credit isn't listed.
+  - Tapping a name opens their statement.
+  - Branch-scoped staff see their branch's invoices as they stand.
+- **Year-end close** (إقفال السنة, `POST /api/ledger/close-year`, `GET /api/ledger/closed-years`,
+  `ledger:lock`; Accounts → Trial balance):
+  - Posts one closing entry (`CLOSE-<year>`, dated 31 December). It brings every revenue and
+    expense account to zero and moves the profit or loss into retained earnings.
+  - It sweeps everything not yet closed up to that day, so years close in order: none before a
+    closed one.
+  - The period is then locked through 31 December and the lock can't move back into a closed year.
+  - The closing entry can't be reversed, and the income statement leaves it out.
+  - Two people closing at once: one closes, the other is told it's already closed.
+- **Activity log** (سجل النشاط, `/audit`, `GET /api/audit`, `GET /api/audit/facets`; `audit:view`,
+  the owner's): every audited change — who, what, which record, branch, IP and time.
+  - Filters by person, record type, action and days; newest first, 50 a page.
+  - Action and record names show in the screen language.
+- **Verified:** `scripts/checks/admin.test.mjs` 100+ checks, covering:
+  - the company profile (trim, lower-case email, clearing, permissions);
+  - the activity log (filters, paging, only the owner);
+  - aging: every bucket, using backdated invoices when `PGURL` is set; unlinked payments;
+    customers in credit;
+  - the year-end close: the entry, the statements before and after, the lock, the race, and the
+    rules.
+
+  All other suites still pass on a fresh database and on an upgraded older one, with the
+  invariants. In the browser (EN/AR, phone width): the settings, an invoice printout, the
+  reports' print and Excel, aging and the activity log.
+
 **Financial statements and analytics** (التقارير الختامية والتحليلات) — DOMAIN.md §7 step 8
 - **Income statement** (قائمة الدخل, `GET /api/ledger/income-statement?from&to`): revenue (sales
   less sales returns, other income, stocktake gains) − cost of goods sold = gross profit;
@@ -680,6 +735,8 @@ own permission, and roles bundle them
 - An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
   screens use `lib/errors.ts` to show it in Arabic too.
+- A closed year can't be reopened. Aging ages invoices by UTC day.
+- Printing on iPhone depends on Safari's print sheet (not tested on a device here).
 
 ## 7. What's NEXT (pick up here)
 Detailed slice order is in `DOMAIN.md` §7 (warehouses ✅ → transfers ✅ → units & prices ✅ → charges & delivery ✅ → money → …).
@@ -714,13 +771,18 @@ and warehouses shipped):
      the trial balance balancing.
    - ~~cheques & promissory notes, portfolios~~ done (step 7)
    - ~~financial statements and analytics~~ done (step 8)
-   - Next is DOMAIN.md §7 step 9: payroll & attendance (§2.9) — only if the company uses it;
-     ask the owner first. Then ROADMAP Phase 7 (backups, period close, PDF/Excel export).
+   - ~~Phase 7: year-end close, print/PDF, Excel export, aging, activity log~~ done (admin & close)
+   - **Verify on the live DB** after deploy: fill in the company profile, print an invoice and a
+     statement (and save one as PDF), export the trial balance to Excel, look at aging.
+     **Update the Android app** on phones (1.1.0) so printing and Excel work there.
+   - Close last year only when the owner is ready: it can't be undone.
+   - Left: DOMAIN.md §7 step 9, payroll & attendance (§2.9) — only if the company uses it; ask
+     the owner first. Then backups (needs Docker to test the image change).
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).
 9. **Phase 6 — Analytics:** movement, dead stock, net monthly sales, top clients (charts).
-10. **Phase 7 — Admin & close:** ~~users UI~~ (done: Staff & permissions), backups, period close, PDF/Excel export, owner presence view.
+10. **Phase 7 — Admin & close:** ~~users UI~~ (done: Staff & permissions), ~~period close, PDF/Excel export, activity log~~ (done), backups, owner presence view.
 11. ~~**Phase 8 — Android**~~ done: a real Android app ships (see above).
 
 **Decisions (2026-09-29, owner):**

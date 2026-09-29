@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatDate, formatMoney, type TranslationKey } from '@skb/shared';
 import { Sheet } from './Sheet';
 import { Spinner } from './ui';
 import { useT } from '../lib/i18n';
 import { errorText } from '../lib/errors';
 import { useLedgerStatement } from '../lib/queries';
+import { useReportTools } from '../lib/report';
+import { ReportActions } from './ReportActions';
 
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -16,7 +18,11 @@ const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
  * What an entry is: a manual entry keeps the description its author typed; an automatic one is
  * named by its source in the screen language (its number is shown beside it).
  */
-export function entryTitle(t: (k: TranslationKey) => string, sourceType: string, description: string) {
+export function entryTitle(
+  t: (k: TranslationKey) => string,
+  sourceType: string,
+  description: string,
+) {
   return sourceType === 'MANUAL' ? description : t(`ledger.source.${sourceType}` as TranslationKey);
 }
 
@@ -55,6 +61,69 @@ export function LedgerStatementSheet({
   const [to, setTo] = useState(iso(now));
   const { data, isLoading, error } = useLedgerStatement(kind, id, from, to);
   const money = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const heading = `${t('ledger.statement')} — ${title}`;
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
+  const side = (v: number) => (v > 0 ? t('ledger.drSide') : v < 0 ? t('ledger.crSide') : '');
+
+  function excel() {
+    if (!data) return;
+    report.excel(
+      heading,
+      period,
+      [
+        t('ledger.date'),
+        t('ledger.number'),
+        t('ledger.sourceCol'),
+        t('ledger.description'),
+        t('ledger.account'),
+        t('ledger.memo'),
+        t('ledger.debit'),
+        t('ledger.credit'),
+        t('ledger.balance'),
+        '',
+      ],
+      [
+        [
+          formatDate(from, locale),
+          '',
+          '',
+          t('ledger.opening'),
+          '',
+          '',
+          null,
+          null,
+          { money: Math.abs(data.opening) },
+          side(data.opening),
+        ],
+        ...data.lines.map((l) => [
+          formatDate(l.date, locale),
+          l.number,
+          t(`ledger.source.${l.sourceType}` as TranslationKey),
+          entryTitle(t, l.sourceType, l.description),
+          l.accountCode ? `${l.accountCode} ${l.accountName}` : '',
+          l.memo ?? '',
+          l.debit ? { money: l.debit } : null,
+          l.credit ? { money: l.credit } : null,
+          { money: Math.abs(l.balance) },
+          side(l.balance),
+        ]),
+      ],
+      [
+        t('ledger.total'),
+        '',
+        '',
+        '',
+        '',
+        '',
+        { money: data.totalDebit },
+        { money: data.totalCredit },
+        { money: Math.abs(data.closing) },
+        side(data.closing),
+      ],
+    );
+  }
 
   return (
     <Sheet
@@ -84,6 +153,13 @@ export function LedgerStatementSheet({
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
+        <div className="ms-auto">
+          <ReportActions
+            disabled={!data}
+            onPrint={() => report.print(paper.current, heading, period)}
+            onExcel={excel}
+          />
+        </div>
       </div>
       {error && <p className="mt-3 text-sm text-destructive">{errorText(t, error)}</p>}
       {isLoading || !data ? (
@@ -91,7 +167,7 @@ export function LedgerStatementSheet({
           <Spinner size={24} />
         </div>
       ) : (
-        <>
+        <div ref={paper}>
           <dl className="mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-xs text-muted">{t('ledger.opening')}</dt>
@@ -124,7 +200,9 @@ export function LedgerStatementSheet({
                   className="flex items-start justify-between gap-3 py-2 text-sm"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{entryTitle(t, l.sourceType, l.description)}</p>
+                    <p className="truncate font-medium">
+                      {entryTitle(t, l.sourceType, l.description)}
+                    </p>
                     <p className="truncate text-xs text-muted">
                       {formatDate(l.date, locale)} · <span className="tnum">{l.number}</span> ·{' '}
                       {t(`ledger.source.${l.sourceType}` as TranslationKey)}
@@ -154,7 +232,7 @@ export function LedgerStatementSheet({
               ))}
             </ul>
           )}
-        </>
+        </div>
       )}
     </Sheet>
   );

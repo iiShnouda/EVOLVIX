@@ -679,6 +679,14 @@ export interface CompanySettings {
   defaultTaxPercent: number;
   /** The receiving warehouse confirms a transfer before the goods count there. */
   transfersRequireReceipt: boolean;
+  /** Company profile, printed on invoices, vouchers and statements. */
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  /** Tax registration number (الرقم الضريبي). */
+  taxNumber?: string | null;
+  /** Commercial register number (السجل التجاري). */
+  commercialRegister?: string | null;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -1107,19 +1115,6 @@ export type ConnectionState = 'online' | 'connecting' | 'offline';
 // Audit & presence (server‑authoritative, foundation for owner/CEO view)
 // ---------------------------------------------------------------------------
 
-export interface AuditEntry {
-  id: string;
-  actorId: string;
-  actorName: string;
-  action: string;
-  resource: string;
-  resourceId?: string;
-  branchId?: string;
-  ip?: string;
-  userAgent?: string;
-  createdAt: string;
-}
-
 export interface PresenceEntry {
   userId: string;
   fullName: string;
@@ -1408,4 +1403,63 @@ export interface ItemMovement {
     lastSale: string | null;
   }[];
   currency: string;
+}
+
+/** One row of the activity log (سجل النشاط): who did what, when and from where. */
+export interface AuditEntry {
+  id: string;
+  actorId: string;
+  actorName: string;
+  /** e.g. "create", "update", "cancel", "login". */
+  action: string;
+  /** e.g. "sales_invoice", "party", "ledger". */
+  resource: string;
+  resourceId: string | null;
+  branchName: string | null;
+  ip: string | null;
+  createdAt: string;
+}
+
+export interface AuditFacets {
+  resources: string[];
+  actions: string[];
+  actors: { id: string; name: string }[];
+}
+
+/** What a party owes (customers) or is owed (suppliers) on open invoices, by their age. */
+export interface AgingRow {
+  partyId: string;
+  name: string;
+  /** Up to 30 days old. */
+  current: number;
+  days31To60: number;
+  days61To90: number;
+  over90: number;
+  /** Still owed on open invoices. */
+  total: number;
+  /** The party's whole balance (positive = owed). */
+  balance: number;
+  /** Balance not tied to an open invoice (opening balances, payments on account…). */
+  onAccount: number;
+}
+
+export interface Aging {
+  side: 'customers' | 'suppliers';
+  rows: AgingRow[];
+  current: number;
+  days31To60: number;
+  days61To90: number;
+  over90: number;
+  total: number;
+  currency: string;
+}
+
+/** A closed financial year (إقفال السنة). */
+export interface ClosedYear {
+  year: number;
+  entryId: string;
+  /** Revenue − expenses moved into retained earnings. */
+  netProfit: number;
+  closedAt: string;
+  closedByName: string;
 }
