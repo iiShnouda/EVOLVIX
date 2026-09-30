@@ -609,7 +609,13 @@ function PartyDetails({ party }: { party: Party }) {
   const { t } = useT();
   const factory = isFactory(party.types);
   const phones = [party.phone, ...(party.otherPhones ?? [])].filter((x): x is string => !!x);
-  if (!party.contactName && phones.length === 0 && !party.address && !party.shippingAddress && !party.notes)
+  if (
+    !party.contactName &&
+    phones.length === 0 &&
+    !party.address &&
+    !party.shippingAddress &&
+    !party.notes
+  )
     return null;
   return (
     <dl className="mt-3 space-y-1 text-xs text-muted">

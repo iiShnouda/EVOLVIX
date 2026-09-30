@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
+using SKB.Api.Domain;
 using SKB.Api.Models;
 
 namespace SKB.Api.Services;
@@ -185,6 +186,56 @@ public static class Catalog
             .Select(p => p.Sku).ToListAsync();
         var max = used.Select(s => int.TryParse(s[5..], out var n) ? n : 0).DefaultIfEmpty(0).Max();
         return $"ITEM-{max + 1:D5}";
+    }
+
+    public const int MaxSupplierCode = 64;
+
+    /// <summary>
+    /// The main supplier asked for on an item or model: null = not given (leave it); "" = none; else
+    /// an open party that is a SUPPLIER (a factory is a supplier).
+    /// </summary>
+    public static async Task<(bool Given, Guid? Id, CatalogError? Error)> SupplierAsync(AppDbContext db, string? raw)
+    {
+        if (raw is null) return (false, null, null);
+        if (raw.Trim().Length == 0) return (true, null, null);
+        if (!Guid.TryParse(raw, out var id) || !await db.Parties.AnyAsync(p =>
+                p.Id == id && p.IsActive && p.Types.Contains(nameof(PartyType.SUPPLIER))))
+            return (true, null, new CatalogError("supplier_not_found", "Choose one of your suppliers."));
+        return (true, id, null);
+    }
+
+    /// <summary>A supplier's own code for an item, kept as typed (trimmed); null when empty.</summary>
+    public static string? SupplierCode(string? s)
+    {
+        var t = s?.Trim();
+        return string.IsNullOrEmpty(t) ? null : t[..Math.Min(MaxSupplierCode, t.Length)];
+    }
+
+    /// <summary>
+    /// A typed amount (e.g. "330", "330.5", "٣٣٠٫٥") in minor units, for searching by price;
+    /// null when the text isn't a plain amount.
+    /// </summary>
+    public static long? ParseAmount(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = new StringBuilder();
+        foreach (var ch in s.Trim())
+        {
+            if (ch is ',' or '٬') continue; // thousands separators
+            t.Append(ch switch
+            {
+                >= '٠' and <= '٩' => (char)('0' + (ch - '٠')),
+                >= '۰' and <= '۹' => (char)('0' + (ch - '۰')),
+                '٫' => '.',
+                _ => ch,
+            });
+        }
+        var clean = t.ToString();
+        if (clean.Length == 0 || clean.Length > 15 || !clean.All(c => char.IsAsciiDigit(c) || c == '.')) return null;
+        return decimal.TryParse(clean, System.Globalization.NumberStyles.AllowDecimalPoint,
+            System.Globalization.CultureInfo.InvariantCulture, out var major) && major >= 0
+            ? (long)decimal.Round(major * 100, MidpointRounding.AwayFromZero)
+            : null;
     }
 
     /// <summary>A clean user-typed SKU / code: trimmed, upper case, no spaces; null when empty.</summary>

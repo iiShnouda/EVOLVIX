@@ -54,7 +54,7 @@ public static class Mapper
                     .Select(x => new UnitPriceDto(x.Level.Id.ToString(), x.Price.Price!.Value, x.Price.Source!))
                     .ToArray())).ToArray(),
             p.ModelId?.ToString(), p.Size is null ? null : Loc.Name(p.Size), p.Color is null ? null : Loc.Name(p.Color),
-            matchedUnitId?.ToString());
+            matchedUnitId?.ToString(), p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode);
     }
 
     /// <summary>

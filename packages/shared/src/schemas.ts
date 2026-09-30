@@ -307,6 +307,9 @@ export const createProductSchema = z.object({
   reorderLevel: z.number().int().min(0).default(0),
   units: z.array(itemUnitSchema).min(1).max(10),
   prices: z.array(priceSchema).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
@@ -317,6 +320,9 @@ export const updateProductSchema = z.object({
   reorderLevel: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
   units: z.array(itemUnitSchema).min(1).max(10).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 
@@ -332,6 +338,9 @@ export const createModelSchema = z.object({
   colorIds: z.array(z.string().uuid()),
   units: z.array(itemUnitSchema).min(1).max(10),
   prices: z.array(priceSchema).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type CreateModelInput = z.infer<typeof createModelSchema>;
 
@@ -343,6 +352,9 @@ export const updateModelSchema = z.object({
   addSizeIds: z.array(z.string().uuid()).optional(),
   addColorIds: z.array(z.string().uuid()).optional(),
   units: z.array(itemUnitSchema).min(1).max(10).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type UpdateModelInput = z.infer<typeof updateModelSchema>;
 

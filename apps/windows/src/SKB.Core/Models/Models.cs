@@ -51,6 +51,10 @@ public sealed class Product
     public int StockOnHand { get; set; }
     public int ReorderLevel { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>Main supplier (a factory is a supplier) and its own code for the item.</summary>
+    public string? SupplierId { get; set; }
+    public string? SupplierName { get; set; }
+    public string? SupplierCode { get; set; }
 }
 
 public sealed class SalesDocumentSummary

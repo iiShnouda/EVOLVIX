@@ -83,6 +83,11 @@ public sealed class ModelsController : ControllerBase
             return BadRequest(new { message = $"Code {code} is already used.", code = "duplicate_code" });
         model.Code = code;
 
+        var (_, supplier, supplierError) = await Catalog.SupplierAsync(_db, req.SupplierId);
+        if (supplierError is not null) return BadRequest(new { message = supplierError.Message, code = supplierError.Code });
+        model.SupplierId = supplier;
+        model.SupplierCode = Catalog.SupplierCode(req.SupplierCode);
+
         var (sizes, sizeError) = await OptionsAsync(req.SizeIds, VariantKind.SIZE);
         if (sizeError is not null) return sizeError;
         var (colors, colorError) = await OptionsAsync(req.ColorIds, VariantKind.COLOR);
@@ -150,6 +155,18 @@ public sealed class ModelsController : ControllerBase
             if (reorder < 0) return BadRequest(new { message = "The reorder level can't be negative.", code = "bad_reorder" });
             model.ReorderLevel = reorder;
             foreach (var v in variants) v.ReorderLevel = reorder;
+        }
+        if (req.SupplierId is not null)
+        {
+            var (_, supplier, supplierError) = await Catalog.SupplierAsync(_db, req.SupplierId);
+            if (supplierError is not null) return BadRequest(new { message = supplierError.Message, code = supplierError.Code });
+            model.SupplierId = supplier;
+            foreach (var v in variants) v.SupplierId = supplier;
+        }
+        if (req.SupplierCode is not null)
+        {
+            model.SupplierCode = Catalog.SupplierCode(req.SupplierCode);
+            foreach (var v in variants) v.SupplierCode = model.SupplierCode;
         }
         if (req.IsActive == false && model.IsActive)
         {
@@ -300,7 +317,7 @@ public sealed class ModelsController : ControllerBase
     private async Task<ModelDetailDto?> DetailAsync(Guid id)
     {
         var model = await _db.ProductModels.AsNoTracking()
-            .Include(m => m.Category).Include(m => m.Units).ThenInclude(u => u.Unit)
+            .Include(m => m.Category).Include(m => m.Supplier).Include(m => m.Units).ThenInclude(u => u.Unit)
             .FirstOrDefaultAsync(m => m.Id == id);
         if (model is null) return null;
         var variants = await _db.Products.AsNoTracking().Include(p => p.Size).Include(p => p.Color)
@@ -338,7 +355,7 @@ public sealed class ModelsController : ControllerBase
                     v.ColorId?.ToString(), v.StockOnHand, v.IsActive, book.BaseOf(v.Id)?.Barcode,
                     withOwnPrices.Contains(v.Id), v.SalePrice))
                 .ToArray(),
-            currency);
+            currency, model.SupplierId?.ToString(), model.Supplier?.Name, model.SupplierCode);
     }
 
     /// <summary>Every size × color pair (either list may be empty) not in <paramref name="existing"/>.</summary>
@@ -372,6 +389,7 @@ public sealed class ModelsController : ControllerBase
             {
                 ModelId = model.Id, Model = model, SizeId = size?.Id, ColorId = color?.Id,
                 CategoryId = model.CategoryId, ReorderLevel = model.ReorderLevel, Currency = currency,
+                SupplierId = model.SupplierId, SupplierCode = model.SupplierCode,
                 IsActive = model.IsActive,
                 Sku = await Catalog.UniqueSkuAsync(_db, string.Join("-", parts), reserved),
             };

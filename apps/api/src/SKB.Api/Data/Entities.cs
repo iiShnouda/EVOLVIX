@@ -314,6 +314,10 @@ public class ProductModel : INamed
     public string Code { get; set; } = "";
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
+    /// <summary>Main supplier and its code for the model; every variant follows them.</summary>
+    public Guid? SupplierId { get; set; }
+    public Party? Supplier { get; set; }
+    public string? SupplierCode { get; set; }
     public int ReorderLevel { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -367,6 +371,14 @@ public class Product : INamed
 
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
+
+    /// <summary>
+    /// The item's main supplier (the factory it comes from), and that supplier's own code for it
+    /// (owner decision 2026-09-30). A variant follows its model's.
+    /// </summary>
+    public Guid? SupplierId { get; set; }
+    public Party? Supplier { get; set; }
+    public string? SupplierCode { get; set; }
 
     /// <summary>Set on a variant: its model, and its size and/or color. Its name is composed from them.</summary>
     public Guid? ModelId { get; set; }

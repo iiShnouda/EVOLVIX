@@ -10,6 +10,7 @@ import {
   type UnitRow,
 } from '../components/UnitsEditor';
 import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../components/PriceGrid';
+import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
@@ -58,6 +59,8 @@ export function ProductEditorPage() {
   const [sku, setSku] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [reorder, setReorder] = useState('0');
+  const [supplierId, setSupplierId] = useState('');
+  const [supplierCode, setSupplierCode] = useState('');
   const [rows, setRows] = useState<UnitRow[]>([]);
   const [prices, setPricesInput] = useState<PriceInputs>({});
   const [loadedId, setLoadedId] = useState<string | null>(null);
@@ -67,16 +70,21 @@ export function ProductEditorPage() {
   useEffect(() => {
     if (
       !d ||
-      loadedId === `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}`
+      loadedId ===
+        `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}:${d.supplierId}:${d.supplierCode}`
     )
       return;
     setNames(namesFrom(d.name));
     setSku(d.sku);
     setCategoryId(d.categoryId);
     setReorder(String(d.reorderLevel));
+    setSupplierId(d.supplierId ?? '');
+    setSupplierCode(d.supplierCode ?? '');
     setRows(rowsFrom(d));
     setPricesInput(inputsFrom(d.prices));
-    setLoadedId(`${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}`);
+    setLoadedId(
+      `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}:${d.supplierId}:${d.supplierCode}`,
+    );
   }, [d, loadedId]);
 
   // A new item starts in pieces.
@@ -127,6 +135,8 @@ export function ProductEditorPage() {
           categoryId,
           sku: sku.trim() || undefined,
           reorderLevel: Math.max(0, Math.floor(Number(reorder) || 0)),
+          supplierId: supplierId || undefined,
+          supplierCode: supplierCode.trim() || undefined,
           units: unitsInput,
           prices: canPrices ? priceList.filter((p) => p.price !== null) : undefined,
         });
@@ -141,6 +151,9 @@ export function ProductEditorPage() {
         if (!isVariant && categoryId !== d.categoryId) input.categoryId = categoryId;
         const nextReorder = Math.max(0, Math.floor(Number(reorder) || 0));
         if (nextReorder !== d.reorderLevel) input.reorderLevel = nextReorder;
+        if (!isVariant && supplierId !== (d.supplierId ?? '')) input.supplierId = supplierId;
+        if (!isVariant && supplierCode.trim() !== (d.supplierCode ?? ''))
+          input.supplierCode = supplierCode.trim();
         const before = JSON.stringify(
           unitRowsToInput(rowsFrom(d)).sort((a, b) => a.factor - b.factor),
         );
@@ -259,6 +272,14 @@ export function ProductEditorPage() {
                 />
               </label>
             </div>
+            <SupplierFields
+              supplierId={supplierId}
+              supplierCode={supplierCode}
+              currentName={d?.supplierName}
+              onSupplier={setSupplierId}
+              onCode={setSupplierCode}
+              disabled={!canFields || isVariant}
+            />
           </Card>
 
           <Card className="space-y-3">

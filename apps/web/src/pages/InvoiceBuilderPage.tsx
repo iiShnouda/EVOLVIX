@@ -142,7 +142,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const costOf = (p: Product) => stockHere?.get(p.id)?.cost ?? p.costPrice;
 
   const [search, setSearch] = useState('');
-  const productList = useProductSearch(search);
+  /** Only this supplier's items ("" = every supplier). Picking one lists its items at once. */
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [listOpen, setListOpen] = useState(false);
+  const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
+  const productList = useProductSearch(search, false, supplierFilter);
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
@@ -213,7 +217,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const term = search.trim();
     if (!term) return;
     try {
-      const found = await api.get<Product[]>(`/products?search=${encodeURIComponent(term)}`);
+      const q = new URLSearchParams({ search: term });
+      if (supplierFilter) q.set('supplierId', supplierFilter);
+      const found = await api.get<Product[]>(`/products?${q}`);
       const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
       if (hit) addProduct(hit, hit.matchedUnitId);
     } catch {
@@ -486,52 +492,79 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             <label className="mb-1.5 block text-sm font-medium text-muted">
               {t('invoice.addItems')}
             </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
-                <Icon name="search" size={16} />
-              </span>
-              <input
-                ref={searchBox}
-                className={`${field} ps-8`}
-                placeholder={t('invoice.searchProduct')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void addFromSearch();
-                  }
+            <div className="relative flex flex-col gap-2 sm:flex-row">
+              <select
+                className={`${field} sm:w-56 sm:shrink-0`}
+                aria-label={t('catalog.supplier')}
+                value={supplierFilter}
+                onChange={(e) => {
+                  setSupplierFilter(e.target.value);
+                  searchBox.current?.focus();
+                  setListOpen(!!e.target.value);
                 }}
-              />
-              {search && (
-                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
-                  {productList.isLoading ? (
-                    <div className="grid place-items-center py-6 text-muted">
-                      <Spinner size={18} />
-                    </div>
-                  ) : products.length === 0 ? (
-                    <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-                  ) : (
-                    products.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => addProduct(p)}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{p.name}</span>
-                          <span className="text-xs text-muted tnum">
-                            {p.sku} · {formatQuantity(available(p), p.units, locale)}{' '}
-                            {t('invoice.inStock')} · {t('invoice.cost')}{' '}
-                            {formatMoney(costOf(p), currency, locale)}
+              >
+                <option value="">{t('invoice.filterSupplier')}</option>
+                {(suppliers.data?.items ?? []).map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.name}
+                  </option>
+                ))}
+              </select>
+              <div className="relative min-w-0 flex-1">
+                <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+                  <Icon name="search" size={16} />
+                </span>
+                <input
+                  ref={searchBox}
+                  className={`${field} ps-8`}
+                  placeholder={t('invoice.searchHint')}
+                  aria-label={t('invoice.searchProduct')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onFocus={() => setListOpen(true)}
+                  // Later than a click on a result, so the click still lands.
+                  onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addFromSearch();
+                    } else if (e.key === 'Escape') {
+                      setSearch('');
+                      setListOpen(false);
+                    }
+                  }}
+                />
+                {(search || (supplierFilter && listOpen)) && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+                    {productList.isLoading ? (
+                      <div className="grid place-items-center py-6 text-muted">
+                        <Spinner size={18} />
+                      </div>
+                    ) : products.length === 0 ? (
+                      <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+                    ) : (
+                      products.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => addProduct(p)}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{p.name}</span>
+                            <span className="text-xs text-muted tnum">
+                              {p.sku}
+                              {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
+                              {formatQuantity(available(p), p.units, locale)} {t('invoice.inStock')}{' '}
+                              · {t('invoice.cost')} {formatMoney(costOf(p), currency, locale)}
+                            </span>
                           </span>
-                        </span>
-                        <Icon name="plus" size={16} className="text-brand" />
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                          <Icon name="plus" size={16} className="text-brand" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <p className="mt-1 text-xs text-faint">{t('invoice.scanHint')}</p>
 
@@ -1016,7 +1049,9 @@ function DeliveryCard({
               className={field}
               value={value.address}
               maxLength={300}
-              placeholder={party?.shippingAddress || party?.address || t('delivery.addressPlaceholder')}
+              placeholder={
+                party?.shippingAddress || party?.address || t('delivery.addressPlaceholder')
+              }
               onChange={(e) => set({ address: e.target.value })}
             />
           </label>

@@ -288,6 +288,10 @@ export interface Product {
   colorName?: string | null;
   /** When the search text was exactly one of its barcodes: that unit (scanning a carton adds a carton). */
   matchedUnitId?: string | null;
+  /** The item's main supplier (a factory is a supplier) and that supplier's own code for it. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -944,6 +948,10 @@ export interface ProductDetail {
   units: ItemUnitRow[];
   prices: PriceCell[];
   currency: string;
+  /** The item's main supplier (a factory is a supplier) and that supplier's own code for it. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 export interface ModelSummary {
@@ -986,6 +994,10 @@ export interface ModelDetail {
   colors: VariantOption[];
   variants: ModelVariant[];
   currency: string;
+  /** The model's main supplier and code; every variant follows them. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 export interface StocktakeResult {

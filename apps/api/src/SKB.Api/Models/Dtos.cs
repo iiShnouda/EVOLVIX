@@ -29,7 +29,8 @@ public record ProductDto(
     string Id, string Sku, string Name, string Unit, long CostPrice, long SalePrice,
     string Currency, int StockOnHand, int ReorderLevel, bool IsActive,
     string? Barcode, string CategoryId, ProductUnitDto[] Units,
-    string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId);
+    string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 /// <param name="Prices">The unit's price at each active level that has one (see PriceBook for the order).</param>
 public record ProductUnitDto(string UnitId, string Name, int Factor, string? Barcode, UnitPriceDto[] Prices);
@@ -383,10 +384,13 @@ public record ItemUnitRequest(string? UnitId, int Factor, string? Barcode = null
 /// <summary>A price for one unit at one level (minor units). Null clears the item's own price (inherit again).</summary>
 public record PriceRequest(string? UnitId, string? PriceLevelId, long? Price);
 
+/// <param name="SupplierId">The item's main supplier (a factory is a supplier); "" or null = none.</param>
+/// <param name="SupplierCode">That supplier's own code for the item.</param>
 public record CreateProductRequest(
     string? CategoryId, ItemUnitRequest[]? Units,
     string? Name = null, string? Sku = null,
-    int ReorderLevel = 0, PriceRequest[]? Prices = null);
+    int ReorderLevel = 0, PriceRequest[]? Prices = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 /// <summary>
 /// Any field left null is unchanged. For a variant only SKU, reorder level, active and the units'
@@ -394,7 +398,8 @@ public record CreateProductRequest(
 /// </summary>
 public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
-    string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null);
+    string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 
@@ -410,7 +415,8 @@ public record ProductDetailDto(
     string Id, string Sku, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, int StockOnHand, long CostPrice, bool HasMovements,
     string? ModelId, string? ModelName, string? SizeId, string? SizeName, string? ColorId, string? ColorName,
-    ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency);
+    ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 public record ModelSummaryDto(
     string Id, string Code, string Name, string CategoryName, int Variants, int StockOnHand, bool IsActive);
@@ -423,13 +429,15 @@ public record ModelVariantDto(
 public record ModelDetailDto(
     string Id, string Code, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, bool HasMovements, ItemUnitDto[] Units, PriceCellDto[] Prices,
-    VariantOptionDto[] Sizes, VariantOptionDto[] Colors, ModelVariantDto[] Variants, string Currency);
+    VariantOptionDto[] Sizes, VariantOptionDto[] Colors, ModelVariantDto[] Variants, string Currency,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 /// <summary>A new model: its variants are made for every size × color given (one list may be empty).</summary>
 public record CreateModelRequest(
     string? CategoryId, ItemUnitRequest[]? Units, string[]? SizeIds, string[]? ColorIds,
     string? Name = null, string? Code = null,
-    int ReorderLevel = 0, PriceRequest[]? Prices = null);
+    int ReorderLevel = 0, PriceRequest[]? Prices = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 /// <summary>
 /// Any field left null is unchanged. New sizes / colors add the missing variants; units apply to
@@ -438,7 +446,7 @@ public record CreateModelRequest(
 public record UpdateModelRequest(
     string? Name = null, string? CategoryId = null,
     int? ReorderLevel = null, bool? IsActive = null, string[]? AddSizeIds = null, string[]? AddColorIds = null,
-    ItemUnitRequest[]? Units = null);
+    ItemUnitRequest[]? Units = null, string? SupplierId = null, string? SupplierCode = null);
 
 // ---- Staff & permissions (owner decision 2026-09-29: every action has its own permission) ----
 

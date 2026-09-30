@@ -188,12 +188,14 @@ export function usePresence(enabled: boolean) {
 // ---------------------------------------------------------------------------
 
 /** Product search for the invoice line picker. `search` empty → recent/first products. */
-export function useProductSearch(search: string, inStockOnly = false) {
+/** Items by name / SKU / barcode / supplier code / price; `supplierId` keeps one supplier's items. */
+export function useProductSearch(search: string, inStockOnly = false, supplierId = '') {
   const query = new URLSearchParams();
   if (search) query.set('search', search);
   if (inStockOnly) query.set('inStockOnly', 'true');
+  if (supplierId) query.set('supplierId', supplierId);
   return useQuery({
-    queryKey: ['products', search, inStockOnly],
+    queryKey: ['products', search, inStockOnly, supplierId],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
   });
 }

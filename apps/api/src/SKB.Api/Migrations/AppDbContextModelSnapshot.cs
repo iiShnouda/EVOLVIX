@@ -1427,6 +1427,12 @@ namespace SKB.Api.Migrations
                     b.Property<int>("StockOnHand")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SupplierCode")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CategoryId");
@@ -1437,6 +1443,8 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Sku")
                         .IsUnique();
+
+                    b.HasIndex("SupplierId");
 
                     b.HasIndex("ModelId", "SizeId", "ColorId")
                         .IsUnique()
@@ -1473,12 +1481,20 @@ namespace SKB.Api.Migrations
                     b.Property<int>("ReorderLevel")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SupplierCode")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("SupplierId");
 
                     b.ToTable("ProductModels");
                 });
@@ -2822,6 +2838,11 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("SizeId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Party", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
 
                     b.Navigation("Color");
@@ -2829,6 +2850,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Model");
 
                     b.Navigation("Size");
+
+                    b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ProductModel", b =>
@@ -2839,7 +2862,14 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("SKB.Api.Data.Party", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
+
+                    b.Navigation("Supplier");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>

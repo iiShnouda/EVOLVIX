@@ -245,6 +245,13 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>().HasIndex(x => x.IssueDate);
         b.Entity<SalesDocument>().HasIndex(x => x.BranchId);
 
+        // An item's / model's main supplier (a party). Restrict: a supplier with items can't vanish.
+        b.Entity<Product>().HasIndex(p => p.SupplierId);
+        b.Entity<Product>().HasOne(p => p.Supplier).WithMany()
+            .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ProductModel>().HasOne(m => m.Supplier).WithMany()
+            .HasForeignKey(m => m.SupplierId).OnDelete(DeleteBehavior.Restrict);
+
         b.Entity<Session>()
             .HasOne(s => s.Staff).WithMany(st => st.Sessions)
             .HasForeignKey(s => s.StaffId).OnDelete(DeleteBehavior.Cascade);

@@ -10,6 +10,7 @@ import {
   type UnitRow,
 } from '../components/UnitsEditor';
 import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../components/PriceGrid';
+import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
@@ -60,6 +61,8 @@ export function ModelEditorPage() {
   const [code, setCode] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [reorder, setReorder] = useState('0');
+  const [supplierId, setSupplierId] = useState('');
+  const [supplierCode, setSupplierCode] = useState('');
   const [sizeIds, setSizeIds] = useState<string[]>([]);
   const [colorIds, setColorIds] = useState<string[]>([]);
   const [rows, setRows] = useState<UnitRow[]>([]);
@@ -69,12 +72,14 @@ export function ModelEditorPage() {
   const m = model.data;
   useEffect(() => {
     const stamp = m
-      ? `${m.id}:${m.variants.length}:${m.units.length}:${m.prices.map((p) => p.own).join()}:${m.name}`
+      ? `${m.id}:${m.variants.length}:${m.units.length}:${m.prices.map((p) => p.own).join()}:${m.name}:${m.supplierId}:${m.supplierCode}`
       : '';
     if (!m || loaded === stamp) return;
     setNames(namesFrom(m.name));
     setCategoryId(m.categoryId);
     setReorder(String(m.reorderLevel));
+    setSupplierId(m.supplierId ?? '');
+    setSupplierCode(m.supplierCode ?? '');
     setRows(rowsFrom(m));
     setPricesInput(inputsFrom(m.prices));
     setSizeIds([]);
@@ -147,6 +152,8 @@ export function ModelEditorPage() {
           categoryId,
           code: code.trim() || undefined,
           reorderLevel: Math.max(0, Math.floor(Number(reorder) || 0)),
+          supplierId: supplierId || undefined,
+          supplierCode: supplierCode.trim() || undefined,
           sizeIds,
           colorIds,
           units: unitsInput,
@@ -161,6 +168,9 @@ export function ModelEditorPage() {
         if (categoryId !== m.categoryId) input.categoryId = categoryId;
         const nextReorder = Math.max(0, Math.floor(Number(reorder) || 0));
         if (nextReorder !== m.reorderLevel) input.reorderLevel = nextReorder;
+        if (supplierId !== (m.supplierId ?? '')) input.supplierId = supplierId;
+        if (supplierCode.trim() !== (m.supplierCode ?? ''))
+          input.supplierCode = supplierCode.trim();
         if (sizeIds.length) input.addSizeIds = sizeIds;
         if (colorIds.length) input.addColorIds = colorIds;
         const before = JSON.stringify(
@@ -265,6 +275,15 @@ export function ModelEditorPage() {
                     onChange={(e) => setReorder(e.target.value)}
                   />
                 </label>
+              </div>
+              <div className="mt-3">
+                <SupplierFields
+                  supplierId={supplierId}
+                  supplierCode={supplierCode}
+                  currentName={m?.supplierName}
+                  onSupplier={setSupplierId}
+                  onCode={setSupplierCode}
+                />
               </div>
             </fieldset>
           </Card>

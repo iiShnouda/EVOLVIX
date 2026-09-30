@@ -206,6 +206,12 @@ public sealed class PurchasesController : ControllerBase
             var lineCost = lineTotal - docDiscount;
             _inventory.ReceiveValue(product, warehouse, baseQty, lineCost,
                 StockMovementType.PURCHASE_IN, doc.Id, number);
+            // The first supplier an item is bought from becomes its main supplier, so the invoice's
+            // supplier filter works without setting every item up by hand. A variant follows its
+            // model, so it is left for the model editor.
+            if (product.SupplierId is null && product.ModelId is null
+                && party.Types.Contains(nameof(PartyType.SUPPLIER)))
+                product.SupplierId = party.Id;
 
             doc.Lines.Add(new DocumentLine
             {
