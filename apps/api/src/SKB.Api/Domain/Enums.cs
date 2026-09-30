@@ -20,6 +20,13 @@ public enum DocumentType
     COLLECTION_RECEIPT,
     PAYMENT_VOUCHER,
     EXPENSE,
+    /// <summary>
+    /// A pending sales invoice (فاتورة معلّقة): made by a sales person, waiting for the accountant.
+    /// Its goods are held; no stock, money, balance or ledger moves until it is approved, which
+    /// makes a SALES_INVOICE from it (as a quotation becomes one). A type of its own, so no sales
+    /// report can count it.
+    /// </summary>
+    SALES_ORDER,
 }
 
 public enum DocumentStatus

@@ -73,7 +73,8 @@ public record SalesDetailDto(
     string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
     string? InvoiceId = null, string? InvoiceNumber = null,
-    string? DepartmentId = null, string? DepartmentName = null);
+    string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
+    string? BranchId = null);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -103,6 +104,39 @@ public record CreateSalesInvoiceRequest(
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
     string? PaidAccountId = null, string? DepartmentId = null);
+
+/// <summary>
+/// Approving a pending invoice: what the customer pays now and into which account; optionally new
+/// discounts — per line (<paramref name="LineDiscounts"/>) and for the whole invoice
+/// (<paramref name="Charges"/>: only its DISCOUNT / EXTRA_DISCOUNT rows count; null = keep them).
+/// </summary>
+public record ApproveOrderRequest(
+    long PaidAmount = 0, string? PaidAccountId = null, LineDiscountRequest[]? LineDiscounts = null,
+    ChargeRequest[]? Charges = null, string? Notes = null, string? DueDate = null, bool OverrideFloor = false,
+    string? WarehouseId = null);
+
+/// <summary>
+/// A customer's account for the accountant. <paramref name="Balance"/> is everything they owe now
+/// (opening balance, invoices, returns, receipts, notes); <paramref name="Outstanding"/> is what is
+/// left on the invoices listed; <paramref name="Pending"/> is the total of invoices waiting for approval.
+/// </summary>
+public record CustomerAccountDto(
+    string PartyId, string Name, string? Phone, string? Address, string? ShippingAddress, string? Notes,
+    long Balance, string Currency, long Invoiced, long Discounts, long Returned, long Outstanding, long Pending,
+    AccountDepartmentDto[] Departments, AccountDocumentDto[] Documents);
+
+/// <summary>One department's share of a customer's account (no department: DepartmentId null).</summary>
+public record AccountDepartmentDto(
+    string? DepartmentId, string Name, int Invoices, long Total, long Discounts, long Returns, long Outstanding);
+
+/// <summary>An invoice, return or pending invoice on a customer's account.</summary>
+public record AccountDocumentDto(
+    string Id, string Number, string Type, string Status, string IssueDate, string? DepartmentId,
+    string? DepartmentName, string BranchName, string StaffName, long Subtotal, long DiscountTotal,
+    long GrandTotal, long PaidAmount, long Outstanding, string? Notes, string? SourceNumber);
+
+/// <summary>A line's discount (minor units, for the whole line).</summary>
+public record LineDiscountRequest(string? LineId, long Discount);
 
 /// <summary>
 /// Turning a quotation into an invoice: its lines, prices and charges come from the quotation; this

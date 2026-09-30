@@ -7,6 +7,8 @@
  *  - Timestamps are ISO‑8601 strings when serialized over the wire.
  */
 
+import type { ChargeKind } from './charges';
+
 // ---------------------------------------------------------------------------
 // Locale & presentation
 // ---------------------------------------------------------------------------
@@ -47,6 +49,8 @@ export type Permission =
   | 'sales:override_floor'
   | 'sales:return'
   | 'sales:quote'
+  | 'sales:order'
+  | 'sales:approve'
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
@@ -323,7 +327,9 @@ export type DocumentType =
   | 'PURCHASE_RETURN'
   | 'COLLECTION_RECEIPT'
   | 'PAYMENT_VOUCHER'
-  | 'EXPENSE';
+  | 'EXPENSE'
+  /** A pending sales invoice waiting for the accountant (فاتورة معلّقة). */
+  | 'SALES_ORDER';
 
 export type DocumentStatus =
   | 'DRAFT'
@@ -1799,4 +1805,74 @@ export interface PayrollRun {
   postedByName: string | null;
   lines: PayrollLine[];
   currency: string;
+}
+
+// ---------------------------------------------------------------------------
+// Pending invoices and the customer's account (owner decision 2026-09-30)
+// ---------------------------------------------------------------------------
+
+/** POST /sales/orders/{id}/approve: the accountant's payment and, optionally, new discounts. */
+export interface ApproveOrderInput {
+  paidAmount: number;
+  paidAccountId?: string;
+  /** New discount per line (minor units, the whole line); lines left out keep theirs. */
+  lineDiscounts?: { lineId: string; discount: number }[];
+  /** New invoice discounts (DISCOUNT / EXTRA_DISCOUNT); left out = keep them. */
+  charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
+  notes?: string;
+  overrideFloor?: boolean;
+}
+
+/** One department's share of a customer's account (departmentId null = no department). */
+export interface AccountDepartment {
+  departmentId: string | null;
+  name: string;
+  invoices: number;
+  total: number;
+  discounts: number;
+  returns: number;
+  outstanding: number;
+}
+
+/** An invoice, return or pending invoice on a customer's account. */
+export interface AccountDocument {
+  id: string;
+  number: string;
+  type: DocumentType;
+  status: DocumentStatus;
+  issueDate: string;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  branchName: string;
+  staffName: string;
+  subtotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  paidAmount: number;
+  /** What is still owed on it (invoices only). */
+  outstanding: number;
+  notes?: string | null;
+  sourceNumber?: string | null;
+}
+
+/** GET /sales/customers/{id}/account: a customer's account for the accountant (no cost or profit). */
+export interface CustomerAccount {
+  partyId: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  shippingAddress?: string | null;
+  notes?: string | null;
+  /** Everything they owe now (opening balance, invoices, returns, receipts, notes). */
+  balance: number;
+  currency: string;
+  invoiced: number;
+  discounts: number;
+  returned: number;
+  /** Left on the invoices listed. */
+  outstanding: number;
+  /** Pending invoices waiting for approval. */
+  pending: number;
+  departments: AccountDepartment[];
+  documents: AccountDocument[];
 }

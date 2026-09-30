@@ -223,8 +223,14 @@ function PartyCard({
       )}
 
       {((party.isActive && (can('receipts:create') || can('payments:create'))) ||
-        can('ledger:view')) && (
+        can('ledger:view') ||
+        (party.types.includes('CUSTOMER') && can('sales:view'))) && (
         <div className="mt-3 flex flex-wrap gap-2">
+          {party.types.includes('CUSTOMER') && can('sales:view') && (
+            <Button size="sm" variant="secondary" onClick={() => navigate(`/parties/${party.id}/account`)}>
+              {t('account.open')}
+            </Button>
+          )}
           {can('ledger:view') && (
             <Button size="sm" variant="ghost" onClick={() => setStatement(true)}>
               {t('ledger.partyStatement')}

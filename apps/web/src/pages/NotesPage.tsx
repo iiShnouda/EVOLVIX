@@ -73,7 +73,19 @@ export function NotesPage() {
   const can = useCan();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'receivable') as Tab;
-  const [creating, setCreating] = useState<NoteDirection | null>(null);
+  // `?receiveFor=<party>&invoice=<id>&amount=<minor>` (e.g. after approving an invoice) opens the
+  // receive form for that customer, settling that invoice.
+  const receiveFor = params.get('receiveFor');
+  const [creating, setCreating] = useState<NoteDirection | null>(
+    receiveFor && can('notes:receive') ? 'RECEIVABLE' : null,
+  );
+  const initial = receiveFor
+    ? {
+        partyId: receiveFor,
+        documentId: params.get('invoice') ?? undefined,
+        amount: Number(params.get('amount')) || undefined,
+      }
+    : undefined;
 
   return (
     <div className="space-y-5">
@@ -122,7 +134,16 @@ export function NotesPage() {
       {tab === 'receivable' && <NotesTab direction="RECEIVABLE" />}
       {tab === 'payable' && <NotesTab direction="PAYABLE" />}
       {tab === 'portfolios' && <PortfoliosTab />}
-      {creating && <CreateSheet direction={creating} onClose={() => setCreating(null)} />}
+      {creating && (
+        <CreateSheet
+          direction={creating}
+          initial={creating === 'RECEIVABLE' ? initial : undefined}
+          onClose={() => {
+            setCreating(null);
+            if (receiveFor) setParams({ tab }, { replace: true });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -589,21 +610,34 @@ function PortfoliosTab() {
 
 /* ----------------------------------------------------------- create */
 
-function CreateSheet({ direction, onClose }: { direction: NoteDirection; onClose: () => void }) {
+function CreateSheet({
+  direction,
+  onClose,
+  initial,
+}: {
+  direction: NoteDirection;
+  onClose: () => void;
+  /** Start with this party, amount (minor units) and the invoice it settles. */
+  initial?: { partyId: string; documentId?: string; amount?: number };
+}) {
   const { t, locale } = useT();
   const receivable = direction === 'RECEIVABLE';
   const parties = useParties({ page: 1, pageSize: 100, active: true });
   const create = useCreateNote();
-  const [partyId, setPartyId] = useState('');
+  const [partyId, setPartyId] = useState(initial?.partyId ?? '');
   const [kind, setKind] = useState<NoteKind>('CHEQUE');
   const [serial, setSerial] = useState('');
   const [bank, setBank] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(initial?.amount ? String(toMajor(initial.amount)) : '');
   const [due, setDue] = useState(today());
   const [drawer, setDrawer] = useState('');
   const [guarantor, setGuarantor] = useState('');
   const [remark, setRemark] = useState('');
-  const [alloc, setAlloc] = useState<Record<string, string>>({});
+  const [alloc, setAlloc] = useState<Record<string, string>>(
+    initial?.documentId && initial.amount
+      ? { [initial.documentId]: String(toMajor(initial.amount)) }
+      : {},
+  );
   const open = useOpenInvoices(partyId, receivable ? 'sales' : 'purchases');
   const invoices = (open.data ?? []).filter((o) => !receivable || !o.onCodParcel);
   const total = minor(amount);

@@ -6,6 +6,8 @@ import type {
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
   CreateSalesInvoiceInput,
+  ApproveOrderInput,
+  CustomerAccount,
   UpdateSettingsInput,
   BranchWithWarehouses,
   CreateBranchInput,
@@ -126,7 +128,7 @@ export function useDashboard() {
 /** Which side of the business a document belongs to (also its API prefix). */
 export type DocScope = 'sales' | 'purchases';
 /** Invoices, the returns issued against them, or (sales) price quotations. */
-export type DocKind = 'invoices' | 'returns' | 'quotations';
+export type DocKind = 'invoices' | 'returns' | 'quotations' | 'orders';
 
 export function useDocumentList(
   scope: DocScope,
@@ -244,6 +246,52 @@ function invalidateAfterPosting(qc: ReturnType<typeof useQueryClient>, scope: Do
   void qc.invalidateQueries({ queryKey: ['parties'] });
   void qc.invalidateQueries({ queryKey: ['report'] });
   void qc.invalidateQueries({ queryKey: ['ledger'] });
+}
+
+/** Save a pending invoice for the accountant: goods held, nothing posted. */
+export function useCreateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSalesInvoiceInput) => api.post<SalesDocument>('/sales/orders', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** The accountant approves a pending invoice: it becomes a posted sales invoice. */
+export function useApproveOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ApproveOrderInput }) =>
+      api.post<SalesDocument>(`/sales/orders/${id}/approve`, input),
+    onSuccess: () => {
+      invalidateAfterPosting(qc, 'sales');
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+export function useCancelOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/orders/${id}/cancel`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** A customer's account for the accountant: per department, every invoice, pending ones. */
+export function useCustomerAccount(partyId: string | null, departmentId = '') {
+  const query = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
+  return useQuery({
+    queryKey: ['account', partyId, departmentId],
+    queryFn: () => api.get<CustomerAccount>(`/sales/customers/${partyId}/account${query}`),
+    enabled: !!partyId,
+  });
 }
 
 export function useCreateSalesInvoice() {

@@ -34,6 +34,7 @@ import { DeliveriesPage } from './pages/DeliveriesPage';
 import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
+import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
@@ -163,6 +164,7 @@ export default function App() {
               element={<ReturnBuilderPage scope="sales" />}
             />
             <Route path="/parties" element={<PartiesPage />} />
+            <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inventory/items/:id" element={<ItemCardPage />} />

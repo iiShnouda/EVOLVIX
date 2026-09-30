@@ -29,6 +29,7 @@ import {
   useCompanySettings,
   useDepartments,
   useCreatePurchaseInvoice,
+  useCreateOrder,
   useCreateQuotation,
   useCreateSalesInvoice,
   useInventory,
@@ -208,10 +209,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const createSale = useCreateSalesInvoice();
   const createPurchase = useCreatePurchaseInvoice();
   const createQuote = useCreateQuotation();
-  const pending = createSale.isPending || createPurchase.isPending || createQuote.isPending;
+  const createOrder = useCreateOrder();
+  // A pending invoice (فاتورة معلّقة) waits for the accountant, who takes the payment. Someone who
+  // may only save those gets no "paid now" and one button.
+  const canOrder = isSale && !isQuote && can('sales:order');
+  const orderOnly = canOrder && !can('sales:create');
+  const pending =
+    createSale.isPending || createPurchase.isPending || createQuote.isPending || createOrder.isPending;
   const serverError = (createSale.error ??
     createPurchase.error ??
-    createQuote.error) as ApiError | null;
+    createQuote.error ??
+    createOrder.error) as ApiError | null;
 
   const currency = settings.data?.currency ?? 'EGP';
   const minMarkup = settings.data?.minMarkupPercent ?? 0;
@@ -372,8 +380,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     !(isQuote && !validUntil) &&
     !pending;
 
-  async function save() {
-    const paidAmount = paidNow === '' ? 0 : toMinor(Number(paidNow));
+  async function save(asOrder = orderOnly) {
+    const paidAmount = asOrder || paidNow === '' ? 0 : toMinor(Number(paidNow));
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
       if (isQuote) {
@@ -399,7 +407,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         });
         navigate(backTo);
       } else if (isSale) {
-        await createSale.mutateAsync({
+        await (asOrder ? createOrder : createSale).mutateAsync({
           partyId,
           lines: rows.map((r) => ({
             productId: r.line.product.id,
@@ -430,7 +438,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               ? delivery.carrierId
               : undefined,
         });
-        navigate('/sales');
+        navigate(asOrder ? '/sales?tab=orders' : '/sales');
       } else {
         await createPurchase.mutateAsync({
           partyId,
@@ -968,7 +976,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             </dl>
 
             <div className="mt-3 space-y-2">
-              {isQuote ? (
+              {orderOnly ? (
+                <p className="text-xs text-faint">{t('order.saveHint')}</p>
+              ) : isQuote ? (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">{t('quote.validUntil')}</span>
                   <input
@@ -992,7 +1002,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   />
                 </label>
               )}
-              {!isQuote && Number(paidNow) > 0 && (
+              {!isQuote && !orderOnly && Number(paidNow) > 0 && (
                 <MoneyAccountPicker
                   className={field}
                   label={t(isSale ? 'money.receivedInto' : 'money.paidInto')}
@@ -1033,10 +1043,28 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               icon="check"
               loading={pending}
               disabled={!canSave}
-              onClick={save}
+              onClick={() => void save()}
             >
-              {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
+              {pending
+                ? t('invoice.saving')
+                : isQuote
+                  ? t('quote.save')
+                  : orderOnly
+                    ? t('order.save')
+                    : t('invoice.save')}
             </Button>
+            {canOrder && !orderOnly && (
+              <Button
+                className="mt-2 w-full"
+                variant="secondary"
+                icon="receipts"
+                loading={createOrder.isPending}
+                disabled={!canSave}
+                onClick={() => void save(true)}
+              >
+                {t('order.save')}
+              </Button>
+            )}
             {isSale && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>
             )}

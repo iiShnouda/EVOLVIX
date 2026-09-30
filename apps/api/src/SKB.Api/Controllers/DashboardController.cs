@@ -49,7 +49,9 @@ public sealed class DashboardController : ControllerBase
             .OrderBy(p => p.StockOnHand).ToListAsync();
         var book = await PriceBook.LoadAsync(_db, lowStock.Select(p => p.Id));
 
-        var recent = await Scoped(_db.SalesDocuments).Where(d => d.Type != DocumentType.QUOTATION)
+        // Posted documents only: quotations and pending invoices move nothing.
+        var recent = await Scoped(_db.SalesDocuments)
+            .Where(d => d.Type != DocumentType.QUOTATION && d.Type != DocumentType.SALES_ORDER)
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .OrderByDescending(d => d.IssueDate).Take(6).ToListAsync();
 

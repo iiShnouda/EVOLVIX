@@ -13,6 +13,7 @@ import { DocumentPreview } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import {
+  useCancelOrder,
   useCancelQuotation,
   useDocument,
   useDocumentList,
@@ -23,9 +24,15 @@ import { useDeviceInfo } from '../lib/device';
 import { statusOf } from '../lib/status';
 import { errorText } from '../lib/errors';
 import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
+import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 
 const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
-  sales: { invoices: 'sales.invoices', returns: 'sales.returns', quotations: 'quote.tab' },
+  sales: {
+    invoices: 'sales.invoices',
+    orders: 'order.tab',
+    returns: 'sales.returns',
+    quotations: 'quote.tab',
+  },
   purchases: { invoices: 'purchases.invoices', returns: 'purchases.returns' },
 };
 
@@ -50,18 +57,34 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab');
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  // Pending invoices: for whoever saves them and whoever approves them.
+  const seesOrders =
+    isSales && (permissions.includes('sales:order') || permissions.includes('sales:approve'));
   const kind: DocKind =
-    tab === 'returns' ? 'returns' : tab === 'quotations' && isSales ? 'quotations' : 'invoices';
+    tab === 'returns'
+      ? 'returns'
+      : tab === 'quotations' && isSales
+        ? 'quotations'
+        : tab === 'orders' && seesOrders
+          ? 'orders'
+          : 'invoices';
   const kinds: DocKind[] = isSales
-    ? ['invoices', 'returns', 'quotations']
+    ? seesOrders
+      ? ['invoices', 'orders', 'returns', 'quotations']
+      : ['invoices', 'returns', 'quotations']
     : ['invoices', 'returns'];
 
-  const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
+  // A sales person who may only save pending invoices still starts one from here.
+  const canStart = canCreate || (isSales && permissions.includes('sales:order'));
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
   const canQuote = isSales && permissions.includes('sales:quote');
   const [converting, setConverting] = useState(false);
+  const [approving, setApproving] = useState(false);
   const cancelQuote = useCancelQuotation();
+  const cancelOrder = useCancelOrder();
+  const myId = useAuth((s) => s.user?.id);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   // `?doc=<id>` (e.g. from an item card) opens that document straight away.
@@ -119,8 +142,53 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     </>
   ) : undefined;
 
+  const order = detail.data?.type === 'SALES_ORDER' ? detail.data : undefined;
+  const orderOpen = order && order.status === 'PENDING';
+  const canApprove = permissions.includes('sales:approve');
+  // Its maker (who may save them) or an approver may cancel it; the server checks the same.
+  const canCancelOrder =
+    canApprove || (permissions.includes('sales:order') && order?.staffId === myId);
+  const orderActions = order ? (
+    <>
+      {orderOpen && canApprove && (
+        <Button size="sm" icon="check" onClick={() => setApproving(true)}>
+          {t('order.approve')}
+        </Button>
+      )}
+      {orderOpen && canCancelOrder && !confirmCancel && (
+        <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(true)}>
+          {t('order.cancel')}
+        </Button>
+      )}
+      {orderOpen && confirmCancel && (
+        <Button
+          size="sm"
+          variant="danger"
+          loading={cancelOrder.isPending}
+          onClick={() => cancelOrder.mutate(order.id, { onSettled: () => setConfirmCancel(false) })}
+        >
+          {t('order.cancelConfirm')}
+        </Button>
+      )}
+      {order.invoiceId && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            setSelectedId(order.invoiceId!);
+            setParams({ doc: order.invoiceId! }, { replace: true });
+          }}
+        >
+          {order.invoiceNumber}
+        </Button>
+      )}
+    </>
+  ) : undefined;
+
   const returnAction = quote ? (
     quoteActions
+  ) : order ? (
+    orderActions
   ) : canReturn && isReturnable(detail.data) ? (
     <Button
       size="sm"
@@ -146,7 +214,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 {t('quote.new')}
               </Button>
             ) : undefined
-          ) : canCreate ? (
+          ) : canStart ? (
             <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
               {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
             </Button>
@@ -182,7 +250,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             </div>
           ) : rows.length === 0 ? (
             <EmptyState
-              title={kind === 'quotations' ? t('quote.empty') : t('common.empty')}
+              title={
+                kind === 'quotations'
+                  ? t('quote.empty')
+                  : kind === 'orders'
+                    ? t('order.empty')
+                    : t('common.empty')
+              }
               icon={kind === 'returns' ? 'returns' : scope}
             />
           ) : isPhone ? (
@@ -262,6 +336,20 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
 
       {cancelQuote.error && (
         <p className="text-sm text-destructive">{errorText(t, cancelQuote.error)}</p>
+      )}
+      {cancelOrder.error && (
+        <p className="text-sm text-destructive">{errorText(t, cancelOrder.error)}</p>
+      )}
+      {approving && order && (
+        <ApproveOrderSheet
+          order={order}
+          onClose={() => setApproving(false)}
+          onDone={(invoice) => {
+            setApproving(false);
+            setSelectedId(invoice.id);
+            setParams({ doc: invoice.id }, { replace: true });
+          }}
+        />
       )}
       {converting && quote && (
         <ConvertQuoteSheet

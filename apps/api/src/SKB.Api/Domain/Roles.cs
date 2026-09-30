@@ -16,6 +16,13 @@ public static class Permissions
     public const string SalesReturn = "sales:return";
     /// <summary>Make and cancel price quotations (turning one into an invoice needs sales:create).</summary>
     public const string SalesQuote = "sales:quote";
+    /// <summary>
+    /// Save a pending invoice (فاتورة معلّقة) for the accountant (owner decision 2026-09-30): priced
+    /// and checked like an invoice, its goods held for it, but nothing posted until approved.
+    /// </summary>
+    public const string SalesOrder = "sales:order";
+    /// <summary>Approve a pending invoice: adjust its discounts, take the payment and post it.</summary>
+    public const string SalesApprove = "sales:approve";
     public const string PurchasesView = "purchases:view";
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
@@ -157,6 +164,7 @@ public static class Permissions
     public static readonly string[] All =
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
+        SalesOrder, SalesApprove,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
@@ -190,6 +198,7 @@ public static class RolePermissions
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.SalesOverrideFloor, Permissions.SalesReturn, Permissions.SalesQuote,
+            Permissions.SalesOrder, Permissions.SalesApprove,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
@@ -216,7 +225,7 @@ public static class RolePermissions
         [Role.SALES] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
-            Permissions.SalesQuote,
+            Permissions.SalesQuote, Permissions.SalesOrder,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
         },
