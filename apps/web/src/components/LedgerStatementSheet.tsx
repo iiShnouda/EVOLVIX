@@ -1,10 +1,18 @@
 import { useRef, useState } from 'react';
-import { formatDate, formatMoney, type TranslationKey, companyToday } from '@skb/shared';
+import {
+  formatDate,
+  formatMoney,
+  type LedgerLine,
+  type LedgerStatement,
+  type TranslationKey,
+  companyToday,
+} from '@skb/shared';
 import { Sheet } from './Sheet';
 import { Spinner } from './ui';
 import { useT } from '../lib/i18n';
 import { errorText } from '../lib/errors';
 import { useLedgerStatement } from '../lib/queries';
+import { useAuth } from '../stores/auth';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from './ReportActions';
 
@@ -56,7 +64,14 @@ export function LedgerStatementSheet({
   const { t, locale } = useT();
   const [from, setFrom] = useState(() => `${companyToday().slice(0, 4)}-01-01`);
   const [to, setTo] = useState(companyToday);
-  const { data, isLoading, error } = useLedgerStatement(kind, id, from, to);
+  const isParty = kind === 'parties';
+  const [branchId, setBranchId] = useState('');
+  const [withItems, setWithItems] = useState(false);
+  const branches = useAuth((s) => s.user?.branches ?? []);
+  const { data, isLoading, error } = useLedgerStatement(kind, id, from, to, {
+    branchId: isParty ? branchId : undefined,
+    items: isParty && withItems,
+  });
   const money = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
@@ -66,6 +81,77 @@ export function LedgerStatementSheet({
 
   function excel() {
     if (!data) return;
+    if (isParty) {
+      report.excel(
+        heading,
+        period,
+        [
+          t('ledger.kindCol'),
+          t('ledger.entryCol'),
+          t('ledger.noteCol'),
+          t('ledger.date'),
+          t('ledger.book'),
+          t('ledger.debit'),
+          t('ledger.credit'),
+          t('ledger.balance'),
+          '',
+          t('ledger.docNumber'),
+        ],
+        [
+          [
+            t('ledger.previousBalance'),
+            '',
+            '',
+            formatDate(from, locale),
+            '',
+            null,
+            null,
+            { money: Math.abs(data.opening) },
+            side(data.opening),
+            '',
+          ],
+          ...data.lines.flatMap((l) => [
+            [
+              t(`ledger.source.${l.sourceType}` as TranslationKey),
+              [entryTitle(t, l.sourceType, l.description), l.memo].filter(Boolean).join(' — '),
+              l.note ?? '',
+              formatDate(l.date, locale),
+              l.book ?? '',
+              l.debit ? { money: l.debit } : null,
+              l.credit ? { money: l.credit } : null,
+              { money: Math.abs(l.balance) },
+              side(l.balance),
+              l.documentNumber ?? l.number,
+            ],
+            ...(l.items ?? []).map((it) => [
+              '',
+              `   ${it.productName}`,
+              `${it.quantity} ${it.unitName ?? ''}`,
+              '',
+              '',
+              { money: it.unitPrice },
+              it.discount ? { money: it.discount } : null,
+              { money: it.lineTotal },
+              '',
+              '',
+            ]),
+          ]),
+        ],
+        [
+          t('ledger.total'),
+          '',
+          '',
+          '',
+          '',
+          { money: data.totalDebit },
+          { money: data.totalCredit },
+          { money: Math.abs(data.closing) },
+          side(data.closing),
+          '',
+        ],
+      );
+      return;
+    }
     report.excel(
       heading,
       period,
@@ -127,7 +213,7 @@ export function LedgerStatementSheet({
       title={`${t('ledger.statement')} — ${title}`}
       onClose={onClose}
       closeLabel={t('common.close')}
-      wide
+      wide={isParty ? 'full' : true}
     >
       <div className="flex flex-wrap items-end gap-3">
         <label className="block">
@@ -150,6 +236,25 @@ export function LedgerStatementSheet({
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
+        {isParty && branches.length > 1 && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('perf.branch')}</span>
+            <select className={small} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">{t('ledger.allBranches')}</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {isParty && (
+          <label className="flex h-9 items-center gap-2 text-sm">
+            <input type="checkbox" checked={withItems} onChange={(e) => setWithItems(e.target.checked)} />
+            {t('ledger.withItems')}
+          </label>
+        )}
         <div className="ms-auto">
           <ReportActions
             disabled={!data}
@@ -165,7 +270,9 @@ export function LedgerStatementSheet({
         </div>
       ) : (
         <div ref={paper}>
-          <dl className="mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm sm:grid-cols-4">
+          <dl
+            className={`mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm ${isParty ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}
+          >
             <div>
               <dt className="text-xs text-muted">{t('ledger.opening')}</dt>
               <dd>
@@ -180,6 +287,14 @@ export function LedgerStatementSheet({
               <dt className="text-xs text-muted">{t('ledger.credit')}</dt>
               <dd className="tnum">{money(data.totalCredit)}</dd>
             </div>
+            {isParty && (
+              <div>
+                <dt className="text-xs text-muted">{t('ledger.periodBalance')}</dt>
+                <dd>
+                  <SidedMoney value={data.totalDebit - data.totalCredit} currency={data.currency} />
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted">{t('ledger.closing')}</dt>
               <dd className="font-semibold">
@@ -187,7 +302,9 @@ export function LedgerStatementSheet({
               </dd>
             </div>
           </dl>
-          {data.lines.length === 0 ? (
+          {isParty ? (
+            <PartyStatementTable data={data} from={from} />
+          ) : data.lines.length === 0 ? (
             <p className="mt-4 text-sm text-muted">{t('ledger.noLines')}</p>
           ) : (
             <ul className="mt-3 divide-y divide-line">
@@ -203,9 +320,7 @@ export function LedgerStatementSheet({
                     <p className="truncate text-xs text-muted">
                       {formatDate(l.date, locale)} · <span className="tnum">{l.number}</span> ·{' '}
                       {t(`ledger.source.${l.sourceType}` as TranslationKey)}
-                      {kind === 'parties' || l.accountCode
-                        ? ` · ${l.accountCode} ${l.accountName}`
-                        : ''}
+                      {l.accountCode ? ` · ${l.accountCode} ${l.accountName}` : ''}
                     </p>
                     {l.memo && <p className="truncate text-xs text-faint">{l.memo}</p>}
                   </div>
@@ -232,5 +347,127 @@ export function LedgerStatementSheet({
         </div>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * A party statement laid out like the old program's كشف حساب: kind, entry, note, date, book (the
+ * invoice's department, the receipt's cash box), debit, credit, running balance and document number,
+ * starting from the previous balance; with items, each invoice's lines under it.
+ */
+function PartyStatementTable({ data, from }: { data: LedgerStatement; from: string }) {
+  const { t, locale } = useT();
+  const money = (v: number) => formatMoney(v, data.currency, locale);
+  const cell = 'p-2 align-top';
+  return (
+    <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
+      <table className="w-full min-w-[860px] text-sm">
+        <thead className="bg-surface-2 text-xs text-muted">
+          <tr>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.kindCol')}</th>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.entryCol')}</th>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.noteCol')}</th>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.date')}</th>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.book')}</th>
+            <th className={`${cell} text-end font-medium`}>{t('ledger.debit')}</th>
+            <th className={`${cell} text-end font-medium`}>{t('ledger.credit')}</th>
+            <th className={`${cell} text-end font-medium`}>{t('ledger.balance')}</th>
+            <th className={`${cell} text-start font-medium`}>{t('ledger.docNumber')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--c-line)]">
+          <tr className="bg-surface-2/50 font-medium">
+            <td className={cell}>{t('ledger.previousBalance')}</td>
+            <td className={cell} />
+            <td className={cell} />
+            <td className={`${cell} tnum`}>{formatDate(from, locale)}</td>
+            <td className={cell} />
+            <td className={cell} />
+            <td className={cell} />
+            <td className={`${cell} text-end`}>
+              <SidedMoney value={data.opening} currency={data.currency} />
+            </td>
+            <td className={cell} />
+          </tr>
+          {data.lines.map((l, i) => (
+            <PartyStatementRow key={`${l.entryId}-${i}`} line={l} money={money} currency={data.currency} />
+          ))}
+          {data.lines.length === 0 && (
+            <tr>
+              <td colSpan={9} className="p-3 text-muted">
+                {t('ledger.noLines')}
+              </td>
+            </tr>
+          )}
+        </tbody>
+        <tfoot className="bg-surface-2 font-semibold">
+          <tr>
+            <td className={cell} colSpan={5}>
+              {t('ledger.total')}
+            </td>
+            <td className={`${cell} text-end tnum`}>{money(data.totalDebit)}</td>
+            <td className={`${cell} text-end tnum`}>{money(data.totalCredit)}</td>
+            <td className={`${cell} text-end`}>
+              <SidedMoney value={data.closing} currency={data.currency} />
+            </td>
+            <td className={cell} />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function PartyStatementRow({
+  line: l,
+  money,
+  currency,
+}: {
+  line: LedgerLine;
+  money: (v: number) => string;
+  currency: string;
+}) {
+  const { t, locale } = useT();
+  const cell = 'p-2 align-top';
+  return (
+    <>
+      <tr>
+        <td className={cell}>{t(`ledger.source.${l.sourceType}` as TranslationKey)}</td>
+        <td className={`${cell} max-w-72`}>
+          <span className="line-clamp-2">
+            {entryTitle(t, l.sourceType, l.description)}
+            {l.memo && <span className="text-muted"> — {l.memo}</span>}
+          </span>
+          {l.branchName && <span className="block text-xs text-faint">{l.branchName}</span>}
+        </td>
+        <td className={`${cell} max-w-48 text-muted`}>
+          <span className="line-clamp-2">{l.note ?? ''}</span>
+        </td>
+        <td className={`${cell} whitespace-nowrap tnum`}>{formatDate(l.date, locale)}</td>
+        <td className={cell}>{l.book ?? ''}</td>
+        <td className={`${cell} text-end tnum`}>{l.debit ? money(l.debit) : ''}</td>
+        <td className={`${cell} text-end tnum`}>{l.credit ? money(l.credit) : ''}</td>
+        <td className={`${cell} whitespace-nowrap text-end`}>
+          <SidedMoney value={l.balance} currency={currency} />
+        </td>
+        <td className={`${cell} tnum`}>{l.documentNumber ?? l.number}</td>
+      </tr>
+      {(l.items ?? []).map((it, j) => (
+        <tr key={j} className="text-xs text-muted">
+          <td className="px-2 py-1" />
+          <td className="px-2 py-1 ps-6" colSpan={2}>
+            {it.productName}
+            {it.isBonus && ` (${t('invoice.bonus')})`}
+          </td>
+          <td className="px-2 py-1 tnum" colSpan={2}>
+            {it.quantity} {it.unitName ?? ''} × {money(it.unitPrice)}
+          </td>
+          <td className="px-2 py-1 text-end tnum">{it.discount ? `−${money(it.discount)}` : ''}</td>
+          <td className="px-2 py-1" />
+          <td className="px-2 py-1 text-end tnum">{money(it.lineTotal)}</td>
+          <td className="px-2 py-1" />
+        </tr>
+      ))}
+    </>
   );
 }

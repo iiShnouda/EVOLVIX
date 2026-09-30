@@ -79,13 +79,14 @@ public static class Mapper
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
-        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent);
+        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent,
+        s.PendingHoldDays);
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,
         p.SalesPriceLevelId?.ToString(), p.PurchasePriceLevelId?.ToString(),
         p.Email, p.TaxNumber, p.Address, p.IsActive,
-        p.OtherPhones.ToArray(), p.ContactName, p.ShippingAddress, p.Notes);
+        p.OtherPhones.ToArray(), p.ContactName, p.ShippingAddress, p.Notes, p.CreditLimit);
 
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);

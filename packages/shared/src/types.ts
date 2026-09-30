@@ -51,6 +51,8 @@ export type Permission =
   | 'sales:quote'
   | 'sales:order'
   | 'sales:approve'
+  | 'sales:over_credit'
+  | 'parties:credit_limit'
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
@@ -216,6 +218,8 @@ export interface Party {
   /** Where goods are shipped (عنوان الشحن); delivered sales start at it, else at `address`. */
   shippingAddress?: string | null;
   notes?: string | null;
+  /** The most they may owe (حد الائتمان), minor units; null = no limit. */
+  creditLimit?: number | null;
   /**
    * Net balance in minor units.
    *  > 0  → they owe us (receivable, مدين)
@@ -760,6 +764,8 @@ export interface CompanySettings {
   timeZone: string;
   /** The most discount staff may give (% of a line's worth) unless their own limit says otherwise; 100 = none. */
   maxDiscountPercent: number;
+  /** A pending invoice holds its goods this many days (0 = until approved or cancelled). */
+  pendingHoldDays: number;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -1339,6 +1345,24 @@ export interface LedgerLine {
   memo: string | null;
   /** Running balance (debits − credits) after this line. */
   balance: number;
+  /** Party statements: the document's number, book (الدفتر: an invoice's department, a receipt's
+   *  cash box or bank), notes and branch; with items, an invoice's lines (كشف أصناف). */
+  documentNumber?: string | null;
+  book?: string | null;
+  note?: string | null;
+  branchName?: string | null;
+  items?: StatementItem[] | null;
+}
+
+/** One item line of an invoice or return on a statement (no cost). */
+export interface StatementItem {
+  productName: string;
+  quantity: number;
+  unitName?: string | null;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+  isBonus: boolean;
 }
 
 export interface LedgerStatement {
@@ -1875,4 +1899,6 @@ export interface CustomerAccount {
   pending: number;
   departments: AccountDepartment[];
   documents: AccountDocument[];
+  /** Their credit limit; null = none. */
+  creditLimit?: number | null;
 }

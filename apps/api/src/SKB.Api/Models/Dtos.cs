@@ -123,7 +123,7 @@ public record ApproveOrderRequest(
 public record CustomerAccountDto(
     string PartyId, string Name, string? Phone, string? Address, string? ShippingAddress, string? Notes,
     long Balance, string Currency, long Invoiced, long Discounts, long Returned, long Outstanding, long Pending,
-    AccountDepartmentDto[] Departments, AccountDocumentDto[] Documents);
+    AccountDepartmentDto[] Departments, AccountDocumentDto[] Documents, long? CreditLimit = null);
 
 /// <summary>One department's share of a customer's account (no department: DepartmentId null).</summary>
 public record AccountDepartmentDto(
@@ -172,7 +172,8 @@ public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100);
+    string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
+    int PendingHoldDays = 0);
 
 /// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(
@@ -180,7 +181,7 @@ public record UpdateSettingsRequest(
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
-    int? MaxDiscountPercent = null);
+    int? MaxDiscountPercent = null, int? PendingHoldDays = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -364,7 +365,10 @@ public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
     string? Email, string? TaxNumber, string? Address, bool IsActive,
-    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes);
+    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null);
+
+/// <summary>A customer's credit limit, minor units; null = no limit.</summary>
+public record SetCreditLimitRequest(long? CreditLimit);
 
 /// <param name="Types">CUSTOMER, SUPPLIER and/or CARRIER (a shipping company). "FACTORY" is read as SUPPLIER.</param>
 /// <param name="Address">The main address; for a supplier, the factory's address.</param>
@@ -620,9 +624,19 @@ public record CreateLedgerAccountRequest(string? Name, string? ParentId, bool Is
 public record UpdateLedgerAccountRequest(string? Name = null, bool? IsActive = null);
 
 /// <param name="Balance">Running balance (debits − credits) after this line.</param>
+/// <param name="Book">On a party statement (الدفتر): the sales department of an invoice or return, the
+/// cash box / bank of a receipt or payment, the bank of a cheque.</param>
+/// <param name="Note">The document's own notes (ملحوظة).</param>
+/// <param name="Items">With <c>items=true</c>, an invoice's or return's lines (كشف أصناف).</param>
 public record LedgerLineDto(
     string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
-    string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance);
+    string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
+    string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
+    StatementItemDto[]? Items = null);
+
+/// <summary>One item line of an invoice or return on a statement (no cost).</summary>
+public record StatementItemDto(
+    string ProductName, int Quantity, string? UnitName, long UnitPrice, long Discount, long LineTotal, bool IsBonus);
 
 public record LedgerStatementDto(
     string Title, string From, string To, long Opening, long TotalDebit, long TotalCredit, long Closing,

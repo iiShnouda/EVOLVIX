@@ -271,6 +271,9 @@ namespace SKB.Api.Migrations
                     b.Property<int>("PayrollDayBasis")
                         .HasColumnType("integer");
 
+                    b.Property<int>("PendingHoldDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
@@ -1100,6 +1103,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("CreditLimit")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Currency")
                         .IsRequired()

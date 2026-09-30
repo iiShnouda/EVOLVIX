@@ -244,6 +244,13 @@ One shape for every document type:
   people only save pending invoices, take `sales:create` off the Sales role.
 - **Customer account for the accountant**: owed now, totals per department, every invoice and return
   with date, discount, paid, left and notes, and pending invoices — never cost or profit.
+- **Statement (كشف حساب)** as in the old program: kind, entry, note, date, book (الدفتر: the invoice's
+  department, or the cash box / bank money went through), debit, credit, running balance, document
+  number, from the previous balance; one branch or all; optionally each invoice's items (كشف أصناف).
+- **Pending invoices** can be changed by their maker (or an approver) until approved, keeping their
+  number and date; they hold their goods for Settings → "hold days" (0 = until approved or cancelled).
+- **Credit limit** (حد الائتمان) per customer (`parties:credit_limit` sets it): a sale or approval that
+  takes the balance over it is refused unless the person has `sales:over_credit` or more is paid now.
 - **Cost and profit** are the owner's, plus whoever gets `costs:view`. The server leaves them out for
   everyone else (sales documents, item cost, stock values, profit reports, ledger statements that
   reveal them).

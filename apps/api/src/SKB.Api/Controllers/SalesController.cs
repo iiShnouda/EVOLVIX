@@ -181,7 +181,7 @@ public sealed class SalesController : ControllerBase
             party.Balance, currency,
             invoices.Sum(d => d.GrandTotal), invoices.Sum(d => d.DiscountTotal), returns.Sum(d => d.GrandTotal),
             invoices.Sum(Owed), docs.Where(d => d.Type == DocumentType.SALES_ORDER).Sum(d => d.GrandTotal),
-            departments, rows));
+            departments, rows, party.CreditLimit));
     }
 
     /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
@@ -306,6 +306,24 @@ public sealed class SalesController : ControllerBase
             discountsKept: discountsKept);
     }
 
+    /// <summary>
+    /// Change a pending invoice before it is approved — its items, prices, discounts, notes — checked
+    /// exactly like a new one. It keeps its number, date and maker. Its maker or an approver may.
+    /// </summary>
+    [HttpPut("orders/{id:guid}")]
+    public async Task<ActionResult<SalesDetailDto>> UpdateOrder(Guid id, [FromBody] CreateSalesInvoiceRequest req)
+    {
+        var order = await ScopedOrders().AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        if (order is null) return NotFound(new { message = "Pending invoice not found.", code = "not_found" });
+        var mine = order.StaffId.ToString() == CurrentUser.Id(User) && User.HasClaim("permission", Permissions.SalesOrder);
+        if (!mine && !User.HasClaim("permission", Permissions.SalesApprove))
+            return StatusCode(403, new { message = "Only its maker or an approver can change it.", code = "edit_not_allowed" });
+        if (order.Status != DocumentStatus.PENDING)
+            return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
+        return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER,
+            fromId: null, branch: order.BranchId, replaceId: id);
+    }
+
     /// <summary>Cancel a pending invoice: its goods are free again. Its maker or an approver may.</summary>
     [HttpPost("orders/{id:guid}/cancel")]
     public async Task<ActionResult<SalesDetailDto>> CancelOrder(Guid id)
@@ -340,14 +358,16 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>
     /// Base units of each item held by open pending invoices, per warehouse (except
-    /// <paramref name="except"/>, the one being approved). Items must be locked first.
+    /// <paramref name="except"/>, the one being approved or changed). One past its hold date
+    /// (Settings: PendingHoldDays) holds nothing. Items must be locked first.
     /// </summary>
     private async Task<Dictionary<(Guid Product, Guid Warehouse), long>> HeldAsync(IEnumerable<Guid> productIds, Guid? except)
     {
         var ids = productIds.ToList();
         var rows = await _db.DocumentLines.AsNoTracking()
             .Where(l => ids.Contains(l.ProductId) && l.WarehouseId != null && l.DocumentId != except
-                        && l.Document!.Type == DocumentType.SALES_ORDER && l.Document.Status == DocumentStatus.PENDING)
+                        && l.Document!.Type == DocumentType.SALES_ORDER && l.Document.Status == DocumentStatus.PENDING
+                        && (l.Document.DueDate == null || l.Document.DueDate >= CompanyClock.TodayDate))
             .GroupBy(l => new { l.ProductId, WarehouseId = l.WarehouseId!.Value })
             .Select(g => new { g.Key.ProductId, g.Key.WarehouseId, Quantity = g.Sum(l => (long)l.Quantity) })
             .ToListAsync();
@@ -391,7 +411,8 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
     private async Task<ActionResult<SalesDetailDto>> CreateCore(
-        CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true)
+        CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true,
+        Guid? replaceId = null)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -592,7 +613,7 @@ public sealed class SalesController : ControllerBase
         // The same item may appear on several lines (even in different units): check the total
         // asked of each warehouse, in base units. A quotation may promise more than is in stock.
         // Goods held by pending invoices are not available (except the one being approved).
-        var held = quote ? new() : await HeldAsync(products.Keys, fromId);
+        var held = quote ? new() : await HeldAsync(products.Keys, fromId ?? replaceId);
         foreach (var need in quote ? [] : resolved.GroupBy(l => (l.Product.Id, l.Warehouse.Id)))
         {
             var product = need.First().Product;
@@ -608,12 +629,28 @@ public sealed class SalesController : ControllerBase
         }
 
         // ---- Post the document ----
-        var number = await DocumentNumbers.NextAsync(_db, type);
+        // A pending invoice being changed is written again under its own id, number, date and maker.
+        SalesDocument? replaced = null;
+        if (replaceId is Guid rid)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {rid} FOR UPDATE");
+            replaced = await _db.SalesDocuments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == rid);
+            if (replaced is null || replaced.Type != DocumentType.SALES_ORDER || replaced.Status != DocumentStatus.PENDING)
+                return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
+            await _db.DocumentLines.Where(l => l.DocumentId == rid).ExecuteDeleteAsync();
+            await _db.DocumentCharges.Where(c => c.DocumentId == rid).ExecuteDeleteAsync();
+            await _db.SalesDocuments.Where(d => d.Id == rid).ExecuteDeleteAsync();
+        }
+        var number = replaced?.Number ?? await DocumentNumbers.NextAsync(_db, type);
         var doc = new SalesDocument
         {
+            Id = replaced?.Id ?? Guid.NewGuid(), CreatedAt = replaced?.CreatedAt ?? DateTime.UtcNow,
             Number = number, Type = type, BranchId = branchId,
-            PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
-            DueDate = dueDate ?? (quote ? CompanyClock.TodayDate.AddDays(14) : null),
+            PartyId = partyId, StaffId = replaced?.StaffId ?? staffId, IssueDate = replaced?.IssueDate ?? DateTime.UtcNow,
+            // A quotation holds its prices two weeks; a pending invoice holds its goods as Settings say.
+            DueDate = dueDate ?? (quote ? CompanyClock.TodayDate.AddDays(14)
+                : type == DocumentType.SALES_ORDER && settings.PendingHoldDays > 0
+                    ? CompanyClock.TodayDate.AddDays(settings.PendingHoldDays) : null),
             Currency = settings.Currency, Notes = Clean(req.Notes, 500), SourceDocumentId = fromId,
             PriceLevelId = level?.Id, RepId = repId, DepartmentId = department?.Id,
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
@@ -664,7 +701,7 @@ public sealed class SalesController : ControllerBase
             _db.SalesDocuments.Add(doc);
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
-            await AuditAsync("create", quote ? "quotation" : "sales_order", doc);
+            await AuditAsync(replaced is null ? "create" : "update", quote ? "quotation" : "sales_order", doc);
             await InvoiceLines.LoadForDetailAsync(_db, doc);
             return Created($"/api/sales/{(quote ? "quotations" : "orders")}/{doc.Id}",
                 Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
@@ -676,7 +713,17 @@ public sealed class SalesController : ControllerBase
 
         // The customer owes us the unpaid balance (receivable → positive).
         await MoneyService.LockPartiesAsync(_db, party.Id);
+        await _db.Entry(party).ReloadAsync();
         party.Balance += grand - doc.PaidAmount;
+        // Not over their credit limit (حد الائتمان), unless the person may allow it.
+        if (party.CreditLimit is long limit && grand > doc.PaidAmount && party.Balance > limit
+            && !Can(Permissions.SalesOverCredit))
+            return BadRequest(new
+            {
+                message = $"{party.Name} would owe {InvoiceLines.Major(party.Balance)}, over their credit limit of " +
+                          $"{InvoiceLines.Major(limit)}. Take more now, or ask a manager.",
+                code = "over_credit_limit",
+            });
 
         // Money paid now lands in a money account: the one picked, else the branch's cash box.
         MoneyAccount? paidInto = null;

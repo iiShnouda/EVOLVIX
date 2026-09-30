@@ -217,4 +217,21 @@ public sealed class PartiesController : ControllerBase
             Request.Headers.UserAgent.ToString(), id.ToString());
         return Ok(Mapper.ToParty(party));
     }
+
+    /// <summary>Set or clear (null) a customer's credit limit (حد الائتمان), in minor units.</summary>
+    [HttpPut("{id:guid}/credit-limit")]
+    [Authorize(Policy = Permissions.PartiesCreditLimit)]
+    public async Task<ActionResult<PartyDto>> SetCreditLimit(Guid id, [FromBody] SetCreditLimitRequest req)
+    {
+        var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
+        if (party is null) return NotFound(new { message = "Party not found", code = "not_found" });
+        if (req.CreditLimit is < 0 or > InvoiceLines.MaxPrice)
+            return BadRequest(new { message = "Enter a credit limit of zero or more.", code = "bad_amount" });
+        party.CreditLimit = req.CreditLimit;
+        await _db.SaveChangesAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "credit_limit", "party",
+            CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), id.ToString());
+        return Ok(Mapper.ToParty(party));
+    }
 }

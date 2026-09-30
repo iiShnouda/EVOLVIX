@@ -3,7 +3,7 @@
 // money, balance or ledger moves. The accountant may change its discounts (within their own
 // permission and limit), takes what the customer pays and approves it: it becomes a sales invoice.
 // The rest stays on the customer's account, which the accountant sees per department. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, addDays, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -164,5 +164,64 @@ ok(
 const after = (await acc.get(`/sales/customers/${customer.id}/account`)).data;
 eq('that invoice is settled', after.documents.find((d) => d.id === inv.id).outstanding, 0);
 eq('the balance dropped', after.balance, account.balance - 2400);
+
+console.log('== the statement, like the old كشف حساب');
+const st = ok('with items', await acc.get(`/ledger/parties/${customer.id}/statement?items=true`));
+const invRow = st.lines.find((l) => l.sourceId === inv.id && l.debit > 0);
+eq('the book is the department, with number and note', [invRow?.book, invRow?.documentNumber, invRow?.note], [`Floor1 ${tag}`, inv.number, 'Pick up Thursday']);
+eq('its items', invRow?.items?.map((i) => [i.productName, i.quantity, i.unitPrice, i.discount, i.lineTotal]), [[`Coat ${tag}`, 6, 1000, 600, 5400]]);
+const payRow = st.lines.find((l) => l.sourceId === inv.id && l.credit > 0);
+eq('what was paid on the spot: its cash box, no items again', [payRow?.book, payRow?.credit, payRow?.items ?? null], [cash?.name, 3000, null]);
+const noteRow = st.lines.find((l) => l.sourceType === 'NOTE');
+eq('the cheque: its number and bank', [noteRow?.documentNumber, noteRow?.book], [`CH-${tag}`, 'NBE']);
+check('a branch on every line', st.lines.every((l) => l.branchName));
+check('no items unless asked', (await acc.get(`/ledger/parties/${customer.id}/statement`)).data.lines.every((l) => !l.items));
+const elsewhere = (await acc.get(`/ledger/parties/${customer.id}/statement?branchId=00000000-0000-0000-0000-000000000001`)).data;
+eq('another branch: nothing', [elsewhere.lines.length, elsewhere.opening], [0, 0]);
+
+console.log('== changing a pending invoice');
+ok('4 more coats', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 4, unitCost: 600 }] }));
+const o5 = ok('rep saves 1', await rep.post('/sales/orders', body(1, { notes: 'first' })));
+eq('another sales person can’t change it', (await other.put(`/sales/orders/${o5.id}`, body(2))).data?.code, 'edit_not_allowed');
+const o5b = ok('the rep makes it 2', await rep.put(`/sales/orders/${o5.id}`, body(2, { notes: 'second' })));
+eq('same invoice, number and date; new lines', [o5b.id, o5b.number, o5b.issueDate.slice(0, 19), o5b.grandTotal, o5b.notes, o5b.lines.length], [o5.id, o5.number, o5.issueDate.slice(0, 19), 2000, 'second', 1]);
+eq('still pending', o5b.status, 'PENDING');
+eq('over the stock refused', (await rep.put(`/sales/orders/${o5.id}`, body(50))).data?.code, 'insufficient_stock');
+eq('left as it was', (await rep.get(`/sales/orders/${o5.id}`)).data.grandTotal, 2000);
+ok('approved', await acc.post(`/sales/orders/${o5.id}/approve`, { paidAmount: 2000, paidAccountId: cash?.id }));
+eq('an approved one can’t change', (await rep.put(`/sales/orders/${o5.id}`, body(1))).data?.code, 'order_closed');
+
+console.log('== credit limit');
+const buyer = ok('another customer', await owner.post('/parties', { name: `Credit ${tag}`, types: ['CUSTOMER'] }));
+eq('the rep can’t set it', (await rep.put(`/parties/${buyer.id}/credit-limit`, { creditLimit: 1000 })).status, 403);
+eq('the accountant sets 15.00', ok('limit', await acc.put(`/parties/${buyer.id}/credit-limit`, { creditLimit: 1500 })).creditLimit, 1500);
+const sellTo = (who, q, paidAmount = 0) =>
+  who.post('/sales/invoices', { ...body(q), partyId: buyer.id, paidAmount, paidAccountId: paidAmount ? cash?.id : undefined });
+ok('4 more coats in stock', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 4, unitCost: 600 }] }));
+ok('10.00 on credit is within it', await sellTo(acc, 1));
+eq('another 10.00 is over it', (await sellTo(acc, 1)).data?.code, 'over_credit_limit');
+ok('…unless 5.00 is paid now', await sellTo(acc, 1, 500));
+const o6 = ok('a pending one for them is saved', await rep.post('/sales/orders', { ...body(1), partyId: buyer.id }));
+eq('approving it on credit is over', (await acc.post(`/sales/orders/${o6.id}/approve`, {})).data?.code, 'over_credit_limit');
+ok('the owner may go over it', await acc.post(`/sales/orders/${o6.id}/cancel`).then(() => sellTo(owner, 1)));
+eq('the account shows the limit', (await acc.get(`/sales/customers/${buyer.id}/account`)).data.creditLimit, 1500);
+ok('limit cleared', await acc.put(`/parties/${buyer.id}/credit-limit`, { creditLimit: null }));
+
+console.log('== pending invoices hold goods for so many days');
+ok('hold 3 days', await owner.put('/settings', { pendingHoldDays: 3 }));
+const o7 = ok('a pending one', await rep.post('/sales/orders', body(1)));
+eq('holds until 3 days from today', o7.dueDate, addDays(companyToday(), 3));
+if (process.env.PGURL) {
+  const { default: pg } = await import('pg');
+  const db = new pg.Client({ connectionString: process.env.PGURL });
+  await db.connect();
+  // The earlier pending one (2 coats) still holds its goods.
+  const left = (await owner.get(`/products/${item.id}`)).data.stockOnHand - 2;
+  eq('while held, it can’t be sold', (await owner.post('/sales/invoices', body(left))).data?.code, 'insufficient_stock');
+  await db.query('UPDATE "SalesDocuments" SET "DueDate" = now() - interval \'2 days\' WHERE "Id" = $1', [o7.id]);
+  await db.end();
+  ok('past its days it holds nothing', await owner.post('/sales/invoices', body(left)));
+}
+ok('hold days back to none', await owner.put('/settings', { pendingHoldDays: 0 }));
 
 process.exit(summary('orders') ? 1 : 0);

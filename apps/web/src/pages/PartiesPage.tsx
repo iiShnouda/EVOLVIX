@@ -1,9 +1,11 @@
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   balanceView,
   formatMoney,
   partySchema,
+  toMajor,
+  toMinor,
   type Party,
   type PartyType,
   type PriceLevel,
@@ -20,6 +22,7 @@ import {
   useCreateParty,
   useParties,
   usePriceLevels,
+  useSetCreditLimit,
   useSetPartyPriceLevels,
   useUpdateParty,
 } from '../lib/queries';
@@ -221,6 +224,10 @@ function PartyCard({
       {levels.length > 0 && (
         <PriceLevelPicker party={party} levels={levels} canSet={can('parties:set_price_level')} />
       )}
+      {party.types.includes('CUSTOMER') &&
+        (can('parties:credit_limit') || party.creditLimit != null) && (
+          <CreditLimitField party={party} canSet={can('parties:credit_limit')} />
+        )}
 
       {((party.isActive && (can('receipts:create') || can('payments:create'))) ||
         can('ledger:view') ||
@@ -667,5 +674,39 @@ function PartyDetails({ party }: { party: Party }) {
         </div>
       )}
     </dl>
+  );
+}
+
+/** A customer's credit limit (حد الائتمان): saved when the field is left; empty = no limit. */
+function CreditLimitField({ party, canSet }: { party: Party; canSet: boolean }) {
+  const { t } = useT();
+  const set = useSetCreditLimit();
+  const shown = party.creditLimit == null ? '' : String(toMajor(party.creditLimit));
+  const [value, setValue] = useState(shown);
+  useEffect(() => setValue(shown), [shown]);
+  const error = errorText(t, set.error);
+  function save() {
+    const next = value.trim() === '' ? null : toMinor(Number(value));
+    if (next !== null && !(Number.isFinite(next) && next >= 0)) return;
+    if (next === (party.creditLimit ?? null)) return;
+    set.mutate({ id: party.id, creditLimit: next });
+  }
+  return (
+    <label className="mt-3 block">
+      <span className="mb-0.5 block text-xs text-muted">{t('parties.creditLimit')}</span>
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        className={`${field} tnum`}
+        placeholder={t('parties.creditLimitHint')}
+        disabled={!canSet || set.isPending}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+      />
+      {error && <span className="mt-0.5 block text-xs text-destructive">{error}</span>}
+    </label>
   );
 }

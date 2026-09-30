@@ -25,6 +25,7 @@ import { statusOf } from '../lib/status';
 import { errorText } from '../lib/errors';
 import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
+import { EditOrderSheet } from '../components/EditOrderSheet';
 
 const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
   sales: {
@@ -82,6 +83,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const canQuote = isSales && permissions.includes('sales:quote');
   const [converting, setConverting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(false);
   const cancelQuote = useCancelQuotation();
   const cancelOrder = useCancelOrder();
   const myId = useAuth((s) => s.user?.id);
@@ -153,6 +155,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       {orderOpen && canApprove && (
         <Button size="sm" icon="check" onClick={() => setApproving(true)}>
           {t('order.approve')}
+        </Button>
+      )}
+      {orderOpen && canCancelOrder && !confirmCancel && (
+        <Button size="sm" variant="secondary" onClick={() => setEditingOrder(true)}>
+          {t('order.edit')}
         </Button>
       )}
       {orderOpen && canCancelOrder && !confirmCancel && (
@@ -339,6 +346,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       )}
       {cancelOrder.error && (
         <p className="text-sm text-destructive">{errorText(t, cancelOrder.error)}</p>
+      )}
+      {editingOrder && order && (
+        <EditOrderSheet
+          order={order}
+          onClose={() => setEditingOrder(false)}
+          onDone={() => setEditingOrder(false)}
+        />
       )}
       {approving && order && (
         <ApproveOrderSheet

@@ -156,15 +156,90 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>A customer's / supplier's / carrier's statement (كشف حساب): every line on their accounts.</summary>
     [HttpGet("parties/{partyId:guid}/statement")]
-    public async Task<ActionResult<LedgerStatementDto>> PartyStatement(Guid partyId, [FromQuery] string? from = null, [FromQuery] string? to = null)
+    /// <remarks>
+    /// Like the old program's كشف حساب: each line says which book it went through (الدفتر — the sales
+    /// department of an invoice, the cash box or bank of a receipt), its document number and notes.
+    /// <paramref name="branchId"/> keeps one branch's lines; <paramref name="items"/> adds every
+    /// invoice's and return's items (كشف أصناف).
+    /// </remarks>
+    public async Task<ActionResult<LedgerStatementDto>> PartyStatement(Guid partyId, [FromQuery] string? from = null,
+        [FromQuery] string? to = null, [FromQuery] string? branchId = null, [FromQuery] bool items = false)
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
         if (party is null) return NotFound(new { message = "Party not found.", code = "not_found" });
-        return await StatementAsync(party.Name, _db.JournalLines.Where(l => l.Account!.PartyId == partyId), from, to);
+        var lines = _db.JournalLines.Where(l => l.Account!.PartyId == partyId);
+        if (!string.IsNullOrWhiteSpace(branchId))
+        {
+            if (!Guid.TryParse(branchId, out var branch)) return Bad("branch_not_found", "Branch not found.");
+            lines = lines.Where(l => l.Entry!.BranchId == branch);
+        }
+        return await StatementAsync(party.Name, lines, from, to, (rows, dto) => DetailAsync(rows, dto, items));
+    }
+
+    private static readonly string[] DocumentSources = { "SALES_INVOICE", "SALES_RETURN", "PURCHASE_INVOICE", "PURCHASE_RETURN" };
+
+    /// <summary>What each statement line's document says: its number, book, notes, branch and (optionally) items.</summary>
+    private async Task<LedgerLineDto[]> DetailAsync(List<JournalLine> rows, LedgerLineDto[] dto, bool items)
+    {
+        Guid[] Ids(params string[] types) => rows.Where(r => types.Contains(r.Entry!.SourceType) && r.Entry.SourceId != null)
+            .Select(r => r.Entry!.SourceId!.Value).Distinct().ToArray();
+        var docIds = Ids(DocumentSources);
+        var voucherIds = Ids("VOUCHER");
+        var noteIds = Ids("NOTE");
+        var docs = await _db.SalesDocuments.AsNoTracking().Include(d => d.Department).Include(d => d.PaidAccount)
+            .Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+        var vouchers = await _db.Vouchers.AsNoTracking().Include(v => v.FromAccount).Include(v => v.ToAccount)
+            .Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
+        var notes = await _db.Notes.AsNoTracking().Where(n => noteIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id);
+        var branchIds = rows.Where(r => r.Entry!.BranchId != null).Select(r => r.Entry!.BranchId!.Value).Distinct().ToList();
+        var branches = await _db.Branches.AsNoTracking().Where(b => branchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id, b => Loc.Name(b));
+        var itemLines = new Dictionary<Guid, StatementItemDto[]>();
+        if (items && docIds.Length > 0)
+            itemLines = (await _db.DocumentLines.AsNoTracking().Include(l => l.Unit)
+                    .Where(l => docIds.Contains(l.DocumentId)).OrderBy(l => l.LineNo).ToListAsync())
+                .GroupBy(l => l.DocumentId)
+                .ToDictionary(g => g.Key, g => g.Select(l => new StatementItemDto(l.ProductName,
+                    l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.Unit is null ? null : Loc.Name(l.Unit),
+                    l.UnitPrice, l.Discount, l.LineTotal, l.IsBonus)).ToArray());
+
+        // An invoice paid on the spot has two lines here; its items go under the first only.
+        var listed = new HashSet<Guid>();
+        return dto.Select((line, i) =>
+        {
+            var entry = rows[i].Entry!;
+            var branch = entry.BranchId is Guid b ? branches.GetValueOrDefault(b) : null;
+            if (entry.SourceId is not Guid source) return line with { BranchName = branch };
+            if (docs.TryGetValue(source, out var d))
+                return line with
+                {
+                    // What was paid on the spot went through a cash box or bank: that is its book.
+                    DocumentNumber = d.Number,
+                    Book = d.PaidAccount is not null && (d.Type == DocumentType.SALES_INVOICE ? line.Credit > 0 : line.Debit > 0)
+                        ? Loc.Name(d.PaidAccount)
+                        : d.Department is null ? null : Loc.Name(d.Department),
+                    Note = d.Notes, BranchName = branch,
+                    Items = listed.Add(d.Id) ? itemLines.GetValueOrDefault(d.Id) : null,
+                };
+            if (vouchers.TryGetValue(source, out var v))
+            {
+                var account = v.ToAccount ?? v.FromAccount;
+                return line with
+                {
+                    DocumentNumber = v.Number, Book = account is null ? null : Loc.Name(account), Note = v.Notes,
+                    BranchName = branch,
+                };
+            }
+            if (notes.TryGetValue(source, out var n))
+                return line with
+                {
+                    DocumentNumber = n.SerialNumber, Book = n.BankName, Note = n.Remark, BranchName = branch,
+                };
+            return line with { BranchName = branch };
+        }).ToArray();
     }
 
     private async Task<ActionResult<LedgerStatementDto>> StatementAsync(string title, IQueryable<JournalLine> lines,
-        string? from, string? to)
+        string? from, string? to, Func<List<JournalLine>, LedgerLineDto[], Task<LedgerLineDto[]>>? detail = null)
     {
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
@@ -182,6 +257,7 @@ public sealed class LedgerController : ControllerBase
                 l.Entry.SourceType, l.Entry.SourceId?.ToString(), l.Account!.Code, names[l.AccountId], l.Debit, l.Credit,
                 l.Memo, running);
         }).ToArray();
+        if (detail is not null) dto = await detail(rows, dto);
         var debit = rows.Sum(l => l.Debit);
         var credit = rows.Sum(l => l.Credit);
         return Ok(new LedgerStatementDto(title, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),

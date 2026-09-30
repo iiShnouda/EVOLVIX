@@ -145,6 +145,10 @@ public static class Permissions
     public const string PurchasesChoosePriceLevel = "purchases:choose_price_level";
     /// <summary>Set a customer's or supplier's default price level.</summary>
     public const string PartiesSetPriceLevel = "parties:set_price_level";
+    /// <summary>Set a customer's credit limit (حد الائتمان).</summary>
+    public const string PartiesCreditLimit = "parties:credit_limit";
+    /// <summary>Post a sale that takes a customer over their credit limit.</summary>
+    public const string SalesOverCredit = "sales:over_credit";
 
     // ---- Invoice charges (DOMAIN.md step 4) ----
     /// <summary>Give an invoice-level discount on a sale (خصم مسموح به / خصم إضافي).</summary>
@@ -164,7 +168,7 @@ public static class Permissions
     public static readonly string[] All =
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
-        SalesOrder, SalesApprove,
+        SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
@@ -206,6 +210,7 @@ public static class RolePermissions
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
             Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel, Permissions.PartiesSetPriceLevel,
+            Permissions.PartiesCreditLimit,
             Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,

@@ -363,6 +363,13 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const netTotal = subtotal - outcome.discount;
   const tax = outcome.tax;
   const grand = netTotal + outcome.tax + outcome.addition;
+  // Over the customer's credit limit (the server refuses it unless the person may allow it).
+  const paidTyped = paidNow === '' ? 0 : toMinor(Number(paidNow));
+  const overCredit =
+    isSale &&
+    !isQuote &&
+    party?.creditLimit != null &&
+    party.balance + grand - (orderOnly ? 0 : paidTyped) > party.creditLimit;
   const profitTotal = netTotal - costTotal;
   const marginPct = netTotal > 0 ? (profitTotal / netTotal) * 100 : 0;
 
@@ -1027,6 +1034,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               </label>
             )}
 
+            {overCredit && (
+              <p className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning">
+                {t('invoice.overCredit')}
+              </p>
+            )}
             {hasBelowCost && (
               <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
                 {t('invoice.belowCost')}

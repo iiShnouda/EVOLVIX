@@ -245,6 +245,8 @@ export const updateSettingsSchema = z.object({
   defaultTaxPercent: z.number().int().min(0).max(100).optional(),
   /** Staff discount limit (% of a line's worth); 100 = none. */
   maxDiscountPercent: z.number().int().min(0).max(100).optional(),
+  /** Days a pending invoice holds its goods; 0 = until approved or cancelled. */
+  pendingHoldDays: z.number().int().min(0).max(365).optional(),
   transfersRequireReceipt: z.boolean().optional(),
   // "" clears a company-profile field; left out = unchanged.
   address: z.string().trim().max(300).optional(),

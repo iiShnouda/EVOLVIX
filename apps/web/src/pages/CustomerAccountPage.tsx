@@ -45,6 +45,16 @@ export function CustomerAccountPage() {
     { label: t('account.returned'), value: a.returned },
     { label: t('account.outstanding'), value: a.outstanding },
     { label: t('account.pending'), value: a.pending, tone: a.pending > 0 ? 'text-warning' : '' },
+    ...(a.creditLimit != null
+      ? [
+          { label: t('account.creditLimit'), value: a.creditLimit },
+          {
+            label: t('account.available'),
+            value: Math.max(0, a.creditLimit - a.balance),
+            tone: a.creditLimit - a.balance <= 0 ? 'text-destructive' : 'text-positive',
+          },
+        ]
+      : []),
   ];
   const receiveNote = (d: AccountDocument) =>
     navigate(`/notes?receiveFor=${a.partyId}&invoice=${d.id}&amount=${d.outstanding}`);
@@ -68,7 +78,7 @@ export function CustomerAccountPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {kpis.map((k) => (
           <Card key={k.label}>
             <p className="text-xs text-muted">{k.label}</p>

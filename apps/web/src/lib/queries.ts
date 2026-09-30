@@ -646,6 +646,32 @@ export function useSetModelPrices() {
 }
 
 /** A customer's / supplier's own price level ("" = back to the default). */
+/** Set or clear (null) a customer's credit limit. */
+export function useSetCreditLimit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, creditLimit }: { id: string; creditLimit: number | null }) =>
+      api.put<Party>(`/parties/${id}/credit-limit`, { creditLimit }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** Change a pending invoice (its maker or an approver). */
+export function useUpdateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateSalesInvoiceInput }) =>
+      api.put<SalesDocument>(`/sales/orders/${id}`, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
 export function useSetPartyPriceLevels() {
   const qc = useQueryClient();
   return useMutation({
@@ -990,13 +1016,15 @@ export function useLedgerStatement(
   id: string,
   from: string,
   to: string,
+  /** Party statements: one branch's lines ('' = all), and each invoice's items. */
+  options: { branchId?: string; items?: boolean } = {},
 ) {
+  const query = new URLSearchParams({ from, to });
+  if (options.branchId) query.set('branchId', options.branchId);
+  if (options.items) query.set('items', 'true');
   return useQuery({
-    queryKey: ['ledger', 'statement', kind, id, from, to],
-    queryFn: () =>
-      api.get<LedgerStatement>(
-        `/ledger/${kind}/${id}/statement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      ),
+    queryKey: ['ledger', 'statement', kind, id, from, to, options.branchId ?? '', !!options.items],
+    queryFn: () => api.get<LedgerStatement>(`/ledger/${kind}/${id}/statement?${query}`),
     enabled: !!id,
   });
 }

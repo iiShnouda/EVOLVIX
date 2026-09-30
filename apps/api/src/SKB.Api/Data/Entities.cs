@@ -214,6 +214,11 @@ public class Party
     /// <summary>Where goods are shipped (عنوان الشحن); delivered sales start at it, else at <see cref="Address"/>.</summary>
     public string? ShippingAddress { get; set; }
     public string? Notes { get; set; }
+    /// <summary>
+    /// The most a customer may owe (حد الائتمان, minor units); null = no limit. A sale that would take
+    /// their balance over it is refused unless the person may go over it (sales:over_credit).
+    /// </summary>
+    public long? CreditLimit { get; set; }
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
     public bool IsActive { get; set; } = true;
@@ -836,6 +841,8 @@ public class CompanySettings
     /// otherwise (100 = no limit). The owner has no limit.
     /// </summary>
     public int MaxDiscountPercent { get; set; } = 100;
+    /// <summary>A pending invoice holds its goods this many days (0 = until approved or cancelled).</summary>
+    public int PendingHoldDays { get; set; }
     /// <summary>
     /// The receiving warehouse confirms a transfer before the goods count there (old
     /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.

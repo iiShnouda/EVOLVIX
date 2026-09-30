@@ -45,5 +45,10 @@ export function statusOf(doc: { type: string; status: DocumentStatus; dueDate?: 
     const s = quoteState(doc);
     return { key: `quote.state.${s}`, tone: QUOTE_TONE[s] };
   }
+  // A pending invoice: waiting, approved, cancelled, or past the days it holds its goods.
+  if (doc.type === 'SALES_ORDER') {
+    const s = quoteState(doc);
+    return { key: `order.state.${s}`, tone: QUOTE_TONE[s] };
+  }
   return { key: `status.${doc.status}`, tone: STATUS_TONE[doc.status] };
 }
