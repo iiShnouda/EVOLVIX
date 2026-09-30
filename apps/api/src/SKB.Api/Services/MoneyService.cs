@@ -96,6 +96,33 @@ public sealed class MoneyService
     /// may use), else the default cash box of <paramref name="branchId"/> — or, if they may not use
     /// that one, their first cash box there. Locked and ready for <see cref="Move"/>.
     /// </summary>
+    /// <summary>
+    /// Shipping we pay (goods from a supplier, a customer's return — owner decision 2026-09-30): an
+    /// expense voucher out of a money account (the one given, else the branch's cash box) into the
+    /// shipping expense account. Customers pay the shipping company for their own deliveries directly.
+    /// </summary>
+    public async Task<(Voucher? Voucher, MoneyError? Error)> ShippingExpenseAsync(long amount, string? accountId,
+        Guid branchId, string reference, ClaimsPrincipal user, Guid staffId, LedgerService ledger)
+    {
+        if (amount <= 0) return (null, null);
+        if (amount > InvoiceLines.MaxPrice) return (null, new("bad_amount", "The shipping cost is too large."));
+        var (account, error) = await ForDocumentAsync(accountId, branchId, user);
+        if (error is not null) return (null, error);
+        var method = DefaultMethod(account!.Kind);
+        var voucher = new Voucher
+        {
+            Number = await DocumentNumbers.NextVoucherAsync(_db, VoucherType.EXPENSE), Type = VoucherType.EXPENSE,
+            BranchId = account.BranchId, Amount = amount, Notes = $"Shipping — {reference}", CreatedById = staffId,
+        };
+        voucher.Lines.Add(new VoucherLine { LineNo = 1, Method = method, AccountId = account.Id, Amount = amount });
+        error = Move(account, -amount, MoneyMovementKind.EXPENSE, staffId, voucher.Number, voucherId: voucher.Id,
+            method: method, notes: voucher.Notes);
+        if (error is not null) return (null, error);
+        await ledger.PostVoucherAsync(voucher, null, new Dictionary<Guid, MoneyAccount> { [account.Id] = account }, null, staffId);
+        _db.Vouchers.Add(voucher);
+        return (voucher, null);
+    }
+
     public async Task<(MoneyAccount? Account, MoneyError? Error)> ForDocumentAsync(
         string? requested, Guid branchId, ClaimsPrincipal user)
     {

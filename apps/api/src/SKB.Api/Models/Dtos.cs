@@ -74,7 +74,10 @@ public record SalesDetailDto(
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
     string? InvoiceId = null, string? InvoiceNumber = null,
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
-    string? BranchId = null);
+    string? BranchId = null, string? RejectReason = null);
+
+/// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
+public record RejectOrderRequest(string? Reason);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -155,7 +158,7 @@ public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
     string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
-    string? PaidAccountId = null);
+    string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
 public record RepOptionDto(string Id, string Name, string BranchId);
@@ -166,7 +169,8 @@ public record CreateReturnLineRequest(string LineId, int Quantity);
 /// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
 /// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
 public record CreateReturnRequest(
-    CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null);
+    CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null,
+    long ShippingCost = 0, string? ShippingAccountId = null);
 
 public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
@@ -842,3 +846,9 @@ public record CreatePayrollRunRequest(int Year, int Month, string? BranchId = nu
 
 /// <param name="EmployeeIds">Pay only these; none = everyone still unpaid.</param>
 public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds = null);
+
+public record NotificationDto(
+    string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,
+    string? ActorName, string? Message, string CreatedAt, bool Read);
+
+public record NotificationsDto(int Unread, NotificationDto[] Items);

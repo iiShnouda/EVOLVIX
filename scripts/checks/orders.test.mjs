@@ -224,4 +224,57 @@ if (process.env.PGURL) {
 }
 ok('hold days back to none', await owner.put('/settings', { pendingHoldDays: 0 }));
 
+console.log('== notifications, rejecting, reps');
+ok('stock for these', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 6, unitCost: 600 }] }));
+const o8 = ok('rep saves one', await rep.post('/sales/orders', body(1, { notes: 'N8' })));
+eq('the rep is its maker', o8.repName, `rep ${tag}`);
+const bell = async (who) => (await who.get('/notifications')).data;
+const accBell = await bell(acc);
+const pend = accBell.items.find((n) => n.documentId === o8.id);
+eq('the accountant is told', [pend?.kind, pend?.documentNumber, pend?.partyName, pend?.actorName, pend?.read], ['ORDER_PENDING', o8.number, customer.name, `rep ${tag}`, false]);
+check('…and counts it unread', accBell.unread >= 1);
+check('the rep is not told of their own', !(await bell(rep)).items.some((n) => n.documentId === o8.id && n.kind === 'ORDER_PENDING'));
+eq('the rep can’t reject', (await rep.post(`/sales/orders/${o8.id}/reject`, { reason: 'x' })).status, 403);
+eq('a reason is needed', (await acc.post(`/sales/orders/${o8.id}/reject`, { reason: ' ' })).data?.code, 'reason_required');
+const rej = ok('the accountant turns it down', await acc.post(`/sales/orders/${o8.id}/reject`, { reason: 'Price too low' }));
+eq('rejected, with why', [rej.status, rej.rejectReason], ['REJECTED', 'Price too low']);
+const told = (await bell(rep)).items.find((n) => n.documentId === o8.id);
+eq('the rep hears why', [told?.kind, told?.message], ['ORDER_REJECTED', 'Price too low']);
+eq('a rejected one can’t be approved', (await acc.post(`/sales/orders/${o8.id}/approve`, {})).data?.code, 'order_closed');
+ok('read one', await acc.post(`/notifications/${pend.id}/read`), [204]);
+check('now read', (await bell(acc)).items.find((n) => n.id === pend.id)?.read === true);
+ok('read all', await rep.post('/notifications/read-all'), [204]);
+eq('none unread', (await bell(rep)).unread, 0);
+const o9 = ok('another one', await rep.post('/sales/orders', body(1)));
+ok('approved', await acc.post(`/sales/orders/${o9.id}/approve`, {}));
+eq('the rep hears it was approved', (await bell(rep)).items.find((n) => n.documentId === o9.id)?.kind, 'ORDER_APPROVED');
+const direct = ok('a direct sale without a rep', await owner.post('/sales/invoices', body(1)));
+eq('its rep is whoever made it', direct.repName, 'Founder Owner');
+
+console.log('== the seller writes a return; shipping we pay');
+check('sales people may return', rep.user.permissions.includes('sales:return'));
+const boxBefore = (await acc.get('/money-accounts')).data.find((a) => a.id === cash?.id)?.balance;
+const back = ok(
+  'rep returns 1, we paid 25.00 shipping to get it back',
+  await rep.post(`/sales/invoices/${direct.id}/returns`, { lines: [{ lineId: direct.lines[0].id, quantity: 1 }], shippingCost: 2500, shippingAccountId: cash?.id }),
+);
+eq('back into the same warehouse', back.lines[0].warehouseId, direct.lines[0].warehouseId);
+eq('the shipping left the cash box', (await acc.get('/money-accounts')).data.find((a) => a.id === cash?.id)?.balance, boxBefore - 2500);
+const pur = ok(
+  'a purchase with 40.00 shipping we paid',
+  await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 1, unitCost: 600 }], shippingCost: 4000, shippingAccountId: cash?.id }),
+);
+eq('the supplier is owed only the goods', pur.grandTotal, 600);
+eq('…and the cash box paid the shipping', (await acc.get('/money-accounts')).data.find((a) => a.id === cash?.id)?.balance, boxBefore - 6500);
+const exp = (await owner.get('/vouchers?type=EXPENSE&pageSize=100')).data.items.filter((v) => (v.notes ?? '').includes(pur.number) || (v.notes ?? '').includes(back.number));
+eq('two shipping expenses', exp.map((v) => v.amount).sort(), [2500, 4000]);
+
+console.log('== filters');
+const day = companyToday();
+check('invoices of today', (await acc.get(`/sales/invoices?from=${day}&to=${day}&pageSize=100`)).data.items.some((d) => d.id === direct.id));
+eq('none tomorrow', (await acc.get(`/sales/invoices?from=${addDays(day, 1)}&to=${addDays(day, 1)}`)).data.total, 0);
+eq('rejected pending ones', (await acc.get('/sales/orders?status=REJECTED&pageSize=100')).data.items.some((d) => d.id === o8.id), true);
+check('items of one category', (await rep.get(`/products?categoryId=${cat.id}`)).data.every((p) => p.categoryId === cat.id));
+eq('…not of another', (await rep.get(`/products?categoryId=${cat.id}&search=Cola`)).data.length, 0);
+
 process.exit(summary('orders') ? 1 : 0);

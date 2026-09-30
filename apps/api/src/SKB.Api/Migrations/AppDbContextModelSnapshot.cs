@@ -1086,6 +1086,50 @@ namespace SKB.Api.Migrations
                     b.ToTable("NoteEvents");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorName")
+                        .HasColumnType("text");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PartyName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StaffId", "CreatedAt");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1625,6 +1669,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<long>("ProfitTotal")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("RejectReason")
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("RepId")
                         .HasColumnType("uuid");
@@ -2761,6 +2808,17 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
+
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Notification", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Staff");
                 });

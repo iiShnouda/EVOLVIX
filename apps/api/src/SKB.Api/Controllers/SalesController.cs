@@ -20,10 +20,13 @@ public sealed class SalesController : ControllerBase
     private readonly AuditService _audit;
     private readonly MoneyService _money;
     private readonly LedgerService _ledger;
+    private readonly NotificationService _notifications;
 
     public SalesController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        ReturnsService returns, AuditService audit, MoneyService money, LedgerService ledger)
+        ReturnsService returns, AuditService audit, MoneyService money, LedgerService ledger,
+        NotificationService notifications)
     {
+        _notifications = notifications;
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
@@ -37,35 +40,36 @@ public sealed class SalesController : ControllerBase
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null) =>
-        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
+        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to);
 
     /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
     [HttpGet("quotations")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Quotations(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null) =>
-        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
+        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId, from, to);
 
     /// <summary>Pending invoices (فواتير معلّقة) waiting for the accountant, newest first.</summary>
     [HttpGet("orders")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Orders(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null) =>
-        ListAsync(DocumentType.SALES_ORDER, page, pageSize, search, status, departmentId);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
+        ListAsync(DocumentType.SALES_ORDER, page, pageSize, search, status, departmentId, from, to);
 
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null) =>
-        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status, departmentId);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
+        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status, departmentId, from, to);
 
     private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
-        DocumentType type, int page, int pageSize, string? search, string? status, string? departmentId)
+        DocumentType type, int page, int pageSize, string? search, string? status, string? departmentId,
+        string? from = null, string? to = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -75,6 +79,9 @@ public sealed class SalesController : ControllerBase
         // "none" = documents of no department.
         if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
         else if (Guid.TryParse(departmentId, out var dept)) q = q.Where(d => d.DepartmentId == dept);
+        // Company days, both ends included.
+        if (DateOnly.TryParse(from, out var fromDay)) { var start = CompanyClock.StartOf(fromDay); q = q.Where(d => d.IssueDate >= start); }
+        if (DateOnly.TryParse(to, out var toDay)) { var end = CompanyClock.StartOf(toDay.AddDays(1)); q = q.Where(d => d.IssueDate < end); }
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<DocumentStatus>(status, out var st))
             q = q.Where(d => d.Status == st);
         if (!string.IsNullOrWhiteSpace(search))
@@ -324,6 +331,31 @@ public sealed class SalesController : ControllerBase
             fromId: null, branch: order.BranchId, replaceId: id);
     }
 
+    /// <summary>
+    /// The accountant turns a pending invoice down, saying why: its goods are free again and its
+    /// maker is told.
+    /// </summary>
+    [HttpPost("orders/{id:guid}/reject")]
+    [Authorize(Policy = Permissions.SalesApprove)]
+    public async Task<ActionResult<SalesDetailDto>> RejectOrder(Guid id, [FromBody] RejectOrderRequest req)
+    {
+        var reason = Clean(req.Reason, 300);
+        if (reason is null) return BadRequest(new { message = "Say why it is turned down.", code = "reason_required" });
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var order = await ScopedOrders().FirstOrDefaultAsync(d => d.Id == id);
+        if (order is null) return NotFound(new { message = "Pending invoice not found.", code = "not_found" });
+        if (order.Status != DocumentStatus.PENDING)
+            return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
+        order.Status = DocumentStatus.REJECTED;
+        order.RejectReason = reason;
+        await _notifications.OrderDecidedAsync(order, approved: false, User);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("reject", "sales_order", order);
+        return await GetOne(id);
+    }
+
     /// <summary>Cancel a pending invoice: its goods are free again. Its maker or an approver may.</summary>
     [HttpPost("orders/{id:guid}/cancel")]
     public async Task<ActionResult<SalesDetailDto>> CancelOrder(Guid id)
@@ -469,7 +501,9 @@ public sealed class SalesController : ControllerBase
         var (department, departmentError) = await ResolveDepartmentAsync(req.DepartmentId);
         if (departmentError is not null) return departmentError;
 
-        Guid? repId = null;
+        // Every sale has a rep (المندوب): the one chosen, else whoever makes it. A quotation gets one
+        // only if chosen, so turning it into an invoice credits whoever does that.
+        Guid? repId = quote || staffId == Guid.Empty ? null : staffId;
         if (!string.IsNullOrWhiteSpace(req.RepId))
         {
             if (!Guid.TryParse(req.RepId, out var rep) || !await _db.Staff.AnyAsync(s => s.Id == rep && s.IsActive))
@@ -699,6 +733,9 @@ public sealed class SalesController : ControllerBase
         {
             doc.Status = DocumentStatus.PENDING;
             _db.SalesDocuments.Add(doc);
+            // A new pending invoice goes to whoever may approve it.
+            if (type == DocumentType.SALES_ORDER && replaced is null)
+                await _notifications.OrderPendingAsync(doc, party.Name, User);
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
             await AuditAsync(replaced is null ? "create" : "update", quote ? "quotation" : "sales_order", doc);
@@ -738,6 +775,7 @@ public sealed class SalesController : ControllerBase
         }
         await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
         if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
+        if (fromQuote?.Type == DocumentType.SALES_ORDER) await _notifications.OrderDecidedAsync(fromQuote, approved: true, User);
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();

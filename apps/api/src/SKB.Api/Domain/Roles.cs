@@ -231,6 +231,8 @@ public static class RolePermissions
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.SalesQuote, Permissions.SalesOrder,
+            // The seller writes a customer's return; it goes straight back into its warehouse.
+            Permissions.SalesReturn,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
         },

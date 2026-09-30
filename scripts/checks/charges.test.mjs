@@ -18,7 +18,12 @@ const supplier = parties.find((p) => p.types.includes('SUPPLIER'));
 const wh = (await owner.get('/warehouses')).data.find((w) => w.isDefault && w.branchId === owner.user.branchId);
 const settings = (await owner.get('/settings')).data;
 const staff = (await owner.get('/staff')).data;
-const monaId = staff.find((s) => s.email === 'mona@skb.local').id;
+// A rep of its own: everyone's own sales now count as theirs, so a shared person's row would carry other sales.
+const repTag = Date.now().toString(36).slice(-5);
+const monaId = ok('a rep for these sales', await owner.post('/staff', {
+  fullName: `Charges rep ${repTag}`, email: `crep.${repTag}@skb.local`, password: 'Str0ngPass!', role: 'SALES',
+  branchId: owner.user.branchId,
+})).id;
 
 // Three fresh items: A and B at cost 5.00 and 10.00, C given away as bonus.
 const make = async (name, price) =>
@@ -55,7 +60,7 @@ eq('discount shared over paid lines', inv.lines.map((l) => l.docDiscount), [1513
 eq('bonus line flagged', inv.lines.map((l) => l.isBonus), [false, false, true]);
 eq('profit = net − cost (tax, fee excluded)', inv.profitTotal, 16550 - (5000 + 5000 + 400));
 eq('line profits add up', inv.lines.reduce((s, l) => s + l.lineProfit, 0), inv.profitTotal);
-eq('rep on invoice', inv.repName, 'Mona Accountant');
+eq('rep on invoice', inv.repName, `Charges rep ${repTag}`);
 eq('customer owes grand total', (await owner.get(`/parties/${c1.id}`)).data.balance - balBefore, 23867);
 eq('bonus left stock', (await owner.get(`/products/${C.id}`)).data.stockOnHand, 98);
 const detail = ok('read back', await owner.get(`/sales/invoices/${inv.id}`));
@@ -104,7 +109,7 @@ eq('grand back = invoice − fee', r1.grandTotal + r2.grandTotal, 23867 - 5000);
 eq('profit reversed exactly', r1.profitTotal + r2.profitTotal, inv.profitTotal);
 eq('bonus came back into stock', (await owner.get(`/products/${C.id}`)).data.stockOnHand, 100);
 eq('customer left owing the fee (+ the other sales)', (await owner.get(`/parties/${c1.id}`)).data.balance - balBefore, 5000 + ks.grandTotal + ms.grandTotal + old.grandTotal);
-eq('returns keep the rep', [r1.repName, r2.repName], ['Mona Accountant', 'Mona Accountant']);
+eq('returns keep the rep', [r1.repName, r2.repName], [`Charges rep ${repTag}`, `Charges rep ${repTag}`]);
 
 console.log('== purchases: supplier discount lowers the cost, bonus lowers the average');
 const D = await make('ChargeD', 5000);

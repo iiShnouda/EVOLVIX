@@ -342,7 +342,9 @@ public sealed class LedgerService
                 foreach (var l in v.Lines) draft.Credit(await ForMoneyAsync(accounts[l.AccountId]), l.Amount, l.Reference);
                 break;
             case VoucherType.EXPENSE:
-                draft.Debit(await ForExpenseAsync(category!), v.Amount, v.Notes);
+                // No category: shipping we paid on a purchase or a return.
+                draft.Debit(category is null ? await SystemAsync(LedgerKeys.Shipping) : await ForExpenseAsync(category),
+                    v.Amount, v.Notes);
                 foreach (var l in v.Lines) draft.Credit(await ForMoneyAsync(accounts[l.AccountId]), l.Amount, l.Reference);
                 break;
             default:

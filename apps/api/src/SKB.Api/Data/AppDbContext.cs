@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
@@ -252,6 +253,10 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ProductModel>().HasOne(m => m.Supplier).WithMany()
             .HasForeignKey(m => m.SupplierId).OnDelete(DeleteBehavior.Restrict);
+
+        b.Entity<Notification>().HasIndex(n => new { n.StaffId, n.CreatedAt });
+        b.Entity<Notification>().HasOne(n => n.Staff).WithMany()
+            .HasForeignKey(n => n.StaffId).OnDelete(DeleteBehavior.Cascade);
 
         // Sales departments (أقسام): groups of categories; each sale belongs to one.
         b.Entity<Category>().HasOne(c => c.Department).WithMany()

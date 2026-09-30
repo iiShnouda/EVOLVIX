@@ -279,6 +279,15 @@ public sealed class ReturnsService
         if (isSale) await _ledger.PostSalesReturnAsync(doc, invoice.Party!, refundAccount, staffId);
         else await _ledger.PostPurchaseReturnAsync(doc, invoice.Party!, refundAccount, staffId);
 
+        // Shipping we paid to get a customer's goods back: our expense.
+        if (isSale && req.ShippingCost != 0)
+        {
+            if (req.ShippingCost < 0) return (null, new("bad_amount", "Enter a shipping cost of zero or more."));
+            var (_, shipError) = await _money.ShippingExpenseAsync(req.ShippingCost, req.ShippingAccountId,
+                invoice.BranchId, number, user, staffId, _ledger);
+            if (shipError is not null) return (null, new(shipError.Code, shipError.Message));
+        }
+
         if (completesInvoice) invoice.Status = DocumentStatus.RETURNED;
 
         _db.SalesDocuments.Add(doc);

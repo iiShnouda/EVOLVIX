@@ -262,6 +262,12 @@ public sealed class PurchasesController : ControllerBase
         }
         await _ledger.PostPurchaseInvoiceAsync(doc, party, paidFrom, staffId);
 
+        // Shipping we paid to bring the goods: our expense (not added to the items' cost).
+        if (req.ShippingCost < 0) return BadRequest(new { message = "Enter a shipping cost of zero or more.", code = "bad_amount" });
+        var (_, shipError) = await _money.ShippingExpenseAsync(req.ShippingCost, req.ShippingAccountId, branchId,
+            doc.Number, User, staffId, _ledger);
+        if (shipError is not null) return BadRequest(new { message = shipError.Message, code = shipError.Code });
+
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();

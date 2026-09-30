@@ -39,6 +39,8 @@ public enum DocumentStatus
     OVERDUE,
     CANCELLED,
     RETURNED,
+    /// <summary>A pending invoice the accountant turned down (with a reason).</summary>
+    REJECTED,
 }
 
 /// <summary>

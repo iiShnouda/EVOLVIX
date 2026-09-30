@@ -41,6 +41,7 @@ builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
+builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AccessService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<PayrollService>();

@@ -463,6 +463,9 @@ public class SalesDocument
     /// <summary>Additions such as a delivery fee (minor units): owed by the party, not revenue or cost.</summary>
     public long AdditionTotal { get; set; }
 
+    /// <summary>Why a pending invoice was turned down (REJECTED).</summary>
+    public string? RejectReason { get; set; }
+
     /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
     public Guid? DepartmentId { get; set; }
     public Department? Department { get; set; }
@@ -1185,3 +1188,21 @@ public class PayrollLine
     public Guid? PaidAccountId { get; set; }
 }
 
+
+/// <summary>An in-app notification for one person (the bell), e.g. a pending invoice to approve.</summary>
+public class Notification
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>ORDER_PENDING, ORDER_APPROVED, ORDER_REJECTED (the app words it in the screen language).</summary>
+    public string Kind { get; set; } = "";
+    public Guid? DocumentId { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string? PartyName { get; set; }
+    public long Amount { get; set; }
+    public string? ActorName { get; set; }
+    public string? Message { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ReadAt { get; set; }
+}
