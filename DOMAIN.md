@@ -249,6 +249,14 @@ One shape for every document type:
   number, from the previous balance; one branch or all; optionally each invoice's items (كشف أصناف).
 - **Pending invoices** can be changed by their maker (or an approver) until approved, keeping their
   number and date; they hold their goods for Settings → "hold days" (0 = until approved or cancelled).
+- **Saving an invoice** (owner, 2026-09-30): the sales person's one button saves it for the accountant,
+  who gets a notification (the bell) and approves (taking the payment) or rejects it with a reason,
+  which its maker is told. No tax, additions or paid-now on the sales screen; every sale has a rep
+  (المندوب), the maker unless another is picked.
+- **Delivery**: pickup at the office, or a shipping company that the customer pays directly (nothing
+  in our books). Shipping *we* pay — goods from a supplier, a customer's return — is a shipping expense.
+- **Returns**: the seller writes them (sales:return in the Sales role); goods go back to the warehouse
+  they left from; cash back to the customer is the accountant's.
 - **Credit limit** (حد الائتمان) per customer (`parties:credit_limit` sets it): a sale or approval that
   takes the balance over it is refused unless the person has `sales:over_credit` or more is paid now.
 - **Cost and profit** are the owner's, plus whoever gets `costs:view`. The server leaves them out for

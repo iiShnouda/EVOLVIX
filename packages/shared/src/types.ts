@@ -343,7 +343,9 @@ export type DocumentStatus =
   | 'PARTIALLY_PAID'
   | 'OVERDUE'
   | 'CANCELLED'
-  | 'RETURNED';
+  | 'RETURNED'
+  /** A pending invoice the accountant turned down (see `rejectReason`). */
+  | 'REJECTED';
 
 export interface DocumentLine {
   id: string;
@@ -443,6 +445,8 @@ export interface SalesDocument {
   /** A quotation that became an invoice: that invoice. */
   invoiceId?: string | null;
   invoiceNumber?: string | null;
+  /** Why a pending invoice was turned down. */
+  rejectReason?: string | null;
   createdAt: string;
 }
 
@@ -1901,4 +1905,23 @@ export interface CustomerAccount {
   documents: AccountDocument[];
   /** Their credit limit; null = none. */
   creditLimit?: number | null;
+}
+
+/** One notification (the bell). The app words it from `kind`. */
+export interface AppNotification {
+  id: string;
+  kind: 'ORDER_PENDING' | 'ORDER_APPROVED' | 'ORDER_REJECTED';
+  documentId?: string | null;
+  documentNumber?: string | null;
+  partyName?: string | null;
+  amount: number;
+  actorName?: string | null;
+  message?: string | null;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface NotificationList {
+  unread: number;
+  items: AppNotification[];
 }

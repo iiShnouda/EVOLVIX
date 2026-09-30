@@ -133,6 +133,11 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
+            {doc.rejectReason && (
+              <p className="text-destructive">
+                {t('order.rejectedBecause')} <span className="font-medium">{doc.rejectReason}</span>
+              </p>
+            )}
             {doc.departmentName && (
               <p>
                 {t('invoice.department')}:{' '}

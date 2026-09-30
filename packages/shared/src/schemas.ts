@@ -148,6 +148,9 @@ export const createPurchaseInvoiceSchema = z.object({
     .optional(),
   /** Where the paid-now amount comes from; none = the branch's cash box. */
   paidAccountId: z.string().uuid().optional(),
+  /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
+  shippingCost: z.number().int().min(0).optional(),
+  shippingAccountId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -170,6 +173,9 @@ export const createReturnSchema = z.object({
   notes: z.string().max(1000).optional(),
   /** The money account the refund goes through; none = the branch's cash box. */
   refundAccountId: z.string().uuid().optional(),
+  /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
+  shippingCost: z.number().int().min(0).optional(),
+  shippingAccountId: z.string().uuid().optional(),
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 

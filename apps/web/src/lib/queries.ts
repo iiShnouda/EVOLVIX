@@ -8,6 +8,7 @@ import type {
   CreateSalesInvoiceInput,
   ApproveOrderInput,
   CustomerAccount,
+  NotificationList,
   UpdateSettingsInput,
   BranchWithWarehouses,
   CreateBranchInput,
@@ -133,11 +134,22 @@ export type DocKind = 'invoices' | 'returns' | 'quotations' | 'orders';
 export function useDocumentList(
   scope: DocScope,
   kind: DocKind,
-  params: { page: number; search?: string; status?: string },
+  params: {
+    page: number;
+    search?: string;
+    status?: string;
+    /** Sales: one department ('none' = of no department), and company days from / to. */
+    departmentId?: string;
+    from?: string;
+    to?: string;
+  },
 ) {
   const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
+  if (params.departmentId) query.set('departmentId', params.departmentId);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
   return useQuery({
     queryKey: [scope, kind, params],
     queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/${scope}/${kind}?${query}`),
@@ -197,15 +209,17 @@ export function useProductSearch(
   inStockOnly = false,
   supplierId = '',
   departmentId = '',
+  categoryId = '',
 ) {
   const query = new URLSearchParams();
+  if (categoryId) query.set('categoryId', categoryId);
   if (search) query.set('search', search);
   if (inStockOnly) query.set('inStockOnly', 'true');
   if (supplierId) query.set('supplierId', supplierId);
   // A department's items and items of no department.
   if (departmentId) query.set('departmentId', departmentId);
   return useQuery({
-    queryKey: ['products', search, inStockOnly, supplierId, departmentId],
+    queryKey: ['products', search, inStockOnly, supplierId, departmentId, categoryId],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
   });
 }
@@ -270,6 +284,37 @@ export function useApproveOrder() {
       invalidateAfterPosting(qc, 'sales');
       void qc.invalidateQueries({ queryKey: ['account'] });
     },
+  });
+}
+
+/** The accountant turns a pending invoice down, saying why. */
+export function useRejectOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<SalesDocument>(`/sales/orders/${id}/reject`, { reason }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+/** My notifications (the bell); checked every 30 seconds while the app is open. */
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get<NotificationList>('/notifications'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useReadNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | 'all') =>
+      api.post<void>(id === 'all' ? '/notifications/read-all' : `/notifications/${id}/read`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }
 

@@ -13,6 +13,8 @@
   "dependencies": {
     "@skb/shared": "workspace:*",
     "@tanstack/react-query": "^5.59.0",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1",

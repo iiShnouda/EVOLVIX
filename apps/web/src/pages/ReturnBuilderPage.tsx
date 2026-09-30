@@ -32,6 +32,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const { t, locale } = useT();
   // The cost and profit a sales return reverses are the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
+  const canRefund = useCan()('sales:approve');
   const navigate = useNavigate();
 
   const invoice = useDocument(scope, id);
@@ -43,6 +44,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const [inBase, setInBase] = useState<Record<string, boolean>>({});
   const [refund, setRefund] = useState('');
   const [refundAccountId, setRefundAccountId] = useState('');
+  // Shipping we paid to get a customer's goods back: our expense.
+  const [shipping, setShipping] = useState('');
+  const [shippingAccountId, setShippingAccountId] = useState('');
   const [notes, setNotes] = useState('');
 
   const backTo = `/${scope}`;
@@ -135,6 +139,8 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
           lines: rows.filter((r) => r.q > 0).map((r) => ({ lineId: r.line.id, quantity: r.q })),
           refundAmount: refundMinor,
           refundAccountId: refundMinor > 0 && refundAccountId ? refundAccountId : undefined,
+          shippingCost: isSale && Number(shipping) > 0 ? toMinor(Number(shipping)) : undefined,
+          shippingAccountId: isSale && Number(shipping) > 0 && shippingAccountId ? shippingAccountId : undefined,
           notes: notes.trim() || undefined,
         },
       });
@@ -321,19 +327,22 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
             </dl>
 
             <div className="mt-3 space-y-2">
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">
-                  {isSale ? t('return.refundNow') : t('return.refundFromSupplier')}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={`${field} tnum`}
-                  value={refund}
-                  onChange={(e) => setRefund(e.target.value)}
-                />
-              </label>
+              {/* Cash back to a customer is the accountant's; the seller's return goes on the account. */}
+              {(!isSale || canRefund) && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {isSale ? t('return.refundNow') : t('return.refundFromSupplier')}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={refund}
+                    onChange={(e) => setRefund(e.target.value)}
+                  />
+                </label>
+              )}
               {refundMinor > 0 && (
                 <MoneyAccountPicker
                   className={field}
@@ -345,6 +354,28 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
               <p className="text-xs text-faint">
                 {isSale ? t('return.creditHint') : t('return.debitHint')}
               </p>
+              {isSale && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.shippingCost')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={shipping}
+                    onChange={(e) => setShipping(e.target.value)}
+                  />
+                  <span className="mt-0.5 block text-xs text-faint">{t('return.shippingHint')}</span>
+                </label>
+              )}
+              {isSale && Number(shipping) > 0 && (
+                <MoneyAccountPicker
+                  className={field}
+                  label={t('money.paidInto')}
+                  value={shippingAccountId}
+                  onChange={setShippingAccountId}
+                />
+              )}
               {doc.additionTotal > 0 && (
                 <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
               )}

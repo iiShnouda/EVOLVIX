@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -15,6 +15,8 @@ import { useAuth } from '../stores/auth';
 import {
   useCancelOrder,
   useCancelQuotation,
+  useDepartments,
+  useRejectOrder,
   useDocument,
   useDocumentList,
   type DocKind,
@@ -26,6 +28,12 @@ import { errorText } from '../lib/errors';
 import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 import { EditOrderSheet } from '../components/EditOrderSheet';
+import { PartyPicker } from '../components/PartyPicker';
+import { Sheet } from '../components/Sheet';
+import type { Party } from '@skb/shared';
+
+const filterField =
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
   sales: {
@@ -95,13 +103,36 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   useEffect(() => {
     if (linkedId) setSelectedId(linkedId);
   }, [linkedId]);
-  const list = useDocumentList(scope, kind, { page: 1 });
+  // Filters: number or customer, department, status, company days.
+  const [search, setSearch] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const departments = useDepartments();
+  const list = useDocumentList(scope, kind, {
+    page: 1,
+    search: useDeferredValue(search.trim()) || undefined,
+    status: status || undefined,
+    departmentId: isSales ? departmentId || undefined : undefined,
+    from: from || undefined,
+    to: to || undefined,
+  });
+  const statuses: Record<DocKind, string[]> = {
+    invoices: ['CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'RETURNED', 'CANCELLED'],
+    orders: ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED'],
+    quotations: ['PENDING', 'CONFIRMED', 'CANCELLED'],
+    returns: [],
+  };
+  const [rejecting, setRejecting] = useState(false);
+  const [newReturn, setNewReturn] = useState(false);
   const detail = useDocument(scope, selectedId);
   const isPhone = deviceClass === 'phone';
   const rows = list.data?.items ?? [];
 
   function switchKind(next: DocKind) {
     setSelectedId(null);
+    setStatus('');
     setParams(next === 'invoices' ? {} : { tab: next }, { replace: true });
   }
 
@@ -155,6 +186,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       {orderOpen && canApprove && (
         <Button size="sm" icon="check" onClick={() => setApproving(true)}>
           {t('order.approve')}
+        </Button>
+      )}
+      {orderOpen && canApprove && (
+        <Button size="sm" variant="danger" onClick={() => setRejecting(true)}>
+          {t('order.reject')}
         </Button>
       )}
       {orderOpen && canCancelOrder && !confirmCancel && (
@@ -215,7 +251,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         title={t(isSales ? 'nav.sales' : 'nav.purchases')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
-          kind === 'quotations' ? (
+          kind === 'returns' && canReturn ? (
+            <Button icon="plus" size="sm" onClick={() => setNewReturn(true)}>
+              {t('return.new')}
+            </Button>
+          ) : kind === 'quotations' ? (
             canQuote ? (
               <Button icon="plus" size="sm" onClick={() => navigate('/sales/quotes/new')}>
                 {t('quote.new')}
@@ -246,6 +286,54 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             {t(TAB_LABEL[scope][k]!)}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block min-w-48 flex-1">
+          <span className="mb-0.5 block text-xs text-muted">{t('common.search')}</span>
+          <input
+            type="search"
+            className={filterField}
+            placeholder={t('sales.filterSearch')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        {isSales && (departments.data ?? []).length > 0 && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+            <select className={filterField} value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+              <option value="">{t('account.allDepartments')}</option>
+              {(departments.data ?? []).map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+              <option value="none">{t('invoice.noDepartment')}</option>
+            </select>
+          </label>
+        )}
+        {statuses[kind].length > 0 && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
+            <select className={filterField} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">{t('sales.allStatuses')}</option>
+              {statuses[kind].map((s) => (
+                <option key={s} value={s}>
+                  {t(`status.${s}` as TranslationKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
+          <input type="date" className={`${filterField} tnum`} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
+          <input type="date" className={`${filterField} tnum`} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        </label>
       </div>
 
       <div className={`grid gap-4 ${isPhone ? '' : 'lg:grid-cols-[1fr_minmax(340px,420px)]'}`}>
@@ -354,6 +442,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           onDone={() => setEditingOrder(false)}
         />
       )}
+      {rejecting && order && (
+        <RejectSheet id={order.id} number={order.number} onClose={() => setRejecting(false)} />
+      )}
+      {newReturn && <NewReturnSheet scope={scope} onClose={() => setNewReturn(false)} />}
       {approving && order && (
         <ApproveOrderSheet
           order={order}
@@ -437,5 +529,100 @@ function DocumentRow({
         {formatMoney(doc.grandTotal, doc.currency, locale)}
       </td>
     </tr>
+  );
+}
+
+/** Turn a pending invoice down, saying why (its maker sees it; the goods are free again). */
+function RejectSheet({ id, number, onClose }: { id: string; number: string; onClose: () => void }) {
+  const { t } = useT();
+  const reject = useRejectOrder();
+  const [reason, setReason] = useState('');
+  return (
+    <Sheet title={`${t('order.rejectTitle')} — ${number}`} onClose={onClose} closeLabel={t('common.close')}>
+      <div className="space-y-3">
+        <p className="text-xs text-faint">{t('order.rejectHint')}</p>
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('order.rejectReason')}</span>
+          <textarea
+            className="min-h-24 w-full rounded-[var(--radius-app)] border border-line bg-surface p-2.5 text-sm outline-none focus:border-brand"
+            maxLength={300}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </label>
+        {reject.error && <p className="text-sm text-destructive">{errorText(t, reject.error)}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            loading={reject.isPending}
+            disabled={!reason.trim()}
+            onClick={() => reject.mutate({ id, reason: reason.trim() }, { onSuccess: onClose })}
+          >
+            {t('order.reject')}
+          </Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/** A new return: the customer (or supplier), then the invoice the goods came on, then its return screen. */
+function NewReturnSheet({ scope, onClose }: { scope: DocScope; onClose: () => void }) {
+  const { t, locale } = useT();
+  const navigate = useNavigate();
+  const isSales = scope === 'sales';
+  const [party, setParty] = useState<Party | null>(null);
+  const invoices = useDocumentList(scope, 'invoices', { page: 1, search: party?.name });
+  const rows = party
+    ? (invoices.data?.items ?? []).filter((d) => d.partyName === party.name && d.status !== 'CANCELLED')
+    : [];
+  return (
+    <Sheet title={t('return.new')} onClose={onClose} closeLabel={t('common.close')}>
+      <div className="space-y-3">
+        <p className="text-xs text-faint">{t('return.pickCustomer')}</p>
+        <PartyPicker
+          type={isSales ? 'CUSTOMER' : 'SUPPLIER'}
+          value={party}
+          onChange={setParty}
+          label={t(isSales ? 'invoice.customer' : 'invoice.supplier')}
+          placeholder={t(isSales ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+        />
+        {party && (
+          <div>
+            <p className="mb-1 text-xs text-muted">{t('return.pickInvoice')}</p>
+            {invoices.isLoading ? (
+              <div className="grid place-items-center py-6 text-muted">
+                <Spinner size={18} />
+              </div>
+            ) : rows.length === 0 ? (
+              <p className="text-sm text-muted">{t('return.noInvoices')}</p>
+            ) : (
+              <ul className="max-h-80 divide-y divide-[var(--c-line)] overflow-auto rounded-[var(--radius-app)] border border-line">
+                {rows.map((d) => (
+                  <li key={d.id}>
+                    <button
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                      onClick={() => navigate(`/${scope}/invoices/${d.id}/return`)}
+                    >
+                      <span>
+                        <span className="block font-medium tnum">{d.number}</span>
+                        <span className="text-xs text-muted">
+                          {formatDate(d.issueDate, locale)}
+                          {d.departmentName && <> · {d.departmentName}</>}
+                        </span>
+                      </span>
+                      <span className="tnum">{formatMoney(d.grandTotal, d.currency, locale)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Sheet>
   );
 }
