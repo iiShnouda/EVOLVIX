@@ -158,7 +158,8 @@ One shape for every document type:
 | Type | Arabic | Stock | Money |
 |---|---|---|---|
 | `QUOTATION` | عرض سعر | — | — |
-| `SALES_ORDER` / `PURCHASE_ORDER` | طلبية | reserved / expected *(later)* | — |
+| `SALES_ORDER` | فاتورة معلّقة | held (reserved) until approved | — (until approved) |
+| `PURCHASE_ORDER` | طلبية شراء | expected *(later)* | — |
 | `SALES_INVOICE` | فاتورة مبيعات | out | customer owes |
 | `SALES_RETURN` | مرتجع مبيعات | in | customer credited |
 | `PURCHASE_INVOICE` | فاتورة مشتريات | in | we owe supplier |
@@ -222,6 +223,30 @@ One shape for every document type:
   counts as paid on delivery. The clearing account, the cash box and the fees' expense account
   post once the money and ledger steps (5, 6) exist.
 - **Numbering:** one prefix per type (INV, PUR, SRT, PRT, ADJ, TRF…), yearly sequence. This is built.
+
+### 2.5b Departments, pending invoices, who sees profit (owner decisions 2026-09-30)
+- **A factory is a supplier.** One party role (`SUPPLIER`); a supplier also keeps the factory owner's
+  name, the factory address, extra phones and notes. Customers keep a shipping address.
+- **Each item has one main supplier** and that supplier's own code for it. The invoice screen finds
+  items by name, our code, barcode, supplier code or price, optionally within one supplier.
+- **Sales department (قسم)** = a group of categories (e.g. men's, underwear). Every sale belongs to one;
+  it holds only that department's items (items of a category with no department go anywhere).
+  A person may be limited to some departments (Staff → Access): they sell, search, list and return
+  only in theirs. One branch with two floors = one branch, a department and a warehouse per floor.
+- **Discounts**: on a line (a %, so much per piece, or an amount) or on the whole invoice. Needs
+  `sales:discount`; each person has a limit (theirs, else the company's; the owner none), checked per
+  line on its own discount plus its share of the invoice discount.
+- **Pending invoice → accountant.** The department's sales person saves a `SALES_ORDER`
+  (`sales:order`): items, customer, date. Its goods are held; nothing posts. The accountant
+  (`sales:approve`) may change the discounts within their own limit, takes the payment (cash, transfer
+  into a bank account; a cheque or promissory note right after, against the invoice) and approves it:
+  it becomes the `SALES_INVOICE`. What isn't paid stays on the customer's account. To make sales
+  people only save pending invoices, take `sales:create` off the Sales role.
+- **Customer account for the accountant**: owed now, totals per department, every invoice and return
+  with date, discount, paid, left and notes, and pending invoices — never cost or profit.
+- **Cost and profit** are the owner's, plus whoever gets `costs:view`. The server leaves them out for
+  everyone else (sales documents, item cost, stock values, profit reports, ledger statements that
+  reveal them).
 
 ### 2.6 Money — الخزينة والبنوك
 - **Money accounts** (حسابات النقدية): every place money can sit. Each one is linked to its
