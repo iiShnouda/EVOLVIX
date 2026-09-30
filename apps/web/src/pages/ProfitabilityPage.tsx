@@ -1,16 +1,10 @@
 import { useState } from 'react';
-import { formatMoney, formatNumber, type ProfitGroupBy } from '@skb/shared';
+import { formatMoney, formatNumber, type ProfitGroupBy, companyToday } from '@skb/shared';
 import { Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useProfitReport } from '../lib/queries';
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-function startOfMonth(): string {
-  const d = new Date();
-  return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
-}
+const startOfMonth = () => `${companyToday().slice(0, 7)}-01`;
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -19,7 +13,7 @@ const field =
 export function ProfitabilityPage({ embedded = false }: { embedded?: boolean }) {
   const { t, locale } = useT();
   const [from, setFrom] = useState(startOfMonth());
-  const [to, setTo] = useState(isoDate(new Date()));
+  const [to, setTo] = useState(companyToday);
   const [by, setBy] = useState<ProfitGroupBy>('customer');
 
   const report = useProfitReport({ from, to, by });

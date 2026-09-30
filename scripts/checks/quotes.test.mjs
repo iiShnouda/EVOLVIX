@@ -2,7 +2,7 @@
 // moves nothing; turning it into an invoice keeps its approved prices while it's valid, checks stock
 // and closes it (once, even when two people try at once); cancelling; permissions; and performance
 // by person and branch. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, addDays } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -52,7 +52,7 @@ ok(
     ],
   }),
 );
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 const stock = async (p) => (await owner.get(`/products/${p.id}`)).data.stockOnHand;
 const balance = async () => (await owner.get(`/parties/${cust.id}`)).data.balance;
 const Q = (who, body) =>
@@ -187,7 +187,7 @@ eq('two at once: one invoice', race.map((r) => r.status).sort(), [201, 400]);
 eq('the other told', race.find((r) => r.status === 400)?.data?.code, 'quote_closed');
 
 console.log('== an expired quotation');
-const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+const yesterday = addDays(today, -1);
 eq(
   "a new quotation can't have run out already",
   (

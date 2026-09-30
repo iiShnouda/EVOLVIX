@@ -248,6 +248,8 @@ export const updateSettingsSchema = z.object({
   email: z.union([z.literal(''), z.string().trim().email().max(200)]).optional(),
   taxNumber: z.string().trim().max(60).optional(),
   commercialRegister: z.string().trim().max(60).optional(),
+  /** One of TIME_ZONES (IANA id). */
+  timeZone: z.string().trim().min(1).max(64).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

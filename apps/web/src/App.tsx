@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { setCompanyTimeZone } from '@skb/shared';
 import { queryClient } from './lib/queryClient';
+import { useCompanySettings } from './lib/queries';
 import { api, API_BASE } from './lib/api';
 import { applyDocumentPrefs, usePrefs } from './stores/prefs';
 import { useAuth } from './stores/auth';
@@ -117,7 +119,21 @@ function ProtectedApp() {
     );
   }
 
-  return <Shell />;
+  return (
+    <>
+      <CompanyClock />
+      <Shell />
+    </>
+  );
+}
+
+/**
+ * Business days follow the company's time zone (Settings): "today" in date pickers and every date
+ * shown. Set while rendering, before the pages below compute their "today".
+ */
+function CompanyClock() {
+  setCompanyTimeZone(useCompanySettings().data?.timeZone);
+  return null;
 }
 
 function LoginRoute() {

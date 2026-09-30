@@ -13,6 +13,7 @@ import {
   type TranslationKey,
   type Voucher,
   type VoucherType,
+  companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -67,10 +68,7 @@ const input =
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:opacity-60';
 
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+const today = companyToday;
 const minor = (v: string) => (v.trim() === '' ? 0 : toMinor(Number(v) || 0));
 
 /**

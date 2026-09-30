@@ -169,13 +169,11 @@ public sealed class MoneyController : ControllerBase
         var account = await _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian)
             .FirstOrDefaultAsync(a => a.Id == id);
         if (account is null) return NotFound(new { message = "Money account not found.", code = "not_found" });
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var fromDay = DateOnly.TryParse(from, out var f) ? f : today;
-        var toDay = DateOnly.TryParse(to, out var t) ? t : fromDay;
+        var fromDay = CompanyClock.ParseDay(from) ?? CompanyClock.Today;
+        var toDay = CompanyClock.ParseDay(to) ?? fromDay;
         if (toDay < fromDay || toDay.DayNumber - fromDay.DayNumber > 366)
             return Bad("bad_range", "Choose up to a year, the start before the end.");
-        var start = fromDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var end = toDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var (start, end) = CompanyClock.Days(fromDay, toDay);
 
         var opening = await _db.MoneyMovements.Where(m => m.AccountId == id && m.CreatedAt < start)
             .OrderByDescending(m => m.Seq).Select(m => (long?)m.BalanceAfter).FirstOrDefaultAsync() ?? 0;
@@ -206,7 +204,7 @@ public sealed class MoneyController : ControllerBase
         var owed = await MoneyService.OutstandingAsync(_db, docs);
         var onCod = await CodParcelDocsAsync(docs.Select(d => d.Id).ToList());
         return Ok(docs.Where(d => owed[d.Id] > 0).Select(d => new OpenInvoiceDto(
-            d.Id.ToString(), d.Number, d.Type.ToString(), d.IssueDate.ToString("o"), d.DueDate?.ToString("o"),
+            d.Id.ToString(), d.Number, d.Type.ToString(), d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"),
             Loc.Name(d.Branch), d.GrandTotal, d.PaidAmount, owed[d.Id], onCod.Contains(d.Id))).ToArray());
     }
 
@@ -302,7 +300,7 @@ public sealed class MoneyController : ControllerBase
         if (voucher is null) return NotFound(new { message = "Voucher not found.", code = "not_found" });
         if (voucher.Status != VoucherStatus.POSTED) return Bad("already_cancelled", "This voucher is already cancelled.");
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && voucher.CreatedAt.Date <= locked.Date)
+        if (lockDate is DateTime locked && CompanyClock.DayOf(voucher.CreatedAt) <= DateOnly.FromDateTime(locked))
             return Bad("period_locked", "The period this voucher is in is locked.");
 
         // Invoices first, then accounts: the same order every money path locks in.

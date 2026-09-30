@@ -37,6 +37,20 @@ export function ok(name, res, status = [200, 201]) {
   check(name, s.includes(res.status), { status: res.status, data: res.data });
   return res.data;
 }
+// The company's calendar (Settings → time zone, Africa/Cairo by default): business days follow it.
+export const ZONE = 'Africa/Cairo';
+/** The yyyy-MM-dd day an instant falls on in a time zone (the company's by default). */
+export function dayIn(when = new Date(), zone = ZONE) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(when));
+}
+export const companyToday = () => dayIn();
+/** A yyyy-MM-dd day plus n days. */
+export function addDays(day, n) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 export function summary(label) {
   console.log(`\n${label}: ${passed} passed, ${failed} failed`);
   if (failed) console.log('Failures:\n - ' + failures.join('\n - '));

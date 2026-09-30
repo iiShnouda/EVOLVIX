@@ -8,7 +8,7 @@ public static class Mapper
     public static SalesSummaryDto ToSummary(SalesDocument d) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         Loc.Name(d.Branch), d.Party?.Name ?? "", d.Staff?.FullName ?? "",
-        d.IssueDate.ToString("o"), d.DueDate?.ToString("o"), d.GrandTotal, d.PaidAmount, d.Currency,
+        d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"), d.GrandTotal, d.PaidAmount, d.Currency,
         d.SourceDocument?.Number);
 
     /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
@@ -19,7 +19,7 @@ public static class Mapper
         IReadOnlyDictionary<Guid, string>? baseUnits = null) => new(
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         Loc.Name(d.Branch), d.Party?.Name ?? "", d.Staff?.FullName ?? "",
-        d.IssueDate.ToString("o"), d.DueDate?.ToString("o"),
+        d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"),
         d.Lines.OrderBy(l => l.LineNo).Select(l => new DocumentLineDto(
             l.Id.ToString(), l.ProductId.ToString(), l.ProductName, l.Quantity,
             l.UnitPrice, l.Discount, l.LineTotal, l.UnitCost, l.LineProfit,
@@ -77,7 +77,7 @@ public static class Mapper
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
-        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister);
+        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone);
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,

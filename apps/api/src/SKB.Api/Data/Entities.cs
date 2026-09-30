@@ -759,6 +759,11 @@ public class CompanySettings
     public string Country { get; set; } = "EG";
     /// <summary>Base/reporting currency (ISO 4217, e.g. "EGP").</summary>
     public string Currency { get; set; } = "EGP";
+    /// <summary>
+    /// The company's time zone (IANA id). Business days — today, report periods, daily cash,
+    /// months — follow it (see <c>CompanyClock</c>).
+    /// </summary>
+    public string TimeZone { get; set; } = "Africa/Cairo";
     /// <summary>Suggested markup for a new sales line, e.g. 10 → price = cost + 10%.</summary>
     public int DefaultMarkupPercent { get; set; } = 10;
     /// <summary>

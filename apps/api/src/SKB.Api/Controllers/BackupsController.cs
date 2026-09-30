@@ -32,7 +32,7 @@ public sealed class BackupsController : ControllerBase
     public ActionResult<BackupStatusDto> Status() => Ok(new BackupStatusDto(
         _scheduler.Folder is not null, _scheduler.Folder, _scheduler.Hour, _scheduler.Keep,
         _scheduler.Passphrase is not null, _scheduler.LastRunAt?.ToString("o"), _scheduler.LastFile,
-        _scheduler.LastError, _scheduler.NextRunAt()?.ToUniversalTime().ToString("o"),
+        _scheduler.LastError, _scheduler.NextRunAt()?.ToString("o"),
         _scheduler.Files().Select(f => new BackupFileDto(f.Name, f.Length, f.LastWriteTimeUtc.ToString("o"))).ToArray()));
 
     /// <summary>A backup of everything now, encrypted with the passphrase given.</summary>
@@ -55,7 +55,7 @@ public sealed class BackupsController : ControllerBase
         await AuditAsync("download", null);
         var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
             FileOptions.DeleteOnClose | FileOptions.Asynchronous);
-        return File(stream, "application/octet-stream", $"skb-{DateTime.Now:yyyyMMdd-HHmmss}.skbak");
+        return File(stream, "application/octet-stream", $"skb-{CompanyClock.Now:yyyyMMdd-HHmmss}.skbak");
     }
 
     /// <summary>Make an automatic-style backup in the server folder now.</summary>

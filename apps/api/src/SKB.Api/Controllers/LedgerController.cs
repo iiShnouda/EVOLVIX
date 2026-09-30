@@ -244,8 +244,8 @@ public sealed class LedgerController : ControllerBase
     [HttpGet("balance-sheet")]
     public async Task<ActionResult<BalanceSheetDto>> BalanceSheet([FromQuery] string? asOf = null)
     {
-        var day = DateOnly.TryParse(asOf, out var d) ? d : DateOnly.FromDateTime(DateTime.UtcNow);
-        var end = day.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var day = CompanyClock.ParseDay(asOf) ?? CompanyClock.Today;
+        var end = CompanyClock.StartOf(day.AddDays(1));
         var net = await NetByAccountAsync(l => l.Entry!.Date < end);
         var (accounts, groupOf) = await ChartAsync();
         var rows = new List<FinancialRowDto>();
@@ -332,8 +332,8 @@ public sealed class LedgerController : ControllerBase
     {
         var description = req.Description?.Trim();
         if (string.IsNullOrEmpty(description)) return Bad("bad_description", "Say what the entry is for.");
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var day = string.IsNullOrWhiteSpace(req.Date) ? today : DateOnly.TryParse(req.Date, out var d) ? d : (DateOnly?)null;
+        var today = CompanyClock.Today;
+        var day = string.IsNullOrWhiteSpace(req.Date) ? today : CompanyClock.ParseDay(req.Date);
         if (day is null || day > today) return Bad("bad_date", "Choose a date up to today.");
         var lines = req.Lines ?? Array.Empty<JournalLineRequest>();
         if (lines.Length < 2 || lines.Length > 100) return Bad("bad_lines", "An entry needs two to 100 lines.");
@@ -395,7 +395,7 @@ public sealed class LedgerController : ControllerBase
         if (await _db.JournalEntries.AnyAsync(e => e.SourceType == "MANUAL_REVERSAL" && e.SourceId == id))
             return Bad("already_reversed", "This entry is already reversed.");
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && original.Date.Date <= locked.Date)
+        if (lockDate is DateTime locked && CompanyClock.DayOf(original.Date) <= DateOnly.FromDateTime(locked))
             return Bad("period_locked", "That entry is in a locked period.");
 
         var partyIds = original.Lines.Where(l => l.Account!.PartyId != null).Select(l => l.Account!.PartyId!.Value).Distinct().ToArray();
@@ -432,9 +432,9 @@ public sealed class LedgerController : ControllerBase
         DateTime? value = null;
         if (!string.IsNullOrWhiteSpace(req.LockDate))
         {
-            if (!DateOnly.TryParse(req.LockDate, out var day) || day > DateOnly.FromDateTime(DateTime.UtcNow))
+            if (CompanyClock.ParseDay(req.LockDate) is not DateOnly day || day > CompanyClock.Today)
                 return Bad("bad_date", "Choose a date up to today.");
-            value = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            value = CompanyClock.AsDate(day);
         }
         var settings = await _db.CompanySettings.FirstOrDefaultAsync();
         if (settings is null) return Bad("no_settings", "Company settings are missing.");
@@ -473,12 +473,11 @@ public sealed class LedgerController : ControllerBase
     [Authorize(Policy = Permissions.LedgerLock)]
     public async Task<ActionResult<ClosedYearDto>> CloseYear([FromBody] CloseYearRequest req)
     {
-        if (req.Year < 2000 || req.Year >= DateTime.UtcNow.Year)
+        if (req.Year < 2000 || req.Year >= CompanyClock.Year)
             return Bad("bad_year", "Only a year that has ended can be closed.");
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtext('ledger-close-year'))");
-        var start = new DateTime(req.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var end = start.AddYears(1);
+        var (start, end) = CompanyClock.Days(new DateOnly(req.Year, 1, 1), new DateOnly(req.Year, 12, 31));
         if (await _db.JournalEntries.AnyAsync(e => e.SourceType == "YEAR_CLOSE" && e.Date >= start))
             return Bad("already_closed", "This year, or a later one, is already closed.");
         // Everything up to 31 December, earlier closing entries included (they zeroed their years).
@@ -551,11 +550,10 @@ public sealed class LedgerController : ControllerBase
     /// <summary>A period of whole UTC days; defaults to the year so far.</summary>
     private static bool Range(string? from, string? to, out DateOnly fromDay, out DateOnly toDay, out DateTime start, out DateTime end)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        fromDay = DateOnly.TryParse(from, out var f) ? f : new DateOnly(today.Year, 1, 1);
-        toDay = DateOnly.TryParse(to, out var t) ? t : today;
-        start = fromDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        end = toDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var today = CompanyClock.Today;
+        fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, 1, 1);
+        toDay = CompanyClock.ParseDay(to) ?? today;
+        (start, end) = CompanyClock.Days(fromDay, toDay);
         return toDay >= fromDay && toDay.DayNumber - fromDay.DayNumber <= 5 * 366;
     }
 

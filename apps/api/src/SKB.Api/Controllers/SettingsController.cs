@@ -57,6 +57,12 @@ public sealed class SettingsController : ControllerBase
         if (req.Phone is not null) s.Phone = Text(req.Phone, 60);
         if (req.TaxNumber is not null) s.TaxNumber = Text(req.TaxNumber, 60);
         if (req.CommercialRegister is not null) s.CommercialRegister = Text(req.CommercialRegister, 60);
+        if (req.TimeZone is not null)
+        {
+            if (!CompanyClock.IsKnown(req.TimeZone))
+                return BadRequest(new { message = "Choose a time zone from the list.", code = "bad_time_zone" });
+            s.TimeZone = req.TimeZone;
+        }
         if (req.Email is not null)
         {
             var e = Text(req.Email, 200)?.ToLowerInvariant();
@@ -67,6 +73,7 @@ public sealed class SettingsController : ControllerBase
         s.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
+        CompanyClock.Use(s.TimeZone);
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "update", "settings",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), s.Id.ToString());

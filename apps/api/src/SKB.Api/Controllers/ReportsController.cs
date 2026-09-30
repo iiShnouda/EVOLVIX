@@ -28,12 +28,11 @@ public sealed class ReportsController : ControllerBase
     public async Task<ActionResult<ProfitReportDto>> Profitability(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "customer")
     {
-        var now = DateTime.UtcNow;
-        var fromRaw = ParseDate(from) ?? new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var toRaw = ParseDate(to) ?? now;
-        // Normalize to UTC midnight boundaries; Npgsql requires Kind=Utc for timestamptz.
-        var fromDate = DateTime.SpecifyKind(fromRaw.Date, DateTimeKind.Utc);
-        var toExclusive = DateTime.SpecifyKind(toRaw.Date.AddDays(1), DateTimeKind.Utc);
+        // Whole company days (Settings → time zone); by default this month so far.
+        var today = CompanyClock.Today;
+        var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);
+        var toDay = CompanyClock.ParseDay(to) ?? today;
+        var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
         by = by.ToLowerInvariant() is "product" or "day" or "model" or "rep" ? by.ToLowerInvariant() : "customer";
 
         Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
@@ -126,8 +125,10 @@ public sealed class ReportsController : ControllerBase
         }
         else if (by == "day")
         {
+            var zone = CompanyClock.ZoneId;
             var grouped = await docs
-                .GroupBy(d => d.IssueDate.Date)
+                .Select(d => new { At = AppDbContext.LocalTime(zone, d.IssueDate), d.Type, d.Subtotal, d.DiscountTotal, d.CostTotal, d.ProfitTotal })
+                .GroupBy(d => d.At.Date)
                 .Select(g => new
                 {
                     Day = g.Key,
@@ -166,10 +167,7 @@ public sealed class ReportsController : ControllerBase
         }
 
         return Ok(new ProfitReportDto(
-            fromDate.ToString("yyyy-MM-dd"), toExclusive.AddDays(-1).ToString("yyyy-MM-dd"),
+            fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             by, currency, revenue, cost, profit, invoices, returns, rows));
     }
-
-    private static DateTime? ParseDate(string? s) =>
-        DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
 }

@@ -5,7 +5,7 @@ session (or teammate) can pick up without losing context. Pair this with **`ROAD
 (the full feature catalog of the old ERP), **`DOMAIN.md`** (how SKB models it: entities, rules,
 postings, build order) and **`CLAUDE.md`** (the non-negotiable rules).
 
-_Last updated: 2026-09-29._
+_Last updated: 2026-09-30._
 
 ---
 
@@ -108,6 +108,37 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Company days in Cairo time** (أيام العمل بتوقيت الشركة)
+- Business days follow the company's clock (**Settings → time zone**, Africa/Cairo by default), not
+  UTC, with daylight saving included. Before this, a sale made after 21:00–22:00 in Cairo counted on
+  the next UTC day.
+- What follows it:
+  - "today" everywhere (date pickers, the daily cash, attendance, manual entries, the period lock,
+    quote validity, payroll months);
+  - every report period: profitability (and by day), analytics (by month too), the dashboard's
+    week, aging, statements, trial balance, income statement, balance sheet, the item card,
+    valuation, transfers, the activity log and the year-end close (1 January to 31 December in
+    Cairo);
+  - document numbers' year, and the automatic backup hour (`Backup__Hour` is now company time).
+- The web app shows every date and time on the company's clock too, wherever the device is.
+- How it works:
+  - One server clock, `CompanyClock`. Instants stay in UTC; a day runs from its Cairo midnight to
+    the next.
+  - Grouping by day or month is done in PostgreSQL with `timezone(zone, instant)`.
+  - Calendar-only values (due dates, attendance days, hire dates, the lock) stay as the day itself.
+    Due dates now go out as `yyyy-MM-dd`.
+- Choosing a country in Settings suggests its time zone. Twenty zones are offered (Arab countries,
+  Istanbul, London, Berlin, New York, UTC); existing companies start on Cairo (migration
+  `CompanyTimeZone`).
+- **Verified:**
+  - `time.test.mjs` (86 checks) moves documents to just before and after a Cairo midnight, and
+    checks the day, month, aging bucket, statement, daily cash, item card and valuation they land in.
+    That includes the April clock jump and the October fall back.
+  - It then switches the zone to Dubai and UTC and back. In each zone, every day grouped by
+    PostgreSQL equals that day asked for on its own.
+  - Every test that used a UTC "today" now uses the company's.
+  - All suites pass on a fresh and an upgraded database, plus backup → restore.
+
 **Payroll & attendance** (الرواتب والحضور) — DOMAIN.md §7 step 9
 - **Employees** (Payroll → Employees, `employees:manage`):
   - Each has a code, branch, job, monthly salary, start date, shift, fingerprint device number
@@ -177,7 +208,7 @@ Security-first, server-authoritative (no business data readable offline).
   - A return counts against whoever made the sale it returns.
   - With print and Excel.
 - **Fixed:** a due date typed as a plain date made saving an invoice fail (its time zone was
-  unknown). Dates now count as UTC.
+  unknown). A plain date is now kept as that calendar day.
 - **Verified:**
   - `quotes.test.mjs`: 63 checks, covering prices and permissions, nothing moving, conversion
     with held prices, stock at conversion, the race, expiry, cancelling, audit and performance.
@@ -385,7 +416,7 @@ Security-first, server-authoritative (no business data readable offline).
   - Every amount in or out is a `MoneyMovement`, numbered per account (`Seq`) with the balance it
     left. **No account ever goes below zero** (`insufficient_funds`); rows are locked in id order.
   - The account statement for a period (`GET /api/money-accounts/{id}/movements?from&to`) is also
-    the **daily cash report** (one day). Days are UTC for now.
+    the **daily cash report** (one day). Days are the company's (Settings → time zone).
 - **Vouchers** (`Voucher`, numbered RCV- / PAY- / EXP- / CTR-):
   - **Receipt** from a party (سند قبض) and **payment** to one (سند صرف), paid in up to 10 ways at
     once (cash, bank transfer, InstaPay, mobile wallet, post; each method only into its kind of
@@ -830,7 +861,6 @@ own permission, and roles bundle them
   DTOs and don't include transfers.
 - The invoice screen reads per-warehouse stock from the inventory list (first 500 items). A
   catalogue larger than that needs a per-item stock lookup.
-- "Today" in valuation and the item card is the UTC day, not the Cairo day.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 - Branch scope is still by role (Owner/Admin/Accountant see every branch). Scopes per person
   (allowed branches / warehouses / cash boxes, DOMAIN.md §2.1) come later.
@@ -844,11 +874,10 @@ own permission, and roles bundle them
 - A branch-scoped person given `ledger:view` sees the whole company's ledger.
 - An endorsed note that later bounces at the supplier isn't handled yet (record it with a
   manual entry). Notes aren't in a currency other than the company's.
-- Money days (statements, daily cash) are UTC days, not Cairo days.
 - An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
   screens use `lib/errors.ts` to show it in Arabic too.
-- A closed year can't be reopened. Aging ages invoices by UTC day.
+- A closed year can't be reopened.
 - Printing on iPhone depends on Safari's print sheet (not tested on a device here).
 
 ## 7. What's NEXT (pick up here)
@@ -897,6 +926,9 @@ and warehouses shipped):
    - **Verify on the live DB** after deploy: add a shift and the employees (with their device
      numbers), import a day from the fingerprint device, make last month's payroll as a draft and
      check a payslip before posting.
+   - ~~Days in UTC instead of Cairo~~ done: business days follow Settings → time zone.
+   - **Verify on the live DB** after deploy: Settings shows the time zone as Cairo with the right
+     time; a sale made late in the evening counts on today's daily cash and profitability.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

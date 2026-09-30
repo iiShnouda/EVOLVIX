@@ -4,7 +4,7 @@
 //
 // The year-end close can only happen once per database (a closed year stays closed), so run this
 // suite last in a round; on a database where a year is already closed those checks are skipped.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, dayIn } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -87,11 +87,11 @@ check(
   mine.items.every((e) => e.actorId === owner.user.id),
 );
 eq('page size capped', (await owner.get('/audit?pageSize=5000')).data?.pageSize, 200);
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 const byDay = ok('by day', await owner.get(`/audit?from=${today}&to=${today}&resource=settings`));
 check(
   'today only',
-  byDay.items.every((e) => e.createdAt.slice(0, 10) === today),
+  byDay.items.every((e) => dayIn(e.createdAt) === today),
   byDay.items[0],
 );
 eq('nothing tomorrow', (await owner.get(`/audit?from=2999-01-01`)).data?.total, 0);
@@ -250,7 +250,7 @@ if (process.env.PGURL) {
 
 // ------------------------------------------------------------------ year-end close
 console.log('== year-end close');
-const thisYear = new Date().getUTCFullYear();
+const thisYear = Number(companyToday().slice(0, 4));
 const Y = thisYear - 1;
 eq(
   'only a finished year',

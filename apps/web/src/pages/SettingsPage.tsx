@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { COUNTRIES, CURRENCIES, findCountry, type CompanySettings } from '@skb/shared';
+import {
+  COUNTRIES,
+  CURRENCIES,
+  TIME_ZONES,
+  findCountry,
+  type CompanySettings,
+} from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
@@ -10,6 +16,32 @@ import { BackupsCard } from '../components/BackupsCard';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+
+/** A zone's offset from UTC right now, e.g. "GMT+3". */
+function offsetOf(zone: string): string {
+  try {
+    return (
+      new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'shortOffset' })
+        .formatToParts(new Date())
+        .find((p) => p.type === 'timeZoneName')?.value ?? zone
+    );
+  } catch {
+    return zone;
+  }
+}
+
+/** The time of day now in a zone. */
+function clockIn(zone: string, locale: string): string {
+  try {
+    return new Date().toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: zone,
+    });
+  } catch {
+    return '';
+  }
+}
 
 export function SettingsPage() {
   const { t, locale } = useT();
@@ -43,7 +75,11 @@ export function SettingsPage() {
   // Picking a country suggests its currency + typical VAT (owner can still override).
   const onCountry = (code: string) => {
     const c = findCountry(code);
-    set(c ? { country: code, currency: c.currency, defaultTaxPercent: c.vat } : { country: code });
+    set(
+      c
+        ? { country: code, currency: c.currency, defaultTaxPercent: c.vat, timeZone: c.timeZone }
+        : { country: code },
+    );
   };
 
   async function save() {
@@ -61,6 +97,7 @@ export function SettingsPage() {
       email: form.email ?? '',
       taxNumber: form.taxNumber ?? '',
       commercialRegister: form.commercialRegister ?? '',
+      timeZone: form.timeZone,
     });
     setSaved(true);
   }
@@ -121,6 +158,27 @@ export function SettingsPage() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.timeZone')}</span>
+            <select
+              className={field}
+              disabled={disabled}
+              value={form.timeZone}
+              onChange={(e) => set({ timeZone: e.target.value })}
+            >
+              {TIME_ZONES.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {locale === 'ar' ? z.nameAr : z.nameEn} ({'⁦'}
+                  {offsetOf(z.id)}
+                  {'⁩'})
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-muted">
+              {t('settings.timeZoneHint')} {t('settings.timeZoneNow')}{' '}
+              <bdi className="tnum">{clockIn(form.timeZone, locale)}</bdi>
+            </span>
           </label>
           <label className="block sm:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.address')}</span>

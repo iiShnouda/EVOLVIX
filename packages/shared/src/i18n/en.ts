@@ -1467,4 +1467,8 @@ export const en = {
   'error.bad_day_basis': "A day's pay is the salary ÷ 20 to 31.",
   'error.bad_overtime': 'Overtime is 0% to 500% of the normal rate.',
   'error.too_big': 'The file is too big; import a month at a time.',
+  'settings.timeZone': 'Time zone',
+  'settings.timeZoneHint': 'Business days follow this clock: today, report periods, the daily cash, statements and months.',
+  'settings.timeZoneNow': 'The time there now:',
+  'error.bad_time_zone': 'Choose a time zone from the list.',
 } as const;

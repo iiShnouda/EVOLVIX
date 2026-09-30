@@ -1,4 +1,4 @@
-import type { DocumentStatus } from '@skb/shared';
+import { companyToday, type DocumentStatus } from '@skb/shared';
 import type { Tone } from '../components/ui';
 
 export const STATUS_TONE: Record<DocumentStatus, Tone> = {
@@ -33,8 +33,7 @@ export const QUOTE_TONE: Record<QuoteState, Tone> = {
 export function quoteState(doc: { status: DocumentStatus; dueDate?: string | null }): QuoteState {
   if (doc.status === 'CONFIRMED') return 'WON';
   if (doc.status === 'CANCELLED') return 'CANCELLED';
-  const today = new Date().toISOString().slice(0, 10);
-  return doc.dueDate && doc.dueDate.slice(0, 10) < today ? 'EXPIRED' : 'OPEN';
+  return doc.dueDate && doc.dueDate.slice(0, 10) < companyToday() ? 'EXPIRED' : 'OPEN';
 }
 
 /** A document's status label key and tone (a quotation has its own states). */

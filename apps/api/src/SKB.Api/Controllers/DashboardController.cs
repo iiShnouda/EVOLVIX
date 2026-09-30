@@ -75,7 +75,8 @@ public sealed class DashboardController : ControllerBase
 
     private async Task<TrendPointDto[]> BuildTrendAsync(bool all, Guid branchId)
     {
-        var since = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(-(TrendDays - 1)), DateTimeKind.Utc);
+        var first = CompanyClock.Today.AddDays(-(TrendDays - 1));
+        var since = CompanyClock.StartOf(first);
         var q = _db.SalesDocuments.Where(d =>
             d.IssueDate >= since && d.Status != DocumentStatus.CANCELLED &&
             (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN ||
@@ -86,11 +87,11 @@ public sealed class DashboardController : ControllerBase
 
         var buckets = new Dictionary<string, (long Sales, long Purchases)>();
         for (var i = 0; i < TrendDays; i++)
-            buckets[since.AddDays(i).ToString("yyyy-MM-dd")] = (0, 0);
+            buckets[first.AddDays(i).ToString("yyyy-MM-dd")] = (0, 0);
 
         foreach (var r in rows)
         {
-            var key = r.IssueDate.ToString("yyyy-MM-dd");
+            var key = CompanyClock.DayOf(r.IssueDate).ToString("yyyy-MM-dd");
             if (!buckets.TryGetValue(key, out var b)) continue;
             buckets[key] = r.Type switch
             {

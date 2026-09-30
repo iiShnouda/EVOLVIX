@@ -422,6 +422,15 @@ public class AppDbContext : DbContext
         b.Entity<PayrollLine>().HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<PayrollLine>().HasIndex(l => new { l.RunId, l.EmployeeId }).IsUnique();
 
+        b.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(LocalTime))!).HasName("timezone").IsBuiltIn()
+            .HasStoreType("timestamp without time zone");
+
         base.OnModelCreating(b);
     }
+
+    /// <summary>
+    /// In a query only: the wall-clock time of a UTC instant in a time zone (PostgreSQL
+    /// <c>timezone(zone, instant)</c>), to group by the company's days and months.
+    /// </summary>
+    public static DateTime LocalTime(string zone, DateTime instant) => throw new NotSupportedException();
 }

@@ -128,14 +128,14 @@ public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? CommercialRegister = null);
+    string? CommercialRegister = null, string TimeZone = "Africa/Cairo");
 
 /// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(
     string? CompanyName, string? Country, string? Currency,
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
-    string? TaxNumber = null, string? CommercialRegister = null);
+    string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 

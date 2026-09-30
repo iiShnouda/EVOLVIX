@@ -136,6 +136,10 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAsync(db, auth, app.Configuration);
     // The chart of accounts, and the go-live opening entry the first time the ledger runs.
     await LedgerService.SetupAsync(db);
+    // Business days follow the company's clock (Settings → time zone).
+    var zone = await db.CompanySettings.Select(s => s.TimeZone).FirstOrDefaultAsync();
+    if (!CompanyClock.Use(zone))
+        app.Logger.LogWarning("Time zone {Zone} is not available here; business days use {Default}.", zone, CompanyClock.ZoneId);
 }
 
 // Behind a cloud load balancer (Render/Fly), trust the forwarded proto + client IP so

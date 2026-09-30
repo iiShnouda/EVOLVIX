@@ -1,6 +1,6 @@
 // Invoice charges (DOMAIN.md step 4): discounts, taxes and additions in order, bonus lines, the
 // sales rep, their permissions, exact returns, purchase discounts in the average cost. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -128,7 +128,7 @@ eq('inventory: sara may enter supplier discount', (await (await login('sara@skb.
 eq('sales cannot enter purchases anyway', (await karim.post('/purchases/invoices', { partyId: supplier.id, lines: [] })).status, 403);
 
 console.log('== reports');
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 const byRep = ok('profit by rep', await owner.get(`/reports/profitability?from=${today}&to=${today}&by=rep`));
 const monaRow = byRep.rows.find((r) => r.key === monaId);
 check('rep row nets to zero after full return', monaRow && monaRow.revenue === 0 && monaRow.profit === 0, byRep.rows);

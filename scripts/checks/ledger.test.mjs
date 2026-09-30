@@ -1,7 +1,7 @@
 // Ledger (DOMAIN.md step 6): chart of accounts, the automatic entries every document posts,
 // statements, the trial balance, manual entries and their reversal, the period lock and
 // permissions. Runs against BASE.
-import { BASE, login, check, eq, ok, summary } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -617,7 +617,7 @@ eq(
   (await owner.post(`/ledger/entries/${backdated.id}/reverse`)).data?.code,
   'period_locked',
 );
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 ok('lock today', await owner.put('/ledger/lock', { lockDate: today }));
 const px = ok(
   'a payment today',

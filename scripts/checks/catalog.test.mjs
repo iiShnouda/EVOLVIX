@@ -1,6 +1,6 @@
 // Step 3 checks: units, price levels, prices & permissions, size × color models, invoices and
 // returns in units, reports. Runs against BASE (default :5090). Works on an upgraded or a fresh DB.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -307,7 +307,7 @@ check('its variants closed', closed.variants.every((v) => !v.isActive), closed.v
 eq('closed variant not sellable', (await sale(owner, { lines: [{ productId: colorOnly.variants[0].productId, quantity: 1, unitPrice: 1 }] })).data?.code, 'product_not_found');
 
 console.log('== reports');
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 const byModel = ok('profit by model', await owner.get(`/reports/profitability?from=${today}&to=${today}&by=model`));
 const modelRow = byModel.rows.find((x) => x.key === m.id);
 check('variant sales roll up to model', modelRow && modelRow.quantity === 12, byModel.rows.map((x) => [x.label, x.quantity]));

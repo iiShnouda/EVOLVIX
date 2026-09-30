@@ -8,6 +8,7 @@ import {
   type JournalEntry,
   type LedgerAccount,
   type TranslationKey,
+  companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Sheet } from '../components/Sheet';
@@ -68,10 +69,8 @@ const input =
   'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
-const pad = (n: number) => String(n).padStart(2, '0');
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const yearStart = () => iso(new Date(new Date().getFullYear(), 0, 1));
-const today = () => iso(new Date());
+const today = companyToday;
+const yearStart = () => `${today().slice(0, 4)}-01-01`;
 
 /** The general ledger: chart of accounts with balances, the journal and the trial balance. */
 export function LedgerPage() {
@@ -880,7 +879,7 @@ function YearClose() {
   const can = useCan();
   const closed = useClosedYears();
   const close = useCloseYear();
-  const thisYear = new Date().getFullYear();
+  const thisYear = Number(companyToday().slice(0, 4));
   // Years close in order: only those after the last closed one.
   const last = Math.max(0, ...(closed.data ?? []).map((c) => c.year));
   const open = [1, 2, 3, 4, 5].map((i) => thisYear - i).filter((y) => y > last);

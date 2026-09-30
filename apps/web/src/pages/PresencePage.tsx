@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { NAV_ITEMS, formatNumber, type PresenceEntry, type TranslationKey } from '@skb/shared';
+import {
+  NAV_ITEMS,
+  companyTimeZone,
+  formatNumber,
+  type PresenceEntry,
+  type TranslationKey,
+} from '@skb/shared';
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { usePresence } from '../lib/queries';
@@ -49,6 +55,7 @@ export function PresencePage() {
     new Date(iso).toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: companyTimeZone(),
     });
   const active = (p: PresenceEntry) => now - new Date(p.lastActiveAt).getTime() < ACTIVE_MS;
   const people = data ?? [];

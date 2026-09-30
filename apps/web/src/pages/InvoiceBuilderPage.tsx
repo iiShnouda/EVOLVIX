@@ -13,6 +13,8 @@ import {
   type Party,
   type Product,
   type RepOption,
+  addDays,
+  companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -154,11 +156,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [paidAccountId, setPaidAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
-  const [validUntil, setValidUntil] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().slice(0, 10);
-  });
+  const [validUntil, setValidUntil] = useState(() => addDays(companyToday(), 14));
 
   const createSale = useCreateSalesInvoice();
   const createPurchase = useCreatePurchaseInvoice();
@@ -820,7 +818,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   <input
                     type="date"
                     className={`${field} tnum`}
-                    min={new Date().toISOString().slice(0, 10)}
+                    min={companyToday()}
                     value={validUntil}
                     onChange={(e) => setValidUntil(e.target.value)}
                   />

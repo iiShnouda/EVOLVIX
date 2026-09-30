@@ -269,6 +269,10 @@ namespace SKB.Api.Migrations
                     b.Property<string>("TaxNumber")
                         .HasColumnType("text");
 
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("TransfersRequireReceipt")
                         .HasColumnType("boolean");
 

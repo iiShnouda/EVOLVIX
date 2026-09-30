@@ -110,11 +110,11 @@ public sealed class InventoryController : ControllerBase
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
-        var today = DateTime.UtcNow.Date;
-        var fromDate = Utc((ParseDate(from) ?? today.AddDays(-29)).Date);
-        var toDate = Utc((ParseDate(to) ?? today).Date);
-        if (toDate < fromDate) (fromDate, toDate) = (toDate, fromDate);
-        var toExclusive = toDate.AddDays(1);
+        var today = CompanyClock.Today;
+        var fromDay = CompanyClock.ParseDay(from) ?? today.AddDays(-29);
+        var toDay = CompanyClock.ParseDay(to) ?? today;
+        if (toDay < fromDay) (fromDay, toDay) = (toDay, fromDay);
+        var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
 
         var ofItem = _db.StockMovements.AsNoTracking().Where(m => m.ProductId == id);
         var inScope = wid is Guid w ? ofItem.Where(m => m.WarehouseId == w) : ofItem;
@@ -140,7 +140,7 @@ public sealed class InventoryController : ControllerBase
             : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
 
         return Ok(new ItemCardDto(
-            item, fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"), wid?.ToString(),
+            item, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
             opening.Quantity, opening.Value,
             moves.Where(m => m.Quantity > 0).Sum(m => m.Quantity),
             moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
@@ -162,12 +162,12 @@ public sealed class InventoryController : ControllerBase
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
-        var today = DateTime.UtcNow.Date;
-        var date = Utc((ParseDate(asOf) ?? today).Date);
+        var today = CompanyClock.Today;
+        var date = CompanyClock.ParseDay(asOf) ?? today;
         var products = await _db.Products.AsNoTracking().Include(p => p.Category).Include(p => p.Model)
             .ToDictionaryAsync(p => p.Id);
         var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
-        var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(date.AddDays(1));
+        var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(CompanyClock.StartOf(date.AddDays(1)));
 
         var lines = state.Quantity
             .Where(kv => products.TryGetValue(kv.Key.Product, out var p) && (date < today || p.IsActive)
@@ -313,8 +313,4 @@ public sealed class InventoryController : ControllerBase
     private async Task<string> CurrencyAsync() =>
         await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
-    private static DateTime Utc(DateTime d) => DateTime.SpecifyKind(d, DateTimeKind.Utc);
-
-    private static DateTime? ParseDate(string? s) =>
-        DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var d) ? d : null;
 }

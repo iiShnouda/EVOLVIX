@@ -1458,4 +1458,8 @@ export const ar: TranslationDictionary = {
   'error.bad_day_basis': 'أجر اليوم = الراتب ÷ من 20 إلى 31.',
   'error.bad_overtime': 'الإضافي من 0% إلى 500% من المعدل العادي.',
   'error.too_big': 'الملف كبير جدًا؛ استورد شهرًا واحدًا في كل مرة.',
+  'settings.timeZone': 'المنطقة الزمنية',
+  'settings.timeZoneHint': 'أيام العمل تتبع هذا التوقيت: اليوم وفترات التقارير والخزينة اليومية وكشوف الحساب والشهور.',
+  'settings.timeZoneNow': 'الساعة هناك الآن:',
+  'error.bad_time_zone': 'اختر منطقة زمنية من القائمة.',
 };

@@ -67,7 +67,7 @@ public sealed class NotesController : ControllerBase
     [HttpGet("notes/summary")]
     public async Task<ActionResult<NotesSummaryDto>> Summary()
     {
-        var today = DateTime.UtcNow.Date;
+        var today = CompanyClock.TodayDate;
         var week = today.AddDays(7);
         var open = await Scoped().Where(n => Open.Contains(n.Status))
             .Select(n => new { n.Direction, n.Amount, n.DueDate }).ToListAsync();
@@ -421,7 +421,7 @@ public sealed class NotesController : ControllerBase
         return new NoteDto(
             n.Id.ToString(), n.Ref, n.Kind.ToString(), n.Direction.ToString(), n.Status.ToString(), n.SerialNumber,
             n.BankName, n.Amount, n.DueDate.ToString("yyyy-MM-dd"),
-            Open.Contains(n.Status) && n.DueDate < DateTime.UtcNow.Date, n.Drawer, n.Guarantor,
+            Open.Contains(n.Status) && n.DueDate < CompanyClock.TodayDate, n.Drawer, n.Guarantor,
             n.PartyId.ToString(), n.Party?.Name ?? "", n.EndorsedTo?.Name, Loc.Name(n.Branch), n.Portfolio?.Number,
             n.AccountId?.ToString(), n.Account is null ? null : Loc.Name(n.Account), n.Remark, n.CreatedAt.ToString("o"),
             n.CreatedBy?.FullName ?? "",

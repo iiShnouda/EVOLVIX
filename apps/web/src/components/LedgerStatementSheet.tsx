@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { formatDate, formatMoney, type TranslationKey } from '@skb/shared';
+import { formatDate, formatMoney, type TranslationKey, companyToday } from '@skb/shared';
 import { Sheet } from './Sheet';
 import { Spinner } from './ui';
 import { useT } from '../lib/i18n';
@@ -11,8 +11,6 @@ import { ReportActions } from './ReportActions';
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
 
-const pad = (n: number) => String(n).padStart(2, '0');
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /**
  * What an entry is: a manual entry keeps the description its author typed; an automatic one is
@@ -56,9 +54,8 @@ export function LedgerStatementSheet({
   onClose: () => void;
 }) {
   const { t, locale } = useT();
-  const now = new Date();
-  const [from, setFrom] = useState(iso(new Date(now.getFullYear(), 0, 1)));
-  const [to, setTo] = useState(iso(now));
+  const [from, setFrom] = useState(() => `${companyToday().slice(0, 4)}-01-01`);
+  const [to, setTo] = useState(companyToday);
   const { data, isLoading, error } = useLedgerStatement(kind, id, from, to);
   const money = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
   const report = useReportTools();

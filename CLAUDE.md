@@ -46,6 +46,12 @@ first‑class concern.
    the server, and hides the matching UI. Roles only bundle permissions. Prices are a separate
    permission from items; changing an invoice price or level needs one too.
 
+10. **Days are the company's, not UTC's.** Store instants in UTC, but any "today", day or month
+    boundary, or report period goes through `CompanyClock` on the server (`Today`, `StartOf`,
+    `Days`, `DayOf`; `AppDbContext.LocalTime` to group in SQL) and `companyToday` / `addDays` from
+    `@skb/shared` on the client. Never `DateTime.UtcNow.Date` or `toISOString().slice(0, 10)`.
+    The zone is a company setting (Africa/Cairo by default).
+
 ## Layout (one server, best‑fit client per device)
 
 - `apps/api` — **C# / ASP.NET Core 10** server (canonical backend). EF Core + Npgsql

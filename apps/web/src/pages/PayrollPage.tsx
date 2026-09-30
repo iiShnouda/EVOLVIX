@@ -11,6 +11,8 @@ import {
   type PayrollRunStatus,
   type TranslationKey,
   type WorkShift,
+  addMonths,
+  companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
@@ -63,17 +65,8 @@ const RUN_TONE: Record<PayrollRunStatus, Tone> = {
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
-const pad = (n: number) => String(n).padStart(2, '0');
-const todayIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const lastMonth = () => {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() - 1);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-};
+const todayIso = companyToday;
+const lastMonth = () => addMonths(`${companyToday().slice(0, 7)}-01`, -1).slice(0, 7);
 
 function useCurrency() {
   return useCompanySettings().data?.currency ?? 'EGP';

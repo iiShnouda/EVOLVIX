@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formatMoney, formatNumber, formatQuantity, type InventoryItem } from '@skb/shared';
+import {
+  formatMoney,
+  formatNumber,
+  formatQuantity,
+  type InventoryItem,
+  companyToday,
+} from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect } from '../components/WarehouseSelect';
@@ -12,9 +18,7 @@ import { useInventory, useValuation } from '../lib/queries';
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const today = companyToday;
 
 type Tab = 'items' | 'valuation';
 

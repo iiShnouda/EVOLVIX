@@ -236,7 +236,7 @@ public sealed class SalesController : ControllerBase
         if (party is null) return BadRequest(new { message = "Customer not found.", code = "party_not_found" });
 
         var dueDate = ParseDate(req.DueDate);
-        if (quote && dueDate is DateTime until && until.Date < DateTime.UtcNow.Date)
+        if (quote && dueDate is DateTime until && until.Date < CompanyClock.TodayDate)
             return BadRequest(new { message = "A quotation is valid until today or later.", code = "bad_valid_until" });
 
         var settings = await GetSettingsAsync();
@@ -246,7 +246,7 @@ public sealed class SalesController : ControllerBase
         if (fromQuoteId is Guid quoteId)
         {
             var validUntil = await _db.SalesDocuments.Where(d => d.Id == quoteId).Select(d => d.DueDate).FirstOrDefaultAsync();
-            trusted = validUntil is null || validUntil.Value.Date >= DateTime.UtcNow.Date;
+            trusted = validUntil is null || validUntil.Value.Date >= CompanyClock.TodayDate;
         }
         bool Can(string permission) => User.HasClaim("permission", permission);
         bool Approved(string permission) => trusted || Can(permission);
@@ -398,7 +398,7 @@ public sealed class SalesController : ControllerBase
         {
             Number = number, Type = type, BranchId = branchId,
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
-            DueDate = dueDate ?? (quote ? DateTime.UtcNow.Date.AddDays(14) : null),
+            DueDate = dueDate ?? (quote ? CompanyClock.TodayDate.AddDays(14) : null),
             Currency = settings.Currency, Notes = Clean(req.Notes, 500), SourceDocumentId = fromQuoteId,
             PriceLevelId = level?.Id, RepId = repId,
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,

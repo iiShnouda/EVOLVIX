@@ -1,7 +1,7 @@
 // Financial statements and analytics (DOMAIN.md step 8): the income statement and balance sheet
 // derived from the ledger (and moving exactly with new documents), net monthly sales, top
 // customers / suppliers, top-moving items and dead stock, and their permissions. Runs against BASE.
-import { BASE, login, check, eq, ok, summary } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -15,7 +15,7 @@ const level = (await owner.get('/price-levels')).data.find((l) => l.side === 'SA
 const wh = (await owner.get('/warehouses')).data.find(
   (w) => w.isDefault && w.branchId === owner.user.branchId,
 );
-const year = `${new Date().getUTCFullYear()}-01-01`;
+const year = `${companyToday().slice(0, 4)}-01-01`;
 const IS = async () =>
   ok('income statement', await owner.get(`/ledger/income-statement?from=${year}`));
 const BS = async () => ok('balance sheet', await owner.get('/ledger/balance-sheet'));
@@ -158,7 +158,7 @@ const monthly = ok('monthly', await owner.get('/analytics/monthly?months=3'));
 eq(
   'three months, oldest first',
   [monthly.length, monthly[2].month],
-  [3, new Date().toISOString().slice(0, 7)],
+  [3, companyToday().slice(0, 7)],
 );
 check(
   'this month includes the sale',

@@ -1,7 +1,7 @@
 // Cheques & promissory notes (DOMAIN.md step 7): receiving and issuing (with invoices), deposit
 // portfolios, collecting, paying, bouncing, endorsing, cancelling — each step's balances, money and
 // journal entry — plus permissions, branch scoping and a race. Runs against BASE.
-import { BASE, login, check, eq, ok, summary } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -24,7 +24,7 @@ const noteEntries = async (ref) =>
     .filter((e) => e.number === ref)
     .reverse() // the journal lists newest first; steps are read oldest first
     .map((e) => e.lines.map((l) => [l.accountCode.split('-')[0], l.debit, l.credit]).sort());
-const today = new Date().toISOString().slice(0, 10);
+const today = companyToday();
 
 // Parties, money, goods.
 const P = async (name, types) =>

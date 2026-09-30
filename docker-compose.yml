@@ -44,7 +44,7 @@ services:
       Cookie__Secure: "${COOKIE_SECURE:-false}"
       Seed__OwnerEmail: "${SEED_OWNER_EMAIL:-owner@skb.local}"
       Seed__OwnerPassword: "${SEED_OWNER_PASSWORD:-ChangeMe!Owner123}"
-      # Automatic backups: every day at BACKUP_HOUR (server time) into ./backups, newest BACKUP_KEEP
+      # Automatic backups: every day at BACKUP_HOUR (company time, Settings → time zone) into ./backups, newest BACKUP_KEEP
       # kept, encrypted when BACKUP_PASSPHRASE is set. See COMPANY-SERVER.md.
       TZ: "${TZ:-Africa/Cairo}"
       Backup__Folder: /backups

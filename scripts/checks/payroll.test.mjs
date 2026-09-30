@@ -3,17 +3,17 @@
 // month's payroll: worked out to the piastre, posted to the ledger, recovered advances, paid from a
 // cash box — with permissions, locks after posting and races. Runs in its own new branch, on the
 // month before this one. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
 const mona = await login('mona@skb.local'); // ACCOUNTANT: payroll but not employees:manage
 const karim = await login('karim@skb.local'); // SALES: no payroll
 
-// The month before this one, and a few of its days.
-const now = new Date();
-const Y = now.getUTCMonth() === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
-const M = now.getUTCMonth() === 0 ? 12 : now.getUTCMonth();
+// The month before this one (the company's months), and a few of its days.
+const [thisYear, thisMonth] = companyToday().split('-').map(Number);
+const Y = thisMonth === 1 ? thisYear - 1 : thisYear;
+const M = thisMonth === 1 ? 12 : thisMonth - 1;
 const daysIn = new Date(Date.UTC(Y, M, 0)).getUTCDate();
 const iso = (d) => `${Y}-${String(M).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 const dow = (d) => new Date(Date.UTC(Y, M - 1, d)).getUTCDay();
@@ -282,7 +282,7 @@ eq(
   "next month hasn't started",
   (
     await mona.post('/payroll/runs', {
-      year: now.getUTCFullYear() + 1,
+      year: thisYear + 1,
       month: 1,
       branchId: branch.id,
     })

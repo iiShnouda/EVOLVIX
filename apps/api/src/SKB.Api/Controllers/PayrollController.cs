@@ -52,7 +52,7 @@ public sealed class PayrollController : ControllerBase
         var e = new Employee
         {
             Code = await DocumentNumbers.NextEmployeeCodeAsync(_db),
-            HireDate = DateTime.UtcNow.Date,
+            HireDate = CompanyClock.TodayDate,
             BranchId = Guid.TryParse(CurrentUser.BranchId(User), out var b) ? b : Guid.Empty,
         };
         if (Loc.Clean(req.Name) is null) return Bad("bad_name", "Enter the employee's name.");
@@ -104,7 +104,7 @@ public sealed class PayrollController : ControllerBase
         if (req.HireDate is not null)
         {
             if (!DateOnly.TryParse(req.HireDate, CultureInfo.InvariantCulture, out var hire) || hire.Year < 1950
-                || hire > DateOnly.FromDateTime(DateTime.UtcNow).AddYears(1))
+                || hire > CompanyClock.Today.AddYears(1))
                 return Bad("bad_date", "Enter a valid hiring date.");
             e.HireDate = hire.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         }
@@ -388,7 +388,7 @@ public sealed class PayrollController : ControllerBase
     public async Task<ActionResult<PayrollRunDto>> CreateRun([FromBody] CreatePayrollRunRequest req)
     {
         if (req.Year is < 2000 or > 2100 || req.Month is < 1 or > 12) return Bad("bad_month", "Choose a month.");
-        if (PayrollService.MonthRange(req.Year, req.Month).Start > DateTime.UtcNow)
+        if (PayrollService.MonthRange(req.Year, req.Month).Start > CompanyClock.TodayDate)
             return Bad("future_month", "A month that hasn't started can't be paid yet.");
         Guid? branch = null;
         if (!string.IsNullOrWhiteSpace(req.BranchId))

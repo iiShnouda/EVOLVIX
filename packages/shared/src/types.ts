@@ -702,6 +702,8 @@ export interface CompanySettings {
   taxNumber?: string | null;
   /** Commercial register number (السجل التجاري). */
   commercialRegister?: string | null;
+  /** The company's time zone (IANA id, one of TIME_ZONES); business days follow it. */
+  timeZone: string;
 }
 
 /** Lightweight row for list views (no line items). */

@@ -125,7 +125,7 @@ public sealed partial class PayrollService
         var daysInMonth = (end - start).Days;
         var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
         var basis = Math.Max(1, settings.PayrollDayBasis);
-        var today = DateTime.UtcNow.Date;
+        var today = CompanyClock.TodayDate;
 
         var employees = await _db.Employees.AsNoTracking().Include(e => e.Shift)
             .Where(e => e.IsActive && e.HireDate < end && (run.BranchId == null || e.BranchId == run.BranchId))
@@ -213,9 +213,9 @@ public sealed partial class PayrollService
         var date = end.AddDays(-1).AddHours(12);
         if (date > DateTime.UtcNow) date = DateTime.UtcNow;
         var lockDate = await _db.CompanySettings.Select(s => s.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && DateOnly.FromDateTime(date) <= DateOnly.FromDateTime(locked))
+        if (lockDate is DateTime locked && CompanyClock.DayOf(date) <= DateOnly.FromDateTime(locked))
             return new("period_locked", "That month is in a locked period.");
-        if (start > DateTime.UtcNow)
+        if (start > CompanyClock.TodayDate)
             return new("future_month", "A month that hasn't started can't be posted.");
 
         var employeeIds = await _db.Employees

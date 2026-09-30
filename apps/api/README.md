@@ -143,7 +143,7 @@ or is typed. A restore only goes into a new, empty database.
 
 Daily automatic backups use:
 - `Backup__Folder` (turns them on)
-- `Backup__Hour` (default 2)
+- `Backup__Hour` (default 2, in the company's time zone from Settings)
 - `Backup__Keep` (default 14)
 - `Backup__Passphrase` (encrypts them)
 

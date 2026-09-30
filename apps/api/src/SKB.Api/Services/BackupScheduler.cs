@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace SKB.Api.Services;
 
 /// <summary>
-/// Automatic backups: once a day, at <c>Backup:Hour</c> (the server's local time), a backup is
+/// Automatic backups: once a day, at <c>Backup:Hour</c> (the company's time, Settings → time zone), a backup is
 /// written to <c>Backup:Folder</c> and only the newest <c>Backup:Keep</c> are kept. It's
 /// encrypted when <c>Backup:Passphrase</c> is set. Off when no folder is configured (e.g. on a
 /// cloud host, whose disk doesn't last — download backups there instead).
@@ -44,19 +44,20 @@ public sealed partial class BackupScheduler : BackgroundService
             : new DirectoryInfo(Folder).GetFiles("skb-*").Where(f => FileName().IsMatch(f.Name))
                 .OrderByDescending(f => f.Name, StringComparer.Ordinal).ToList();
 
-    /// <summary>When the next automatic backup is due (local time), or null when they're off.</summary>
+    /// <summary>When the next automatic backup is due (UTC), or null when they're off. The hour is the company's.</summary>
     public DateTime? NextRunAt()
     {
         if (Folder is null) return null;
-        var due = DateTime.Now.Date.AddHours(Hour);
-        if (DoneToday()) return due.AddDays(1);
-        return DateTime.Now < due ? due : DateTime.Now;
+        var now = CompanyClock.Now;
+        var due = now.Date.AddHours(Hour);
+        if (DoneToday()) return CompanyClock.ToUtc(due.AddDays(1));
+        return now < due ? CompanyClock.ToUtc(due) : DateTime.UtcNow;
     }
 
     private bool DoneToday() =>
         Files().FirstOrDefault() is { } newest
         && DateTime.TryParseExact(newest.Name[4..12], "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
-        && d.Date == DateTime.Now.Date;
+        && d.Date == CompanyClock.Now.Date;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -66,7 +67,7 @@ public sealed partial class BackupScheduler : BackgroundService
         {
             try
             {
-                if (DateTime.Now.Hour >= Hour && !DoneToday()) await RunAsync(stoppingToken);
+                if (CompanyClock.Now.Hour >= Hour && !DoneToday()) await RunAsync(stoppingToken);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -91,7 +92,7 @@ public sealed partial class BackupScheduler : BackgroundService
         try
         {
             Directory.CreateDirectory(Folder);
-            var name = $"skb-{DateTime.Now:yyyyMMdd-HHmmss}.{(Passphrase is null ? "zip" : "skbak")}";
+            var name = $"skb-{CompanyClock.Now:yyyyMMdd-HHmmss}.{(Passphrase is null ? "zip" : "skbak")}";
             var path = Path.Combine(Folder, name);
             var part = path + ".part";
             try

@@ -1,6 +1,13 @@
 import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatDate, formatMoney, formatNumber, type TranslationKey } from '@skb/shared';
+import {
+  formatDate,
+  formatMoney,
+  formatNumber,
+  type TranslationKey,
+  addDays,
+  companyToday,
+} from '@skb/shared';
 import { Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { TrendChart } from '../components/charts/TrendChart';
 import { ProfitabilityPage } from './ProfitabilityPage';
@@ -28,13 +35,7 @@ const TABS: { key: Tab; label: TranslationKey }[] = [
 ];
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
-const iso = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const daysAgo = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return iso(d);
-};
+const daysAgo = (n: number) => addDays(companyToday(), -n);
 
 /**
  * Analytics & reports (التحليلات والتقارير): profitability, monthly sales, top parties, aging of
@@ -256,7 +257,7 @@ function MonthlyTab() {
 function PerformanceTab() {
   const { t, locale } = useT();
   const [from, setFrom] = useState(daysAgo(29));
-  const [to, setTo] = useState(iso(new Date()));
+  const [to, setTo] = useState(companyToday);
   const [by, setBy] = useState<'rep' | 'branch'>('rep');
   const { data, isLoading } = usePerformance(from, to, by);
   const report = useReportTools();
@@ -577,7 +578,7 @@ function AgingTab() {
 function PartiesTab() {
   const { t } = useT();
   const [from, setFrom] = useState(daysAgo(89));
-  const [to, setTo] = useState(iso(new Date()));
+  const [to, setTo] = useState(companyToday);
   return (
     <div className="space-y-3">
       <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
@@ -638,7 +639,7 @@ function TopList({
 function ItemsTab() {
   const { t, locale } = useT();
   const [from, setFrom] = useState(daysAgo(89));
-  const [to, setTo] = useState(iso(new Date()));
+  const [to, setTo] = useState(companyToday);
   const { data, isLoading } = useItemMovement(from, to);
   const m = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
   return (

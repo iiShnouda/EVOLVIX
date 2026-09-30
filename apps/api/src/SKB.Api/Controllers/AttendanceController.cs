@@ -32,7 +32,7 @@ public sealed class AttendanceController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<AttendanceSheetDto>> Sheet([FromQuery] string? date = null, [FromQuery] string? branchId = null)
     {
-        var day = ParseDay(date) ?? DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+        var day = ParseDay(date) ?? CompanyClock.TodayDate;
         var q = Scoped().AsNoTracking().Include(e => e.Shift).Include(e => e.Branch)
             .Where(e => e.IsActive && e.HireDate <= day);
         if (Guid.TryParse(branchId, out var b)) q = q.Where(e => e.BranchId == b);
@@ -58,7 +58,7 @@ public sealed class AttendanceController : ControllerBase
     public async Task<ActionResult<AttendanceSheetDto>> Save([FromBody] SaveAttendanceRequest req)
     {
         var day = ParseDay(req.Date);
-        if (day is null || day > DateTime.UtcNow.Date.AddDays(1)) return Bad("bad_date", "Choose a day up to today.");
+        if (day is null || day > CompanyClock.TodayDate) return Bad("bad_date", "Choose a day up to today.");
         if (req.Rows is null || req.Rows.Length is 0 or > 1000) return Bad("no_rows", "Nothing to save.");
         var parsed = new List<(Guid Id, AttendanceStatus? Status, int? In, int? Out, string? Notes)>();
         foreach (var row in req.Rows)

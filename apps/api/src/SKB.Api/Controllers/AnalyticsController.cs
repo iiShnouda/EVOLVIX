@@ -25,19 +25,22 @@ public sealed class AnalyticsController : ControllerBase
     private static readonly DocumentType[] SalesTypes = { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN };
     private static readonly DocumentType[] PurchaseTypes = { DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN };
 
-    /// <summary>Net sales and purchases for each of the last <paramref name="months"/> months (UTC).</summary>
+    /// <summary>Net sales and purchases for each of the last <paramref name="months"/> months (the company's months).</summary>
     [HttpGet("monthly")]
     public async Task<ActionResult<MonthlySalesDto[]>> Monthly([FromQuery] int months = 12)
     {
         months = Math.Clamp(months, 1, 36);
-        var now = DateTime.UtcNow;
-        var first = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-(months - 1));
-        var rows = await Docs().Where(d => d.IssueDate >= first)
-            .GroupBy(d => new { d.IssueDate.Year, d.IssueDate.Month, d.Type })
+        var today = CompanyClock.Today;
+        var first = new DateOnly(today.Year, today.Month, 1).AddMonths(-(months - 1));
+        var since = CompanyClock.StartOf(first);
+        var zone = CompanyClock.ZoneId;
+        var rows = await Docs().Where(d => d.IssueDate >= since)
+            .Select(d => new { At = AppDbContext.LocalTime(zone, d.IssueDate), d.Type, d.Subtotal, d.DiscountTotal })
+            .GroupBy(d => new { d.At.Year, d.At.Month, d.Type })
             .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Type, Net = g.Sum(d => d.Subtotal - d.DiscountTotal), Count = g.Count() })
             .ToListAsync();
         var result = new List<MonthlySalesDto>();
-        for (var m = first; m <= now; m = m.AddMonths(1))
+        for (var m = first; m <= today; m = m.AddMonths(1))
         {
             long Sum(DocumentType t) => rows.Where(r => r.Year == m.Year && r.Month == m.Month && r.Type == t).Sum(r => r.Net);
             var sales = Sum(DocumentType.SALES_INVOICE);
@@ -55,7 +58,7 @@ public sealed class AnalyticsController : ControllerBase
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string side = "customers",
         [FromQuery] int limit = 10)
     {
-        var (start, end) = Period(from, to);
+        var (_, _, start, end) = Period(from, to);
         limit = Math.Clamp(limit, 1, 50);
         var suppliers = side.Equals("suppliers", StringComparison.OrdinalIgnoreCase);
         var (invoice, ret) = suppliers
@@ -87,7 +90,7 @@ public sealed class AnalyticsController : ControllerBase
     public async Task<ActionResult<PerformanceDto>> Performance(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "rep")
     {
-        var (start, end) = Period(from, to);
+        var (fromDay, toDay, start, end) = Period(from, to);
         var byBranch = by.Equals("branch", StringComparison.OrdinalIgnoreCase);
         var docs = await Docs()
             .Where(d => (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN)
@@ -127,8 +130,8 @@ public sealed class AnalyticsController : ControllerBase
         var result = rows.Select(r => r with { Share = totalNet > 0 ? Math.Round(100.0 * r.NetSales / totalNet, 1) : 0 })
             .OrderByDescending(r => r.NetSales).ThenBy(r => r.Name).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
-        return Ok(new PerformanceDto(byBranch ? "branch" : "rep", start.ToString("yyyy-MM-dd"),
-            end.AddDays(-1).ToString("yyyy-MM-dd"), result, totalNet, rows.Sum(r => r.Profit), rows.Sum(r => r.Invoices),
+        return Ok(new PerformanceDto(byBranch ? "branch" : "rep", fromDay.ToString("yyyy-MM-dd"),
+            toDay.ToString("yyyy-MM-dd"), result, totalNet, rows.Sum(r => r.Profit), rows.Sum(r => r.Invoices),
             currency));
     }
 
@@ -140,7 +143,7 @@ public sealed class AnalyticsController : ControllerBase
     public async Task<ActionResult<ItemMovementDto>> ItemMovement(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] int limit = 20)
     {
-        var (start, end) = Period(from, to);
+        var (fromDay, toDay, start, end) = Period(from, to);
         limit = Math.Clamp(limit, 1, 100);
         var lines = _db.DocumentLines.Where(l => l.Document!.Status != DocumentStatus.CANCELLED
                                                  && l.Document.IssueDate >= start && l.Document.IssueDate < end);
@@ -182,7 +185,7 @@ public sealed class AnalyticsController : ControllerBase
             })
             .OrderByDescending(x => x.StockValue).Take(200).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
-        return Ok(new ItemMovementDto(start.ToString("yyyy-MM-dd"), end.AddDays(-1).ToString("yyyy-MM-dd"),
+        return Ok(new ItemMovementDto(fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             top.Where(m => byId.ContainsKey(m.ProductId)).Select(m => new ItemMoveDto(m.ProductId.ToString(),
                 byId[m.ProductId].Sku, Loc.Name(byId[m.ProductId]), m.Out, m.In, m.Value)).ToArray(),
             dead, currency));
@@ -207,7 +210,7 @@ public sealed class AnalyticsController : ControllerBase
         var scoped = Scope() is not null;
         var docs = await q.ToListAsync();
         var owed = await MoneyService.OutstandingAsync(_db, docs);
-        var today = DateTime.UtcNow.Date;
+        var today = CompanyClock.Today;
         var partyIds = docs.Where(d => owed[d.Id] > 0).Select(d => d.PartyId).Distinct().ToList();
         var role = suppliers ? "SUPPLIER" : "CUSTOMER";
         // Owed without an open invoice (opening balances…): only the whole-company view has them.
@@ -221,7 +224,7 @@ public sealed class AnalyticsController : ControllerBase
             // A payable is a negative balance; show both sides as positive amounts owed.
             var balance = suppliers ? -party.Balance : party.Balance;
             var open = byParty[party.Id].OrderBy(d => d.IssueDate).ThenBy(d => d.Number)
-                .Select(d => (Age: (today - d.IssueDate.Date).Days, Left: owed[d.Id])).ToList();
+                .Select(d => (Age: today.DayNumber - CompanyClock.DayOf(d.IssueDate).DayNumber, Left: owed[d.Id])).ToList();
             if (!scoped)
             {
                 // Payments not linked to an invoice settle the oldest ones first.
@@ -259,13 +262,13 @@ public sealed class AnalyticsController : ControllerBase
 
     private Guid? Scope() => MoneyService.ScopeOf(User);
 
-    /// <summary>Whole UTC days; defaults to the last 90 days.</summary>
-    private static (DateTime Start, DateTime End) Period(string? from, string? to)
+    /// <summary>Whole company days; defaults to the last 90 days.</summary>
+    private static (DateOnly FromDay, DateOnly ToDay, DateTime Start, DateTime End) Period(string? from, string? to)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var toDay = DateOnly.TryParse(to, out var t) ? t : today;
-        var fromDay = DateOnly.TryParse(from, out var f) ? f : toDay.AddDays(-89);
+        var toDay = CompanyClock.ParseDay(to) ?? CompanyClock.Today;
+        var fromDay = CompanyClock.ParseDay(from) ?? toDay.AddDays(-89);
         if (fromDay > toDay) (fromDay, toDay) = (toDay, fromDay);
-        return (fromDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), toDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var (start, end) = CompanyClock.Days(fromDay, toDay);
+        return (fromDay, toDay, start, end);
     }
 }

@@ -33,8 +33,16 @@ public sealed class AuditController : ControllerBase
         if (!string.IsNullOrWhiteSpace(actorId)) q = q.Where(a => a.ActorId == actorId);
         if (!string.IsNullOrWhiteSpace(resource)) q = q.Where(a => a.Resource == resource);
         if (!string.IsNullOrWhiteSpace(action)) q = q.Where(a => a.Action == action);
-        if (DateOnly.TryParse(from, out var f)) q = q.Where(a => a.CreatedAt >= f.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
-        if (DateOnly.TryParse(to, out var t)) q = q.Where(a => a.CreatedAt < t.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        if (CompanyClock.ParseDay(from) is DateOnly f)
+        {
+            var start = CompanyClock.StartOf(f);
+            q = q.Where(a => a.CreatedAt >= start);
+        }
+        if (CompanyClock.ParseDay(to) is DateOnly t)
+        {
+            var end = CompanyClock.StartOf(t.AddDays(1));
+            q = q.Where(a => a.CreatedAt < end);
+        }
         var total = await q.CountAsync();
         var rows = await q.OrderByDescending(a => a.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var branchIds = rows.Select(r => Guid.TryParse(r.BranchId, out var b) ? b : Guid.Empty).Distinct().ToList();

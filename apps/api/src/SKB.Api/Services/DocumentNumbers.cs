@@ -19,7 +19,7 @@ public static class DocumentNumbers
 
     public static async Task<string> NextAsync(AppDbContext db, DocumentType type)
     {
-        var prefix = PrefixFor(type, DateTime.UtcNow.Year);
+        var prefix = PrefixFor(type, CompanyClock.Year);
         await LockAsync(db, prefix);
         var last = await db.SalesDocuments.Where(d => d.Number.StartsWith(prefix))
             .OrderByDescending(d => d.Number).Select(d => d.Number).FirstOrDefaultAsync();
@@ -31,7 +31,7 @@ public static class DocumentNumbers
     /// <summary>Next stocktake reference, e.g. ADJ-2026-000007 (kept on the stock movements it posts).</summary>
     public static async Task<string> NextAdjustmentAsync(AppDbContext db)
     {
-        var prefix = $"ADJ-{DateTime.UtcNow.Year}-";
+        var prefix = $"ADJ-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.StockMovements.Where(m => m.Reference != null && m.Reference.StartsWith(prefix))
             .OrderByDescending(m => m.Reference).Select(m => m.Reference).FirstOrDefaultAsync();
@@ -43,7 +43,7 @@ public static class DocumentNumbers
     /// <summary>Next transfer permit number, e.g. TRF-2026-000003.</summary>
     public static async Task<string> NextTransferAsync(AppDbContext db)
     {
-        var prefix = $"TRF-{DateTime.UtcNow.Year}-";
+        var prefix = $"TRF-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.StockTransfers.Where(t => t.Number.StartsWith(prefix))
             .OrderByDescending(t => t.Number).Select(t => t.Number).FirstOrDefaultAsync();
@@ -55,7 +55,7 @@ public static class DocumentNumbers
     /// <summary>Next advance number, e.g. ADV-2026-000004.</summary>
     public static async Task<string> NextAdvanceAsync(AppDbContext db)
     {
-        var prefix = $"ADV-{DateTime.UtcNow.Year}-";
+        var prefix = $"ADV-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.EmployeeAdvances.Where(a => a.Number.StartsWith(prefix))
             .OrderByDescending(a => a.Number).Select(a => a.Number).FirstOrDefaultAsync();
@@ -65,7 +65,7 @@ public static class DocumentNumbers
     /// <summary>Next payroll run number, e.g. PR-2026-000002.</summary>
     public static async Task<string> NextPayrollRunAsync(AppDbContext db)
     {
-        var prefix = $"PR-{DateTime.UtcNow.Year}-";
+        var prefix = $"PR-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.PayrollRuns.Where(r => r.Number.StartsWith(prefix))
             .OrderByDescending(r => r.Number).Select(r => r.Number).FirstOrDefaultAsync();
@@ -86,7 +86,7 @@ public static class DocumentNumbers
     /// <summary>Next shipment (waybill) number, e.g. SHP-2026-000012.</summary>
     public static async Task<string> NextShipmentAsync(AppDbContext db)
     {
-        var prefix = $"SHP-{DateTime.UtcNow.Year}-";
+        var prefix = $"SHP-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.Shipments.Where(s => s.Number.StartsWith(prefix))
             .OrderByDescending(s => s.Number).Select(s => s.Number).FirstOrDefaultAsync();
@@ -96,7 +96,7 @@ public static class DocumentNumbers
     /// <summary>Next carrier settlement number, e.g. CST-2026-000002.</summary>
     public static async Task<string> NextSettlementAsync(AppDbContext db)
     {
-        var prefix = $"CST-{DateTime.UtcNow.Year}-";
+        var prefix = $"CST-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.CarrierSettlements.Where(s => s.Number.StartsWith(prefix))
             .OrderByDescending(s => s.Number).Select(s => s.Number).FirstOrDefaultAsync();
@@ -113,7 +113,7 @@ public static class DocumentNumbers
             VoucherType.EXPENSE => "EXP",
             _ => "CTR",
         };
-        var prefix = $"{code}-{DateTime.UtcNow.Year}-";
+        var prefix = $"{code}-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.Vouchers.Where(v => v.Number.StartsWith(prefix))
             .OrderByDescending(v => v.Number).Select(v => v.Number).FirstOrDefaultAsync();
@@ -123,7 +123,7 @@ public static class DocumentNumbers
     /// <summary>Next note reference: NR- (receivable) or NP- (payable), e.g. NR-2026-000012.</summary>
     public static async Task<string> NextNoteAsync(AppDbContext db, NoteDirection direction)
     {
-        var prefix = $"{(direction == NoteDirection.RECEIVABLE ? "NR" : "NP")}-{DateTime.UtcNow.Year}-";
+        var prefix = $"{(direction == NoteDirection.RECEIVABLE ? "NR" : "NP")}-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.Notes.Where(n => n.Ref.StartsWith(prefix))
             .OrderByDescending(n => n.Ref).Select(n => n.Ref).FirstOrDefaultAsync();
@@ -133,7 +133,7 @@ public static class DocumentNumbers
     /// <summary>Next deposit portfolio number, e.g. PF-2026-000003.</summary>
     public static async Task<string> NextPortfolioAsync(AppDbContext db)
     {
-        var prefix = $"PF-{DateTime.UtcNow.Year}-";
+        var prefix = $"PF-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.Portfolios.Where(p => p.Number.StartsWith(prefix))
             .OrderByDescending(p => p.Number).Select(p => p.Number).FirstOrDefaultAsync();
@@ -143,7 +143,7 @@ public static class DocumentNumbers
     /// <summary>Next manual journal entry number, e.g. JV-2026-000004.</summary>
     public static async Task<string> NextJournalAsync(AppDbContext db)
     {
-        var prefix = $"JV-{DateTime.UtcNow.Year}-";
+        var prefix = $"JV-{CompanyClock.Year}-";
         await LockAsync(db, prefix);
         var last = await db.JournalEntries.Where(e => e.Number.StartsWith(prefix))
             .OrderByDescending(e => e.Number).Select(e => e.Number).FirstOrDefaultAsync();

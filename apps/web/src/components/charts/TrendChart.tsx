@@ -82,7 +82,9 @@ export function TrendChart({
               >
                 {new Date(d.date).toLocaleDateString(
                   locale === 'ar' ? 'ar-EG' : 'en-US',
-                  labels === 'month' ? { month: 'short' } : { weekday: 'short' },
+                  labels === 'month'
+                    ? { month: 'short', timeZone: 'UTC' }
+                    : { weekday: 'short', timeZone: 'UTC' },
                 )}
               </text>
             </g>

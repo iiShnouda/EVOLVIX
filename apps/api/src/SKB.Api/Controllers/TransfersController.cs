@@ -58,8 +58,16 @@ public sealed class TransfersController : ControllerBase
         if (Enum.TryParse<TransferStatus>(status, out var st)) q = q.Where(t => t.Status == st);
         if (Guid.TryParse(warehouseId, out var wid)) q = q.Where(t => t.FromWarehouseId == wid || t.ToWarehouseId == wid);
         if (Guid.TryParse(productId, out var pid)) q = q.Where(t => t.Lines.Any(l => l.ProductId == pid));
-        if (ParseDate(from) is DateTime f) q = q.Where(t => t.CreatedAt >= f);
-        if (ParseDate(to) is DateTime tDate) q = q.Where(t => t.CreatedAt < tDate.AddDays(1));
+        if (CompanyClock.ParseDay(from) is DateOnly f)
+        {
+            var start = CompanyClock.StartOf(f);
+            q = q.Where(t => t.CreatedAt >= start);
+        }
+        if (CompanyClock.ParseDay(to) is DateOnly tDay)
+        {
+            var end = CompanyClock.StartOf(tDay.AddDays(1));
+            q = q.Where(t => t.CreatedAt < end);
+        }
 
         var total = await q.CountAsync();
         var rows = await WithDetails(q).OrderByDescending(t => t.CreatedAt)
@@ -282,9 +290,4 @@ public sealed class TransfersController : ControllerBase
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, "stock_transfer",
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), t.Id.ToString());
-
-    private static DateTime? ParseDate(string? s) =>
-        DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var d)
-            ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc)
-            : null;
 }
