@@ -23,6 +23,55 @@ namespace SKB.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("CheckIn")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CheckOut")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LateMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<int>("OvertimeMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UpdatedById")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("AttendanceDays");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -205,6 +254,15 @@ namespace SKB.Api.Migrations
                     b.Property<int>("MinMarkupPercent")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("MissingAttendanceIsAbsent")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OvertimePercent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PayrollDayBasis")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
@@ -331,6 +389,129 @@ namespace SKB.Api.Migrations
                     b.HasIndex("WarehouseId");
 
                     b.ToTable("DocumentLines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Employee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AdvanceBalance")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeviceUserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("HireDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("JobTitle")
+                        .HasColumnType("text");
+
+                    b.Property<long>("MonthlySalary")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NationalId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ShiftId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("DeviceUserId")
+                        .IsUnique()
+                        .HasFilter("\"DeviceUserId\" IS NOT NULL");
+
+                    b.HasIndex("ShiftId");
+
+                    b.HasIndex("StaffId");
+
+                    b.ToTable("Employees");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.EmployeeAdvance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Installment")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("Remaining")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.ToTable("EmployeeAdvances");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ExpenseCategory", b =>
@@ -925,6 +1106,195 @@ namespace SKB.Api.Migrations
                     b.ToTable("Parties");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("Year", "Month");
+
+                    b.ToTable("PayrollAdjustments");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AbsenceDeduction")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("AbsentDays")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("AdvanceRecovery")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Basic")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Bonuses")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Deductions")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Earned")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("EmployedDays")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmployeeName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("LateDeduction")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("LateMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("MonthlySalary")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Net")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("OvertimeMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("OvertimePay")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("PaidAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("PaidAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WorkDays")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("RunId", "EmployeeId")
+                        .IsUnique();
+
+                    b.ToTable("PayrollLines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Earned")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Net")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("Paid")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("PostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PostedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Recovered")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("PostedById");
+
+                    b.HasIndex("Year", "Month");
+
+                    b.ToTable("PayrollRuns");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1288,6 +1658,40 @@ namespace SKB.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Sessions");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Shift", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<List<int>>("DaysOff")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<int>("EndMinute")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("GraceMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("StartMinute")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Shipment", b =>
@@ -1841,6 +2245,17 @@ namespace SKB.Api.Migrations
                     b.ToTable("Warehouses");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.CarrierSettlement", b =>
                 {
                     b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
@@ -1909,6 +2324,58 @@ namespace SKB.Api.Migrations
                     b.Navigation("Unit");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Employee", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Shift", "Shift")
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Shift");
+
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.EmployeeAdvance", b =>
+                {
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ExpenseCategory", b =>
@@ -2208,6 +2675,69 @@ namespace SKB.Api.Migrations
                     b.Navigation("PurchasePriceLevel");
 
                     b.Navigation("SalesPriceLevel");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollLine", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.PayrollRun", "Run")
+                        .WithMany("Lines")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollRun", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "PostedBy")
+                        .WithMany()
+                        .HasForeignKey("PostedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("PostedBy");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
@@ -2678,6 +3208,11 @@ namespace SKB.Api.Migrations
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
                 {
                     b.Navigation("Documents");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PayrollRun", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>

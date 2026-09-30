@@ -430,7 +430,11 @@ Each step is a working slice: API, web, tests and docs together.
 8. ✅ **Financial statements**, then analytics (shipped 2026-09-29): income statement and balance
    sheet from the ledger; monthly net sales, top customers / suppliers, item movement and dead
    stock.
-9. Payroll & attendance (§2.9).
+9. ✅ **Payroll & attendance** (shipped 2026-09-30): employees (with or without a sign-in), shifts
+   with grace and weekly days off, attendance typed or imported from the fingerprint device's
+   export, late / overtime by the minute, bonuses and deductions, advances recovered by monthly
+   installment, and the month's payroll: a draft, posted in one journal entry (Dr salaries ·
+   Cr employee advances · Cr salaries payable), then paid from a money account.
 
 ---
 

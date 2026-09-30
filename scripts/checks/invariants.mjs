@@ -168,7 +168,7 @@ await expectNone(
 const golive = `coalesce((select min("CreatedAt") from "JournalEntries" where "SourceType"='OPENING'), '-infinity'::timestamptz)`;
 await expectNone(
   'chart of accounts set up',
-  `select 1 where (select count(*) from "LedgerAccounts" where "SystemKey" is not null) < 32`,
+  `select 1 where (select count(*) from "LedgerAccounts" where "SystemKey" is not null) < 35`,
 );
 await expectNone(
   'every entry balances',
@@ -242,6 +242,31 @@ await expectNone(
 await expectNone(
   'deposited notes sit in a portfolio at a bank',
   `select n."Ref" from "Notes" n left join "MoneyAccounts" m on m."Id"=n."AccountId" where n."Status"='UNDER_COLLECTION' and (n."PortfolioId" is null or m."Kind" <> 'BANK')`,
+);
+// Payroll (step 9): advances and salaries payable tie to the ledger; runs add up.
+await expectNone(
+  "an employee's advance balance = what's left on their open advances",
+  `select e."Code" from "Employees" e where e."AdvanceBalance" <> coalesce((select sum(a."Remaining") from "EmployeeAdvances" a where a."EmployeeId"=e."Id" and a."Status"='OPEN'),0) or e."AdvanceBalance" < 0`,
+);
+await expectNone(
+  'employee advances in the ledger = advances owed',
+  `select 1 where ${notesLedger('EMPLOYEE_ADVANCES')} <> (select coalesce(sum("AdvanceBalance"),0) from "Employees")`,
+);
+await expectNone(
+  'salaries payable in the ledger = what posted payrolls still owe',
+  `select 1 where -${notesLedger('SALARIES_PAYABLE')} <> (select coalesce(sum(l."Net"-l."PaidAmount"),0) from "PayrollLines" l join "PayrollRuns" r on r."Id"=l."RunId" where r."Status" in ('POSTED','PAID'))`,
+);
+await expectNone(
+  'a payroll run adds up its payslips',
+  `select r."Number" from "PayrollRuns" r left join "PayrollLines" l on l."RunId"=r."Id" group by r."Id" having r."Earned" <> coalesce(sum(l."Earned"),0) or r."Recovered" <> coalesce(sum(l."AdvanceRecovery"),0) or r."Net" <> coalesce(sum(l."Net"),0) or r."Paid" <> coalesce(sum(l."PaidAmount"),0)`,
+);
+await expectNone(
+  'a payslip: earned − recovered = net, paid within it',
+  `select "Id" from "PayrollLines" where "Earned" - "AdvanceRecovery" <> "Net" or "Net" < 0 or "PaidAmount" < 0 or "PaidAmount" > "Net" or "Earned" <> greatest(0, "Basic" + "OvertimePay" + "Bonuses" - "AbsenceDeduction" - "LateDeduction" - "Deductions")`,
+);
+await expectNone(
+  'every posted payroll has its entry',
+  `select r."Number" from "PayrollRuns" r where r."Status" in ('POSTED','PAID') and r."Earned" > 0 and not exists (select 1 from "JournalEntries" e where e."SourceId"=r."Id" and e."SourceType"='PAYROLL')`,
 );
 await c.end();
 process.exit(bad ? 1 : 0);

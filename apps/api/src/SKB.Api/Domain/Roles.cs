@@ -66,6 +66,19 @@ public static class Permissions
     public const string NotesEndorse = "notes:endorse";
     /// <summary>Cancel a note (give it back / withdraw it).</summary>
     public const string NotesCancel = "notes:cancel";
+
+    // Payroll & attendance (DOMAIN.md §2.9). Salaries are private: nobody sees them by default
+    // except the owner, admin and accountant.
+    public const string PayrollView = "payroll:view";
+    /// <summary>Add and edit employees (including their salary), shifts and the payroll rules.</summary>
+    public const string EmployeesManage = "employees:manage";
+    public const string AttendanceEdit = "attendance:edit";
+    /// <summary>Bonuses and deductions.</summary>
+    public const string PayrollAdjust = "payroll:adjust";
+    public const string PayrollAdvance = "payroll:advance";
+    /// <summary>Make, recalculate and post a month's payroll.</summary>
+    public const string PayrollPost = "payroll:post";
+    public const string PayrollPay = "payroll:pay";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
     /// <summary>Add a customer, supplier, factory or shipping company.</summary>
@@ -151,6 +164,7 @@ public static class Permissions
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel,
+        PayrollView, EmployeesManage, AttendanceEdit, PayrollAdjust, PayrollAdvance, PayrollPost, PayrollPay,
     };
 }
 
@@ -184,6 +198,8 @@ public static class RolePermissions
             Permissions.NotesView, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
             Permissions.NotesCancel,
+            Permissions.PayrollView, Permissions.AttendanceEdit, Permissions.PayrollAdjust, Permissions.PayrollAdvance,
+            Permissions.PayrollPost, Permissions.PayrollPay,
         },
         // Sales staff sell at the customer's price level; changing a price or the level needs a
         // manager (owner decision 2026-09-29).

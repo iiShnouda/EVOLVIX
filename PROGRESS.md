@@ -108,6 +108,48 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Payroll & attendance** (الرواتب والحضور) — DOMAIN.md §7 step 9
+- **Employees** (Payroll → Employees, `employees:manage`):
+  - Each has a code, branch, job, monthly salary, start date, shift, fingerprint device number
+    and, optionally, their sign-in to the app.
+  - Someone who owes an advance can't be marked as left.
+- **Shifts** (Shifts & rules): hours (a shift may pass midnight), minutes of grace and weekly days
+  off. Without a shift: 09:00–17:00, 15 minutes' grace, Friday off.
+- **Payroll rules:** a day's pay = salary ÷ 30 (changeable), overtime at 150%, and whether a
+  past working day with nothing recorded counts as absent (off by default).
+- **Attendance** (`attendance:edit`):
+  - A day's sheet per branch: status (present, absent, paid or unpaid leave, holiday), in, out
+    and notes.
+  - Late = arriving after the grace (counted from the start) plus leaving early. Overtime = after
+    the shift's end. A day off worked is all overtime.
+  - **Import** from the fingerprint device's export (text/CSV: device number, date and time per
+    punch). The first punch of a day is the check-in, the last the check-out. Unknown numbers and
+    unreadable lines are reported.
+- **Bonuses and deductions** per employee per month (`payroll:adjust`), until that month is posted.
+- **Advances** (`payroll:advance`):
+  - Paid from a money account (Dr employee advances · Cr the account) and recovered from payroll
+    at most the monthly installment.
+  - An untouched one can be handed back.
+- **The month's payroll** (`payroll:post`, `payroll:pay`):
+  - A draft for the whole company or one branch, one per month.
+  - Pay per employee: salary for the days employed, − a day's pay per absence, − lateness by the
+    minute, + overtime by the minute × 150%, + bonuses − deductions (never below zero), −
+    advances recovered = net.
+  - Recalculate after changes. **Post** puts it in the ledger in one entry (Dr salaries 5107 ·
+    Cr employee advances 1109 · Cr salaries payable 2104), dated the month's last day. It
+    recovers the advances oldest first and closes the month's attendance and adjustments.
+  - **Pay** everyone or chosen people from a money account (Dr salaries payable · Cr the account).
+  - Print and Excel.
+- New ledger accounts 1109, 2104 and 5107 are made at start-up on existing databases (migration
+  `Payroll`; existing companies get day basis 30 and overtime 150%).
+- **Verified:**
+  - `payroll.test.mjs`: 92 checks. It works out a payslip to the piastre (absence, lateness,
+    overtime on a workday, a day off and from the device export, bonus, deduction, advance
+    installment, a mid-month starter). It also covers the entry, recovery, locks after posting,
+    paying in two goes, a posting race and permissions. It can run again on the same database.
+  - 6 new invariants: advances and salaries payable tie to the ledger; runs add up their payslips.
+  - All other suites pass on a fresh and an upgraded database.
+
 **Quotations, printable vouchers and sales performance** (عروض الأسعار، طباعة السندات، أداء المبيعات)
 — the last gaps from the original feature plan
 - **Price quotations** (Sales → Quotations; `sales:quote` to make or cancel one, owner /
@@ -851,8 +893,10 @@ and warehouses shipped):
    - **On the company server:** set `BACKUP_PASSPHRASE` in `.env` and copy the `backups` folder
      off the machine regularly. **On the cloud:** download a backup from Settings regularly.
    - ~~Quotations, printable vouchers, sales performance~~ done.
-   - Left: DOMAIN.md §7 step 9, payroll & attendance (§2.9) — only if the company uses it; ask
-     the owner first.
+   - ~~DOMAIN.md §7 step 9, payroll & attendance~~ done: every step of the build order is shipped.
+   - **Verify on the live DB** after deploy: add a shift and the employees (with their device
+     numbers), import a day from the fingerprint device, make last month's payroll as a draft and
+     check a payslip before posting.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

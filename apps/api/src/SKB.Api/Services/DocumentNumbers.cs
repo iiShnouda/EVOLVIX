@@ -52,6 +52,37 @@ public static class DocumentNumbers
         return $"{prefix}{seq:D6}";
     }
 
+    /// <summary>Next advance number, e.g. ADV-2026-000004.</summary>
+    public static async Task<string> NextAdvanceAsync(AppDbContext db)
+    {
+        var prefix = $"ADV-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.EmployeeAdvances.Where(a => a.Number.StartsWith(prefix))
+            .OrderByDescending(a => a.Number).Select(a => a.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
+    /// <summary>Next payroll run number, e.g. PR-2026-000002.</summary>
+    public static async Task<string> NextPayrollRunAsync(AppDbContext db)
+    {
+        var prefix = $"PR-{DateTime.UtcNow.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.PayrollRuns.Where(r => r.Number.StartsWith(prefix))
+            .OrderByDescending(r => r.Number).Select(r => r.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
+    /// <summary>Next employee code, e.g. E-0007.</summary>
+    public static async Task<string> NextEmployeeCodeAsync(AppDbContext db)
+    {
+        const string prefix = "E-";
+        await LockAsync(db, prefix);
+        var last = await db.Employees.Where(e => e.Code.StartsWith(prefix))
+            .OrderByDescending(e => e.Code).Select(e => e.Code).FirstOrDefaultAsync();
+        var seq = last is not null && int.TryParse(last[prefix.Length..], out var n) ? n + 1 : 1;
+        return $"{prefix}{seq:D4}";
+    }
+
     /// <summary>Next shipment (waybill) number, e.g. SHP-2026-000012.</summary>
     public static async Task<string> NextShipmentAsync(AppDbContext db)
     {

@@ -16,10 +16,12 @@ public static class LedgerKeys
         Expenses = "EXPENSES", Cogs = "COGS", Operating = "OPERATING_EXPENSES", Shipping = "SHIPPING_EXPENSE",
         PurchaseExpenses = "PURCHASE_EXPENSES", StockLoss = "STOCK_LOSS", Rounding = "ROUNDING",
         NotesReceivable = "NOTES_RECEIVABLE", NotesUnderCollection = "NOTES_UNDER_COLLECTION",
-        NotesPayable = "NOTES_PAYABLE";
+        NotesPayable = "NOTES_PAYABLE", EmployeeAdvances = "EMPLOYEE_ADVANCES",
+        SalariesPayable = "SALARIES_PAYABLE", Salaries = "SALARIES";
 
     /// <summary>Accounts that only documents post to (their own sub-ledgers keep them in step).</summary>
-    public static readonly string[] DocumentOnly = { Inventory, NotesReceivable, NotesUnderCollection, NotesPayable };
+    public static readonly string[] DocumentOnly =
+        { Inventory, NotesReceivable, NotesUnderCollection, NotesPayable, EmployeeAdvances, SalariesPayable };
 }
 
 /// <summary>
@@ -52,12 +54,14 @@ public sealed class LedgerService
         new("1106", LedgerKeys.VatInput, "ضريبة القيمة المضافة - مشتريات", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
         new("1107", LedgerKeys.NotesReceivable, "أوراق القبض", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
         new("1108", LedgerKeys.NotesUnderCollection, "أوراق برسم التحصيل", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
+        new("1109", LedgerKeys.EmployeeAdvances, "سلف الموظفين", LedgerAccountType.ASSET, LedgerKeys.CurrentAssets, false),
         new("12", LedgerKeys.FixedAssets, "الأصول الثابتة", LedgerAccountType.ASSET, LedgerKeys.Assets, true),
         new("2", LedgerKeys.Liabilities, "الخصوم", LedgerAccountType.LIABILITY, null, true),
         new("21", LedgerKeys.CurrentLiabilities, "الخصوم المتداولة", LedgerAccountType.LIABILITY, LedgerKeys.Liabilities, true),
         new("2101", LedgerKeys.Suppliers, "الموردون", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, true),
         new("2102", LedgerKeys.VatOutput, "ضريبة القيمة المضافة - مبيعات", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, false),
         new("2103", LedgerKeys.NotesPayable, "أوراق الدفع", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, false),
+        new("2104", LedgerKeys.SalariesPayable, "رواتب مستحقة", LedgerAccountType.LIABILITY, LedgerKeys.CurrentLiabilities, false),
         new("3", LedgerKeys.Equity, "حقوق الملكية", LedgerAccountType.EQUITY, null, true),
         new("3101", LedgerKeys.Capital, "رأس المال", LedgerAccountType.EQUITY, LedgerKeys.Equity, false),
         new("3102", LedgerKeys.OpeningEquity, "أرصدة افتتاحية", LedgerAccountType.EQUITY, LedgerKeys.Equity, false),
@@ -74,6 +78,7 @@ public sealed class LedgerService
         new("5104", LedgerKeys.PurchaseExpenses, "مصاريف المشتريات", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5105", LedgerKeys.StockLoss, "خسائر فروق الجرد", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5106", LedgerKeys.Rounding, "فروق التقريب", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
+        new("5107", LedgerKeys.Salaries, "الرواتب والأجور", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
     };
 
     // ------------------------------------------------------------------ accounts

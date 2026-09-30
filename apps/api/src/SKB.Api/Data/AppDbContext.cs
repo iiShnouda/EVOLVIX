@@ -9,6 +9,13 @@ public class AppDbContext : DbContext
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Staff> Staff => Set<Staff>();
     public DbSet<Session> Sessions => Set<Session>();
+    public DbSet<Shift> Shifts => Set<Shift>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<AttendanceDay> AttendanceDays => Set<AttendanceDay>();
+    public DbSet<PayrollAdjustment> PayrollAdjustments => Set<PayrollAdjustment>();
+    public DbSet<EmployeeAdvance> EmployeeAdvances => Set<EmployeeAdvance>();
+    public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<Category> Categories => Set<Category>();
@@ -385,6 +392,35 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.ColorId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Product>().HasIndex(p => new { p.ModelId, p.SizeId, p.ColorId })
             .IsUnique().AreNullsDistinct(false).HasFilter("\"ModelId\" IS NOT NULL");
+
+        // ---- Payroll & attendance ----
+        b.Entity<Employee>().HasIndex(e => e.Code).IsUnique();
+        b.Entity<Employee>().HasIndex(e => e.DeviceUserId).IsUnique().HasFilter("\"DeviceUserId\" IS NOT NULL");
+        b.Entity<Employee>().HasOne(e => e.Branch).WithMany().HasForeignKey(e => e.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Employee>().HasOne(e => e.Shift).WithMany().HasForeignKey(e => e.ShiftId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Employee>().HasOne(e => e.Staff).WithMany().HasForeignKey(e => e.StaffId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<AttendanceDay>().HasIndex(a => new { a.EmployeeId, a.Date }).IsUnique();
+        b.Entity<AttendanceDay>().HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<AttendanceDay>().Property(a => a.Status).HasConversion<string>();
+        b.Entity<AttendanceDay>().Property(a => a.Source).HasConversion<string>();
+        b.Entity<PayrollAdjustment>().HasIndex(a => new { a.Year, a.Month });
+        b.Entity<PayrollAdjustment>().Property(a => a.Kind).HasConversion<string>();
+        b.Entity<PayrollAdjustment>().HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollAdjustment>().HasOne(a => a.CreatedBy).WithMany().HasForeignKey(a => a.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<EmployeeAdvance>().HasIndex(a => a.Number).IsUnique();
+        b.Entity<EmployeeAdvance>().Property(a => a.Status).HasConversion<string>();
+        b.Entity<EmployeeAdvance>().HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<EmployeeAdvance>().HasOne(a => a.Account).WithMany().HasForeignKey(a => a.AccountId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<EmployeeAdvance>().HasOne(a => a.CreatedBy).WithMany().HasForeignKey(a => a.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollRun>().HasIndex(r => r.Number).IsUnique();
+        b.Entity<PayrollRun>().HasIndex(r => new { r.Year, r.Month });
+        b.Entity<PayrollRun>().Property(r => r.Status).HasConversion<string>();
+        b.Entity<PayrollRun>().HasOne(r => r.Branch).WithMany().HasForeignKey(r => r.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollRun>().HasOne(r => r.CreatedBy).WithMany().HasForeignKey(r => r.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollRun>().HasOne(r => r.PostedBy).WithMany().HasForeignKey(r => r.PostedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollLine>().HasOne(l => l.Run).WithMany(r => r.Lines).HasForeignKey(l => l.RunId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PayrollLine>().HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PayrollLine>().HasIndex(l => new { l.RunId, l.EmployeeId }).IsUnique();
 
         base.OnModelCreating(b);
     }

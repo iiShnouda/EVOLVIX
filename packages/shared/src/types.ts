@@ -66,6 +66,13 @@ export type Permission =
   | 'settings:manage'
   | 'audit:view'
   | 'backup:create'
+  | 'payroll:view'
+  | 'employees:manage'
+  | 'attendance:edit'
+  | 'payroll:adjust'
+  | 'payroll:advance'
+  | 'payroll:post'
+  | 'payroll:pay'
   | 'presence:view'
   // Catalog (owner decision 2026-09-29: every action has its own permission)
   | 'products:create'
@@ -491,7 +498,10 @@ export type MoneyMovementKind =
   | 'CARRIER_SETTLEMENT'
   | 'CANCELLATION'
   | 'NOTE_COLLECTED'
-  | 'NOTE_PAID';
+  | 'NOTE_PAID'
+  | 'ADVANCE_PAID'
+  | 'ADVANCE_CANCELLED'
+  | 'SALARY_PAID';
 
 /** Which kinds of account each payment method lands in (the server checks the same). */
 export const METHOD_ACCOUNT_KINDS: Record<PaymentMethod, MoneyAccountKind[]> = {
@@ -1543,5 +1553,162 @@ export interface Performance {
   netSales: number;
   profit: number;
   invoices: number;
+  currency: string;
+}
+
+// ---------------------------------------------------------------------------
+// Payroll & attendance (DOMAIN.md §2.9)
+// ---------------------------------------------------------------------------
+
+export interface WorkShift {
+  id: string;
+  name: string;
+  /** "HH:mm"; an end before the start runs past midnight. */
+  start: string;
+  end: string;
+  graceMinutes: number;
+  /** Weekly days off: 0 = Sunday … 6 = Saturday. */
+  daysOff: number[];
+  isActive: boolean;
+  minutes: number;
+}
+
+export interface Employee {
+  id: string;
+  code: string;
+  name: string;
+  branchId: string;
+  branchName: string;
+  jobTitle: string | null;
+  phone: string | null;
+  nationalId: string | null;
+  hireDate: string;
+  /** Minor units. */
+  monthlySalary: number;
+  shiftId: string | null;
+  shiftName: string | null;
+  deviceUserId: string | null;
+  staffId: string | null;
+  staffName: string | null;
+  /** Advances still to recover. */
+  advanceBalance: number;
+  isActive: boolean;
+}
+
+export interface PayrollRules {
+  /** A day's pay = monthly salary ÷ this. */
+  dayBasis: number;
+  overtimePercent: number;
+  missingAttendanceIsAbsent: boolean;
+}
+
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LEAVE' | 'UNPAID_LEAVE' | 'HOLIDAY';
+
+export interface AttendanceRow {
+  employeeId: string;
+  code: string;
+  name: string;
+  branchName: string;
+  shiftName: string | null;
+  dayOff: boolean;
+  status: AttendanceStatus | null;
+  checkIn: string | null;
+  checkOut: string | null;
+  lateMinutes: number;
+  overtimeMinutes: number;
+  source: 'MANUAL' | 'DEVICE' | null;
+  notes: string | null;
+  /** The month's payroll is posted: the day can't change. */
+  locked: boolean;
+}
+
+export interface AttendanceSheet {
+  date: string;
+  rows: AttendanceRow[];
+}
+
+export interface AttendanceImportResult {
+  punches: number;
+  days: number;
+  skipped: number;
+  locked: number;
+  unknownIds: string[];
+}
+
+export interface PayrollAdjustment {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  year: number;
+  month: number;
+  kind: 'BONUS' | 'DEDUCTION';
+  amount: number;
+  reason: string;
+  posted: boolean;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface EmployeeAdvance {
+  id: string;
+  number: string;
+  employeeId: string;
+  employeeName: string;
+  amount: number;
+  installment: number;
+  remaining: number;
+  status: 'OPEN' | 'SETTLED' | 'CANCELLED';
+  accountName: string;
+  notes: string | null;
+  createdByName: string;
+  createdAt: string;
+}
+
+/** One employee's payslip on a payroll run. */
+export interface PayrollLine {
+  id: string;
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  monthlySalary: number;
+  employedDays: number;
+  workDays: number;
+  absentDays: number;
+  lateMinutes: number;
+  overtimeMinutes: number;
+  basic: number;
+  overtimePay: number;
+  bonuses: number;
+  absenceDeduction: number;
+  lateDeduction: number;
+  deductions: number;
+  earned: number;
+  advanceRecovery: number;
+  net: number;
+  paidAmount: number;
+  paidAt: string | null;
+}
+
+export type PayrollRunStatus = 'DRAFT' | 'POSTED' | 'PAID' | 'CANCELLED';
+
+/** A month's payroll (مسير الرواتب). */
+export interface PayrollRun {
+  id: string;
+  number: string;
+  year: number;
+  month: number;
+  branchId: string | null;
+  branchName: string | null;
+  status: PayrollRunStatus;
+  earned: number;
+  recovered: number;
+  net: number;
+  paid: number;
+  employees: number;
+  createdByName: string;
+  createdAt: string;
+  postedAt: string | null;
+  postedByName: string | null;
+  lines: PayrollLine[];
   currency: string;
 }

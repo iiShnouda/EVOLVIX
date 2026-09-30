@@ -99,6 +99,14 @@ import type {
   BackupFile,
   Performance,
   ConvertQuotationInput,
+  Employee,
+  WorkShift,
+  PayrollRules,
+  AttendanceSheet,
+  AttendanceImportResult,
+  PayrollAdjustment,
+  EmployeeAdvance,
+  PayrollRun,
 } from '@skb/shared';
 import { api } from './api';
 
@@ -1193,5 +1201,210 @@ export function usePerformance(from: string, to: string, by: 'rep' | 'branch') {
       api.get<Performance>(
         `/analytics/performance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&by=${by}`,
       ),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Payroll & attendance
+// ---------------------------------------------------------------------------
+
+function invalidatePayroll(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['payroll'] });
+}
+
+export function useEmployees(enabled = true) {
+  return useQuery({
+    queryKey: ['payroll', 'employees'],
+    queryFn: () => api.get<Employee[]>('/payroll/employees'),
+    enabled,
+  });
+}
+
+export function useSaveEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: Record<string, unknown> }) =>
+      id
+        ? api.put<Employee>(`/payroll/employees/${id}`, input)
+        : api.post<Employee>('/payroll/employees', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useShifts() {
+  return useQuery({
+    queryKey: ['payroll', 'shifts'],
+    queryFn: () => api.get<WorkShift[]>('/payroll/shifts'),
+  });
+}
+
+export function useSaveShift() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: Record<string, unknown> }) =>
+      id
+        ? api.put<WorkShift>(`/payroll/shifts/${id}`, input)
+        : api.post<WorkShift>('/payroll/shifts', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function usePayrollRules() {
+  return useQuery({
+    queryKey: ['payroll', 'rules'],
+    queryFn: () => api.get<PayrollRules>('/payroll/settings'),
+  });
+}
+
+export function useSavePayrollRules() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PayrollRules) => api.put<PayrollRules>('/payroll/settings', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useAttendance(date: string, branchId: string) {
+  const q = new URLSearchParams({ date });
+  if (branchId) q.set('branchId', branchId);
+  return useQuery({
+    queryKey: ['payroll', 'attendance', date, branchId],
+    queryFn: () => api.get<AttendanceSheet>(`/payroll/attendance?${q.toString()}`),
+  });
+}
+
+export function useSaveAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      date: string;
+      rows: {
+        employeeId: string;
+        status: string | null;
+        checkIn?: string;
+        checkOut?: string;
+        notes?: string;
+      }[];
+    }) => api.put<AttendanceSheet>('/payroll/attendance', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useImportAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<AttendanceImportResult>('/payroll/attendance/import', { text }),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useAdjustments(year: number, month: number) {
+  return useQuery({
+    queryKey: ['payroll', 'adjustments', year, month],
+    queryFn: () => api.get<PayrollAdjustment[]>(`/payroll/adjustments?year=${year}&month=${month}`),
+  });
+}
+
+export function useAddAdjustment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      employeeId: string;
+      year: number;
+      month: number;
+      kind: string;
+      amount: number;
+      reason?: string;
+    }) => api.post<PayrollAdjustment>('/payroll/adjustments', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useCancelAdjustment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<void>(`/payroll/adjustments/${id}/cancel`),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+export function useAdvances() {
+  return useQuery({
+    queryKey: ['payroll', 'advances'],
+    queryFn: () => api.get<EmployeeAdvance[]>('/payroll/advances'),
+  });
+}
+
+export function useGiveAdvance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      employeeId: string;
+      amount: number;
+      installment?: number;
+      accountId?: string;
+      notes?: string;
+    }) => api.post<EmployeeAdvance>('/payroll/advances', input),
+    onSuccess: () => {
+      invalidatePayroll(qc);
+      void qc.invalidateQueries({ queryKey: ['money'] });
+    },
+  });
+}
+
+export function useCancelAdvance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<EmployeeAdvance>(`/payroll/advances/${id}/cancel`),
+    onSuccess: () => {
+      invalidatePayroll(qc);
+      void qc.invalidateQueries({ queryKey: ['money'] });
+    },
+  });
+}
+
+export function usePayrollRuns() {
+  return useQuery({
+    queryKey: ['payroll', 'runs'],
+    queryFn: () => api.get<PayrollRun[]>('/payroll/runs'),
+  });
+}
+
+export function usePayrollRun(id: string | null) {
+  return useQuery({
+    queryKey: ['payroll', 'run', id],
+    queryFn: () => api.get<PayrollRun>(`/payroll/runs/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useCreatePayrollRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { year: number; month: number; branchId?: string }) =>
+      api.post<PayrollRun>('/payroll/runs', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+/** recalculate · post · cancel · pay on a payroll run. */
+export function usePayrollAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      action,
+      body,
+    }: {
+      id: string;
+      action: 'recalculate' | 'post' | 'cancel' | 'pay';
+      body?: unknown;
+    }) => api.post<PayrollRun>(`/payroll/runs/${id}/${action}`, body ?? {}),
+    onSuccess: () => {
+      invalidatePayroll(qc);
+      void qc.invalidateQueries({ queryKey: ['money'] });
+      void qc.invalidateQueries({ queryKey: ['ledger'] });
+    },
   });
 }

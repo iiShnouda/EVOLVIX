@@ -133,6 +133,9 @@ public enum MoneyMovementKind
     CANCELLATION,       // reverses a cancelled voucher
     NOTE_COLLECTED,     // a cheque / promissory note we held was paid to us
     NOTE_PAID,          // a cheque / promissory note we issued was paid
+    ADVANCE_PAID,       // an advance (سلفة) handed to an employee
+    ADVANCE_CANCELLED,  // an advance handed back untouched
+    SALARY_PAID,        // salaries paid out of a payroll run
 }
 
 /// <summary>Financial paper (DOMAIN.md §2.7): a cheque (شيك) or a promissory note (كمبيالة).</summary>
@@ -153,3 +156,20 @@ public enum NoteStatus { IN_HAND, UNDER_COLLECTION, COLLECTED, BOUNCED, ENDORSED
 /// RECEIVED: the destination confirmed them. CANCELLED: sent back to the source before receipt.
 /// </summary>
 public enum TransferStatus { SENT, RECEIVED, CANCELLED }
+
+// ---- Payroll & attendance (DOMAIN.md §2.9) ----
+
+/// <summary>A day of an employee: at work, absent, on paid or unpaid leave, or a holiday.</summary>
+public enum AttendanceStatus { PRESENT, ABSENT, LEAVE, UNPAID_LEAVE, HOLIDAY }
+
+/// <summary>Typed on the attendance sheet, or read from the fingerprint device's export.</summary>
+public enum AttendanceSource { MANUAL, DEVICE }
+
+public enum AdjustmentKind { BONUS, DEDUCTION }
+
+/// <summary>OPEN (still being recovered) → SETTLED; CANCELLED if handed back untouched.</summary>
+public enum AdvanceStatus { OPEN, SETTLED, CANCELLED }
+
+/// <summary>DRAFT (recalculable) → POSTED (in the ledger) → PAID; a draft can be CANCELLED.</summary>
+public enum PayrollRunStatus { DRAFT, POSTED, PAID, CANCELLED }
+

@@ -42,6 +42,7 @@ builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
 builder.Services.AddScoped<BackupService>();
+builder.Services.AddScoped<PayrollService>();
 builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
 

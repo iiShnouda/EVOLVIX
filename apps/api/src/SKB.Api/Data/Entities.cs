@@ -747,6 +747,12 @@ public class StockMovement
 /// </summary>
 public class CompanySettings
 {
+    /// <summary>Payroll: a day's pay is the monthly salary ÷ this (30 by default).</summary>
+    public int PayrollDayBasis { get; set; } = 30;
+    /// <summary>Payroll: overtime pays this percent of the normal minute rate (150 = time and a half).</summary>
+    public int OvertimePercent { get; set; } = 150;
+    /// <summary>Payroll: a past working day with no attendance counts as absent (else as present).</summary>
+    public bool MissingAttendanceIsAbsent { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public string CompanyName { get; set; } = "SKB Wholesale";
     /// <summary>ISO country code (e.g. "EG"). Drives suggested currency + VAT.</summary>
@@ -933,3 +939,174 @@ public class JournalLine
     public long Credit { get; set; }
     public string? Memo { get; set; }
 }
+
+// ---- Payroll & attendance (DOMAIN.md §2.9) ----
+
+/// <summary>A work shift (وردية): its hours, how late is still on time, and the weekly days off.</summary>
+public class Shift : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    /// <summary>Minutes after midnight (540 = 09:00). An end before the start runs past midnight.</summary>
+    public int StartMinute { get; set; } = 540;
+    public int EndMinute { get; set; } = 1020;
+    /// <summary>Arriving within this many minutes of the start isn't late.</summary>
+    public int GraceMinutes { get; set; } = 15;
+    /// <summary>Weekly days off, as day-of-week numbers (0 = Sunday … 5 = Friday, 6 = Saturday).</summary>
+    public List<int> DaysOff { get; set; } = new() { 5 };
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Someone on the payroll (موظف) — with or without a sign-in to the app. Their salary is monthly;
+/// what they still owe of advances is <see cref="AdvanceBalance"/>.
+/// </summary>
+public class Employee
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>E-0001…</summary>
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    public string? JobTitle { get; set; }
+    public string? Phone { get; set; }
+    public string? NationalId { get; set; }
+    /// <summary>First day of work (a date; the month they start in is paid from it).</summary>
+    public DateTime HireDate { get; set; }
+    /// <summary>Monthly salary, minor units.</summary>
+    public long MonthlySalary { get; set; }
+    public Guid? ShiftId { get; set; }
+    public Shift? Shift { get; set; }
+    /// <summary>Their user number on the fingerprint device, to match its attendance export.</summary>
+    public string? DeviceUserId { get; set; }
+    /// <summary>Their sign-in to the app, if they have one.</summary>
+    public Guid? StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>Advances still to recover, minor units (= Σ open advances' remaining).</summary>
+    public long AdvanceBalance { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>One employee's day: in and out times (minutes after midnight) and what they come to.</summary>
+public class AttendanceDay
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    /// <summary>The day (midnight; a calendar date, not a moment).</summary>
+    public DateTime Date { get; set; }
+    public AttendanceStatus Status { get; set; }
+    public int? CheckIn { get; set; }
+    public int? CheckOut { get; set; }
+    /// <summary>Late arrival beyond the grace, plus leaving early, in minutes.</summary>
+    public int LateMinutes { get; set; }
+    /// <summary>Worked past the shift's end (a whole day off worked counts too), in minutes.</summary>
+    public int OvertimeMinutes { get; set; }
+    public AttendanceSource Source { get; set; }
+    public string? Notes { get; set; }
+    public Guid UpdatedById { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>A bonus (مكافأة) or a deduction (خصم / جزاء) for an employee's month.</summary>
+public class PayrollAdjustment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public AdjustmentKind Kind { get; set; }
+    public long Amount { get; set; }
+    public string Reason { get; set; } = "";
+    /// <summary>The posted payroll run that included it (then it can't change).</summary>
+    public Guid? RunId { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>An advance on salary (سلفة): paid from a money account, recovered from payroll.</summary>
+public class EmployeeAdvance
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>ADV-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public Guid EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    public long Amount { get; set; }
+    /// <summary>At most this much is recovered each month.</summary>
+    public long Installment { get; set; }
+    public long Remaining { get; set; }
+    public AdvanceStatus Status { get; set; } = AdvanceStatus.OPEN;
+    public Guid AccountId { get; set; }
+    public MoneyAccount? Account { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CancelledAt { get; set; }
+}
+
+/// <summary>A month's payroll (مسير الرواتب), for the whole company or one branch.</summary>
+public class PayrollRun
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>PR-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public Guid? BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    public PayrollRunStatus Status { get; set; } = PayrollRunStatus.DRAFT;
+    /// <summary>What the employees earned (the salaries expense), minor units.</summary>
+    public long Earned { get; set; }
+    /// <summary>Advances recovered out of it.</summary>
+    public long Recovered { get; set; }
+    /// <summary>To pay: earned − recovered.</summary>
+    public long Net { get; set; }
+    public long Paid { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? PostedAt { get; set; }
+    public Guid? PostedById { get; set; }
+    public Staff? PostedBy { get; set; }
+    public List<PayrollLine> Lines { get; set; } = new();
+}
+
+/// <summary>One employee on a payroll run (their payslip).</summary>
+public class PayrollLine
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid RunId { get; set; }
+    public PayrollRun? Run { get; set; }
+    public Guid EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    public string EmployeeName { get; set; } = "";
+    public long MonthlySalary { get; set; }
+    /// <summary>Calendar days employed in the month (a new starter's month is shorter).</summary>
+    public int EmployedDays { get; set; }
+    public int WorkDays { get; set; }
+    public int AbsentDays { get; set; }
+    public int LateMinutes { get; set; }
+    public int OvertimeMinutes { get; set; }
+    /// <summary>The month's salary for the days employed.</summary>
+    public long Basic { get; set; }
+    public long OvertimePay { get; set; }
+    public long Bonuses { get; set; }
+    public long AbsenceDeduction { get; set; }
+    public long LateDeduction { get; set; }
+    public long Deductions { get; set; }
+    /// <summary>Basic + overtime + bonuses − absence − lateness − deductions (never below zero).</summary>
+    public long Earned { get; set; }
+    public long AdvanceRecovery { get; set; }
+    public long Net { get; set; }
+    public long PaidAmount { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public Guid? PaidAccountId { get; set; }
+}
+

@@ -675,3 +675,74 @@ public record BackupStatusDto(
     bool Automatic, string? Folder, int Hour, int Keep, bool Encrypted, string? LastRunAt, string? LastFile,
     string? LastError, string? NextRunAt, BackupFileDto[] Files);
 
+
+// ---- Payroll & attendance (DOMAIN.md §2.9) ----
+
+/// <param name="Start">"HH:mm"; an End before it runs past midnight.</param>
+/// <param name="DaysOff">Weekly days off (0 = Sunday … 6 = Saturday).</param>
+public record ShiftDto(string Id, string Name, string Start, string End, int GraceMinutes, int[] DaysOff, bool IsActive,
+    int Minutes);
+
+public record SaveShiftRequest(string? Name, string? Start, string? End, int? GraceMinutes, int[]? DaysOff, bool? IsActive);
+
+public record EmployeeDto(
+    string Id, string Code, string Name, string BranchId, string BranchName, string? JobTitle, string? Phone,
+    string? NationalId, string HireDate, long MonthlySalary, string? ShiftId, string? ShiftName, string? DeviceUserId,
+    string? StaffId, string? StaffName, long AdvanceBalance, bool IsActive);
+
+/// <summary>Any field left null is unchanged (on create: the defaults). "" clears an optional text.</summary>
+public record SaveEmployeeRequest(
+    string? Name = null, string? BranchId = null, string? JobTitle = null, string? Phone = null,
+    string? NationalId = null, string? HireDate = null, long? MonthlySalary = null, string? ShiftId = null,
+    string? DeviceUserId = null, string? StaffId = null, bool? IsActive = null);
+
+public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent);
+
+public record AttendanceRowDto(
+    string EmployeeId, string Code, string Name, string BranchName, string? ShiftName, bool DayOff, string? Status,
+    string? CheckIn, string? CheckOut, int LateMinutes, int OvertimeMinutes, string? Source, string? Notes, bool Locked);
+
+public record AttendanceSheetDto(string Date, AttendanceRowDto[] Rows);
+
+/// <param name="Status">PRESENT, ABSENT, LEAVE, UNPAID_LEAVE or HOLIDAY; null removes the day's record.</param>
+public record SaveAttendanceRow(string EmployeeId, string? Status, string? CheckIn = null, string? CheckOut = null,
+    string? Notes = null);
+
+public record SaveAttendanceRequest(string Date, SaveAttendanceRow[] Rows);
+
+public record ImportAttendanceRequest(string Text);
+
+/// <param name="Locked">Days skipped because their month's payroll is already posted.</param>
+public record ImportAttendanceResultDto(int Punches, int Days, int Skipped, int Locked, string[] UnknownIds);
+
+public record AdjustmentDto(
+    string Id, string EmployeeId, string EmployeeName, int Year, int Month, string Kind, long Amount, string Reason,
+    bool Posted, string CreatedByName, string CreatedAt);
+
+public record CreateAdjustmentRequest(string EmployeeId, int Year, int Month, string Kind, long Amount, string? Reason = null);
+
+public record AdvanceDto(
+    string Id, string Number, string EmployeeId, string EmployeeName, long Amount, long Installment, long Remaining,
+    string Status, string AccountName, string? Notes, string CreatedByName, string CreatedAt);
+
+/// <param name="Installment">Recovered at most this much a month; none = all of it next payroll.</param>
+/// <param name="AccountId">Paid from this money account; none = the branch's cash box.</param>
+public record CreateAdvanceRequest(string EmployeeId, long Amount, long? Installment = null, string? AccountId = null,
+    string? Notes = null);
+
+public record PayrollLineDto(
+    string Id, string EmployeeId, string EmployeeCode, string EmployeeName, long MonthlySalary, int EmployedDays,
+    int WorkDays, int AbsentDays, int LateMinutes, int OvertimeMinutes, long Basic, long OvertimePay, long Bonuses,
+    long AbsenceDeduction, long LateDeduction, long Deductions, long Earned, long AdvanceRecovery, long Net,
+    long PaidAmount, string? PaidAt);
+
+public record PayrollRunDto(
+    string Id, string Number, int Year, int Month, string? BranchId, string? BranchName, string Status, long Earned,
+    long Recovered, long Net, long Paid, int Employees, string CreatedByName, string CreatedAt, string? PostedAt,
+    string? PostedByName, PayrollLineDto[] Lines, string Currency);
+
+/// <param name="BranchId">One branch's employees; none = the whole company.</param>
+public record CreatePayrollRunRequest(int Year, int Month, string? BranchId = null);
+
+/// <param name="EmployeeIds">Pay only these; none = everyone still unpaid.</param>
+public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds = null);
