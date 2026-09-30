@@ -49,6 +49,27 @@ interface Line {
   touched: boolean;
   /** Free goods (بونص): no price, but the cost counts. */
   bonus: boolean;
+  /**
+   * A discount on this line only: a percent of it, so much per piece (the item's smallest unit,
+   * «على الحتة»), or a fixed amount. Sales and quotations; needs the discount permission.
+   */
+  discMode: LineDiscountMode;
+  discValue: string;
+}
+
+type LineDiscountMode = 'percent' | 'piece' | 'amount';
+
+/** A line discount in minor units, never more than the line (`gross`) is worth. */
+function lineDiscount(mode: LineDiscountMode, value: string, gross: number, basePieces: number) {
+  const v = Number(value);
+  if (!value.trim() || !Number.isFinite(v) || v <= 0 || gross <= 0) return 0;
+  const d =
+    mode === 'percent'
+      ? Math.round((gross * Math.min(v, 100)) / 100)
+      : mode === 'piece'
+        ? toMinor(v) * basePieces
+        : toMinor(v);
+  return Math.min(gross, Math.max(0, d));
 }
 
 /** An invoice discount as typed: a percent or an amount. */
@@ -78,6 +99,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
+  /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
+  const seeCosts = can('costs:view');
 
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
@@ -205,6 +228,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           price: 0,
           touched: false,
           bonus: false,
+          discMode: 'percent',
+          discValue: '',
         },
       ];
     });
@@ -247,13 +272,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const factor = unit?.factor ?? 1;
     const price = priceOf(l);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
+    const gross = l.quantity * price;
+    const discount =
+      isSale && !l.bonus ? lineDiscount(l.discMode, l.discValue, gross, l.quantity * factor) : 0;
     return {
       line: l,
       unit,
       factor,
       price,
       cost,
-      lineTotal: l.quantity * price,
+      gross,
+      discount,
+      lineTotal: gross - discount,
       lineCost: l.quantity * cost,
     };
   });
@@ -333,7 +363,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: 0,
+            discount: r.discount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -354,7 +384,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: 0,
+            discount: r.discount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -554,8 +584,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                             <span className="text-xs text-muted tnum">
                               {p.sku}
                               {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
-                              {formatQuantity(available(p), p.units, locale)} {t('invoice.inStock')}{' '}
-                              · {t('invoice.cost')} {formatMoney(costOf(p), currency, locale)}
+                              {formatQuantity(available(p), p.units, locale)} {t('invoice.inStock')}
+                              {seeCosts &&
+                                ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
                             </span>
                           </span>
                           <Icon name="plus" size={16} className="text-brand" />
@@ -584,8 +615,12 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{r.line.product.name}</p>
                         <p className="text-xs text-muted tnum">
-                          {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
-                          {r.unit && ` / ${r.unit.name}`}
+                          {seeCosts && (
+                            <>
+                              {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                              {r.unit && ` / ${r.unit.name}`}
+                            </>
+                          )}
                           {isSale && (
                             <>
                               {' '}
@@ -661,7 +696,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                           }
                         />
                       </label>
-                      {isSale && (
+                      {isSale && seeCosts && (
                         <div className="block">
                           <span className="mb-0.5 block text-xs text-muted">
                             {t('invoice.markup')}
@@ -675,12 +710,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       )}
                       <div className="block">
                         <span className="mb-0.5 block text-xs text-muted">
-                          {isSale ? t('invoice.lineProfit') : t('common.total')}
+                          {isSale && seeCosts ? t('invoice.lineProfit') : t('common.total')}
                         </span>
                         <div
-                          className={`${field} grid items-center tnum ${isSale ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
+                          className={`${field} grid items-center tnum ${isSale && seeCosts ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
                         >
-                          {formatMoney(isSale ? r.lineProfit : r.lineTotal, currency, locale)}
+                          {formatMoney(
+                            isSale && seeCosts ? r.lineProfit : r.lineTotal,
+                            currency,
+                            locale,
+                          )}
                         </div>
                       </div>
                     </div>
@@ -688,6 +727,42 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       {r.factor > 1 && (
                         <span>
                           = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+                        </span>
+                      )}
+                      {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{t('invoice.lineDiscount')}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
+                            aria-label={t('invoice.lineDiscount')}
+                            disabled={!canDiscount}
+                            value={r.line.discValue}
+                            onChange={(e) => updateLine(r.line.key, { discValue: e.target.value })}
+                          />
+                          <select
+                            className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
+                            aria-label={t('invoice.lineDiscountMode')}
+                            disabled={!canDiscount}
+                            value={r.line.discMode}
+                            onChange={(e) =>
+                              updateLine(r.line.key, {
+                                discMode: e.target.value as LineDiscountMode,
+                              })
+                            }
+                          >
+                            <option value="percent">%</option>
+                            <option value="piece">{t('invoice.perPiece')}</option>
+                            <option value="amount">{t('invoice.onLine')}</option>
+                          </select>
+                          {r.discount > 0 && (
+                            <span className="text-warning">
+                              −{formatMoney(r.discount, currency, locale)}
+                            </span>
+                          )}
                         </span>
                       )}
                       {r.docDiscount > 0 && (
@@ -824,7 +899,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 value={formatMoney(grand, currency, locale)}
                 strong
               />
-              {isSale && (
+              {isSale && seeCosts && (
                 <>
                   <div className="my-1 border-t border-line" />
                   <Row

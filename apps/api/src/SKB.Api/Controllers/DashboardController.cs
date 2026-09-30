@@ -66,7 +66,8 @@ public sealed class DashboardController : ControllerBase
         return Ok(new DashboardDto(
             kpis,
             await BuildTrendAsync(),
-            lowStock.Select(p => Mapper.ToProduct(p, book)).ToArray(),
+            lowStock.Select(p => Costs.Guard(User, Mapper.ToProduct(p, book),
+                ProductsController.PurchaseLevelIds(book))).ToArray(),
             recent.Select(Mapper.ToSummary).ToArray(),
             Currency));
     }

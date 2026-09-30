@@ -67,6 +67,8 @@ export type Permission =
   | 'settings:manage'
   | 'audit:view'
   | 'backup:create'
+  /** See costs and profit (owner's unless given): the server leaves them out otherwise. */
+  | 'costs:view'
   | 'payroll:view'
   | 'employees:manage'
   | 'attendance:edit'

@@ -3,6 +3,7 @@ import { formatMoney, formatNumber, type BranchWithWarehouses, type Warehouse } 
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import {
@@ -284,6 +285,8 @@ function WarehouseRow({
   currency: string;
 }) {
   const { t, locale } = useT();
+  // A warehouse's stock value (at cost) is the owner's unless given (costs:view).
+  const seeCosts = useCan()('costs:view');
   const update = useUpdateWarehouse();
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(w.name));
@@ -311,10 +314,12 @@ function WarehouseRow({
         </div>
       )}
 
-      <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+      <dl className={`mt-2 grid gap-2 text-xs ${seeCosts ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <Stat label={t('warehouse.items')} value={formatNumber(w.itemCount, locale)} />
         <Stat label={t('warehouse.units')} value={formatNumber(w.quantity, locale)} />
-        <Stat label={t('warehouse.value')} value={formatMoney(w.value, currency, locale)} />
+        {seeCosts && (
+          <Stat label={t('warehouse.value')} value={formatMoney(w.value, currency, locale)} />
+        )}
       </dl>
 
       {canManage && (

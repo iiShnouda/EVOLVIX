@@ -35,6 +35,7 @@ const ALL: Permission[] = [
   'audit:view',
   'presence:view',
   'backup:create',
+  'costs:view',
   'payroll:view',
   'employees:manage',
   'attendance:edit',
@@ -106,7 +107,8 @@ const ITEMS: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
-  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create'),
+  // Costs and profit stay with the owner by default; the owner can give them to anyone.
+  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create' && p !== 'costs:view'),
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',

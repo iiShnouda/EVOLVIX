@@ -95,8 +95,10 @@ public sealed class InventoryController : ControllerBase
             rows = rows.Where(i => hits.Contains(i.Id));
         }
 
+        var seeCosts = Costs.CanSee(User);
         return Ok(new InventoryListDto(
-            rows.Take(MaxListRows).ToArray(), all.Sum(i => i.StockValue), all.Count, all.Count(i => i.IsLow),
+            rows.Take(MaxListRows).Select(i => Costs.Guard(User, i)).ToArray(),
+            seeCosts ? all.Sum(i => i.StockValue) : 0, all.Count, all.Count(i => i.IsLow),
             await CurrencyAsync()));
     }
 
@@ -151,14 +153,15 @@ public sealed class InventoryController : ControllerBase
                     now.Of(id, mine) is { Quantity: > 0 } t ? t.Value / t.Quantity : product.CostPrice, now.Of(id, mine).Value)
                 : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
 
+        var seeCosts = Costs.CanSee(User);
         return Ok(new ItemCardDto(
-            item, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
-            opening.Quantity, opening.Value,
+            Costs.Guard(User, item), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
+            opening.Quantity, seeCosts ? opening.Value : 0,
             moves.Where(m => m.Quantity > 0).Sum(m => m.Quantity),
             moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
-            closing.Quantity, closing.Value,
-            await ToMovementDtosAsync(moves, perWarehouse: wid is not null),
-            stock, await CurrencyAsync()));
+            closing.Quantity, seeCosts ? closing.Value : 0,
+            (await ToMovementDtosAsync(moves, perWarehouse: wid is not null)).Select(m => Costs.Guard(User, m)).ToArray(),
+            stock.Select(w => Costs.Guard(User, w)).ToArray(), await CurrencyAsync()));
     }
 
     /// <summary>
@@ -171,6 +174,8 @@ public sealed class InventoryController : ControllerBase
     public async Task<ActionResult<ValuationDto>> Valuation(
         [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null)
     {
+        // A valuation is nothing but cost, so it needs the permission to see costs.
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
@@ -280,8 +285,9 @@ public sealed class InventoryController : ControllerBase
 
         var posted = await _db.StockMovements.AsNoTracking()
             .Where(m => m.Reference == reference).OrderBy(m => m.CreatedAt).ToListAsync();
-        return Ok(new StocktakeResultDto(reference, Loc.Name(warehouse), changed, valueChange,
-            await ToMovementDtosAsync(posted, perWarehouse: true)));
+        return Ok(new StocktakeResultDto(reference, Loc.Name(warehouse), changed,
+            Costs.CanSee(User) ? valueChange : 0,
+            (await ToMovementDtosAsync(posted, perWarehouse: true)).Select(m => Costs.Guard(User, m)).ToArray()));
     }
 
     /// <summary>

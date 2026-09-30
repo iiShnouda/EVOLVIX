@@ -28,6 +28,8 @@ public sealed class ReportsController : ControllerBase
     public async Task<ActionResult<ProfitReportDto>> Profitability(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "customer")
     {
+        // A report of cost and profit: only for people who may see them.
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
         // Whole company days (Settings → time zone); by default this month so far.
         var today = CompanyClock.Today;
         var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);

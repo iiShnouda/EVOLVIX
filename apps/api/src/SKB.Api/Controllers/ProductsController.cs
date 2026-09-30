@@ -85,7 +85,9 @@ public sealed class ProductsController : ControllerBase
             rows = rows.OrderByDescending(p => p.Id == exact.ProductId).ToList();
 
         var book = await PriceBook.LoadAsync(_db, rows.Select(p => p.Id));
-        return Ok(rows.Select(p => Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null)).ToArray());
+        var purchaseLevels = PurchaseLevelIds(book);
+        return Ok(rows.Select(p => Costs.Guard(User,
+            Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null), purchaseLevels)).ToArray());
     }
 
     /// <summary>One item for the item editor: both names, units with barcodes, every unit × level price.</summary>
@@ -313,7 +315,7 @@ public sealed class ProductsController : ControllerBase
         var units = book.UnitsOf(id);
         var currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
-        return new ProductDetailDto(
+        return Costs.Guard(User, new ProductDetailDto(
             p.Id.ToString(), p.Sku, Loc.Name(p), p.CategoryId.ToString(), Loc.Name(p.Category),
             p.ReorderLevel, p.IsActive, p.StockOnHand, p.CostPrice, await HasMovementsAsync(new[] { id }),
             p.ModelId?.ToString(), p.Model is null ? null : Loc.Name(p.Model),
@@ -325,8 +327,12 @@ public sealed class ProductsController : ControllerBase
                 var (price, source) = book.Effective(id, u.UnitId, l.Id);
                 return new PriceCellDto(u.UnitId.ToString(), l.Id.ToString(), book.OwnPrice(id, u.UnitId, l.Id), price, source);
             })).ToArray(),
-            currency, p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode);
+            currency, p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode), PurchaseLevelIds(book));
     }
+
+    /// <summary>Ids of the supplier-side price levels, which only purchasing staff see.</summary>
+    internal static HashSet<string> PurchaseLevelIds(PriceBook book) =>
+        book.Levels.Where(l => l.Side == PriceSide.PURCHASE).Select(l => l.Id.ToString()).ToHashSet();
 
     private async Task<bool> HasMovementsAsync(Guid[] ids) =>
         await _db.StockMovements.AnyAsync(m => ids.Contains(m.ProductId))

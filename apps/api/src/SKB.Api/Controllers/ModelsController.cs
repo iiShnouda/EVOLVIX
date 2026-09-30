@@ -337,7 +337,7 @@ public sealed class ModelsController : ControllerBase
             .Where(o => o is not null).Select(o => o!).DistinctBy(o => o.Id)
             .OrderBy(o => o.SortOrder).ThenBy(o => Loc.Name(o));
 
-        return new ModelDetailDto(
+        return Costs.Guard(User, new ModelDetailDto(
             model.Id.ToString(), model.Code, Loc.Name(model),
             model.CategoryId.ToString(), Loc.Name(model.Category), model.ReorderLevel, model.IsActive, hasMovements,
             units.Select(u => new ItemUnitDto(u.UnitId.ToString(), Loc.Name(u.Unit), u.Factor, null)).ToArray(),
@@ -355,7 +355,8 @@ public sealed class ModelsController : ControllerBase
                     v.ColorId?.ToString(), v.StockOnHand, v.IsActive, book.BaseOf(v.Id)?.Barcode,
                     withOwnPrices.Contains(v.Id), v.SalePrice))
                 .ToArray(),
-            currency, model.SupplierId?.ToString(), model.Supplier?.Name, model.SupplierCode);
+            currency, model.SupplierId?.ToString(), model.Supplier?.Name, model.SupplierCode),
+            ProductsController.PurchaseLevelIds(book));
     }
 
     /// <summary>Every size × color pair (either list may be empty) not in <paramref name="existing"/>.</summary>

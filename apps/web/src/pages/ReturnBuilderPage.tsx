@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { formatDate, formatMoney, formatQuantity, toMinor, type DocumentLine } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useCreateReturn, useDocument, type DocScope } from '../lib/queries';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
@@ -29,6 +30,8 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const isSale = scope === 'sales';
   const { id = '' } = useParams();
   const { t, locale } = useT();
+  // The cost and profit a sales return reverses are the owner's unless given (costs:view).
+  const seeCosts = useCan()('costs:view');
   const navigate = useNavigate();
 
   const invoice = useDocument(scope, id);
@@ -262,7 +265,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                         <span className="font-medium">
                           {formatMoney(r.value, currency, locale)}
                         </span>
-                        {isSale && (
+                        {isSale && seeCosts && (
                           <>
                             {' · '}
                             {t('return.profitReversed')}:{' '}
@@ -298,12 +301,16 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                 value={formatMoney(total, currency, locale)}
                 strong
               />
-              <div className="my-1 border-t border-line" />
-              <Row
-                label={isSale ? t('return.costBack') : t('return.costOut')}
-                value={formatMoney(cost, currency, locale)}
-              />
-              {isSale && (
+              {(!isSale || seeCosts) && (
+                <>
+                  <div className="my-1 border-t border-line" />
+                  <Row
+                    label={isSale ? t('return.costBack') : t('return.costOut')}
+                    value={formatMoney(cost, currency, locale)}
+                  />
+                </>
+              )}
+              {isSale && seeCosts && (
                 <div className="flex items-center justify-between">
                   <dt className="text-muted">{t('return.profitReversed')}</dt>
                   <dd className="font-semibold tnum text-warning">

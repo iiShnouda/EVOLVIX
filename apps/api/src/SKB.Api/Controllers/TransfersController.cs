@@ -271,7 +271,8 @@ public sealed class TransfersController : ControllerBase
         return (await _warehouses.Visible(User).Select(w => w.Id).ToListAsync()).ToHashSet();
     }
 
-    private static StockTransferDto ToDto(StockTransfer t, HashSet<Guid>? access)
+    /// <summary>A transfer; its cost value only for people who may see costs.</summary>
+    private StockTransferDto ToDto(StockTransfer t, HashSet<Guid>? access)
     {
         bool May(Guid warehouseId) => access is null || access.Contains(warehouseId);
         var inTransit = t.Status == TransferStatus.SENT;
@@ -279,14 +280,14 @@ public sealed class TransfersController : ControllerBase
             .Select(l => new StockTransferLineDto(l.Id.ToString(), l.ProductId.ToString(), l.ProductName,
                 l.Quantity, l.UnitCost, (long)l.Quantity * l.UnitCost))
             .ToArray();
-        return new StockTransferDto(
+        return Costs.Guard(User, new StockTransferDto(
             t.Id.ToString(), t.Number, t.Status.ToString(),
             t.FromWarehouseId.ToString(), Loc.Name(t.FromWarehouse), Loc.Name(t.FromWarehouse?.Branch),
             t.ToWarehouseId.ToString(), Loc.Name(t.ToWarehouse), Loc.Name(t.ToWarehouse?.Branch),
             t.CreatedAt.ToString("o"), t.CreatedBy?.FullName ?? "",
             t.ReceivedAt?.ToString("o"), t.ReceivedBy?.FullName, t.CancelledAt?.ToString("o"), t.CancelledBy?.FullName,
             t.Notes, lines.Sum(l => l.Quantity), lines.Sum(l => l.Value), lines,
-            inTransit && May(t.ToWarehouseId), inTransit && May(t.FromWarehouseId));
+            inTransit && May(t.ToWarehouseId), inTransit && May(t.FromWarehouseId)));
     }
 
     private Task AuditAsync(string action, StockTransfer t, Guid branchId) =>

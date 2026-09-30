@@ -105,6 +105,12 @@ public static class Permissions
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
     public const string AuditView = "audit:view";
+    /// <summary>
+    /// See what goods cost and what sales earned: cost and profit on sales documents, items' average
+    /// cost, stock values and the profit reports. The owner's alone unless given (owner decision
+    /// 2026-09-30); without it the server leaves these numbers out (see Services/Costs.cs).
+    /// </summary>
+    public const string CostsView = "costs:view";
     /// <summary>Download a backup of everything (the owner's alone by default).</summary>
     public const string BackupCreate = "backup:create";
     public const string PresenceView = "presence:view";
@@ -154,7 +160,7 @@ public static class Permissions
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
-        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate,
+        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
@@ -177,7 +183,9 @@ public static class RolePermissions
     public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
-        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate).ToArray(),
+        // Costs and profit stay with the owner by default; the owner can give them to anyone.
+        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate
+            && p != Permissions.CostsView).ToArray(),
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,

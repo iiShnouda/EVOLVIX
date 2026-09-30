@@ -9,6 +9,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useDeviceInfo } from '../lib/device';
 import { useAuth } from '../stores/auth';
@@ -139,6 +140,7 @@ function TransferRow({
   onSelect: () => void;
 }) {
   const { t, locale } = useT();
+  const seeCosts = useCan()('costs:view'); // goods move at cost: the owner's unless given
   return (
     <button
       onClick={onSelect}
@@ -159,7 +161,9 @@ function TransferRow({
       </span>
       <span className="text-end tnum">
         <span className="block text-sm font-semibold">{formatNumber(tr.quantity, locale)}</span>
-        <span className="text-xs text-muted">{formatMoney(tr.value, currency, locale)}</span>
+        {seeCosts && (
+          <span className="text-xs text-muted">{formatMoney(tr.value, currency, locale)}</span>
+        )}
       </span>
     </button>
   );
@@ -175,6 +179,7 @@ function TransferDetail({
   onClose?: () => void;
 }) {
   const { t, locale } = useT();
+  const seeCosts = useCan()('costs:view');
   const detail = useTransfer(id);
   const finish = useFinishTransfer();
   const error = finish.error as ApiError | null;
@@ -251,7 +256,7 @@ function TransferDetail({
           <tr>
             <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
             <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
-            <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
+            {seeCosts && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--c-line)]">
@@ -259,13 +264,17 @@ function TransferDetail({
             <tr key={l.id}>
               <td className="p-3">{l.productName}</td>
               <td className="p-3 text-end tnum">{formatNumber(l.quantity, locale)}</td>
-              <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>
+              {seeCosts && (
+                <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>
+              )}
             </tr>
           ))}
           <tr className="bg-surface-2 font-semibold">
             <td className="p-3">{t('common.total')}</td>
             <td className="p-3 text-end tnum">{formatNumber(tr.quantity, locale)}</td>
-            <td className="p-3 text-end tnum">{formatMoney(tr.value, currency, locale)}</td>
+            {seeCosts && (
+              <td className="p-3 text-end tnum">{formatMoney(tr.value, currency, locale)}</td>
+            )}
           </tr>
         </tbody>
       </table>

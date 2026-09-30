@@ -113,7 +113,7 @@ public sealed class SalesController : ControllerBase
                 .Where(i => i.SourceDocumentId == doc.Id && i.Type == DocumentType.SALES_INVOICE)
                 .Select(i => new { i.Id, i.Number }).FirstOrDefaultAsync() is { } invoice)
             dto = dto with { InvoiceId = invoice.Id.ToString(), InvoiceNumber = invoice.Number };
-        return Ok(dto);
+        return Ok(Costs.Guard(User, dto));
     }
 
     /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
@@ -337,11 +337,16 @@ public sealed class SalesController : ControllerBase
                 var expected = level is null
                     ? InvoiceLines.MarkupPrice(baseCost, unit!.Factor, settings.DefaultMarkupPercent)
                     : book.SuggestedSale(pid, unit!, level.Id, baseCost, settings.DefaultMarkupPercent);
-                if (line.UnitPrice != expected || line.Discount != 0)
+                if (line.UnitPrice != expected)
                     return InvoiceLines.Refuse(this, new("price_not_allowed",
                         $"{Loc.Name(product)}: the price is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
                         "Changing a price needs permission."));
             }
+            // A discount on one line (a %, or so much per piece) is a discount, not a price change.
+            // (More than the line is worth is already refused by the shape check.)
+            if (line.Discount != 0 && !Approved(Permissions.SalesDiscount))
+                return InvoiceLines.Refuse(this, new("discount_not_allowed",
+                    $"{Loc.Name(product)}: giving a discount needs permission."));
             resolved.Add((line, product, unit!, baseQty, warehouse, baseCost));
         }
 
@@ -443,7 +448,7 @@ public sealed class SalesController : ControllerBase
             await AuditAsync("create", "quotation", doc);
             await InvoiceLines.LoadForDetailAsync(_db, doc);
             return Created($"/api/sales/quotations/{doc.Id}",
-                Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+                Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
         }
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
@@ -476,7 +481,8 @@ public sealed class SalesController : ControllerBase
         if (fromQuote is not null) await AuditAsync("convert", "quotation", fromQuote);
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
-        return Created($"/api/sales/invoices/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+        return Created($"/api/sales/invoices/{doc.Id}",
+            Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
     }
 
     /// <summary>
@@ -500,7 +506,8 @@ public sealed class SalesController : ControllerBase
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
-        return Created($"/api/sales/returns/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+        return Created($"/api/sales/returns/{doc.Id}",
+            Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
     }
 
     /// <summary>

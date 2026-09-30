@@ -130,9 +130,9 @@ public sealed class AnalyticsController : ControllerBase
         var result = rows.Select(r => r with { Share = totalNet > 0 ? Math.Round(100.0 * r.NetSales / totalNet, 1) : 0 })
             .OrderByDescending(r => r.NetSales).ThenBy(r => r.Name).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
-        return Ok(new PerformanceDto(byBranch ? "branch" : "rep", fromDay.ToString("yyyy-MM-dd"),
+        return Ok(Costs.Guard(User, new PerformanceDto(byBranch ? "branch" : "rep", fromDay.ToString("yyyy-MM-dd"),
             toDay.ToString("yyyy-MM-dd"), result, totalNet, rows.Sum(r => r.Profit), rows.Sum(r => r.Invoices),
-            currency));
+            currency)));
     }
 
     /// <summary>
@@ -183,7 +183,9 @@ public sealed class AnalyticsController : ControllerBase
                 return new DeadItemDto(id.ToString(), p.Sku, Loc.Name(p), stock[id], (long)stock[id] * p.CostPrice,
                     lastSale.TryGetValue(id, out var last) ? last.ToString("o") : null);
             })
-            .OrderByDescending(x => x.StockValue).Take(200).ToArray();
+            // Without the right to see costs, by quantity instead of value (the order would hint at cost).
+            .OrderByDescending(x => Costs.CanSee(User) ? x.StockValue : x.Stock).Take(200)
+            .Select(x => Costs.Guard(User, x)).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
         return Ok(new ItemMovementDto(fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             top.Where(m => byId.ContainsKey(m.ProductId)).Select(m => new ItemMoveDto(m.ProductId.ToString(),

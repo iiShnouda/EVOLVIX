@@ -44,7 +44,10 @@ const daysAgo = (n: number) => addDays(companyToday(), -n);
 export function AnalyticsPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'profit') as Tab;
+  // Profitability is the owner's unless given (costs:view): the server refuses it otherwise.
+  const seeCosts = useCan()('costs:view');
+  const tabs = seeCosts ? TABS : TABS.filter((x) => x.key !== 'profit');
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]!.key) as Tab;
   return (
     <div className="space-y-5">
       <PageHeader title={t('analytics.title')} subtitle={t('analytics.subtitle')} />
@@ -52,7 +55,7 @@ export function AnalyticsPage() {
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
       >
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button
             key={x.key}
             role="tab"
@@ -256,6 +259,9 @@ function MonthlyTab() {
  */
 function PerformanceTab() {
   const { t, locale } = useT();
+  const seeCosts = useCan()('costs:view');
+  /** Drop the profit column (index 3) for people who may not see profit. */
+  const cols = <T,>(row: T[]) => (seeCosts ? row : row.filter((_, i) => i !== 3));
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(companyToday);
   const [by, setBy] = useState<'rep' | 'branch'>('rep');
@@ -266,7 +272,7 @@ function PerformanceTab() {
   const n = (v: number) => formatNumber(v, locale);
   const byLabel = by === 'rep' ? t('perf.byPerson') : t('perf.byBranch');
   const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
-  const header = [
+  const header = cols([
     by === 'rep' ? t('perf.person') : t('perf.branch'),
     t('analytics.netSales'),
     t('perf.share'),
@@ -277,7 +283,7 @@ function PerformanceTab() {
     t('analytics.returns'),
     t('perf.collected'),
     t('perf.quotes'),
-  ];
+  ]);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -310,25 +316,27 @@ function PerformanceTab() {
               `${t('analytics.tabPerformance')} — ${byLabel}`,
               period,
               header,
-              data.rows.map((r) => [
-                r.name,
-                { money: r.netSales },
-                r.share,
-                { money: r.profit },
-                r.invoices,
-                r.customers,
-                { money: r.averageInvoice },
-                { money: r.returns },
-                { money: r.collected },
-                `${r.quotesWon} / ${r.quotes}`,
-              ]),
-              [
+              data.rows.map((r) =>
+                cols([
+                  r.name,
+                  { money: r.netSales },
+                  r.share,
+                  { money: r.profit },
+                  r.invoices,
+                  r.customers,
+                  { money: r.averageInvoice },
+                  { money: r.returns },
+                  { money: r.collected },
+                  `${r.quotesWon} / ${r.quotes}`,
+                ]),
+              ),
+              cols([
                 t('ledger.total'),
                 { money: data.netSales },
                 100,
                 { money: data.profit },
                 data.invoices,
-              ],
+              ]),
             )
           }
         />
@@ -337,10 +345,10 @@ function PerformanceTab() {
         <Loading />
       ) : (
         <div ref={paper} className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${seeCosts ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {[
               [t('analytics.netSales'), m(data.netSales)],
-              [t('perf.profit'), m(data.profit)],
+              ...(seeCosts ? [[t('perf.profit'), m(data.profit)]] : []),
               [t('analytics.invoices'), n(data.invoices)],
             ].map(([label, value]) => (
               <Card key={label} className="!p-3">
@@ -382,11 +390,13 @@ function PerformanceTab() {
                           />
                         </div>
                       </td>
-                      <td
-                        className={`px-2 py-1.5 text-end tnum ${r.profit < 0 ? 'text-destructive' : ''}`}
-                      >
-                        {m(r.profit)}
-                      </td>
+                      {seeCosts && (
+                        <td
+                          className={`px-2 py-1.5 text-end tnum ${r.profit < 0 ? 'text-destructive' : ''}`}
+                        >
+                          {m(r.profit)}
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 text-end tnum">{n(r.invoices)}</td>
                       <td className="px-2 py-1.5 text-end tnum">{n(r.customers)}</td>
                       <td className="px-2 py-1.5 text-end tnum">{m(r.averageInvoice)}</td>
@@ -638,6 +648,7 @@ function TopList({
 
 function ItemsTab() {
   const { t, locale } = useT();
+  const seeCosts = useCan()('costs:view'); // dead stock's value is at cost
   const [from, setFrom] = useState(daysAgo(89));
   const [to, setTo] = useState(companyToday);
   const { data, isLoading } = useItemMovement(from, to);
@@ -696,7 +707,11 @@ function ItemsTab() {
                   <tr>
                     <th className="px-4 py-1 text-start font-normal">{t('analytics.item')}</th>
                     <th className="px-2 py-1 text-end font-normal">{t('analytics.stock')}</th>
-                    <th className="px-2 py-1 text-end font-normal">{t('analytics.valueAtCost')}</th>
+                    {seeCosts && (
+                      <th className="px-2 py-1 text-end font-normal">
+                        {t('analytics.valueAtCost')}
+                      </th>
+                    )}
                     <th className="px-4 py-1 text-end font-normal">{t('analytics.lastSale')}</th>
                   </tr>
                 </thead>
@@ -707,7 +722,7 @@ function ItemsTab() {
                         {x.name} <span className="text-xs text-faint">{x.sku}</span>
                       </td>
                       <td className="px-2 py-1.5 text-end tnum">{formatNumber(x.stock, locale)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">{m(x.stockValue)}</td>
+                      {seeCosts && <td className="px-2 py-1.5 text-end tnum">{m(x.stockValue)}</td>}
                       <td className="px-4 py-1.5 text-end text-xs">
                         {x.lastSale ? formatDate(x.lastSale, locale) : t('analytics.never')}
                       </td>

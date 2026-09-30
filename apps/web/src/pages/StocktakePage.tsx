@@ -5,6 +5,7 @@ import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui'
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useInventory, useStocktake } from '../lib/queries';
 
@@ -18,6 +19,8 @@ const field =
  */
 export function StocktakePage() {
   const { t, locale } = useT();
+  // What a count gains or loses at cost is the owner's unless given (costs:view).
+  const seeCosts = useCan()('costs:view');
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const defaultWarehouse = useDefaultWarehouseId();
@@ -81,8 +84,9 @@ export function StocktakePage() {
             {result.warehouseName}
           </p>
           <p className="mt-1 text-sm text-muted tnum">
-            {t('stocktake.changedItems')}: {formatNumber(result.itemsChanged, locale)} ·{' '}
-            {t('stocktake.valueImpact')} {formatMoney(result.valueChange, currency, locale)}
+            {t('stocktake.changedItems')}: {formatNumber(result.itemsChanged, locale)}
+            {seeCosts &&
+              ` · ${t('stocktake.valueImpact')} ${formatMoney(result.valueChange, currency, locale)}`}
           </p>
         </Card>
       )}
@@ -135,8 +139,8 @@ export function StocktakePage() {
                           className={`text-xs tnum ${line.diff > 0 ? 'text-positive' : 'text-warning'}`}
                         >
                           {t('stocktake.difference')}: {line.diff > 0 ? '+' : ''}
-                          {formatNumber(line.diff, locale)} ·{' '}
-                          {formatMoney(line.value, currency, locale)}
+                          {formatNumber(line.diff, locale)}
+                          {seeCosts && ` · ${formatMoney(line.value, currency, locale)}`}
                         </p>
                       )}
                     </div>
@@ -168,22 +172,26 @@ export function StocktakePage() {
                 label={t('stocktake.changedItems')}
                 value={formatNumber(changed.length, locale)}
               />
-              <Row
-                label={t('stocktake.gain')}
-                value={formatMoney(gain, currency, locale)}
-                tone="positive"
-              />
-              <Row
-                label={t('stocktake.loss')}
-                value={formatMoney(loss, currency, locale)}
-                tone="warning"
-              />
-              <div className="my-1 border-t border-line" />
-              <Row
-                label={t('stocktake.valueImpact')}
-                value={formatMoney(gain + loss, currency, locale)}
-                strong
-              />
+              {seeCosts && (
+                <>
+                  <Row
+                    label={t('stocktake.gain')}
+                    value={formatMoney(gain, currency, locale)}
+                    tone="positive"
+                  />
+                  <Row
+                    label={t('stocktake.loss')}
+                    value={formatMoney(loss, currency, locale)}
+                    tone="warning"
+                  />
+                  <div className="my-1 border-t border-line" />
+                  <Row
+                    label={t('stocktake.valueImpact')}
+                    value={formatMoney(gain + loss, currency, locale)}
+                    strong
+                  />
+                </>
+              )}
             </dl>
             <label className="mt-3 block">
               <span className="mb-0.5 block text-xs text-muted">{t('stocktake.reason')}</span>

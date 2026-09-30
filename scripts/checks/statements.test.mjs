@@ -24,7 +24,7 @@ console.log('== permissions');
 eq('sales staff: no statements', (await karim.get('/ledger/income-statement')).status, 403);
 eq('sales staff: no analytics', (await karim.get('/analytics/monthly')).status, 403);
 eq('store staff: no analytics', (await sara.get('/analytics/top-parties')).status, 403);
-ok('accountant sees statements', await mona.get('/ledger/balance-sheet'));
+eq('accountant: no balance sheet without costs:view', (await mona.get('/ledger/balance-sheet')).data?.code, 'costs_not_allowed');
 ok('accountant sees analytics', await mona.get('/analytics/item-movement'));
 
 console.log('== statements hold together');

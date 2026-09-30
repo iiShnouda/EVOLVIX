@@ -319,12 +319,14 @@ if (closed0.length > 0) {
     'already_closed',
   );
 
-  const list = ok('listed', await mona.get('/ledger/closed-years'));
+  const list = ok('listed', await owner.get('/ledger/closed-years'));
   eq(
     'the closed year',
     [list[0]?.year, list[0]?.netProfit, !!list[0]?.closedByName],
     [Y, isY.netProfit, true],
   );
+  const monaList = ok('the accountant sees it too', await mona.get('/ledger/closed-years'));
+  eq('…without the profit (costs:view)', [monaList[0]?.year, monaList[0]?.netProfit], [Y, 0]);
   const isAfter = ok(
     'income statement after',
     await owner.get(`/ledger/income-statement?${range(Y)}`),

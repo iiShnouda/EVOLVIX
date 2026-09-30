@@ -44,6 +44,8 @@ public sealed class LedgerController : ControllerBase
         var sums = await _db.JournalLines.GroupBy(l => l.AccountId)
             .Select(g => new { g.Key, Debit = g.Sum(l => l.Debit), Credit = g.Sum(l => l.Credit) })
             .ToDictionaryAsync(x => x.Key, x => (x.Debit, x.Credit));
+        // Without the right to see costs, the cost accounts show empty and don't count in their groups.
+        foreach (var hidden in await HiddenAccountIdsAsync()) sums.Remove(hidden);
         var children = accounts.Where(a => a.ParentId != null).ToLookup(a => a.ParentId!.Value);
         var totals = new Dictionary<Guid, (long Debit, long Credit)>();
         (long, long) Total(LedgerAccount a)
@@ -146,6 +148,9 @@ public sealed class LedgerController : ControllerBase
             foreach (var a in all)
                 if (a.ParentId is Guid p && ids.Contains(p) && ids.Add(a.Id)) grew = true;
         }
+        var hidden = await HiddenAccountIdsAsync();
+        if (hidden.Contains(id)) return StatusCode(403, Costs.Refusal);
+        ids.ExceptWith(hidden);
         return await StatementAsync($"{account.Code} {NameOf(account)}", _db.JournalLines.Where(l => ids.Contains(l.AccountId)), from, to);
     }
 
@@ -190,6 +195,8 @@ public sealed class LedgerController : ControllerBase
     [HttpGet("trial-balance")]
     public async Task<ActionResult<TrialBalanceDto>> TrialBalance([FromQuery] string? from = null, [FromQuery] string? to = null)
     {
+        // Shows cost of goods sold and stock: only for people who may see costs.
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
         var before = await _db.JournalLines.Where(l => l.Entry!.Date < start).GroupBy(l => l.AccountId)
@@ -218,6 +225,8 @@ public sealed class LedgerController : ControllerBase
     [HttpGet("income-statement")]
     public async Task<ActionResult<IncomeStatementDto>> IncomeStatement([FromQuery] string? from = null, [FromQuery] string? to = null)
     {
+        // The income statement is the company's profit: only for people who may see it.
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
         var net = await NetByAccountAsync(l => l.Entry!.Date >= start && l.Entry.Date < end && l.Entry.SourceType != "YEAR_CLOSE");
@@ -244,6 +253,8 @@ public sealed class LedgerController : ControllerBase
     [HttpGet("balance-sheet")]
     public async Task<ActionResult<BalanceSheetDto>> BalanceSheet([FromQuery] string? asOf = null)
     {
+        // Shows stock at cost and the profit to date: only for people who may see costs.
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
         var day = CompanyClock.ParseDay(asOf) ?? CompanyClock.Today;
         var end = CompanyClock.StartOf(day.AddDays(1));
         var net = await NetByAccountAsync(l => l.Entry!.Date < end);
@@ -306,6 +317,7 @@ public sealed class LedgerController : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var q = _db.JournalEntries.AsNoTracking().Where(e => e.Date >= start && e.Date < end);
+        if (!Costs.CanSee(User)) q = q.Where(e => e.SourceType != "YEAR_CLOSE"); // it is the year's profit
         if (!string.IsNullOrWhiteSpace(source)) q = q.Where(e => e.SourceType == source.ToUpper());
         var total = await q.CountAsync();
         var rows = await q.Include(e => e.CreatedBy).Include(e => e.Lines).ThenInclude(l => l.Account)
@@ -319,6 +331,7 @@ public sealed class LedgerController : ControllerBase
     {
         var e = await _db.JournalEntries.AsNoTracking().Include(x => x.CreatedBy)
             .Include(x => x.Lines).ThenInclude(l => l.Account).FirstOrDefaultAsync(x => x.Id == id);
+        if (e is not null && e.SourceType == "YEAR_CLOSE" && !Costs.CanSee(User)) e = null;
         return e is null ? NotFound(new { message = "Entry not found.", code = "not_found" }) : Ok((await ToDtosAsync(new() { e }))[0]);
     }
 
@@ -457,8 +470,9 @@ public sealed class LedgerController : ControllerBase
     {
         var entries = await _db.JournalEntries.AsNoTracking().Include(e => e.CreatedBy).Include(e => e.Lines)
             .ThenInclude(l => l.Account).Where(e => e.SourceType == "YEAR_CLOSE").OrderByDescending(e => e.Date).ToListAsync();
+        var seeProfit = Costs.CanSee(User);
         return Ok(entries.Select(e => new ClosedYearDto(e.Date.Year, e.Id.ToString(),
-            e.Lines.Where(l => l.Account!.SystemKey == LedgerKeys.RetainedEarnings).Sum(l => l.Credit - l.Debit),
+            seeProfit ? e.Lines.Where(l => l.Account!.SystemKey == LedgerKeys.RetainedEarnings).Sum(l => l.Credit - l.Debit) : 0,
             e.CreatedAt.ToString("o"), e.CreatedBy?.FullName ?? "")).ToArray());
     }
 
@@ -536,12 +550,35 @@ public sealed class LedgerController : ControllerBase
         var reversed = (await _db.JournalEntries.Where(e => e.SourceType == "MANUAL_REVERSAL" && ids.Contains(e.SourceId))
             .Select(e => e.SourceId!.Value).ToListAsync()).ToHashSet();
         var currency = await CurrencyAsync();
+        var hidden = await HiddenAccountIdsAsync();
         return entries.Select(e => new JournalEntryDto(
             e.Id.ToString(), e.Number, e.Date.ToString("o"), e.Description, e.SourceType, e.SourceId?.ToString(),
             e.CreatedBy?.FullName ?? "", e.CreatedAt.ToString("o"),
-            e.Lines.OrderBy(l => l.LineNo).Select(l => new JournalLineDto(l.AccountId.ToString(), l.Account?.Code ?? "",
+            e.Lines.Where(l => !hidden.Contains(l.AccountId)).OrderBy(l => l.LineNo)
+                .Select(l => new JournalLineDto(l.AccountId.ToString(), l.Account?.Code ?? "",
                 names.GetValueOrDefault(l.AccountId, ""), l.Debit, l.Credit, l.Memo)).ToArray(),
             e.SourceType == "MANUAL" && !reversed.Contains(e.Id), currency)).ToArray();
+    }
+
+    /// <summary>
+    /// Accounts whose numbers are costs or profit — stock (inventory), cost of goods sold, stocktake
+    /// gains and losses, retained earnings — and everything under them. Empty for people who may see
+    /// costs; for everyone else these are left out of balances, statements and entries.
+    /// </summary>
+    private async Task<HashSet<Guid>> HiddenAccountIdsAsync()
+    {
+        if (Costs.CanSee(User)) return new HashSet<Guid>();
+        string[] keys = { LedgerKeys.Inventory, LedgerKeys.Cogs, LedgerKeys.StockGain, LedgerKeys.StockLoss,
+            LedgerKeys.RetainedEarnings };
+        var all = await _db.LedgerAccounts.AsNoTracking().Select(a => new { a.Id, a.ParentId, a.SystemKey }).ToListAsync();
+        var ids = all.Where(a => a.SystemKey != null && keys.Contains(a.SystemKey)).Select(a => a.Id).ToHashSet();
+        for (var grew = true; grew;)
+        {
+            grew = false;
+            foreach (var a in all)
+                if (a.ParentId is Guid p && ids.Contains(p) && ids.Add(a.Id)) grew = true;
+        }
+        return ids;
     }
 
     private Task<JournalEntry> ReloadAsync(Guid id) => _db.JournalEntries.AsNoTracking().Include(e => e.CreatedBy)
