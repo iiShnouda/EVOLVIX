@@ -43,7 +43,7 @@ const cust = parties.find((p) => p.types.includes('CUSTOMER'));
 const item = (await owner.get('/products?limit=50')).data.find((p) => p.stockOnHand > 5 && p.units.length && !p.modelId);
 const sale = (who, price) => who.post('/sales/invoices', { partyId: cust.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 1, unitPrice: price }] });
 const levelPrice = item.units[0].prices.find((p) => p.source)?.price ?? item.salePrice;
-eq('seller cannot change price yet', (await sale(s1, levelPrice + 500)).data?.code, 'price_not_allowed');
+eq('seller cannot lower a price yet', (await sale(s1, levelPrice - 1)).data?.code, 'price_not_allowed');
 eq('sales cannot manage permissions', (await karim.put(`/staff/${seller.id}/permissions`, { granted: ['sales:change_price'] })).status, 403);
 eq('unknown permission', (await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:fly'] })).data?.code, 'unknown_permission');
 eq('both grant and revoke', (await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:return'], revoked: ['sales:return'] })).data?.code, 'bad_permissions');
@@ -51,7 +51,7 @@ let sd = ok('grant change_price, revoke parties:edit', await owner.put(`/staff/$
 check('effective has grant, lacks revoke', sd.permissions.includes('sales:change_price') && !sd.permissions.includes('parties:edit'), sd.permissions);
 s1 = await login(email, 'Str0ngPass!');
 check('token carries new permissions', s1.user.permissions.includes('sales:change_price'), s1.user.permissions);
-ok('seller now sells at another price', await sale(s1, levelPrice + 500));
+ok('seller now sells at a lower price', await sale(s1, levelPrice - 1));
 eq('own permissions refused', (await owner.put(`/staff/${me.id}/permissions`, { granted: [] })).data?.code, 'owner_fixed');
 
 console.log('== roles');

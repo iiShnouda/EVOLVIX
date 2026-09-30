@@ -162,7 +162,17 @@ app.UseDefaultFiles();
 // The Android app download is an .apk, which ASP.NET doesn't know by default (it would 404).
 var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 contentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
-app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes });
+// The app updates itself (owner decision 2026-09-30): the page, the service worker and the version
+// file are always asked for again, so a new deploy is seen within a minute; the hashed code files
+// never change under the same name, so they are kept.
+static void CacheRules(Microsoft.AspNetCore.StaticFiles.StaticFileResponseContext ctx)
+{
+    var path = ctx.Context.Request.Path.Value ?? "";
+    ctx.Context.Response.Headers.CacheControl = path.StartsWith("/assets/", StringComparison.Ordinal)
+        ? "public, max-age=31536000, immutable"
+        : "no-cache";
+}
+app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = contentTypes, OnPrepareResponse = CacheRules });
 
 // Enable HTTPS redirection only when a certificate/HTTPS endpoint is configured.
 if (builder.Configuration.GetValue<bool>("UseHttpsRedirection"))
@@ -186,6 +196,6 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PresenceHub>("/hubs/presence");
 // SPA fallback: any non-API, non-file route serves index.html so client-side routing works.
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = CacheRules });
 
 app.Run();

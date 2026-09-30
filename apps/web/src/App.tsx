@@ -11,6 +11,8 @@ import { useConnection } from './stores/connection';
 import { useConnectionMonitor } from './lib/useConnectionMonitor';
 import { Shell } from './components/shell/Shell';
 import { OfflineGate } from './components/OfflineGate';
+import { UpdateNotice } from './components/UpdateNotice';
+import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -148,9 +150,11 @@ export default function App() {
   useRefetchOnLocale();
   useConnectionMonitor();
   useBootstrapAuth();
+  useEffect(startAppUpdates, []);
 
   return (
     <QueryClientProvider client={queryClient}>
+      <UpdateNotice />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />

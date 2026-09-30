@@ -4,15 +4,28 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// This build's number: written into the code and into /version.json, so an open app can tell a
+// new version is on the server and update itself (src/lib/appUpdate.ts).
+const build = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+
 // The PWA is installable on every device, but for SECURITY it caches only the app SHELL
 // (code/assets). Business data (the API responses under /api) is NEVER cached — the app
 // is unusable without a live connection to the company server, by design.
 export default defineConfig({
+  define: { __APP_BUILD__: JSON.stringify(build) },
   plugins: [
     react(),
     tailwindcss(),
+    {
+      name: 'skb-version',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build }) });
+      },
+    },
     VitePWA({
-      registerType: 'autoUpdate',
+      // The app decides when to take a new version: after keeping the open screens' work.
+      registerType: 'prompt',
+      injectRegister: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         // Explicitly never cache API data.

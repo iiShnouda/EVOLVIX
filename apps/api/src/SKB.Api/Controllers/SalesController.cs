@@ -196,7 +196,7 @@ public sealed class SalesController : ControllerBase
     public async Task<ActionResult<RepOptionDto[]>> Reps()
     {
         var staff = await _db.Staff.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.FullName).ToListAsync();
-        return Ok(staff.Select(s => new RepOptionDto(s.Id.ToString(), s.FullName, s.BranchId.ToString())).ToArray());
+        return Ok(staff.Select(s => new RepOptionDto(s.Id.ToString(), s.FullName, s.BranchId.ToString(), s.Code)).ToArray());
     }
 
     /// <summary>
@@ -485,6 +485,7 @@ public sealed class SalesController : ControllerBase
         bool DiscountApproved() => discountTrusted || Can(Permissions.SalesDiscount);
         var canOverride = Can(Permissions.SalesOverrideFloor);
         var canChangePrice = Approved(Permissions.SalesChangePrice);
+        var canRaisePrice = Approved(Permissions.SalesRaisePrice);
 
         // ---- Invoice charges: discounts, taxes, additions — each needs its own permission ----
         var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
@@ -598,7 +599,9 @@ public sealed class SalesController : ControllerBase
                 var expected = level is null
                     ? InvoiceLines.MarkupPrice(baseCost, unit!.Factor, settings.DefaultMarkupPercent)
                     : book.SuggestedSale(pid, unit!, level.Id, baseCost, settings.DefaultMarkupPercent);
-                if (line.UnitPrice != expected)
+                // Adding to the price on this invoice only is its own permission; going under it is not.
+                var raised = line.UnitPrice > expected && canRaisePrice;
+                if (line.UnitPrice != expected && !raised)
                     return InvoiceLines.Refuse(this, new("price_not_allowed",
                         $"{Loc.Name(product)}: the price is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
                         "Changing a price needs permission."));
@@ -735,7 +738,7 @@ public sealed class SalesController : ControllerBase
             _db.SalesDocuments.Add(doc);
             // A new pending invoice goes to whoever may approve it.
             if (type == DocumentType.SALES_ORDER && replaced is null)
-                await _notifications.OrderPendingAsync(doc, party.Name, User);
+                await _notifications.OrderPendingAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
             await AuditAsync(replaced is null ? "create" : "update", quote ? "quotation" : "sales_order", doc);
@@ -776,6 +779,8 @@ public sealed class SalesController : ControllerBase
         await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
         if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
         if (fromQuote?.Type == DocumentType.SALES_ORDER) await _notifications.OrderDecidedAsync(fromQuote, approved: true, User);
+        // Whoever takes the payment hears of it: the customer and the department.
+        else await _notifications.InvoiceNewAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();

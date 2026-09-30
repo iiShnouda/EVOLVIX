@@ -196,9 +196,14 @@ function TopBar() {
   );
 }
 
+/**
+ * The page scrolls with the window (the top bar stays), so the sticky side columns of the builder
+ * pages (e.g. an invoice's totals) stick under the top bar. The main area must not be a scroll box
+ * itself, or they would slide down inside it as the page grows (owner report 2026-09-30).
+ */
 function MainArea(): ReactNode {
   return (
-    <main className="flex-1 overflow-y-auto p-5 lg:p-6">
+    <main className="min-w-0 flex-1 overflow-x-clip p-5 lg:p-6">
       <div className="mx-auto max-w-7xl">
         <Outlet />
       </div>

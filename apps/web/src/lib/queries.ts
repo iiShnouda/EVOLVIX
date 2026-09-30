@@ -142,8 +142,11 @@ export function useDocumentList(
     departmentId?: string;
     from?: string;
     to?: string;
+    /** Off: not asked for (e.g. no permission to see that list). */
+    enabled?: boolean;
   },
 ) {
+  const { enabled = true, ...key } = params;
   const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
@@ -151,8 +154,9 @@ export function useDocumentList(
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
   return useQuery({
-    queryKey: [scope, kind, params],
+    queryKey: [scope, kind, key],
     queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/${scope}/${kind}?${query}`),
+    enabled,
   });
 }
 

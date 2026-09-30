@@ -25,7 +25,7 @@ public sealed class NotificationsController : ControllerBase
         var rows = await mine.OrderByDescending(n => n.CreatedAt).Take(30).ToListAsync();
         return Ok(new NotificationsDto(unread, rows.Select(n => new NotificationDto(
             n.Id.ToString(), n.Kind, n.DocumentId?.ToString(), n.DocumentNumber, n.PartyName, n.Amount, n.ActorName,
-            n.Message, n.CreatedAt.ToString("o"), n.ReadAt is not null)).ToArray()));
+            n.Message, n.CreatedAt.ToString("o"), n.ReadAt is not null, n.DepartmentName)).ToArray()));
     }
 
     [HttpPost("{id:guid}/read")]

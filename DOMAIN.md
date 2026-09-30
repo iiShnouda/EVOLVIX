@@ -249,10 +249,27 @@ One shape for every document type:
   number, from the previous balance; one branch or all; optionally each invoice's items (كشف أصناف).
 - **Pending invoices** can be changed by their maker (or an approver) until approved, keeping their
   number and date; they hold their goods for Settings → "hold days" (0 = until approved or cancelled).
-- **Saving an invoice** (owner, 2026-09-30): the sales person's one button saves it for the accountant,
-  who gets a notification (the bell) and approves (taking the payment) or rejects it with a reason,
-  which its maker is told. No tax, additions or paid-now on the sales screen; every sale has a rep
-  (المندوب), the maker unless another is picked.
+- **Saving an invoice** (owner, 2026-09-30, second decision): the sales person's one button *posts*
+  the invoice — no approving or rejecting. Everyone who takes payments for it (`sales:invoice_alerts`,
+  in its branch and department; the Accountant role) gets a notification (the bell) with the customer,
+  department and amount, and takes the payment from the customer's account. Pending invoices above
+  stay only for someone given `sales:order` without `sales:create`; their tab shows while any wait.
+  No tax, additions, paid-now or price level on the sales screen; every sale has a rep (المندوب),
+  the maker unless another is picked.
+- **Price on one invoice**: a seller may add to a piece's price on this invoice only
+  (`sales:raise_price`, in the Sales role); going under the level's price still needs
+  `sales:change_price`. The item's own prices never change.
+- **Codes (كود)**: every customer / supplier / shipping company and every staff member has a number,
+  1, 2, 3… in the order added (a database sequence; existing ones numbered by when they were added).
+  It shows beside the name; an invoice's customer can be picked by typing the code, and the name fills
+  in (and the other way round).
+- **Quotations (عروض الأسعار)**: priced like an invoice but move no stock, money or balance; the
+  customer is given the offer and it becomes an invoice with one click. No "valid until" on screen;
+  its prices hold two weeks, after which turning it into an invoice re-checks them.
+- **The app updates itself**: each open app looks for a new version every minute and when it comes back
+  to the front. When there is one it waits until nothing is being saved and no sheet is open, saves
+  the open screen's work on the server for that person (`WorkDraft`, an hour at most — never on the
+  device), reloads at the same address and takes the work back; what the update removed is left out.
 - **Delivery**: pickup at the office, or a shipping company that the customer pays directly (nothing
   in our books). Shipping *we* pay — goods from a supplier, a customer's return — is a shipping expense.
 - **Returns**: the seller writes them (sales:return in the Sales role); goods go back to the warehouse

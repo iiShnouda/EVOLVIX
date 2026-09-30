@@ -67,9 +67,14 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab');
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  // Pending invoices: for whoever saves them and whoever approves them.
-  const seesOrders =
+  // Invoices post at once (owner decision 2026-09-30). Pending invoices are only for someone who may
+  // just save them; the tab shows for them, and for approvers while some are still waiting.
+  const mayOrders =
     isSales && (permissions.includes('sales:order') || permissions.includes('sales:approve'));
+  const waiting = useDocumentList(scope, 'orders', { page: 1, status: 'PENDING', enabled: mayOrders });
+  const onlyOrders = permissions.includes('sales:order') && !permissions.includes('sales:create');
+  const seesOrders =
+    mayOrders && (onlyOrders || tab === 'orders' || (waiting.data?.total ?? 0) > 0);
   const kind: DocKind =
     tab === 'returns'
       ? 'returns'

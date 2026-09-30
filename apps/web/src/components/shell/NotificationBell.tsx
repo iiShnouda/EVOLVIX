@@ -6,8 +6,9 @@ import { useT } from '../../lib/i18n';
 import { useNotifications, useReadNotification } from '../../lib/queries';
 
 /**
- * The bell: my notifications (a pending invoice to approve; mine approved or rejected), with a
- * count of unread ones. Opening one marks it read and goes to the invoice.
+ * The bell: my notifications (a new invoice to collect: its customer and department; a pending
+ * invoice to approve; mine approved or rejected), with a count of unread ones. Opening one marks it
+ * read and goes to the invoice.
  */
 export function NotificationBell() {
   const { t, locale } = useT();
@@ -30,7 +31,8 @@ export function NotificationBell() {
   function go(n: AppNotification) {
     if (!n.read) read.mutate(n.id);
     setOpen(false);
-    if (n.documentId) navigate(`/sales?tab=orders&doc=${n.documentId}`);
+    if (n.documentId)
+      navigate(n.kind === 'INVOICE_NEW' ? `/sales?doc=${n.documentId}` : `/sales?tab=orders&doc=${n.documentId}`);
   }
 
   return (
@@ -72,6 +74,7 @@ export function NotificationBell() {
                   </span>
                   <span className="mt-0.5 block text-xs text-muted">
                     <span className="tnum">{n.documentNumber}</span> · {n.partyName} ·{' '}
+                    {n.departmentName && <>{n.departmentName} · </>}
                     <span className="tnum">{formatMoney(n.amount, 'EGP', locale)}</span>
                   </span>
                   {n.message && <span className="mt-0.5 block text-xs text-destructive">{n.message}</span>}

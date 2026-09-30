@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<WorkDraft> WorkDrafts => Set<WorkDraft>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
@@ -255,6 +256,19 @@ public class AppDbContext : DbContext
             .HasForeignKey(m => m.SupplierId).OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<Notification>().HasIndex(n => new { n.StaffId, n.CreatedAt });
+        b.Entity<WorkDraft>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
+        b.Entity<WorkDraft>().Property(d => d.Key).HasMaxLength(200);
+        b.Entity<WorkDraft>().HasOne(d => d.Staff).WithMany()
+            .HasForeignKey(d => d.StaffId).OnDelete(DeleteBehavior.Cascade);
+
+        // Codes (كود) of customers / suppliers and of staff: numbered by the database, so two
+        // added at once never get the same one.
+        b.HasSequence<int>("PartyCodes");
+        b.HasSequence<int>("StaffCodes");
+        b.Entity<Party>().Property(p => p.Code).HasDefaultValueSql("nextval('\"PartyCodes\"')");
+        b.Entity<Party>().HasIndex(p => p.Code).IsUnique();
+        b.Entity<Staff>().Property(p => p.Code).HasDefaultValueSql("nextval('\"StaffCodes\"')");
+        b.Entity<Staff>().HasIndex(p => p.Code).IsUnique();
         b.Entity<Notification>().HasOne(n => n.Staff).WithMany()
             .HasForeignKey(n => n.StaffId).OnDelete(DeleteBehavior.Cascade);
 

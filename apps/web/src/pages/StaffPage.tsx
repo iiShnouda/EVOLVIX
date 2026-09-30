@@ -182,7 +182,10 @@ function PeopleTab() {
                       <Icon name="staff" size={18} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{s.fullName}</span>
+                      <span className="block truncate font-medium">
+                        {s.fullName}
+                        <span className="ms-1.5 text-xs font-normal text-muted tnum">({s.code})</span>
+                      </span>
                       <span className="block truncate text-xs text-muted" dir="ltr">
                         {s.email}
                       </span>
@@ -372,6 +375,9 @@ function PersonPanel({ person }: { person: StaffMember }) {
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold">{person.fullName}</h2>
+          <span className="text-sm text-muted tnum">
+            {t('common.code')} {person.code}
+          </span>
           {isMe && <Badge tone="info">{t('staff.you')}</Badge>}
           {!person.isActive && <Badge>{t('staff.inactive')}</Badge>}
         </div>

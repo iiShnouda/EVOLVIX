@@ -137,6 +137,13 @@ public static class Permissions
     public const string VariantOptionsManage = "variant_options:manage";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
+    /// <summary>
+    /// Sell above the price level's price, on this invoice only (owner decision 2026-09-30): the
+    /// seller may add to a piece's price but never go under it (that needs sales:change_price).
+    /// </summary>
+    public const string SalesRaisePrice = "sales:raise_price";
+    /// <summary>Be told of each new sales invoice (customer and department), e.g. the accountant who takes the payment.</summary>
+    public const string SalesInvoiceAlerts = "sales:invoice_alerts";
     /// <summary>Price a sales invoice at a level other than the customer's own.</summary>
     public const string SalesChoosePriceLevel = "sales:choose_price_level";
     /// <summary>Buy at a cost other than the supplier price level's.</summary>
@@ -168,7 +175,7 @@ public static class Permissions
     public static readonly string[] All =
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
-        SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit,
+        SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
@@ -202,7 +209,9 @@ public static class RolePermissions
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.SalesOverrideFloor, Permissions.SalesReturn, Permissions.SalesQuote,
-            Permissions.SalesOrder, Permissions.SalesApprove,
+            // Invoices post at once and the accountant is told (owner decision 2026-09-30); approving
+            // stays only for pending invoices someone may still be asked to save.
+            Permissions.SalesApprove, Permissions.SalesInvoiceAlerts, Permissions.SalesRaisePrice,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
@@ -225,12 +234,13 @@ public static class RolePermissions
             Permissions.PayrollView, Permissions.AttendanceEdit, Permissions.PayrollAdjust, Permissions.PayrollAdvance,
             Permissions.PayrollPost, Permissions.PayrollPay,
         },
-        // Sales staff sell at the customer's price level; changing a price or the level needs a
-        // manager (owner decision 2026-09-29).
+        // Sales staff sell at the customer's price level and may only add to a price; lowering it or
+        // changing the level needs a manager (owner decisions 2026-09-29, 2026-09-30). Their
+        // invoices post at once; the accountant is told and takes the payment.
         [Role.SALES] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
-            Permissions.SalesQuote, Permissions.SalesOrder,
+            Permissions.SalesQuote, Permissions.SalesRaisePrice,
             // The seller writes a customer's return; it goes straight back into its warehouse.
             Permissions.SalesReturn,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,

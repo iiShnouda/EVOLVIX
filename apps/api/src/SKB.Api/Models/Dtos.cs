@@ -74,7 +74,7 @@ public record SalesDetailDto(
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
     string? InvoiceId = null, string? InvoiceNumber = null,
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
-    string? BranchId = null, string? RejectReason = null);
+    string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null);
 
 /// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
 public record RejectOrderRequest(string? Reason);
@@ -161,7 +161,8 @@ public record CreatePurchaseInvoiceRequest(
     string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
-public record RepOptionDto(string Id, string Name, string BranchId);
+/// <param name="Code">The person's number (كود), shown beside the name.</param>
+public record RepOptionDto(string Id, string Name, string BranchId, int Code = 0);
 
 /// <summary>One invoice line being returned. Price and cost always come from the original line.</summary>
 public record CreateReturnLineRequest(string LineId, int Quantity);
@@ -369,7 +370,8 @@ public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
     string? Email, string? TaxNumber, string? Address, bool IsActive,
-    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null);
+    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null,
+    int Code = 0);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -513,7 +515,7 @@ public record StaffDto(
     string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
     bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0);
 
 /// <summary>
 /// What one person may work with; every field replaces what was there. No departments = every
@@ -849,6 +851,11 @@ public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds 
 
 public record NotificationDto(
     string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,
-    string? ActorName, string? Message, string CreatedAt, bool Read);
+    string? ActorName, string? Message, string CreatedAt, bool Read, string? DepartmentName = null);
 
 public record NotificationsDto(int Unread, NotificationDto[] Items);
+
+/// <summary>Work in progress kept for one screen while the app updates (see WorkDraft).</summary>
+public record WorkDraftDto(string Key, string Data, string UpdatedAt);
+public record SaveWorkDraftRequest(string Key, string Data);
+public record TakeWorkDraftRequest(string Key);

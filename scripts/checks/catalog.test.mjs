@@ -195,7 +195,9 @@ const markupPrice = round(plainCost * (100 + settings.defaultMarkupPercent) / 10
 r = await sale(karim, { lines: [{ productId: plain.id, quantity: 1, unitPrice: markupPrice }] });
 ok('sales sells unpriced item at cost + markup', r);
 r = await sale(karim, { lines: [{ productId: plain.id, quantity: 1, unitPrice: markupPrice + 1 }] });
-eq('other price refused', r.data?.code, 'price_not_allowed');
+ok('sales may add to a price on this invoice (sales:raise_price)', r);
+r = await sale(karim, { lines: [{ productId: plain.id, quantity: 1, unitPrice: markupPrice - 1 }] });
+eq('a lower price refused', r.data?.code, 'price_not_allowed');
 
 // base unit locked once stock moved
 eq('base unit locked after movement', (await owner.put(`/products/${juice.id}`, { units: [{ unitId: dozen.id, factor: 1 }, { unitId: carton.id, factor: 24 }] })).data?.code, 'base_unit_locked');

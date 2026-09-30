@@ -1,16 +1,20 @@
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import type { Party } from '@skb/shared';
 import { Spinner } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
+import { api } from '../lib/api';
 import { useParties } from '../lib/queries';
+import type { Paginated } from '@skb/shared';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 /**
  * Pick a customer or supplier by typing part of the name or phone: the list narrows as you type
- * (the server searches), and opens with the first ones before anything is typed.
+ * (the server searches), and opens with the first ones before anything is typed. Each shows its
+ * code (كود). With `withCode`, a code box sits beside the name (owner decision 2026-09-30): typing
+ * a code fills in the name, and picking a name fills in its code.
  */
 export function PartyPicker({
   type,
@@ -18,12 +22,14 @@ export function PartyPicker({
   onChange,
   label,
   placeholder,
+  withCode,
 }: {
   type: 'CUSTOMER' | 'SUPPLIER';
   value: Party | null;
   onChange: (party: Party | null) => void;
   label: string;
   placeholder: string;
+  withCode?: boolean;
 }) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -32,8 +38,38 @@ export function PartyPicker({
   const list = useParties({ page: 1, pageSize: 30, type, active: true, search: search || undefined, enabled: open });
   const rows = list.data?.items ?? [];
 
-  return (
-    <label className="relative block">
+  // The code box shows the chosen one's code until something else is typed in it.
+  const [code, setCode] = useState(value ? String(value.code) : '');
+  const [codeError, setCodeError] = useState(false);
+  const [looking, setLooking] = useState(false);
+  useEffect(() => {
+    setCode(value ? String(value.code) : '');
+    setCodeError(false);
+  }, [value]);
+
+  async function findByCode() {
+    const n = Number(code.trim());
+    if (!code.trim()) return;
+    if (value && n === value.code) return;
+    if (!Number.isInteger(n) || n <= 0) {
+      setCodeError(true);
+      return;
+    }
+    setLooking(true);
+    try {
+      const found = await api.get<Paginated<Party>>(`/parties?type=${type}&active=true&code=${n}&pageSize=1`);
+      const hit = found.items[0];
+      setCodeError(!hit);
+      if (hit) onChange(hit);
+    } catch {
+      setCodeError(true);
+    } finally {
+      setLooking(false);
+    }
+  }
+
+  const name = (
+    <label className="relative block min-w-0 flex-1">
       <span className="mb-0.5 block text-xs text-muted">{label}</span>
       <span className="pointer-events-none absolute bottom-0 start-2.5 grid h-9 place-items-center text-faint">
         <Icon name="search" size={15} />
@@ -78,19 +114,56 @@ export function PartyPicker({
                   onChange(p);
                   setOpen(false);
                 }}
-                className={`block w-full px-3 py-2 text-start text-sm hover:bg-surface-2 ${p.id === value?.id ? 'bg-brand-soft' : ''}`}
+                className={`flex w-full items-start gap-2 px-3 py-2 text-start text-sm hover:bg-surface-2 ${p.id === value?.id ? 'bg-brand-soft' : ''}`}
               >
-                <span className="block truncate font-medium">{p.name}</span>
-                {(p.phone || p.contactName) && (
-                  <span className="block truncate text-xs text-muted">
-                    {[p.phone, p.contactName].filter(Boolean).join(' · ')}
-                  </span>
-                )}
+                <span className="mt-px min-w-8 shrink-0 rounded bg-surface-2 px-1 text-center text-xs text-muted tnum">
+                  {p.code}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{p.name}</span>
+                  {(p.phone || p.contactName) && (
+                    <span className="block truncate text-xs text-muted">
+                      {[p.phone, p.contactName].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </span>
               </button>
             ))
           )}
         </div>
       )}
     </label>
+  );
+
+  if (!withCode) return name;
+  return (
+    <div className="flex items-start gap-2">
+      <label className="block w-24 shrink-0">
+        <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
+        <input
+          className={`${field} tnum ${codeError ? 'border-destructive' : ''}`}
+          inputMode="numeric"
+          aria-invalid={codeError}
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value.replace(/[^\d٠-٩]/g, '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))));
+            setCodeError(false);
+          }}
+          onBlur={() => void findByCode()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void findByCode();
+            }
+          }}
+        />
+        {looking ? (
+          <span className="mt-0.5 block text-xs text-faint">…</span>
+        ) : (
+          codeError && <span className="mt-0.5 block text-xs text-destructive">{t('invoice.codeNotFound')}</span>
+        )}
+      </label>
+      {name}
+    </div>
   );
 }

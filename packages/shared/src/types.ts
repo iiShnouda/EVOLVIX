@@ -53,6 +53,8 @@ export type Permission =
   | 'sales:approve'
   | 'sales:over_credit'
   | 'parties:credit_limit'
+  | 'sales:raise_price'
+  | 'sales:invoice_alerts'
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
@@ -203,6 +205,8 @@ export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'CARRIER';
 
 export interface Party {
   id: string;
+  /** Its number (كود): 1, 2, 3… in the order added; shown beside the name, and finds it. */
+  code: number;
   name: string;
   /** A party may hold more than one role (e.g. customer + supplier). */
   types: PartyType[];
@@ -447,6 +451,9 @@ export interface SalesDocument {
   invoiceNumber?: string | null;
   /** Why a pending invoice was turned down. */
   rejectReason?: string | null;
+  /** The customer's / supplier's and the rep's codes (كود). */
+  partyCode?: number | null;
+  repCode?: number | null;
   createdAt: string;
 }
 
@@ -723,6 +730,8 @@ export interface RepOption {
   id: string;
   name: string;
   branchId: string;
+  /** Their number (كود), shown beside the name. */
+  code: number;
 }
 
 /** Profitability report (تقارير الربحية) over a date range. */
@@ -1136,6 +1145,8 @@ export interface BranchWithWarehouses {
 /** A person who can sign in, with what they may do. */
 export interface StaffMember {
   id: string;
+  /** Their number (كود), shown beside the name. */
+  code: number;
   fullName: string;
   email: string;
   role: Role;
@@ -1910,10 +1921,12 @@ export interface CustomerAccount {
 /** One notification (the bell). The app words it from `kind`. */
 export interface AppNotification {
   id: string;
-  kind: 'ORDER_PENDING' | 'ORDER_APPROVED' | 'ORDER_REJECTED';
+  kind: 'INVOICE_NEW' | 'ORDER_PENDING' | 'ORDER_APPROVED' | 'ORDER_REJECTED';
   documentId?: string | null;
   documentNumber?: string | null;
   partyName?: string | null;
+  /** The invoice's department (قسم). */
+  departmentName?: string | null;
   amount: number;
   actorName?: string | null;
   message?: string | null;
@@ -1924,4 +1937,12 @@ export interface AppNotification {
 export interface NotificationList {
   unread: number;
   items: AppNotification[];
+}
+
+/** One screen's work in progress, kept on the server while the app updates. */
+export interface WorkDraft {
+  key: string;
+  /** The screen's own JSON. */
+  data: string;
+  updatedAt: string;
 }

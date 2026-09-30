@@ -23,6 +23,10 @@ namespace SKB.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence<int>("PartyCodes");
+
+            modelBuilder.HasSequence<int>("StaffCodes");
+
             modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1101,6 +1105,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DepartmentName")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("DocumentId")
                         .HasColumnType("uuid");
 
@@ -1141,6 +1148,11 @@ namespace SKB.Api.Migrations
 
                     b.Property<long>("Balance")
                         .HasColumnType("bigint");
+
+                    b.Property<int>("Code")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValueSql("nextval('\"PartyCodes\"')");
 
                     b.Property<string>("ContactName")
                         .HasColumnType("text");
@@ -1192,6 +1204,9 @@ namespace SKB.Api.Migrations
                         .HasColumnType("text[]");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
 
                     b.HasIndex("Name");
 
@@ -1919,6 +1934,11 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
+                    b.Property<int>("Code")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValueSql("nextval('\"StaffCodes\"')");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1970,6 +1990,9 @@ namespace SKB.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BranchId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
 
                     b.HasIndex("Email")
                         .IsUnique();
@@ -2385,6 +2408,35 @@ namespace SKB.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Warehouses");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.WorkDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StaffId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("WorkDrafts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
@@ -3356,6 +3408,17 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.WorkDraft", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Staff");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>

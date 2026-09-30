@@ -366,7 +366,7 @@ public sealed class StaffController : ControllerBase
         s.Role == Role.OWNER ? true : s.AllBranches, AccessService.SeesAll(s),
         s.BranchIds.Select(x => x.ToString()).ToArray(), s.WarehouseIds.Select(x => x.ToString()).ToArray(),
         s.MoneyAccountIds.Select(x => x.ToString()).ToArray(),
-        s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent);
+        s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent, s.Code);
 
     private static string? Clean(string? s, int max)
     {

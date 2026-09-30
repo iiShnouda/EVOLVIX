@@ -875,6 +875,16 @@ own permission, and roles bundle them
   discount changes; customer account per department; cheques/notes pre-filled against an invoice.
 - Checks: `parties`, `costs`, `departments`, `orders` (plus every earlier suite, green on a filled DB).
 
+**Invoices post at once, codes, price raise, self-updating app (owner decisions 2026-09-30)**
+- A sale posts at once; `sales:invoice_alerts` holders are told (customer, department, amount).
+  Pending invoices only for someone given `sales:order` without `sales:create`.
+- Codes for parties and staff (sequences + backfill), lookup by code on the invoice.
+- `sales:raise_price`: add to a price on one invoice, never lower it.
+- Price level and quotation "valid until" off the sales screens; sticky totals column fixed (the main
+  area is no longer a scroll box).
+- Self-update: `/version.json` + service worker, per-person drafts on the server (`/api/drafts`),
+  restore after reload. Check: `codes`.
+
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).
 - **Inventory costing = moving weighted average.** Receipt recomputes avg cost; sale issues at

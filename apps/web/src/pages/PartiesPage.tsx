@@ -193,7 +193,12 @@ function PartyCard({
             <Icon name={party.types.includes('CARRIER') ? 'delivery' : 'parties'} size={20} />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-medium">{party.name}</p>
+            <p className="truncate font-medium">
+              {party.name}
+              <span className="ms-1.5 text-xs font-normal text-muted tnum">
+                {t('common.code')} {party.code}
+              </span>
+            </p>
             <div className="mt-0.5 flex flex-wrap gap-1">
               {party.types.map((type) => (
                 <Badge key={type} tone="brand">

@@ -12,8 +12,6 @@ import {
   type DeliveryMethod,
   type Party,
   type Product,
-  addDays,
-  companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -26,6 +24,7 @@ import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
+import { useWorkDraft } from '../lib/workDraft';
 import {
   useCategories,
   useCompanySettings,
@@ -94,12 +93,14 @@ let nextKey = 0;
 
 /**
  * Sales / purchase invoice builder, and (mode "quote") the price quotation builder: a quotation is
- * priced the same way but has no payment or delivery, may promise more than is in stock, and holds
- * its prices until its date. Each line is in one of the item's units (piece, carton…); its
- * price comes from the invoice's price level — the party's own, else the default — and, for an item
- * without a price, from cost × (1 + default markup) (sales) or the average cost (purchases). Typing
- * another price or picking another level needs its own permission; the server checks the same.
- * Live cost, markup and profit use the cost of the chosen warehouse's branch.
+ * priced the same way but has no payment or delivery, may promise more than is in stock, and moves
+ * nothing until it becomes an invoice. Each line is in one of the item's units (piece, carton…);
+ * its price comes from the party's price level (else the default) — not shown on a sale — and, for
+ * an item without a price, from cost × (1 + default markup) (sales) or the average cost
+ * (purchases). A seller may add to a piece's price on this invoice only (sales:raise_price);
+ * lowering it or picking another level needs its own permission; the server checks the same.
+ * Live cost, markup and profit use the cost of the chosen warehouse's branch. What's typed is kept
+ * through an app update (useWorkDraft).
  */
 export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quote' }) {
   const isQuote = mode === 'quote';
@@ -114,6 +115,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
   const canChangePrice = can(isSale ? 'sales:change_price' : 'purchases:change_price');
+  // Adding to a price, on this invoice only (owner decision 2026-09-30).
+  const canRaisePrice = isSale && can('sales:raise_price');
+  const priceEditable = canChangePrice || canRaisePrice;
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
   const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
   const canBonus = can(isSale ? 'sales:bonus' : 'purchases:bonus');
@@ -207,15 +211,14 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [shippingAccountId, setShippingAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
-  const [validUntil, setValidUntil] = useState(() => addDays(companyToday(), 14));
 
   const createSale = useCreateSalesInvoice();
   const createPurchase = useCreatePurchaseInvoice();
   const createQuote = useCreateQuotation();
   const createOrder = useCreateOrder();
-  // A sale is saved for the accountant (فاتورة معلّقة): they are told, take the payment and approve
-  // or reject it. Only someone without that permission posts it directly.
-  const asOrder = isSale && !isQuote && can('sales:order');
+  // A sale posts at once and the accountant is told, to take the payment (owner decision 2026-09-30).
+  // Only someone who may just save pending invoices (sales:order without sales:create) saves one.
+  const asOrder = isSale && !isQuote && !can('sales:create') && can('sales:order');
   const pending =
     createSale.isPending || createPurchase.isPending || createQuote.isPending || createOrder.isPending;
   const serverError = (createSale.error ??
@@ -241,7 +244,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const cost = costOf(l.product) * factor;
     return isSale ? Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100) : cost;
   }
-  const priceOf = (l: Line) => (l.bonus ? 0 : canChangePrice && l.touched ? l.price : suggested(l));
+  const priceOf = (l: Line) => (l.bonus ? 0 : priceEditable && l.touched ? l.price : suggested(l));
+  /** A price typed under the list price by someone who may only add to it. */
+  const underList = (l: Line) =>
+    !canChangePrice && canRaisePrice && !l.bonus && l.touched && l.price < suggested(l);
 
   function addProduct(p: Product, unitId?: string | null) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
@@ -376,6 +382,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const hasBelowCost = rows.some((r) => r.belowCost);
   const hasBlockedFloor = rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
   const hasOverStock = rows.some((r) => r.overStock);
+  const hasUnderList = lines.some(underList);
   const canSave =
     !!partyId &&
     lines.length > 0 &&
@@ -385,7 +392,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     !outcome.error &&
     !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
     !(isSale && !repId) &&
-    !(isQuote && !validUntil) &&
+    !hasUnderList &&
     !pending;
 
   async function save() {
@@ -411,7 +418,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           priceLevelId,
           repId: repId || undefined,
           departmentId: departmentId || undefined,
-          dueDate: validUntil,
         });
         navigate(backTo);
       } else if (isSale) {
@@ -470,6 +476,99 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     }
   }
 
+  // What's typed is kept through an app update: the party, choices, lines and totals' inputs.
+  // Items and the party are looked up again, so whatever is gone by then is left out.
+  useWorkDraft<InvoiceDraft>(
+    1,
+    () =>
+      !party && lines.length === 0 && !notes
+        ? null
+        : {
+            partyId: party?.id ?? null,
+            warehouseId: pickedWarehouse,
+            repId: pickedRep,
+            departmentId: pickedDepartment,
+            levelId: pickedLevel,
+            delivery,
+            lines: lines.map((l) => ({
+              productId: l.product.id,
+              sku: l.product.sku,
+              unitId: l.unitId,
+              quantity: l.quantity,
+              price: l.price,
+              touched: l.touched,
+              bonus: l.bonus,
+              discMode: l.discMode,
+              discValue: l.discValue,
+            })),
+            discount1,
+            discount2,
+            paidNow,
+            paidAccountId,
+            shippingCost,
+            shippingAccountId,
+            overrideFloor,
+            notes,
+            supplierFilter,
+            categoryFilter,
+            inStockOnly,
+          },
+    async (d) => {
+      const text = (v: unknown) => (typeof v === 'string' ? v : '');
+      if (d.partyId) {
+        const p = await api.get<Party>(`/parties/${d.partyId}`).catch(() => null);
+        if (p?.isActive) setParty(p);
+      }
+      setPickedWarehouse(text(d.warehouseId));
+      setPickedRep(text(d.repId));
+      setPickedDepartment(text(d.departmentId));
+      setPickedLevel(text(d.levelId));
+      if (d.delivery && METHODS.includes(d.delivery.method))
+        setDelivery({ method: d.delivery.method, address: text(d.delivery.address), carrierId: text(d.delivery.carrierId) });
+      const discount = (v: DiscountInput | undefined, fallback: DiscountInput): DiscountInput =>
+        v && (v.mode === 'percent' || v.mode === 'amount') ? { mode: v.mode, value: text(v.value) } : fallback;
+      setDiscount1(discount(d.discount1, discount1));
+      setDiscount2(discount(d.discount2, discount2));
+      setPaidNow(text(d.paidNow));
+      setPaidAccountId(text(d.paidAccountId));
+      setShippingCost(text(d.shippingCost));
+      setShippingAccountId(text(d.shippingAccountId));
+      setOverrideFloor(d.overrideFloor === true);
+      setNotes(text(d.notes));
+      setSupplierFilter(text(d.supplierFilter));
+      setCategoryFilter(text(d.categoryFilter));
+      if (typeof d.inStockOnly === 'boolean') setInStockOnly(d.inStockOnly);
+      const saved = Array.isArray(d.lines) ? d.lines : [];
+      const found = new Map<string, Product>();
+      await Promise.all(
+        [...new Set(saved.map((l) => l.sku).filter(Boolean))].map(async (sku) => {
+          const list = await api.get<Product[]>(`/products?search=${encodeURIComponent(sku)}`).catch(() => []);
+          for (const p of list) found.set(p.id, p);
+        }),
+      );
+      const modes: LineDiscountMode[] = ['percent', 'piece', 'amount'];
+      setLines(
+        saved.flatMap((l) => {
+          const product = found.get(l.productId);
+          if (!product || !product.units.some((u) => u.unitId === l.unitId)) return [];
+          return [
+            {
+              key: `l${nextKey++}`,
+              product,
+              unitId: l.unitId,
+              quantity: Math.max(1, Math.floor(Number(l.quantity) || 1)),
+              price: Math.max(0, Math.round(Number(l.price) || 0)),
+              touched: l.touched === true,
+              bonus: l.bonus === true,
+              discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
+              discValue: text(l.discValue),
+            },
+          ];
+        }),
+      );
+    },
+  );
+
   const products = productList.data ?? [];
 
   return (
@@ -487,10 +586,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       <div className="grid gap-5 lg:grid-cols-[1fr_minmax(340px,400px)]">
         {/* Left: builder */}
         <div className="min-w-0 space-y-4">
-          {/* Party + warehouse + price level */}
-          <Card className={`grid gap-4 ${isSale ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-3'}`}>
+          {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
+          <Card className="grid gap-4 sm:grid-cols-2">
             <PartyPicker
               type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+              withCode
               value={party}
               onChange={(p) => {
                 setParty(p);
@@ -500,21 +600,24 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
             />
             <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
-              <select
-                className={field}
-                value={levelId}
-                disabled={!canChooseLevel}
-                onChange={(e) => setPickedLevel(e.target.value)}
-              >
-                {sideLevels.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* A sale is priced at the customer's own level, not shown (owner decision 2026-09-30). */}
+            {!isSale && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
+                <select
+                  className={field}
+                  value={levelId}
+                  disabled={!canChooseLevel}
+                  onChange={(e) => setPickedLevel(e.target.value)}
+                >
+                  {sideLevels.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {isSale && departments.length > 0 && (
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
@@ -547,7 +650,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   {!repId && <option value="">{t('invoice.chooseRep')}</option>}
                   {(reps.data ?? []).map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name}
+                      {r.name} ({r.code})
                     </option>
                   ))}
                 </select>
@@ -582,7 +685,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 <option value="">{t('invoice.filterSupplier')}</option>
                 {(suppliers.data?.items ?? []).map((sp) => (
                   <option key={sp.id} value={sp.id}>
-                    {sp.name}
+                    {sp.name} ({sp.code})
                   </option>
                 ))}
               </select>
@@ -768,11 +871,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                         </span>
                         <input
                           type="number"
-                          min={0}
+                          min={canChangePrice ? 0 : toMajor(suggested(r.line))}
                           step="0.01"
-                          readOnly={!canChangePrice || r.line.bonus}
-                          title={canChangePrice ? undefined : t('invoice.priceLocked')}
-                          className={`${field} tnum ${canChangePrice && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+                          readOnly={!priceEditable || r.line.bonus}
+                          title={
+                            canChangePrice
+                              ? undefined
+                              : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
+                          }
+                          aria-invalid={underList(r.line)}
+                          className={`${field} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
                           value={toMajor(r.price)}
                           onChange={(e) =>
                             updateLine(r.line.key, {
@@ -780,6 +888,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                               touched: true,
                             })
                           }
+                          // Only up: a lower price goes back to the list price.
+                          onBlur={() => {
+                            if (underList(r.line)) updateLine(r.line.key, { touched: false });
+                          }}
                         />
                       </label>
                       {isSale && seeCosts && (
@@ -813,6 +925,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       {r.factor > 1 && (
                         <span>
                           = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+                        </span>
+                      )}
+                      {isSale && !r.line.bonus && r.price !== suggested(r.line) && (
+                        <span className={underList(r.line) ? 'text-destructive' : ''}>
+                          {t('invoice.listPrice')}: {formatMoney(suggested(r.line), currency, locale)}
                         </span>
                       )}
                       {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
@@ -891,7 +1008,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         </div>
 
         {/* Right: summary */}
-        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           <Card>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
               {t('common.total')}
@@ -953,18 +1070,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             </dl>
 
             <div className="mt-4 space-y-3">
-              {isSale && !isQuote ? null : isQuote ? (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('quote.validUntil')}</span>
-                  <input
-                    type="date"
-                    className={`${field} tnum`}
-                    min={companyToday()}
-                    value={validUntil}
-                    onChange={(e) => setValidUntil(e.target.value)}
-                  />
-                </label>
-              ) : (
+              {isSale ? null : (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
                   <input
@@ -1050,11 +1156,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
             </Button>
             {asOrder && <p className="mt-2 text-center text-xs text-faint">{t('order.saveHint')}</p>}
+            {isSale && !isQuote && !asOrder && (
+              <p className="mt-2 text-center text-xs text-faint">{t('invoice.savedHint')}</p>
+            )}
             {isSale && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>
             )}
             {!canChangePrice && (
-              <p className="mt-1 text-center text-xs text-faint">{t('invoice.priceLocked')}</p>
+              <p className="mt-1 text-center text-xs text-faint">
+                {t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')}
+              </p>
             )}
           </Card>
         </div>
@@ -1121,6 +1232,38 @@ function DiscountField({
       </div>
     </div>
   );
+}
+
+/** An invoice being written, as kept through an app update. */
+interface InvoiceDraft {
+  partyId: string | null;
+  warehouseId: string;
+  repId: string;
+  departmentId: string;
+  levelId: string;
+  delivery: DeliveryValue;
+  lines: {
+    productId: string;
+    sku: string;
+    unitId: string;
+    quantity: number;
+    price: number;
+    touched: boolean;
+    bonus: boolean;
+    discMode: LineDiscountMode;
+    discValue: string;
+  }[];
+  discount1: DiscountInput;
+  discount2: DiscountInput;
+  paidNow: string;
+  paidAccountId: string;
+  shippingCost: string;
+  shippingAccountId: string;
+  overrideFloor: boolean;
+  notes: string;
+  supplierFilter: string;
+  categoryFilter: string;
+  inStockOnly: boolean;
 }
 
 interface DeliveryValue {

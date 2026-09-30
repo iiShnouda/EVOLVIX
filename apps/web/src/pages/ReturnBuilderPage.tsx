@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useWorkDraft } from '../lib/workDraft';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatDate, formatMoney, formatQuantity, toMinor, type DocumentLine } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -48,6 +49,29 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const [shipping, setShipping] = useState('');
   const [shippingAccountId, setShippingAccountId] = useState('');
   const [notes, setNotes] = useState('');
+
+  // What's typed is kept through an app update (lines of the invoice that are gone are skipped).
+  useWorkDraft<ReturnDraft>(
+    1,
+    () =>
+      Object.keys(qty).length === 0 && !notes && !refund && !shipping
+        ? null
+        : { qty, inBase, refund, refundAccountId, shipping, shippingAccountId, notes },
+    (d) => {
+      const text = (v: unknown) => (typeof v === 'string' ? v : '');
+      const numbers = Object.fromEntries(
+        Object.entries(d.qty ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0),
+      );
+      const flags = Object.fromEntries(Object.entries(d.inBase ?? {}).filter(([, v]) => typeof v === 'boolean'));
+      setQty(numbers);
+      setInBase(flags);
+      setRefund(text(d.refund));
+      setRefundAccountId(text(d.refundAccountId));
+      setShipping(text(d.shipping));
+      setShippingAccountId(text(d.shippingAccountId));
+      setNotes(text(d.notes));
+    },
+  );
 
   const backTo = `/${scope}`;
   const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
@@ -417,4 +441,15 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <dd className={`tnum ${strong ? 'text-base font-semibold' : ''}`}>{value}</dd>
     </div>
   );
+}
+
+/** A return being written, as kept through an app update. */
+interface ReturnDraft {
+  qty: Record<string, number>;
+  inBase: Record<string, boolean>;
+  refund: string;
+  refundAccountId: string;
+  shipping: string;
+  shippingAccountId: string;
+  notes: string;
 }

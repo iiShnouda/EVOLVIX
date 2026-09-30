@@ -25,7 +25,8 @@ public sealed class PartiesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<PaginatedDto<PartyDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? type = null, [FromQuery] string? search = null, [FromQuery] bool? active = null)
+        [FromQuery] string? type = null, [FromQuery] string? search = null, [FromQuery] bool? active = null,
+        [FromQuery] int? code = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -38,11 +39,14 @@ public sealed class PartiesController : ControllerBase
             q = q.Where(p => p.Types.Contains(wanted));
         }
         if (active is bool isActive) q = q.Where(p => p.IsActive == isActive);
+        // Exactly this code (كود), e.g. typed in an invoice's code box.
+        if (code is int wantedCode) q = q.Where(p => p.Code == wantedCode);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // By name, owner / contact name, or any of its phone numbers.
+            // By code, name, owner / contact name, or any of its phone numbers.
             var s = search.Trim().ToLower();
-            q = q.Where(p => p.Name.ToLower().Contains(s)
+            var asCode = int.TryParse(s, out var n) ? n : -1;
+            q = q.Where(p => p.Code == asCode || p.Name.ToLower().Contains(s)
                 || (p.ContactName != null && p.ContactName.ToLower().Contains(s))
                 || (p.Phone != null && p.Phone.Contains(s))
                 || p.OtherPhones.Any(x => x.Contains(s)));

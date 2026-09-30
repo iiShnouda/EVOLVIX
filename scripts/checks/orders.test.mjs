@@ -58,9 +58,10 @@ const body = (quantity, extra = {}, line = {}) => ({
 
 const repP = await person('SALES', 'rep');
 ok('rep: floor 1 only, may discount up to 10%', await access(repP, { departmentIds: [dept.id], maxDiscountPercent: 10 }));
-ok('…with the discount permission', await owner.put(`/staff/${repP.id}/permissions`, { granted: ['sales:discount'] }));
+// Invoices post at once now (owner decision 2026-09-30); pending ones are for whoever is given it.
+ok('…with the discount permission, saving pending invoices', await owner.put(`/staff/${repP.id}/permissions`, { granted: ['sales:discount', 'sales:order'] }));
 const rep = await login(repP.email, PASS);
-check('sales people may save pending invoices', rep.user.permissions.includes('sales:order'));
+check('pending invoices only for whoever is given it', rep.user.permissions.includes('sales:order'));
 check('…but not approve them', !rep.user.permissions.includes('sales:approve'));
 const accP = await person('ACCOUNTANT', 'acc');
 let acc = await login(accP.email, PASS);
@@ -128,6 +129,7 @@ console.log('== cancelling');
 ok('4 back in stock', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 4, unitCost: 600 }] }));
 const o3 = ok('rep holds 4', await rep.post('/sales/orders', body(4)));
 const otherP = await person('SALES', 'other');
+ok('…also saves pending ones', await owner.put(`/staff/${otherP.id}/permissions`, { granted: ['sales:order'] }));
 const other = await login(otherP.email, PASS);
 eq('another sales person can’t cancel it', (await other.post(`/sales/orders/${o3.id}/cancel`)).data?.code, 'cancel_not_allowed');
 eq('the rep cancels it', ok('cancel', await rep.post(`/sales/orders/${o3.id}/cancel`)).status, 'CANCELLED');

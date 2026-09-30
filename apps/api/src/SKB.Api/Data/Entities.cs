@@ -119,6 +119,8 @@ public class StockBalance
 public class Staff
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>The person's number (كود): 1, 2, 3… in the order they were added; shown beside their name.</summary>
+    public int Code { get; set; }
     public string FullName { get; set; } = "";
     public string Email { get; set; } = "";
     public string PasswordHash { get; set; } = "";
@@ -200,6 +202,11 @@ public class AuditEntry
 public class Party
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>
+    /// The customer's / supplier's number (كود): 1, 2, 3… in the order they were added, shown beside
+    /// the name; an invoice can be started by typing it.
+    /// </summary>
+    public int Code { get; set; }
     public string Name { get; set; } = "";
     public List<string> Types { get; set; } = new();
     public string? Phone { get; set; }
@@ -1195,14 +1202,33 @@ public class Notification
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StaffId { get; set; }
     public Staff? Staff { get; set; }
-    /// <summary>ORDER_PENDING, ORDER_APPROVED, ORDER_REJECTED (the app words it in the screen language).</summary>
+    /// <summary>INVOICE_NEW, ORDER_PENDING, ORDER_APPROVED, ORDER_REJECTED (the app words it in the screen language).</summary>
     public string Kind { get; set; } = "";
     public Guid? DocumentId { get; set; }
     public string? DocumentNumber { get; set; }
     public string? PartyName { get; set; }
+    /// <summary>The invoice's sales department (قسم), as it was named then.</summary>
+    public string? DepartmentName { get; set; }
     public long Amount { get; set; }
     public string? ActorName { get; set; }
     public string? Message { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReadAt { get; set; }
+}
+
+/// <summary>
+/// Work in progress one person had open when the app updated itself (owner decision 2026-09-30):
+/// the screen saves what was typed here, the new version reloads at the same place and takes it
+/// back. Kept on the server, never on the device (CLAUDE.md rule 1), and only for a short while.
+/// </summary>
+public class WorkDraft
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>Which screen it belongs to (its address), e.g. "/sales/new".</summary>
+    public string Key { get; set; } = "";
+    /// <summary>The screen's own JSON; each screen reads back only what it still has.</summary>
+    public string Data { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
