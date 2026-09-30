@@ -54,6 +54,8 @@ export function ItemCardPage() {
   const permissions = useAuth((st) => st.user?.permissions ?? NO_PERMISSIONS);
   const canEdit = can('inventory:edit');
   const canEditItem = can('products:edit') || can('prices:edit');
+  // Costs and stock values are the owner's unless given (costs:view); the server sends 0 otherwise.
+  const seeCosts = can('costs:view');
 
   const [params, setParams] = useSearchParams();
   const warehouseId = params.get('wh') ?? '';
@@ -163,7 +165,7 @@ export function ItemCardPage() {
             <Kpi
               label={t('itemCard.opening')}
               qty={data.openingBalance}
-              value={data.openingValue}
+              value={seeCosts ? data.openingValue : undefined}
               unit={item.unit}
               currency={currency}
             />
@@ -172,7 +174,7 @@ export function ItemCardPage() {
             <Kpi
               label={t('itemCard.closing')}
               qty={data.closingBalance}
-              value={data.closingValue}
+              value={seeCosts ? data.closingValue : undefined}
               unit={item.unit}
               currency={currency}
             />
@@ -222,9 +224,11 @@ export function ItemCardPage() {
                     <th className="p-3 text-end font-medium">{t('itemCard.in')}</th>
                     <th className="p-3 text-end font-medium">{t('itemCard.out')}</th>
                     <th className="p-3 text-end font-medium">{t('itemCard.balance')}</th>
-                    <th className="hidden p-3 text-end font-medium md:table-cell">
-                      {t('itemCard.unitCost')}
-                    </th>
+                    {seeCosts && (
+                      <th className="hidden p-3 text-end font-medium md:table-cell">
+                        {t('itemCard.unitCost')}
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--c-line)]">
@@ -263,9 +267,11 @@ export function ItemCardPage() {
                       <td className="p-3 text-end font-semibold tnum">
                         {formatNumber(m.balance, locale)}
                       </td>
-                      <td className="hidden p-3 text-end tnum text-muted md:table-cell">
-                        {formatMoney(m.unitCost, currency, locale)}
-                      </td>
+                      {seeCosts && (
+                        <td className="hidden p-3 text-end tnum text-muted md:table-cell">
+                          {formatMoney(m.unitCost, currency, locale)}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -299,19 +305,23 @@ export function ItemCardPage() {
                 </>
               )}
               <Row label={t('inventory.reorder')} value={formatNumber(item.reorderLevel, locale)} />
-              <Row
-                label={t('inventory.avgCost')}
-                value={formatMoney(item.avgCost, currency, locale)}
-              />
+              {seeCosts && (
+                <Row
+                  label={t('inventory.avgCost')}
+                  value={formatMoney(item.avgCost, currency, locale)}
+                />
+              )}
               <Row
                 label={t('inventory.salePrice')}
                 value={formatMoney(item.salePrice, currency, locale)}
               />
-              <Row
-                label={t('inventory.stockValue')}
-                value={formatMoney(item.stockValue, currency, locale)}
-                strong
-              />
+              {seeCosts && (
+                <Row
+                  label={t('inventory.stockValue')}
+                  value={formatMoney(item.stockValue, currency, locale)}
+                  strong
+                />
+              )}
             </dl>
           </Card>
           <StockByWarehouse stock={data.stock} unit={item.unit} />
@@ -322,6 +332,7 @@ export function ItemCardPage() {
               initialWarehouseId={warehouseId}
               avgCost={item.avgCost}
               currency={currency}
+              seeCosts={seeCosts}
             />
           )}
         </div>
@@ -366,12 +377,14 @@ function AdjustCard({
   initialWarehouseId,
   avgCost,
   currency,
+  seeCosts,
 }: {
   productId: string;
   stock: WarehouseStock[];
   initialWarehouseId: string;
   avgCost: number;
   currency: string;
+  seeCosts: boolean;
 }) {
   const { t, locale } = useT();
   const stocktake = useStocktake();
@@ -426,8 +439,9 @@ function AdjustCard({
         {diff !== 0 && (
           <p className={`text-xs tnum ${diff > 0 ? 'text-positive' : 'text-warning'}`}>
             {diff > 0 ? t('stocktake.gain') : t('stocktake.loss')}:{' '}
-            {formatNumber(Math.abs(diff), locale)} · {t('stocktake.valueImpact')}{' '}
-            {formatMoney(diff * unitCost, currency, locale)}
+            {formatNumber(Math.abs(diff), locale)}
+            {seeCosts &&
+              ` · ${t('stocktake.valueImpact')} ${formatMoney(diff * unitCost, currency, locale)}`}
           </p>
         )}
         <label className="block">

@@ -11,6 +11,8 @@ import { useConnection } from './stores/connection';
 import { useConnectionMonitor } from './lib/useConnectionMonitor';
 import { Shell } from './components/shell/Shell';
 import { OfflineGate } from './components/OfflineGate';
+import { UpdateNotice } from './components/UpdateNotice';
+import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -35,6 +37,7 @@ import { DeliveriesPage } from './pages/DeliveriesPage';
 import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
+import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
@@ -148,9 +151,11 @@ export default function App() {
   useRefetchOnLocale();
   useConnectionMonitor();
   useBootstrapAuth();
+  useEffect(startAppUpdates, []);
 
   return (
     <QueryClientProvider client={queryClient}>
+      <UpdateNotice />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
@@ -164,6 +169,7 @@ export default function App() {
               element={<ReturnBuilderPage scope="sales" />}
             />
             <Route path="/parties" element={<PartiesPage />} />
+            <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inventory/items/:id" element={<ItemCardPage />} />

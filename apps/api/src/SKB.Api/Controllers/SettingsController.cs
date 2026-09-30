@@ -51,6 +51,8 @@ public sealed class SettingsController : ControllerBase
         if (req.DefaultMarkupPercent is int mk) s.DefaultMarkupPercent = Math.Clamp(mk, 0, 1000);
         if (req.MinMarkupPercent is int min) s.MinMarkupPercent = Math.Clamp(min, 0, 1000);
         if (req.TransfersRequireReceipt is bool receipt) s.TransfersRequireReceipt = receipt;
+        if (req.MaxDiscountPercent is int maxDiscount) s.MaxDiscountPercent = Math.Clamp(maxDiscount, 0, 100);
+        if (req.PendingHoldDays is int holdDays) s.PendingHoldDays = Math.Clamp(holdDays, 0, 365);
         if (req.CompanyName is not null && req.CompanyName.Trim().Length > 200)
             return BadRequest(new { message = "The name is too long.", code = "bad_name" });
         if (req.Address is not null) s.Address = Text(req.Address, 300);

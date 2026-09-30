@@ -91,6 +91,8 @@ export function SettingsPage() {
       defaultTaxPercent: form.defaultTaxPercent,
       defaultMarkupPercent: form.defaultMarkupPercent,
       minMarkupPercent: form.minMarkupPercent,
+      maxDiscountPercent: form.maxDiscountPercent,
+      pendingHoldDays: form.pendingHoldDays,
       transfersRequireReceipt: form.transfersRequireReceipt,
       address: form.address ?? '',
       phone: form.phone ?? '',
@@ -284,6 +286,32 @@ export function SettingsPage() {
               onChange={(e) => set({ minMarkupPercent: clampInt(e.target.value, 0, 1000) })}
             />
             <span className="mt-0.5 block text-xs text-faint">{t('settings.minMarkupHint')}</span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.maxDiscount')}</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className={`${field} tnum`}
+              disabled={disabled}
+              value={form.maxDiscountPercent ?? 100}
+              onChange={(e) => set({ maxDiscountPercent: clampInt(e.target.value, 0, 100) })}
+            />
+            <span className="mt-0.5 block text-xs text-faint">{t('settings.maxDiscountHint')}</span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-0.5 block text-xs text-muted">{t('settings.pendingHoldDays')}</span>
+            <input
+              type="number"
+              min={0}
+              max={365}
+              className={`${field} tnum`}
+              disabled={disabled}
+              value={form.pendingHoldDays ?? 0}
+              onChange={(e) => set({ pendingHoldDays: clampInt(e.target.value, 0, 365) })}
+            />
+            <span className="mt-0.5 block text-xs text-faint">{t('settings.pendingHoldDaysHint')}</span>
           </label>
         </div>
       </Card>

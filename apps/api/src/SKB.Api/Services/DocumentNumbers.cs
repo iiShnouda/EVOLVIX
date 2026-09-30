@@ -14,6 +14,7 @@ public static class DocumentNumbers
         DocumentType.SALES_RETURN => $"SRT-{year}-",
         DocumentType.PURCHASE_RETURN => $"PRT-{year}-",
         DocumentType.QUOTATION => $"QT-{year}-",
+        DocumentType.SALES_ORDER => $"SO-{year}-",
         _ => $"DOC-{year}-",
     };
 

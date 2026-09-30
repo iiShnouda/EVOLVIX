@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useWorkDraft } from '../lib/workDraft';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatDate, formatMoney, formatQuantity, toMinor, type DocumentLine } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useCreateReturn, useDocument, type DocScope } from '../lib/queries';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
@@ -29,6 +31,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const isSale = scope === 'sales';
   const { id = '' } = useParams();
   const { t, locale } = useT();
+  // The cost and profit a sales return reverses are the owner's unless given (costs:view).
+  const seeCosts = useCan()('costs:view');
+  const canRefund = useCan()('sales:approve');
   const navigate = useNavigate();
 
   const invoice = useDocument(scope, id);
@@ -40,7 +45,33 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const [inBase, setInBase] = useState<Record<string, boolean>>({});
   const [refund, setRefund] = useState('');
   const [refundAccountId, setRefundAccountId] = useState('');
+  // Shipping we paid to get a customer's goods back: our expense.
+  const [shipping, setShipping] = useState('');
+  const [shippingAccountId, setShippingAccountId] = useState('');
   const [notes, setNotes] = useState('');
+
+  // What's typed is kept through an app update (lines of the invoice that are gone are skipped).
+  useWorkDraft<ReturnDraft>(
+    1,
+    () =>
+      Object.keys(qty).length === 0 && !notes && !refund && !shipping
+        ? null
+        : { qty, inBase, refund, refundAccountId, shipping, shippingAccountId, notes },
+    (d) => {
+      const text = (v: unknown) => (typeof v === 'string' ? v : '');
+      const numbers = Object.fromEntries(
+        Object.entries(d.qty ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0),
+      );
+      const flags = Object.fromEntries(Object.entries(d.inBase ?? {}).filter(([, v]) => typeof v === 'boolean'));
+      setQty(numbers);
+      setInBase(flags);
+      setRefund(text(d.refund));
+      setRefundAccountId(text(d.refundAccountId));
+      setShipping(text(d.shipping));
+      setShippingAccountId(text(d.shippingAccountId));
+      setNotes(text(d.notes));
+    },
+  );
 
   const backTo = `/${scope}`;
   const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
@@ -132,6 +163,8 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
           lines: rows.filter((r) => r.q > 0).map((r) => ({ lineId: r.line.id, quantity: r.q })),
           refundAmount: refundMinor,
           refundAccountId: refundMinor > 0 && refundAccountId ? refundAccountId : undefined,
+          shippingCost: isSale && Number(shipping) > 0 ? toMinor(Number(shipping)) : undefined,
+          shippingAccountId: isSale && Number(shipping) > 0 && shippingAccountId ? shippingAccountId : undefined,
           notes: notes.trim() || undefined,
         },
       });
@@ -262,7 +295,7 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                         <span className="font-medium">
                           {formatMoney(r.value, currency, locale)}
                         </span>
-                        {isSale && (
+                        {isSale && seeCosts && (
                           <>
                             {' · '}
                             {t('return.profitReversed')}:{' '}
@@ -298,12 +331,16 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                 value={formatMoney(total, currency, locale)}
                 strong
               />
-              <div className="my-1 border-t border-line" />
-              <Row
-                label={isSale ? t('return.costBack') : t('return.costOut')}
-                value={formatMoney(cost, currency, locale)}
-              />
-              {isSale && (
+              {(!isSale || seeCosts) && (
+                <>
+                  <div className="my-1 border-t border-line" />
+                  <Row
+                    label={isSale ? t('return.costBack') : t('return.costOut')}
+                    value={formatMoney(cost, currency, locale)}
+                  />
+                </>
+              )}
+              {isSale && seeCosts && (
                 <div className="flex items-center justify-between">
                   <dt className="text-muted">{t('return.profitReversed')}</dt>
                   <dd className="font-semibold tnum text-warning">
@@ -314,19 +351,22 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
             </dl>
 
             <div className="mt-3 space-y-2">
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">
-                  {isSale ? t('return.refundNow') : t('return.refundFromSupplier')}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={`${field} tnum`}
-                  value={refund}
-                  onChange={(e) => setRefund(e.target.value)}
-                />
-              </label>
+              {/* Cash back to a customer is the accountant's; the seller's return goes on the account. */}
+              {(!isSale || canRefund) && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {isSale ? t('return.refundNow') : t('return.refundFromSupplier')}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={refund}
+                    onChange={(e) => setRefund(e.target.value)}
+                  />
+                </label>
+              )}
               {refundMinor > 0 && (
                 <MoneyAccountPicker
                   className={field}
@@ -338,6 +378,28 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
               <p className="text-xs text-faint">
                 {isSale ? t('return.creditHint') : t('return.debitHint')}
               </p>
+              {isSale && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.shippingCost')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={shipping}
+                    onChange={(e) => setShipping(e.target.value)}
+                  />
+                  <span className="mt-0.5 block text-xs text-faint">{t('return.shippingHint')}</span>
+                </label>
+              )}
+              {isSale && Number(shipping) > 0 && (
+                <MoneyAccountPicker
+                  className={field}
+                  label={t('money.paidInto')}
+                  value={shippingAccountId}
+                  onChange={setShippingAccountId}
+                />
+              )}
               {doc.additionTotal > 0 && (
                 <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
               )}
@@ -379,4 +441,15 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <dd className={`tnum ${strong ? 'text-base font-semibold' : ''}`}>{value}</dd>
     </div>
   );
+}
+
+/** A return being written, as kept through an app update. */
+interface ReturnDraft {
+  qty: Record<string, number>;
+  inBase: Record<string, boolean>;
+  refund: string;
+  refundAccountId: string;
+  shipping: string;
+  shippingAccountId: string;
+  notes: string;
 }

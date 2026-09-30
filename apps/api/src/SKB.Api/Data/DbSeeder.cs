@@ -197,8 +197,8 @@ public static class DbSeeder
         var c2 = new Party { Name = "City Mart Chain", Types = { "CUSTOMER" }, Phone = "+20 122 333 4444", Balance = Money(7320), Currency = Currency };
         var c3 = new Party { Name = "Green Valley Grocery", Types = { "CUSTOMER" }, Phone = "+20 122 555 6666", Balance = 0, Currency = Currency };
         var s1 = new Party { Name = "Delta Distribution Co.", Types = { "SUPPLIER" }, Phone = "+20 155 777 8888", Balance = Money(-9600), Currency = Currency };
-        var s2 = new Party { Name = "Nile Beverages Factory", Types = { "SUPPLIER", "FACTORY" }, Phone = "+20 155 999 0000", Balance = Money(-14250), Currency = Currency };
-        var s3 = new Party { Name = "Pyramid Packaging Factory", Types = { "FACTORY", "SUPPLIER" }, Phone = "+20 155 121 3141", Balance = Money(-3200), Currency = Currency };
+        var s2 = new Party { Name = "Nile Beverages Factory", Types = { "SUPPLIER" }, ContactName = "Hassan Nile", Phone = "+20 155 999 0000", OtherPhones = { "+20 2 2345 6789" }, Address = "10th of Ramadan — Industrial Zone A", Balance = Money(-14250), Currency = Currency };
+        var s3 = new Party { Name = "Pyramid Packaging Factory", Types = { "SUPPLIER" }, ContactName = "Adel Pyramid", Phone = "+20 155 121 3141", Address = "Giza — Abu Rawash Industrial Area", Balance = Money(-3200), Currency = Currency };
         // A shipping company (DOMAIN.md §2.5): parcels it delivers with cash on delivery go on its account.
         var k1 = new Party { Name = "Swift Courier", Types = { "CARRIER" }, Phone = "+20 100 222 3333", Balance = 0, Currency = Currency };
         db.Parties.AddRange(c1, c2, c3, s1, s2, s3, k1);

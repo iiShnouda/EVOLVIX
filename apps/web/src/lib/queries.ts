@@ -9,10 +9,14 @@ import type {
   QuantityBreak,
   SavePriceListInput,
   SetQuantityBreaksInput,
+  Department,
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
   CreateSalesInvoiceInput,
+  ApproveOrderInput,
+  CustomerAccount,
+  NotificationList,
   UpdateSettingsInput,
   BranchWithWarehouses,
   CreateBranchInput,
@@ -133,19 +137,34 @@ export function useDashboard() {
 /** Which side of the business a document belongs to (also its API prefix). */
 export type DocScope = 'sales' | 'purchases';
 /** Invoices, the returns issued against them, or (sales) price quotations. */
-export type DocKind = 'invoices' | 'returns' | 'quotations';
+export type DocKind = 'invoices' | 'returns' | 'quotations' | 'orders';
 
 export function useDocumentList(
   scope: DocScope,
   kind: DocKind,
-  params: { page: number; search?: string; status?: string },
+  params: {
+    page: number;
+    search?: string;
+    status?: string;
+    /** Sales: one department ('none' = of no department), and company days from / to. */
+    departmentId?: string;
+    from?: string;
+    to?: string;
+    /** Off: not asked for (e.g. no permission to see that list). */
+    enabled?: boolean;
+  },
 ) {
+  const { enabled = true, ...key } = params;
   const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
+  if (params.departmentId) query.set('departmentId', params.departmentId);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
   return useQuery({
-    queryKey: [scope, kind, params],
+    queryKey: [scope, kind, key],
     queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/${scope}/${kind}?${query}`),
+    enabled,
   });
 }
 
@@ -196,12 +215,23 @@ export function usePresence(enabled: boolean) {
 // ---------------------------------------------------------------------------
 
 /** Product search for the invoice line picker. `search` empty → recent/first products. */
-export function useProductSearch(search: string, inStockOnly = false) {
+/** Items by name / SKU / barcode / supplier code / price; `supplierId` keeps one supplier's items. */
+export function useProductSearch(
+  search: string,
+  inStockOnly = false,
+  supplierId = '',
+  departmentId = '',
+  categoryId = '',
+) {
   const query = new URLSearchParams();
+  if (categoryId) query.set('categoryId', categoryId);
   if (search) query.set('search', search);
   if (inStockOnly) query.set('inStockOnly', 'true');
+  if (supplierId) query.set('supplierId', supplierId);
+  // A department's items and items of no department.
+  if (departmentId) query.set('departmentId', departmentId);
   return useQuery({
-    queryKey: ['products', search, inStockOnly],
+    queryKey: ['products', search, inStockOnly, supplierId, departmentId, categoryId],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
   });
 }
@@ -242,6 +272,83 @@ function invalidateAfterPosting(qc: ReturnType<typeof useQueryClient>, scope: Do
   void qc.invalidateQueries({ queryKey: ['parties'] });
   void qc.invalidateQueries({ queryKey: ['report'] });
   void qc.invalidateQueries({ queryKey: ['ledger'] });
+}
+
+/** Save a pending invoice for the accountant: goods held, nothing posted. */
+export function useCreateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSalesInvoiceInput) => api.post<SalesDocument>('/sales/orders', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** The accountant approves a pending invoice: it becomes a posted sales invoice. */
+export function useApproveOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ApproveOrderInput }) =>
+      api.post<SalesDocument>(`/sales/orders/${id}/approve`, input),
+    onSuccess: () => {
+      invalidateAfterPosting(qc, 'sales');
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** The accountant turns a pending invoice down, saying why. */
+export function useRejectOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<SalesDocument>(`/sales/orders/${id}/reject`, { reason }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+/** My notifications (the bell); checked every 30 seconds while the app is open. */
+export function useNotifications() {
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get<NotificationList>('/notifications'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useReadNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | 'all') =>
+      api.post<void>(id === 'all' ? '/notifications/read-all' : `/notifications/${id}/read`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function useCancelOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/orders/${id}/cancel`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** A customer's account for the accountant: per department, every invoice, pending ones. */
+export function useCustomerAccount(partyId: string | null, departmentId = '') {
+  const query = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
+  return useQuery({
+    queryKey: ['account', partyId, departmentId],
+    queryFn: () => api.get<CustomerAccount>(`/sales/customers/${partyId}/account${query}`),
+    enabled: !!partyId,
+  });
 }
 
 export function useCreateSalesInvoice() {
@@ -462,6 +569,14 @@ export function useCategories() {
   });
 }
 
+/** Sales departments (أقسام), open ones first. */
+export function useDepartments() {
+  return useQuery({
+    queryKey: ['catalog', 'departments'],
+    queryFn: () => api.get<Department[]>('/departments'),
+  });
+}
+
 export function usePriceLevels() {
   return useQuery({
     queryKey: ['catalog', 'price-levels'],
@@ -477,14 +592,17 @@ export function useVariantOptions() {
 }
 
 /** The lists edited on the catalog setup page, keyed by their API path. */
-export type CatalogList = 'units' | 'categories' | 'price-levels' | 'variant-options';
+export type CatalogList = 'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
+
+/** A category's department: an id, or '' for none (every department). */
+type DepartmentChoice = { departmentId?: string };
 
 export function useCreateCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (
       input:
-        | CreateNamedInput
+        | (CreateNamedInput & DepartmentChoice)
         | CreatePriceLevelInput
         | (CreateVariantOptionInput & { kind: VariantKind }),
     ) => api.post<unknown>(`/${list}`, input),
@@ -495,7 +613,13 @@ export function useCreateCatalogEntry(list: CatalogList) {
 export function useUpdateCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateNamedInput | UpdatePriceLevelInput }) =>
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: UpdateNamedInput | UpdatePriceLevelInput | DepartmentChoice;
+    }) =>
       api.put<unknown>(`/${list}/${id}`, input),
     onSuccess: () => invalidateCatalog(qc),
   });
@@ -579,6 +703,32 @@ export function useSetModelPrices() {
 }
 
 /** A customer's / supplier's own price level ("" = back to the default). */
+/** Set or clear (null) a customer's credit limit. */
+export function useSetCreditLimit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, creditLimit }: { id: string; creditLimit: number | null }) =>
+      api.put<Party>(`/parties/${id}/credit-limit`, { creditLimit }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
+/** Change a pending invoice (its maker or an approver). */
+export function useUpdateOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateSalesInvoiceInput }) =>
+      api.put<SalesDocument>(`/sales/orders/${id}`, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sales'] });
+      void qc.invalidateQueries({ queryKey: ['account'] });
+    },
+  });
+}
+
 export function useSetPartyPriceLevels() {
   const qc = useQueryClient();
   return useMutation({
@@ -1003,13 +1153,15 @@ export function useLedgerStatement(
   id: string,
   from: string,
   to: string,
+  /** Party statements: one branch's lines ('' = all), and each invoice's items. */
+  options: { branchId?: string; items?: boolean } = {},
 ) {
+  const query = new URLSearchParams({ from, to });
+  if (options.branchId) query.set('branchId', options.branchId);
+  if (options.items) query.set('items', 'true');
   return useQuery({
-    queryKey: ['ledger', 'statement', kind, id, from, to],
-    queryFn: () =>
-      api.get<LedgerStatement>(
-        `/ledger/${kind}/${id}/statement?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-      ),
+    queryKey: ['ledger', 'statement', kind, id, from, to, options.branchId ?? '', !!options.items],
+    queryFn: () => api.get<LedgerStatement>(`/ledger/${kind}/${id}/statement?${query}`),
     enabled: !!id,
   });
 }
@@ -1296,7 +1448,7 @@ export function useCancelQuotation() {
   });
 }
 
-export function usePerformance(from: string, to: string, by: 'rep' | 'branch') {
+export function usePerformance(from: string, to: string, by: 'rep' | 'branch' | 'department') {
   return useQuery({
     queryKey: ['report', 'performance', from, to, by],
     queryFn: () =>

@@ -16,6 +16,13 @@ public static class Permissions
     public const string SalesReturn = "sales:return";
     /// <summary>Make and cancel price quotations (turning one into an invoice needs sales:create).</summary>
     public const string SalesQuote = "sales:quote";
+    /// <summary>
+    /// Save a pending invoice (فاتورة معلّقة) for the accountant (owner decision 2026-09-30): priced
+    /// and checked like an invoice, its goods held for it, but nothing posted until approved.
+    /// </summary>
+    public const string SalesOrder = "sales:order";
+    /// <summary>Approve a pending invoice: adjust its discounts, take the payment and post it.</summary>
+    public const string SalesApprove = "sales:approve";
     public const string PurchasesView = "purchases:view";
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
@@ -81,7 +88,7 @@ public static class Permissions
     public const string PayrollPay = "payroll:pay";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
-    /// <summary>Add a customer, supplier, factory or shipping company.</summary>
+    /// <summary>Add a customer, supplier (factories are suppliers) or shipping company.</summary>
     public const string PartiesCreate = "parties:create";
     /// <summary>See deliveries, shipments and carrier settlements.</summary>
     public const string DeliveryView = "delivery:view";
@@ -105,6 +112,12 @@ public static class Permissions
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
     public const string AuditView = "audit:view";
+    /// <summary>
+    /// See what goods cost and what sales earned: cost and profit on sales documents, items' average
+    /// cost, stock values and the profit reports. The owner's alone unless given (owner decision
+    /// 2026-09-30); without it the server leaves these numbers out (see Services/Costs.cs).
+    /// </summary>
+    public const string CostsView = "costs:view";
     /// <summary>Download a backup of everything (the owner's alone by default).</summary>
     public const string BackupCreate = "backup:create";
     public const string PresenceView = "presence:view";
@@ -126,6 +139,13 @@ public static class Permissions
     public const string VariantOptionsManage = "variant_options:manage";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
+    /// <summary>
+    /// Sell above the price level's price, on this invoice only (owner decision 2026-09-30): the
+    /// seller may add to a piece's price but never go under it (that needs sales:change_price).
+    /// </summary>
+    public const string SalesRaisePrice = "sales:raise_price";
+    /// <summary>Be told of each new sales invoice (customer and department), e.g. the accountant who takes the payment.</summary>
+    public const string SalesInvoiceAlerts = "sales:invoice_alerts";
     /// <summary>Price a sales invoice at a level other than the customer's own.</summary>
     public const string SalesChoosePriceLevel = "sales:choose_price_level";
     /// <summary>Buy at a cost other than the supplier price level's.</summary>
@@ -134,6 +154,10 @@ public static class Permissions
     public const string PurchasesChoosePriceLevel = "purchases:choose_price_level";
     /// <summary>Set a customer's or supplier's default price level.</summary>
     public const string PartiesSetPriceLevel = "parties:set_price_level";
+    /// <summary>Set a customer's credit limit (حد الائتمان).</summary>
+    public const string PartiesCreditLimit = "parties:credit_limit";
+    /// <summary>Post a sale that takes a customer over their credit limit.</summary>
+    public const string SalesOverCredit = "sales:over_credit";
 
     // ---- Invoice charges (DOMAIN.md step 4) ----
     /// <summary>Give an invoice-level discount on a sale (خصم مسموح به / خصم إضافي).</summary>
@@ -153,10 +177,11 @@ public static class Permissions
     public static readonly string[] All =
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
+        SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
-        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate,
+        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
@@ -179,11 +204,16 @@ public static class RolePermissions
     public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
-        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate).ToArray(),
+        // Costs and profit stay with the owner by default; the owner can give them to anyone.
+        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate
+            && p != Permissions.CostsView).ToArray(),
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
             Permissions.SalesOverrideFloor, Permissions.SalesReturn, Permissions.SalesQuote,
+            // Invoices post at once and the accountant is told (owner decision 2026-09-30); approving
+            // stays only for pending invoices someone may still be asked to save.
+            Permissions.SalesApprove, Permissions.SalesInvoiceAlerts, Permissions.SalesRaisePrice,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
@@ -191,6 +221,7 @@ public static class RolePermissions
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
             Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel, Permissions.PartiesSetPriceLevel,
+            Permissions.PartiesCreditLimit,
             Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
@@ -205,12 +236,15 @@ public static class RolePermissions
             Permissions.PayrollView, Permissions.AttendanceEdit, Permissions.PayrollAdjust, Permissions.PayrollAdvance,
             Permissions.PayrollPost, Permissions.PayrollPay,
         },
-        // Sales staff sell at the customer's price level; changing a price or the level needs a
-        // manager (owner decision 2026-09-29).
+        // Sales staff sell at the customer's price level and may only add to a price; lowering it or
+        // changing the level needs a manager (owner decisions 2026-09-29, 2026-09-30). Their
+        // invoices post at once; the accountant is told and takes the payment.
         [Role.SALES] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
-            Permissions.SalesQuote,
+            Permissions.SalesQuote, Permissions.SalesRaisePrice,
+            // The seller writes a customer's return; it goes straight back into its warehouse.
+            Permissions.SalesReturn,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
         },

@@ -893,6 +893,26 @@ own permission, and roles bundle them
 - Party balances use standard accounting terms: **مدين / Receivable** and **دائن / Payable**
   (were plain "لنا عليهم / لهم علينا"). Fixed in web + Windows.
 
+**Sales departments, pending invoices, costs (owner decisions 2026-09-30; DOMAIN §2.5b)**
+- Factories merged into suppliers; party details (owner, phones, factory / shipping address, notes).
+- Items: main supplier + supplier code; invoice search by supplier, supplier code and price.
+- `costs:view`: cost and profit hidden server-side from everyone but the owner and those given it.
+- Line discounts (%, per piece, amount) under `sales:discount`; per-person / company discount limit.
+- Departments (groups of categories), department access per person, performance by department.
+- Pending invoices (`SALES_ORDER`) with held stock, approved by the accountant with payment and
+  discount changes; customer account per department; cheques/notes pre-filled against an invoice.
+- Checks: `parties`, `costs`, `departments`, `orders` (plus every earlier suite, green on a filled DB).
+
+**Invoices post at once, codes, price raise, self-updating app (owner decisions 2026-09-30)**
+- A sale posts at once; `sales:invoice_alerts` holders are told (customer, department, amount).
+  Pending invoices only for someone given `sales:order` without `sales:create`.
+- Codes for parties and staff (sequences + backfill), lookup by code on the invoice.
+- `sales:raise_price`: add to a price on one invoice, never lower it.
+- Price level and quotation "valid until" off the sales screens; sticky totals column fixed (the main
+  area is no longer a scroll box).
+- Self-update: `/version.json` + service worker, per-person drafts on the server (`/api/drafts`),
+  restore after reload. Check: `codes`.
+
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).
 - **Inventory costing = moving weighted average.** Receipt recomputes avg cost; sale issues at

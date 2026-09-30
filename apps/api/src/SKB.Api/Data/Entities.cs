@@ -119,6 +119,8 @@ public class StockBalance
 public class Staff
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>The person's number (كود): 1, 2, 3… in the order they were added; shown beside their name.</summary>
+    public int Code { get; set; }
     public string FullName { get; set; } = "";
     public string Email { get; set; } = "";
     public string PasswordHash { get; set; } = "";
@@ -143,6 +145,13 @@ public class Staff
     public List<Guid> WarehouseIds { get; set; } = new();
     /// <summary>Only these cash boxes, banks and wallets (none = every one in their branches).</summary>
     public List<Guid> MoneyAccountIds { get; set; } = new();
+    /// <summary>Only these sales departments (none = every department).</summary>
+    public List<Guid> DepartmentIds { get; set; } = new();
+    /// <summary>
+    /// The most discount this person may give, as a % of what a line is worth (their own line
+    /// discount plus its share of the invoice discount); null = the company's limit.
+    /// </summary>
+    public int? MaxDiscountPercent { get; set; }
 
     public List<Session> Sessions { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -193,12 +202,30 @@ public class AuditEntry
 public class Party
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>
+    /// The customer's / supplier's number (كود): 1, 2, 3… in the order they were added, shown beside
+    /// the name; an invoice can be started by typing it.
+    /// </summary>
+    public int Code { get; set; }
     public string Name { get; set; } = "";
     public List<string> Types { get; set; } = new();
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? TaxNumber { get; set; }
+    /// <summary>The main address. For a supplier this is the factory's address (عنوان المصنع).</summary>
     public string? Address { get; set; }
+    /// <summary>Phone numbers besides <see cref="Phone"/> (up to 5).</summary>
+    public List<string> OtherPhones { get; set; } = new();
+    /// <summary>Who to deal with: the factory owner (صاحب المصنع) for a supplier, the person in charge for a customer.</summary>
+    public string? ContactName { get; set; }
+    /// <summary>Where goods are shipped (عنوان الشحن); delivered sales start at it, else at <see cref="Address"/>.</summary>
+    public string? ShippingAddress { get; set; }
+    public string? Notes { get; set; }
+    /// <summary>
+    /// The most a customer may owe (حد الائتمان, minor units); null = no limit. A sale that would take
+    /// their balance over it is refused unless the person may go over it (sales:over_credit).
+    /// </summary>
+    public long? CreditLimit { get; set; }
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
     public bool IsActive { get; set; } = true;
@@ -224,7 +251,24 @@ public class Category : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    /// <summary>The sales department the category's items belong to (none = sold by every department).</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
     public List<Product> Products { get; set; } = new();
+}
+
+/// <summary>
+/// A sales department (قسم), e.g. men's or underwear: a group of categories (owner decision
+/// 2026-09-30). A department's sales people sell only its items, even from a warehouse other
+/// departments share, and each invoice belongs to one department so the accountant can see what a
+/// customer took from each. A company-wide list; closed, never deleted.
+/// </summary>
+public class Department : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -372,6 +416,10 @@ public class ProductModel : INamed
     public string Code { get; set; } = "";
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
+    /// <summary>Main supplier and its code for the model; every variant follows them.</summary>
+    public Guid? SupplierId { get; set; }
+    public Party? Supplier { get; set; }
+    public string? SupplierCode { get; set; }
     public int ReorderLevel { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -426,6 +474,14 @@ public class Product : INamed
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }
 
+    /// <summary>
+    /// The item's main supplier (the factory it comes from), and that supplier's own code for it
+    /// (owner decision 2026-09-30). A variant follows its model's.
+    /// </summary>
+    public Guid? SupplierId { get; set; }
+    public Party? Supplier { get; set; }
+    public string? SupplierCode { get; set; }
+
     /// <summary>Set on a variant: its model, and its size and/or color. Its name is composed from them.</summary>
     public Guid? ModelId { get; set; }
     public ProductModel? Model { get; set; }
@@ -479,6 +535,13 @@ public class SalesDocument
 
     /// <summary>Additions such as a delivery fee (minor units): owed by the party, not revenue or cost.</summary>
     public long AdditionTotal { get; set; }
+
+    /// <summary>Why a pending invoice was turned down (REJECTED).</summary>
+    public string? RejectReason { get; set; }
+
+    /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
 
     /// <summary>The sales rep (مندوب) credited with a sale. No commission (owner, 2026-09-29).</summary>
     public Guid? RepId { get; set; }
@@ -850,6 +913,13 @@ public class CompanySettings
     /// <summary>Default sales tax/VAT percent applied to new invoices (0 = none).</summary>
     public int DefaultTaxPercent { get; set; } = 0;
     /// <summary>
+    /// The most discount staff may give, as a % of a line's worth, unless their own limit says
+    /// otherwise (100 = no limit). The owner has no limit.
+    /// </summary>
+    public int MaxDiscountPercent { get; set; } = 100;
+    /// <summary>A pending invoice holds its goods this many days (0 = until approved or cancelled).</summary>
+    public int PendingHoldDays { get; set; }
+    /// <summary>
     /// The receiving warehouse confirms a transfer before the goods count there (old
     /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.
     /// </summary>
@@ -1191,3 +1261,40 @@ public class PayrollLine
     public Guid? PaidAccountId { get; set; }
 }
 
+
+/// <summary>An in-app notification for one person (the bell), e.g. a pending invoice to approve.</summary>
+public class Notification
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>INVOICE_NEW, ORDER_PENDING, ORDER_APPROVED, ORDER_REJECTED (the app words it in the screen language).</summary>
+    public string Kind { get; set; } = "";
+    public Guid? DocumentId { get; set; }
+    public string? DocumentNumber { get; set; }
+    public string? PartyName { get; set; }
+    /// <summary>The invoice's sales department (قسم), as it was named then.</summary>
+    public string? DepartmentName { get; set; }
+    public long Amount { get; set; }
+    public string? ActorName { get; set; }
+    public string? Message { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ReadAt { get; set; }
+}
+
+/// <summary>
+/// Work in progress one person had open when the app updated itself (owner decision 2026-09-30):
+/// the screen saves what was typed here, the new version reloads at the same place and takes it
+/// back. Kept on the server, never on the device (CLAUDE.md rule 1), and only for a short while.
+/// </summary>
+public class WorkDraft
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>Which screen it belongs to (its address), e.g. "/sales/new".</summary>
+    public string Key { get; set; } = "";
+    /// <summary>The screen's own JSON; each screen reads back only what it still has.</summary>
+    public string Data { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

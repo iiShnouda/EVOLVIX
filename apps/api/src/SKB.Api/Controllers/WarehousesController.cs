@@ -265,7 +265,7 @@ public sealed class WarehousesController : ControllerBase
             g.Sum(kv => state.ValueOf(kv.Key.Product, kv.Key.Warehouse))));
     }
 
-    private static BranchDto ToDto(Branch b, Dictionary<Guid, Stats> stats) => new(
+    private BranchDto ToDto(Branch b, Dictionary<Guid, Stats> stats) => new(
         b.Id.ToString(), b.Code, Loc.Name(b), b.Location, b.IsActive,
         b.Warehouses
             .Where(w => w.Kind == WarehouseKind.STORE)
@@ -273,11 +273,12 @@ public sealed class WarehousesController : ControllerBase
             .Select(w => { w.Branch = b; return ToDto(w, stats); })
             .ToArray());
 
-    private static WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)
+    /// <summary>A warehouse with its stock; the stock's value only for people who may see costs.</summary>
+    private WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)
     {
         var s = stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0);
-        return new WarehouseDto(w.Id.ToString(), w.Code, Loc.Name(w), w.BranchId.ToString(), Loc.Name(w.Branch),
-            w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value);
+        return Costs.Guard(User, new WarehouseDto(w.Id.ToString(), w.Code, Loc.Name(w), w.BranchId.ToString(),
+            Loc.Name(w.Branch), w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value));
     }
 
     private Task AuditAsync(string action, string resource, Guid id, Guid branchId) =>

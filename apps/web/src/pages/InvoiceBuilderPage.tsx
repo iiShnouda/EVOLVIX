@@ -12,21 +12,25 @@ import {
   type DeliveryMethod,
   type Party,
   type Product,
-  type RepOption,
-  addDays,
-  companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
+import { PartyPicker } from '../components/PartyPicker';
+import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
+import { useAuth } from '../stores/auth';
+import { useWorkDraft } from '../lib/workDraft';
 import {
+  useCategories,
   useCompanySettings,
+  useDepartments,
   useCreatePurchaseInvoice,
+  useCreateOrder,
   useCreateQuotation,
   useCreateSalesInvoice,
   useInventory,
@@ -50,6 +54,27 @@ interface Line {
   touched: boolean;
   /** Free goods (بونص): no price, but the cost counts. */
   bonus: boolean;
+  /**
+   * A discount on this line only: a percent of it, so much per piece (the item's smallest unit,
+   * «على الحتة»), or a fixed amount. Sales and quotations; needs the discount permission.
+   */
+  discMode: LineDiscountMode;
+  discValue: string;
+}
+
+type LineDiscountMode = 'percent' | 'piece' | 'amount';
+
+/** A line discount in minor units, never more than the line (`gross`) is worth. */
+function lineDiscount(mode: LineDiscountMode, value: string, gross: number, basePieces: number) {
+  const v = Number(value);
+  if (!value.trim() || !Number.isFinite(v) || v <= 0 || gross <= 0) return 0;
+  const d =
+    mode === 'percent'
+      ? Math.round((gross * Math.min(v, 100)) / 100)
+      : mode === 'piece'
+        ? toMinor(v) * basePieces
+        : toMinor(v);
+  return Math.min(gross, Math.max(0, d));
 }
 
 /** An invoice discount as typed: a percent or an amount. */
@@ -61,17 +86,23 @@ interface DiscountInput {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
+/** A filter above the item search: as wide as its text, not the whole row. */
+const filterSelect =
+  'h-9 min-w-40 max-w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+
 let nextKey = 0;
 
 /**
  * Sales / purchase invoice builder, and (mode "quote") the price quotation builder: a quotation is
- * priced the same way but has no payment or delivery, may promise more than is in stock, and holds
- * its prices until its date. Each line is in one of the item's units (piece, carton…); the server
- * prices it (POST /pricing): the party's price list or an offer, else the invoice's price level —
- * the party's own, else the default — and, for an item without a price, cost × (1 + default markup)
- * (sales) or the average cost (purchases); on a sale, a quantity discount then comes off. Typing
- * another price or picking another level needs its own permission; the server checks the same.
- * Live cost, markup and profit use the cost of the chosen warehouse's branch.
+ * priced the same way but has no payment or delivery, may promise more than is in stock, and moves
+ * nothing until it becomes an invoice. Each line is in one of the item's units (piece, carton…); the
+ * server prices it (POST /pricing): the party's price list or an offer, else the party's price level
+ * (else the default) — not shown on a sale — and, for an item without a price, cost × (1 + default
+ * markup) (sales) or the average cost (purchases); on a sale a quantity discount then comes off.
+ * A seller may add to a piece's price on this invoice only (sales:raise_price); lowering it or
+ * picking another level needs its own permission; the server checks the same.
+ * Live cost, markup and profit use the cost of the chosen warehouse's branch. What's typed is kept
+ * through an app update (useWorkDraft).
  */
 export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quote' }) {
   const isQuote = mode === 'quote';
@@ -80,24 +111,41 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
+  /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
+  const seeCosts = can('costs:view');
 
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
   const canChangePrice = can(isSale ? 'sales:change_price' : 'purchases:change_price');
+  // Adding to a price, on this invoice only (owner decision 2026-09-30).
+  const canRaisePrice = isSale && can('sales:raise_price');
+  const priceEditable = canChangePrice || canRaisePrice;
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
   const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
   const canBonus = can(isSale ? 'sales:bonus' : 'purchases:bonus');
-  const canChangeTax = can(isSale ? 'sales:change_tax' : 'purchases:change_tax');
-  const canAdditions = can(isSale ? 'sales:additions' : 'purchases:additions');
   const reps = useReps(isSale);
-  const [repId, setRepId] = useState('');
+  const me = useAuth((s) => s.user);
+  // Every sale has a rep (المندوب): whoever makes it unless another is picked.
+  const [pickedRep, setPickedRep] = useState('');
+  const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
+  /** Their discount limit (%); null = none. */
+  const maxDiscount = me?.maxDiscountPercent ?? null;
 
-  const parties = useParties({
-    page: 1,
-    pageSize: 100,
-    type: isSale ? 'CUSTOMER' : 'SUPPLIER',
-    active: true,
-  });
+  // The sales department (قسم): only the person's own; one of them is picked for them.
+  const departmentList = useDepartments();
+  const myDepartments = me?.departmentIds ?? null;
+  const departments = (departmentList.data ?? []).filter(
+    (d) => d.isActive && (!myDepartments || myDepartments.includes(d.id)),
+  );
+  const [pickedDepartment, setPickedDepartment] = useState('');
+  const departmentId = !isSale
+    ? ''
+    : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
+      ? pickedDepartment
+      : departments.length === 1 && myDepartments
+        ? (departments[0]?.id ?? '')
+        : '';
+
   const carriers = useParties({
     page: 1,
     pageSize: 100,
@@ -108,11 +156,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [delivery, setDelivery] = useState<DeliveryValue>({
     method: 'PICKUP',
     address: '',
-    driverId: '',
     carrierId: '',
   });
-  const [partyId, setPartyId] = useState('');
-  const party = parties.data?.items.find((p) => p.id === partyId);
+  const [party, setParty] = useState<Party | null>(null);
+  const partyId = party?.id ?? '';
 
   // Price level: the party's own, else the default of this side. Another needs permission.
   const levels = usePriceLevels();
@@ -144,34 +191,48 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const costOf = (p: Product) => stockHere?.get(p.id)?.cost ?? p.costPrice;
 
   const [search, setSearch] = useState('');
-  const productList = useProductSearch(search);
+  /** Only this supplier's items ("" = every supplier). Picking one lists its items at once. */
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [listOpen, setListOpen] = useState(false);
+  /** Only this category's items, only items in stock. */
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [inStockOnly, setInStockOnly] = useState(isSale && !isQuote);
+  const [scanning, setScanning] = useState(false);
+  const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
+  const categories = useCategories();
+  const productList = useProductSearch(search, inStockOnly, supplierFilter, departmentId, categoryFilter);
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
-  const [taxPercent, setTaxPercent] = useState('');
   const [discount1, setDiscount1] = useState<DiscountInput>({ mode: 'percent', value: '' });
   const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
-  const [otherTax, setOtherTax] = useState('');
-  const [addition, setAddition] = useState('');
-  const [additionLabel, setAdditionLabel] = useState('');
+  // Purchases only: what we pay the supplier now, and the shipping we pay to bring the goods.
   const [paidNow, setPaidNow] = useState('');
   const [paidAccountId, setPaidAccountId] = useState('');
+  const [shippingCost, setShippingCost] = useState('');
+  const [shippingAccountId, setShippingAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
-  const [validUntil, setValidUntil] = useState(() => addDays(companyToday(), 14));
 
   const createSale = useCreateSalesInvoice();
   const createPurchase = useCreatePurchaseInvoice();
   const createQuote = useCreateQuotation();
-  const pending = createSale.isPending || createPurchase.isPending || createQuote.isPending;
+  const createOrder = useCreateOrder();
+  // A sale posts at once and the accountant is told, to take the payment (owner decision 2026-09-30).
+  // Only someone who may just save pending invoices (sales:order without sales:create) saves one.
+  const asOrder = isSale && !isQuote && !can('sales:create') && can('sales:order');
+  const pending =
+    createSale.isPending || createPurchase.isPending || createQuote.isPending || createOrder.isPending;
   const serverError = (createSale.error ??
     createPurchase.error ??
-    createQuote.error) as ApiError | null;
+    createQuote.error ??
+    createOrder.error) as ApiError | null;
 
   const currency = settings.data?.currency ?? 'EGP';
   const minMarkup = settings.data?.minMarkupPercent ?? 0;
   const defaultMarkup = settings.data?.defaultMarkupPercent ?? 10;
-  const effTax = taxPercent === '' ? (settings.data?.defaultTaxPercent ?? 0) : Number(taxPercent);
+  // Tax isn't typed on invoices (owner, 2026-09-30); the company's default, if any, still applies.
+  const effTax = settings.data?.defaultTaxPercent ?? 0;
 
   const unitOf = (l: Pick<Line, 'product' | 'unitId'>) =>
     l.product.units.find((u) => u.unitId === l.unitId) ?? l.product.units[0];
@@ -203,11 +264,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const priced = pricing.data && !pricing.isPlaceholderData ? pricing.data.lines : null;
   // (If pricing fails, saving isn't held up: the server checks prices again anyway.)
   const pricingBusy = lines.length > 0 && !pricing.isError && (pricing.isFetching || !priced);
-  const typed = (l: Line) => canChangePrice && l.touched && !l.bonus;
+  /** The line's price by the rules (price list, level, else cost), as the server works it out. */
+  const listPriceOf = (l: Line, i: number) => priced?.[i]?.unitPrice ?? suggested(l);
   const priceOf = (l: Line, i: number) =>
-    l.bonus ? 0 : typed(l) ? l.price : (priced?.[i]?.unitPrice ?? suggested(l));
-  /** A quantity discount on a line nobody re-priced by hand. */
-  const lineDiscountOf = (l: Line, i: number) => (l.bonus || typed(l) ? 0 : (priced?.[i]?.discount ?? 0));
+    l.bonus ? 0 : priceEditable && l.touched ? l.price : listPriceOf(l, i);
+  /** A price typed under the list price by someone who may only add to it. */
+  const underList = (l: Line, i: number) =>
+    !canChangePrice && canRaisePrice && !l.bonus && l.touched && l.price < listPriceOf(l, i);
+  /** The line's quantity discount, when its price wasn't typed by hand. */
+  const autoDiscountOf = (l: Line, i: number) =>
+    l.bonus || (priceEditable && l.touched) ? 0 : (priced?.[i]?.discount ?? 0);
 
   function addProduct(p: Product, unitId?: string | null) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
@@ -225,10 +291,13 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           price: 0,
           touched: false,
           bonus: false,
+          discMode: 'percent',
+          discValue: '',
         },
       ];
     });
     setSearch('');
+    setListOpen(false);
     searchBox.current?.focus();
   }
 
@@ -237,12 +306,22 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const term = search.trim();
     if (!term) return;
     try {
-      const found = await api.get<Product[]>(`/products?search=${encodeURIComponent(term)}`);
-      const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
-      if (hit) addProduct(hit, hit.matchedUnitId);
+      await lookUp(term);
     } catch {
       /* the dropdown still shows the matches */
     }
+  }
+
+  /** Find a barcode / code and add its item; says what was added (for the camera). */
+  async function lookUp(term: string): Promise<string | null> {
+    const q = new URLSearchParams({ search: term });
+    if (supplierFilter) q.set('supplierId', supplierFilter);
+    if (departmentId) q.set('departmentId', departmentId);
+    const found = await api.get<Product[]>(`/products?${q}`);
+    const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
+    if (!hit) return null;
+    addProduct(hit, hit.matchedUnitId);
+    return `✓ ${hit.name}`;
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -264,19 +343,25 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const unit = unitOf(l);
     const factor = unit?.factor ?? 1;
     const price = priceOf(l, i);
-    const lineDiscount = lineDiscountOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
-    const info = typed(l) || l.bonus ? null : (priced?.[i] ?? null);
+    const gross = l.quantity * price;
+    const manual =
+      isSale && !l.bonus ? lineDiscount(l.discMode, l.discValue, gross, l.quantity * factor) : 0;
+    // A discount typed on the line replaces its quantity discount.
+    const discount = manual > 0 ? manual : autoDiscountOf(l, i);
+    const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
     return {
       line: l,
       unit,
       factor,
       price,
-      lineDiscount,
+      index: i,
       listName: info?.source === 'LIST' ? info.listName : null,
       breakBp: info?.breakBp ?? 0,
       cost,
-      lineTotal: l.quantity * price - lineDiscount,
+      gross,
+      discount,
+      lineTotal: gross - discount,
       lineCost: l.quantity * cost,
     };
   });
@@ -295,13 +380,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   pushDiscount('DISCOUNT', discount1);
   pushDiscount('EXTRA_DISCOUNT', discount2);
   if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
-  if (Number(otherTax) > 0) chargeInputs.push({ kind: 'OTHER_TAX', percent: round2(otherTax) });
-  if (Number(addition) > 0)
-    chargeInputs.push({
-      kind: 'ADDITION',
-      amount: toMinor(Number(addition)),
-      label: additionLabel.trim() || undefined,
-    });
   const outcome = applyCharges(
     pre.map((p) => p.lineTotal),
     pre.map((p) => !p.line.bonus),
@@ -327,12 +405,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const netTotal = subtotal - outcome.discount;
   const tax = outcome.tax;
   const grand = netTotal + outcome.tax + outcome.addition;
+  // Over the customer's credit limit (the server refuses it unless the person may allow it).
+  const overCredit =
+    isSale && !isQuote && party?.creditLimit != null && party.balance + grand > party.creditLimit;
   const profitTotal = netTotal - costTotal;
   const marginPct = netTotal > 0 ? (profitTotal / netTotal) * 100 : 0;
 
   const hasBelowCost = rows.some((r) => r.belowCost);
   const hasBlockedFloor = rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
   const hasOverStock = rows.some((r) => r.overStock);
+  const hasUnderList = lines.some((l, i) => underList(l, i));
   const canSave =
     !!partyId &&
     lines.length > 0 &&
@@ -341,12 +423,13 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     (isQuote || !hasOverStock) &&
     !outcome.error &&
     !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
-    !(isQuote && !validUntil) &&
+    !(isSale && !repId) &&
+    !hasUnderList &&
     !pricingBusy &&
     !pending;
 
   async function save() {
-    const paidAmount = paidNow === '' ? 0 : toMinor(Number(paidNow));
+    const paidAmount = isSale || paidNow === '' ? 0 : toMinor(Number(paidNow));
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
       if (isQuote) {
@@ -357,7 +440,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: r.lineDiscount,
+            discount: r.discount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -367,18 +450,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
-          dueDate: validUntil,
+          departmentId: departmentId || undefined,
         });
         navigate(backTo);
       } else if (isSale) {
-        await createSale.mutateAsync({
+        await (asOrder ? createOrder : createSale).mutateAsync({
           partyId,
           lines: rows.map((r) => ({
             productId: r.line.product.id,
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: r.lineDiscount,
+            discount: r.discount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -388,20 +471,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
-          paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
+          departmentId: departmentId || undefined,
           deliveryMethod: delivery.method,
           deliveryAddress:
             delivery.method !== 'PICKUP' && delivery.address.trim()
               ? delivery.address.trim()
               : undefined,
-          driverId:
-            delivery.method === 'OWN_DELIVERY' && delivery.driverId ? delivery.driverId : undefined,
           carrierId:
             delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
               ? delivery.carrierId
               : undefined,
         });
-        navigate('/sales');
+        navigate(asOrder ? '/sales?tab=orders' : '/sales');
       } else {
         await createPurchase.mutateAsync({
           partyId,
@@ -418,6 +499,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           warehouseId: warehouseId || undefined,
           priceLevelId,
           paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
+          shippingCost: Number(shippingCost) > 0 ? toMinor(Number(shippingCost)) : undefined,
+          shippingAccountId: Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
         });
         navigate('/purchases');
       }
@@ -426,7 +509,99 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     }
   }
 
-  const partyRows = parties.data?.items ?? [];
+  // What's typed is kept through an app update: the party, choices, lines and totals' inputs.
+  // Items and the party are looked up again, so whatever is gone by then is left out.
+  useWorkDraft<InvoiceDraft>(
+    1,
+    () =>
+      !party && lines.length === 0 && !notes
+        ? null
+        : {
+            partyId: party?.id ?? null,
+            warehouseId: pickedWarehouse,
+            repId: pickedRep,
+            departmentId: pickedDepartment,
+            levelId: pickedLevel,
+            delivery,
+            lines: lines.map((l) => ({
+              productId: l.product.id,
+              sku: l.product.sku,
+              unitId: l.unitId,
+              quantity: l.quantity,
+              price: l.price,
+              touched: l.touched,
+              bonus: l.bonus,
+              discMode: l.discMode,
+              discValue: l.discValue,
+            })),
+            discount1,
+            discount2,
+            paidNow,
+            paidAccountId,
+            shippingCost,
+            shippingAccountId,
+            overrideFloor,
+            notes,
+            supplierFilter,
+            categoryFilter,
+            inStockOnly,
+          },
+    async (d) => {
+      const text = (v: unknown) => (typeof v === 'string' ? v : '');
+      if (d.partyId) {
+        const p = await api.get<Party>(`/parties/${d.partyId}`).catch(() => null);
+        if (p?.isActive) setParty(p);
+      }
+      setPickedWarehouse(text(d.warehouseId));
+      setPickedRep(text(d.repId));
+      setPickedDepartment(text(d.departmentId));
+      setPickedLevel(text(d.levelId));
+      if (d.delivery && METHODS.includes(d.delivery.method))
+        setDelivery({ method: d.delivery.method, address: text(d.delivery.address), carrierId: text(d.delivery.carrierId) });
+      const discount = (v: DiscountInput | undefined, fallback: DiscountInput): DiscountInput =>
+        v && (v.mode === 'percent' || v.mode === 'amount') ? { mode: v.mode, value: text(v.value) } : fallback;
+      setDiscount1(discount(d.discount1, discount1));
+      setDiscount2(discount(d.discount2, discount2));
+      setPaidNow(text(d.paidNow));
+      setPaidAccountId(text(d.paidAccountId));
+      setShippingCost(text(d.shippingCost));
+      setShippingAccountId(text(d.shippingAccountId));
+      setOverrideFloor(d.overrideFloor === true);
+      setNotes(text(d.notes));
+      setSupplierFilter(text(d.supplierFilter));
+      setCategoryFilter(text(d.categoryFilter));
+      if (typeof d.inStockOnly === 'boolean') setInStockOnly(d.inStockOnly);
+      const saved = Array.isArray(d.lines) ? d.lines : [];
+      const found = new Map<string, Product>();
+      await Promise.all(
+        [...new Set(saved.map((l) => l.sku).filter(Boolean))].map(async (sku) => {
+          const list = await api.get<Product[]>(`/products?search=${encodeURIComponent(sku)}`).catch(() => []);
+          for (const p of list) found.set(p.id, p);
+        }),
+      );
+      const modes: LineDiscountMode[] = ['percent', 'piece', 'amount'];
+      setLines(
+        saved.flatMap((l) => {
+          const product = found.get(l.productId);
+          if (!product || !product.units.some((u) => u.unitId === l.unitId)) return [];
+          return [
+            {
+              key: `l${nextKey++}`,
+              product,
+              unitId: l.unitId,
+              quantity: Math.max(1, Math.floor(Number(l.quantity) || 1)),
+              price: Math.max(0, Math.round(Number(l.price) || 0)),
+              touched: l.touched === true,
+              bonus: l.bonus === true,
+              discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
+              discValue: text(l.discValue),
+            },
+          ];
+        }),
+      );
+    },
+  );
+
   const products = productList.data ?? [];
 
   return (
@@ -441,59 +616,74 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
+      <div className="grid gap-5 lg:grid-cols-[1fr_minmax(340px,400px)]">
         {/* Left: builder */}
         <div className="min-w-0 space-y-4">
-          {/* Party + warehouse + price level */}
-          <Card
-            className={`grid gap-3 ${isSale ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'}`}
-          >
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">
-                {t(isSale ? 'invoice.customer' : 'invoice.supplier')}
-              </span>
-              <select
-                className={field}
-                value={partyId}
-                onChange={(e) => {
-                  setPartyId(e.target.value);
-                  setPickedLevel('');
-                }}
-              >
-                <option value="">
-                  {t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
-                </option>
-                {partyRows.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
+          <Card className="grid gap-4 sm:grid-cols-2">
+            <PartyPicker
+              type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+              withCode
+              value={party}
+              onChange={(p) => {
+                setParty(p);
+                setPickedLevel('');
+              }}
+              label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
+              placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+            />
             <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
-              <select
-                className={field}
-                value={levelId}
-                disabled={!canChooseLevel}
-                onChange={(e) => setPickedLevel(e.target.value)}
-              >
-                {sideLevels.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
+            {/* A sale is priced at the customer's own level, not shown (owner decision 2026-09-30). */}
+            {!isSale && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
+                <select
+                  className={field}
+                  value={levelId}
+                  disabled={!canChooseLevel}
+                  onChange={(e) => setPickedLevel(e.target.value)}
+                >
+                  {sideLevels.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {isSale && departments.length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+                <select
+                  className={field}
+                  value={departmentId}
+                  disabled={!!myDepartments && departments.length === 1}
+                  onChange={(e) => setPickedDepartment(e.target.value)}
+                >
+                  <option value="">
+                    {myDepartments ? t('invoice.chooseDepartment') : t('invoice.noDepartment')}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {isSale && (
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
-                <select className={field} value={repId} onChange={(e) => setRepId(e.target.value)}>
-                  <option value="">{t('invoice.noRep')}</option>
+                <select
+                  className={field}
+                  value={repId}
+                  aria-invalid={!repId}
+                  onChange={(e) => setPickedRep(e.target.value)}
+                >
+                  {!repId && <option value="">{t('invoice.chooseRep')}</option>}
                   {(reps.data ?? []).map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name}
+                      {r.name} ({r.code})
                     </option>
                   ))}
                 </select>
@@ -505,8 +695,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             <DeliveryCard
               value={delivery}
               onChange={setDelivery}
-              party={party}
-              drivers={reps.data ?? []}
+              party={party ?? undefined}
               carriers={carriers.data?.items ?? []}
             />
           )}
@@ -516,54 +705,121 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             <label className="mb-1.5 block text-sm font-medium text-muted">
               {t('invoice.addItems')}
             </label>
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
-                <Icon name="search" size={16} />
-              </span>
-              <input
-                ref={searchBox}
-                className={`${field} ps-8`}
-                placeholder={t('invoice.searchProduct')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void addFromSearch();
-                  }
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <select
+                className={filterSelect}
+                aria-label={t('catalog.supplier')}
+                value={supplierFilter}
+                onChange={(e) => {
+                  setSupplierFilter(e.target.value);
+                  searchBox.current?.focus();
                 }}
-              />
-              {search && (
-                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
-                  {productList.isLoading ? (
-                    <div className="grid place-items-center py-6 text-muted">
-                      <Spinner size={18} />
-                    </div>
-                  ) : products.length === 0 ? (
-                    <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-                  ) : (
-                    products.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => addProduct(p)}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{p.name}</span>
-                          <span className="text-xs text-muted tnum">
-                            {p.sku} · {formatQuantity(available(p), p.units, locale)}{' '}
-                            {t('invoice.inStock')} · {t('invoice.cost')}{' '}
-                            {formatMoney(costOf(p), currency, locale)}
+              >
+                <option value="">{t('invoice.filterSupplier')}</option>
+                {(suppliers.data?.items ?? []).map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.name} ({sp.code})
+                  </option>
+                ))}
+              </select>
+              <select
+                className={filterSelect}
+                aria-label={t('invoice.filterCategory')}
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  searchBox.current?.focus();
+                }}
+              >
+                <option value="">{t('invoice.filterCategory')}</option>
+                {(categories.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-1.5 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={inStockOnly}
+                  onChange={(e) => setInStockOnly(e.target.checked)}
+                />
+                {t('invoice.inStockOnly')}
+              </label>
+            </div>
+            <div className="relative flex gap-2">
+              <div className="relative min-w-0 flex-1">
+                <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+                  <Icon name="search" size={16} />
+                </span>
+                <input
+                  ref={searchBox}
+                  className={`${field} ps-8`}
+                  placeholder={t('invoice.searchHint')}
+                  aria-label={t('invoice.searchProduct')}
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setListOpen(true);
+                  }}
+                  onFocus={() => setListOpen(true)}
+                  onClick={() => setListOpen(true)}
+                  // Later than a click on a result, so the click still lands.
+                  onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addFromSearch();
+                    } else if (e.key === 'Escape') {
+                      setSearch('');
+                      setListOpen(false);
+                    }
+                  }}
+                />
+                {listOpen && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+                    {productList.isLoading ? (
+                      <div className="grid place-items-center py-6 text-muted">
+                        <Spinner size={18} />
+                      </div>
+                    ) : products.length === 0 ? (
+                      <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+                    ) : (
+                      products.map((p) => (
+                        <button
+                          key={p.id}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => addProduct(p)}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{p.name}</span>
+                            <span className="text-xs text-muted tnum">
+                              {p.sku}
+                              {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
+                              {formatQuantity(available(p), p.units, locale)} {t('invoice.inStock')}
+                              {seeCosts &&
+                                ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
+                            </span>
                           </span>
-                        </span>
-                        <Icon name="plus" size={16} className="text-brand" />
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                          <Icon name="plus" size={16} className="text-brand" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="secondary"
+                icon="scan"
+                aria-label={t('scan.title')}
+                onClick={() => setScanning(true)}
+              >
+                <span className="hidden sm:inline">{t('scan.button')}</span>
+              </Button>
             </div>
             <p className="mt-1 text-xs text-faint">{t('invoice.scanHint')}</p>
+            {scanning && <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />}
 
             {/* Lines */}
             {rows.length === 0 ? (
@@ -581,12 +837,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{r.line.product.name}</p>
                         <p className="text-xs text-muted tnum">
-                          {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
-                          {r.unit && ` / ${r.unit.name}`}
+                          {seeCosts && (
+                            <>
+                              {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                              {r.unit && ` / ${r.unit.name}`}
+                            </>
+                          )}
                           {isSale && (
                             <>
-                              {' '}
-                              · {t('inventory.stock')}:{' '}
+                              {seeCosts && ' · '}
+                              {t('inventory.stock')}:{' '}
                               {formatQuantity(
                                 available(r.line.product),
                                 r.line.product.units,
@@ -644,11 +904,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                         </span>
                         <input
                           type="number"
-                          min={0}
+                          min={canChangePrice ? 0 : toMajor(suggested(r.line))}
                           step="0.01"
-                          readOnly={!canChangePrice || r.line.bonus}
-                          title={canChangePrice ? undefined : t('invoice.priceLocked')}
-                          className={`${field} tnum ${canChangePrice && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+                          readOnly={!priceEditable || r.line.bonus}
+                          title={
+                            canChangePrice
+                              ? undefined
+                              : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
+                          }
+                          aria-invalid={underList(r.line, r.index)}
+                          className={`${field} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line, r.index) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
                           value={toMajor(r.price)}
                           onChange={(e) =>
                             updateLine(r.line.key, {
@@ -656,9 +921,13 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                               touched: true,
                             })
                           }
+                          // Only up: a lower price goes back to the list price.
+                          onBlur={() => {
+                            if (underList(r.line, r.index)) updateLine(r.line.key, { touched: false });
+                          }}
                         />
                       </label>
-                      {isSale && (
+                      {isSale && seeCosts && (
                         <div className="block">
                           <span className="mb-0.5 block text-xs text-muted">
                             {t('invoice.markup')}
@@ -672,12 +941,16 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       )}
                       <div className="block">
                         <span className="mb-0.5 block text-xs text-muted">
-                          {isSale ? t('invoice.lineProfit') : t('common.total')}
+                          {isSale && seeCosts ? t('invoice.lineProfit') : t('common.total')}
                         </span>
                         <div
-                          className={`${field} grid items-center tnum ${isSale ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
+                          className={`${field} grid items-center tnum ${isSale && seeCosts ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
                         >
-                          {formatMoney(isSale ? r.lineProfit : r.lineTotal, currency, locale)}
+                          {formatMoney(
+                            isSale && seeCosts ? r.lineProfit : r.lineTotal,
+                            currency,
+                            locale,
+                          )}
                         </div>
                       </div>
                     </div>
@@ -692,10 +965,51 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                           {t('pl.fromList')} <bdi>{r.listName}</bdi>
                         </span>
                       )}
-                      {r.lineDiscount > 0 && (
+                      {r.breakBp > 0 && r.discount === autoDiscountOf(r.line, r.index) && r.discount > 0 && (
                         <span className="text-positive">
                           {t('pl.qtyDiscount')} {formatNumber(r.breakBp / 100, locale)}%: −
-                          {formatMoney(r.lineDiscount, currency, locale)}
+                          {formatMoney(r.discount, currency, locale)}
+                        </span>
+                      )}
+                      {isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
+                        <span className={underList(r.line, r.index) ? 'text-destructive' : ''}>
+                          {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
+                        </span>
+                      )}
+                      {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{t('invoice.lineDiscount')}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
+                            aria-label={t('invoice.lineDiscount')}
+                            disabled={!canDiscount}
+                            value={r.line.discValue}
+                            onChange={(e) => updateLine(r.line.key, { discValue: e.target.value })}
+                          />
+                          <select
+                            className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
+                            aria-label={t('invoice.lineDiscountMode')}
+                            disabled={!canDiscount}
+                            value={r.line.discMode}
+                            onChange={(e) =>
+                              updateLine(r.line.key, {
+                                discMode: e.target.value as LineDiscountMode,
+                              })
+                            }
+                          >
+                            <option value="percent">%</option>
+                            <option value="piece">{t('invoice.perPiece')}</option>
+                            <option value="amount">{t('invoice.onLine')}</option>
+                          </select>
+                          {r.discount > 0 && (
+                            <span className="text-warning">
+                              −{formatMoney(r.discount, currency, locale)}
+                            </span>
+                          )}
                         </span>
                       )}
                       {r.docDiscount > 0 && (
@@ -738,7 +1052,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         </div>
 
         {/* Right: summary */}
-        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
+        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           <Card>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
               {t('common.total')}
@@ -764,67 +1078,14 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     currency={currency}
                   />
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+                  {isSale && canDiscount && maxDiscount !== null && (
+                    <p className="text-xs text-faint">
+                      {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
+                    </p>
+                  )}
                 </>
               )}
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted">{t('invoice.taxPercent')}</dt>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  disabled={!canChangeTax}
-                  className={`${field} tnum w-20 text-end`}
-                  placeholder={String(settings.data?.defaultTaxPercent ?? 0)}
-                  value={taxPercent}
-                  onChange={(e) => setTaxPercent(e.target.value)}
-                />
-              </div>
-              {canChangeTax && (
-                <div className="flex items-center justify-between gap-2">
-                  <dt className="text-muted">{t('charge.OTHER_TAX')} %</dt>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    className={`${field} tnum w-20 text-end`}
-                    placeholder="0"
-                    value={otherTax}
-                    onChange={(e) => setOtherTax(e.target.value)}
-                  />
-                </div>
-              )}
-              <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
-              {canAdditions && (
-                <div className="grid grid-cols-[1fr_96px] items-end gap-2">
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">
-                      {t('invoice.additions')}
-                    </span>
-                    <input
-                      className={field}
-                      placeholder={t('charge.labelPlaceholder')}
-                      value={additionLabel}
-                      onChange={(e) => setAdditionLabel(e.target.value)}
-                    />
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    aria-label={t('charge.amount')}
-                    className={`${field} tnum text-end`}
-                    placeholder="0"
-                    value={addition}
-                    onChange={(e) => setAddition(e.target.value)}
-                  />
-                </div>
-              )}
-              {outcome.addition > 0 && (
-                <Row
-                  label={t('invoice.additions')}
-                  value={formatMoney(outcome.addition, currency, locale)}
-                />
-              )}
+              {tax > 0 && <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />}
               {outcome.error && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
               <div className="my-1 border-t border-line" />
               <Row
@@ -832,7 +1093,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 value={formatMoney(grand, currency, locale)}
                 strong
               />
-              {isSale && (
+              {isSale && seeCosts && (
                 <>
                   <div className="my-1 border-t border-line" />
                   <Row
@@ -852,19 +1113,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               )}
             </dl>
 
-            <div className="mt-3 space-y-2">
-              {isQuote ? (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('quote.validUntil')}</span>
-                  <input
-                    type="date"
-                    className={`${field} tnum`}
-                    min={companyToday()}
-                    value={validUntil}
-                    onChange={(e) => setValidUntil(e.target.value)}
-                  />
-                </label>
-              ) : (
+            <div className="mt-4 space-y-3">
+              {isSale ? null : (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
                   <input
@@ -877,12 +1127,34 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   />
                 </label>
               )}
-              {!isQuote && Number(paidNow) > 0 && (
+              {!isSale && Number(paidNow) > 0 && (
                 <MoneyAccountPicker
                   className={field}
-                  label={t(isSale ? 'money.receivedInto' : 'money.paidInto')}
+                  label={t('money.paidInto')}
                   value={paidAccountId}
                   onChange={setPaidAccountId}
+                />
+              )}
+              {!isSale && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.shippingCost')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={shippingCost}
+                    onChange={(e) => setShippingCost(e.target.value)}
+                  />
+                  <span className="mt-0.5 block text-xs text-faint">{t('invoice.shippingCostHint')}</span>
+                </label>
+              )}
+              {!isSale && Number(shippingCost) > 0 && (
+                <MoneyAccountPicker
+                  className={field}
+                  label={t('money.paidInto')}
+                  value={shippingAccountId}
+                  onChange={setShippingAccountId}
                 />
               )}
               <label className="block">
@@ -902,6 +1174,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               </label>
             )}
 
+            {overCredit && (
+              <p className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning">
+                {t('invoice.overCredit')}
+              </p>
+            )}
             {hasBelowCost && (
               <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
                 {t('invoice.belowCost')}
@@ -918,15 +1195,21 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               icon="check"
               loading={pending}
               disabled={!canSave}
-              onClick={save}
+              onClick={() => void save()}
             >
               {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
             </Button>
+            {asOrder && <p className="mt-2 text-center text-xs text-faint">{t('order.saveHint')}</p>}
+            {isSale && !isQuote && !asOrder && (
+              <p className="mt-2 text-center text-xs text-faint">{t('invoice.savedHint')}</p>
+            )}
             {isSale && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>
             )}
             {!canChangePrice && (
-              <p className="mt-1 text-center text-xs text-faint">{t('invoice.priceLocked')}</p>
+              <p className="mt-1 text-center text-xs text-faint">
+                {t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')}
+              </p>
             )}
           </Card>
         </div>
@@ -962,21 +1245,26 @@ function DiscountField({
 }) {
   const { t, locale } = useT();
   return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted">{label}</dt>
-      <div className="flex items-center gap-1">
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <dt className="text-muted">{label}</dt>
+        {amount > 0 && (
+          <span className="text-xs text-muted tnum">−{formatMoney(amount, currency, locale)}</span>
+        )}
+      </div>
+      <div className="grid grid-cols-[1fr_auto] gap-2">
         <input
           type="number"
           min={0}
           step="0.01"
           disabled={disabled}
-          className={`${field} tnum w-20 text-end`}
+          className={`${field} tnum`}
           placeholder="0"
           value={value.value}
           onChange={(e) => onChange({ ...value, value: e.target.value })}
         />
         <select
-          className={`${field} w-auto px-1.5`}
+          className={`${field} w-24 px-1.5`}
           disabled={disabled}
           aria-label={label}
           value={value.mode}
@@ -985,37 +1273,62 @@ function DiscountField({
           <option value="percent">{t('charge.percent')}</option>
           <option value="amount">{t('charge.amount')}</option>
         </select>
-        {amount > 0 && (
-          <span className="w-24 text-end text-xs text-muted tnum">
-            −{formatMoney(amount, currency, locale)}
-          </span>
-        )}
       </div>
     </div>
   );
 }
 
+/** An invoice being written, as kept through an app update. */
+interface InvoiceDraft {
+  partyId: string | null;
+  warehouseId: string;
+  repId: string;
+  departmentId: string;
+  levelId: string;
+  delivery: DeliveryValue;
+  lines: {
+    productId: string;
+    sku: string;
+    unitId: string;
+    quantity: number;
+    price: number;
+    touched: boolean;
+    bonus: boolean;
+    discMode: LineDiscountMode;
+    discValue: string;
+  }[];
+  discount1: DiscountInput;
+  discount2: DiscountInput;
+  paidNow: string;
+  paidAccountId: string;
+  shippingCost: string;
+  shippingAccountId: string;
+  overrideFloor: boolean;
+  notes: string;
+  supplierFilter: string;
+  categoryFilter: string;
+  inStockOnly: boolean;
+}
+
 interface DeliveryValue {
   method: DeliveryMethod;
   address: string;
-  driverId: string;
   carrierId: string;
 }
 
-const METHODS: DeliveryMethod[] = ['PICKUP', 'OWN_DELIVERY', 'SHIPPING_COMPANY'];
+/** Picked up at the office, or sent by a shipping company (the customer pays it directly). */
+const METHODS: DeliveryMethod[] = ['PICKUP', 'SHIPPING_COMPANY'];
 
-/** How the goods reach the customer: picked up, our driver, or a shipping company. */
+/** How the goods reach the customer. */
 function DeliveryCard({
   value,
   onChange,
   party,
-  drivers,
   carriers,
 }: {
   value: DeliveryValue;
   onChange: (v: DeliveryValue) => void;
   party: Party | undefined;
-  drivers: RepOption[];
   carriers: Party[];
 }) {
   const { t } = useT();
@@ -1057,27 +1370,13 @@ function DeliveryCard({
               className={field}
               value={value.address}
               maxLength={300}
-              placeholder={party?.address || t('delivery.addressPlaceholder')}
+              placeholder={
+                party?.shippingAddress || party?.address || t('delivery.addressPlaceholder')
+              }
               onChange={(e) => set({ address: e.target.value })}
             />
           </label>
-          {value.method === 'OWN_DELIVERY' ? (
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('delivery.driver')}</span>
-              <select
-                className={field}
-                value={value.driverId}
-                onChange={(e) => set({ driverId: e.target.value })}
-              >
-                <option value="">{t('delivery.noDriver')}</option>
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
+          {
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('delivery.carrier')}</span>
               <select
@@ -1096,8 +1395,9 @@ function DeliveryCard({
               {carriers.length === 0 && (
                 <span className="mt-0.5 block text-xs text-faint">{t('delivery.noCarriers')}</span>
               )}
+              <span className="mt-0.5 block text-xs text-faint">{t('delivery.customerPays')}</span>
             </label>
-          )}
+          }
         </div>
       )}
     </Card>

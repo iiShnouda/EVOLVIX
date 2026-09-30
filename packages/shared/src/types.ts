@@ -7,6 +7,8 @@
  *  - Timestamps are ISO‑8601 strings when serialized over the wire.
  */
 
+import type { ChargeKind } from './charges';
+
 // ---------------------------------------------------------------------------
 // Locale & presentation
 // ---------------------------------------------------------------------------
@@ -47,6 +49,12 @@ export type Permission =
   | 'sales:override_floor'
   | 'sales:return'
   | 'sales:quote'
+  | 'sales:order'
+  | 'sales:approve'
+  | 'sales:over_credit'
+  | 'parties:credit_limit'
+  | 'sales:raise_price'
+  | 'sales:invoice_alerts'
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
@@ -67,6 +75,8 @@ export type Permission =
   | 'settings:manage'
   | 'audit:view'
   | 'backup:create'
+  /** See costs and profit (owner's unless given): the server leaves them out otherwise. */
+  | 'costs:view'
   | 'payroll:view'
   | 'employees:manage'
   | 'attendance:edit'
@@ -154,6 +164,10 @@ export interface AuthUser {
   warehouseIds?: string[] | null;
   /** Only these money accounts; null = any in their branches. */
   moneyAccountIds?: string[] | null;
+  /** Only these sales departments; null = every one. */
+  departmentIds?: string[] | null;
+  /** The most discount they may give (% of a line's worth); null = no limit. */
+  maxDiscountPercent?: number | null;
 }
 
 export interface BranchOption {
@@ -187,22 +201,34 @@ export interface Money {
 // ---------------------------------------------------------------------------
 
 /** CARRIER = a shipping company (شركة شحن): parcels it delivers with cash on delivery go on its account. */
-export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'FACTORY' | 'CARRIER';
+/** A factory is a supplier: there is no separate FACTORY type. */
+export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'CARRIER';
 
 export interface Party {
   id: string;
+  /** Its number (كود): 1, 2, 3… in the order added; shown beside the name, and finds it. */
+  code: number;
   name: string;
   /** A party may hold more than one role (e.g. customer + supplier). */
   types: PartyType[];
   phone?: string;
   email?: string | null;
   taxNumber?: string | null;
-  /** Delivery address (new delivered sales start at it). */
+  /** Main address — for a supplier, the factory's address (عنوان المصنع). */
   address?: string | null;
+  /** Phone numbers besides `phone` (up to 5). */
+  otherPhones: string[];
+  /** The factory owner (supplier) or the person in charge (customer). */
+  contactName?: string | null;
+  /** Where goods are shipped (عنوان الشحن); delivered sales start at it, else at `address`. */
+  shippingAddress?: string | null;
+  notes?: string | null;
+  /** The most they may owe (حد الائتمان), minor units; null = no limit. */
+  creditLimit?: number | null;
   /**
    * Net balance in minor units.
-   *  > 0  → they owe us (receivable, "لنا عليهم")
-   *  < 0  → we owe them (payable,   "لهم علينا")
+   *  > 0  → they owe us (receivable, مدين)
+   *  < 0  → we owe them (payable,   دائن)
    *  = 0  → settled
    */
   balance: number;
@@ -238,6 +264,17 @@ export interface Category {
   name: string;
   /** Active items in the category. */
   itemCount?: number;
+  /** The sales department it belongs to (none = sold by every department). */
+  departmentId?: string | null;
+  departmentName?: string | null;
+}
+
+/** A sales department (قسم): a group of categories; each sale belongs to one. */
+export interface Department {
+  id: string;
+  name: string;
+  isActive: boolean;
+  categoryCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +431,10 @@ export interface Product {
   colorName?: string | null;
   /** When the search text was exactly one of its barcodes: that unit (scanning a carton adds a carton). */
   matchedUnitId?: string | null;
+  /** The item's main supplier (a factory is a supplier) and that supplier's own code for it. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +449,9 @@ export type DocumentType =
   | 'PURCHASE_RETURN'
   | 'COLLECTION_RECEIPT'
   | 'PAYMENT_VOUCHER'
-  | 'EXPENSE';
+  | 'EXPENSE'
+  /** A pending sales invoice waiting for the accountant (فاتورة معلّقة). */
+  | 'SALES_ORDER';
 
 export type DocumentStatus =
   | 'DRAFT'
@@ -418,7 +461,9 @@ export type DocumentStatus =
   | 'PARTIALLY_PAID'
   | 'OVERDUE'
   | 'CANCELLED'
-  | 'RETURNED';
+  | 'RETURNED'
+  /** A pending invoice the accountant turned down (see `rejectReason`). */
+  | 'REJECTED';
 
 export interface DocumentLine {
   id: string;
@@ -490,6 +535,9 @@ export interface SalesDocument {
   /** For a return: the invoice it reverses. */
   sourceDocumentId?: string | null;
   sourceNumber?: string | null;
+  /** The sales department it belongs to. */
+  departmentId?: string | null;
+  departmentName?: string | null;
   /** The price level the invoice was priced at. */
   priceLevelId?: string | null;
   priceLevelName?: string | null;
@@ -515,6 +563,11 @@ export interface SalesDocument {
   /** A quotation that became an invoice: that invoice. */
   invoiceId?: string | null;
   invoiceNumber?: string | null;
+  /** Why a pending invoice was turned down. */
+  rejectReason?: string | null;
+  /** The customer's / supplier's and the rep's codes (كود). */
+  partyCode?: number | null;
+  repCode?: number | null;
   createdAt: string;
 }
 
@@ -791,6 +844,8 @@ export interface RepOption {
   id: string;
   name: string;
   branchId: string;
+  /** Their number (كود), shown beside the name. */
+  code: number;
 }
 
 /** Profitability report (تقارير الربحية) over a date range. */
@@ -834,6 +889,10 @@ export interface CompanySettings {
   commercialRegister?: string | null;
   /** The company's time zone (IANA id, one of TIME_ZONES); business days follow it. */
   timeZone: string;
+  /** The most discount staff may give (% of a line's worth) unless their own limit says otherwise; 100 = none. */
+  maxDiscountPercent: number;
+  /** A pending invoice holds its goods this many days (0 = until approved or cancelled). */
+  pendingHoldDays: number;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -852,6 +911,8 @@ export interface SalesDocumentSummary {
   currency: string;
   /** For a return: the invoice number it reverses. */
   sourceNumber?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1050,6 +1111,10 @@ export interface ProductDetail {
   units: ItemUnitRow[];
   prices: PriceCell[];
   currency: string;
+  /** The item's main supplier (a factory is a supplier) and that supplier's own code for it. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 export interface ModelSummary {
@@ -1092,6 +1157,10 @@ export interface ModelDetail {
   colors: VariantOption[];
   variants: ModelVariant[];
   currency: string;
+  /** The model's main supplier and code; every variant follows them. */
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: string | null;
 }
 
 export interface StocktakeResult {
@@ -1190,6 +1259,8 @@ export interface BranchWithWarehouses {
 /** A person who can sign in, with what they may do. */
 export interface StaffMember {
   id: string;
+  /** Their number (كود), shown beside the name. */
+  code: number;
   fullName: string;
   email: string;
   role: Role;
@@ -1214,6 +1285,10 @@ export interface StaffMember {
   warehouseIds: string[];
   /** Only these money accounts (empty = every one in their branches). */
   moneyAccountIds: string[];
+  /** Only these sales departments (empty = every one). */
+  departmentIds?: string[];
+  /** Their own discount limit (%); null = the company's. */
+  maxDiscountPercent?: number | null;
 }
 
 /** PUT /staff/{id}/access: what one person may work with (every field replaces what was there). */
@@ -1222,6 +1297,10 @@ export interface StaffAccessInput {
   branchIds: string[];
   warehouseIds: string[];
   moneyAccountIds: string[];
+  /** Empty = every department. */
+  departmentIds: string[];
+  /** null = the company's limit. */
+  maxDiscountPercent: number | null;
 }
 
 export interface RoleInfo {
@@ -1395,6 +1474,24 @@ export interface LedgerLine {
   memo: string | null;
   /** Running balance (debits − credits) after this line. */
   balance: number;
+  /** Party statements: the document's number, book (الدفتر: an invoice's department, a receipt's
+   *  cash box or bank), notes and branch; with items, an invoice's lines (كشف أصناف). */
+  documentNumber?: string | null;
+  book?: string | null;
+  note?: string | null;
+  branchName?: string | null;
+  items?: StatementItem[] | null;
+}
+
+/** One item line of an invoice or return on a statement (no cost). */
+export interface StatementItem {
+  productName: string;
+  quantity: number;
+  unitName?: string | null;
+  unitPrice: number;
+  discount: number;
+  lineTotal: number;
+  isBonus: boolean;
 }
 
 export interface LedgerStatement {
@@ -1696,7 +1793,7 @@ export interface PerformanceRow {
 }
 
 export interface Performance {
-  by: 'rep' | 'branch';
+  by: 'rep' | 'branch' | 'department';
   from: string;
   to: string;
   rows: PerformanceRow[];
@@ -1861,4 +1958,105 @@ export interface PayrollRun {
   postedByName: string | null;
   lines: PayrollLine[];
   currency: string;
+}
+
+// ---------------------------------------------------------------------------
+// Pending invoices and the customer's account (owner decision 2026-09-30)
+// ---------------------------------------------------------------------------
+
+/** POST /sales/orders/{id}/approve: the accountant's payment and, optionally, new discounts. */
+export interface ApproveOrderInput {
+  paidAmount: number;
+  paidAccountId?: string;
+  /** New discount per line (minor units, the whole line); lines left out keep theirs. */
+  lineDiscounts?: { lineId: string; discount: number }[];
+  /** New invoice discounts (DISCOUNT / EXTRA_DISCOUNT); left out = keep them. */
+  charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
+  notes?: string;
+  overrideFloor?: boolean;
+}
+
+/** One department's share of a customer's account (departmentId null = no department). */
+export interface AccountDepartment {
+  departmentId: string | null;
+  name: string;
+  invoices: number;
+  total: number;
+  discounts: number;
+  returns: number;
+  outstanding: number;
+}
+
+/** An invoice, return or pending invoice on a customer's account. */
+export interface AccountDocument {
+  id: string;
+  number: string;
+  type: DocumentType;
+  status: DocumentStatus;
+  issueDate: string;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  branchName: string;
+  staffName: string;
+  subtotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  paidAmount: number;
+  /** What is still owed on it (invoices only). */
+  outstanding: number;
+  notes?: string | null;
+  sourceNumber?: string | null;
+}
+
+/** GET /sales/customers/{id}/account: a customer's account for the accountant (no cost or profit). */
+export interface CustomerAccount {
+  partyId: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  shippingAddress?: string | null;
+  notes?: string | null;
+  /** Everything they owe now (opening balance, invoices, returns, receipts, notes). */
+  balance: number;
+  currency: string;
+  invoiced: number;
+  discounts: number;
+  returned: number;
+  /** Left on the invoices listed. */
+  outstanding: number;
+  /** Pending invoices waiting for approval. */
+  pending: number;
+  departments: AccountDepartment[];
+  documents: AccountDocument[];
+  /** Their credit limit; null = none. */
+  creditLimit?: number | null;
+}
+
+/** One notification (the bell). The app words it from `kind`. */
+export interface AppNotification {
+  id: string;
+  kind: 'INVOICE_NEW' | 'ORDER_PENDING' | 'ORDER_APPROVED' | 'ORDER_REJECTED';
+  documentId?: string | null;
+  documentNumber?: string | null;
+  partyName?: string | null;
+  /** The invoice's department (قسم). */
+  departmentName?: string | null;
+  amount: number;
+  actorName?: string | null;
+  message?: string | null;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface NotificationList {
+  unread: number;
+  items: AppNotification[];
+}
+
+/** One screen's work in progress, kept on the server while the app updates. */
+export interface WorkDraft {
+  key: string;
+  /** The screen's own JSON. */
+  data: string;
+  updatedAt: string;
 }

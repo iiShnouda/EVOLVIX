@@ -30,16 +30,37 @@ public sealed class ProductsController : ControllerBase
     }
 
     /// <summary>
-    /// Product search for invoice lines: name, SKU or barcode. An exact barcode
-    /// comes first with <c>matchedUnitId</c> set, so scanning a carton adds a carton.
+    /// Product search for invoice lines: name, SKU, barcode, the supplier's code, or a price (typing
+    /// "330" finds items priced 330 at any unit and level). <paramref name="supplierId"/> keeps only
+    /// that supplier's items. An exact barcode comes first with <c>matchedUnitId</c> set, so scanning
+    /// a carton adds a carton. Supplier-side prices only match for people who work with purchases,
+    /// since they sit close to cost.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<ProductDto[]>> List(
-        [FromQuery] string? search = null, [FromQuery] bool inStockOnly = false, [FromQuery] int limit = 50)
+        [FromQuery] string? search = null, [FromQuery] bool inStockOnly = false, [FromQuery] int limit = 50,
+        [FromQuery] string? supplierId = null, [FromQuery] string? departmentId = null,
+        [FromQuery] string? categoryId = null)
     {
         limit = Math.Clamp(limit, 1, 200);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
         if (inStockOnly) q = q.Where(p => p.StockOnHand > 0);
+        if (Guid.TryParse(categoryId, out var category)) q = q.Where(p => p.CategoryId == category);
+        // A department's items (and items of no department); people limited to departments see only theirs.
+        if (!string.IsNullOrWhiteSpace(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var dept))
+                return BadRequest(new { message = "Department not found.", code = "department_not_found" });
+            q = q.Where(p => p.Category!.DepartmentId == null || p.Category.DepartmentId == dept);
+        }
+        if (Access.Departments(User) is { } mine)
+            q = q.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
+        if (!string.IsNullOrWhiteSpace(supplierId))
+        {
+            if (!Guid.TryParse(supplierId, out var sup))
+                return BadRequest(new { message = "Unknown supplier.", code = "supplier_not_found" });
+            q = q.Where(p => p.SupplierId == sup);
+        }
 
         ItemUnit? exact = null;
         if (!string.IsNullOrWhiteSpace(search))
@@ -49,16 +70,35 @@ public sealed class ProductsController : ControllerBase
             exact = await _db.ItemUnits.AsNoTracking()
                 .Where(u => u.Barcode != null && u.Barcode.ToLower() == s && u.Product!.IsActive)
                 .FirstOrDefaultAsync();
-            q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
-                || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
+            if (Catalog.ParseAmount(term) is long price)
+            {
+                var seePurchase = User.HasClaim("permission", Permissions.PurchasesView);
+                var levels = await _db.PriceLevels.AsNoTracking()
+                    .Where(l => l.Side == PriceSide.SALE || seePurchase).Select(l => l.Id).ToListAsync();
+                q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
+                    || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(s))
+                    || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s))
+                    || p.SalePrice == price
+                    || _db.ItemPrices.Any(ip => ip.ProductId == p.Id && ip.Price == price && levels.Contains(ip.PriceLevelId))
+                    || (p.ModelId != null && _db.ModelPrices.Any(mp =>
+                        mp.ModelId == p.ModelId && mp.Price == price && levels.Contains(mp.PriceLevelId))));
+            }
+            else
+            {
+                q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
+                    || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(s))
+                    || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
+            }
         }
-        var rows = await q.Include(p => p.Size).Include(p => p.Color)
+        var rows = await q.Include(p => p.Size).Include(p => p.Color).Include(p => p.Supplier)
             .OrderBy(p => p.Name).Take(limit).ToListAsync();
         if (exact is not null)
             rows = rows.OrderByDescending(p => p.Id == exact.ProductId).ToList();
 
         var book = await PriceBook.LoadAsync(_db, rows.Select(p => p.Id));
-        return Ok(rows.Select(p => Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null)).ToArray());
+        var purchaseLevels = PurchaseLevelIds(book);
+        return Ok(rows.Select(p => Costs.Guard(User,
+            Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null), purchaseLevels)).ToArray());
     }
 
     /// <summary>One item for the item editor: both names, units with barcodes, every unit × level price.</summary>
@@ -84,6 +124,11 @@ public sealed class ProductsController : ControllerBase
         if (req.ReorderLevel < 0)
             return BadRequest(new { message = "The reorder level can't be negative.", code = "bad_reorder" });
         product.ReorderLevel = req.ReorderLevel;
+
+        var (_, supplier, supplierError) = await Catalog.SupplierAsync(_db, req.SupplierId);
+        if (supplierError is not null) return BadRequest(new { message = supplierError.Message, code = supplierError.Code });
+        product.SupplierId = supplier;
+        product.SupplierCode = Catalog.SupplierCode(req.SupplierCode);
 
         var (sku, skuError) = await SkuAsync(req.Sku, null);
         if (skuError is not null) return skuError;
@@ -124,7 +169,7 @@ public sealed class ProductsController : ControllerBase
         var isVariant = product.ModelId is not null;
         var variantRule = BadRequest(new
         {
-            message = "This item is a size/color of a model: change its name, category and units on the model.",
+            message = "This item is a size/color of a model: change its name, category, units and supplier on the model.",
             code = "variant_managed_by_model",
         });
 
@@ -152,6 +197,14 @@ public sealed class ProductsController : ControllerBase
         {
             if (reorder < 0) return BadRequest(new { message = "The reorder level can't be negative.", code = "bad_reorder" });
             product.ReorderLevel = reorder;
+        }
+        if (req.SupplierId is not null || req.SupplierCode is not null)
+        {
+            if (isVariant) return variantRule; // a variant follows its model's supplier
+            var (given, supplier, supplierError) = await Catalog.SupplierAsync(_db, req.SupplierId);
+            if (supplierError is not null) return BadRequest(new { message = supplierError.Message, code = supplierError.Code });
+            if (given) product.SupplierId = supplier;
+            if (req.SupplierCode is not null) product.SupplierCode = Catalog.SupplierCode(req.SupplierCode);
         }
         if (req.IsActive == false && product.IsActive)
         {
@@ -265,6 +318,7 @@ public sealed class ProductsController : ControllerBase
     {
         var p = await _db.Products.AsNoTracking()
             .Include(x => x.Category).Include(x => x.Model).Include(x => x.Size).Include(x => x.Color)
+            .Include(x => x.Supplier)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
         var book = await PriceBook.LoadAsync(_db, new[] { id });
@@ -272,7 +326,7 @@ public sealed class ProductsController : ControllerBase
         var units = book.UnitsOf(id);
         var currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
-        return new ProductDetailDto(
+        return Costs.Guard(User, new ProductDetailDto(
             p.Id.ToString(), p.Sku, Loc.Name(p), p.CategoryId.ToString(), Loc.Name(p.Category),
             p.ReorderLevel, p.IsActive, p.StockOnHand, p.CostPrice, await HasMovementsAsync(new[] { id }),
             p.ModelId?.ToString(), p.Model is null ? null : Loc.Name(p.Model),
@@ -284,8 +338,12 @@ public sealed class ProductsController : ControllerBase
                 var (price, source) = book.Effective(id, u.UnitId, l.Id);
                 return new PriceCellDto(u.UnitId.ToString(), l.Id.ToString(), book.OwnPrice(id, u.UnitId, l.Id), price, source);
             })).ToArray(),
-            currency);
+            currency, p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode), PurchaseLevelIds(book));
     }
+
+    /// <summary>Ids of the supplier-side price levels, which only purchasing staff see.</summary>
+    internal static HashSet<string> PurchaseLevelIds(PriceBook book) =>
+        book.Levels.Where(l => l.Side == PriceSide.PURCHASE).Select(l => l.Id.ToString()).ToHashSet();
 
     private async Task<bool> HasMovementsAsync(Guid[] ids) =>
         await _db.StockMovements.AnyAsync(m => ids.Contains(m.ProductId))

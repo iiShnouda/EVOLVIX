@@ -227,19 +227,27 @@ public sealed class BackupService
 
             foreach (var l in links) await Exec(conn, tx, $"ALTER TABLE {l.Table} ADD CONSTRAINT {Quote(l.Name)} {l.Definition}", ct);
 
-            // Counters that come from sequences continue after the restored rows.
-            var sequences = new List<(string Table, string Column)>();
+            // Counters that come from sequences continue after the restored rows — a column's own
+            // sequence, or a shared one its default draws from (e.g. customer codes).
+            var sequences = new List<(string Table, string Column, string Sequence)>();
             await using (var cmd = new NpgsqlCommand("""
-                SELECT table_name, column_name FROM information_schema.columns
+                SELECT table_name, column_name,
+                       COALESCE(pg_get_serial_sequence(quote_ident(table_name), column_name),
+                                substring(column_default from 'nextval\(''([^'']+)''')) AS seq
+                FROM information_schema.columns
                 WHERE table_schema = 'public' AND (column_default LIKE 'nextval(%' OR is_identity = 'YES')
                 """, conn, tx))
             await using (var r = await cmd.ExecuteReaderAsync(ct))
-                while (await r.ReadAsync(ct)) sequences.Add((r.GetString(0), r.GetString(1)));
-            foreach (var (table, column) in sequences)
+                while (await r.ReadAsync(ct))
+                    if (!r.IsDBNull(2)) sequences.Add((r.GetString(0), r.GetString(1), r.GetString(2)));
+            // Several columns may share a sequence: it continues after the largest of them.
+            foreach (var group in sequences.GroupBy(s => s.Sequence))
+            {
+                var max = string.Join(", ", group.Select(s => $"(SELECT max({Quote(s.Column)}) FROM {Quote(s.Table)})"));
                 await Exec(conn, tx, $"""
-                    SELECT setval(pg_get_serial_sequence('{Quote(table).Replace("'", "''")}', '{column.Replace("'", "''")}'),
-                                  COALESCE((SELECT max({Quote(column)}) FROM {Quote(table)}), 0) + 1, false)
+                    SELECT setval('{group.Key.Replace("'", "''")}', COALESCE(GREATEST({max}), 0) + 1, false)
                     """, ct);
+            }
 
             await tx.CommitAsync(ct);
         }

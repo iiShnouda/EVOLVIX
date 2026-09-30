@@ -80,9 +80,9 @@ const mk = async (name, role, branchId) =>
 const rana = await mk('Rana', 'SALES', b1.id);
 const adam = await mk('Adam', 'ADMIN', b1.id);
 ok(
-  'Rana may also take and cancel receipts, and see reports',
+  'Rana may also take and cancel receipts, and see reports (with costs)',
   await owner.put(`/staff/${rana.id}/permissions`, {
-    granted: ['receipts:view', 'receipts:create', 'vouchers:cancel', 'analytics:view'],
+    granted: ['receipts:view', 'receipts:create', 'vouchers:cancel', 'analytics:view', 'costs:view'],
     revoked: [],
   }),
 );

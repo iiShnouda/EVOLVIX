@@ -16,7 +16,8 @@ export function Sheet({
   onClose: () => void;
   closeLabel: string;
   children: ReactNode;
-  wide?: boolean;
+  /** true = a wider panel; 'full' = as wide as the screen allows (big tables). */
+  wide?: boolean | 'full';
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -33,7 +34,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`max-h-[92vh] w-full overflow-auto rounded-t-[var(--radius-app)] border border-line bg-surface p-4 shadow-xl sm:rounded-[var(--radius-app)] sm:p-5 ${wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'}`}
+        className={`max-h-[92vh] w-full overflow-auto rounded-t-[var(--radius-app)] border border-line bg-surface p-4 shadow-xl sm:rounded-[var(--radius-app)] sm:p-5 ${wide === 'full' ? 'sm:max-w-6xl' : wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-3">

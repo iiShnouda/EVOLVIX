@@ -9,6 +9,7 @@ import { usePresenceReporter } from '../../lib/presence';
 import { ConnectionBadge } from './ConnectionBadge';
 import { PrefControls } from './PrefControls';
 import { AccountMenu } from './AccountMenu';
+import { NotificationBell } from './NotificationBell';
 
 function useVisibleNav(): NavItem[] {
   const user = useAuth((s) => s.user);
@@ -101,6 +102,7 @@ function PhoneShell() {
         </span>
         <div className="flex items-center gap-1">
           <ConnectionBadge showLabel={false} />
+          <NotificationBell />
           <PrefControls compact />
           <AccountMenu />
         </div>
@@ -186,12 +188,7 @@ function TopBar() {
       </label>
       <div className="ms-auto flex items-center gap-2">
         <ConnectionBadge />
-        <button
-          className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
-          aria-label="Notifications"
-        >
-          <Icon name="bell" size={18} />
-        </button>
+        <NotificationBell />
         <PrefControls />
         <AccountMenu />
       </div>
@@ -199,9 +196,14 @@ function TopBar() {
   );
 }
 
+/**
+ * The page scrolls with the window (the top bar stays), so the sticky side columns of the builder
+ * pages (e.g. an invoice's totals) stick under the top bar. The main area must not be a scroll box
+ * itself, or they would slide down inside it as the page grows (owner report 2026-09-30).
+ */
 function MainArea(): ReactNode {
   return (
-    <main className="flex-1 overflow-y-auto p-5 lg:p-6">
+    <main className="min-w-0 flex-1 overflow-x-clip p-5 lg:p-6">
       <div className="mx-auto max-w-7xl">
         <Outlet />
       </div>

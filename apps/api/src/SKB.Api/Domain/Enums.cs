@@ -2,8 +2,13 @@ namespace SKB.Api.Domain;
 
 public enum Role { OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER }
 
-/// <summary>What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).</summary>
-public enum PartyType { CUSTOMER, SUPPLIER, FACTORY, CARRIER }
+/// <summary>
+/// What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).
+/// A factory is a supplier (owner decision 2026-09-30): there is no separate FACTORY type any more;
+/// old "FACTORY" values were turned into SUPPLIER (migration <c>PartyDetails</c>) and the API still
+/// accepts "FACTORY" as SUPPLIER from older clients.
+/// </summary>
+public enum PartyType { CUSTOMER, SUPPLIER, CARRIER }
 
 public enum DocumentType
 {
@@ -15,6 +20,13 @@ public enum DocumentType
     COLLECTION_RECEIPT,
     PAYMENT_VOUCHER,
     EXPENSE,
+    /// <summary>
+    /// A pending sales invoice (فاتورة معلّقة): made by a sales person, waiting for the accountant.
+    /// Its goods are held; no stock, money, balance or ledger moves until it is approved, which
+    /// makes a SALES_INVOICE from it (as a quotation becomes one). A type of its own, so no sales
+    /// report can count it.
+    /// </summary>
+    SALES_ORDER,
 }
 
 public enum DocumentStatus
@@ -27,6 +39,8 @@ public enum DocumentStatus
     OVERDUE,
     CANCELLED,
     RETURNED,
+    /// <summary>A pending invoice the accountant turned down (with a reason).</summary>
+    REJECTED,
 }
 
 /// <summary>

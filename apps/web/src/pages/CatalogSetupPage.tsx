@@ -9,6 +9,7 @@ import { ApiError } from '../lib/api';
 import {
   useCategories,
   useCreateCatalogEntry,
+  useDepartments,
   usePriceLevels,
   useUnits,
   useUpdateCatalogEntry,
@@ -16,11 +17,12 @@ import {
   type CatalogList,
 } from '../lib/queries';
 
-type Tab = 'units' | 'categories' | 'sizes' | 'colors' | 'levels';
+type Tab = 'units' | 'categories' | 'departments' | 'sizes' | 'colors' | 'levels';
 
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'units', label: 'setup.units', permission: 'units:manage' },
   { key: 'categories', label: 'setup.categories', permission: 'categories:manage' },
+  { key: 'departments', label: 'setup.departments', permission: 'categories:manage' },
   { key: 'sizes', label: 'setup.sizes', permission: 'variant_options:manage' },
   { key: 'colors', label: 'setup.colors', permission: 'variant_options:manage' },
   { key: 'levels', label: 'setup.priceLevels', permission: 'price_levels:manage' },
@@ -34,6 +36,11 @@ interface Entry {
   itemCount?: number;
   isDefault?: boolean;
   side?: PriceSide;
+  /** A department: its categories. */
+  categoryCount?: number;
+  /** A category: its department (none = every department). */
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 const EMPTY: NameValues = '';
@@ -52,6 +59,7 @@ export function CatalogSetupPage() {
 
   const units = useUnits();
   const categories = useCategories();
+  const departments = useDepartments();
   const options = useVariantOptions();
   const levels = usePriceLevels();
 
@@ -62,12 +70,15 @@ export function CatalogSetupPage() {
       ? 'units'
       : tab === 'categories'
         ? 'categories'
-        : tab === 'levels'
-          ? 'price-levels'
-          : 'variant-options';
+        : tab === 'departments'
+          ? 'departments'
+          : tab === 'levels'
+            ? 'price-levels'
+            : 'variant-options';
   const loading =
     (tab === 'units' && units.isLoading) ||
     (tab === 'categories' && categories.isLoading) ||
+    (tab === 'departments' && departments.isLoading) ||
     ((tab === 'sizes' || tab === 'colors') && options.isLoading) ||
     (tab === 'levels' && levels.isLoading);
   const entries: Entry[] =
@@ -75,7 +86,9 @@ export function CatalogSetupPage() {
       ? (units.data ?? [])
       : tab === 'categories'
         ? (categories.data ?? []).map((c) => ({ ...c, isActive: undefined }))
-        : tab === 'levels'
+        : tab === 'departments'
+          ? (departments.data ?? [])
+          : tab === 'levels'
           ? (levels.data ?? [])
           : (options.data ?? []).filter((o) => o.kind === (tab === 'sizes' ? 'SIZE' : 'COLOR'));
 
@@ -132,6 +145,9 @@ export function CatalogSetupPage() {
         )}
       </Card>
       {tab === 'levels' && <p className="text-xs text-faint">{t('setup.levelsHint')}</p>}
+      {(tab === 'departments' || tab === 'categories') && (
+        <p className="text-xs text-faint">{t('setup.departmentsHint')}</p>
+      )}
     </div>
   );
 }
@@ -139,6 +155,7 @@ export function CatalogSetupPage() {
 const LABELS: Record<Tab, { name: TranslationKey; placeholder: TranslationKey }> = {
   units: { name: 'setup.unitName', placeholder: 'setup.unitPlaceholder' },
   categories: { name: 'setup.categoryName', placeholder: 'setup.categoryPlaceholder' },
+  departments: { name: 'setup.departmentName', placeholder: 'setup.departmentPlaceholder' },
   sizes: { name: 'setup.sizeName', placeholder: 'setup.sizePlaceholder' },
   colors: { name: 'setup.colorName', placeholder: 'setup.colorPlaceholder' },
   levels: { name: 'setup.levelName', placeholder: 'setup.levelPlaceholder' },
@@ -149,6 +166,7 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
   const create = useCreateCatalogEntry(list);
   const [names, setNames] = useState<NameValues>(EMPTY);
   const [side, setSide] = useState<PriceSide>('SALE');
+  const [departmentId, setDepartmentId] = useState('');
   const typed = changedNames(names);
   const error = create.error as ApiError | null;
 
@@ -159,7 +177,9 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
           ? { ...typed, side }
           : tab === 'sizes' || tab === 'colors'
             ? { ...typed, kind: tab === 'sizes' ? ('SIZE' as const) : ('COLOR' as const) }
-            : typed;
+            : tab === 'categories' && departmentId
+              ? { ...typed, departmentId }
+              : typed;
       await create.mutateAsync(input);
       setNames(EMPTY);
     } catch {
@@ -170,7 +190,7 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
   return (
     <Card className="space-y-2">
       <div
-        className={`grid gap-2 sm:items-end ${tab === 'levels' ? 'sm:grid-cols-[1fr_200px_auto]' : 'sm:grid-cols-[1fr_auto]'}`}
+        className={`grid gap-2 sm:items-end ${tab === 'levels' || tab === 'categories' ? 'sm:grid-cols-[1fr_200px_auto]' : 'sm:grid-cols-[1fr_auto]'}`}
       >
         <NameFields
           values={names}
@@ -189,6 +209,12 @@ function AddEntry({ tab, list }: { tab: Tab; list: CatalogList }) {
               <option value="SALE">{t('setup.sideSALE')}</option>
               <option value="PURCHASE">{t('setup.sidePURCHASE')}</option>
             </select>
+          </label>
+        )}
+        {tab === 'categories' && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('setup.department')}</span>
+            <DepartmentSelect value={departmentId} onChange={setDepartmentId} />
           </label>
         )}
         <Button icon="plus" loading={create.isPending} disabled={!typed.name} onClick={add}>
@@ -241,6 +267,16 @@ function EntryRow({
           )}
           {entry.isDefault && <Badge tone="brand">{t('setup.default')}</Badge>}
           {entry.isActive === false && <Badge>{t('setup.closed')}</Badge>}
+          {tab === 'categories' && !canManage && (
+            <Badge tone={entry.departmentId ? 'info' : undefined}>
+              {entry.departmentName ?? t('setup.noDepartment')}
+            </Badge>
+          )}
+          {entry.categoryCount !== undefined && (
+            <span className="text-xs text-muted tnum">
+              {t('setup.categoryCount')}: {formatNumber(entry.categoryCount, locale)}
+            </span>
+          )}
           {entry.itemCount !== undefined && (
             <span className="text-xs text-muted tnum">
               {t('setup.itemCount')}: {formatNumber(entry.itemCount, locale)}
@@ -277,6 +313,13 @@ function EntryRow({
               >
                 {t('setup.rename')}
               </Button>
+              {tab === 'categories' && (
+                <DepartmentSelect
+                  compact
+                  value={entry.departmentId ?? ''}
+                  onChange={(departmentId) => run({ departmentId })}
+                />
+              )}
               {tab === 'levels' && entry.isActive && !entry.isDefault && (
                 <Button
                   size="sm"
@@ -313,5 +356,36 @@ function EntryRow({
       )}
       {error && <p className="mt-2 text-xs text-destructive">{error.message}</p>}
     </li>
+  );
+}
+
+/** Pick a category's department; '' = none (every department sells it). */
+function DepartmentSelect({
+  value,
+  onChange,
+  compact,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  compact?: boolean;
+}) {
+  const { t } = useT();
+  const departments = useDepartments();
+  return (
+    <select
+      aria-label={t('setup.department')}
+      className={`${compact ? 'h-8' : 'h-9 w-full'} rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{t('setup.noDepartment')}</option>
+      {(departments.data ?? [])
+        .filter((d) => d.isActive || d.id === value)
+        .map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+    </select>
   );
 }

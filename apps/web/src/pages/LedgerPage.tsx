@@ -76,7 +76,13 @@ const yearStart = () => `${today().slice(0, 4)}-01-01`;
 export function LedgerPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
+  // Trial balance, income statement and balance sheet show cost of goods and profit: the owner's
+  // unless given (costs:view); the server refuses them otherwise.
+  const seeCosts = useCan()('costs:view');
+  const tabs = seeCosts
+    ? TABS
+    : TABS.filter((x) => !['trial', 'income', 'balance'].includes(x.key));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
   return (
     <div className="space-y-5">
       <PageHeader title={t('ledger.title')} subtitle={t('ledger.subtitle')} />
@@ -84,7 +90,7 @@ export function LedgerPage() {
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
       >
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button
             key={x.key}
             role="tab"

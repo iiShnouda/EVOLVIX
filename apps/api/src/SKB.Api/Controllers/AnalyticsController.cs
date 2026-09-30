@@ -92,13 +92,16 @@ public sealed class AnalyticsController : ControllerBase
     {
         var (fromDay, toDay, start, end) = Period(from, to);
         var byBranch = by.Equals("branch", StringComparison.OrdinalIgnoreCase);
+        var byDepartment = by.Equals("department", StringComparison.OrdinalIgnoreCase);
         var docs = await Docs()
             .Where(d => (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN)
                         && d.IssueDate >= start && d.IssueDate < end)
             .Select(d => new
             {
                 d.Type,
-                Key = byBranch
+                // A sale of no department is counted under an empty key.
+                Key = byDepartment ? d.DepartmentId ?? Guid.Empty
+                    : byBranch
                     ? (d.Type == DocumentType.SALES_RETURN && d.SourceDocument != null ? d.SourceDocument.BranchId : d.BranchId)
                     : (d.Type == DocumentType.SALES_RETURN && d.SourceDocument != null
                         ? d.SourceDocument.RepId ?? d.SourceDocument.StaffId
@@ -107,10 +110,16 @@ public sealed class AnalyticsController : ControllerBase
             }).ToListAsync();
         var quotes = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION && d.IssueDate >= start && d.IssueDate < end);
         quotes = quotes.InBranches(User, d => d.BranchId);
-        var quoteRows = await quotes.Select(d => new { Key = byBranch ? d.BranchId : d.RepId ?? d.StaffId, d.Status }).ToListAsync();
+        var quoteRows = await quotes.Select(d => new
+        {
+            Key = byDepartment ? d.DepartmentId ?? Guid.Empty : byBranch ? d.BranchId : d.RepId ?? d.StaffId,
+            d.Status,
+        }).ToListAsync();
 
         var keys = docs.Select(d => d.Key).Concat(quoteRows.Select(q => q.Key)).Distinct().ToList();
-        var names = byBranch
+        var names = byDepartment
+            ? (await _db.Departments.AsNoTracking().Where(x => keys.Contains(x.Id)).ToListAsync()).ToDictionary(x => x.Id, x => Loc.Name(x))
+            : byBranch
             ? (await _db.Branches.AsNoTracking().Where(x => keys.Contains(x.Id)).ToListAsync()).ToDictionary(x => x.Id, x => Loc.Name(x))
             : await _db.Staff.AsNoTracking().Where(x => keys.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.FullName);
         var rows = keys.Select(k =>
@@ -130,9 +139,9 @@ public sealed class AnalyticsController : ControllerBase
         var result = rows.Select(r => r with { Share = totalNet > 0 ? Math.Round(100.0 * r.NetSales / totalNet, 1) : 0 })
             .OrderByDescending(r => r.NetSales).ThenBy(r => r.Name).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
-        return Ok(new PerformanceDto(byBranch ? "branch" : "rep", fromDay.ToString("yyyy-MM-dd"),
+        return Ok(Costs.Guard(User, new PerformanceDto(byDepartment ? "department" : byBranch ? "branch" : "rep", fromDay.ToString("yyyy-MM-dd"),
             toDay.ToString("yyyy-MM-dd"), result, totalNet, rows.Sum(r => r.Profit), rows.Sum(r => r.Invoices),
-            currency));
+            currency)));
     }
 
     /// <summary>
@@ -183,7 +192,9 @@ public sealed class AnalyticsController : ControllerBase
                 return new DeadItemDto(id.ToString(), p.Sku, Loc.Name(p), stock[id], (long)stock[id] * p.CostPrice,
                     lastSale.TryGetValue(id, out var last) ? last.ToString("o") : null);
             })
-            .OrderByDescending(x => x.StockValue).Take(200).ToArray();
+            // Without the right to see costs, by quantity instead of value (the order would hint at cost).
+            .OrderByDescending(x => Costs.CanSee(User) ? x.StockValue : x.Stock).Take(200)
+            .Select(x => Costs.Guard(User, x)).ToArray();
         var currency = await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
         return Ok(new ItemMovementDto(fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             top.Where(m => byId.ContainsKey(m.ProductId)).Select(m => new ItemMoveDto(m.ProductId.ToString(),

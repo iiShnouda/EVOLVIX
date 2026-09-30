@@ -126,7 +126,8 @@ const sell = (who, customer, lines, extra = {}) =>
     ...extra,
   });
 ok('sales sells to customer 1 at the list price', await sell(karim, c1, [[A.id, 2, 900]]));
-eq('…not at the level price', (await sell(karim, c1, [[A.id, 2, 1000]])).data?.code, 'price_not_allowed');
+eq('…nor under it', (await sell(karim, c1, [[A.id, 2, 850]])).data?.code, 'price_not_allowed');
+ok('a seller may add to it on this invoice (sales:raise_price)', await sell(karim, c1, [[A.id, 2, 1000]]));
 eq('customer 2 at the list price: refused', (await sell(karim, c2, [[A.id, 2, 900]])).data?.code, 'price_not_allowed');
 ok('a quotation at the list price', await karim.post('/sales/quotations', {
   partyId: c1.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: A.id, quantity: 3, unitPrice: 900 }],
@@ -201,8 +202,9 @@ const bonus = await priceFor(karim, c2, [[A.id, 9], [A.id, 5, undefined, true]])
 eq('free goods neither count nor get it', bonus.lines.map((l) => [l.unitPrice, l.discount]), [[1000, 0], [0, 0]]);
 
 ok('sales sells 10 of A with the 5% off', await sell(karim, c2, [[A.id, 10, 1000, 500]]));
-eq('…not without it', (await sell(karim, c2, [[A.id, 10, 1000, 0]])).data?.code, 'price_not_allowed');
-eq('…nor with more', (await sell(karim, c2, [[A.id, 10, 1000, 600]])).data?.code, 'price_not_allowed');
+ok('…or without it (never below the rule)', await sell(karim, c2, [[A.id, 10, 1000, 0]]));
+eq('…but more needs the discount permission', (await sell(karim, c2, [[A.id, 10, 1000, 600]])).data?.code, 'discount_not_allowed');
+eq('…and the price can’t go under the list', (await sell(karim, c2, [[A.id, 10, 900, 500]])).data?.code, 'price_not_allowed');
 
 ok('model T: 6 → 3%', await steps({ modelId: model.id }, [{ minQuantity: 6, percent: 3 }]));
 const tees = await priceFor(karim, c2, [[tS, 3], [tM, 3]]);

@@ -109,12 +109,6 @@ export function DocumentPreview({
             <p className="text-sm font-semibold text-fg">{t(`doc.${doc.type}`)}</p>
             <p className="tnum font-medium text-fg">{doc.number}</p>
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
-            {isQuote && doc.dueDate && (
-              <p>
-                {t('quote.validUntil')}:{' '}
-                <span className="font-medium text-fg tnum">{formatDate(doc.dueDate, locale)}</span>
-              </p>
-            )}
             {isQuote && doc.invoiceNumber && (
               <p>
                 {t('quote.becameInvoice')}:{' '}
@@ -133,9 +127,21 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
+            {doc.rejectReason && (
+              <p className="text-destructive">
+                {t('order.rejectedBecause')} <span className="font-medium">{doc.rejectReason}</span>
+              </p>
+            )}
+            {doc.departmentName && (
+              <p>
+                {t('invoice.department')}:{' '}
+                <span className="font-medium text-fg">{doc.departmentName}</span>
+              </p>
+            )}
             {doc.repName && (
               <p>
                 {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
+                {doc.repCode != null && <span className="tnum"> ({doc.repCode})</span>}
               </p>
             )}
             {doc.paidAccountName && doc.paidAmount > 0 && (
@@ -144,7 +150,8 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.paidAccountName}</span>
               </p>
             )}
-            {doc.priceLevelName && (
+            {/* Sales invoices don't show a price level (owner decision 2026-09-30). */}
+            {isPurchaseSide && doc.priceLevelName && (
               <p>
                 {t('invoice.priceLevel')}:{' '}
                 <span className="font-medium text-fg">{doc.priceLevelName}</span>
@@ -157,7 +164,14 @@ export function DocumentPreview({
           <p className="text-xs text-muted">
             {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
           </p>
-          <p className="font-medium">{doc.partyName}</p>
+          <p className="font-medium">
+            {doc.partyName}
+            {doc.partyCode != null && (
+              <span className="ms-1.5 text-xs font-normal text-muted tnum">
+                {t('common.code')} {doc.partyCode}
+              </span>
+            )}
+          </p>
           {doc.deliveryMethod && doc.deliveryMethod !== 'PICKUP' && (
             <div className="mt-2 border-t border-line pt-2 text-xs text-muted">
               <p>

@@ -5,6 +5,7 @@ import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import {
   useCompanySettings,
@@ -28,6 +29,8 @@ interface Line {
  */
 export function TransferBuilderPage() {
   const { t, locale } = useT();
+  // Goods move at cost; that value is the owner's unless given (costs:view).
+  const seeCosts = useCan()('costs:view');
   const navigate = useNavigate();
   const settings = useCompanySettings();
   const currency = settings.data?.currency ?? 'EGP';
@@ -230,10 +233,14 @@ export function TransferBuilderPage() {
                 <dt className="text-muted">{t('inventory.qty')}</dt>
                 <dd className="tnum">{formatNumber(totalQty, locale)}</dd>
               </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-muted">{t('inventory.value')}</dt>
-                <dd className="font-semibold tnum">{formatMoney(totalValue, currency, locale)}</dd>
-              </div>
+              {seeCosts && (
+                <div className="flex items-center justify-between">
+                  <dt className="text-muted">{t('inventory.value')}</dt>
+                  <dd className="font-semibold tnum">
+                    {formatMoney(totalValue, currency, locale)}
+                  </dd>
+                </div>
+              )}
             </dl>
             <label className="mt-3 block">
               <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>

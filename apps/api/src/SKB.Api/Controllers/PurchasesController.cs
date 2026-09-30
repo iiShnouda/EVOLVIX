@@ -212,6 +212,12 @@ public sealed class PurchasesController : ControllerBase
             var lineCost = lineTotal - docDiscount;
             _inventory.ReceiveValue(product, warehouse, baseQty, lineCost,
                 StockMovementType.PURCHASE_IN, doc.Id, number);
+            // The first supplier an item is bought from becomes its main supplier, so the invoice's
+            // supplier filter works without setting every item up by hand. A variant follows its
+            // model, so it is left for the model editor.
+            if (product.SupplierId is null && product.ModelId is null
+                && party.Types.Contains(nameof(PartyType.SUPPLIER)))
+                product.SupplierId = party.Id;
 
             doc.Lines.Add(new DocumentLine
             {
@@ -261,6 +267,12 @@ public sealed class PurchasesController : ControllerBase
             doc.PaidAccountId = account!.Id;
         }
         await _ledger.PostPurchaseInvoiceAsync(doc, party, paidFrom, staffId);
+
+        // Shipping we paid to bring the goods: our expense (not added to the items' cost).
+        if (req.ShippingCost < 0) return BadRequest(new { message = "Enter a shipping cost of zero or more.", code = "bad_amount" });
+        var (_, shipError) = await _money.ShippingExpenseAsync(req.ShippingCost, req.ShippingAccountId, branchId,
+            doc.Number, User, staffId, _ledger);
+        if (shipError is not null) return BadRequest(new { message = shipError.Message, code = shipError.Code });
 
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();

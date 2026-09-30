@@ -9,7 +9,7 @@ namespace SKB.Api.Models;
 public record AuthUserDto(
     string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions,
     bool AllBranches = false, BranchOptionDto[]? Branches = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
 public record BranchOptionDto(string Id, string Name, bool IsActive = true);
 
@@ -29,7 +29,8 @@ public record ProductDto(
     string Id, string Sku, string Name, string Unit, long CostPrice, long SalePrice,
     string Currency, int StockOnHand, int ReorderLevel, bool IsActive,
     string? Barcode, string CategoryId, ProductUnitDto[] Units,
-    string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId);
+    string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 /// <param name="Prices">The unit's price at each active level that has one (see PriceBook for the order).</param>
 public record ProductUnitDto(string UnitId, string Name, int Factor, string? Barcode, UnitPriceDto[] Prices);
@@ -41,7 +42,7 @@ public record UnitPriceDto(string PriceLevelId, long Price, string Source);
 public record SalesSummaryDto(
     string Id, string Number, string Type, string Status, string BranchName, string PartyName,
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
-    string? SourceNumber);
+    string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null);
 
 /// <param name="Quantity">In base units (what stock moved by).</param>
 /// <param name="UnitQuantity">In the line's unit (<paramref name="UnitName"/>, holding <paramref name="UnitFactor"/> base units).</param>
@@ -71,7 +72,12 @@ public record SalesDetailDto(
     long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName,
     string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
-    string? InvoiceId = null, string? InvoiceNumber = null);
+    string? InvoiceId = null, string? InvoiceNumber = null,
+    string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
+    string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null);
+
+/// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
+public record RejectOrderRequest(string? Reason);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -100,7 +106,40 @@ public record CreateSalesInvoiceRequest(
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
-    string? PaidAccountId = null);
+    string? PaidAccountId = null, string? DepartmentId = null);
+
+/// <summary>
+/// Approving a pending invoice: what the customer pays now and into which account; optionally new
+/// discounts — per line (<paramref name="LineDiscounts"/>) and for the whole invoice
+/// (<paramref name="Charges"/>: only its DISCOUNT / EXTRA_DISCOUNT rows count; null = keep them).
+/// </summary>
+public record ApproveOrderRequest(
+    long PaidAmount = 0, string? PaidAccountId = null, LineDiscountRequest[]? LineDiscounts = null,
+    ChargeRequest[]? Charges = null, string? Notes = null, string? DueDate = null, bool OverrideFloor = false,
+    string? WarehouseId = null);
+
+/// <summary>
+/// A customer's account for the accountant. <paramref name="Balance"/> is everything they owe now
+/// (opening balance, invoices, returns, receipts, notes); <paramref name="Outstanding"/> is what is
+/// left on the invoices listed; <paramref name="Pending"/> is the total of invoices waiting for approval.
+/// </summary>
+public record CustomerAccountDto(
+    string PartyId, string Name, string? Phone, string? Address, string? ShippingAddress, string? Notes,
+    long Balance, string Currency, long Invoiced, long Discounts, long Returned, long Outstanding, long Pending,
+    AccountDepartmentDto[] Departments, AccountDocumentDto[] Documents, long? CreditLimit = null);
+
+/// <summary>One department's share of a customer's account (no department: DepartmentId null).</summary>
+public record AccountDepartmentDto(
+    string? DepartmentId, string Name, int Invoices, long Total, long Discounts, long Returns, long Outstanding);
+
+/// <summary>An invoice, return or pending invoice on a customer's account.</summary>
+public record AccountDocumentDto(
+    string Id, string Number, string Type, string Status, string IssueDate, string? DepartmentId,
+    string? DepartmentName, string BranchName, string StaffName, long Subtotal, long DiscountTotal,
+    long GrandTotal, long PaidAmount, long Outstanding, string? Notes, string? SourceNumber);
+
+/// <summary>A line's discount (minor units, for the whole line).</summary>
+public record LineDiscountRequest(string? LineId, long Discount);
 
 /// <summary>
 /// Turning a quotation into an invoice: its lines, prices and charges come from the quotation; this
@@ -119,10 +158,11 @@ public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
     string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
-    string? PaidAccountId = null);
+    string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
-public record RepOptionDto(string Id, string Name, string BranchId);
+/// <param name="Code">The person's number (كود), shown beside the name.</param>
+public record RepOptionDto(string Id, string Name, string BranchId, int Code = 0);
 
 /// <summary>One invoice line being returned. Price and cost always come from the original line.</summary>
 public record CreateReturnLineRequest(string LineId, int Quantity);
@@ -130,20 +170,23 @@ public record CreateReturnLineRequest(string LineId, int Quantity);
 /// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
 /// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
 public record CreateReturnRequest(
-    CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null);
+    CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null,
+    long ShippingCost = 0, string? ShippingAccountId = null);
 
 public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? CommercialRegister = null, string TimeZone = "Africa/Cairo");
+    string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
+    int PendingHoldDays = 0);
 
 /// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(
     string? CompanyName, string? Country, string? Currency,
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
-    string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null);
+    string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
+    int? MaxDiscountPercent = null, int? PendingHoldDays = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -327,17 +370,26 @@ public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
     string? Email, string? TaxNumber, string? Address, bool IsActive,
-    string? SalesPriceListId = null, string? PurchasePriceListId = null);
+    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null,
+    int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null);
 
-/// <param name="Types">CUSTOMER, SUPPLIER, FACTORY and/or CARRIER (a shipping company).</param>
+/// <summary>A customer's credit limit, minor units; null = no limit.</summary>
+public record SetCreditLimitRequest(long? CreditLimit);
+
+/// <param name="Types">CUSTOMER, SUPPLIER and/or CARRIER (a shipping company). "FACTORY" is read as SUPPLIER.</param>
+/// <param name="Address">The main address; for a supplier, the factory's address.</param>
+/// <param name="ContactName">The factory owner (supplier) or the person in charge (customer).</param>
 public record CreatePartyRequest(
     string? Name, string[]? Types, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? Address = null);
+    string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
+    string? ShippingAddress = null, string? Notes = null);
 
-/// <summary>Any field left null is unchanged.</summary>
+/// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
     string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
-    string? TaxNumber = null, string? Address = null, bool? IsActive = null);
+    string? TaxNumber = null, string? Address = null, bool? IsActive = null,
+    string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
+    string? Notes = null);
 
 /// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
 public record SetPartyPriceLevelsRequest(
@@ -395,7 +447,16 @@ public record PricingDto(string? PriceLevelId, PricedLineDto[] Lines);
 /// <param name="ItemCount">Items that come in this unit / belong to this category.</param>
 public record UnitDto(string Id, string Name, bool IsActive, int ItemCount);
 
-public record CategoryDto(string Id, string Name, int ItemCount);
+public record CategoryDto(string Id, string Name, int ItemCount, string? DepartmentId = null, string? DepartmentName = null);
+
+/// <summary>A category: its name and the sales department it belongs to (none = every department).</summary>
+public record CreateCategoryRequest(string? Name = null, string? DepartmentId = null);
+
+/// <summary>Any field left null is unchanged; a DepartmentId of "" takes the category out of its department.</summary>
+public record UpdateCategoryRequest(string? Name = null, string? DepartmentId = null);
+
+/// <summary>A sales department (قسم): a group of categories.</summary>
+public record DepartmentDto(string Id, string Name, bool IsActive, int CategoryCount);
 
 /// <param name="Side">SALE or PURCHASE.</param>
 public record PriceLevelDto(
@@ -426,10 +487,13 @@ public record ItemUnitRequest(string? UnitId, int Factor, string? Barcode = null
 /// <summary>A price for one unit at one level (minor units). Null clears the item's own price (inherit again).</summary>
 public record PriceRequest(string? UnitId, string? PriceLevelId, long? Price);
 
+/// <param name="SupplierId">The item's main supplier (a factory is a supplier); "" or null = none.</param>
+/// <param name="SupplierCode">That supplier's own code for the item.</param>
 public record CreateProductRequest(
     string? CategoryId, ItemUnitRequest[]? Units,
     string? Name = null, string? Sku = null,
-    int ReorderLevel = 0, PriceRequest[]? Prices = null);
+    int ReorderLevel = 0, PriceRequest[]? Prices = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 /// <summary>
 /// Any field left null is unchanged. For a variant only SKU, reorder level, active and the units'
@@ -437,7 +501,8 @@ public record CreateProductRequest(
 /// </summary>
 public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
-    string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null);
+    string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 
@@ -453,7 +518,8 @@ public record ProductDetailDto(
     string Id, string Sku, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, int StockOnHand, long CostPrice, bool HasMovements,
     string? ModelId, string? ModelName, string? SizeId, string? SizeName, string? ColorId, string? ColorName,
-    ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency);
+    ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 public record ModelSummaryDto(
     string Id, string Code, string Name, string CategoryName, int Variants, int StockOnHand, bool IsActive);
@@ -466,13 +532,15 @@ public record ModelVariantDto(
 public record ModelDetailDto(
     string Id, string Code, string Name, string CategoryId, string CategoryName,
     int ReorderLevel, bool IsActive, bool HasMovements, ItemUnitDto[] Units, PriceCellDto[] Prices,
-    VariantOptionDto[] Sizes, VariantOptionDto[] Colors, ModelVariantDto[] Variants, string Currency);
+    VariantOptionDto[] Sizes, VariantOptionDto[] Colors, ModelVariantDto[] Variants, string Currency,
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
 
 /// <summary>A new model: its variants are made for every size × color given (one list may be empty).</summary>
 public record CreateModelRequest(
     string? CategoryId, ItemUnitRequest[]? Units, string[]? SizeIds, string[]? ColorIds,
     string? Name = null, string? Code = null,
-    int ReorderLevel = 0, PriceRequest[]? Prices = null);
+    int ReorderLevel = 0, PriceRequest[]? Prices = null,
+    string? SupplierId = null, string? SupplierCode = null);
 
 /// <summary>
 /// Any field left null is unchanged. New sizes / colors add the missing variants; units apply to
@@ -481,7 +549,7 @@ public record CreateModelRequest(
 public record UpdateModelRequest(
     string? Name = null, string? CategoryId = null,
     int? ReorderLevel = null, bool? IsActive = null, string[]? AddSizeIds = null, string[]? AddColorIds = null,
-    ItemUnitRequest[]? Units = null);
+    ItemUnitRequest[]? Units = null, string? SupplierId = null, string? SupplierCode = null);
 
 // ---- Staff & permissions (owner decision 2026-09-29: every action has its own permission) ----
 
@@ -495,11 +563,15 @@ public record StaffDto(
     string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
     bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0);
 
-/// <summary>What one person may work with; every field replaces what was there.</summary>
+/// <summary>
+/// What one person may work with; every field replaces what was there. No departments = every
+/// department; no discount limit = the company's.
+/// </summary>
 public record StaffAccessRequest(
-    bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds);
+    bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds,
+    string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
 public record CreateStaffRequest(
     string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null);
@@ -606,9 +678,19 @@ public record CreateLedgerAccountRequest(string? Name, string? ParentId, bool Is
 public record UpdateLedgerAccountRequest(string? Name = null, bool? IsActive = null);
 
 /// <param name="Balance">Running balance (debits − credits) after this line.</param>
+/// <param name="Book">On a party statement (الدفتر): the sales department of an invoice or return, the
+/// cash box / bank of a receipt or payment, the bank of a cheque.</param>
+/// <param name="Note">The document's own notes (ملحوظة).</param>
+/// <param name="Items">With <c>items=true</c>, an invoice's or return's lines (كشف أصناف).</param>
 public record LedgerLineDto(
     string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
-    string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance);
+    string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
+    string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
+    StatementItemDto[]? Items = null);
+
+/// <summary>One item line of an invoice or return on a statement (no cost).</summary>
+public record StatementItemDto(
+    string ProductName, int Quantity, string? UnitName, long UnitPrice, long Discount, long LineTotal, bool IsBonus);
 
 public record LedgerStatementDto(
     string Title, string From, string To, long Opening, long TotalDebit, long TotalCredit, long Closing,
@@ -814,3 +896,14 @@ public record CreatePayrollRunRequest(int Year, int Month, string? BranchId = nu
 
 /// <param name="EmployeeIds">Pay only these; none = everyone still unpaid.</param>
 public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds = null);
+
+public record NotificationDto(
+    string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,
+    string? ActorName, string? Message, string CreatedAt, bool Read, string? DepartmentName = null);
+
+public record NotificationsDto(int Unread, NotificationDto[] Items);
+
+/// <summary>Work in progress kept for one screen while the app updates (see WorkDraft).</summary>
+public record WorkDraftDto(string Key, string Data, string UpdatedAt);
+public record SaveWorkDraftRequest(string Key, string Data);
+public record TakeWorkDraftRequest(string Key);

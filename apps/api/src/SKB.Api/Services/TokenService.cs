@@ -31,7 +31,8 @@ public sealed class TokenService
         staff.BranchId.ToString(), permissions, access.AllBranches,
         access.Branches.Select(b => new BranchOptionDto(b.Id.ToString(), Loc.Name(b), b.IsActive)).ToArray(),
         access.Warehouses?.Select(w => w.ToString()).ToArray(),
-        access.MoneyAccounts?.Select(a => a.ToString()).ToArray());
+        access.MoneyAccounts?.Select(a => a.ToString()).ToArray(),
+        access.Departments?.Select(d => d.ToString()).ToArray(), access.MaxDiscountPercent);
 
     public string IssueAccessToken(Staff staff, string[] permissions, StaffAccess access)
     {

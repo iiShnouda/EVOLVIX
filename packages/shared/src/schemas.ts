@@ -35,7 +35,7 @@ export const salesListQuerySchema = paginationSchema.extend({
 export type SalesListQuery = z.infer<typeof salesListQuerySchema>;
 
 export const partiesListQuerySchema = paginationSchema.extend({
-  type: z.enum(['CUSTOMER', 'SUPPLIER', 'FACTORY']).optional(),
+  type: z.enum(['CUSTOMER', 'SUPPLIER', 'CARRIER']).optional(),
   search: z.string().max(200).optional(),
 });
 export type PartiesListQuery = z.infer<typeof partiesListQuerySchema>;
@@ -96,6 +96,8 @@ export const createSalesInvoiceSchema = z.object({
   carrierId: z.string().uuid().optional(),
   /** Where the paid-now amount goes; none = the branch's cash box. */
   paidAccountId: z.string().uuid().optional(),
+  /** The sales department (قسم); someone limited to one department may leave it out. */
+  departmentId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -146,6 +148,9 @@ export const createPurchaseInvoiceSchema = z.object({
     .optional(),
   /** Where the paid-now amount comes from; none = the branch's cash box. */
   paidAccountId: z.string().uuid().optional(),
+  /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
+  shippingCost: z.number().int().min(0).optional(),
+  shippingAccountId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -168,6 +173,9 @@ export const createReturnSchema = z.object({
   notes: z.string().max(1000).optional(),
   /** The money account the refund goes through; none = the branch's cash box. */
   refundAccountId: z.string().uuid().optional(),
+  /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
+  shippingCost: z.number().int().min(0).optional(),
+  shippingAccountId: z.string().uuid().optional(),
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 
@@ -241,6 +249,10 @@ export const updateSettingsSchema = z.object({
   defaultMarkupPercent: z.number().int().min(0).max(1000).optional(),
   minMarkupPercent: z.number().int().min(0).max(1000).optional(),
   defaultTaxPercent: z.number().int().min(0).max(100).optional(),
+  /** Staff discount limit (% of a line's worth); 100 = none. */
+  maxDiscountPercent: z.number().int().min(0).max(100).optional(),
+  /** Days a pending invoice holds its goods; 0 = until approved or cancelled. */
+  pendingHoldDays: z.number().int().min(0).max(365).optional(),
   transfersRequireReceipt: z.boolean().optional(),
   // "" clears a company-profile field; left out = unchanged.
   address: z.string().trim().max(300).optional(),
@@ -307,6 +319,9 @@ export const createProductSchema = z.object({
   reorderLevel: z.number().int().min(0).default(0),
   units: z.array(itemUnitSchema).min(1).max(10),
   prices: z.array(priceSchema).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
@@ -317,6 +332,9 @@ export const updateProductSchema = z.object({
   reorderLevel: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
   units: z.array(itemUnitSchema).min(1).max(10).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 
@@ -332,6 +350,9 @@ export const createModelSchema = z.object({
   colorIds: z.array(z.string().uuid()),
   units: z.array(itemUnitSchema).min(1).max(10),
   prices: z.array(priceSchema).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type CreateModelInput = z.infer<typeof createModelSchema>;
 
@@ -343,6 +364,9 @@ export const updateModelSchema = z.object({
   addSizeIds: z.array(z.string().uuid()).optional(),
   addColorIds: z.array(z.string().uuid()).optional(),
   units: z.array(itemUnitSchema).min(1).max(10).optional(),
+  /** Main supplier (a party id), or "" for none. */
+  supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  supplierCode: z.string().trim().max(64).optional(),
 });
 export type UpdateModelInput = z.infer<typeof updateModelSchema>;
 
@@ -383,7 +407,7 @@ export type StaffPermissionsInput = z.infer<typeof staffPermissionsSchema>;
 
 // ---- Parties and delivery (DOMAIN step 4b) ----
 
-export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'FACTORY', 'CARRIER']);
+export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'CARRIER']);
 
 export const partySchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -392,6 +416,10 @@ export const partySchema = z.object({
   email: z.union([z.literal(''), z.string().email().max(200)]).optional(),
   taxNumber: z.string().max(40).optional(),
   address: z.string().max(300).optional(),
+  otherPhones: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
+  contactName: z.string().max(200).optional(),
+  shippingAddress: z.string().max(300).optional(),
+  notes: z.string().max(1000).optional(),
 });
 export type CreatePartyInput = z.infer<typeof partySchema>;
 /** On an edit, a field left out is unchanged; closing needs a zero balance. */

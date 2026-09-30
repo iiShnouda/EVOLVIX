@@ -53,6 +53,24 @@ public static class Access
     /// <summary>Only these cash boxes / banks / wallets (within their branches); null = any in their branches.</summary>
     public static Guid[]? MoneyAccounts(ClaimsPrincipal u) => Ids(u, "moneyAccounts");
 
+    /// <summary>Only these sales departments; null = every department.</summary>
+    public static Guid[]? Departments(ClaimsPrincipal u) => Ids(u, "departments");
+
+    public static bool CanUseDepartment(ClaimsPrincipal u, Guid departmentId) =>
+        Departments(u) is not { } mine || mine.Contains(departmentId);
+
+    /// <summary>The most discount the person may give (% of a line's worth); null = no limit.</summary>
+    public static int? MaxDiscount(ClaimsPrincipal u) =>
+        int.TryParse(u.FindFirst("maxDiscount")?.Value, out var p) ? p : null;
+
+    /// <summary>Sales documents of the person's departments, and those of no department.</summary>
+    public static IQueryable<SalesDocument> InDepartments(this IQueryable<SalesDocument> q, ClaimsPrincipal u)
+    {
+        if (Departments(u) is not { } mine) return q;
+        var list = new IdList(mine);
+        return q.Where(d => d.DepartmentId == null || list.Ids.Contains(d.DepartmentId.Value));
+    }
+
     /// <summary>Rows of the person's branches only (all rows for everyone-branch people).</summary>
     public static IQueryable<T> InBranches<T>(this IQueryable<T> q, ClaimsPrincipal u, Expression<Func<T, Guid>> branchOf)
     {
@@ -69,6 +87,8 @@ public static class Access
         else yield return new Claim("branches", string.Join(',', access.Branches.Select(b => b.Id)));
         if (access.Warehouses is { } w) yield return new Claim("warehouses", string.Join(',', w));
         if (access.MoneyAccounts is { } m) yield return new Claim("moneyAccounts", string.Join(',', m));
+        if (access.Departments is { } d) yield return new Claim("departments", string.Join(',', d));
+        if (access.MaxDiscountPercent is int max) yield return new Claim("maxDiscount", max.ToString());
     }
 
     /// <summary>
@@ -115,8 +135,11 @@ public static class Access
 /// <param name="Branches">Their branches, their own first (every branch when <paramref name="AllBranches"/>).</param>
 /// <param name="Warehouses">Only these warehouses; null = any in their branches.</param>
 /// <param name="MoneyAccounts">Only these money accounts; null = any in their branches.</param>
+/// <param name="Departments">Only these sales departments; null = every one.</param>
+/// <param name="MaxDiscountPercent">The most discount they may give; null = no limit.</param>
 public sealed record StaffAccess(
-    bool AllBranches, IReadOnlyList<Branch> Branches, Guid[]? Warehouses, Guid[]? MoneyAccounts);
+    bool AllBranches, IReadOnlyList<Branch> Branches, Guid[]? Warehouses, Guid[]? MoneyAccounts,
+    Guid[]? Departments = null, int? MaxDiscountPercent = null);
 
 public sealed class AccessService
 {
@@ -145,6 +168,20 @@ public sealed class AccessService
         if (staff.Role != Role.OWNER && staff.MoneyAccountIds.Count > 0)
             accounts = await _db.MoneyAccounts.Where(a => staff.MoneyAccountIds.Contains(a.Id) && ids.Contains(a.BranchId))
                 .Select(a => a.Id).ToArrayAsync();
-        return new StaffAccess(all, mine, warehouses, accounts);
+        Guid[]? departments = null;
+        if (staff.Role != Role.OWNER && staff.DepartmentIds.Count > 0)
+            departments = await _db.Departments.Where(d => staff.DepartmentIds.Contains(d.Id))
+                .Select(d => d.Id).ToArrayAsync();
+        return new StaffAccess(all, mine, warehouses, accounts, departments, await MaxDiscountAsync(staff));
+    }
+
+    /// <summary>The person's discount limit: their own, else the company's; the owner has none (null).</summary>
+    public async Task<int?> MaxDiscountAsync(Staff staff)
+    {
+        if (staff.Role == Role.OWNER) return null;
+        var max = staff.MaxDiscountPercent
+            ?? await _db.CompanySettings.AsNoTracking().Select(s => (int?)s.MaxDiscountPercent).FirstOrDefaultAsync()
+            ?? 100;
+        return max >= 100 ? null : Math.Max(0, max);
     }
 }

@@ -14,6 +14,12 @@ const ALL: Permission[] = [
   'sales:override_floor',
   'sales:return',
   'sales:quote',
+  'sales:order',
+  'sales:approve',
+  'sales:over_credit',
+  'parties:credit_limit',
+  'sales:raise_price',
+  'sales:invoice_alerts',
   'purchases:view',
   'purchases:create',
   'purchases:return',
@@ -35,6 +41,7 @@ const ALL: Permission[] = [
   'audit:view',
   'presence:view',
   'backup:create',
+  'costs:view',
   'payroll:view',
   'employees:manage',
   'attendance:edit',
@@ -107,7 +114,8 @@ const ITEMS: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
-  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create'),
+  // Costs and profit stay with the owner by default; the owner can give them to anyone.
+  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create' && p !== 'costs:view'),
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',
@@ -116,6 +124,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sales:override_floor',
     'sales:return',
     'sales:quote',
+    // Invoices post at once and the accountant is told (owner decision 2026-09-30).
+    'sales:approve',
+    'sales:invoice_alerts',
+    'sales:raise_price',
+    'parties:credit_limit',
     'payroll:view',
     'attendance:edit',
     'payroll:adjust',
@@ -168,14 +181,17 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'notes:endorse',
     'notes:cancel',
   ],
-  // Returns move money back out, so a salesperson can't issue them by default. Sales staff sell at
-  // the customer's price level; changing a price or the level needs a manager.
+  // Sales staff sell at the customer's price level and may only add to a price; lowering it or
+  // changing the level needs a manager. The seller writes a customer's return. Their invoices post
+  // at once; the accountant is told and takes the payment.
   SALES: [
     'dashboard:view',
     'sales:view',
     'sales:create',
     'sales:edit',
     'sales:quote',
+    'sales:raise_price',
+    'sales:return',
     'parties:view',
     'parties:edit',
     'inventory:view',

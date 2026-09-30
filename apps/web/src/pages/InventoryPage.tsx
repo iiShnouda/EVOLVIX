@@ -31,11 +31,13 @@ export function InventoryPage() {
   const { t, locale } = useT();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'valuation' ? 'valuation' : 'items';
-  const lowOnly = params.get('low') === '1';
-  const warehouseId = params.get('wh') ?? '';
   const can = useCan();
   const canEdit = can('inventory:edit');
+  // Average cost, stock value and the valuation are the owner's unless given (costs:view).
+  const seeCosts = can('costs:view');
+  const tab: Tab = seeCosts && params.get('tab') === 'valuation' ? 'valuation' : 'items';
+  const lowOnly = params.get('low') === '1';
+  const warehouseId = params.get('wh') ?? '';
 
   const [search, setSearch] = useState('');
   const list = useInventory({
@@ -101,10 +103,12 @@ export function InventoryPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Kpi
-          label={t('inventory.stockValue')}
-          value={formatMoney(list.data?.totalValue ?? 0, currency, locale)}
-        />
+        {seeCosts && (
+          <Kpi
+            label={t('inventory.stockValue')}
+            value={formatMoney(list.data?.totalValue ?? 0, currency, locale)}
+          />
+        )}
         <Kpi
           label={t('inventory.itemCount')}
           value={formatNumber(list.data?.totalItems ?? 0, locale)}
@@ -126,7 +130,7 @@ export function InventoryPage() {
           role="tablist"
           className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
-          {(['items', 'valuation'] as const).map((k) => (
+          {(seeCosts ? (['items', 'valuation'] as const) : (['items'] as const)).map((k) => (
             <button
               key={k}
               role="tab"
@@ -154,6 +158,7 @@ export function InventoryPage() {
           items={list.data?.items ?? []}
           loading={list.isLoading}
           currency={currency}
+          seeCosts={seeCosts}
           search={search}
           onSearch={setSearch}
           lowOnly={lowOnly}
@@ -173,6 +178,7 @@ function ItemsTab({
   items,
   loading,
   currency,
+  seeCosts,
   search,
   onSearch,
   lowOnly,
@@ -182,6 +188,7 @@ function ItemsTab({
   items: InventoryItem[];
   loading: boolean;
   currency: string;
+  seeCosts: boolean;
   search: string;
   onSearch: (v: string) => void;
   lowOnly: boolean;
@@ -229,7 +236,9 @@ function ItemsTab({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
                   <span className="text-xs text-muted tnum">
-                    {p.sku} · {t('inventory.avgCost')} {formatMoney(p.avgCost, currency, locale)}
+                    {p.sku}
+                    {seeCosts &&
+                      ` · ${t('inventory.avgCost')} ${formatMoney(p.avgCost, currency, locale)}`}
                   </span>
                 </span>
                 <span className="text-end">
@@ -255,10 +264,14 @@ function ItemsTab({
               <th className="hidden p-3 text-end font-medium md:table-cell">
                 {t('inventory.reorder')}
               </th>
-              <th className="hidden p-3 text-end font-medium md:table-cell">
-                {t('inventory.avgCost')}
-              </th>
-              <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
+              {seeCosts && (
+                <>
+                  <th className="hidden p-3 text-end font-medium md:table-cell">
+                    {t('inventory.avgCost')}
+                  </th>
+                  <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
+                </>
+              )}
               <th className="p-3 text-start font-medium">{t('common.status')}</th>
             </tr>
           </thead>
@@ -284,10 +297,16 @@ function ItemsTab({
                 <td className="hidden p-3 text-end text-muted tnum md:table-cell">
                   {formatNumber(p.reorderLevel, locale)}
                 </td>
-                <td className="hidden p-3 text-end tnum md:table-cell">
-                  {formatMoney(p.avgCost, currency, locale)}
-                </td>
-                <td className="p-3 text-end tnum">{formatMoney(p.stockValue, currency, locale)}</td>
+                {seeCosts && (
+                  <>
+                    <td className="hidden p-3 text-end tnum md:table-cell">
+                      {formatMoney(p.avgCost, currency, locale)}
+                    </td>
+                    <td className="p-3 text-end tnum">
+                      {formatMoney(p.stockValue, currency, locale)}
+                    </td>
+                  </>
+                )}
                 <td className="p-3">
                   <StockBadge item={p} />
                 </td>
