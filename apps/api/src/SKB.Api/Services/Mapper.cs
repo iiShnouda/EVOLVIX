@@ -82,7 +82,8 @@ public static class Mapper
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,
         p.SalesPriceLevelId?.ToString(), p.PurchasePriceLevelId?.ToString(),
-        p.Email, p.TaxNumber, p.Address, p.IsActive);
+        p.Email, p.TaxNumber, p.Address, p.IsActive,
+        p.OtherPhones.ToArray(), p.ContactName, p.ShippingAddress, p.Notes);
 
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);

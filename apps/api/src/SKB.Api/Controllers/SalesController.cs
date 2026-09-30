@@ -281,7 +281,8 @@ public sealed class SalesController : ControllerBase
                 return BadRequest(new { message = "Choose the shipping company.", code = "carrier_not_found" });
             carrierId = carrier;
         }
-        var deliveryAddress = method == DeliveryMethod.PICKUP ? null : Clean(req.DeliveryAddress, 300) ?? party.Address;
+        var deliveryAddress = method == DeliveryMethod.PICKUP ? null
+            : Clean(req.DeliveryAddress, 300) ?? party.ShippingAddress ?? party.Address;
 
         // ---- Shape checks and warehouse per line (no stock read yet) ----
         var cache = new Dictionary<string, Warehouse>();

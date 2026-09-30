@@ -1066,6 +1066,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Balance")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("ContactName")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1083,6 +1086,13 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("OtherPhones")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
@@ -1091,6 +1101,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid?>("SalesPriceLevelId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ShippingAddress")
+                        .HasColumnType("text");
 
                     b.Property<string>("TaxNumber")
                         .HasColumnType("text");

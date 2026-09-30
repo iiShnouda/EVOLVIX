@@ -8,6 +8,7 @@ live company server.
 |---|---|
 | `catalog.test.mjs` | Units, price levels, prices and their permissions, size × color models, invoices and returns in cartons, reports by model, and a concurrency race (DOMAIN.md step 3). |
 | `charges.test.mjs` | Invoice charges (discount chain, VAT, additions), bonus lines, sales reps, their permissions, exact returns, supplier discounts in the average cost. |
+| `parties.test.mjs` | A factory is a supplier (old FACTORY input and filter still work), party details (other phones, owner / person in charge, factory and shipping addresses, notes), search by phone and owner, and delivered sales starting at the shipping address. |
 | `delivery.test.mjs` | Parties add/edit/close, the delivery method on a sale, own deliveries, parcels with cash on delivery, refused parcels (returns), carrier settlements, permissions, branch scoping and races (DOMAIN.md step 4b). |
 | `ledger.test.mjs` | Chart of accounts, the entry every document posts (line by line), account and party statements, trial balance, manual entries and reversal, the period lock and permissions (DOMAIN.md step 6). |
 | `statements.test.mjs` | Income statement and balance sheet from the ledger (and how a sale, purchase and expense move them), monthly sales, top customers / suppliers, item movement and dead stock, permissions (DOMAIN.md step 8). |

@@ -186,7 +186,8 @@ export interface Money {
 // ---------------------------------------------------------------------------
 
 /** CARRIER = a shipping company (شركة شحن): parcels it delivers with cash on delivery go on its account. */
-export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'FACTORY' | 'CARRIER';
+/** A factory is a supplier: there is no separate FACTORY type. */
+export type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'CARRIER';
 
 export interface Party {
   id: string;
@@ -196,12 +197,19 @@ export interface Party {
   phone?: string;
   email?: string | null;
   taxNumber?: string | null;
-  /** Delivery address (new delivered sales start at it). */
+  /** Main address — for a supplier, the factory's address (عنوان المصنع). */
   address?: string | null;
+  /** Phone numbers besides `phone` (up to 5). */
+  otherPhones: string[];
+  /** The factory owner (supplier) or the person in charge (customer). */
+  contactName?: string | null;
+  /** Where goods are shipped (عنوان الشحن); delivered sales start at it, else at `address`. */
+  shippingAddress?: string | null;
+  notes?: string | null;
   /**
    * Net balance in minor units.
-   *  > 0  → they owe us (receivable, "لنا عليهم")
-   *  < 0  → we owe them (payable,   "لهم علينا")
+   *  > 0  → they owe us (receivable, مدين)
+   *  < 0  → we owe them (payable,   دائن)
    *  = 0  → settled
    */
   balance: number;

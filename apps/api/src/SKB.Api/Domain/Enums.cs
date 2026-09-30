@@ -2,8 +2,13 @@ namespace SKB.Api.Domain;
 
 public enum Role { OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER }
 
-/// <summary>What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).</summary>
-public enum PartyType { CUSTOMER, SUPPLIER, FACTORY, CARRIER }
+/// <summary>
+/// What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).
+/// A factory is a supplier (owner decision 2026-09-30): there is no separate FACTORY type any more;
+/// old "FACTORY" values were turned into SUPPLIER (migration <c>PartyDetails</c>) and the API still
+/// accepts "FACTORY" as SUPPLIER from older clients.
+/// </summary>
+public enum PartyType { CUSTOMER, SUPPLIER, CARRIER }
 
 public enum DocumentType
 {

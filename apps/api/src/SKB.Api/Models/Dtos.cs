@@ -326,17 +326,23 @@ public record CreateSettlementRequest(
 public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
-    string? Email, string? TaxNumber, string? Address, bool IsActive);
+    string? Email, string? TaxNumber, string? Address, bool IsActive,
+    string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes);
 
-/// <param name="Types">CUSTOMER, SUPPLIER, FACTORY and/or CARRIER (a shipping company).</param>
+/// <param name="Types">CUSTOMER, SUPPLIER and/or CARRIER (a shipping company). "FACTORY" is read as SUPPLIER.</param>
+/// <param name="Address">The main address; for a supplier, the factory's address.</param>
+/// <param name="ContactName">The factory owner (supplier) or the person in charge (customer).</param>
 public record CreatePartyRequest(
     string? Name, string[]? Types, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? Address = null);
+    string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
+    string? ShippingAddress = null, string? Notes = null);
 
-/// <summary>Any field left null is unchanged.</summary>
+/// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
     string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
-    string? TaxNumber = null, string? Address = null, bool? IsActive = null);
+    string? TaxNumber = null, string? Address = null, bool? IsActive = null,
+    string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
+    string? Notes = null);
 
 /// <summary>A party's own price levels. Null leaves a side unchanged; "" clears it (back to the default).</summary>
 public record SetPartyPriceLevelsRequest(string? SalesPriceLevelId = null, string? PurchasePriceLevelId = null);

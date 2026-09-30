@@ -35,7 +35,7 @@ export const salesListQuerySchema = paginationSchema.extend({
 export type SalesListQuery = z.infer<typeof salesListQuerySchema>;
 
 export const partiesListQuerySchema = paginationSchema.extend({
-  type: z.enum(['CUSTOMER', 'SUPPLIER', 'FACTORY']).optional(),
+  type: z.enum(['CUSTOMER', 'SUPPLIER', 'CARRIER']).optional(),
   search: z.string().max(200).optional(),
 });
 export type PartiesListQuery = z.infer<typeof partiesListQuerySchema>;
@@ -380,7 +380,7 @@ export type StaffPermissionsInput = z.infer<typeof staffPermissionsSchema>;
 
 // ---- Parties and delivery (DOMAIN step 4b) ----
 
-export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'FACTORY', 'CARRIER']);
+export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'CARRIER']);
 
 export const partySchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -389,6 +389,10 @@ export const partySchema = z.object({
   email: z.union([z.literal(''), z.string().email().max(200)]).optional(),
   taxNumber: z.string().max(40).optional(),
   address: z.string().max(300).optional(),
+  otherPhones: z.array(z.string().trim().min(1).max(40)).max(5).optional(),
+  contactName: z.string().max(200).optional(),
+  shippingAddress: z.string().max(300).optional(),
+  notes: z.string().max(1000).optional(),
 });
 export type CreatePartyInput = z.infer<typeof partySchema>;
 /** On an edit, a field left out is unchanged; closing needs a zero balance. */

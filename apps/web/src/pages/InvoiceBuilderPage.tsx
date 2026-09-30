@@ -1016,7 +1016,7 @@ function DeliveryCard({
               className={field}
               value={value.address}
               maxLength={300}
-              placeholder={party?.address || t('delivery.addressPlaceholder')}
+              placeholder={party?.shippingAddress || party?.address || t('delivery.addressPlaceholder')}
               onChange={(e) => set({ address: e.target.value })}
             />
           </label>

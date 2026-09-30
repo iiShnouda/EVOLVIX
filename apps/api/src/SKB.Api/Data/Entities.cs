@@ -198,7 +198,15 @@ public class Party
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? TaxNumber { get; set; }
+    /// <summary>The main address. For a supplier this is the factory's address (عنوان المصنع).</summary>
     public string? Address { get; set; }
+    /// <summary>Phone numbers besides <see cref="Phone"/> (up to 5).</summary>
+    public List<string> OtherPhones { get; set; } = new();
+    /// <summary>Who to deal with: the factory owner (صاحب المصنع) for a supplier, the person in charge for a customer.</summary>
+    public string? ContactName { get; set; }
+    /// <summary>Where goods are shipped (عنوان الشحن); delivered sales start at it, else at <see cref="Address"/>.</summary>
+    public string? ShippingAddress { get; set; }
+    public string? Notes { get; set; }
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
     public bool IsActive { get; set; } = true;

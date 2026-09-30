@@ -100,7 +100,7 @@ public sealed class LedgerService
 
     /// <summary>Which side of the party's dealings a payable (we owe them) sits on.</summary>
     public static PartyRole PayableRole(Party p) =>
-        p.Types.Contains(nameof(PartyType.SUPPLIER)) || p.Types.Contains(nameof(PartyType.FACTORY)) ? PartyRole.Supplier
+        p.Types.Contains(nameof(PartyType.SUPPLIER)) ? PartyRole.Supplier
         : p.Types.Contains(nameof(PartyType.CUSTOMER)) ? PartyRole.Customer
         : PartyRole.Carrier;
 

@@ -81,7 +81,7 @@ public static class Permissions
     public const string PayrollPay = "payroll:pay";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
-    /// <summary>Add a customer, supplier, factory or shipping company.</summary>
+    /// <summary>Add a customer, supplier (factories are suppliers) or shipping company.</summary>
     public const string PartiesCreate = "parties:create";
     /// <summary>See deliveries, shipments and carrier settlements.</summary>
     public const string DeliveryView = "delivery:view";

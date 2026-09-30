@@ -31,12 +31,21 @@ public sealed class PartiesController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var q = _db.Parties.AsQueryable();
-        if (!string.IsNullOrWhiteSpace(type)) q = q.Where(p => p.Types.Contains(type.ToUpperInvariant()));
+        if (!string.IsNullOrWhiteSpace(type))
+        {
+            var wanted = type.Trim().ToUpperInvariant();
+            if (wanted == "FACTORY") wanted = nameof(PartyType.SUPPLIER); // a factory is a supplier
+            q = q.Where(p => p.Types.Contains(wanted));
+        }
         if (active is bool isActive) q = q.Where(p => p.IsActive == isActive);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.ToLower();
-            q = q.Where(p => p.Name.ToLower().Contains(s));
+            // By name, owner / contact name, or any of its phone numbers.
+            var s = search.Trim().ToLower();
+            q = q.Where(p => p.Name.ToLower().Contains(s)
+                || (p.ContactName != null && p.ContactName.ToLower().Contains(s))
+                || (p.Phone != null && p.Phone.Contains(s))
+                || p.OtherPhones.Any(x => x.Contains(s)));
         }
 
         var total = await q.CountAsync();
@@ -54,7 +63,7 @@ public sealed class PartiesController : ControllerBase
         return Ok(Mapper.ToParty(party));
     }
 
-    /// <summary>Add a customer, supplier, factory or shipping company (a party can be several).</summary>
+    /// <summary>Add a customer, supplier (a factory is a supplier) or shipping company (a party can be several).</summary>
     [HttpPost]
     [Authorize(Policy = Permissions.PartiesCreate)]
     public async Task<ActionResult<PartyDto>> Create([FromBody] CreatePartyRequest req)
@@ -63,7 +72,8 @@ public sealed class PartiesController : ControllerBase
         {
             Currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP",
         };
-        var error = await ApplyAsync(party, req.Name, req.Types, req.Phone, req.Email, req.TaxNumber, req.Address, isNew: true);
+        var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
+            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes), isNew: true);
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
@@ -81,7 +91,8 @@ public sealed class PartiesController : ControllerBase
         // Locked first, so "balance is zero" still holds when the account closes.
         await using var tx = await _db.Database.BeginTransactionAsync();
         await MoneyService.LockPartiesAsync(_db, party.Id);
-        var error = await ApplyAsync(party, req.Name, req.Types, req.Phone, req.Email, req.TaxNumber, req.Address, isNew: false);
+        var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
+            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes), isNew: false);
         if (error is not null) return error;
         if (req.IsActive == false && party.IsActive)
         {
@@ -100,38 +111,57 @@ public sealed class PartiesController : ControllerBase
         return Ok(Mapper.ToParty(party));
     }
 
+    private sealed record Fields(
+        string? Name, string[]? Types, string? Phone, string? Email, string? TaxNumber, string? Address,
+        string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes);
+
+    private const int MaxOtherPhones = 5;
+
     /// <summary>Validate and set a party's fields; a null field is left as it is (on an edit).</summary>
-    private async Task<ActionResult?> ApplyAsync(Party party, string? name, string[]? types, string? phone,
-        string? email, string? taxNumber, string? address, bool isNew)
+    private async Task<ActionResult?> ApplyAsync(Party party, Fields f, bool isNew)
     {
-        if (name is not null || isNew)
+        if (f.Name is not null || isNew)
         {
-            var clean = Loc.Clean(name);
+            var clean = Loc.Clean(f.Name);
             if (clean is null) return BadRequest(new { message = "Enter the name.", code = "bad_name" });
             var lower = clean.ToLower();
             if (await _db.Parties.AnyAsync(p => p.Id != party.Id && p.IsActive && p.Name.ToLower() == lower))
                 return BadRequest(new { message = $"There is already a party called {clean}.", code = "duplicate_name" });
             party.Name = clean;
         }
-        if (types is not null || isNew)
+        if (f.Types is not null || isNew)
         {
             var parsed = new List<string>();
-            foreach (var t in types ?? Array.Empty<string>())
+            foreach (var raw in f.Types ?? Array.Empty<string>())
             {
-                if (!Enum.TryParse<PartyType>(t, true, out var type))
+                // A factory is a supplier; older clients may still send "FACTORY".
+                var t = string.Equals(raw?.Trim(), "FACTORY", StringComparison.OrdinalIgnoreCase)
+                    ? nameof(PartyType.SUPPLIER) : raw;
+                if (!Enum.TryParse<PartyType>(t, true, out var type) || !Enum.IsDefined(type))
                     return BadRequest(new { message = "Unknown party type.", code = "bad_type" });
                 if (!parsed.Contains(type.ToString())) parsed.Add(type.ToString());
             }
             if (parsed.Count == 0)
-                return BadRequest(new { message = "Choose customer, supplier, factory or shipping company.", code = "bad_type" });
+                return BadRequest(new { message = "Choose customer, supplier or shipping company.", code = "bad_type" });
             party.Types = parsed;
         }
-        if (phone is not null) party.Phone = Text(phone, 40);
-        if (taxNumber is not null) party.TaxNumber = Text(taxNumber, 40);
-        if (address is not null) party.Address = Text(address, 300);
-        if (email is not null)
+        if (f.Phone is not null) party.Phone = Text(f.Phone, 40);
+        if (f.OtherPhones is not null)
         {
-            var e = Text(email, 200)?.ToLowerInvariant();
+            var phones = f.OtherPhones.Select(p => Text(p ?? "", 40)).OfType<string>()
+                .Where(p => p != party.Phone).Distinct().ToList();
+            if (phones.Count > MaxOtherPhones)
+                return BadRequest(new { message = $"Up to {MaxOtherPhones} more phone numbers.", code = "too_many_phones" });
+            party.OtherPhones = phones;
+        }
+        if (f.TaxNumber is not null) party.TaxNumber = Text(f.TaxNumber, 40);
+        if (f.Address is not null) party.Address = Text(f.Address, 300);
+        if (f.ShippingAddress is not null) party.ShippingAddress = Text(f.ShippingAddress, 300);
+        if (f.ContactName is not null) party.ContactName = Text(f.ContactName, 200);
+        if (f.Notes is not null) party.Notes = Text(f.Notes, 1000);
+        if (f.Email is not null)
+        {
+            var e = Text(f.Email, 200)?.ToLowerInvariant();
             if (e is not null && !(System.Net.Mail.MailAddress.TryCreate(e, out var a) && a.Address == e))
                 return BadRequest(new { message = "Enter a valid email.", code = "bad_email" });
             party.Email = e;

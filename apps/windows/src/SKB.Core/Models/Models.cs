@@ -138,8 +138,16 @@ public sealed class PartyDto
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>CUSTOMER, SUPPLIER and/or CARRIER (a factory is a supplier).</summary>
     public List<string> Types { get; set; } = new();
     public string? Phone { get; set; }
+    public List<string> OtherPhones { get; set; } = new();
+    /// <summary>Factory owner (supplier) or person in charge (customer).</summary>
+    public string? ContactName { get; set; }
+    /// <summary>Main address; for a supplier, the factory's address.</summary>
+    public string? Address { get; set; }
+    public string? ShippingAddress { get; set; }
+    public string? Notes { get; set; }
     public long Balance { get; set; }
     public string Currency { get; set; } = "EGP";
 }

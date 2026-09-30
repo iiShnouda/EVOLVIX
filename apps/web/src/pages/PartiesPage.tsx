@@ -25,14 +25,18 @@ import {
 } from '../lib/queries';
 import type { Tone } from '../components/ui';
 
-const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'FACTORY', 'CARRIER'];
+// A factory is a supplier, so there is no separate factory type.
+const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'CARRIER'];
 
 const TYPE_LABEL: Record<PartyType, TranslationKey> = {
   CUSTOMER: 'parties.customer',
   SUPPLIER: 'parties.supplier',
-  FACTORY: 'parties.factory',
   CARRIER: 'parties.carrier',
 };
+
+/** A supplier-only party is a factory: its contact is the owner and its address the factory's. */
+const isFactory = (types: PartyType[]) => types.includes('SUPPLIER') && !types.includes('CUSTOMER');
+const MAX_OTHER_PHONES = 5;
 
 const field =
   'h-8 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-xs outline-none focus:border-brand disabled:opacity-70';
@@ -239,21 +243,7 @@ function PartyCard({
         </div>
       )}
 
-      {(party.phone || party.address) && (
-        <div className="mt-3 space-y-1 text-xs text-muted">
-          {party.phone && (
-            <p className="flex items-center gap-1.5">
-              <Icon name="staff" size={14} /> <span dir="ltr">{party.phone}</span>
-            </p>
-          )}
-          {party.address && (
-            <p className="flex items-start gap-1.5">
-              <Icon name="building" size={14} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 break-words">{party.address}</span>
-            </p>
-          )}
-        </div>
-      )}
+      <PartyDetails party={party} />
       {statement && (
         <LedgerStatementSheet
           kind="parties"
@@ -278,7 +268,12 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const [email, setEmail] = useState(party?.email ?? '');
   const [taxNumber, setTaxNumber] = useState(party?.taxNumber ?? '');
   const [address, setAddress] = useState(party?.address ?? '');
+  const [otherPhones, setOtherPhones] = useState<string[]>(party?.otherPhones ?? []);
+  const [contactName, setContactName] = useState(party?.contactName ?? '');
+  const [shippingAddress, setShippingAddress] = useState(party?.shippingAddress ?? '');
+  const [notes, setNotes] = useState(party?.notes ?? '');
   const [touched, setTouched] = useState(false);
+  const factory = isFactory(types);
 
   const values = {
     name: name.trim(),
@@ -287,6 +282,10 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
     email: email.trim(),
     taxNumber: taxNumber.trim(),
     address: address.trim(),
+    otherPhones: otherPhones.map((x) => x.trim()).filter(Boolean),
+    contactName: contactName.trim(),
+    shippingAddress: shippingAddress.trim(),
+    notes: notes.trim(),
   };
   const parsed = partySchema.safeParse(values);
   const issues = new Set(parsed.success ? [] : parsed.error.issues.map((i) => String(i.path[0])));
@@ -370,6 +369,18 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
           )}
         </fieldset>
 
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted">
+            {t(factory ? 'parties.ownerName' : 'parties.contactName')}
+          </span>
+          <input
+            className={input}
+            value={contactName}
+            maxLength={200}
+            onChange={(e) => setContactName(e.target.value)}
+          />
+        </label>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs text-muted">{t('parties.phone')}</span>
@@ -394,6 +405,45 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               aria-invalid={touched && issues.has('email')}
             />
           </label>
+          <fieldset className="sm:col-span-2">
+            <legend className="mb-1 block text-xs text-muted">{t('parties.otherPhones')}</legend>
+            <div className="space-y-2">
+              {otherPhones.map((p, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    className={input}
+                    dir="ltr"
+                    inputMode="tel"
+                    value={p}
+                    maxLength={40}
+                    aria-label={`${t('parties.otherPhones')} ${i + 1}`}
+                    onChange={(e) =>
+                      setOtherPhones((cur) => cur.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    icon="close"
+                    aria-label={t('parties.removePhone')}
+                    onClick={() => setOtherPhones((cur) => cur.filter((_, j) => j !== i))}
+                  />
+                </div>
+              ))}
+              {otherPhones.length < MAX_OTHER_PHONES && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  icon="plus"
+                  onClick={() => setOtherPhones((cur) => [...cur, ''])}
+                >
+                  {t('parties.addPhone')}
+                </Button>
+              )}
+            </div>
+          </fieldset>
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-xs text-muted">{t('parties.taxNumber')}</span>
             <input
@@ -405,7 +455,9 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
             />
           </label>
           <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">{t('parties.address')}</span>
+            <span className="mb-1 block text-xs text-muted">
+              {t(factory ? 'parties.factoryAddress' : 'parties.address')}
+            </span>
             <textarea
               className={`${input} h-auto min-h-16 py-2`}
               rows={2}
@@ -413,7 +465,32 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               maxLength={300}
               onChange={(e) => setAddress(e.target.value)}
             />
-            <span className="mt-0.5 block text-xs text-faint">{t('parties.addressHint')}</span>
+            {types.includes('CUSTOMER') && (
+              <span className="mt-0.5 block text-xs text-faint">{t('parties.addressHint')}</span>
+            )}
+          </label>
+          {types.includes('CUSTOMER') && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-muted">{t('parties.shippingAddress')}</span>
+              <textarea
+                className={`${input} h-auto min-h-16 py-2`}
+                rows={2}
+                value={shippingAddress}
+                maxLength={300}
+                onChange={(e) => setShippingAddress(e.target.value)}
+              />
+              <span className="mt-0.5 block text-xs text-faint">{t('parties.shippingHint')}</span>
+            </label>
+          )}
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-xs text-muted">{t('parties.notes')}</span>
+            <textarea
+              className={`${input} h-auto min-h-16 py-2`}
+              rows={2}
+              value={notes}
+              maxLength={1000}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </label>
         </div>
 
@@ -486,7 +563,7 @@ function PriceLevelPicker({
       value: party.salesPriceLevelId ?? '',
       key: 'salesPriceLevelId' as const,
     },
-    (party.types.includes('SUPPLIER') || party.types.includes('FACTORY')) && {
+    party.types.includes('SUPPLIER') && {
       side: 'PURCHASE' as const,
       label: t('parties.purchaseLevel'),
       value: party.purchasePriceLevelId ?? '',
@@ -524,5 +601,59 @@ function PriceLevelPicker({
       })}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
+  );
+}
+
+/** Contact details on a party's card: owner / person in charge, phones, addresses, notes. */
+function PartyDetails({ party }: { party: Party }) {
+  const { t } = useT();
+  const factory = isFactory(party.types);
+  const phones = [party.phone, ...(party.otherPhones ?? [])].filter((x): x is string => !!x);
+  if (!party.contactName && phones.length === 0 && !party.address && !party.shippingAddress && !party.notes)
+    return null;
+  return (
+    <dl className="mt-3 space-y-1 text-xs text-muted">
+      {party.contactName && (
+        <div className="flex items-center gap-1.5">
+          <Icon name="staff" size={14} className="shrink-0" />
+          <dt className="sr-only">{t(factory ? 'parties.ownerName' : 'parties.contactName')}</dt>
+          <dd className="min-w-0 break-words text-fg">{party.contactName}</dd>
+        </div>
+      )}
+      {phones.length > 0 && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="bell" size={14} className="mt-0.5 shrink-0" />
+          <dt className="sr-only">{t('parties.phone')}</dt>
+          <dd className="flex min-w-0 flex-wrap gap-x-3">
+            {phones.map((p) => (
+              <a key={p} href={`tel:${p.replace(/\s+/g, '')}`} dir="ltr" className="hover:text-fg">
+                {p}
+              </a>
+            ))}
+          </dd>
+        </div>
+      )}
+      {party.address && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="building" size={14} className="mt-0.5 shrink-0" />
+          <dt className="shrink-0">{t(factory ? 'parties.factoryAddress' : 'parties.address')}:</dt>
+          <dd className="min-w-0 break-words">{party.address}</dd>
+        </div>
+      )}
+      {party.shippingAddress && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="delivery" size={14} className="mt-0.5 shrink-0" />
+          <dt className="shrink-0">{t('parties.shippingAddress')}:</dt>
+          <dd className="min-w-0 break-words">{party.shippingAddress}</dd>
+        </div>
+      )}
+      {party.notes && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="notes" size={14} className="mt-0.5 shrink-0" />
+          <dt className="sr-only">{t('parties.notes')}</dt>
+          <dd className="line-clamp-3 min-w-0 whitespace-pre-line break-words">{party.notes}</dd>
+        </div>
+      )}
+    </dl>
   );
 }
