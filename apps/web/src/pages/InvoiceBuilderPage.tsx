@@ -623,8 +623,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                           )}
                           {isSale && (
                             <>
-                              {' '}
-                              · {t('inventory.stock')}:{' '}
+                              {seeCosts && ' · '}
+                              {t('inventory.stock')}:{' '}
                               {formatQuantity(
                                 available(r.line.product),
                                 r.line.product.units,
