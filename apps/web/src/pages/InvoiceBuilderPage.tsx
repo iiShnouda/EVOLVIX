@@ -32,6 +32,7 @@ import {
   useInventory,
   useParties,
   usePriceLevels,
+  usePricing,
   useProductSearch,
   useReps,
 } from '../lib/queries';
@@ -65,9 +66,10 @@ let nextKey = 0;
 /**
  * Sales / purchase invoice builder, and (mode "quote") the price quotation builder: a quotation is
  * priced the same way but has no payment or delivery, may promise more than is in stock, and holds
- * its prices until its date. Each line is in one of the item's units (piece, carton…); its
- * price comes from the invoice's price level — the party's own, else the default — and, for an item
- * without a price, from cost × (1 + default markup) (sales) or the average cost (purchases). Typing
+ * its prices until its date. Each line is in one of the item's units (piece, carton…); the server
+ * prices it (POST /pricing): the party's price list or an offer, else the invoice's price level —
+ * the party's own, else the default — and, for an item without a price, cost × (1 + default markup)
+ * (sales) or the average cost (purchases); on a sale, a quantity discount then comes off. Typing
  * another price or picking another level needs its own permission; the server checks the same.
  * Live cost, markup and profit use the cost of the chosen warehouse's branch.
  */
@@ -183,7 +185,29 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     const cost = costOf(l.product) * factor;
     return isSale ? Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100) : cost;
   }
-  const priceOf = (l: Line) => (l.bonus ? 0 : canChangePrice && l.touched ? l.price : suggested(l));
+
+  // The server's prices for the lines (price list, level, quantity discount). While they load the
+  // level's price shows, and saving waits.
+  const pricingInput = {
+    partyId: partyId || undefined,
+    priceLevelId: canChooseLevel && pickedLevel ? pickedLevel : undefined,
+    warehouseId: warehouseId || undefined,
+    lines: lines.map((l) => ({
+      productId: l.product.id,
+      unitId: l.unitId || undefined,
+      quantity: l.quantity,
+      isBonus: l.bonus || undefined,
+    })),
+  };
+  const pricing = usePricing(isSale ? 'sale' : 'purchase', pricingInput);
+  const priced = pricing.data && !pricing.isPlaceholderData ? pricing.data.lines : null;
+  // (If pricing fails, saving isn't held up: the server checks prices again anyway.)
+  const pricingBusy = lines.length > 0 && !pricing.isError && (pricing.isFetching || !priced);
+  const typed = (l: Line) => canChangePrice && l.touched && !l.bonus;
+  const priceOf = (l: Line, i: number) =>
+    l.bonus ? 0 : typed(l) ? l.price : (priced?.[i]?.unitPrice ?? suggested(l));
+  /** A quantity discount on a line nobody re-priced by hand. */
+  const lineDiscountOf = (l: Line, i: number) => (l.bonus || typed(l) ? 0 : (priced?.[i]?.discount ?? 0));
 
   function addProduct(p: Product, unitId?: string | null) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
@@ -236,18 +260,23 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       (baseWanted.get(l.product.id) ?? 0) + l.quantity * (unitOf(l)?.factor ?? 1),
     );
   }
-  const pre = lines.map((l) => {
+  const pre = lines.map((l, i) => {
     const unit = unitOf(l);
     const factor = unit?.factor ?? 1;
-    const price = priceOf(l);
+    const price = priceOf(l, i);
+    const lineDiscount = lineDiscountOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
+    const info = typed(l) || l.bonus ? null : (priced?.[i] ?? null);
     return {
       line: l,
       unit,
       factor,
       price,
+      lineDiscount,
+      listName: info?.source === 'LIST' ? info.listName : null,
+      breakBp: info?.breakBp ?? 0,
       cost,
-      lineTotal: l.quantity * price,
+      lineTotal: l.quantity * price - lineDiscount,
       lineCost: l.quantity * cost,
     };
   });
@@ -313,6 +342,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     !outcome.error &&
     !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
     !(isQuote && !validUntil) &&
+    !pricingBusy &&
     !pending;
 
   async function save() {
@@ -327,7 +357,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: 0,
+            discount: r.lineDiscount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -348,7 +378,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             unitId: r.line.unitId || undefined,
             quantity: r.line.quantity,
             unitPrice: r.price,
-            discount: 0,
+            discount: r.lineDiscount,
             isBonus: r.line.bonus || undefined,
           })),
           charges: chargeInputs,
@@ -655,6 +685,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       {r.factor > 1 && (
                         <span>
                           = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+                        </span>
+                      )}
+                      {r.listName && (
+                        <span className="text-brand">
+                          {t('pl.fromList')} <bdi>{r.listName}</bdi>
+                        </span>
+                      )}
+                      {r.lineDiscount > 0 && (
+                        <span className="text-positive">
+                          {t('pl.qtyDiscount')} {formatNumber(r.breakBp / 100, locale)}%: −
+                          {formatMoney(r.lineDiscount, currency, locale)}
                         </span>
                       )}
                       {r.docDiscount > 0 && (

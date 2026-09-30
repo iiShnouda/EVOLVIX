@@ -80,6 +80,7 @@ export type Permission =
   | 'products:edit'
   | 'prices:edit'
   | 'price_levels:manage'
+  | 'price_lists:manage'
   | 'categories:manage'
   | 'units:manage'
   | 'variant_options:manage'
@@ -212,6 +213,10 @@ export interface Party {
   salesPriceLevelId?: string | null;
   /** The supplier's own price level (null = the default purchase level). */
   purchasePriceLevelId?: string | null;
+  /** The customer's price list (its prices replace the level's for its items). */
+  salesPriceListId?: string | null;
+  /** The supplier's price list. */
+  purchasePriceListId?: string | null;
 }
 
 /** Presentation‑ready balance so the UI never guesses the sign meaning. */
@@ -233,6 +238,115 @@ export interface Category {
   name: string;
   /** Active items in the category. */
   itemCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Price lists and quantity discounts (DOMAIN.md §2.2)
+// ---------------------------------------------------------------------------
+
+export interface PriceList {
+  id: string;
+  name: string;
+  side: 'SALE' | 'PURCHASE';
+  /** Every party of its side gets it (an offer), not only those given it. */
+  forEveryone: boolean;
+  /** First and last day (yyyy-MM-dd), or open-ended. */
+  validFrom?: string | null;
+  validTo?: string | null;
+  isActive: boolean;
+  notes?: string | null;
+  items: number;
+  /** How many parties it's given to. */
+  parties: number;
+  /** It applies today. */
+  current: boolean;
+}
+
+export interface PriceListItem {
+  id: string;
+  /** An item's price, or (modelId) every size and color of a model. */
+  productId?: string | null;
+  modelId?: string | null;
+  name: string;
+  sku: string;
+  unitId: string;
+  unitName: string;
+  factor: number;
+  price: number;
+  /** The same unit at the side's default level, to compare. */
+  levelPrice?: number | null;
+}
+
+export interface PriceListDetail {
+  list: PriceList;
+  items: PriceListItem[];
+}
+
+export interface SavePriceListInput {
+  name?: string;
+  side?: 'SALE' | 'PURCHASE';
+  forEveryone?: boolean;
+  /** yyyy-MM-dd; "" clears it. */
+  validFrom?: string;
+  validTo?: string;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export interface PriceListItemInput {
+  productId?: string | null;
+  modelId?: string | null;
+  unitId: string;
+  price: number;
+}
+
+/** A quantity discount step: from a quantity (base units) of an item or a model, a percent off. */
+export interface QuantityBreak {
+  id: string;
+  productId?: string | null;
+  modelId?: string | null;
+  name: string;
+  sku: string;
+  baseUnitName: string;
+  minQuantity: number;
+  /** Hundredths of a percent (250 = 2.5%). */
+  percentBp: number;
+}
+
+export interface SetQuantityBreaksInput {
+  productId?: string | null;
+  modelId?: string | null;
+  steps: { minQuantity: number; percent: number }[];
+}
+
+export interface PricingLineInput {
+  productId: string;
+  unitId?: string | null;
+  quantity: number;
+  isBonus?: boolean;
+  warehouseId?: string | null;
+}
+
+export interface PricingInput {
+  partyId?: string | null;
+  priceLevelId?: string | null;
+  warehouseId?: string | null;
+  lines: PricingLineInput[];
+}
+
+export interface PricedLine {
+  unitPrice: number;
+  discount: number;
+  /** LIST, LEVEL, COST or BONUS. */
+  source: 'LIST' | 'LEVEL' | 'COST' | 'BONUS';
+  listName?: string | null;
+  /** The quantity discount applied (hundredths of a percent). */
+  breakBp: number;
+}
+
+export interface Pricing {
+  priceLevelId?: string | null;
+  lines: PricedLine[];
 }
 
 /** Where an item's price at a level came from (see the server's PriceBook). */

@@ -319,7 +319,7 @@ public sealed class SalesController : ControllerBase
             PriceSide.SALE, Approved(Permissions.SalesChoosePriceLevel));
         if (levelError is not null) return InvoiceLines.Refuse(this, levelError);
 
-        // ---- Resolve units and check prices against the level ----
+        // ---- Resolve units; prices are checked against the level, price lists and quantity discounts ----
         var resolved = new List<(CreateInvoiceLineRequest Req, Product Product, ItemUnit Unit, int BaseQty,
             Warehouse Warehouse, long BaseCost)>();
         foreach (var (line, pid, unitId, warehouse) in lines)
@@ -331,17 +331,24 @@ public sealed class SalesController : ControllerBase
 
             // Cost is per branch: price and floor are judged against the cost where the goods leave from.
             var baseCost = _inventory.CostAt(product, warehouse);
-            if (!canChangePrice && !line.IsBonus)
-            {
-                var expected = level is null
-                    ? InvoiceLines.MarkupPrice(baseCost, unit!.Factor, settings.DefaultMarkupPercent)
-                    : book.SuggestedSale(pid, unit!, level.Id, baseCost, settings.DefaultMarkupPercent);
-                if (line.UnitPrice != expected || line.Discount != 0)
-                    return InvoiceLines.Refuse(this, new("price_not_allowed",
-                        $"{Loc.Name(product)}: the price is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
-                        "Changing a price needs permission."));
-            }
             resolved.Add((line, product, unit!, baseQty, warehouse, baseCost));
+        }
+        if (!canChangePrice)
+        {
+            var special = await SpecialPrices.LoadAsync(_db, PriceSide.SALE, party.SalesPriceListId,
+                resolved.Select(r => r.Product).ToList());
+            var priced = special.Price(book, level, PriceSide.SALE, resolved.Select(r =>
+                new SpecialPrices.LineAsk(r.Product, r.Unit, r.Req.Quantity, r.BaseQty, r.Req.IsBonus, r.BaseCost)).ToList(),
+                settings.DefaultMarkupPercent);
+            for (var i = 0; i < resolved.Count; i++)
+            {
+                var (line, product, unit, _, _, _) = resolved[i];
+                if (line.IsBonus || (line.UnitPrice == priced[i].UnitPrice && line.Discount == priced[i].Discount)) continue;
+                return InvoiceLines.Refuse(this, new("price_not_allowed",
+                    $"{Loc.Name(product)}: the price is {InvoiceLines.Major(priced[i].UnitPrice)} per {Loc.Name(unit.Unit)}" +
+                    (priced[i].Discount > 0 ? $", less {InvoiceLines.Major(priced[i].Discount)}" : "") +
+                    ". Changing a price needs permission."));
+            }
         }
 
         // ---- Work out the charges and each line's share of the invoice discount ----

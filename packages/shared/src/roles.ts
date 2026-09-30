@@ -46,6 +46,7 @@ const ALL: Permission[] = [
   'products:edit',
   'prices:edit',
   'price_levels:manage',
+  'price_lists:manage',
   'categories:manage',
   'units:manage',
   'variant_options:manage',

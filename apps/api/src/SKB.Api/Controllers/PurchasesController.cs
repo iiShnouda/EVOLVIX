@@ -169,18 +169,24 @@ public sealed class PurchasesController : ControllerBase
             var product = products[pid];
             var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
             if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
-            if (!canChangePrice && !line.IsBonus)
-            {
-                var baseCost = _inventory.CostAt(product, warehouse);
-                var expected = level is null
-                    ? baseCost * unit!.Factor
-                    : book.SuggestedPurchase(pid, unit!, level.Id, baseCost);
-                if (line.UnitCost != expected)
-                    return InvoiceLines.Refuse(this, new("price_not_allowed",
-                        $"{Loc.Name(product)}: the cost is {InvoiceLines.Major(expected)} per {Loc.Name(unit!.Unit)}. " +
-                        "Changing a cost needs permission."));
-            }
             resolved.Add((line, product, unit!, baseQty, warehouse));
+        }
+        // The cost is the supplier's price list, else the level, else the average cost; another needs permission.
+        if (!canChangePrice)
+        {
+            var special = await SpecialPrices.LoadAsync(_db, PriceSide.PURCHASE, party.PurchasePriceListId,
+                resolved.Select(r => r.Product).ToList());
+            var priced = special.Price(book, level, PriceSide.PURCHASE, resolved.Select(r =>
+                new SpecialPrices.LineAsk(r.Product, r.Unit, r.Req.Quantity, r.BaseQty, r.Req.IsBonus,
+                    _inventory.CostAt(r.Product, r.Warehouse))).ToList(), 0);
+            for (var i = 0; i < resolved.Count; i++)
+            {
+                var (line, product, unit, _, _) = resolved[i];
+                if (line.IsBonus || line.UnitCost == priced[i].UnitPrice) continue;
+                return InvoiceLines.Refuse(this, new("price_not_allowed",
+                    $"{Loc.Name(product)}: the cost is {InvoiceLines.Major(priced[i].UnitPrice)} per {Loc.Name(unit.Unit)}. " +
+                    "Changing a cost needs permission."));
+            }
         }
 
         var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitCost).ToList();

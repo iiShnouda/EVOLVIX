@@ -37,6 +37,9 @@ public class AppDbContext : DbContext
     public DbSet<ProductModel> ProductModels => Set<ProductModel>();
     public DbSet<ModelUnit> ModelUnits => Set<ModelUnit>();
     public DbSet<ModelPrice> ModelPrices => Set<ModelPrice>();
+    public DbSet<PriceList> PriceLists => Set<PriceList>();
+    public DbSet<PriceListItem> PriceListItems => Set<PriceListItem>();
+    public DbSet<QuantityBreak> QuantityBreaks => Set<QuantityBreak>();
     public DbSet<RolePermissionSet> RolePermissionSets => Set<RolePermissionSet>();
     public DbSet<DocumentCharge> DocumentCharges => Set<DocumentCharge>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
@@ -374,6 +377,21 @@ public class AppDbContext : DbContext
         b.Entity<ModelUnit>()
             .HasOne(u => u.Unit).WithMany()
             .HasForeignKey(u => u.UnitId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PriceList>().Property(l => l.Side).HasConversion<string>();
+        b.Entity<PriceListItem>().HasOne(i => i.List).WithMany(l => l.Items).HasForeignKey(i => i.ListId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PriceListItem>().HasOne(i => i.Product).WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PriceListItem>().HasOne(i => i.Model).WithMany().HasForeignKey(i => i.ModelId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PriceListItem>().HasOne(i => i.Unit).WithMany().HasForeignKey(i => i.UnitId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PriceListItem>().HasIndex(i => new { i.ListId, i.ProductId, i.UnitId }).IsUnique().HasFilter("\"ProductId\" IS NOT NULL");
+        b.Entity<PriceListItem>().HasIndex(i => new { i.ListId, i.ModelId, i.UnitId }).IsUnique().HasFilter("\"ModelId\" IS NOT NULL");
+        b.Entity<PriceListItem>().ToTable(t => t.HasCheckConstraint("CK_PriceListItem_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)"));
+        b.Entity<QuantityBreak>().HasOne(q => q.Product).WithMany().HasForeignKey(q => q.ProductId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<QuantityBreak>().HasOne(q => q.Model).WithMany().HasForeignKey(q => q.ModelId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<QuantityBreak>().HasIndex(q => new { q.ProductId, q.MinQuantity }).IsUnique().HasFilter("\"ProductId\" IS NOT NULL");
+        b.Entity<QuantityBreak>().HasIndex(q => new { q.ModelId, q.MinQuantity }).IsUnique().HasFilter("\"ModelId\" IS NOT NULL");
+        b.Entity<QuantityBreak>().ToTable(t => t.HasCheckConstraint("CK_QuantityBreak_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)"));
+        b.Entity<Party>().HasOne(p => p.SalesPriceList).WithMany().HasForeignKey(p => p.SalesPriceListId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Party>().HasOne(p => p.PurchasePriceList).WithMany().HasForeignKey(p => p.PurchasePriceListId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<ModelPrice>().HasKey(p => new { p.ModelId, p.UnitId, p.PriceLevelId });
         b.Entity<ModelPrice>()
             .HasOne(p => p.Model).WithMany()

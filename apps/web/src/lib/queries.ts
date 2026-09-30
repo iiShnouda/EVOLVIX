@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Category,
+  PriceList,
+  PriceListDetail,
+  PriceListItemInput,
+  Pricing,
+  PricingInput,
+  QuantityBreak,
+  SavePriceListInput,
+  SetQuantityBreaksInput,
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
@@ -577,6 +585,86 @@ export function useSetPartyPriceLevels() {
     mutationFn: ({ id, input }: { id: string; input: SetPartyPriceLevelsInput }) =>
       api.put<Party>(`/parties/${id}/price-levels`, input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['parties'] }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Price lists and quantity discounts (DOMAIN.md §2.2)
+// ---------------------------------------------------------------------------
+
+export function usePriceLists(side?: 'SALE' | 'PURCHASE') {
+  return useQuery({
+    queryKey: ['priceLists', side ?? 'all'],
+    queryFn: () => api.get<PriceList[]>(`/price-lists${side ? `?side=${side}` : ''}`),
+  });
+}
+
+export function usePriceList(id: string | null) {
+  return useQuery({
+    queryKey: ['priceLists', 'one', id],
+    queryFn: () => api.get<PriceListDetail>(`/price-lists/${id}`),
+    enabled: !!id,
+  });
+}
+
+export function useSavePriceList() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: SavePriceListInput }) =>
+      id
+        ? api.put<PriceListDetail>(`/price-lists/${id}`, input)
+        : api.post<PriceListDetail>('/price-lists', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['priceLists'] }),
+  });
+}
+
+export function useSetPriceListItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, items }: { id: string; items: PriceListItemInput[] }) =>
+      api.put<PriceListDetail>(`/price-lists/${id}/items`, { items }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['priceLists'] }),
+  });
+}
+
+export function useDeletePriceList() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/price-lists/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['priceLists'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
+  });
+}
+
+export function useQuantityBreaks(productId?: string) {
+  return useQuery({
+    queryKey: ['quantityBreaks', productId ?? 'all'],
+    queryFn: () =>
+      api.get<QuantityBreak[]>(`/quantity-breaks${productId ? `?productId=${productId}` : ''}`),
+  });
+}
+
+export function useSetQuantityBreaks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetQuantityBreaksInput) => api.put<QuantityBreak[]>('/quantity-breaks', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['quantityBreaks'] }),
+  });
+}
+
+/**
+ * What an invoice's lines would cost for a party (price list, level, quantity discounts), as the
+ * server will accept them. Off until there are lines.
+ */
+export function usePricing(side: 'sale' | 'purchase', input: PricingInput) {
+  return useQuery({
+    queryKey: ['pricing', side, input],
+    queryFn: () => api.post<Pricing>(`/pricing/${side}`, input),
+    enabled: input.lines.length > 0,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   });
 }
 

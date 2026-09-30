@@ -210,6 +210,12 @@ public class Party
     /// <summary>Price level a purchase invoice from this supplier starts with (null = the default PURCHASE level).</summary>
     public Guid? PurchasePriceLevelId { get; set; }
     public PriceLevel? PurchasePriceLevel { get; set; }
+    /// <summary>Price list a sales invoice to this customer uses (on top of their level).</summary>
+    public Guid? SalesPriceListId { get; set; }
+    public PriceList? SalesPriceList { get; set; }
+    /// <summary>Price list a purchase invoice from this supplier uses.</summary>
+    public Guid? PurchasePriceListId { get; set; }
+    public PriceList? PurchasePriceList { get; set; }
 
     public List<SalesDocument> Documents { get; set; } = new();
 }
@@ -279,6 +285,66 @@ public class ItemPrice
     public PriceLevel? PriceLevel { get; set; }
     public long Price { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A price list (قائمة أسعار, DOMAIN.md §2.2): special prices for chosen items on one side (sales or
+/// purchases). It applies to the parties given it — or, when <see cref="ForEveryone"/>, to every
+/// party of that side (an offer) — between its dates. Its prices replace the price level's for
+/// those items; items not on it keep the level's.
+/// </summary>
+public class PriceList : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public PriceSide Side { get; set; } = PriceSide.SALE;
+    /// <summary>Every party of its side gets it, not only those given it.</summary>
+    public bool ForEveryone { get; set; }
+    /// <summary>First and last day it applies (calendar days; null = open-ended).</summary>
+    public DateTime? ValidFrom { get; set; }
+    public DateTime? ValidTo { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    public List<PriceListItem> Items { get; set; } = new();
+}
+
+/// <summary>
+/// One price on a list: an item's (or a whole model's, every size and color) price for one unit.
+/// A missing unit is the base unit's price × its factor, as with levels.
+/// </summary>
+public class PriceListItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ListId { get; set; }
+    public PriceList? List { get; set; }
+    public Guid? ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid? ModelId { get; set; }
+    public ProductModel? Model { get; set; }
+    public Guid UnitId { get; set; }
+    public Unit? Unit { get; set; }
+    public long Price { get; set; }
+}
+
+/// <summary>
+/// A quantity discount (خصم الكمية, old table priceLevels): from <see cref="MinQuantity"/> base units
+/// of an item on one sales invoice — or of a model's sizes and colors together — its lines get
+/// <see cref="PercentBp"/> off. The highest step reached applies.
+/// </summary>
+public class QuantityBreak
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? ProductId { get; set; }
+    public Product? Product { get; set; }
+    public Guid? ModelId { get; set; }
+    public ProductModel? Model { get; set; }
+    public int MinQuantity { get; set; }
+    /// <summary>The discount in hundredths of a percent (250 = 2.5%).</summary>
+    public int PercentBp { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>A size or a color (مقاس / لون) that item models are made in. Company-wide lists.</summary>

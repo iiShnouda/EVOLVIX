@@ -118,6 +118,8 @@ public static class Permissions
     public const string PricesEdit = "prices:edit";
     /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
     public const string PriceLevelsManage = "price_levels:manage";
+    /// <summary>Make and change price lists (special prices) and quantity discounts.</summary>
+    public const string PriceListsManage = "price_lists:manage";
     public const string CategoriesManage = "categories:manage";
     public const string UnitsManage = "units:manage";
     /// <summary>Add and rename the company's sizes and colors.</summary>
@@ -155,7 +157,7 @@ public static class Permissions
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate,
-        ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, CategoriesManage, UnitsManage,
+        ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,

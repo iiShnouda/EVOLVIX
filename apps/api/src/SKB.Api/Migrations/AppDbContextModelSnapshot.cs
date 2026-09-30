@@ -1089,7 +1089,13 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("PurchasePriceLevelId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("PurchasePriceListId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("SalesPriceLevelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SalesPriceListId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("TaxNumber")
@@ -1105,7 +1111,11 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("PurchasePriceLevelId");
 
+                    b.HasIndex("PurchasePriceListId");
+
                     b.HasIndex("SalesPriceLevelId");
+
+                    b.HasIndex("SalesPriceListId");
 
                     b.ToTable("Parties");
                 });
@@ -1366,6 +1376,89 @@ namespace SKB.Api.Migrations
                     b.ToTable("PriceLevels");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.PriceList", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ForEveryone")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ValidFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ValidTo")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PriceLists");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PriceListItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ListId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Price")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UnitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModelId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("ListId", "ModelId", "UnitId")
+                        .IsUnique()
+                        .HasFilter("\"ModelId\" IS NOT NULL");
+
+                    b.HasIndex("ListId", "ProductId", "UnitId")
+                        .IsUnique()
+                        .HasFilter("\"ProductId\" IS NOT NULL");
+
+                    b.ToTable("PriceListItems", t =>
+                        {
+                            t.HasCheckConstraint("CK_PriceListItem_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1468,6 +1561,43 @@ namespace SKB.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ProductModels");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.QuantityBreak", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MinQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PercentBp")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModelId", "MinQuantity")
+                        .IsUnique()
+                        .HasFilter("\"ModelId\" IS NOT NULL");
+
+                    b.HasIndex("ProductId", "MinQuantity")
+                        .IsUnique()
+                        .HasFilter("\"ProductId\" IS NOT NULL");
+
+                    b.ToTable("QuantityBreaks", t =>
+                        {
+                            t.HasCheckConstraint("CK_QuantityBreak_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("SKB.Api.Data.RolePermissionSet", b =>
@@ -2686,14 +2816,28 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("PurchasePriceLevelId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.PriceList", "PurchasePriceList")
+                        .WithMany()
+                        .HasForeignKey("PurchasePriceListId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SKB.Api.Data.PriceLevel", "SalesPriceLevel")
                         .WithMany()
                         .HasForeignKey("SalesPriceLevelId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.PriceList", "SalesPriceList")
+                        .WithMany()
+                        .HasForeignKey("SalesPriceListId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("PurchasePriceLevel");
 
+                    b.Navigation("PurchasePriceList");
+
                     b.Navigation("SalesPriceLevel");
+
+                    b.Navigation("SalesPriceList");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>
@@ -2786,6 +2930,39 @@ namespace SKB.Api.Migrations
                     b.Navigation("CreatedBy");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.PriceListItem", b =>
+                {
+                    b.HasOne("SKB.Api.Data.PriceList", "List")
+                        .WithMany("Items")
+                        .HasForeignKey("ListId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.ProductModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("SKB.Api.Data.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("List");
+
+                    b.Navigation("Model");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Unit");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Product", b =>
                 {
                     b.HasOne("SKB.Api.Data.Category", "Category")
@@ -2827,6 +3004,23 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.QuantityBreak", b =>
+                {
+                    b.HasOne("SKB.Api.Data.ProductModel", "Model")
+                        .WithMany()
+                        .HasForeignKey("ModelId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Model");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>
@@ -3237,6 +3431,11 @@ namespace SKB.Api.Migrations
             modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
                 {
                     b.Navigation("Notes");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PriceList", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Product", b =>

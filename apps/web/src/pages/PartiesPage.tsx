@@ -20,6 +20,7 @@ import {
   useCreateParty,
   useParties,
   usePriceLevels,
+  usePriceLists,
   useSetPartyPriceLevels,
   useUpdateParty,
 } from '../lib/queries';
@@ -466,7 +467,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   );
 }
 
-/** The party's own price levels: what new invoices to / from them start at. */
+/** The party's own price levels and price lists: what new invoices to / from them start at. */
 function PriceLevelPicker({
   party,
   levels,
@@ -478,6 +479,7 @@ function PriceLevelPicker({
 }) {
   const { t } = useT();
   const set = useSetPartyPriceLevels();
+  const lists = usePriceLists();
   const error = errorText(t, set.error);
   const sides = [
     party.types.includes('CUSTOMER') && {
@@ -485,12 +487,16 @@ function PriceLevelPicker({
       label: t('parties.salesLevel'),
       value: party.salesPriceLevelId ?? '',
       key: 'salesPriceLevelId' as const,
+      list: party.salesPriceListId ?? '',
+      listKey: 'salesPriceListId' as const,
     },
     (party.types.includes('SUPPLIER') || party.types.includes('FACTORY')) && {
       side: 'PURCHASE' as const,
       label: t('parties.purchaseLevel'),
       value: party.purchasePriceLevelId ?? '',
       key: 'purchasePriceLevelId' as const,
+      list: party.purchasePriceListId ?? '',
+      listKey: 'purchasePriceListId' as const,
     },
   ].filter((x) => !!x);
   if (sides.length === 0) return null;
@@ -500,26 +506,50 @@ function PriceLevelPicker({
       {sides.map((s) => {
         const options = levels.filter((l) => l.side === s.side && (l.isActive || l.id === s.value));
         const def = options.find((l) => l.isDefault);
+        // Lists given one by one (an offer for everyone applies without being given).
+        const listOptions = (lists.data ?? []).filter(
+          (l) => l.side === s.side && !l.forEveryone && (l.isActive || l.id === s.list),
+        );
         return (
-          <label key={s.side} className="block">
-            <span className="mb-0.5 block text-xs text-muted">{s.label}</span>
-            <select
-              className={field}
-              value={s.value}
-              disabled={!canSet || set.isPending}
-              onChange={(e) => set.mutate({ id: party.id, input: { [s.key]: e.target.value } })}
-            >
-              <option value="">
-                {t('parties.defaultLevel')}
-                {def ? ` (${def.name})` : ''}
-              </option>
-              {options.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
+          <div key={s.side} className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{s.label}</span>
+              <select
+                className={field}
+                value={s.value}
+                disabled={!canSet || set.isPending}
+                onChange={(e) => set.mutate({ id: party.id, input: { [s.key]: e.target.value } })}
+              >
+                <option value="">
+                  {t('parties.defaultLevel')}
+                  {def ? ` (${def.name})` : ''}
                 </option>
-              ))}
-            </select>
-          </label>
+                {options.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(listOptions.length > 0 || s.list) && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('pl.partyList')}</span>
+                <select
+                  className={field}
+                  value={s.list}
+                  disabled={!canSet || set.isPending}
+                  onChange={(e) => set.mutate({ id: party.id, input: { [s.listKey]: e.target.value } })}
+                >
+                  <option value="">{t('pl.noList')}</option>
+                  {listOptions.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         );
       })}
       {error && <p className="text-xs text-destructive">{error}</p>}

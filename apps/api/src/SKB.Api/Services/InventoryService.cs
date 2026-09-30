@@ -72,6 +72,19 @@ public sealed class InventoryService
         return _balances.TryGetValue((productId, warehouseId), out var b) ? b.Quantity : 0;
     }
 
+    /// <summary>
+    /// Average cost of each item in the pool of <paramref name="warehouse"/>, read without locking
+    /// (for showing prices); an item with no history there costs its company cost.
+    /// </summary>
+    public async Task<Dictionary<Guid, long>> PeekCostsAsync(IReadOnlyCollection<Product> products, Warehouse warehouse)
+    {
+        var pool = PoolOf(warehouse);
+        var ids = products.Select(p => p.Id).ToList();
+        var costs = await _db.StockCosts.AsNoTracking().Where(c => c.PoolId == pool && ids.Contains(c.ProductId))
+            .ToDictionaryAsync(c => c.ProductId, c => c.AvgCost);
+        return products.DistinctBy(p => p.Id).ToDictionary(p => p.Id, p => costs.TryGetValue(p.Id, out var c) ? c : p.CostPrice);
+    }
+
     /// <summary>Current average cost of a locked product in the pool of <paramref name="warehouse"/>.</summary>
     public long CostAt(Product product, Warehouse warehouse) => Pool(product, PoolOf(warehouse)).AvgCost;
 

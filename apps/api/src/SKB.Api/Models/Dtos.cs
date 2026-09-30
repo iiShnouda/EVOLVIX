@@ -326,7 +326,8 @@ public record CreateSettlementRequest(
 public record PartyDto(
     string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
-    string? Email, string? TaxNumber, string? Address, bool IsActive);
+    string? Email, string? TaxNumber, string? Address, bool IsActive,
+    string? SalesPriceListId = null, string? PurchasePriceListId = null);
 
 /// <param name="Types">CUSTOMER, SUPPLIER, FACTORY and/or CARRIER (a shipping company).</param>
 public record CreatePartyRequest(
@@ -338,8 +339,56 @@ public record UpdatePartyRequest(
     string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? Address = null, bool? IsActive = null);
 
-/// <summary>A party's own price levels. Null leaves a side unchanged; "" clears it (back to the default).</summary>
-public record SetPartyPriceLevelsRequest(string? SalesPriceLevelId = null, string? PurchasePriceLevelId = null);
+/// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
+public record SetPartyPriceLevelsRequest(
+    string? SalesPriceLevelId = null, string? PurchasePriceLevelId = null,
+    string? SalesPriceListId = null, string? PurchasePriceListId = null);
+
+// ---- Price lists and quantity discounts (DOMAIN.md §2.2) ----
+
+/// <param name="Current">It applies today (open, and between its dates).</param>
+/// <param name="Parties">How many parties it's given to.</param>
+public record PriceListDto(
+    string Id, string Name, string Side, bool ForEveryone, string? ValidFrom, string? ValidTo, bool IsActive,
+    string? Notes, int Items, int Parties, bool Current);
+
+/// <param name="LevelPrice">The same unit's price at the side's default level, to compare.</param>
+public record PriceListItemDto(
+    string Id, string? ProductId, string? ModelId, string Name, string Sku, string UnitId, string UnitName, int Factor,
+    long Price, long? LevelPrice);
+
+public record PriceListDetailDto(PriceListDto List, PriceListItemDto[] Items);
+
+/// <summary>A new list, or changes to one (a field left null is unchanged; "" clears a date).</summary>
+public record SavePriceListRequest(
+    string? Name = null, string? Side = null, bool? ForEveryone = null, string? ValidFrom = null, string? ValidTo = null,
+    bool? IsActive = null, string? Notes = null);
+
+/// <summary>One price on a list: an item or a whole model (every size and color), one unit.</summary>
+public record PriceListItemRequest(string? ProductId, string? ModelId, string? UnitId, long Price);
+
+public record SetPriceListItemsRequest(PriceListItemRequest[]? Items);
+
+/// <param name="PercentBp">Hundredths of a percent (250 = 2.5%).</param>
+public record QuantityBreakDto(
+    string Id, string? ProductId, string? ModelId, string Name, string Sku, string BaseUnitName, int MinQuantity,
+    int PercentBp);
+
+public record QuantityBreakStepRequest(int MinQuantity, decimal Percent);
+
+/// <summary>An item's (or a model's) quantity discount steps; they replace what it had (none = no discount).</summary>
+public record SetQuantityBreaksRequest(string? ProductId, string? ModelId, QuantityBreakStepRequest[]? Steps);
+
+public record PricingLineRequest(string ProductId, string? UnitId, int Quantity, bool IsBonus = false, string? WarehouseId = null);
+
+/// <summary>What an invoice's lines would cost for a party (the invoice screen asks as lines change).</summary>
+public record PricingRequest(string? PartyId, string? PriceLevelId, string? WarehouseId, PricingLineRequest[]? Lines);
+
+/// <param name="Source">LIST, LEVEL, COST or BONUS.</param>
+/// <param name="BreakBp">The quantity discount applied (hundredths of a percent).</param>
+public record PricedLineDto(long UnitPrice, long Discount, string Source, string? ListName, int BreakBp);
+
+public record PricingDto(string? PriceLevelId, PricedLineDto[] Lines);
 
 // ---- Catalog (الأصناف): units, categories, price levels, sizes & colors, items, models ----
 

@@ -108,6 +108,34 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Price lists and quantity discounts** (قوائم الأسعار وخصم الكميات) — DOMAIN.md §2.2
+- **Inventory → Price lists** (new permission `price_lists:manage`; anyone who sees stock can look):
+  - A **price list** has special prices for chosen items on one side (sales or purchases), per
+    unit. It can also price a whole model, every size and color at once. It applies to the
+    customers or suppliers given it (Parties → price list, `parties:set_price_level`), or to
+    **everyone** while it runs (an offer). It has optional first and last days and can be closed.
+  - A **quantity discount**: from a quantity of an item on one sales invoice, a percent off, in up
+    to 10 steps (each a larger quantity and a larger discount, at most 90%). A model's steps count
+    all its sizes and colors on the invoice together; an item with its own steps uses only them.
+- **How an invoice line is priced** (one place on the server, `SpecialPrices`, used by the invoice
+  and by the new `POST /api/pricing/{sale|purchase}` the invoice screen calls as lines change):
+  1. the party's list, then any list for everyone (newest first): the item's own price for that
+     unit, its model's, or the base unit's × factor;
+  2. else the price level, as before; else cost × (1 + markup) on a sale / the average cost on a
+     purchase;
+  3. on a sale, the quantity discount comes off the line as a line discount (on list prices too).
+     Free goods get neither and don't count.
+- Without the permission to change prices, a sale must be at exactly that price and discount and a
+  purchase at exactly that cost; the invoice screen fills them in and shows "List: …" and
+  "Quantity discount x%" on the line. People who may change prices still type anything.
+- Migration `PriceLists` (three new tables; the backup covers them).
+- **Verified:** `pricing.test.mjs` (103 checks) covers a party's list, units from the base, whole
+  models and a variant's own price, dates and closing, an offer for everyone, quantity steps (per
+  item, carton + pieces together, per model across sizes, own steps first, free goods), what a
+  sales person may charge, a supplier's list on purchases, validation, deleting and audit. It can
+  run again on the same database. All other suites pass on a fresh and an upgraded database, and
+  backup → restore (now 51 tables).
+
 **Access per person: branches, warehouses, cash boxes** (صلاحيات الفروع والمخازن والخزائن) — DOMAIN.md §2.1
 - The owner (or anyone with the new `staff:access` permission) sets, for each person, under
   **Staff → the person → Access**:
@@ -893,7 +921,6 @@ own permission, and roles bundle them
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
 - A permission change reaches a signed-in person at their next token refresh (up to 15 minutes).
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
-- Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
 - The ledger starts at go-live: documents from before it are not replayed as entries.
 - Stock at average cost can drift from the stock ledger by rounding (under a piastre a unit); a
@@ -955,6 +982,9 @@ and warehouses shipped):
      check a payslip before posting.
    - ~~Days in UTC instead of Cairo~~ done: business days follow Settings → time zone.
    - ~~Access per person (branches, warehouses, cash boxes)~~ done.
+   - ~~Price lists and quantity discounts~~ done.
+   - **Verify on the live DB** after deploy: make a price list with two items, give it to a
+     customer, and sell to them as a sales person; add a quantity discount and sell above it.
    - **Verify on the live DB** after deploy: open Staff → a sales person → Access, give them a
      second branch; sign in as them, pick that branch from the account menu and make a sale.
    - **Verify on the live DB** after deploy: Settings shows the time zone as Cairo with the right

@@ -151,8 +151,9 @@ public sealed class PartiesController : ControllerBase
             Request.Headers.UserAgent.ToString(), id.ToString());
 
     /// <summary>
-    /// A customer's / supplier's own price level: new invoices to them start at it. A null field is
-    /// left as it is; "" goes back to the default level. Needs <c>parties:set_price_level</c>.
+    /// A customer's / supplier's own price level and price list: new invoices to them start at the
+    /// level, and the list's prices replace it for its items. A null field is left as it is; "" goes
+    /// back to the default level / no list. Needs <c>parties:set_price_level</c>.
     /// </summary>
     [HttpPut("{id:guid}/price-levels")]
     [Authorize(Policy = Permissions.PartiesSetPriceLevel)]
@@ -180,6 +181,25 @@ public sealed class PartiesController : ControllerBase
             var (level, ok) = await Pick(req.PurchasePriceLevelId, PriceSide.PURCHASE);
             if (!ok) return BadRequest(new { message = "Price level not found.", code = "price_level_not_found" });
             party.PurchasePriceLevelId = level;
+        }
+
+        async Task<(Guid? Id, bool Ok)> PickList(string raw, PriceSide side)
+        {
+            if (raw == "") return (null, true);
+            if (!Guid.TryParse(raw, out var listId)) return (null, false);
+            return (listId, await _db.PriceLists.AnyAsync(l => l.Id == listId && l.Side == side));
+        }
+        if (req.SalesPriceListId is not null)
+        {
+            var (list, ok) = await PickList(req.SalesPriceListId, PriceSide.SALE);
+            if (!ok) return BadRequest(new { message = "Price list not found.", code = "price_list_not_found" });
+            party.SalesPriceListId = list;
+        }
+        if (req.PurchasePriceListId is not null)
+        {
+            var (list, ok) = await PickList(req.PurchasePriceListId, PriceSide.PURCHASE);
+            if (!ok) return BadRequest(new { message = "Price list not found.", code = "price_list_not_found" });
+            party.PurchasePriceListId = list;
         }
         await _db.SaveChangesAsync();
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "price_levels", "party",

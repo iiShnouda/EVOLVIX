@@ -350,6 +350,9 @@ export type UpdateModelInput = z.infer<typeof updateModelSchema>;
 export const setPartyPriceLevelsSchema = z.object({
   salesPriceLevelId: z.string().optional(),
   purchasePriceLevelId: z.string().optional(),
+  /** "" = no list. */
+  salesPriceListId: z.string().optional(),
+  purchasePriceListId: z.string().optional(),
 });
 export type SetPartyPriceLevelsInput = z.infer<typeof setPartyPriceLevelsSchema>;
 

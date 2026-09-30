@@ -91,6 +91,9 @@ marked *(inferred)* come from data and column names, not from code.
   - Typing another price than the level's, or picking another level, needs its own permission (§6).
   - A **price list** (قائمة أسعار) can override the price for chosen items.
   - **Quantity breaks** give a discount above a quantity. Old table: `priceLevels`.
+  - ✅ Both built (2026-10-01): lists per side, for given parties or for everyone (offers), with
+    dates, per unit or for a whole model; quantity discounts per item or per model (all sizes
+    together), as a line discount on sales. See PROGRESS.md.
 - **Reorder band:** a minimum (حد الطلب) and an optional maximum.
   - The reorder report suggests *max − on hand* as the quantity to order.
   - Old columns: `talab`, `talabMax`; old report `hadElTalb`.

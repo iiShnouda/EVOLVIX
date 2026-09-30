@@ -80,6 +80,9 @@ export function InventoryPage() {
             >
               {t('catalog.setup')}
             </Button>
+            <Button size="sm" variant="secondary" onClick={() => navigate('/inventory/price-lists')}>
+              {t('pl.short')}
+            </Button>
             <Button
               size="sm"
               variant="secondary"

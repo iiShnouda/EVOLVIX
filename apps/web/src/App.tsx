@@ -26,6 +26,7 @@ import { BranchesPage } from './pages/BranchesPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { TransferBuilderPage } from './pages/TransferBuilderPage';
 import { CatalogSetupPage } from './pages/CatalogSetupPage';
+import { PriceListsPage } from './pages/PriceListsPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
 import { ModelsPage } from './pages/ModelsPage';
 import { ModelEditorPage } from './pages/ModelEditorPage';
@@ -170,6 +171,7 @@ export default function App() {
             <Route path="/inventory/transfers" element={<TransfersPage />} />
             <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
             <Route path="/inventory/setup" element={<CatalogSetupPage />} />
+            <Route path="/inventory/price-lists" element={<PriceListsPage />} />
             <Route path="/inventory/products/new" element={<ProductEditorPage key="new" />} />
             <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
             <Route path="/inventory/models" element={<ModelsPage />} />
