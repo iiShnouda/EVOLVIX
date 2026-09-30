@@ -44,9 +44,9 @@ public sealed class InventoryController : ControllerBase
     }
 
     /// <summary>
-    /// Active items with stock, average cost, value and reorder status — across all warehouses, or
-    /// in one when <paramref name="warehouseId"/> is given (then cost is that branch's). Totals cover
-    /// that scope and ignore the search / low-stock filter.
+    /// Active items with stock, average cost, value and reorder status — across all warehouses (the
+    /// person's own, if they see only some), or in one when <paramref name="warehouseId"/> is given
+    /// (then cost is that branch's). Totals cover that scope and ignore the search / low-stock filter.
     /// </summary>
     [HttpGet("items")]
     public async Task<ActionResult<InventoryListDto>> Items(
@@ -60,6 +60,7 @@ public sealed class InventoryController : ControllerBase
             .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
+        var mine = await _warehouses.LimitAsync(User);
 
         var all = products.Select(p =>
         {
@@ -69,6 +70,11 @@ public sealed class InventoryController : ControllerBase
                 var cost = state.PoolOfWarehouse.TryGetValue(w, out var pool)
                            && state.AvgCost.TryGetValue((p.Id, pool), out var c) ? c : p.CostPrice;
                 return Mapper.ToInventoryItem(p, qty, cost, value);
+            }
+            if (mine is not null)
+            {
+                var (qty, value) = state.Of(p.Id, mine);
+                return Mapper.ToInventoryItem(p, qty, qty > 0 ? value / qty : p.CostPrice, value);
             }
             var total = state.Of(p.Id);
             return Mapper.ToInventoryItem(p, p.StockOnHand, p.CostPrice, total.Value);
@@ -116,19 +122,22 @@ public sealed class InventoryController : ControllerBase
         if (toDay < fromDay) (fromDay, toDay) = (toDay, fromDay);
         var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
 
+        // One warehouse, or all of them — the person's own, if they see only some.
+        var limit = await _warehouses.LimitAsync(User);
+        var mine = wid is Guid one ? new HashSet<Guid> { one } : limit;
         var ofItem = _db.StockMovements.AsNoTracking().Where(m => m.ProductId == id);
-        var inScope = wid is Guid w ? ofItem.Where(m => m.WarehouseId == w) : ofItem;
+        var inScope = mine is not null ? ofItem.Where(m => mine.Contains(m.WarehouseId)) : ofItem;
         var moves = await inScope.Where(m => m.CreatedAt >= fromDate && m.CreatedAt < toExclusive)
             .OrderBy(m => m.CreatedAt)
             .Take(MaxCardRows)
             .ToListAsync();
 
-        var opening = (await _valuation.AtAsync(fromDate, id)).Of(id, wid);
-        var closing = (await _valuation.AtAsync(toExclusive, id)).Of(id, wid);
+        var opening = mine is null ? (await _valuation.AtAsync(fromDate, id)).Of(id) : (await _valuation.AtAsync(fromDate, id)).Of(id, mine);
+        var closing = mine is null ? (await _valuation.AtAsync(toExclusive, id)).Of(id) : (await _valuation.AtAsync(toExclusive, id)).Of(id, mine);
         var now = await _valuation.CurrentAsync(id);
         var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch).ToDictionaryAsync(x => x.Id);
         var stock = now.Quantity
-            .Where(kv => kv.Key.Product == id && kv.Value != 0)
+            .Where(kv => kv.Key.Product == id && kv.Value != 0 && (limit is null || limit.Contains(kv.Key.Warehouse)))
             .Select(kv => new WarehouseStockDto(kv.Key.Warehouse.ToString(), Loc.Name(names[kv.Key.Warehouse]),
                 Loc.Name(names[kv.Key.Warehouse].Branch), kv.Value, now.ValueOf(id, kv.Key.Warehouse)))
             .OrderBy(x => x.Name)
@@ -137,7 +146,10 @@ public sealed class InventoryController : ControllerBase
         var item = wid is Guid only
             ? Mapper.ToInventoryItem(product, now.Of(id, only).Quantity,
                 now.CostIn(id, only) is var c && c > 0 ? c : product.CostPrice, now.Of(id, only).Value)
-            : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
+            : mine is not null
+                ? Mapper.ToInventoryItem(product, now.Of(id, mine).Quantity,
+                    now.Of(id, mine) is { Quantity: > 0 } t ? t.Value / t.Quantity : product.CostPrice, now.Of(id, mine).Value)
+                : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
 
         return Ok(new ItemCardDto(
             item, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
@@ -168,10 +180,11 @@ public sealed class InventoryController : ControllerBase
             .ToDictionaryAsync(p => p.Id);
         var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
         var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(CompanyClock.StartOf(date.AddDays(1)));
+        var mine = await _warehouses.LimitAsync(User);
 
         var lines = state.Quantity
             .Where(kv => products.TryGetValue(kv.Key.Product, out var p) && (date < today || p.IsActive)
-                         && (wid is null || kv.Key.Warehouse == wid))
+                         && (wid is null || kv.Key.Warehouse == wid) && (mine is null || mine.Contains(kv.Key.Warehouse)))
             .Select(kv => new
             {
                 kv.Key.Product, kv.Key.Warehouse, Qty = kv.Value,

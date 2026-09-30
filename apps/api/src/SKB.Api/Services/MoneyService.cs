@@ -38,18 +38,18 @@ public sealed class MoneyService
     };
 
     /// <summary>Accounts a user may use: their branch's, or every branch's for all-branch roles.</summary>
-    public IQueryable<MoneyAccount> Visible(ClaimsPrincipal user) => Visible(ScopeOf(user));
-
-    public IQueryable<MoneyAccount> Visible(Guid? branchScope)
+    /// <summary>The money accounts a person may see and use: in their branches, and only those named if the owner narrowed it.</summary>
+    public IQueryable<MoneyAccount> Visible(ClaimsPrincipal user)
     {
-        var q = _db.MoneyAccounts.AsQueryable();
-        if (branchScope is Guid branch) q = q.Where(a => a.BranchId == branch);
+        var q = _db.MoneyAccounts.InBranches(user, a => a.BranchId);
+        if (Access.MoneyAccounts(user) is { } only) q = q.Where(a => only.Contains(a.Id));
         return q;
     }
 
-    public static Guid? ScopeOf(ClaimsPrincipal user) =>
-        CurrentUser.CanSeeAllBranches(user) ? null
-        : Guid.TryParse(CurrentUser.BranchId(user), out var b) ? b : Guid.Empty;
+    /// <summary>May the person use this account (it's one they see)?</summary>
+    public static bool CanUse(ClaimsPrincipal user, MoneyAccount account) =>
+        Access.CanUseBranch(user, account.BranchId)
+        && (Access.MoneyAccounts(user) is not { } only || only.Contains(account.Id));
 
     /// <summary>
     /// Lock the accounts' rows until the transaction ends (in id order, so two requests never wait
@@ -92,16 +92,17 @@ public sealed class MoneyService
     }
 
     /// <summary>
-    /// The account a paid-now amount (or a refund) goes through: the one asked for, else the
-    /// default cash box of <paramref name="branchId"/>. Locked and ready for <see cref="Move"/>.
+    /// The account a paid-now amount (or a refund) goes through: the one asked for (one the person
+    /// may use), else the default cash box of <paramref name="branchId"/> — or, if they may not use
+    /// that one, their first cash box there. Locked and ready for <see cref="Move"/>.
     /// </summary>
     public async Task<(MoneyAccount? Account, MoneyError? Error)> ForDocumentAsync(
-        string? requested, Guid branchId, Guid? branchScope)
+        string? requested, Guid branchId, ClaimsPrincipal user)
     {
         Guid id;
         if (!string.IsNullOrWhiteSpace(requested))
         {
-            if (!Guid.TryParse(requested, out id) || !await Visible(branchScope).AnyAsync(a => a.Id == id && a.IsActive))
+            if (!Guid.TryParse(requested, out id) || !await Visible(user).AnyAsync(a => a.Id == id && a.IsActive))
                 return (null, new("account_not_found", "Money account not found."));
         }
         else
@@ -109,6 +110,12 @@ public sealed class MoneyService
             var def = await _db.MoneyAccounts.Where(a => a.BranchId == branchId && a.IsDefault && a.IsActive)
                 .Select(a => (Guid?)a.Id).FirstOrDefaultAsync();
             if (def is null) return (null, new("no_cash_box", "This branch has no cash box. Add one under Money."));
+            if (Access.MoneyAccounts(user) is { } only && !only.Contains(def.Value))
+            {
+                def = await Visible(user).Where(a => a.BranchId == branchId && a.IsActive && a.Kind == MoneyAccountKind.CASH_BOX)
+                    .OrderBy(a => a.Name).Select(a => (Guid?)a.Id).FirstOrDefaultAsync();
+                if (def is null) return (null, new("no_cash_box", "You have no cash box in this branch. Choose an account."));
+            }
             id = def.Value;
         }
         var locked = await LockAsync(new[] { id });

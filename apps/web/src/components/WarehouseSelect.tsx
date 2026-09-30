@@ -1,12 +1,12 @@
 import type { Warehouse } from '@skb/shared';
 import { useT } from '../lib/i18n';
 import { useWarehouses } from '../lib/queries';
-import { useAuth } from '../stores/auth';
+import { useWorkBranch } from '../stores/workBranch';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-/** The warehouse a new document or count should start on: the user's branch default. */
+/** The warehouse a new document or count should start on: the working branch's default. */
 export function pickDefaultWarehouse(list: Warehouse[], branchId?: string): Warehouse | undefined {
   const open = list.filter((w) => w.isActive);
   return (
@@ -18,7 +18,7 @@ export function pickDefaultWarehouse(list: Warehouse[], branchId?: string): Ware
 }
 
 export function useDefaultWarehouseId(): string {
-  const branchId = useAuth((s) => s.user?.branchId);
+  const branchId = useWorkBranch();
   const list = useWarehouses(true);
   return pickDefaultWarehouse(list.data ?? [], branchId)?.id ?? '';
 }

@@ -14,10 +14,9 @@ public static class CurrentUser
     public static Role Role(ClaimsPrincipal u) =>
         Enum.TryParse<Role>(RoleName(u), out var r) ? r : Domain.Role.VIEWER;
 
-    /// <summary>Roles allowed to see data across all branches; others are branch-scoped.</summary>
-    public static bool CanSeeAllBranches(ClaimsPrincipal u)
-    {
-        var r = Role(u);
-        return r is Domain.Role.OWNER or Domain.Role.ADMIN or Domain.Role.ACCOUNTANT;
-    }
+    /// <summary>
+    /// The role's default reach, for a token from before per-person access. Everything else asks
+    /// <see cref="Access"/>, which knows what the owner set for this person.
+    /// </summary>
+    public static bool RoleSeesAllBranches(ClaimsPrincipal u) => AccessService.RoleSeesAll(Role(u));
 }

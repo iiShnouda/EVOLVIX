@@ -62,8 +62,7 @@ public sealed class MoneyController : ControllerBase
         var name = Loc.Clean(req.Name);
         if (name is null) return Bad("bad_name", "Enter the name.");
         if (!Enum.TryParse<MoneyAccountKind>(req.Kind, true, out var kind)) return Bad("bad_kind", "Choose the kind of account.");
-        var scope = MoneyService.ScopeOf(User);
-        if (!Guid.TryParse(req.BranchId, out var branchId) || (scope is Guid s && s != branchId)
+        if (!Guid.TryParse(req.BranchId, out var branchId) || !Access.CanUseBranch(User, branchId)
             || !await _db.Branches.AnyAsync(b => b.Id == branchId && b.IsActive))
             return Bad("branch_not_found", "Branch not found.");
         if (req.OpeningBalance < 0 || req.OpeningBalance > InvoiceLines.MaxPrice) return Bad("bad_amount", "The opening balance can't be negative.");
@@ -110,7 +109,7 @@ public sealed class MoneyController : ControllerBase
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
         var locked = await _money.LockAsync(new[] { id });
-        if (!locked.TryGetValue(id, out var account) || (MoneyService.ScopeOf(User) is Guid s && s != account.BranchId))
+        if (!locked.TryGetValue(id, out var account) || !MoneyService.CanUse(User, account))
             return NotFound(new { message = "Money account not found.", code = "not_found" });
 
         if (req.Name is not null)
@@ -264,14 +263,13 @@ public sealed class MoneyController : ControllerBase
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         var accounts = await _money.LockAsync(new[] { fromId, toId });
-        var scope = MoneyService.ScopeOf(User);
-        if (accounts.Count != 2 || accounts.Values.Any(a => !a.IsActive || (scope is Guid s && a.BranchId != s)))
+        if (accounts.Count != 2 || accounts.Values.Any(a => !a.IsActive || !MoneyService.CanUse(User, a)))
             return Bad("account_not_found", "Money account not found.");
         var (from, to) = (accounts[fromId], accounts[toId]);
         var voucher = new Voucher
         {
             Number = await DocumentNumbers.NextVoucherAsync(_db, VoucherType.TRANSFER), Type = VoucherType.TRANSFER,
-            BranchId = scope ?? from.BranchId, FromAccountId = fromId, ToAccountId = toId, Amount = req.Amount,
+            BranchId = from.BranchId, FromAccountId = fromId, ToAccountId = toId, Amount = req.Amount,
             Notes = Text(req.Notes, 500), CreatedById = Me(),
         };
         var error = _money.Move(from, -req.Amount, MoneyMovementKind.TRANSFER_OUT, Me(), voucher.Number, voucherId: voucher.Id)
@@ -313,6 +311,9 @@ public sealed class MoneyController : ControllerBase
         var moves = await _db.MoneyMovements.AsNoTracking()
             .Where(m => m.VoucherId == id && m.Kind != MoneyMovementKind.CANCELLATION).OrderBy(m => m.CreatedAt).ToListAsync();
         var accounts = await _money.LockAsync(moves.Select(m => m.AccountId));
+        // Money goes back through its accounts: only someone who may use them can cancel.
+        if (accounts.Values.Any(a => !MoneyService.CanUse(User, a)))
+            return NotFound(new { message = "Voucher not found.", code = "not_found" });
         foreach (var m in moves)
         {
             var error = _money.Move(accounts[m.AccountId], -m.Amount, MoneyMovementKind.CANCELLATION, Me(), voucher.Number,
@@ -417,10 +418,9 @@ public sealed class MoneyController : ControllerBase
 
         if (party is not null) await MoneyService.LockPartiesAsync(_db, party.Id);
         var accounts = await _money.LockAsync(lines.Select(l => l.AccountId));
-        var scope = MoneyService.ScopeOf(User);
         foreach (var l in lines)
         {
-            if (!accounts.TryGetValue(l.AccountId, out var acc) || !acc.IsActive || (scope is Guid s && acc.BranchId != s))
+            if (!accounts.TryGetValue(l.AccountId, out var acc) || !acc.IsActive || !MoneyService.CanUse(User, acc))
                 return Bad("account_not_found", "Money account not found.");
             if (!MoneyService.Fits(l.Method, acc.Kind))
                 return Bad("method_mismatch", $"{Loc.Name(acc)} can't take a {l.Method} payment.");
@@ -429,7 +429,7 @@ public sealed class MoneyController : ControllerBase
         var voucher = new Voucher
         {
             Number = await DocumentNumbers.NextVoucherAsync(_db, type), Type = type,
-            BranchId = scope ?? accounts[lines[0].AccountId].BranchId, PartyId = partyId, ExpenseCategoryId = categoryId,
+            BranchId = accounts[lines[0].AccountId].BranchId, PartyId = partyId, ExpenseCategoryId = categoryId,
             Amount = total, Notes = Text(req.Notes, 500), CreatedById = Me(),
         };
         var kind = type switch
@@ -537,16 +537,12 @@ public sealed class MoneyController : ControllerBase
 
     private IQueryable<SalesDocument> ScopedDocs()
     {
-        var q = _db.SalesDocuments.AsQueryable();
-        if (MoneyService.ScopeOf(User) is Guid branch) q = q.Where(d => d.BranchId == branch);
-        return q;
+        return _db.SalesDocuments.InBranches(User, d => d.BranchId);
     }
 
     private IQueryable<Voucher> ScopedVouchers()
     {
-        var q = _db.Vouchers.AsQueryable();
-        if (MoneyService.ScopeOf(User) is Guid branch) q = q.Where(v => v.BranchId == branch);
-        return q;
+        return _db.Vouchers.InBranches(User, v => v.BranchId);
     }
 
     private static IQueryable<Voucher> WithDetails(IQueryable<Voucher> q) => q.AsNoTracking()

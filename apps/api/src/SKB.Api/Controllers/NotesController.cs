@@ -91,8 +91,7 @@ public sealed class NotesController : ControllerBase
     public async Task<ActionResult<PortfolioDto[]>> Portfolios()
     {
         var q = _db.Portfolios.AsNoTracking().Include(p => p.Account).Include(p => p.Branch).Include(p => p.CreatedBy)
-            .Include(p => p.Notes).AsQueryable();
-        if (MoneyService.ScopeOf(User) is Guid b) q = q.Where(p => p.BranchId == b);
+            .Include(p => p.Notes).InBranches(User, p => p.BranchId);
         var rows = await q.OrderByDescending(p => p.CreatedAt).Take(200).AsSplitQuery().ToListAsync();
         var currency = await CurrencyAsync();
         return Ok(rows.Select(p => new PortfolioDto(p.Id.ToString(), p.Number, Loc.Name(p.Account), Loc.Name(p.Branch),
@@ -145,10 +144,8 @@ public sealed class NotesController : ControllerBase
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = ANY({docIds}) ORDER BY \"Id\" FOR UPDATE");
             var docType = direction == NoteDirection.RECEIVABLE ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
-            var scope = MoneyService.ScopeOf(User);
             var q = _db.SalesDocuments.Where(d => docIds.Contains(d.Id) && d.PartyId == partyId && d.Type == docType
-                                                 && d.Status != DocumentStatus.CANCELLED);
-            if (scope is Guid b) q = q.Where(d => d.BranchId == b);
+                                                 && d.Status != DocumentStatus.CANCELLED).InBranches(User, d => d.BranchId);
             docs = await q.ToDictionaryAsync(d => d.Id);
             foreach (var d in docs.Values) await _db.Entry(d).ReloadAsync();
             if (docs.Count != docIds.Length) return Bad("invoice_not_found", "An invoice was not found for this party.");
@@ -168,7 +165,7 @@ public sealed class NotesController : ControllerBase
             Status = direction == NoteDirection.RECEIVABLE ? NoteStatus.IN_HAND : NoteStatus.ISSUED,
             SerialNumber = serial, BankName = Text(req.BankName, 100), Amount = req.Amount,
             DueDate = due.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), Drawer = Text(req.Drawer, 100),
-            Guarantor = Text(req.Guarantor, 100), PartyId = partyId, BranchId = MyBranch(),
+            Guarantor = Text(req.Guarantor, 100), PartyId = partyId, BranchId = Access.Work(User),
             Remark = Text(req.Remark, 500), CreatedById = Me(),
         };
         note.Events.Add(new NoteEvent { ToStatus = note.Status, PartyId = partyId, Remark = note.Remark, StaffId = Me() });
@@ -399,12 +396,7 @@ public sealed class NotesController : ControllerBase
 
     // ------------------------------------------------------------------ helpers
 
-    private IQueryable<Note> Scoped()
-    {
-        var q = _db.Notes.AsQueryable();
-        if (MoneyService.ScopeOf(User) is Guid b) q = q.Where(n => n.BranchId == b);
-        return q;
-    }
+    private IQueryable<Note> Scoped() => _db.Notes.InBranches(User, n => n.BranchId);
 
     private static IQueryable<Note> WithDetails(IQueryable<Note> q) => q.AsNoTracking()
         .Include(n => n.Party).Include(n => n.EndorsedTo).Include(n => n.Branch).Include(n => n.Portfolio)
@@ -439,7 +431,6 @@ public sealed class NotesController : ControllerBase
         await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
     private Guid Me() => Guid.TryParse(CurrentUser.Id(User), out var id) ? id : Guid.Empty;
-    private Guid MyBranch() => Guid.TryParse(CurrentUser.BranchId(User), out var id) ? id : Guid.Empty;
 
     private static string? Text(string? s, int max)
     {

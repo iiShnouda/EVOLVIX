@@ -53,6 +53,7 @@ import type {
   CreateStaffInput,
   UpdateStaffInput,
   StaffPermissionsInput,
+  StaffAccessInput,
   RepOption,
   CreatePartyInput,
   UpdatePartyInput,
@@ -372,7 +373,11 @@ export function useCreateBranch() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateBranchInput) => api.post<BranchWithWarehouses>('/branches', input),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      // A fresh session lists the new branch among those the person can work in.
+      void api.refreshSession();
+    },
   });
 }
 
@@ -617,6 +622,15 @@ export function useSetStaffPermissions() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: StaffPermissionsInput }) =>
       api.put<StaffMember>(`/staff/${id}/permissions`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useSetStaffAccess() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: StaffAccessInput }) =>
+      api.put<StaffMember>(`/staff/${id}/access`, input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
   });
 }

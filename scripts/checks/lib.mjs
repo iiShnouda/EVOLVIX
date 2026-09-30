@@ -8,10 +8,14 @@ export async function login(email, password = email.startsWith('owner') ? 'Chang
   if (!r.ok) throw new Error(`login ${email}: ${r.status} ${JSON.stringify(j)}`);
   return client(j.accessToken, j.user);
 }
-export function client(token, user, lang = 'en') {
+/** A signed-in client; `at(branchId)` gives one working in that branch (the X-Branch header). */
+export function client(token, user, lang = 'en', branch = null) {
   const call = async (method, path, body) => {
     const r = await fetch(`${BASE}${path}`, {
-      method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, 'accept-language': lang },
+      method, headers: {
+        'content-type': 'application/json', authorization: `Bearer ${token}`, 'accept-language': lang,
+        ...(branch ? { 'x-branch': branch } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await r.text();
@@ -20,7 +24,8 @@ export function client(token, user, lang = 'en') {
   };
   return {
     user, token,
-    lang: (l) => client(token, user, l),
+    lang: (l) => client(token, user, l, branch),
+    at: (b) => client(token, user, lang, b),
     get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b ?? {}),
     del: (p) => call('DELETE', p),
   };

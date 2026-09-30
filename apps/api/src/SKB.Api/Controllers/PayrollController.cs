@@ -53,7 +53,7 @@ public sealed class PayrollController : ControllerBase
         {
             Code = await DocumentNumbers.NextEmployeeCodeAsync(_db),
             HireDate = CompanyClock.TodayDate,
-            BranchId = Guid.TryParse(CurrentUser.BranchId(User), out var b) ? b : Guid.Empty,
+            BranchId = Access.Work(User),
         };
         if (Loc.Clean(req.Name) is null) return Bad("bad_name", "Enter the employee's name.");
         var error = await ApplyAsync(e, req);
@@ -92,12 +92,12 @@ public sealed class PayrollController : ControllerBase
         if (req.BranchId is not null)
         {
             if (!Guid.TryParse(req.BranchId, out var branch) || !await _db.Branches.AnyAsync(x => x.Id == branch)
-                || (Scope() is Guid s && s != branch))
+                || !Access.CanUseBranch(User, branch))
                 return Bad("branch_not_found", "Branch not found.");
             e.BranchId = branch;
         }
-        if (Scope() is Guid mine && e.BranchId != mine) e.BranchId = mine;
-        if (!await _db.Branches.AnyAsync(x => x.Id == e.BranchId)) return Bad("branch_not_found", "Branch not found.");
+        if (!Access.CanUseBranch(User, e.BranchId) || !await _db.Branches.AnyAsync(x => x.Id == e.BranchId))
+            return Bad("branch_not_found", "Branch not found.");
         if (req.JobTitle is not null) e.JobTitle = Text(req.JobTitle, 100);
         if (req.Phone is not null) e.Phone = Text(req.Phone, 40);
         if (req.NationalId is not null) e.NationalId = Text(req.NationalId, 30);
@@ -321,7 +321,7 @@ public sealed class PayrollController : ControllerBase
         await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"Employees\" WHERE \"Id\" = {employeeId} FOR UPDATE");
         var employee = await ScopedEmployees().FirstOrDefaultAsync(e => e.Id == employeeId && e.IsActive);
         if (employee is null) return Bad("employee_not_found", "Employee not found.");
-        var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, employee.BranchId, Scope());
+        var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, employee.BranchId, User);
         if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
         var advance = new EmployeeAdvance
         {
@@ -393,15 +393,13 @@ public sealed class PayrollController : ControllerBase
         Guid? branch = null;
         if (!string.IsNullOrWhiteSpace(req.BranchId))
         {
-            if (!Guid.TryParse(req.BranchId, out var b) || !await _db.Branches.AnyAsync(x => x.Id == b))
+            if (!Guid.TryParse(req.BranchId, out var b) || !await _db.Branches.AnyAsync(x => x.Id == b)
+                || !Access.CanUseBranch(User, b))
                 return Bad("branch_not_found", "Branch not found.");
             branch = b;
         }
-        if (Scope() is Guid mine)
-        {
-            if (branch is not null && branch != mine) return Bad("branch_not_found", "Branch not found.");
-            branch = mine;
-        }
+        // The whole company's payroll is only for people who see every branch; others make their branch's.
+        if (branch is null && !Access.AllBranches(User)) branch = Access.Work(User);
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtext('payroll-runs'))");
         var existing = await _db.PayrollRuns.Where(r => r.Year == req.Year && r.Month == req.Month
@@ -464,8 +462,7 @@ public sealed class PayrollController : ControllerBase
         if (run.Status != PayrollRunStatus.POSTED)
             return Bad(run.Status == PayrollRunStatus.PAID ? "already_paid" : "not_posted",
                 run.Status == PayrollRunStatus.PAID ? "This payroll is already paid." : "Post the payroll before paying it.");
-        var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId,
-            run.BranchId ?? (Guid.TryParse(CurrentUser.BranchId(User), out var b) ? b : Guid.Empty), Scope());
+        var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, run.BranchId ?? Access.Work(User), User);
         if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
         var error = await _payroll.PayAsync(run, account!, only, Me());
         if (error is not null) return Bad(error.Code, error.Message);
@@ -494,13 +491,13 @@ public sealed class PayrollController : ControllerBase
 
     // ------------------------------------------------------------------ helpers
 
-    private Guid? Scope() => MoneyService.ScopeOf(User);
+    private IQueryable<Employee> ScopedEmployees() => _db.Employees.InBranches(User, e => e.BranchId);
 
-    private IQueryable<Employee> ScopedEmployees() =>
-        Scope() is Guid b ? _db.Employees.Where(e => e.BranchId == b) : _db.Employees;
-
+    /// <summary>Runs of the person's branches; a whole-company run only for people who see every branch.</summary>
     private IQueryable<PayrollRun> ScopedRuns() =>
-        Scope() is Guid b ? _db.PayrollRuns.Where(r => r.BranchId == b) : _db.PayrollRuns;
+        Access.Branches(User) is { } bs
+            ? _db.PayrollRuns.Where(r => r.BranchId != null && bs.Contains(r.BranchId.Value))
+            : _db.PayrollRuns;
 
     /// <summary>Whether a posted (or paid) payroll already covers this employee's month.</summary>
     private Task<bool> MonthPostedAsync(Guid employeeId, int year, int month) =>

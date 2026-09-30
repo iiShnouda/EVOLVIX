@@ -26,6 +26,7 @@ const ALL: Permission[] = [
   'staff:view',
   'staff:manage',
   'roles:manage',
+  'staff:access',
   'branches:view',
   'branches:manage',
   'analytics:view',

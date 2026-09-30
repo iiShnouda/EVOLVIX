@@ -183,6 +183,74 @@ public sealed class StaffController : ControllerBase
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
     }
 
+    /// <summary>
+    /// What one person may work with (DOMAIN.md §2.1): every branch, or their own plus the ones
+    /// listed (or as their role says); and within those, if any are listed, only those warehouses
+    /// and money accounts. Nobody gives more than they have themselves; an owner always has
+    /// everything; nobody changes their own. It reaches the person at their next token refresh.
+    /// </summary>
+    [HttpPut("staff/{id:guid}/access")]
+    [Authorize(Policy = Permissions.StaffAccess)]
+    public async Task<ActionResult<StaffDto>> SetAccess(Guid id, [FromBody] StaffAccessRequest req)
+    {
+        var staff = await _db.Staff.Include(s => s.Branch).FirstOrDefaultAsync(s => s.Id == id);
+        if (staff is null) return NotFound(new { message = "Person not found.", code = "not_found" });
+        if (staff.Role == Role.OWNER) return Bad("owner_fixed", "An owner always works in every branch.");
+        if (id.ToString() == CurrentUser.Id(User)) return Bad("own_access", "You can't change your own access.");
+
+        var branchIds = Ids(req.BranchIds);
+        var warehouseIds = Ids(req.WarehouseIds);
+        var accountIds = Ids(req.MoneyAccountIds);
+        if (branchIds is null) return Bad("branch_not_found", "A branch was not found.");
+        if (warehouseIds is null) return Bad("warehouse_not_found", "A warehouse was not found.");
+        if (accountIds is null) return Bad("account_not_found", "A money account was not found.");
+        if (branchIds.Count + warehouseIds.Count + accountIds.Count > 500) return Bad("too_many", "That's too many.");
+        branchIds.Remove(staff.BranchId);
+        if (branchIds.Count > 0 && await _db.Branches.CountAsync(b => branchIds.Contains(b.Id)) != branchIds.Count)
+            return Bad("branch_not_found", "A branch was not found.");
+
+        // The branches they'll have: every one, or theirs and the listed ones.
+        var all = req.AllBranches ?? AccessService.RoleSeesAll(staff.Role);
+        var theirs = all ? null : branchIds.Append(staff.BranchId).ToList();
+        if (warehouseIds.Count > 0 && await _db.Warehouses.CountAsync(w => warehouseIds.Contains(w.Id)
+                && w.Kind == WarehouseKind.STORE && (theirs == null || theirs.Contains(w.BranchId))) != warehouseIds.Count)
+            return Bad("warehouse_not_found", "Choose warehouses in their branches.");
+        if (accountIds.Count > 0 && await _db.MoneyAccounts.CountAsync(a => accountIds.Contains(a.Id)
+                && (theirs == null || theirs.Contains(a.BranchId))) != accountIds.Count)
+            return Bad("account_not_found", "Choose money accounts in their branches.");
+
+        // Nobody gives more than they have themselves.
+        if (Access.Branches(User) is { } myBranches
+            && (all || !myBranches.Contains(staff.BranchId) || branchIds.Any(b => !myBranches.Contains(b))))
+            return Forbidden("not_your_branch", "You can only give branches you work in yourself.");
+        if (Access.Warehouses(User) is { } myWarehouses
+            && (warehouseIds.Count == 0 || warehouseIds.Any(w => !myWarehouses.Contains(w))))
+            return Forbidden("not_your_warehouse", "You can only give warehouses you use yourself.");
+        if (Access.MoneyAccounts(User) is { } myAccounts
+            && (accountIds.Count == 0 || accountIds.Any(a => !myAccounts.Contains(a))))
+            return Forbidden("not_your_account", "You can only give money accounts you use yourself.");
+
+        staff.AllBranches = req.AllBranches;
+        staff.BranchIds = all ? new List<Guid>() : branchIds;
+        staff.WarehouseIds = warehouseIds;
+        staff.MoneyAccountIds = accountIds;
+        await _db.SaveChangesAsync();
+        await AuditAsync("access", "staff", id);
+        return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
+    }
+
+    /// <summary>A list of ids without repeats, or null when one isn't an id.</summary>
+    private static List<Guid>? Ids(string[]? raw)
+    {
+        var list = new List<Guid>();
+        foreach (var r in raw ?? Array.Empty<string>())
+        {
+            if (!Guid.TryParse(r, out var g)) return null;
+            if (!list.Contains(g)) list.Add(g);
+        }
+        return list;
+    }
+
     // ------------------------------------------------------------------ roles
 
     [HttpGet("roles")]
@@ -276,7 +344,10 @@ public sealed class StaffController : ControllerBase
     private static StaffDto ToDto(Staff s, IReadOnlyDictionary<Role, (string[] Permissions, bool Custom)> sets) => new(
         s.Id.ToString(), s.FullName, s.Email, s.Role.ToString(), s.BranchId.ToString(), Loc.Name(s.Branch), s.Phone,
         s.IsActive, s.CreatedAt.ToString("o"), PermissionService.Known(s.GrantedPermissions),
-        PermissionService.Known(s.RevokedPermissions), PermissionService.Effective(s, sets));
+        PermissionService.Known(s.RevokedPermissions), PermissionService.Effective(s, sets),
+        s.Role == Role.OWNER ? true : s.AllBranches, AccessService.SeesAll(s),
+        s.BranchIds.Select(x => x.ToString()).ToArray(), s.WarehouseIds.Select(x => x.ToString()).ToArray(),
+        s.MoneyAccountIds.Select(x => x.ToString()).ToArray());
 
     private static string? Clean(string? s, int max)
     {

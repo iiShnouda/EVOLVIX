@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SKB.Api.Data;
 using SKB.Api.Domain;
 using SKB.Api.Models;
 using SKB.Api.Services;
@@ -17,9 +19,14 @@ public sealed class AuthController : ControllerBase
     private readonly TokenService _tokens;
     private readonly AuditService _audit;
     private readonly IConfiguration _config;
+    private readonly AppDbContext _db;
+    private readonly AccessService _access;
 
-    public AuthController(AuthService auth, TokenService tokens, AuditService audit, IConfiguration config)
+    public AuthController(AuthService auth, TokenService tokens, AuditService audit, IConfiguration config,
+        AppDbContext db, AccessService access)
     {
+        _db = db;
+        _access = access;
         _auth = auth;
         _tokens = tokens;
         _audit = audit;
@@ -69,19 +76,17 @@ public sealed class AuthController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>Who's signed in: their permissions as in their token, and what they may work with now.</summary>
     [Authorize]
     [HttpGet("me")]
-    public IActionResult Me()
+    public async Task<IActionResult> Me()
     {
-        var role = CurrentUser.Role(User);
-        var dto = new AuthUserDto(
-            CurrentUser.Id(User),
-            CurrentUser.Name(User),
-            User.FindFirst("email")?.Value ?? "",
-            role.ToString(),
-            CurrentUser.BranchId(User),
-            User.FindAll("permission").Select(c => c.Value).ToArray());
-        return Ok(dto);
+        var staff = Guid.TryParse(CurrentUser.Id(User), out var id)
+            ? await _db.Staff.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id)
+            : null;
+        if (staff is null) return Unauthorized(new { message = "No session", code = "NO_SESSION" });
+        return Ok(TokenService.ToDto(staff, User.FindAll("permission").Select(c => c.Value).ToArray(),
+            await _access.ForAsync(staff)));
     }
 
     private SessionContext Context() => new(

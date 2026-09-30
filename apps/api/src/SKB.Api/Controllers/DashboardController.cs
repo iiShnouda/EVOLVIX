@@ -22,11 +22,7 @@ public sealed class DashboardController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<DashboardDto>> Get()
     {
-        var all = CurrentUser.CanSeeAllBranches(User);
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-
-        IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) =>
-            all ? q : q.Where(d => d.BranchId == branchId);
+        IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) => q.InBranches(User, d => d.BranchId);
 
         // Net of returns: sales returns reduce revenue, purchase returns reduce purchases.
         var totals = await Scoped(_db.SalesDocuments)
@@ -39,7 +35,9 @@ public sealed class DashboardController : ControllerBase
         var purchases = Total(DocumentType.PURCHASE_INVOICE) - Total(DocumentType.PURCHASE_RETURN);
 
         // Cash position: what the money accounts hold (cash boxes, custody, banks, wallets).
-        var cash = await _db.MoneyAccounts.Where(a => a.IsActive && (all || a.BranchId == branchId))
+        var only = Access.MoneyAccounts(User);
+        var cash = await _db.MoneyAccounts.InBranches(User, a => a.BranchId)
+            .Where(a => a.IsActive && (only == null || only.Contains(a.Id)))
             .SumAsync(a => (long?)a.Balance) ?? 0;
 
         var balances = await _db.Parties.Select(p => p.Balance).ToListAsync();
@@ -67,13 +65,13 @@ public sealed class DashboardController : ControllerBase
 
         return Ok(new DashboardDto(
             kpis,
-            await BuildTrendAsync(all, branchId),
+            await BuildTrendAsync(),
             lowStock.Select(p => Mapper.ToProduct(p, book)).ToArray(),
             recent.Select(Mapper.ToSummary).ToArray(),
             Currency));
     }
 
-    private async Task<TrendPointDto[]> BuildTrendAsync(bool all, Guid branchId)
+    private async Task<TrendPointDto[]> BuildTrendAsync()
     {
         var first = CompanyClock.Today.AddDays(-(TrendDays - 1));
         var since = CompanyClock.StartOf(first);
@@ -81,7 +79,7 @@ public sealed class DashboardController : ControllerBase
             d.IssueDate >= since && d.Status != DocumentStatus.CANCELLED &&
             (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN ||
              d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN));
-        if (!all) q = q.Where(d => d.BranchId == branchId);
+        q = q.InBranches(User, d => d.BranchId);
 
         var rows = await q.Select(d => new { d.IssueDate, d.Type, d.GrandTotal }).ToListAsync();
 

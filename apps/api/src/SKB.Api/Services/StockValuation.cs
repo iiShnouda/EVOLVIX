@@ -44,6 +44,20 @@ public sealed class StockValuation
             }
             return (qty, value);
         }
+
+        /// <summary>Total quantity and value of one product across some warehouses.</summary>
+        public (int Quantity, long Value) Of(Guid productId, IReadOnlySet<Guid> warehouses)
+        {
+            int qty = 0;
+            long value = 0;
+            foreach (var ((pid, wid), q) in Quantity)
+            {
+                if (pid != productId || !warehouses.Contains(wid)) continue;
+                qty += q;
+                value += (long)q * CostIn(pid, wid);
+            }
+            return (qty, value);
+        }
     }
 
     /// <summary>Today's state from the live balances and cost pools.</summary>

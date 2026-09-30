@@ -322,11 +322,7 @@ public sealed class DeliveryController : ControllerBase
         var q = _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier).Include(x => x.CreatedBy)
             .Include(x => x.Account).Include(x => x.Shipments).AsQueryable();
         if (Guid.TryParse(carrierId, out var carrier)) q = q.Where(x => x.CarrierId == carrier);
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            var branch = MyBranch();
-            q = q.Where(x => x.Shipments.Any(s => s.BranchId == branch));
-        }
+        if (Access.Branches(User) is { } branches) q = q.Where(x => x.Shipments.Any(s => branches.Contains(s.BranchId)));
         var rows = await q.OrderByDescending(x => x.CreatedAt).Take(200).AsSplitQuery().ToListAsync();
         var currency = await CurrencyAsync();
         return Ok(rows.Select(x => ToDto(x, currency)).ToArray());
@@ -382,7 +378,7 @@ public sealed class DeliveryController : ControllerBase
         MoneyAccount? into = null;
         if (req.Received > 0)
         {
-            var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, shipments[0].BranchId, MoneyService.ScopeOf(User));
+            var (account, moneyError) = await _money.ForDocumentAsync(req.AccountId, shipments[0].BranchId, User);
             if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
             into = account!;
             settlement.AccountId = account!.Id;
@@ -436,7 +432,6 @@ public sealed class DeliveryController : ControllerBase
     {
         var returns = new List<string>();
         var problems = new List<string>();
-        Guid? scope = CurrentUser.CanSeeAllBranches(User) ? null : MyBranch();
         foreach (var invoiceId in invoiceIds)
         {
             var lines = await _db.DocumentLines.AsNoTracking().Where(l => l.DocumentId == invoiceId).ToListAsync();
@@ -448,7 +443,7 @@ public sealed class DeliveryController : ControllerBase
             if (left.Length == 0) continue;
             _db.ChangeTracker.Clear();
             var (doc, error) = await _returns.CreateAsync(invoiceId, DocumentType.SALES_INVOICE,
-                new CreateReturnRequest(left, 0, "Refused delivery"), scope, Me());
+                new CreateReturnRequest(left, 0, "Refused delivery"), User, Me());
             if (error is not null) problems.Add($"{number}: {error.Message}");
             else
             {
@@ -459,27 +454,9 @@ public sealed class DeliveryController : ControllerBase
         return (returns, problems);
     }
 
-    private IQueryable<SalesDocument> ScopedDocs()
-    {
-        var q = _db.SalesDocuments.AsQueryable();
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            var branch = MyBranch();
-            q = q.Where(d => d.BranchId == branch);
-        }
-        return q;
-    }
+    private IQueryable<SalesDocument> ScopedDocs() => _db.SalesDocuments.InBranches(User, d => d.BranchId);
 
-    private IQueryable<Shipment> ScopedShipments()
-    {
-        var q = _db.Shipments.AsQueryable();
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            var branch = MyBranch();
-            q = q.Where(s => s.BranchId == branch);
-        }
-        return q;
-    }
+    private IQueryable<Shipment> ScopedShipments() => _db.Shipments.InBranches(User, s => s.BranchId);
 
     private static IQueryable<Shipment> WithDetails(IQueryable<Shipment> q) => q.AsNoTracking()
         .Include(s => s.Carrier).Include(s => s.Party).Include(s => s.Branch).Include(s => s.CreatedBy)
@@ -530,7 +507,6 @@ public sealed class DeliveryController : ControllerBase
 
     private bool Can(string permission) => User.HasClaim("permission", permission);
     private Guid Me() => Guid.TryParse(CurrentUser.Id(User), out var id) ? id : Guid.Empty;
-    private Guid MyBranch() => Guid.TryParse(CurrentUser.BranchId(User), out var id) ? id : Guid.Empty;
 
     private static string? Text(string? s, int max)
     {

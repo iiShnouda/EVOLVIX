@@ -45,6 +45,9 @@ marked *(inferred)* come from data and column names, not from code.
 - **Staff**: has a role, as today.
   - Staff also get **scopes**: the branches, warehouses and cash boxes they may use.
   - This replaces the old per-user flags `chkBoxFar*`, `chkBoxMakhzan*` and `chkBoxKhazna*`.
+  - ✅ Built (2026-09-30): each person's branches (by role, every one, or theirs plus some), and
+    optionally only some warehouses and money accounts; people in several branches pick a
+    **working branch** where new documents go (see PROGRESS.md).
 - **Sensitive permissions** are separate from roles, so the owner can grant them one by one (see §6):
   - see cost prices
   - change the price on an invoice

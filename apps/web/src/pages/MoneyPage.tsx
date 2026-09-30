@@ -24,6 +24,7 @@ import { errorText } from '../lib/errors';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from '../components/ReportActions';
 import { useAuth } from '../stores/auth';
+import { useWorkBranch } from '../stores/workBranch';
 import {
   useAccountStatement,
   useCancelVoucher,
@@ -328,6 +329,7 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
   const user = useAuth((s) => s.user);
   const create = useCreateMoneyAccount();
   const reps = useReps();
+  const workBranch = useWorkBranch();
   const branches = useMemo(() => {
     const m = new Map<string, string>();
     for (const a of accounts) m.set(a.branchId, a.branchName);
@@ -335,7 +337,7 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
   }, [accounts]);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<MoneyAccountKind>('CASH_BOX');
-  const [branchId, setBranchId] = useState(user?.branchId ?? branches[0]?.[0] ?? '');
+  const [branchId, setBranchId] = useState(workBranch || user?.branchId || branches[0]?.[0] || '');
   const [custodianId, setCustodianId] = useState('');
   const [number, setNumber] = useState('');
   const [bankName, setBankName] = useState('');

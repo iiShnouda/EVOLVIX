@@ -106,7 +106,7 @@ public sealed class AnalyticsController : ControllerBase
                 d.PartyId, Net = d.Subtotal - d.DiscountTotal, d.ProfitTotal, d.PaidAmount,
             }).ToListAsync();
         var quotes = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION && d.IssueDate >= start && d.IssueDate < end);
-        if (Scope() is Guid b) quotes = quotes.Where(d => d.BranchId == b);
+        quotes = quotes.InBranches(User, d => d.BranchId);
         var quoteRows = await quotes.Select(d => new { Key = byBranch ? d.BranchId : d.RepId ?? d.StaffId, d.Status }).ToListAsync();
 
         var keys = docs.Select(d => d.Key).Concat(quoteRows.Select(q => q.Key)).Distinct().ToList();
@@ -147,7 +147,7 @@ public sealed class AnalyticsController : ControllerBase
         limit = Math.Clamp(limit, 1, 100);
         var lines = _db.DocumentLines.Where(l => l.Document!.Status != DocumentStatus.CANCELLED
                                                  && l.Document.IssueDate >= start && l.Document.IssueDate < end);
-        if (Scope() is Guid b) lines = lines.Where(l => l.Document!.BranchId == b);
+        lines = lines.InBranches(User, l => l.Document!.BranchId);
         var moves = await lines.GroupBy(l => l.ProductId).Select(g => new
         {
             ProductId = g.Key,
@@ -161,10 +161,10 @@ public sealed class AnalyticsController : ControllerBase
         var top = moves.Where(m => m.Out > 0).OrderByDescending(m => m.Out).ThenByDescending(m => m.Value).Take(limit).ToList();
         var sold = moves.Where(m => m.Out > 0).Select(m => m.ProductId).ToHashSet();
 
-        // Stock on hand: the whole company, or the branch's warehouses for branch-scoped users.
+        // Stock on hand: the whole company, or their branches' warehouses for people who see only some.
         Dictionary<Guid, int> stock;
-        if (Scope() is Guid branch)
-            stock = await _db.StockBalances.Where(x => x.Warehouse!.BranchId == branch && x.Quantity > 0)
+        if (Access.Branches(User) is not null)
+            stock = await _db.StockBalances.InBranches(User, x => x.Warehouse!.BranchId).Where(x => x.Quantity > 0)
                 .GroupBy(x => x.ProductId).Select(g => new { g.Key, Q = g.Sum(x => x.Quantity) })
                 .ToDictionaryAsync(x => x.Key, x => x.Q);
         else
@@ -206,8 +206,8 @@ public sealed class AnalyticsController : ControllerBase
         var type = suppliers ? DocumentType.PURCHASE_INVOICE : DocumentType.SALES_INVOICE;
         var q = _db.SalesDocuments.AsNoTracking().Where(d => d.Type == type && d.Status != DocumentStatus.CANCELLED
                                                              && d.PaidAmount < d.GrandTotal);
-        if (Scope() is Guid b) q = q.Where(d => d.BranchId == b);
-        var scoped = Scope() is not null;
+        q = q.InBranches(User, d => d.BranchId);
+        var scoped = !Access.AllBranches(User);
         var docs = await q.ToListAsync();
         var owed = await MoneyService.OutstandingAsync(_db, docs);
         var today = CompanyClock.Today;
@@ -256,11 +256,8 @@ public sealed class AnalyticsController : ControllerBase
     {
         var q = _db.SalesDocuments.Where(d => d.Status != DocumentStatus.CANCELLED
                                               && (SalesTypes.Contains(d.Type) || PurchaseTypes.Contains(d.Type)));
-        if (Scope() is Guid b) q = q.Where(d => d.BranchId == b);
-        return q;
+        return q.InBranches(User, d => d.BranchId);
     }
-
-    private Guid? Scope() => MoneyService.ScopeOf(User);
 
     /// <summary>Whole company days; defaults to the last 90 days.</summary>
     private static (DateOnly FromDay, DateOnly ToDay, DateTime Start, DateTime End) Period(string? from, string? to)

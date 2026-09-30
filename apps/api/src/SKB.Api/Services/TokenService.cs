@@ -25,11 +25,15 @@ public sealed class TokenService
     }
 
     /// <param name="permissions">The person's effective permissions (<see cref="PermissionService"/>).</param>
-    public static AuthUserDto ToDto(Staff staff, string[] permissions) => new(
+    /// <param name="access">What they may work with (<see cref="AccessService"/>).</param>
+    public static AuthUserDto ToDto(Staff staff, string[] permissions, StaffAccess access) => new(
         staff.Id.ToString(), staff.FullName, staff.Email, staff.Role.ToString(),
-        staff.BranchId.ToString(), permissions);
+        staff.BranchId.ToString(), permissions, access.AllBranches,
+        access.Branches.Select(b => new BranchOptionDto(b.Id.ToString(), Loc.Name(b), b.IsActive)).ToArray(),
+        access.Warehouses?.Select(w => w.ToString()).ToArray(),
+        access.MoneyAccounts?.Select(a => a.ToString()).ToArray());
 
-    public string IssueAccessToken(Staff staff, string[] permissions)
+    public string IssueAccessToken(Staff staff, string[] permissions, StaffAccess access)
     {
         var secret = _config["Jwt:AccessSecret"]!;
         var ttl = int.Parse(_config["Jwt:AccessTtlSeconds"] ?? "900");
@@ -46,6 +50,7 @@ public sealed class TokenService
         };
         foreach (var p in permissions)
             claims.Add(new Claim("permission", p));
+        claims.AddRange(Access.Claims(access));
 
         var token = new JwtSecurityToken(
             issuer: _config["Jwt:Issuer"] ?? "skb",

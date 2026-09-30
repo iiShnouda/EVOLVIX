@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ROLES,
+  formatNumber,
   type Permission,
   type PermissionInfo,
   type Role,
@@ -14,10 +15,13 @@ import { Icon } from '../components/Icon';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
+import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import {
   useBranches,
   useCreateStaff,
+  useMoneyAccounts,
+  useSetStaffAccess,
   usePermissionCatalog,
   useResetRole,
   useRoles,
@@ -116,12 +120,28 @@ export function StaffPage() {
 // ------------------------------------------------------------------ people
 
 function PeopleTab() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const can = useCan();
   const staff = useStaff();
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const person = staff.data?.find((s) => s.id === selected) ?? null;
+
+  // Where each person works: every branch, or how many; and whether their warehouses or cash boxes are narrowed.
+  const accessSummary = (s: StaffMember) =>
+    [
+      s.seesAllBranches
+        ? t('access.summaryAll')
+        : s.branchIds.length === 0
+          ? t('access.summaryOne')
+          : `${t('access.summarySome')} ${formatNumber(s.branchIds.length + 1, locale)}`,
+      s.warehouseIds.length > 0 &&
+        `${t('access.limitedWarehouses')} ${formatNumber(s.warehouseIds.length, locale)}`,
+      s.moneyAccountIds.length > 0 &&
+        `${t('access.limitedAccounts')} ${formatNumber(s.moneyAccountIds.length, locale)}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -164,6 +184,7 @@ function PeopleTab() {
                       <span className="block truncate text-xs text-muted" dir="ltr">
                         {s.email}
                       </span>
+                      <span className="block truncate text-xs text-faint">{accessSummary(s)}</span>
                     </span>
                     <span className="flex flex-col items-end gap-1">
                       <Badge tone="brand">{t(`role.${s.role}`)}</Badge>
@@ -452,8 +473,205 @@ function PersonPanel({ person }: { person: StaffMember }) {
         {!canManage && <p className="text-xs text-muted">{t('staff.readonly')}</p>}
         {error && <p className="text-xs text-destructive">{error.message}</p>}
       </Card>
+      <PersonAccess person={person} />
       <PersonPermissions person={person} />
     </div>
+  );
+}
+
+type BranchMode = 'role' | 'all' | 'some';
+
+/**
+ * Which branches one person works in and, within them, which warehouses and money accounts they
+ * may use (DOMAIN.md §2.1). The server refuses anything the editor doesn't have themselves.
+ */
+function PersonAccess({ person }: { person: StaffMember }) {
+  const { t } = useT();
+  const can = useCan();
+  const myId = useAuth((s) => s.user?.id);
+  const branchList = useBranches();
+  const accountList = useMoneyAccounts(can('receipts:view'));
+  const save = useSetStaffAccess();
+
+  const initial = () => ({
+    mode: (person.allBranches == null ? 'role' : person.allBranches ? 'all' : 'some') as BranchMode,
+    branches: new Set(person.branchIds),
+    warehouses: new Set(person.warehouseIds),
+    accounts: new Set(person.moneyAccountIds),
+    someWarehouses: person.warehouseIds.length > 0,
+    someAccounts: person.moneyAccountIds.length > 0,
+  });
+  const [f, setF] = useState(initial);
+  useEffect(() => {
+    setF(initial());
+    save.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [person.id, person.allBranches, person.branchIds, person.warehouseIds, person.moneyAccountIds]);
+
+  const isOwner = person.role === 'OWNER';
+  const editable = can('staff:access') && !isOwner && person.id !== myId;
+  const roleAll = person.role === 'ADMIN' || person.role === 'ACCOUNTANT';
+  const all = f.mode === 'all' || (f.mode === 'role' && roleAll);
+  const branches = (branchList.data ?? []).filter(
+    (b) => all || b.id === person.branchId || f.branches.has(b.id),
+  );
+  const inTheirs = new Set(branches.map((b) => b.id));
+  const stores = branches.flatMap((b) =>
+    b.warehouses.filter((w) => w.kind === 'STORE').map((w) => ({ ...w, branchName: b.name })),
+  );
+  const accounts = (accountList.data ?? []).filter((a) => inTheirs.has(a.branchId));
+  const showBranch = branches.length > 1;
+
+  const pickedWarehouses = stores.filter((w) => f.warehouses.has(w.id)).map((w) => w.id);
+  const pickedAccounts = accounts.filter((a) => f.accounts.has(a.id)).map((a) => a.id);
+  const input = {
+    allBranches: f.mode === 'role' ? null : f.mode === 'all',
+    branchIds: f.mode === 'some' ? [...f.branches].filter((id) => id !== person.branchId) : [],
+    warehouseIds: f.someWarehouses ? pickedWarehouses : [],
+    moneyAccountIds: f.someAccounts ? pickedAccounts : [],
+  };
+  const same = (a: string[], b: string[]) => [...a].sort().join() === [...b].sort().join();
+  const dirty =
+    input.allBranches !== (person.allBranches ?? null) ||
+    !same(input.branchIds, person.branchIds) ||
+    !same(input.warehouseIds, person.warehouseIds) ||
+    !same(input.moneyAccountIds, person.moneyAccountIds);
+  const missing =
+    (f.someWarehouses && pickedWarehouses.length === 0) ||
+    (f.someAccounts && pickedAccounts.length === 0);
+
+  const toggle = (key: 'branches' | 'warehouses' | 'accounts', id: string) =>
+    setF((s) => {
+      const next = new Set(s[key]);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...s, [key]: next };
+    });
+
+  const box = 'flex items-center gap-2 py-1 text-sm';
+  const radio = (checked: boolean, onChange: () => void, label: string) => (
+    <label className={box}>
+      <input type="radio" checked={checked} disabled={!editable} onChange={onChange} />
+      <span>{label}</span>
+    </label>
+  );
+
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{t('access.title')}</h2>
+      {isOwner ? (
+        <p className="text-sm text-muted">{t('access.ownerAll')}</p>
+      ) : (
+        <>
+          <p className="text-xs text-faint">{t('access.hint')}</p>
+
+          <fieldset className="space-y-1">
+            <legend className="mb-1 text-xs font-medium text-muted">{t('access.branches')}</legend>
+            {radio(f.mode === 'role', () => setF((s) => ({ ...s, mode: 'role' })),
+              roleAll ? t('access.byRoleAll') : t('access.byRoleOwn'))}
+            {radio(f.mode === 'all', () => setF((s) => ({ ...s, mode: 'all' })), t('access.all'))}
+            {radio(f.mode === 'some', () => setF((s) => ({ ...s, mode: 'some' })), t('access.some'))}
+            {f.mode === 'some' && (
+              <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
+                {(branchList.data ?? []).map((b) => (
+                  <label key={b.id} className={box}>
+                    <input
+                      type="checkbox"
+                      disabled={!editable || b.id === person.branchId}
+                      checked={b.id === person.branchId || f.branches.has(b.id)}
+                      onChange={() => toggle('branches', b.id)}
+                    />
+                    <span className="min-w-0 truncate">
+                      <bdi>{b.name}</bdi>
+                      {b.id === person.branchId ? ` (${t('access.own')})` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="space-y-1">
+            <legend className="mb-1 text-xs font-medium text-muted">{t('access.warehouses')}</legend>
+            {radio(!f.someWarehouses, () => setF((s) => ({ ...s, someWarehouses: false })), t('access.everyOne'))}
+            {radio(f.someWarehouses, () => setF((s) => ({ ...s, someWarehouses: true })), t('access.onlyTicked'))}
+            {f.someWarehouses && (
+              <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
+                {stores.map((w) => (
+                  <label key={w.id} className={box}>
+                    <input
+                      type="checkbox"
+                      disabled={!editable}
+                      checked={f.warehouses.has(w.id)}
+                      onChange={() => toggle('warehouses', w.id)}
+                    />
+                    <span className="min-w-0 truncate">
+                      <bdi>{w.name}</bdi>
+                      {showBranch && (
+                        <>
+                          {' · '}
+                          <bdi>{w.branchName}</bdi>
+                        </>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </fieldset>
+
+          {can('receipts:view') && (
+            <fieldset className="space-y-1">
+              <legend className="mb-1 text-xs font-medium text-muted">{t('access.moneyAccounts')}</legend>
+              {radio(!f.someAccounts, () => setF((s) => ({ ...s, someAccounts: false })), t('access.everyOne'))}
+              {radio(f.someAccounts, () => setF((s) => ({ ...s, someAccounts: true })), t('access.onlyTicked'))}
+              {f.someAccounts && (
+                <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
+                  {accounts.map((a) => (
+                    <label key={a.id} className={box}>
+                      <input
+                        type="checkbox"
+                        disabled={!editable}
+                        checked={f.accounts.has(a.id)}
+                        onChange={() => toggle('accounts', a.id)}
+                      />
+                      <span className="min-w-0 truncate">
+                        <bdi>{a.name}</bdi>
+                        {showBranch && (
+                          <>
+                            {' · '}
+                            <bdi>{a.branchName}</bdi>
+                          </>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
+
+          {missing && <p className="text-xs text-warning">{t('access.pickOne')}</p>}
+          {editable && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                icon="check"
+                loading={save.isPending}
+                disabled={!dirty || missing}
+                onClick={() => save.mutate({ id: person.id, input })}
+              >
+                {t('common.save')}
+              </Button>
+              {save.isSuccess && !dirty && (
+                <span className="text-xs text-positive">{t('access.saved')}</span>
+              )}
+            </div>
+          )}
+          {save.error && <p className="text-xs text-destructive">{errorText(t, save.error)}</p>}
+        </>
+      )}
+    </Card>
   );
 }
 

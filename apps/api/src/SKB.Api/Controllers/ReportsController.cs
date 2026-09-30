@@ -35,16 +35,13 @@ public sealed class ReportsController : ControllerBase
         var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
         by = by.ToLowerInvariant() is "product" or "day" or "model" or "rep" ? by.ToLowerInvariant() : "customer";
 
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-        var scoped = !CurrentUser.CanSeeAllBranches(User);
-
         const DocumentType Invoice = DocumentType.SALES_INVOICE;
         const DocumentType Return = DocumentType.SALES_RETURN;
 
         var docs = _db.SalesDocuments.Where(d =>
             (d.Type == Invoice || d.Type == Return) && d.Status != DocumentStatus.CANCELLED &&
             d.IssueDate >= fromDate && d.IssueDate < toExclusive);
-        if (scoped) docs = docs.Where(d => d.BranchId == branchId);
+        docs = docs.InBranches(User, d => d.BranchId);
 
         var currency = await docs.Select(d => d.Currency).FirstOrDefaultAsync() ?? "EGP";
         var revenue = await docs.SumAsync(d =>
@@ -62,7 +59,7 @@ public sealed class ReportsController : ControllerBase
                 (l.Document!.Type == Invoice || l.Document.Type == Return) &&
                 l.Document.Status != DocumentStatus.CANCELLED &&
                 l.Document.IssueDate >= fromDate && l.Document.IssueDate < toExclusive);
-            if (scoped) lines = lines.Where(l => l.Document!.BranchId == branchId);
+            lines = lines.InBranches(User, l => l.Document!.BranchId);
 
             // Flatten the sign first so the grouped aggregates don't reach through a navigation.
             var grouped = await lines

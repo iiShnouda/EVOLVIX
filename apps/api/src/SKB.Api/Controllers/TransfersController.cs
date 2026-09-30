@@ -238,14 +238,17 @@ public sealed class TransfersController : ControllerBase
 
     // ---------------------------------------------------------------- helpers
 
-    /// <summary>Permits the user may see: all, or those with either end in their branch.</summary>
+    /// <summary>Permits the user may see: all, or those with either end in a warehouse of theirs.</summary>
     private IQueryable<StockTransfer> Scoped()
     {
         var q = _db.StockTransfers.AsNoTracking();
-        if (CurrentUser.CanSeeAllBranches(User)) return q;
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-        return q.Where(t => t.FromWarehouse!.BranchId == branchId || t.ToWarehouse!.BranchId == branchId);
+        if (Unlimited()) return q;
+        var mine = _warehouses.Visible(User).Where(w => w.Kind == WarehouseKind.STORE).Select(w => w.Id);
+        return q.Where(t => mine.Contains(t.FromWarehouseId) || mine.Contains(t.ToWarehouseId));
     }
+
+    /// <summary>Sees every branch and every warehouse.</summary>
+    private bool Unlimited() => Access.AllBranches(User) && Access.Warehouses(User) is null;
 
     private static IQueryable<StockTransfer> WithDetails(IQueryable<StockTransfer> q) => q
         .Include(t => t.Lines)
@@ -264,7 +267,7 @@ public sealed class TransfersController : ControllerBase
     private async Task<HashSet<Guid>?> AccessAsync()
     {
         if (!User.HasClaim("permission", Permissions.InventoryEdit)) return new HashSet<Guid>();
-        if (CurrentUser.CanSeeAllBranches(User)) return null;
+        if (Unlimited()) return null;
         return (await _warehouses.Visible(User).Select(w => w.Id).ToListAsync()).ToHashSet();
     }
 

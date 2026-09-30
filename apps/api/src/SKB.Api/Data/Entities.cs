@@ -134,6 +134,16 @@ public class Staff
     /// <summary>Permissions of their role this person does not get.</summary>
     public List<string> RevokedPermissions { get; set; } = new();
 
+    // Access (DOMAIN.md §2.1): the branches, warehouses and money accounts they may use.
+    /// <summary>Every branch (true), only theirs and <see cref="BranchIds"/> (false), or as their role says (null).</summary>
+    public bool? AllBranches { get; set; }
+    /// <summary>Branches they also work in, besides their own.</summary>
+    public List<Guid> BranchIds { get; set; } = new();
+    /// <summary>Only these warehouses (none = every warehouse in their branches).</summary>
+    public List<Guid> WarehouseIds { get; set; } = new();
+    /// <summary>Only these cash boxes, banks and wallets (none = every one in their branches).</summary>
+    public List<Guid> MoneyAccountIds { get; set; } = new();
+
     public List<Session> Sessions { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

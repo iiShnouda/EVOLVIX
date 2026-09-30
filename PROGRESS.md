@@ -108,6 +108,35 @@ Security-first, server-authoritative (no business data readable offline).
 - Verified locally: 61 API checks (totals, filters, card opening/in/out/closing, valuation today vs
   past, stocktake gain/loss/no-change/negative/duplicate/403, concurrency, backfill) + UI in EN/AR/phone.
 
+**Access per person: branches, warehouses, cash boxes** (صلاحيات الفروع والمخازن والخزائن) — DOMAIN.md §2.1
+- The owner (or anyone with the new `staff:access` permission) sets, for each person, under
+  **Staff → the person → Access**:
+  - **Branches:** as their role says (owner, admin and accountant see every branch; others their
+    own), every branch, or their own branch plus the ones ticked;
+  - **Warehouses:** every one in their branches, or only the ones ticked;
+  - **Cash boxes, banks and wallets:** every one in their branches, or only the ones ticked.
+  This replaces the old per-user flags (chkBoxFar*, chkBoxMakhzan*, chkBoxKhazna*).
+- What it limits, all checked on the server:
+  - lists and documents (sales, purchases, returns, quotations, vouchers, notes, deliveries,
+    transfers, payroll), the dashboard and every report, to their branches;
+  - which warehouses they can sell from, buy into, count or move stock out of, and the stock they
+    see (inventory list, item card, valuation);
+  - which money accounts they see, pay into, take receipts into and cancel vouchers of. A paid-now
+    amount with no account picked goes to the branch's cash box, or to their first one there.
+- **Working branch:** someone with more than one branch picks where new documents go from the
+  account menu (top corner). The app sends it with every request (`X-Branch`), and the server uses
+  it only if they may work there, else their own branch. The choice is remembered on the device.
+  An invoice made from a quotation stays in the quotation's branch.
+- Nobody gives more than they have (branches, warehouses or cash boxes); an owner always has
+  everything; nobody changes their own. A change reaches the person at their next sign-in or
+  token refresh (within 15 minutes), like permissions. Each change is in the activity log.
+- Migration `StaffAccess` (existing people keep what their role gave them).
+- **Verified:** `access.test.mjs` (88 checks) with two new branches, a sales person and a limited
+  admin. It covers the role default, a second branch, the working branch (and one that isn't
+  theirs), only some warehouses (sales, default store, stock, item card, valuation), only some
+  cash boxes (paid-now, receipts, cancelling, statements), the escalation rules and every branch.
+  All other suites pass on a fresh and an upgraded database, plus backup → restore.
+
 **Company days in Cairo time** (أيام العمل بتوقيت الشركة)
 - Business days follow the company's clock (**Settings → time zone**, Africa/Cairo by default), not
   UTC, with daylight saving included. Before this, a sale made after 21:00–22:00 in Cairo counted on
@@ -862,8 +891,6 @@ own permission, and roles bundle them
 - The invoice screen reads per-warehouse stock from the inventory list (first 500 items). A
   catalogue larger than that needs a per-item stock lookup.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
-- Branch scope is still by role (Owner/Admin/Accountant see every branch). Scopes per person
-  (allowed branches / warehouses / cash boxes, DOMAIN.md §2.1) come later.
 - A permission change reaches a signed-in person at their next token refresh (up to 15 minutes).
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - Price lists for chosen items and quantity breaks (DOMAIN.md §2.2) are not built yet.
@@ -927,6 +954,9 @@ and warehouses shipped):
      numbers), import a day from the fingerprint device, make last month's payroll as a draft and
      check a payslip before posting.
    - ~~Days in UTC instead of Cairo~~ done: business days follow Settings → time zone.
+   - ~~Access per person (branches, warehouses, cash boxes)~~ done.
+   - **Verify on the live DB** after deploy: open Staff → a sales person → Access, give them a
+     second branch; sign in as them, pick that branch from the account menu and make a sale.
    - **Verify on the live DB** after deploy: Settings shows the time zone as Cairo with the right
      time; a sale made late in the evening counts on today's daily cash and profitability.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.

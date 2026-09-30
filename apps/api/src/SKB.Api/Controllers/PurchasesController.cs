@@ -51,11 +51,7 @@ public sealed class PurchasesController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var q = _db.SalesDocuments.Where(d => d.Type == type);
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            q = q.Where(d => d.BranchId == branchId);
-        }
+        q = q.InBranches(User, d => d.BranchId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.ToLower();
@@ -80,11 +76,7 @@ public sealed class PurchasesController : ControllerBase
     {
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
             (d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN));
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            q = q.Where(d => d.BranchId == branchId);
-        }
+        q = q.InBranches(User, d => d.BranchId);
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
@@ -118,7 +110,7 @@ public sealed class PurchasesController : ControllerBase
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return BadRequest(new { message = "A supplier is required.", code = "no_party" });
 
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
+        var branchId = Access.Work(User);
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
 
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
@@ -255,7 +247,7 @@ public sealed class PurchasesController : ControllerBase
         MoneyAccount? paidFrom = null;
         if (doc.PaidAmount > 0)
         {
-            var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, MoneyService.ScopeOf(User));
+            var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, User);
             moneyError ??= _money.Move(account!, -doc.PaidAmount, MoneyMovementKind.PURCHASE_PAID, staffId, doc.Number,
                 documentId: doc.Id, partyId: party.Id);
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
@@ -286,14 +278,7 @@ public sealed class PurchasesController : ControllerBase
     public async Task<ActionResult<SalesDetailDto>> CreateReturn(Guid id, [FromBody] CreateReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        Guid? scope = null;
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            scope = branchId;
-        }
-
-        var (doc, error) = await _returns.CreateAsync(id, DocumentType.PURCHASE_INVOICE, req, scope, staffId);
+        var (doc, error) = await _returns.CreateAsync(id, DocumentType.PURCHASE_INVOICE, req, User, staffId);
         if (error is not null)
         {
             var body = new { message = error.Message, code = error.Code };

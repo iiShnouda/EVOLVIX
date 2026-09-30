@@ -52,6 +52,12 @@ first‑class concern.
     `@skb/shared` on the client. Never `DateTime.UtcNow.Date` or `toISOString().slice(0, 10)`.
     The zone is a company setting (Africa/Cairo by default).
 
+11. **Scope every query by the person's access.** Each person has branches (and optionally only
+    some warehouses and money accounts). On the server, filter with `.InBranches(User, x => x.BranchId)`,
+    `WarehouseService.Visible(User)` and `MoneyService.Visible(User)`; new documents go to
+    `Access.Work(User)` (the working branch the app sends as `X-Branch`). Never compare with the
+    person's own branch claim directly.
+
 ## Layout (one server, best‑fit client per device)
 
 - `apps/api` — **C# / ASP.NET Core 10** server (canonical backend). EF Core + Npgsql

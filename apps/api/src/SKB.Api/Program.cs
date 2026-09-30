@@ -41,6 +41,7 @@ builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
+builder.Services.AddScoped<AccessService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<PayrollService>();
 builder.Services.AddSingleton<BackupScheduler>();
@@ -177,6 +178,7 @@ app.UseRequestLocalization(new RequestLocalizationOptions
 
 app.UseCors();
 app.UseAuthentication();   // before the limiter, so it can key on the signed-in user
+app.Use(Access.PickWorkingBranch);   // the branch picked in the app, when the person may use it
 app.UseRateLimiter();
 app.UseAuthorization();
 

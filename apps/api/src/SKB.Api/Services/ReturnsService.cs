@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
 using SKB.Api.Domain;
@@ -78,10 +79,10 @@ public sealed class ReturnsService
     /// <summary>
     /// Post a return against invoice <paramref name="invoiceId"/>. All-or-nothing: the return
     /// document, its stock movements, the party balance and the invoice status commit together.
-    /// <paramref name="branchScope"/> limits which invoices the caller may return (null = all branches).
+    /// <paramref name="user"/> may return only invoices of their branches.
     /// </summary>
     public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateAsync(
-        Guid invoiceId, DocumentType invoiceType, CreateReturnRequest req, Guid? branchScope, Guid staffId)
+        Guid invoiceId, DocumentType invoiceType, CreateReturnRequest req, ClaimsPrincipal user, Guid staffId)
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return (null, new("no_lines", "Choose at least one item to return."));
@@ -96,8 +97,7 @@ public sealed class ReturnsService
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {invoiceId} FOR UPDATE");
 
-        var q = _db.SalesDocuments.Where(d => d.Id == invoiceId && d.Type == invoiceType);
-        if (branchScope is Guid scope) q = q.Where(d => d.BranchId == scope);
+        var q = _db.SalesDocuments.Where(d => d.Id == invoiceId && d.Type == invoiceType).InBranches(user, d => d.BranchId);
         var invoice = await q.Include(d => d.Lines).Include(d => d.Party).FirstOrDefaultAsync();
         if (invoice is null) return (null, new("not_found", "Invoice not found."));
         if (invoice.Status == DocumentStatus.CANCELLED)
@@ -266,7 +266,7 @@ public sealed class ReturnsService
         MoneyAccount? refundAccount = null;
         if (doc.PaidAmount > 0)
         {
-            var (account, moneyError) = await _money.ForDocumentAsync(req.RefundAccountId, invoice.BranchId, branchScope);
+            var (account, moneyError) = await _money.ForDocumentAsync(req.RefundAccountId, invoice.BranchId, user);
             moneyError ??= _money.Move(account!, isSale ? -doc.PaidAmount : doc.PaidAmount,
                 isSale ? MoneyMovementKind.SALES_REFUND : MoneyMovementKind.PURCHASE_REFUND, staffId, number,
                 documentId: doc.Id, partyId: invoice.PartyId);

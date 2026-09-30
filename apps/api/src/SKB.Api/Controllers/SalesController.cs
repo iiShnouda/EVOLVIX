@@ -60,11 +60,7 @@ public sealed class SalesController : ControllerBase
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var q = _db.SalesDocuments.Where(d => d.Type == type);
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            q = q.Where(d => d.BranchId == branchId);
-        }
+        q = q.InBranches(User, d => d.BranchId);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<DocumentStatus>(status, out var st))
             q = q.Where(d => d.Status == st);
         if (!string.IsNullOrWhiteSpace(search))
@@ -98,11 +94,7 @@ public sealed class SalesController : ControllerBase
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
             (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
                                                   || d.Type == DocumentType.QUOTATION));
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            q = q.Where(d => d.BranchId == branchId);
-        }
+        q = q.InBranches(User, d => d.BranchId);
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
@@ -179,7 +171,7 @@ public sealed class SalesController : ControllerBase
                 c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
             RepId: quote.RepId?.ToString(), DeliveryMethod: req.DeliveryMethod, DeliveryAddress: req.DeliveryAddress,
             DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId);
-        return await CreateCore(invoice, quote: false, fromQuoteId: id);
+        return await CreateCore(invoice, quote: false, fromQuoteId: id, branch: quote.BranchId);
     }
 
     /// <summary>Close an open quotation without an invoice.</summary>
@@ -203,11 +195,7 @@ public sealed class SalesController : ControllerBase
     private IQueryable<SalesDocument> ScopedQuotes()
     {
         var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION);
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            q = q.Where(d => d.BranchId == branchId);
-        }
+        q = q.InBranches(User, d => d.BranchId);
         return q;
     }
 
@@ -220,7 +208,9 @@ public sealed class SalesController : ControllerBase
     /// Make a sales invoice or (<paramref name="quote"/>) a quotation. With
     /// <paramref name="fromQuoteId"/> the invoice comes from that quotation, which is closed with it.
     /// </summary>
-    private async Task<ActionResult<SalesDetailDto>> CreateCore(CreateSalesInvoiceRequest req, bool quote, Guid? fromQuoteId)
+    /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
+    private async Task<ActionResult<SalesDetailDto>> CreateCore(
+        CreateSalesInvoiceRequest req, bool quote, Guid? fromQuoteId, Guid? branch = null)
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return BadRequest(new { message = "Add at least one line item.", code = "no_lines" });
@@ -229,7 +219,7 @@ public sealed class SalesController : ControllerBase
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return BadRequest(new { message = "A customer is required.", code = "no_party" });
 
-        Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
+        var branchId = branch ?? Access.Work(User);
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
 
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
@@ -467,7 +457,7 @@ public sealed class SalesController : ControllerBase
         MoneyAccount? paidInto = null;
         if (doc.PaidAmount > 0)
         {
-            var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, MoneyService.ScopeOf(User));
+            var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, User);
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
             paidInto = account!;
             doc.PaidAccountId = account!.Id;
@@ -497,14 +487,7 @@ public sealed class SalesController : ControllerBase
     public async Task<ActionResult<SalesDetailDto>> CreateReturn(Guid id, [FromBody] CreateReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        Guid? scope = null;
-        if (!CurrentUser.CanSeeAllBranches(User))
-        {
-            Guid.TryParse(CurrentUser.BranchId(User), out var branchId);
-            scope = branchId;
-        }
-
-        var (doc, error) = await _returns.CreateAsync(id, DocumentType.SALES_INVOICE, req, scope, staffId);
+        var (doc, error) = await _returns.CreateAsync(id, DocumentType.SALES_INVOICE, req, User, staffId);
         if (error is not null)
         {
             var body = new { message = error.Message, code = error.Code };

@@ -2,8 +2,16 @@ namespace SKB.Api.Models;
 
 // Serialized as camelCase (ASP.NET Core web defaults) to match the existing clients.
 
+/// <param name="BranchId">Their own branch.</param>
+/// <param name="Branches">The branches they may work in, their own first (every branch when AllBranches).</param>
+/// <param name="WarehouseIds">Only these warehouses; null = any in their branches.</param>
+/// <param name="MoneyAccountIds">Only these money accounts; null = any in their branches.</param>
 public record AuthUserDto(
-    string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions);
+    string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions,
+    bool AllBranches = false, BranchOptionDto[]? Branches = null, string[]? WarehouseIds = null,
+    string[]? MoneyAccountIds = null);
+
+public record BranchOptionDto(string Id, string Name, bool IsActive = true);
 
 public record LoginRequest(string Email, string Password, bool RememberDevice = false);
 
@@ -429,9 +437,20 @@ public record UpdateModelRequest(
 // ---- Staff & permissions (owner decision 2026-09-29: every action has its own permission) ----
 
 /// <param name="Permissions">What the person may do now: their role's, plus granted, minus revoked.</param>
+/// <param name="AllBranches">The owner's choice: every branch, only the listed ones, or null = as their role says.</param>
+/// <param name="SeesAllBranches">What that comes to.</param>
+/// <param name="BranchIds">Branches they also work in, besides their own.</param>
+/// <param name="WarehouseIds">Only these warehouses (empty = every one in their branches).</param>
+/// <param name="MoneyAccountIds">Only these money accounts (empty = every one in their branches).</param>
 public record StaffDto(
     string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
-    bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions);
+    bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
+    bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
+    string[]? MoneyAccountIds = null);
+
+/// <summary>What one person may work with; every field replaces what was there.</summary>
+public record StaffAccessRequest(
+    bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds);
 
 public record CreateStaffRequest(
     string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null);

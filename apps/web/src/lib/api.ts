@@ -1,6 +1,7 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
 import { getAccessToken, useAuth } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
+import { getWorkBranch } from '../stores/workBranch';
 
 // Default to a relative "/api" (same-origin) so the API can serve the web app as one unit.
 // In split-server dev the Vite proxy forwards /api to the API; in a split deploy set VITE_API_URL.
@@ -23,6 +24,12 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   _retried?: boolean;
 }
 
+/** The branch new documents go to (the server checks the person may use it). */
+function branchHeader(): Record<string, string> {
+  const branch = getWorkBranch();
+  return branch ? { 'X-Branch': branch } : {};
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, _retried, headers, ...rest } = options;
   const token = getAccessToken();
@@ -36,6 +43,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       // Names of branches, warehouses, items… come back in the screen language.
       'Accept-Language': usePrefs.getState().locale,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...branchHeader(),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -93,6 +101,7 @@ async function download(
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...branchHeader(),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

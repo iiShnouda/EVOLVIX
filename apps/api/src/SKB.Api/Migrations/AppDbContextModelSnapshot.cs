@@ -1793,8 +1793,15 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool?>("AllBranches")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("BranchIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1814,6 +1821,10 @@ namespace SKB.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.PrimitiveCollection<List<Guid>>("MoneyAccountIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1828,6 +1839,10 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<Guid>>("WarehouseIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
 
                     b.HasKey("Id");
 

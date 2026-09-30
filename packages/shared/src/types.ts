@@ -59,6 +59,7 @@ export type Permission =
   | 'staff:view'
   | 'staff:manage'
   | 'roles:manage'
+  | 'staff:access'
   | 'branches:view'
   | 'branches:manage'
   | 'analytics:view'
@@ -141,8 +142,23 @@ export interface AuthUser {
   fullName: string;
   email: string;
   role: Role;
+  /** Their own branch. */
   branchId: string;
   permissions: Permission[];
+  /** Sees every branch. */
+  allBranches?: boolean;
+  /** The branches they may work in, their own first (every branch when allBranches). */
+  branches?: BranchOption[];
+  /** Only these warehouses; null = any in their branches. */
+  warehouseIds?: string[] | null;
+  /** Only these money accounts; null = any in their branches. */
+  moneyAccountIds?: string[] | null;
+}
+
+export interface BranchOption {
+  id: string;
+  name: string;
+  isActive: boolean;
 }
 
 export interface Branch {
@@ -1074,6 +1090,24 @@ export interface StaffMember {
   revoked: Permission[];
   /** What they may do now. */
   permissions: Permission[];
+  /** The owner's choice: every branch (true), only theirs and branchIds (false), or as their role says (null). */
+  allBranches?: boolean | null;
+  /** What that comes to. */
+  seesAllBranches: boolean;
+  /** Branches they also work in, besides their own. */
+  branchIds: string[];
+  /** Only these warehouses (empty = every one in their branches). */
+  warehouseIds: string[];
+  /** Only these money accounts (empty = every one in their branches). */
+  moneyAccountIds: string[];
+}
+
+/** PUT /staff/{id}/access: what one person may work with (every field replaces what was there). */
+export interface StaffAccessInput {
+  allBranches: boolean | null;
+  branchIds: string[];
+  warehouseIds: string[];
+  moneyAccountIds: string[];
 }
 
 export interface RoleInfo {

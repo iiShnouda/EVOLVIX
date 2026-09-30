@@ -183,8 +183,7 @@ public sealed class AttendanceController : ControllerBase
                                            && (l.Run.Status == PayrollRunStatus.POSTED || l.Run.Status == PayrollRunStatus.PAID))
             .Select(l => l.EmployeeId).ToListAsync()).ToHashSet();
 
-    private IQueryable<Employee> Scoped() =>
-        MoneyService.ScopeOf(User) is Guid b ? _db.Employees.Where(e => e.BranchId == b) : _db.Employees;
+    private IQueryable<Employee> Scoped() => _db.Employees.InBranches(User, e => e.BranchId);
 
     private static DateTime? ParseDay(string? s) =>
         DateOnly.TryParse(s, CultureInfo.InvariantCulture, out var d) ? d.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : null;
