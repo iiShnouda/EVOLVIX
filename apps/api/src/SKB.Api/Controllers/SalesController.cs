@@ -36,31 +36,37 @@ public sealed class SalesController : ControllerBase
     [HttpGet("invoices")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
-        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status);
+        [FromQuery] string? search = null, [FromQuery] string? status = null,
+        [FromQuery] string? departmentId = null) =>
+        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId);
 
     /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
     [HttpGet("quotations")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Quotations(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
-        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status);
+        [FromQuery] string? search = null, [FromQuery] string? status = null,
+        [FromQuery] string? departmentId = null) =>
+        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId);
 
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
     public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, [FromQuery] string? status = null) =>
-        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status);
+        [FromQuery] string? search = null, [FromQuery] string? status = null,
+        [FromQuery] string? departmentId = null) =>
+        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status, departmentId);
 
     private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
-        DocumentType type, int page, int pageSize, string? search, string? status)
+        DocumentType type, int page, int pageSize, string? search, string? status, string? departmentId)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var q = _db.SalesDocuments.Where(d => d.Type == type);
-        q = q.InBranches(User, d => d.BranchId);
+        q = q.InBranches(User, d => d.BranchId).InDepartments(User);
+        // "none" = documents of no department.
+        if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
+        else if (Guid.TryParse(departmentId, out var dept)) q = q.Where(d => d.DepartmentId == dept);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<DocumentStatus>(status, out var st))
             q = q.Where(d => d.Status == st);
         if (!string.IsNullOrWhiteSpace(search))
@@ -72,6 +78,7 @@ public sealed class SalesController : ControllerBase
         var total = await q.CountAsync();
         var rows = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
+            .Include(d => d.Department)
             .OrderByDescending(d => d.IssueDate)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
@@ -94,14 +101,14 @@ public sealed class SalesController : ControllerBase
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
             (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
                                                   || d.Type == DocumentType.QUOTATION));
-        q = q.InBranches(User, d => d.BranchId);
+        q = q.InBranches(User, d => d.BranchId).InDepartments(User);
         var doc = await q
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
             .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .Include(d => d.Lines).ThenInclude(l => l.Unit)
             .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
             .Include(d => d.Charges).Include(d => d.Rep).Include(d => d.Driver).Include(d => d.Carrier)
-            .Include(d => d.PaidAccount)
+            .Include(d => d.PaidAccount).Include(d => d.Department)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
@@ -170,7 +177,8 @@ public sealed class SalesController : ControllerBase
             Charges: quote.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
                 c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
             RepId: quote.RepId?.ToString(), DeliveryMethod: req.DeliveryMethod, DeliveryAddress: req.DeliveryAddress,
-            DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId);
+            DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId,
+            DepartmentId: quote.DepartmentId?.ToString());
         return await CreateCore(invoice, quote: false, fromQuoteId: id, branch: quote.BranchId);
     }
 
@@ -195,8 +203,7 @@ public sealed class SalesController : ControllerBase
     private IQueryable<SalesDocument> ScopedQuotes()
     {
         var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION);
-        q = q.InBranches(User, d => d.BranchId);
-        return q;
+        return q.InBranches(User, d => d.BranchId).InDepartments(User);
     }
 
     private Task AuditAsync(string action, string resource, SalesDocument doc) =>
@@ -253,6 +260,10 @@ public sealed class SalesController : ControllerBase
         if (!Approved(Permissions.SalesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
             return InvoiceLines.Refuse(this, new("tax_not_allowed",
                 $"The tax is {settings.DefaultTaxPercent}%. Changing it needs permission."));
+
+        // ---- The sales department (قسم) it belongs to: sold only from that department's items ----
+        var (department, departmentError) = await ResolveDepartmentAsync(req.DepartmentId);
+        if (departmentError is not null) return departmentError;
 
         Guid? repId = null;
         if (!string.IsNullOrWhiteSpace(req.RepId))
@@ -315,6 +326,9 @@ public sealed class SalesController : ControllerBase
         }
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         var book = await PriceBook.LoadAsync(_db, products.Keys);
+        var categoryIds = products.Values.Select(p => p.CategoryId).Distinct().ToList();
+        var departmentOf = await _db.Categories.AsNoTracking().Where(c => categoryIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.DepartmentId);
 
         var (level, levelError) = InvoiceLines.ResolveLevel(book, req.PriceLevelId, party.SalesPriceLevelId,
             PriceSide.SALE, Approved(Permissions.SalesChoosePriceLevel));
@@ -327,6 +341,13 @@ public sealed class SalesController : ControllerBase
         {
             if (!products.TryGetValue(pid, out var product) || !product.IsActive)
                 return BadRequest(new { message = "A product on the invoice was not found.", code = "product_not_found" });
+            if (department is not null && departmentOf.GetValueOrDefault(product.CategoryId) is Guid itemDept
+                && itemDept != department.Id)
+                return BadRequest(new
+                {
+                    message = $"{Loc.Name(product)} is not sold by the {Loc.Name(department)} department.",
+                    code = "not_in_department",
+                });
             var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
             if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
 
@@ -354,6 +375,18 @@ public sealed class SalesController : ControllerBase
         var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitPrice - r.Req.Discount).ToList();
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
+
+        // The person's discount limit: a line's own discount plus its share of the invoice discount.
+        if (!trusted && Access.MaxDiscount(User) is int maxDiscount)
+            for (var i = 0; i < resolved.Count; i++)
+            {
+                var (line, product, _, _, _, _) = resolved[i];
+                if (line.IsBonus) continue;
+                var gross = (long)line.Quantity * line.UnitPrice;
+                if ((line.Discount + charges!.Allocation[i]) * 100 > gross * maxDiscount)
+                    return InvoiceLines.Refuse(this, new("discount_over_limit",
+                        $"{Loc.Name(product)}: the discount is more than your limit of {maxDiscount}%."));
+            }
 
         // Profit floor on what each line really brings in, after its share of the invoice discount.
         for (var i = 0; i < resolved.Count; i++)
@@ -396,7 +429,7 @@ public sealed class SalesController : ControllerBase
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = dueDate ?? (quote ? CompanyClock.TodayDate.AddDays(14) : null),
             Currency = settings.Currency, Notes = Clean(req.Notes, 500), SourceDocumentId = fromQuoteId,
-            PriceLevelId = level?.Id, RepId = repId,
+            PriceLevelId = level?.Id, RepId = repId, DepartmentId = department?.Id,
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
             DeliveryAddress = deliveryAddress, DriverId = driverId, CarrierId = carrierId,
         };
@@ -523,6 +556,33 @@ public sealed class SalesController : ControllerBase
         var floor = decimal.Round(unitCost * (100m + Math.Max(0, minMarkup)) / 100m, MidpointRounding.AwayFromZero);
         if (net < quantity * floor && !(canOverride && overrideRequested)) return "below_floor";
         return null;
+    }
+
+    /// <summary>
+    /// The department a new sale belongs to: the one asked for, which must be open and one the
+    /// person works in. Someone limited to one department sells in it without asking; someone
+    /// limited to several must choose. Others may leave it out (a sale of no department).
+    /// </summary>
+    private async Task<(Department? Department, ActionResult? Error)> ResolveDepartmentAsync(string? raw)
+    {
+        var mine = Access.Departments(User);
+        Guid id;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            if (mine is null) return (null, null);
+            if (mine.Length != 1)
+                return (null, BadRequest(new { message = "Choose the department.", code = "department_required" }));
+            id = mine[0];
+        }
+        else if (!Guid.TryParse(raw, out id))
+            return (null, BadRequest(new { message = "Department not found.", code = "department_not_found" }));
+
+        var department = await _db.Departments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        if (department is null || !department.IsActive)
+            return (null, BadRequest(new { message = "Department not found.", code = "department_not_found" }));
+        if (!Access.CanUseDepartment(User, id))
+            return (null, StatusCode(403, new { message = "You don't sell for this department.", code = "not_your_department" }));
+        return (department, null);
     }
 
     private async Task<CompanySettings> GetSettingsAsync() =>

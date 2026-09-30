@@ -206,11 +206,16 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
 
                     b.ToTable("Categories");
                 });
@@ -251,6 +256,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime?>("LockDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("MaxDiscountPercent")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MinMarkupPercent")
                         .HasColumnType("integer");
 
@@ -282,6 +290,27 @@ namespace SKB.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("CompanySettings");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Department", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Departments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
@@ -1551,6 +1580,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("DeliveryStatus")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("DiscountTotal")
                         .HasColumnType("bigint");
 
@@ -1616,6 +1648,8 @@ namespace SKB.Api.Migrations
                     b.HasIndex("BranchId");
 
                     b.HasIndex("CarrierId");
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("DriverId");
 
@@ -1835,6 +1869,10 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.PrimitiveCollection<List<Guid>>("DepartmentIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1849,6 +1887,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxDiscountPercent")
+                        .HasColumnType("integer");
 
                     b.PrimitiveCollection<List<Guid>>("MoneyAccountIds")
                         .IsRequired()
@@ -2328,6 +2369,16 @@ namespace SKB.Api.Migrations
                     b.Navigation("Carrier");
 
                     b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.Category", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
@@ -2885,6 +2936,11 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("CarrierId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SKB.Api.Data.Staff", "Driver")
                         .WithMany()
                         .HasForeignKey("DriverId")
@@ -2925,6 +2981,8 @@ namespace SKB.Api.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("Carrier");
+
+                    b.Navigation("Department");
 
                     b.Navigation("Driver");
 

@@ -98,6 +98,7 @@ public sealed class ReturnsService
             $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {invoiceId} FOR UPDATE");
 
         var q = _db.SalesDocuments.Where(d => d.Id == invoiceId && d.Type == invoiceType).InBranches(user, d => d.BranchId);
+        if (isSale) q = q.InDepartments(user);
         var invoice = await q.Include(d => d.Lines).Include(d => d.Party).FirstOrDefaultAsync();
         if (invoice is null) return (null, new("not_found", "Invoice not found."));
         if (invoice.Status == DocumentStatus.CANCELLED)
@@ -170,6 +171,7 @@ public sealed class ReturnsService
             StaffId = staffId, IssueDate = DateTime.UtcNow, Currency = invoice.Currency,
             Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
             SourceDocumentId = invoice.Id, RepId = invoice.RepId, PriceLevelId = invoice.PriceLevelId,
+            DepartmentId = invoice.DepartmentId,
         };
 
         // A part of a line returned in its own unit (whole cartons of a carton line) keeps that unit;

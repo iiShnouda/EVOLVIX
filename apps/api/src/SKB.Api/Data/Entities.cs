@@ -143,6 +143,13 @@ public class Staff
     public List<Guid> WarehouseIds { get; set; } = new();
     /// <summary>Only these cash boxes, banks and wallets (none = every one in their branches).</summary>
     public List<Guid> MoneyAccountIds { get; set; } = new();
+    /// <summary>Only these sales departments (none = every department).</summary>
+    public List<Guid> DepartmentIds { get; set; } = new();
+    /// <summary>
+    /// The most discount this person may give, as a % of what a line is worth (their own line
+    /// discount plus its share of the invoice discount); null = the company's limit.
+    /// </summary>
+    public int? MaxDiscountPercent { get; set; }
 
     public List<Session> Sessions { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -226,7 +233,24 @@ public class Category : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    /// <summary>The sales department the category's items belong to (none = sold by every department).</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
     public List<Product> Products { get; set; } = new();
+}
+
+/// <summary>
+/// A sales department (قسم), e.g. men's or underwear: a group of categories (owner decision
+/// 2026-09-30). A department's sales people sell only its items, even from a warehouse other
+/// departments share, and each invoice belongs to one department so the accountant can see what a
+/// customer took from each. A company-wide list; closed, never deleted.
+/// </summary>
+public class Department : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -433,6 +457,10 @@ public class SalesDocument
 
     /// <summary>Additions such as a delivery fee (minor units): owed by the party, not revenue or cost.</summary>
     public long AdditionTotal { get; set; }
+
+    /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
 
     /// <summary>The sales rep (مندوب) credited with a sale. No commission (owner, 2026-09-29).</summary>
     public Guid? RepId { get; set; }
@@ -803,6 +831,11 @@ public class CompanySettings
     public int MinMarkupPercent { get; set; } = 0;
     /// <summary>Default sales tax/VAT percent applied to new invoices (0 = none).</summary>
     public int DefaultTaxPercent { get; set; } = 0;
+    /// <summary>
+    /// The most discount staff may give, as a % of a line's worth, unless their own limit says
+    /// otherwise (100 = no limit). The owner has no limit.
+    /// </summary>
+    public int MaxDiscountPercent { get; set; } = 100;
     /// <summary>
     /// The receiving warehouse confirms a transfer before the goods count there (old
     /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.

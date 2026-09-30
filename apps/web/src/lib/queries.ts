@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Category,
+  Department,
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
@@ -189,13 +190,20 @@ export function usePresence(enabled: boolean) {
 
 /** Product search for the invoice line picker. `search` empty → recent/first products. */
 /** Items by name / SKU / barcode / supplier code / price; `supplierId` keeps one supplier's items. */
-export function useProductSearch(search: string, inStockOnly = false, supplierId = '') {
+export function useProductSearch(
+  search: string,
+  inStockOnly = false,
+  supplierId = '',
+  departmentId = '',
+) {
   const query = new URLSearchParams();
   if (search) query.set('search', search);
   if (inStockOnly) query.set('inStockOnly', 'true');
   if (supplierId) query.set('supplierId', supplierId);
+  // A department's items and items of no department.
+  if (departmentId) query.set('departmentId', departmentId);
   return useQuery({
-    queryKey: ['products', search, inStockOnly, supplierId],
+    queryKey: ['products', search, inStockOnly, supplierId, departmentId],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
   });
 }
@@ -456,6 +464,14 @@ export function useCategories() {
   });
 }
 
+/** Sales departments (أقسام), open ones first. */
+export function useDepartments() {
+  return useQuery({
+    queryKey: ['catalog', 'departments'],
+    queryFn: () => api.get<Department[]>('/departments'),
+  });
+}
+
 export function usePriceLevels() {
   return useQuery({
     queryKey: ['catalog', 'price-levels'],
@@ -471,14 +487,17 @@ export function useVariantOptions() {
 }
 
 /** The lists edited on the catalog setup page, keyed by their API path. */
-export type CatalogList = 'units' | 'categories' | 'price-levels' | 'variant-options';
+export type CatalogList = 'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
+
+/** A category's department: an id, or '' for none (every department). */
+type DepartmentChoice = { departmentId?: string };
 
 export function useCreateCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (
       input:
-        | CreateNamedInput
+        | (CreateNamedInput & DepartmentChoice)
         | CreatePriceLevelInput
         | (CreateVariantOptionInput & { kind: VariantKind }),
     ) => api.post<unknown>(`/${list}`, input),
@@ -489,7 +508,13 @@ export function useCreateCatalogEntry(list: CatalogList) {
 export function useUpdateCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: UpdateNamedInput | UpdatePriceLevelInput }) =>
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: UpdateNamedInput | UpdatePriceLevelInput | DepartmentChoice;
+    }) =>
       api.put<unknown>(`/${list}/${id}`, input),
     onSuccess: () => invalidateCatalog(qc),
   });
@@ -1210,7 +1235,7 @@ export function useCancelQuotation() {
   });
 }
 
-export function usePerformance(from: string, to: string, by: 'rep' | 'branch') {
+export function usePerformance(from: string, to: string, by: 'rep' | 'branch' | 'department') {
   return useQuery({
     queryKey: ['report', 'performance', from, to, by],
     queryFn: () =>

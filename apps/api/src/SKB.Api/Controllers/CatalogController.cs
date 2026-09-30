@@ -71,39 +71,103 @@ public sealed class CatalogController : ControllerBase
     [Authorize(Policy = Permissions.InventoryView)]
     public async Task<ActionResult<CategoryDto[]>> Categories()
     {
-        var categories = await _db.Categories.AsNoTracking().ToListAsync();
+        var categories = await _db.Categories.AsNoTracking().Include(c => c.Department).ToListAsync();
         var counts = await _db.Products.Where(p => p.IsActive).GroupBy(p => p.CategoryId)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
         return Ok(categories.OrderBy(c => Loc.Name(c))
-            .Select(c => new CategoryDto(c.Id.ToString(), Loc.Name(c), counts.GetValueOrDefault(c.Id)))
+            .Select(c => ToDto(c, counts.GetValueOrDefault(c.Id)))
             .ToArray());
     }
 
     [HttpPost("categories")]
     [Authorize(Policy = Permissions.CategoriesManage)]
-    public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateNamedRequest req)
+    public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateCategoryRequest req)
     {
         var category = new Category();
-        var error = await NameAsync(category, req.Name, _db.Categories, "category");
+        var error = await NameAsync(category, req.Name, _db.Categories, "category")
+                    ?? await DepartmentAsync(category, req.DepartmentId);
         if (error is not null) return error;
         _db.Categories.Add(category);
         await SaveAsync("create", "category", category.Id);
-        return Created($"/api/categories/{category.Id}",
-            new CategoryDto(category.Id.ToString(), Loc.Name(category), 0));
+        return Created($"/api/categories/{category.Id}", ToDto(category, 0));
     }
 
     [HttpPut("categories/{id:guid}")]
     [Authorize(Policy = Permissions.CategoriesManage)]
-    public async Task<ActionResult<CategoryDto>> UpdateCategory(Guid id, [FromBody] UpdateNamedRequest req)
+    public async Task<ActionResult<CategoryDto>> UpdateCategory(Guid id, [FromBody] UpdateCategoryRequest req)
     {
         var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id);
         if (category is null) return NotFound(new { message = "Category not found.", code = "category_not_found" });
-        var error = await RenameAsync(category, req, _db.Categories, "category");
+        var error = await RenameAsync(category, new UpdateNamedRequest(req.Name), _db.Categories, "category")
+                    ?? await DepartmentAsync(category, req.DepartmentId);
         if (error is not null) return error;
         await SaveAsync("update", "category", category.Id);
-        return Ok(new CategoryDto(category.Id.ToString(), Loc.Name(category),
-            await _db.Products.CountAsync(p => p.CategoryId == id && p.IsActive)));
+        return Ok(ToDto(category, await _db.Products.CountAsync(p => p.CategoryId == id && p.IsActive)));
     }
+
+    /// <summary>Put a category in a department ("" = none; null = leave it).</summary>
+    private async Task<ActionResult?> DepartmentAsync(Category category, string? raw)
+    {
+        if (raw is null) return null;
+        if (raw.Length == 0)
+        {
+            category.DepartmentId = null;
+            category.Department = null;
+            return null;
+        }
+        var department = Guid.TryParse(raw, out var id)
+            ? await _db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.IsActive)
+            : null;
+        if (department is null) return BadRequest(new { message = "Department not found.", code = "department_not_found" });
+        category.DepartmentId = department.Id;
+        category.Department = department;
+        return null;
+    }
+
+    private static CategoryDto ToDto(Category c, int count) => new(c.Id.ToString(), Loc.Name(c), count,
+        c.DepartmentId?.ToString(), c.Department is null ? null : Loc.Name(c.Department));
+
+    // ------------------------------------------------------------------ sales departments
+
+    /// <summary>The sales departments (أقسام), open ones first. Anyone signed in may read them.</summary>
+    [HttpGet("departments")]
+    [Authorize]
+    public async Task<ActionResult<DepartmentDto[]>> Departments()
+    {
+        var departments = await _db.Departments.AsNoTracking().ToListAsync();
+        var counts = await _db.Categories.Where(c => c.DepartmentId != null).GroupBy(c => c.DepartmentId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        return Ok(departments.OrderByDescending(d => d.IsActive).ThenBy(d => Loc.Name(d))
+            .Select(d => ToDto(d, counts.GetValueOrDefault(d.Id))).ToArray());
+    }
+
+    [HttpPost("departments")]
+    [Authorize(Policy = Permissions.CategoriesManage)]
+    public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req)
+    {
+        var department = new Department();
+        var error = await NameAsync(department, req.Name, _db.Departments, "department");
+        if (error is not null) return error;
+        _db.Departments.Add(department);
+        await SaveAsync("create", "department", department.Id);
+        return Created($"/api/departments/{department.Id}", ToDto(department, 0));
+    }
+
+    /// <summary>Rename, close or reopen a department. Its old sales keep its name.</summary>
+    [HttpPut("departments/{id:guid}")]
+    [Authorize(Policy = Permissions.CategoriesManage)]
+    public async Task<ActionResult<DepartmentDto>> UpdateDepartment(Guid id, [FromBody] UpdateNamedRequest req)
+    {
+        var department = await _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
+        if (department is null) return NotFound(new { message = "Department not found.", code = "department_not_found" });
+        var error = await RenameAsync(department, req, _db.Departments, "department");
+        if (error is not null) return error;
+        if (req.IsActive is bool active) department.IsActive = active;
+        await SaveAsync("update", "department", department.Id);
+        return Ok(ToDto(department, await _db.Categories.CountAsync(c => c.DepartmentId == id)));
+    }
+
+    private static DepartmentDto ToDto(Department d, int count) => new(d.Id.ToString(), Loc.Name(d), d.IsActive, count);
 
     // ------------------------------------------------------------------ price levels
 
@@ -269,6 +333,7 @@ public sealed class CatalogController : ControllerBase
     {
         Unit u => u.Id,
         Category c => c.Id,
+        Department d => d.Id,
         PriceLevel l => l.Id,
         VariantOption o => o.Id,
         _ => Guid.Empty,

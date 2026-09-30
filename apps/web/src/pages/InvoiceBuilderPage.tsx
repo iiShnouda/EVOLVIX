@@ -24,8 +24,10 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
+import { useAuth } from '../stores/auth';
 import {
   useCompanySettings,
+  useDepartments,
   useCreatePurchaseInvoice,
   useCreateQuotation,
   useCreateSalesInvoice,
@@ -112,6 +114,24 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const canAdditions = can(isSale ? 'sales:additions' : 'purchases:additions');
   const reps = useReps(isSale);
   const [repId, setRepId] = useState('');
+  const me = useAuth((s) => s.user);
+  /** Their discount limit (%); null = none. */
+  const maxDiscount = me?.maxDiscountPercent ?? null;
+
+  // The sales department (قسم): only the person's own; one of them is picked for them.
+  const departmentList = useDepartments();
+  const myDepartments = me?.departmentIds ?? null;
+  const departments = (departmentList.data ?? []).filter(
+    (d) => d.isActive && (!myDepartments || myDepartments.includes(d.id)),
+  );
+  const [pickedDepartment, setPickedDepartment] = useState('');
+  const departmentId = !isSale
+    ? ''
+    : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
+      ? pickedDepartment
+      : departments.length === 1 && myDepartments
+        ? (departments[0]?.id ?? '')
+        : '';
 
   const parties = useParties({
     page: 1,
@@ -169,7 +189,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [supplierFilter, setSupplierFilter] = useState('');
   const [listOpen, setListOpen] = useState(false);
   const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
-  const productList = useProductSearch(search, false, supplierFilter);
+  const productList = useProductSearch(search, false, supplierFilter, departmentId);
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
@@ -244,6 +264,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     try {
       const q = new URLSearchParams({ search: term });
       if (supplierFilter) q.set('supplierId', supplierFilter);
+      if (departmentId) q.set('departmentId', departmentId);
       const found = await api.get<Product[]>(`/products?${q}`);
       const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
       if (hit) addProduct(hit, hit.matchedUnitId);
@@ -373,6 +394,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
+          departmentId: departmentId || undefined,
           dueDate: validUntil,
         });
         navigate(backTo);
@@ -394,6 +416,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           warehouseId: warehouseId || undefined,
           priceLevelId,
           repId: repId || undefined,
+          departmentId: departmentId || undefined,
           paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
           deliveryMethod: delivery.method,
           deliveryAddress:
@@ -492,6 +515,26 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 ))}
               </select>
             </label>
+            {isSale && departments.length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+                <select
+                  className={field}
+                  value={departmentId}
+                  disabled={!!myDepartments && departments.length === 1}
+                  onChange={(e) => setPickedDepartment(e.target.value)}
+                >
+                  <option value="">
+                    {myDepartments ? t('invoice.chooseDepartment') : t('invoice.noDepartment')}
+                  </option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {isSale && (
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
@@ -831,6 +874,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     currency={currency}
                   />
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+                  {isSale && canDiscount && maxDiscount !== null && (
+                    <p className="text-xs text-faint">
+                      {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
+                    </p>
+                  )}
                 </>
               )}
               <div className="flex items-center justify-between gap-2">

@@ -9,7 +9,7 @@ namespace SKB.Api.Models;
 public record AuthUserDto(
     string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions,
     bool AllBranches = false, BranchOptionDto[]? Branches = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
 public record BranchOptionDto(string Id, string Name, bool IsActive = true);
 
@@ -42,7 +42,7 @@ public record UnitPriceDto(string PriceLevelId, long Price, string Source);
 public record SalesSummaryDto(
     string Id, string Number, string Type, string Status, string BranchName, string PartyName,
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
-    string? SourceNumber);
+    string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null);
 
 /// <param name="Quantity">In base units (what stock moved by).</param>
 /// <param name="UnitQuantity">In the line's unit (<paramref name="UnitName"/>, holding <paramref name="UnitFactor"/> base units).</param>
@@ -72,7 +72,8 @@ public record SalesDetailDto(
     long AdditionTotal, DocumentChargeDto[] Charges, string? RepId, string? RepName,
     string DeliveryMethod, string? DeliveryStatus, string? DeliveryAddress, string? DriverId, string? DriverName,
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
-    string? InvoiceId = null, string? InvoiceNumber = null);
+    string? InvoiceId = null, string? InvoiceNumber = null,
+    string? DepartmentId = null, string? DepartmentName = null);
 
 // ---- Create requests (server is the authoritative validator; the client mirrors these zod schemas) ----
 
@@ -101,7 +102,7 @@ public record CreateSalesInvoiceRequest(
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
-    string? PaidAccountId = null);
+    string? PaidAccountId = null, string? DepartmentId = null);
 
 /// <summary>
 /// Turning a quotation into an invoice: its lines, prices and charges come from the quotation; this
@@ -137,14 +138,15 @@ public record CompanySettingsDto(
     string CompanyName, string Country, string Currency,
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
-    string? CommercialRegister = null, string TimeZone = "Africa/Cairo");
+    string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100);
 
 /// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(
     string? CompanyName, string? Country, string? Currency,
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
-    string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null);
+    string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
+    int? MaxDiscountPercent = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -353,7 +355,16 @@ public record SetPartyPriceLevelsRequest(string? SalesPriceLevelId = null, strin
 /// <param name="ItemCount">Items that come in this unit / belong to this category.</param>
 public record UnitDto(string Id, string Name, bool IsActive, int ItemCount);
 
-public record CategoryDto(string Id, string Name, int ItemCount);
+public record CategoryDto(string Id, string Name, int ItemCount, string? DepartmentId = null, string? DepartmentName = null);
+
+/// <summary>A category: its name and the sales department it belongs to (none = every department).</summary>
+public record CreateCategoryRequest(string? Name = null, string? DepartmentId = null);
+
+/// <summary>Any field left null is unchanged; a DepartmentId of "" takes the category out of its department.</summary>
+public record UpdateCategoryRequest(string? Name = null, string? DepartmentId = null);
+
+/// <summary>A sales department (قسم): a group of categories.</summary>
+public record DepartmentDto(string Id, string Name, bool IsActive, int CategoryCount);
 
 /// <param name="Side">SALE or PURCHASE.</param>
 public record PriceLevelDto(
@@ -460,11 +471,15 @@ public record StaffDto(
     string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
     bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
-/// <summary>What one person may work with; every field replaces what was there.</summary>
+/// <summary>
+/// What one person may work with; every field replaces what was there. No departments = every
+/// department; no discount limit = the company's.
+/// </summary>
 public record StaffAccessRequest(
-    bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds);
+    bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds,
+    string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
 public record CreateStaffRequest(
     string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null);

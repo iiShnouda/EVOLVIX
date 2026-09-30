@@ -201,7 +201,13 @@ public sealed class StaffController : ControllerBase
         var branchIds = Ids(req.BranchIds);
         var warehouseIds = Ids(req.WarehouseIds);
         var accountIds = Ids(req.MoneyAccountIds);
+        var departmentIds = Ids(req.DepartmentIds);
         if (branchIds is null) return Bad("branch_not_found", "A branch was not found.");
+        if (departmentIds is null) return Bad("department_not_found", "A department was not found.");
+        if (departmentIds.Count > 0 && await _db.Departments.CountAsync(d => departmentIds.Contains(d.Id)) != departmentIds.Count)
+            return Bad("department_not_found", "A department was not found.");
+        if (req.MaxDiscountPercent is < 0 or > 100)
+            return Bad("bad_percent", "A discount limit is between 0% and 100%.");
         if (warehouseIds is null) return Bad("warehouse_not_found", "A warehouse was not found.");
         if (accountIds is null) return Bad("account_not_found", "A money account was not found.");
         if (branchIds.Count + warehouseIds.Count + accountIds.Count > 500) return Bad("too_many", "That's too many.");
@@ -229,11 +235,23 @@ public sealed class StaffController : ControllerBase
         if (Access.MoneyAccounts(User) is { } myAccounts
             && (accountIds.Count == 0 || accountIds.Any(a => !myAccounts.Contains(a))))
             return Forbidden("not_your_account", "You can only give money accounts you use yourself.");
+        if (Access.Departments(User) is { } myDepartments
+            && (departmentIds.Count == 0 || departmentIds.Any(d => !myDepartments.Contains(d))))
+            return Forbidden("not_your_department", "You can only give departments you work in yourself.");
+        if (Access.MaxDiscount(User) is int myMax)
+        {
+            var theirMax = req.MaxDiscountPercent
+                ?? await _db.CompanySettings.Select(x => (int?)x.MaxDiscountPercent).FirstOrDefaultAsync() ?? 100;
+            if (theirMax > myMax)
+                return Forbidden("over_your_limit", $"You can give a discount limit up to your own ({myMax}%).");
+        }
 
         staff.AllBranches = req.AllBranches;
         staff.BranchIds = all ? new List<Guid>() : branchIds;
         staff.WarehouseIds = warehouseIds;
         staff.MoneyAccountIds = accountIds;
+        staff.DepartmentIds = departmentIds;
+        staff.MaxDiscountPercent = req.MaxDiscountPercent;
         await _db.SaveChangesAsync();
         await AuditAsync("access", "staff", id);
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
@@ -347,7 +365,8 @@ public sealed class StaffController : ControllerBase
         PermissionService.Known(s.RevokedPermissions), PermissionService.Effective(s, sets),
         s.Role == Role.OWNER ? true : s.AllBranches, AccessService.SeesAll(s),
         s.BranchIds.Select(x => x.ToString()).ToArray(), s.WarehouseIds.Select(x => x.ToString()).ToArray(),
-        s.MoneyAccountIds.Select(x => x.ToString()).ToArray());
+        s.MoneyAccountIds.Select(x => x.ToString()).ToArray(),
+        s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent);
 
     private static string? Clean(string? s, int max)
     {

@@ -155,6 +155,10 @@ export interface AuthUser {
   warehouseIds?: string[] | null;
   /** Only these money accounts; null = any in their branches. */
   moneyAccountIds?: string[] | null;
+  /** Only these sales departments; null = every one. */
+  departmentIds?: string[] | null;
+  /** The most discount they may give (% of a line's worth); null = no limit. */
+  maxDiscountPercent?: number | null;
 }
 
 export interface BranchOption {
@@ -243,6 +247,17 @@ export interface Category {
   name: string;
   /** Active items in the category. */
   itemCount?: number;
+  /** The sales department it belongs to (none = sold by every department). */
+  departmentId?: string | null;
+  departmentName?: string | null;
+}
+
+/** A sales department (قسم): a group of categories; each sale belongs to one. */
+export interface Department {
+  id: string;
+  name: string;
+  isActive: boolean;
+  categoryCount: number;
 }
 
 /** Where an item's price at a level came from (see the server's PriceBook). */
@@ -390,6 +405,9 @@ export interface SalesDocument {
   /** For a return: the invoice it reverses. */
   sourceDocumentId?: string | null;
   sourceNumber?: string | null;
+  /** The sales department it belongs to. */
+  departmentId?: string | null;
+  departmentName?: string | null;
   /** The price level the invoice was priced at. */
   priceLevelId?: string | null;
   priceLevelName?: string | null;
@@ -734,6 +752,8 @@ export interface CompanySettings {
   commercialRegister?: string | null;
   /** The company's time zone (IANA id, one of TIME_ZONES); business days follow it. */
   timeZone: string;
+  /** The most discount staff may give (% of a line's worth) unless their own limit says otherwise; 100 = none. */
+  maxDiscountPercent: number;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -752,6 +772,8 @@ export interface SalesDocumentSummary {
   currency: string;
   /** For a return: the invoice number it reverses. */
   sourceNumber?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,6 +1144,10 @@ export interface StaffMember {
   warehouseIds: string[];
   /** Only these money accounts (empty = every one in their branches). */
   moneyAccountIds: string[];
+  /** Only these sales departments (empty = every one). */
+  departmentIds?: string[];
+  /** Their own discount limit (%); null = the company's. */
+  maxDiscountPercent?: number | null;
 }
 
 /** PUT /staff/{id}/access: what one person may work with (every field replaces what was there). */
@@ -1130,6 +1156,10 @@ export interface StaffAccessInput {
   branchIds: string[];
   warehouseIds: string[];
   moneyAccountIds: string[];
+  /** Empty = every department. */
+  departmentIds: string[];
+  /** null = the company's limit. */
+  maxDiscountPercent: number | null;
 }
 
 export interface RoleInfo {
@@ -1604,7 +1634,7 @@ export interface PerformanceRow {
 }
 
 export interface Performance {
-  by: 'rep' | 'branch';
+  by: 'rep' | 'branch' | 'department';
   from: string;
   to: string;
   rows: PerformanceRow[];

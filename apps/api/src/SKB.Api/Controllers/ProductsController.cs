@@ -39,11 +39,20 @@ public sealed class ProductsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ProductDto[]>> List(
         [FromQuery] string? search = null, [FromQuery] bool inStockOnly = false, [FromQuery] int limit = 50,
-        [FromQuery] string? supplierId = null)
+        [FromQuery] string? supplierId = null, [FromQuery] string? departmentId = null)
     {
         limit = Math.Clamp(limit, 1, 200);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
         if (inStockOnly) q = q.Where(p => p.StockOnHand > 0);
+        // A department's items (and items of no department); people limited to departments see only theirs.
+        if (!string.IsNullOrWhiteSpace(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var dept))
+                return BadRequest(new { message = "Department not found.", code = "department_not_found" });
+            q = q.Where(p => p.Category!.DepartmentId == null || p.Category.DepartmentId == dept);
+        }
+        if (Access.Departments(User) is { } mine)
+            q = q.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
         if (!string.IsNullOrWhiteSpace(supplierId))
         {
             if (!Guid.TryParse(supplierId, out var sup))

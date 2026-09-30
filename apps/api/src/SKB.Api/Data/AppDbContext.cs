@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Department> Departments => Set<Department>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
@@ -251,6 +252,13 @@ public class AppDbContext : DbContext
             .HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ProductModel>().HasOne(m => m.Supplier).WithMany()
             .HasForeignKey(m => m.SupplierId).OnDelete(DeleteBehavior.Restrict);
+
+        // Sales departments (أقسام): groups of categories; each sale belongs to one.
+        b.Entity<Category>().HasOne(c => c.Department).WithMany()
+            .HasForeignKey(c => c.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<SalesDocument>().HasIndex(d => d.DepartmentId);
+        b.Entity<SalesDocument>().HasOne(d => d.Department).WithMany()
+            .HasForeignKey(d => d.DepartmentId).OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<Session>()
             .HasOne(s => s.Staff).WithMany(st => st.Sessions)

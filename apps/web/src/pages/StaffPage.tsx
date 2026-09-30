@@ -20,6 +20,7 @@ import { useAuth } from '../stores/auth';
 import {
   useBranches,
   useCreateStaff,
+  useDepartments,
   useMoneyAccounts,
   useSetStaffAccess,
   usePermissionCatalog,
@@ -492,6 +493,7 @@ function PersonAccess({ person }: { person: StaffMember }) {
   const myId = useAuth((s) => s.user?.id);
   const branchList = useBranches();
   const accountList = useMoneyAccounts(can('receipts:view'));
+  const departmentList = useDepartments();
   const save = useSetStaffAccess();
 
   const initial = () => ({
@@ -501,13 +503,16 @@ function PersonAccess({ person }: { person: StaffMember }) {
     accounts: new Set(person.moneyAccountIds),
     someWarehouses: person.warehouseIds.length > 0,
     someAccounts: person.moneyAccountIds.length > 0,
+    departments: new Set(person.departmentIds ?? []),
+    someDepartments: (person.departmentIds ?? []).length > 0,
+    maxDiscount: person.maxDiscountPercent == null ? '' : String(person.maxDiscountPercent),
   });
   const [f, setF] = useState(initial);
   useEffect(() => {
     setF(initial());
     save.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person.id, person.allBranches, person.branchIds, person.warehouseIds, person.moneyAccountIds]);
+  }, [person.id, person.allBranches, person.branchIds, person.warehouseIds, person.moneyAccountIds, person.departmentIds, person.maxDiscountPercent]);
 
   const isOwner = person.role === 'OWNER';
   const editable = can('staff:access') && !isOwner && person.id !== myId;
@@ -525,23 +530,33 @@ function PersonAccess({ person }: { person: StaffMember }) {
 
   const pickedWarehouses = stores.filter((w) => f.warehouses.has(w.id)).map((w) => w.id);
   const pickedAccounts = accounts.filter((a) => f.accounts.has(a.id)).map((a) => a.id);
+  const departments = (departmentList.data ?? []).filter((d) => d.isActive || f.departments.has(d.id));
+  const pickedDepartments = departments.filter((d) => f.departments.has(d.id)).map((d) => d.id);
+  const maxDiscount = f.maxDiscount.trim() === '' ? null : Number(f.maxDiscount);
+  const badDiscount =
+    maxDiscount !== null && !(Number.isInteger(maxDiscount) && maxDiscount >= 0 && maxDiscount <= 100);
   const input = {
     allBranches: f.mode === 'role' ? null : f.mode === 'all',
     branchIds: f.mode === 'some' ? [...f.branches].filter((id) => id !== person.branchId) : [],
     warehouseIds: f.someWarehouses ? pickedWarehouses : [],
     moneyAccountIds: f.someAccounts ? pickedAccounts : [],
+    departmentIds: f.someDepartments ? pickedDepartments : [],
+    maxDiscountPercent: badDiscount ? null : maxDiscount,
   };
   const same = (a: string[], b: string[]) => [...a].sort().join() === [...b].sort().join();
   const dirty =
     input.allBranches !== (person.allBranches ?? null) ||
     !same(input.branchIds, person.branchIds) ||
     !same(input.warehouseIds, person.warehouseIds) ||
-    !same(input.moneyAccountIds, person.moneyAccountIds);
+    !same(input.moneyAccountIds, person.moneyAccountIds) ||
+    !same(input.departmentIds, person.departmentIds ?? []) ||
+    input.maxDiscountPercent !== (person.maxDiscountPercent ?? null);
   const missing =
     (f.someWarehouses && pickedWarehouses.length === 0) ||
-    (f.someAccounts && pickedAccounts.length === 0);
+    (f.someAccounts && pickedAccounts.length === 0) ||
+    (f.someDepartments && pickedDepartments.length === 0);
 
-  const toggle = (key: 'branches' | 'warehouses' | 'accounts', id: string) =>
+  const toggle = (key: 'branches' | 'warehouses' | 'accounts' | 'departments', id: string) =>
     setF((s) => {
       const next = new Set(s[key]);
       if (next.has(id)) next.delete(id);
@@ -652,6 +667,48 @@ function PersonAccess({ person }: { person: StaffMember }) {
             </fieldset>
           )}
 
+          {departments.length > 0 && (
+            <fieldset className="space-y-1">
+              <legend className="mb-1 text-xs font-medium text-muted">{t('access.departments')}</legend>
+              {radio(!f.someDepartments, () => setF((s) => ({ ...s, someDepartments: false })), t('access.everyDepartment'))}
+              {radio(f.someDepartments, () => setF((s) => ({ ...s, someDepartments: true })), t('access.onlyTicked'))}
+              {f.someDepartments && (
+                <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
+                  {departments.map((d) => (
+                    <label key={d.id} className={box}>
+                      <input
+                        type="checkbox"
+                        disabled={!editable}
+                        checked={f.departments.has(d.id)}
+                        onChange={() => toggle('departments', d.id)}
+                      />
+                      <span className="min-w-0 truncate">
+                        <bdi>{d.name}</bdi>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          )}
+
+          <label className="block max-w-xs">
+            <span className="mb-0.5 block text-xs font-medium text-muted">{t('access.maxDiscount')}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={100}
+              disabled={!editable}
+              value={f.maxDiscount}
+              onChange={(e) => setF((s) => ({ ...s, maxDiscount: e.target.value }))}
+              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand tnum"
+            />
+            <span className={`mt-0.5 block text-xs ${badDiscount ? 'text-destructive' : 'text-faint'}`}>
+              {badDiscount ? t('error.bad_percent') : t('access.maxDiscountHint')}
+            </span>
+          </label>
+
           {missing && <p className="text-xs text-warning">{t('access.pickOne')}</p>}
           {editable && (
             <div className="flex flex-wrap items-center gap-2">
@@ -659,7 +716,7 @@ function PersonAccess({ person }: { person: StaffMember }) {
                 size="sm"
                 icon="check"
                 loading={save.isPending}
-                disabled={!dirty || missing}
+                disabled={!dirty || missing || badDiscount}
                 onClick={() => save.mutate({ id: person.id, input })}
               >
                 {t('common.save')}

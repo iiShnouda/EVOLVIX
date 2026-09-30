@@ -133,6 +133,12 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
+            {doc.departmentName && (
+              <p>
+                {t('invoice.department')}:{' '}
+                <span className="font-medium text-fg">{doc.departmentName}</span>
+              </p>
+            )}
             {doc.repName && (
               <p>
                 {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>

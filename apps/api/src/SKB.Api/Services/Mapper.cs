@@ -9,7 +9,7 @@ public static class Mapper
         d.Id.ToString(), d.Number, d.Type.ToString(), d.Status.ToString(),
         Loc.Name(d.Branch), d.Party?.Name ?? "", d.Staff?.FullName ?? "",
         d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"), d.GrandTotal, d.PaidAmount, d.Currency,
-        d.SourceDocument?.Number);
+        d.SourceDocument?.Number, d.DepartmentId?.ToString(), d.Department is null ? null : Loc.Name(d.Department));
 
     /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
     /// <param name="baseUnits">Base unit name per product (<see cref="InvoiceLines.BaseUnitNamesAsync"/>).</param>
@@ -36,7 +36,8 @@ public static class Mapper
         d.RepId?.ToString(), d.Rep?.FullName,
         d.DeliveryMethod.ToString(), d.DeliveryStatus?.ToString(), d.DeliveryAddress,
         d.DriverId?.ToString(), d.Driver?.FullName, d.CarrierId?.ToString(), d.Carrier?.Name,
-        d.PaidAccountId?.ToString(), d.PaidAccount is null ? null : Loc.Name(d.PaidAccount));
+        d.PaidAccountId?.ToString(), d.PaidAccount is null ? null : Loc.Name(d.PaidAccount),
+        DepartmentId: d.DepartmentId?.ToString(), DepartmentName: d.Department is null ? null : Loc.Name(d.Department));
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)
@@ -77,7 +78,7 @@ public static class Mapper
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(
         s.CompanyName, s.Country, s.Currency,
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
-        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone);
+        s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent);
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,

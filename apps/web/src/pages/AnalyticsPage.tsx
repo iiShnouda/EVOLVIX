@@ -264,16 +264,21 @@ function PerformanceTab() {
   const cols = <T,>(row: T[]) => (seeCosts ? row : row.filter((_, i) => i !== 3));
   const [from, setFrom] = useState(daysAgo(29));
   const [to, setTo] = useState(companyToday);
-  const [by, setBy] = useState<'rep' | 'branch'>('rep');
+  const [by, setBy] = useState<'rep' | 'branch' | 'department'>('rep');
   const { data, isLoading } = usePerformance(from, to, by);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const m = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
   const n = (v: number) => formatNumber(v, locale);
-  const byLabel = by === 'rep' ? t('perf.byPerson') : t('perf.byBranch');
+  const byLabels = {
+    rep: t('perf.byPerson'),
+    branch: t('perf.byBranch'),
+    department: t('perf.byDepartment'),
+  };
+  const byLabel = byLabels[by];
   const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   const header = cols([
-    by === 'rep' ? t('perf.person') : t('perf.branch'),
+    by === 'rep' ? t('perf.person') : by === 'branch' ? t('perf.branch') : t('perf.department'),
     t('analytics.netSales'),
     t('perf.share'),
     t('perf.profit'),
@@ -290,7 +295,7 @@ function PerformanceTab() {
         <div className="flex flex-wrap items-end gap-3">
           <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
           <div className="flex gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1">
-            {(['rep', 'branch'] as const).map((b) => (
+            {(['rep', 'branch', 'department'] as const).map((b) => (
               <button
                 key={b}
                 type="button"
@@ -300,7 +305,7 @@ function PerformanceTab() {
                   by === b ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
                 }`}
               >
-                {b === 'rep' ? t('perf.byPerson') : t('perf.byBranch')}
+                {byLabels[b]}
               </button>
             ))}
           </div>
@@ -318,7 +323,7 @@ function PerformanceTab() {
               header,
               data.rows.map((r) =>
                 cols([
-                  r.name,
+                  r.name || t('invoice.noDepartment'),
                   { money: r.netSales },
                   r.share,
                   { money: r.profit },
@@ -379,7 +384,7 @@ function PerformanceTab() {
                 <tbody className="divide-y divide-line">
                   {data.rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="px-3 py-1.5 font-medium">{r.name}</td>
+                      <td className="px-3 py-1.5 font-medium">{r.name || t('invoice.noDepartment')}</td>
                       <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.netSales)}</td>
                       <td className="px-2 py-1.5 text-end tnum">
                         {formatNumber(r.share, locale)}%

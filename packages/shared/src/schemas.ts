@@ -96,6 +96,8 @@ export const createSalesInvoiceSchema = z.object({
   carrierId: z.string().uuid().optional(),
   /** Where the paid-now amount goes; none = the branch's cash box. */
   paidAccountId: z.string().uuid().optional(),
+  /** The sales department (قسم); someone limited to one department may leave it out. */
+  departmentId: z.string().uuid().optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -241,6 +243,8 @@ export const updateSettingsSchema = z.object({
   defaultMarkupPercent: z.number().int().min(0).max(1000).optional(),
   minMarkupPercent: z.number().int().min(0).max(1000).optional(),
   defaultTaxPercent: z.number().int().min(0).max(100).optional(),
+  /** Staff discount limit (% of a line's worth); 100 = none. */
+  maxDiscountPercent: z.number().int().min(0).max(100).optional(),
   transfersRequireReceipt: z.boolean().optional(),
   // "" clears a company-profile field; left out = unchanged.
   address: z.string().trim().max(300).optional(),

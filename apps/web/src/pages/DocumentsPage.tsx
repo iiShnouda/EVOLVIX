@@ -198,6 +198,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                       <span className="text-xs text-muted tnum">
                         {doc.number} · {formatDate(doc.issueDate, locale)}
                         {doc.sourceNumber && <> · {doc.sourceNumber}</>}
+                        {doc.departmentName && <> · {doc.departmentName}</>}
                       </span>
                     </span>
                     <span className="text-end">
@@ -316,6 +317,9 @@ function DocumentRow({
         <span className="flex items-center gap-2">
           <Icon name="parties" size={16} className="text-faint" />
           <span className="truncate">{doc.partyName}</span>
+          {doc.departmentName && (
+            <span className="shrink-0 text-xs text-muted">· {doc.departmentName}</span>
+          )}
         </span>
       </td>
       {showSource && (
