@@ -531,8 +531,8 @@ export const en = {
   'update.saving': 'Updating the app… your work is kept',
   'update.restored': 'The app was updated — your work is back as you left it.',
   'common.code': 'Code',
-  'finder.title': 'Detailed item search',
-  'finder.button': 'Detailed search',
+  'finder.title': 'Item search',
+  'finder.button': 'Search',
   'finder.code': 'Code contains',
   'finder.name': 'Name contains',
   'finder.priceFrom': 'Price from',
@@ -1432,7 +1432,8 @@ export const en = {
   'parties.creditLimitHint': 'Empty = no limit.',
   'account.creditLimit': 'Credit limit',
   'account.available': 'Still available',
-  'invoice.overCredit': "This invoice exceeds the customer's credit limit.",
+  'invoice.overCredit':
+    "This invoice takes the customer over their purchase limit. It will wait for the accountant's approval.",
   'settings.pendingHoldDays': 'Pending invoices hold goods (days)',
   'order.tab': 'Pending',
   'order.save': 'Save for the accountant',
@@ -1864,4 +1865,7 @@ export const en = {
     'You are about to leave this page. Everything you entered will be discarded and not saved.',
   'leave.stay': 'Stay on this page',
   'leave.leave': 'Leave and discard',
+  'state.AWAITING': 'Awaiting approval',
+  'state.REJECTED': 'Rejected',
+  'state.EDITED': 'Edited',
 } as const;

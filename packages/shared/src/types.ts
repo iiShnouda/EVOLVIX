@@ -995,6 +995,8 @@ export interface SalesDocumentSummary {
   notes?: string | null;
   /** An invoice's payment state; other documents carry their status. */
   state?: PayState | DocumentStatus | null;
+  /** Changed after it was saved (owner, 2026-10-01): shown as معدّلة. */
+  edited?: boolean;
 }
 
 /** A page of documents and the totals of everything the filter found (cancelled ones left out). */

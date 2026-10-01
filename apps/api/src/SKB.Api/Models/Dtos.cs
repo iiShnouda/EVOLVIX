@@ -44,7 +44,7 @@ public record SalesSummaryDto(
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
-    string? Notes = null, string? State = null);
+    string? Notes = null, string? State = null, bool Edited = false);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);

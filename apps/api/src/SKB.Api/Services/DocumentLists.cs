@@ -24,6 +24,10 @@ public static class DocumentLists
         /// <summary>Still owed on an invoice: total − paid − what its returns put on the account (≤ 0 = nothing).</summary>
         public long Owed { get; set; }
         public bool IsInvoice { get; set; }
+        /// <summary>A pending invoice: waiting for the accountant (or turned down).</summary>
+        public bool IsPending { get; set; }
+        /// <summary>Changed after it was saved (a revision of kind EDIT).</summary>
+        public bool Edited { get; set; }
         /// <summary>A shipping company still has to pay us cash on delivery for it.</summary>
         public bool Collecting { get; set; }
         /// <summary>
@@ -39,10 +43,11 @@ public static class DocumentLists
     /// as not paid), COLLECTING (جاري الدفع: cash on delivery not yet handed to us by the shipping
     /// company), PARTIAL (مدفوعة جزئيًا), PAID (مدفوعة) or CANCELLED (ملغاة). Other documents keep their status.
     /// </summary>
-    public static readonly string[] States = { "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED" };
+    public static readonly string[] States = { "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED", "AWAITING", "EDITED" };
 
     private static string StateOf(Row r) =>
         r.Status == DocumentStatus.CANCELLED ? "CANCELLED"
+        : r.IsPending ? (r.Status == DocumentStatus.REJECTED ? "REJECTED" : "AWAITING")
         : !r.IsInvoice ? r.Status.ToString()
         // Cash on delivery not yet handed to us by the shipping company.
         : r.Collecting ? "COLLECTING"
@@ -96,6 +101,8 @@ public static class DocumentLists
                                 && r.Status != DocumentStatus.CANCELLED)
                     .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0),
             IsInvoice = d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE,
+            IsPending = d.Type == DocumentType.SALES_ORDER,
+            Edited = db.InvoiceRevisions.Any(x => x.DocumentId == d.Id && x.Kind == "EDIT"),
             Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
                 && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
                     || x.Shipment.Status == ShipmentStatus.DELIVERED)),
@@ -114,6 +121,8 @@ public static class DocumentLists
         switch (state?.ToUpperInvariant())
         {
             case "CANCELLED": rows = rows.Where(r => r.Status == DocumentStatus.CANCELLED); break;
+            case "AWAITING": rows = rows.Where(r => r.IsPending && r.Status == DocumentStatus.PENDING); break;
+            case "EDITED": rows = rows.Where(r => r.Edited && r.Status != DocumentStatus.CANCELLED); break;
             case "PAID":
                 rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Unpaid <= 0
                                        && !r.Collecting); break;
@@ -130,7 +139,7 @@ public static class DocumentLists
         else if (payment == "paid") rows = rows.Where(r => r.Owed <= 0 && r.Status != DocumentStatus.CANCELLED);
 
         var total = await rows.CountAsync();
-        var sums = await rows.Where(r => r.Status != DocumentStatus.CANCELLED).GroupBy(r => 1)
+        var sums = await rows.Where(r => r.Status != DocumentStatus.CANCELLED && !r.IsPending).GroupBy(r => 1)
             .Select(g => new DocumentListTotalsDto(
                 g.Count(), g.Sum(r => r.GrandTotal), g.Sum(r => r.PaidAmount), g.Sum(r => r.Owed > 0 ? r.Owed : 0)))
             .FirstOrDefaultAsync() ?? new DocumentListTotalsDto(0, 0, 0, 0);
@@ -143,7 +152,7 @@ public static class DocumentLists
             .Include(d => d.Department).Include(d => d.Rep)
             .ToDictionaryAsync(d => d.Id);
         var items = pageRows.Where(r => docs.ContainsKey(r.Id))
-            .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed), State = StateOf(r) }).ToArray();
+            .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed), State = StateOf(r), Edited = r.Edited }).ToArray();
         return new DocumentListDto(items, total, page, pageSize, sums);
     }
 }

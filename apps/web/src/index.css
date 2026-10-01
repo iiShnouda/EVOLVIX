@@ -138,11 +138,14 @@ input[type='number'] {
   transform: scaleX(-1);
 }
 
-/* Visible, consistent focus ring for keyboard users. */
-:where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--c-brand);
-  outline-offset: 2px;
-  border-radius: 0.375rem;
+/* Visible, consistent focus ring for keyboard users. In the base layer, so a field that draws its
+   own focus (its box lights up, e.g. the sign-in boxes) can turn it off with outline-none. */
+@layer base {
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--c-brand);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
 }
 
 ::-webkit-scrollbar {

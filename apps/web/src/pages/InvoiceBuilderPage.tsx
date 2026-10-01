@@ -481,7 +481,8 @@ export function InvoiceBuilderPage({
   const netTotal = subtotal - outcome.discount;
   const tax = outcome.tax;
   const grand = netTotal + outcome.tax + outcome.addition;
-  // Over the customer's credit limit (the server refuses it unless the person may allow it).
+  // Over the customer's purchase limit: unless the person may allow it, the invoice is saved to
+  // wait for the accountant to accept or turn it down (owner decision 2026-10-01).
   const overCredit =
     isSale && !isQuote && party?.creditLimit != null && party.balance + grand > party.creditLimit;
   const profitTotal = netTotal - costTotal;
@@ -572,8 +573,9 @@ export function InvoiceBuilderPage({
           ? await updateSale.mutateAsync({ id: editId, input })
           : await (asOrder ? createOrder : createSale).mutateAsync(input);
         work.finished();
-        if (asOrder) navigate('/sales?tab=orders');
-        else navigate(`/sales?doc=${saved.id}${print ? '&print=1' : ''}`);
+        // One that waits for the accountant isn't printed yet.
+        const waits = asOrder || saved.type === 'SALES_ORDER';
+        navigate(`/sales?doc=${saved.id}${print && !waits ? '&print=1' : ''}`);
       } else {
         await createPurchase.mutateAsync({
           partyId,
@@ -1649,7 +1651,8 @@ export function InvoiceBuilderPage({
                       + {t('invoice.addDiscount')}
                     </button>
                   )}
-                  {!showDiscount2 && !discount2.value && (
+                  {/* The extra discount is offered once a discount is open (owner, 2026-10-01). */}
+                  {(showDiscount1 || !!discount1.value) && !showDiscount2 && !discount2.value && (
                     <button
                       type="button"
                       className="text-xs font-medium text-brand hover:underline"

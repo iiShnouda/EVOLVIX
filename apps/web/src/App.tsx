@@ -238,7 +238,6 @@ const router = createBrowserRouter(
           path="/purchases/new"
           element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
         />
-        <Route path="/sales/quotes/new" element={<InvoiceBuilderPage key="quote" mode="quote" />} />
         <Route
           path="/purchases/invoices/:id/return"
           element={<ReturnBuilderPage scope="purchases" />}

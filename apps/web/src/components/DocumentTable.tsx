@@ -7,6 +7,7 @@ import {
   type TranslationKey,
 } from '@skb/shared';
 import { Badge } from './ui';
+import { Icon } from './Icon';
 import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
 import { statusOf } from '../lib/status';
@@ -25,7 +26,8 @@ type ColumnKey =
   | 'paid'
   | 'owed'
   | 'status'
-  | 'notes';
+  | 'notes'
+  | 'print';
 
 interface Column {
   key: ColumnKey;
@@ -48,6 +50,7 @@ export function DocumentTable({
   selectedId,
   onSelect,
   showDepartment,
+  onPrint,
 }: {
   scope: 'sales' | 'purchases';
   kind: string;
@@ -55,6 +58,8 @@ export function DocumentTable({
   selectedId: string | null;
   onSelect: (id: string) => void;
   showDepartment: boolean;
+  /** Print a document straight from the list (owner, 2026-10-01). */
+  onPrint?: (id: string) => void;
 }) {
   const { t, locale } = useT();
   // Plain amounts, as on the old screen: the currency is the company's, said once in the header.
@@ -132,13 +137,40 @@ export function DocumentTable({
     {
       key: 'status',
       label: 'common.status',
-      cell: (d) => <Badge tone={statusOf(d).tone}>{t(statusOf(d).key as TranslationKey)}</Badge>,
+      cell: (d) => (
+        <span className="inline-flex items-center gap-1">
+          <Badge tone={statusOf(d).tone}>{t(statusOf(d).key as TranslationKey)}</Badge>
+          {d.edited && d.status !== 'CANCELLED' && <Badge tone="info">{t('state.EDITED')}</Badge>}
+        </span>
+      ),
     },
     {
       key: 'notes',
       label: 'list.notes',
       cell: (d) => <span className="block max-w-36 truncate text-muted">{d.notes ?? ''}</span>,
     },
+    ...(onPrint
+      ? [
+          {
+            key: 'print',
+            label: 'common.print',
+            cell: (d) => (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPrint(d.id);
+                }}
+                className="grid h-7 w-7 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-brand"
+                aria-label={`${t('common.print')} ${d.number}`}
+                title={t('common.print')}
+              >
+                <Icon name="print" size={16} />
+              </button>
+            ),
+          } satisfies Column,
+        ]
+      : []),
   ];
 
   const columns = all;

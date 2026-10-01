@@ -89,7 +89,10 @@ const o2 = ok('4 more held', await rep.post('/sales/orders', body(4, {}, { disco
 eq('none left to hold', (await rep.post('/sales/orders', body(1))).data?.code, 'insufficient_stock');
 const ids = async (who, path) => (await who.get(`${path}?pageSize=100`)).data.items.map((d) => d.id);
 check('listed as pending', (await ids(acc, '/sales/orders')).includes(o1.id));
-check('not among invoices', !(await ids(owner, '/sales/invoices')).includes(o1.id));
+// In the sales list, waiting for the accountant (owner decision 2026-10-01: no separate list).
+const inList = (await owner.get('/sales/invoices?pageSize=100')).data.items.find((d) => d.id === o1.id);
+eq('in the sales list, awaiting approval', inList?.state, 'AWAITING');
+check('the awaiting filter', (await owner.get('/sales/invoices?pageSize=100&state=AWAITING')).data.items.every((d) => d.state === 'AWAITING'));
 check('not on the dashboard', !(await owner.get('/dashboard')).data.recentDocuments.some((d) => d.id === o1.id));
 
 console.log('== the accountant approves');
@@ -201,11 +204,16 @@ const sellTo = (who, q, paidAmount = 0) =>
   who.post('/sales/invoices', { ...body(q), partyId: buyer.id, paidAmount, paidAccountId: paidAmount ? cash?.id : undefined });
 ok('4 more coats in stock', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: item.id, quantity: 4, unitCost: 600 }] }));
 ok('10.00 on credit is within it', await sellTo(acc, 1));
-eq('another 10.00 is over it', (await sellTo(acc, 1)).data?.code, 'over_credit_limit');
+// Over it: not refused, saved to wait for the accountant (owner decision 2026-10-01).
+const overLimit = ok('another 10.00 is over it: it waits for approval', await sellTo(acc, 1));
+eq('saved as awaiting approval', overLimit.type, 'SALES_ORDER');
+ok('turned down', await acc.post(`/sales/orders/${overLimit.id}/reject`, { reason: 'over limit' }));
 ok('…unless 5.00 is paid now', await sellTo(acc, 1, 500));
 const o6 = ok('a pending one for them is saved', await rep.post('/sales/orders', { ...body(1), partyId: buyer.id }));
-eq('approving it on credit is over', (await acc.post(`/sales/orders/${o6.id}/approve`, {})).data?.code, 'over_credit_limit');
-ok('the owner may go over it', await acc.post(`/sales/orders/${o6.id}/cancel`).then(() => sellTo(owner, 1)));
+// The accountant's approval is the decision on the limit.
+const approvedOver = ok('the accountant approves it over the limit', await acc.post(`/sales/orders/${o6.id}/approve`, {}));
+eq('it is an invoice', approvedOver.type, 'SALES_INVOICE');
+ok('the owner may go over it', await sellTo(owner, 1));
 eq('the account shows the limit', (await acc.get(`/sales/customers/${buyer.id}/account`)).data.creditLimit, 1500);
 ok('limit cleared', await acc.put(`/parties/${buyer.id}/credit-limit`, { creditLimit: null }));
 

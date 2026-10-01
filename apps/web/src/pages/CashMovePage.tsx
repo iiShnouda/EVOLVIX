@@ -249,6 +249,42 @@ export function CashMovePage() {
         )}
       </Card>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SideCard
+          title={t('move.from')}
+          side={from}
+          onChange={(s) => {
+            setFrom(s);
+            setAlloc({});
+            setDone(null);
+          }}
+          accounts={list}
+          accountId={from.accountId}
+          invoices={what === 'RECEIPT' && docSide ? invoices : null}
+          loading={open.isLoading}
+          alloc={alloc}
+          setAlloc={setAlloc}
+          onSpread={spread}
+        />
+        <SideCard
+          title={t('move.to')}
+          side={to}
+          onChange={(s) => {
+            setTo(s);
+            setAlloc({});
+            setDone(null);
+          }}
+          accounts={list}
+          accountId={toAccountId}
+          invoices={what === 'PAYMENT' && docSide ? invoices : null}
+          loading={open.isLoading}
+          alloc={alloc}
+          setAlloc={setAlloc}
+          onSpread={spread}
+        />
+      </div>
+
+      {/* The amount under the two sides (owner, 2026-10-01). */}
       <Card className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-end">
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('move.amount')}</span>
@@ -285,41 +321,6 @@ export function CashMovePage() {
         )}
         {error && <p className="text-sm text-destructive sm:col-span-3">{errorText(t, error)}</p>}
       </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SideCard
-          title={t('move.from')}
-          side={from}
-          onChange={(s) => {
-            setFrom(s);
-            setAlloc({});
-            setDone(null);
-          }}
-          accounts={list}
-          accountId={from.accountId}
-          invoices={what === 'RECEIPT' && docSide ? invoices : null}
-          loading={open.isLoading}
-          alloc={alloc}
-          setAlloc={setAlloc}
-          onSpread={spread}
-        />
-        <SideCard
-          title={t('move.to')}
-          side={to}
-          onChange={(s) => {
-            setTo(s);
-            setAlloc({});
-            setDone(null);
-          }}
-          accounts={list}
-          accountId={toAccountId}
-          invoices={what === 'PAYMENT' && docSide ? invoices : null}
-          loading={open.isLoading}
-          alloc={alloc}
-          setAlloc={setAlloc}
-          onSpread={spread}
-        />
-      </div>
     </div>
   );
 }

@@ -14,7 +14,6 @@ import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import {
   useCancelOrder,
-  useCancelQuotation,
   useCancelInvoice,
   useDepartments,
   useWarehouses,
@@ -27,7 +26,6 @@ import {
 import { useDeviceInfo } from '../lib/device';
 import { PAY_STATES, statusOf } from '../lib/status';
 import { errorText } from '../lib/errors';
-import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 import { EditOrderSheet } from '../components/EditOrderSheet';
 import { Sheet } from '../components/Sheet';
@@ -41,9 +39,7 @@ const filterField =
 const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
   sales: {
     invoices: 'sales.invoices',
-    orders: 'order.tab',
     returns: 'sales.returns',
-    quotations: 'quote.tab',
   },
   purchases: { invoices: 'purchases.invoices', returns: 'purchases.returns' },
 };
@@ -59,8 +55,10 @@ function isReturnable(doc: SalesDocument | undefined): doc is SalesDocument {
 }
 
 /**
- * Sales or purchases: invoices and returns (and, for sales, price quotations) in one master-detail
- * screen. `?tab=returns` / `?tab=quotations` opens that list.
+ * Sales or purchases: invoices and returns in one master-detail screen; `?tab=returns` opens the
+ * returns. No quotations and no separate list of pending invoices (owner decision 2026-10-01): an
+ * invoice waiting for the accountant (over the customer's purchase limit) is in the sales list with
+ * its state, and so are cancelled and changed ones.
  */
 export function DocumentsPage({ scope }: { scope: DocScope }) {
   const isSales = scope === 'sales';
@@ -70,45 +68,15 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab');
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  // Invoices post at once (owner decision 2026-09-30). Pending invoices are only for someone who may
-  // just save them; the tab shows for them, and for approvers while some are still waiting.
-  const mayOrders =
-    isSales && (permissions.includes('sales:order') || permissions.includes('sales:approve'));
-  const waiting = useDocumentList(scope, 'orders', {
-    page: 1,
-    status: 'PENDING',
-    enabled: mayOrders,
-  });
-  const onlyOrders = permissions.includes('sales:order') && !permissions.includes('sales:create');
-  const seesOrders =
-    mayOrders && (onlyOrders || tab === 'orders' || (waiting.data?.total ?? 0) > 0);
-  const kind: DocKind =
-    tab === 'returns'
-      ? 'returns'
-      : tab === 'quotations' && isSales
-        ? 'quotations'
-        : tab === 'orders' && seesOrders
-          ? 'orders'
-          : 'invoices';
-  const kinds: DocKind[] = isSales
-    ? seesOrders
-      ? ['invoices', 'orders', 'returns', 'quotations']
-      : ['invoices', 'returns', 'quotations']
-    : ['invoices', 'returns'];
+  const kind: DocKind = tab === 'returns' ? 'returns' : 'invoices';
+  const kinds: DocKind[] = ['invoices', 'returns'];
 
   const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
   // A sales person who may only save pending invoices still starts one from here.
   const canStart = canCreate || (isSales && permissions.includes('sales:order'));
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
-  const canQuote = isSales && permissions.includes('sales:quote');
-  const showChanges =
-    isSales &&
-    permissions.includes('sales:changes_report') &&
-    permissions.includes('analytics:view');
-  const [converting, setConverting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [editingOrder, setEditingOrder] = useState(false);
-  const cancelQuote = useCancelQuotation();
   const cancelOrder = useCancelOrder();
   const myId = useAuth((s) => s.user?.id);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -129,7 +97,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   // Invoices: one payment state (owner, 2026-10-01) instead of status + payment.
-  const [state, setState] = useState('');
+  // An old link to the pending list opens the invoices waiting for approval.
+  const [state, setState] = useState(tab === 'orders' ? 'AWAITING' : '');
   const [branchId, setBranchId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const myBranches = useAuth((s) => s.user?.branches ?? []);
@@ -184,45 +153,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     setState('');
     setParams(next === 'invoices' ? {} : { tab: next }, { replace: true });
   }
-
-  const quote = detail.data?.type === 'QUOTATION' ? detail.data : undefined;
-  const quoteOpen = quote && quote.status === 'PENDING';
-  const quoteActions = quote ? (
-    <>
-      {quoteOpen && canCreate && (
-        <Button size="sm" icon="receipts" onClick={() => setConverting(true)}>
-          {t('quote.makeInvoice')}
-        </Button>
-      )}
-      {quoteOpen && canQuote && !confirmCancel && (
-        <Button size="sm" variant="ghost" onClick={() => setConfirmCancel(true)}>
-          {t('quote.cancel')}
-        </Button>
-      )}
-      {quoteOpen && confirmCancel && (
-        <Button
-          size="sm"
-          variant="danger"
-          loading={cancelQuote.isPending}
-          onClick={() => cancelQuote.mutate(quote.id, { onSettled: () => setConfirmCancel(false) })}
-        >
-          {t('quote.cancelConfirm')}
-        </Button>
-      )}
-      {quote.invoiceId && (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            setSelectedId(quote.invoiceId!);
-            setParams({ doc: quote.invoiceId! }, { replace: true });
-          }}
-        >
-          {quote.invoiceNumber}
-        </Button>
-      )}
-    </>
-  ) : undefined;
 
   const order = detail.data?.type === 'SALES_ORDER' ? detail.data : undefined;
   const orderOpen = order && order.status === 'PENDING';
@@ -310,7 +240,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       )}
     </>
   );
-  const returnAction = quote ? quoteActions : order ? orderActions : invoiceActions;
+  const returnAction = order ? orderActions : invoiceActions;
 
   return (
     <div className="space-y-5">
@@ -322,30 +252,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/returns/new`)}>
               {t('return.new')}
             </Button>
-          ) : kind === 'quotations' ? (
-            canQuote ? (
-              <Button icon="plus" size="sm" onClick={() => navigate('/sales/quotes/new')}>
-                {t('quote.new')}
-              </Button>
-            ) : undefined
-          ) : canStart || showChanges ? (
-            <div className="flex flex-wrap gap-2">
-              {showChanges && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon="audit"
-                  onClick={() => navigate('/analytics?tab=changes')}
-                >
-                  {t('changes.title')}
-                </Button>
-              )}
-              {canStart && (
-                <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
-                  {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
-                </Button>
-              )}
-            </div>
+          ) : canStart ? (
+            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
+              {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
+            </Button>
           ) : undefined
         }
       />
@@ -481,7 +391,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               onChange={(e) => setState(e.target.value)}
             >
               <option value="">{t('list.all')}</option>
-              {PAY_STATES.map((s) => (
+              {[...PAY_STATES, ...(isSales ? (['AWAITING', 'EDITED'] as const) : [])].map((s) => (
                 <option key={s} value={s}>
                   {t(`state.${s}`)}
                 </option>
@@ -498,16 +408,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <Spinner size={26} />
           </div>
         ) : rows.length === 0 ? (
-          <EmptyState
-            title={
-              kind === 'quotations'
-                ? t('quote.empty')
-                : kind === 'orders'
-                  ? t('order.empty')
-                  : t('common.empty')
-            }
-            icon={kind === 'returns' ? 'returns' : scope}
-          />
+          <EmptyState title={t('common.empty')} icon={kind === 'returns' ? 'returns' : scope} />
         ) : isPhone ? (
           <ul className="divide-y divide-[var(--c-line)]">
             {rows.map((doc) => (
@@ -569,6 +470,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               selectedId={selectedId}
               onSelect={setSelectedId}
               showDepartment={isSales && (departments.data ?? []).length > 0}
+              onPrint={(id) => {
+                setSelectedId(id);
+                setParams({ ...(tab ? { tab } : {}), doc: id, print: '1' }, { replace: true });
+              }}
             />
           )
         )}
@@ -614,9 +519,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         </div>
       )}
 
-      {cancelQuote.error && (
-        <p className="text-sm text-destructive">{errorText(t, cancelQuote.error)}</p>
-      )}
       {cancelOrder.error && (
         <p className="text-sm text-destructive">{errorText(t, cancelOrder.error)}</p>
       )}
@@ -681,17 +583,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           onClose={() => setApproving(false)}
           onDone={(invoice) => {
             setApproving(false);
-            setSelectedId(invoice.id);
-            setParams({ doc: invoice.id }, { replace: true });
-          }}
-        />
-      )}
-      {converting && quote && (
-        <ConvertQuoteSheet
-          quote={quote}
-          onClose={() => setConverting(false)}
-          onDone={(invoice) => {
-            setConverting(false);
             setSelectedId(invoice.id);
             setParams({ doc: invoice.id }, { replace: true });
           }}

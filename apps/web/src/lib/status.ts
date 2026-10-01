@@ -78,6 +78,7 @@ export function statusOf(doc: {
   }
   // A pending invoice: waiting, approved, cancelled, or past the days it holds its goods.
   if (doc.type === 'SALES_ORDER') {
+    if (doc.state === 'AWAITING') return { key: 'state.AWAITING', tone: 'warning' };
     if (doc.status === 'REJECTED') return { key: 'order.state.REJECTED', tone: 'destructive' };
     const s = quoteState(doc);
     return { key: `order.state.${s}`, tone: QUOTE_TONE[s] };

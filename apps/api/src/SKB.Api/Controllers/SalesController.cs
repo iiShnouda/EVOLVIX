@@ -42,7 +42,8 @@ public sealed class SalesController : ControllerBase
         [FromQuery] string? search = null, [FromQuery] string? status = null,
         [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
         [FromQuery] string? payment = null) =>
-        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to, payment);
+        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to, payment,
+            withAwaiting: true);
 
     /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
     [HttpGet("quotations")]
@@ -73,9 +74,14 @@ public sealed class SalesController : ControllerBase
 
     private async Task<ActionResult<DocumentListDto>> ListAsync(
         DocumentType type, int page, int pageSize, string? search, string? status, string? departmentId,
-        string? from = null, string? to = null, string? payment = null)
+        string? from = null, string? to = null, string? payment = null, bool withAwaiting = false)
     {
-        var q = _db.SalesDocuments.Where(d => d.Type == type);
+        // The sales list also shows invoices waiting for the accountant (owner decision 2026-10-01:
+        // no separate list of pending invoices) and the ones turned down.
+        var q = withAwaiting
+            ? _db.SalesDocuments.Where(d => d.Type == type || (d.Type == DocumentType.SALES_ORDER
+                && (d.Status == DocumentStatus.PENDING || d.Status == DocumentStatus.REJECTED)))
+            : _db.SalesDocuments.Where(d => d.Type == type);
         q = q.InBranches(User, d => d.BranchId).InDepartments(User);
         // "none" = documents of no department.
         if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
@@ -193,8 +199,21 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     [HttpPost("invoices")]
     [Authorize(Policy = Permissions.SalesCreate)]
-    public Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req) =>
-        CreateCore(req, DocumentType.SALES_INVOICE, fromId: null);
+    public async Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req)
+    {
+        var result = await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null);
+        // Over the customer's purchase limit (owner decision 2026-10-01): it is not refused; it waits
+        // in the sales list for the accountant to accept or turn it down. Nothing was posted.
+        if (ErrorCode(result.Result) != "over_credit_limit") return result;
+        _db.ChangeTracker.Clear();
+        return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null);
+    }
+
+    /// <summary>The <c>code</c> of an error answer, if it is one.</summary>
+    private static string? ErrorCode(IActionResult? result) =>
+        (result as ObjectResult) is { StatusCode: >= 400, Value: { } v }
+            ? v.GetType().GetProperty("code")?.GetValue(v) as string
+            : null;
 
     /// <summary>
     /// Change a posted sales invoice (owner decision 2026-10-01): what it moved — stock, the
@@ -393,7 +412,7 @@ public sealed class SalesController : ControllerBase
             DeliveryMethod: order.DeliveryMethod.ToString(), DeliveryAddress: order.DeliveryAddress,
             DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
             PaidAccountId: req.PaidAccountId, DepartmentId: order.DepartmentId?.ToString());
-        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId,
+        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId, approved: true,
             discountsKept: discountsKept);
     }
 
@@ -528,7 +547,7 @@ public sealed class SalesController : ControllerBase
     /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
     private async Task<ActionResult<SalesDetailDto>> CreateCore(
         CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true,
-        Guid? replaceId = null, Guid? editId = null)
+        Guid? replaceId = null, Guid? editId = null, bool approved = false)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -922,8 +941,9 @@ public sealed class SalesController : ControllerBase
         await _db.Entry(party).ReloadAsync();
         party.Balance += grand - doc.PaidAmount;
         // Not over their credit limit (حد الائتمان), unless the person may allow it.
+        // An invoice the accountant approves is their decision on the limit (owner decision 2026-10-01).
         if (party.CreditLimit is long limit && grand > doc.PaidAmount && party.Balance > limit
-            && !Can(Permissions.SalesOverCredit))
+            && !approved && !Can(Permissions.SalesOverCredit))
             return BadRequest(new
             {
                 message = $"{party.Name} would owe {InvoiceLines.Major(party.Balance)}, over their credit limit of " +
