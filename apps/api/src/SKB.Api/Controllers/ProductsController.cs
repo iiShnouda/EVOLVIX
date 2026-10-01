@@ -23,10 +23,13 @@ public sealed class ProductsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly AuditService _audit;
 
-    public ProductsController(AppDbContext db, AuditService audit)
+    private readonly WarehouseService _warehouses;
+
+    public ProductsController(AppDbContext db, AuditService audit, WarehouseService warehouses)
     {
         _db = db;
         _audit = audit;
+        _warehouses = warehouses;
     }
 
     /// <summary>
@@ -211,13 +214,22 @@ public sealed class ProductsController : ControllerBase
 
         var (sku, skuError) = await SkuAsync(req.Sku, null);
         if (skuError is not null) return skuError;
-        // Without a code of its own, one from the prefixes of where it is worked on (owner decision 2026-10-01).
+        // Without a code of its own, one from the prefixes of where it is stored: the warehouse it is
+        // bought into, else the working branch's default (owner decision 2026-10-01).
+        Warehouse? into = null;
+        if (req.WarehouseId is not null)
+        {
+            into = Guid.TryParse(req.WarehouseId, out var wid)
+                ? await _warehouses.Visible(User).FirstOrDefaultAsync(w => w.Id == wid && w.IsActive) : null;
+            if (into is null) return BadRequest(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+        }
         if (sku is null)
         {
-            var branchId = Access.Work(User);
+            var branchId = into?.BranchId ?? Access.Work(User);
             var branchPrefix = await _db.Branches.Where(b => b.Id == branchId).Select(b => b.Prefix).FirstOrDefaultAsync();
-            var whPrefix = await _db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
-                .Select(w => w.Prefix).FirstOrDefaultAsync();
+            var whPrefix = into is not null ? into.Prefix
+                : await _db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
+                    .Select(w => w.Prefix).FirstOrDefaultAsync();
             sku = department?.Prefix is { Length: > 0 }
                 ? await Catalog.NextItemCodeAsync(_db, branchPrefix, whPrefix, department.Prefix)
                 : await Catalog.NextItemSkuAsync(_db);

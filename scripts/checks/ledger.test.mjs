@@ -584,6 +584,8 @@ eq(
 );
 
 console.log('== period lock');
+// A closed year stays locked, so "unlocking" goes back to the lock found here (none on a fresh database).
+const startLock = (await owner.get('/ledger/lock')).data?.lockDate ?? null;
 eq(
   "accountant can't lock",
   (await mona.put('/ledger/lock', { lockDate: '2026-01-31' })).status,
@@ -631,9 +633,9 @@ eq(
   (await owner.post(`/vouchers/${px.id}/cancel`)).data?.code,
   'period_locked',
 );
-eq('unlock', (await owner.put('/ledger/lock', { lockDate: null })).data?.lockDate, null);
+eq('unlock', (await owner.put('/ledger/lock', { lockDate: startLock })).data?.lockDate, startLock);
 ok('now it can', await owner.post(`/vouchers/${px.id}/cancel`));
-eq('lock visible', (await mona.get('/ledger/lock')).data?.lockDate, null);
+eq('lock visible', (await mona.get('/ledger/lock')).data?.lockDate, startLock);
 
 console.log('== the ledger still balances');
 const after = await accountsNow();

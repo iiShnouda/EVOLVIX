@@ -171,9 +171,10 @@ public record ConvertQuotationRequest(
     string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null, bool OverrideFloor = false,
     string? DueDate = null, string? Notes = null);
 
+/// <summary><paramref name="Discount"/>: the supplier's discount on the whole line (minor units).</summary>
 public record CreatePurchaseLineRequest(
     string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
-    bool IsBonus = false);
+    bool IsBonus = false, long Discount = 0);
 
 public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
@@ -563,7 +564,7 @@ public record CreateProductRequest(
     string? Name = null, string? Sku = null,
     int ReorderLevel = 0, PriceRequest[]? Prices = null,
     string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
-    string? SizeId = null, string? ColorId = null);
+    string? SizeId = null, string? ColorId = null, string? WarehouseId = null);
 
 /// <summary>
 /// Any field left null is unchanged. For a variant only SKU, reorder level, active and the units'

@@ -69,7 +69,9 @@ export function InventoryPage() {
           <div className="flex flex-wrap gap-2">
             {can('products:create') && (
               <Button size="sm" icon="plus" onClick={() => navigate('/inventory/products/new')}>
-                {t('catalog.newItem')}
+                {can('purchases:create') && can('prices:edit')
+                  ? t('additems.title')
+                  : t('catalog.newItem')}
               </Button>
             )}
             <Button

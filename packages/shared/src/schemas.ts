@@ -134,6 +134,8 @@ export const purchaseLineSchema = z.object({
   unitId: z.string().uuid().optional(),
   /** Free goods from the supplier: sent with cost 0. */
   isBonus: z.boolean().optional(),
+  /** The supplier's discount on the whole line (minor units). */
+  discount: z.number().int().min(0).optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -386,6 +388,8 @@ export const createProductSchema = z.object({
   /** Main supplier (a party id), or "" for none. */
   supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
   supplierCode: z.string().trim().max(64).optional(),
+  /** The warehouse it is bought into: its code takes that branch's and warehouse's prefixes. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 

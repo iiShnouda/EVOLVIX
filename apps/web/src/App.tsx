@@ -7,6 +7,7 @@ import {
   RouterProvider,
   useLocation,
   useParams,
+  useSearchParams,
 } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { setCompanyTimeZone } from '@skb/shared';
@@ -40,6 +41,8 @@ import { TransferBuilderPage } from './pages/TransferBuilderPage';
 import { CatalogSetupPage } from './pages/CatalogSetupPage';
 import { PriceListsPage } from './pages/PriceListsPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
+import { AddItemsPage } from './pages/AddItemsPage';
+import { useCan } from './lib/can';
 import { ModelsPage } from './pages/ModelsPage';
 import { ModelEditorPage } from './pages/ModelEditorPage';
 import { StaffPage } from './pages/StaffPage';
@@ -228,7 +231,7 @@ const router = createBrowserRouter(
         <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
         <Route path="/inventory/setup" element={<CatalogSetupPage />} />
         <Route path="/inventory/price-lists" element={<PriceListsPage />} />
-        <Route path="/inventory/products/new" element={<ProductEditorPage key="new" />} />
+        <Route path="/inventory/products/new" element={<NewItemsRoute />} />
         <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
         <Route path="/inventory/models" element={<ModelsPage />} />
         <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
@@ -277,4 +280,19 @@ export default function App() {
       <RouterProvider router={router} />
     </QueryClientProvider>
   );
+}
+
+/**
+ * Adding items is a purchase invoice (owner decision 2026-10-01) for whoever may buy and price;
+ * an item with no purchase (or for someone who may only create items) uses the item editor.
+ */
+function NewItemsRoute() {
+  const can = useCan();
+  const [params] = useSearchParams();
+  const purchase =
+    params.get('plain') !== '1' &&
+    can('purchases:create') &&
+    can('prices:edit') &&
+    can('products:create');
+  return purchase ? <AddItemsPage /> : <ProductEditorPage key="new" />;
 }

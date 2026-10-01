@@ -125,9 +125,12 @@ public sealed class PurchasesController : ControllerBase
         var lines = new List<(CreatePurchaseLineRequest Req, Guid ProductId, Guid? UnitId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitCost, 0);
+            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitCost, line.Discount);
             if (shape.Error is not null)
                 return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code == "bad_price" ? "bad_cost" : shape.Error.Code });
+            // The supplier's discount on a line (owner, 2026-10-01: per piece, as % or an amount).
+            if (line.Discount != 0 && !Can(Permissions.PurchasesDiscount))
+                return InvoiceLines.Refuse(this, new("discount_not_allowed", "Entering a supplier discount needs permission."));
             if (line.IsBonus)
             {
                 if (!Can(Permissions.PurchasesBonus))
@@ -177,7 +180,7 @@ public sealed class PurchasesController : ControllerBase
             }
         }
 
-        var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitCost).ToList();
+        var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitCost - r.Req.Discount).ToList();
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
 
@@ -193,7 +196,7 @@ public sealed class PurchasesController : ControllerBase
         for (var i = 0; i < resolved.Count; i++)
         {
             var (line, product, unit, baseQty, warehouse) = resolved[i];
-            var lineTotal = (long)line.Quantity * line.UnitCost;
+            var lineTotal = (long)line.Quantity * line.UnitCost - line.Discount;
             var docDiscount = charges!.Allocation[i];
             // The goods cost what was paid for them after the supplier's discount; free goods cost
             // nothing and so lower the average.
@@ -212,7 +215,7 @@ public sealed class PurchasesController : ControllerBase
                 LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
                 UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
-                UnitPrice = line.UnitCost, Discount = 0, LineTotal = lineTotal,
+                UnitPrice = line.UnitCost, Discount = line.Discount, LineTotal = lineTotal,
                 IsBonus = line.IsBonus, DocDiscount = docDiscount,
                 // Cost of one base unit, for display; LineCost is the exact amount paid.
                 UnitCost = (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero),
@@ -222,12 +225,13 @@ public sealed class PurchasesController : ControllerBase
         }
         foreach (var c in charges!.Rows) doc.Charges.Add(c);
 
-        var subtotal = doc.Lines.Sum(l => l.LineTotal);
-        var net = subtotal - charges.Discount;
+        var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
+        var lineDiscounts = doc.Lines.Sum(l => l.Discount);
+        var net = subtotal - lineDiscounts - charges.Discount;
         var grand = net + charges.Tax + charges.Addition;
 
         doc.Subtotal = subtotal;
-        doc.DiscountTotal = charges.Discount;
+        doc.DiscountTotal = lineDiscounts + charges.Discount;
         doc.TaxTotal = charges.Tax;
         doc.AdditionTotal = charges.Addition;
         doc.GrandTotal = grand;
