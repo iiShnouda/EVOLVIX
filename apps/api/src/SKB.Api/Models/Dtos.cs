@@ -187,7 +187,16 @@ public record CompanySettingsDto(
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
-    int PendingHoldDays = 0);
+    int PendingHoldDays = 0, int LogoVersion = 0);
+
+/// <summary>
+/// What the app shows of the company before and after sign-in: its name and logo version
+/// (0 = no logo; the image is at /api/branding/logo).
+/// </summary>
+public record BrandingDto(string CompanyName, int LogoVersion);
+
+/// <summary>The logo as base64 (a data: URL is accepted too).</summary>
+public record UploadLogoRequest(string Data);
 
 /// <summary>A field left null is unchanged; "" clears a company-profile field.</summary>
 public record UpdateSettingsRequest(

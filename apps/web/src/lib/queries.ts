@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toMinor } from '@skb/shared';
 import type {
+  Branding,
   Category,
   PriceList,
   PriceListDetail,
@@ -292,6 +293,35 @@ export function useCompanySettings() {
   });
 }
 
+/** The company's name and logo version; works before sign-in too (the login page shows them). */
+export function useBranding() {
+  return useQuery({
+    queryKey: ['branding'],
+    queryFn: () => api.get<Branding>('/branding'),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** Upload (a base64 / data: URL picture) or remove the company logo. */
+export function useCompanyLogo() {
+  const qc = useQueryClient();
+  const done = (data: Branding) => {
+    qc.setQueryData(['branding'], data);
+    void qc.invalidateQueries({ queryKey: ['settings'] });
+  };
+  return {
+    upload: useMutation({
+      mutationFn: (data: string) => api.put<Branding>('/branding/logo', { data }),
+      onSuccess: done,
+    }),
+    remove: useMutation({
+      mutationFn: () => api.del<Branding>('/branding/logo'),
+      onSuccess: done,
+    }),
+  };
+}
+
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
@@ -299,6 +329,7 @@ export function useUpdateSettings() {
     onSuccess: (data) => {
       qc.setQueryData(['settings'], data);
       void qc.invalidateQueries({ queryKey: ['settings'] });
+      void qc.invalidateQueries({ queryKey: ['branding'] });
     },
   });
 }

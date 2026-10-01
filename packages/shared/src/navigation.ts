@@ -19,7 +19,8 @@ export type IconName =
   | 'delivery'
   | 'ledger'
   | 'notes'
-  | 'payroll';
+  | 'payroll'
+  | 'themes';
 
 export interface NavItem {
   /** Stable route key, also used as the presence "currentView" identifier. */
@@ -164,5 +165,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'settings',
     path: '/settings',
     permission: 'settings:view',
+  },
+  // Each person's own look (owner, 2026-10-01): no permission, it changes nothing but their screen.
+  {
+    key: 'themes',
+    labelKey: 'nav.themes',
+    icon: 'themes',
+    path: '/themes',
   },
 ];

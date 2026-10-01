@@ -17,6 +17,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource/rajdhani':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@skb/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -912,6 +915,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/rajdhani@5.3.0':
+    resolution: {integrity: sha512-oBJgSIibWJvVBKseme1JczqPLoDHN97LHti4uh0LjfcJqQoVmnQQlRKIpEjTJV559rmVQ6qbVZZwKwk2wkBTtw==}
 
   '@isaacs/cliui@9.0.0':
     resolution: {integrity: sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==}
@@ -3224,6 +3230,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@fontsource/rajdhani@5.3.0': {}
 
   '@isaacs/cliui@9.0.0': {}
 

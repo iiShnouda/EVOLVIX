@@ -1,3 +1,4 @@
+import { CompanyMark } from './CompanyBadge';
 import { useRef, type ReactNode } from 'react';
 import {
   formatDate,
@@ -97,7 +98,8 @@ export function DocumentPreview({
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-5">
         <div className="mb-5 flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <CompanyMark size={48} logoOnly />
+          <div className="min-w-0 flex-1">
             <p className="text-base font-bold">{company}</p>
             {details.map((d) => (
               <p key={d} className="break-words text-xs text-muted">

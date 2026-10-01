@@ -4,6 +4,7 @@ import { loginSchema } from '@skb/shared';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/ui';
 import { Logo, Wordmark } from '../components/Logo';
+import { CompanyMark, CompanyName } from '../components/CompanyBadge';
 import { PrefControls } from '../components/shell/PrefControls';
 import { ConnectionBadge } from '../components/shell/ConnectionBadge';
 import { useT } from '../lib/i18n';
@@ -56,12 +57,14 @@ export function LoginPage() {
       <div className="relative hidden flex-col justify-between bg-brand p-10 text-brand-fg lg:flex">
         <div className="flex items-center gap-3">
           <Logo size={48} className="rounded-[13px] ring-1 ring-white/25" />
-          <div>
-            <Wordmark plain className="block text-xl" />
-            <p className="text-sm opacity-80">{t('app.tagline')}</p>
-          </div>
+          <Wordmark plain className="text-2xl" />
         </div>
         <div className="space-y-4">
+          {/* The company's own name and logo (owner, 2026-10-01). */}
+          <div className="flex items-center gap-4">
+            <CompanyMark size={72} className="rounded-2xl ring-1 ring-white/25" />
+            <CompanyName className="text-3xl font-bold leading-tight" />
+          </div>
           <h2 className="max-w-sm text-2xl font-semibold leading-snug">{t('auth.welcome')}</h2>
           <ul className="space-y-2 text-sm opacity-90">
             {(['parties.theyOweUs', 'nav.inventory', 'nav.analytics'] as const).map((k) => (
@@ -82,9 +85,15 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5">
-          <div className="flex items-center gap-3 lg:hidden">
-            <Logo size={52} />
-            <Wordmark className="text-2xl" />
+          <div className="space-y-3 lg:hidden">
+            <div className="flex items-center gap-3">
+              <Logo size={52} />
+              <Wordmark className="text-2xl" />
+            </div>
+            <div className="flex items-center gap-2">
+              <CompanyMark size={32} />
+              <CompanyName className="text-base font-semibold" />
+            </div>
           </div>
           <div>
             <h1 className="text-2xl font-semibold">{t('auth.signIn')}</h1>

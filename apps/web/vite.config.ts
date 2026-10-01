@@ -34,7 +34,7 @@ export default defineConfig({
         runtimeCaching: [],
       },
       manifest: {
-        name: 'Evolvix — Wholesale Accounting',
+        name: 'Evolvix',
         short_name: 'Evolvix',
         description: 'Bilingual wholesale accounting, connected to your company server.',
         theme_color: '#4f46e5',

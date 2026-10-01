@@ -226,6 +226,29 @@ namespace SKB.Api.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CompanyLogo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CompanyLogos");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.CompanySettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -261,6 +284,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime?>("LockDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LogoVersion")
+                        .HasColumnType("integer");
 
                     b.Property<int>("MaxDiscountPercent")
                         .HasColumnType("integer");

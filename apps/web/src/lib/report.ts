@@ -1,7 +1,8 @@
 import { formatDateTime } from '@skb/shared';
 import { useT } from './i18n';
 import { useAuth } from '../stores/auth';
-import { useCompanySettings } from './queries';
+import { useBranding, useCompanySettings } from './queries';
+import { companyLogoUrl } from '../components/CompanyBadge';
 import { printElement, saveXlsx, safeName } from './print';
 import type { Cell } from './xlsx';
 
@@ -14,6 +15,7 @@ export type { Cell } from './xlsx';
 export function useReportTools() {
   const { t, locale, rtl } = useT();
   const settings = useCompanySettings().data;
+  const logo = companyLogoUrl(useBranding().data?.logoVersion ?? 0);
   const user = useAuth((s) => s.user);
   const company = settings?.companyName || t('app.name');
   // Each value keeps its own direction (a Latin address or number inside Arabic text).
@@ -43,6 +45,7 @@ export function useReportTools() {
       if (!el) return;
       printElement(el, fileTitle(title, subtitle), {
         company,
+        logo,
         details,
         title,
         subtitle,

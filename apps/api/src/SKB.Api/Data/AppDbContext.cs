@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<StockCost> StockCosts => Set<StockCost>();
     public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+    public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<ItemUnit> ItemUnits => Set<ItemUnit>();
     public DbSet<PriceLevel> PriceLevels => Set<PriceLevel>();
@@ -264,6 +265,7 @@ public class AppDbContext : DbContext
 
         b.Entity<Notification>().HasIndex(n => new { n.StaffId, n.CreatedAt });
         b.Entity<WorkDraft>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
+        b.Entity<CompanyLogo>().Property(l => l.ContentType).HasMaxLength(40);
         b.Entity<StaffPreference>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
         b.Entity<StaffPreference>().Property(d => d.Key).HasMaxLength(120);
         b.Entity<StaffPreference>().HasOne(d => d.Staff).WithMany()

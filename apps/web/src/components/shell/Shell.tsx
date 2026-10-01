@@ -3,6 +3,8 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
 import { Icon } from '../Icon';
 import { Logo, Wordmark } from '../Logo';
+import { CompanyMark, CompanyName } from '../CompanyBadge';
+import { useBranding } from '../../lib/queries';
 import { useT } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
 import { useDeviceInfo } from '../../lib/device';
@@ -40,7 +42,7 @@ function SidebarShell() {
   const items = useVisibleNav();
   return (
     <div className="flex min-h-screen bg-canvas">
-      <aside className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface">
+      <aside data-ui="sidebar" className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface">
         <Brand />
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
           {items.map((item) => (
@@ -64,7 +66,7 @@ function RailShell() {
   const items = useVisibleNav();
   return (
     <div className="flex min-h-screen bg-canvas">
-      <aside className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3">
+      <aside data-ui="sidebar" className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3">
         <Logo size={40} className="mb-3" />
         <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
           {items.map((item) => (
@@ -94,9 +96,12 @@ function PhoneShell() {
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface/95 px-4 py-2 backdrop-blur safe-top">
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <Logo size={32} />
-          <Wordmark className="text-base" />
+          <span className="min-w-0 leading-tight">
+            <Wordmark className="block text-base" />
+            <CompanyName className="block truncate text-[11px] text-muted" />
+          </span>
         </span>
         <div className="flex items-center gap-1">
           <ConnectionBadge showLabel={false} />
@@ -155,15 +160,26 @@ function PhoneShell() {
 
 /* --------------------------------- Parts -------------------------------- */
 
+/** The program's mark and name, then the company's own (owner, 2026-10-01). */
 function Brand() {
-  const { t } = useT();
   return (
-    <div className="flex items-center gap-2.5 px-4 py-4">
-      <Logo size={38} />
-      <span className="leading-tight">
-        <Wordmark className="block text-base" />
-        <span className="block text-xs text-muted">{t('app.tagline')}</span>
-      </span>
+    <div className="space-y-3 px-4 py-4">
+      <div className="flex items-center gap-2.5">
+        <Logo size={38} />
+        <Wordmark className="text-lg" />
+      </div>
+      <CompanyRow />
+    </div>
+  );
+}
+
+function CompanyRow() {
+  const { data } = useBranding();
+  if (!data?.companyName) return null;
+  return (
+    <div className="flex items-center gap-2 rounded-[var(--radius-app)] border border-line bg-surface-2 px-2 py-1.5">
+      <CompanyMark size={28} />
+      <CompanyName className="min-w-0 flex-1 truncate text-sm font-medium" />
     </div>
   );
 }
@@ -211,6 +227,7 @@ function SidebarLink({ item, label }: { item: NavItem; label: string }) {
   return (
     <NavLink
       to={item.path}
+      data-ui="nav"
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-[var(--radius-app)] px-3 py-2 text-sm font-medium transition-colors ${
           isActive ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'

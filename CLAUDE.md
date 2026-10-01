@@ -7,7 +7,9 @@ Guidance for anyone (human or AI) working in this repo.
 **Evolvix** (owner decision 2026-10-01; the code keeps its old name SKB in folders, packages,
 namespaces, the exe/APK file names and registry keys, so installed copies update in place). The
 name shown to people comes from `app.name`; the mark is `apps/web/public/icon.svg` and the
-`Logo` component (`apps/web/src/components/Logo.tsx`) draws the same thing.
+`Logo` component (`apps/web/src/components/Logo.tsx`) draws the same thing. A company using it adds
+its own name and logo (Settings; `CompanyMark`/`CompanyName`), shown beside the Evolvix mark, which
+never changes. Each person can pick a look theme (`/themes`, `skins.css`).
 
 Bilingual (AR/EN) wholesale accounting app, delivered as web + installable apps on
 iPhone/Android/Windows, all talking to a self‑hosted company server. Security is the

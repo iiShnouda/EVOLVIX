@@ -21,6 +21,8 @@ function bridge(): AndroidBridge | undefined {
 /** The printout's letterhead and footer. */
 export interface PrintFrame {
   company: string;
+  /** The company logo's address (shown beside its name), if it has one. */
+  logo?: string | null;
   /** Address, phone, tax number… */
   details: string[];
   title: string;
@@ -65,7 +67,14 @@ export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFr
 
 function letterhead(f: PrintFrame): HTMLElement {
   const head = div('print-head');
-  const who = div('');
+  if (f.logo) {
+    const img = document.createElement('img');
+    img.className = 'print-logo';
+    img.src = f.logo;
+    img.alt = '';
+    head.appendChild(img);
+  }
+  const who = div('print-who');
   who.appendChild(div('print-company', f.company));
   for (const d of f.details) who.appendChild(div('print-detail', d));
   const what = div('print-what');

@@ -893,6 +893,17 @@ export interface CompanySettings {
   maxDiscountPercent: number;
   /** A pending invoice holds its goods this many days (0 = until approved or cancelled). */
   pendingHoldDays: number;
+  /** Bumped when the company logo changes; 0 = none (see Branding). */
+  logoVersion?: number;
+}
+
+/**
+ * The company's own name and logo, shown beside the Evolvix mark (readable before sign-in).
+ * The logo is at `/api/branding/logo`; `logoVersion` 0 = none.
+ */
+export interface Branding {
+  companyName: string;
+  logoVersion: number;
 }
 
 /** Lightweight row for list views (no line items). */

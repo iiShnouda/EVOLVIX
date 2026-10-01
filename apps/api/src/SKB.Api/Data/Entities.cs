@@ -937,6 +937,22 @@ public class CompanySettings
     public string? TaxNumber { get; set; }
     /// <summary>Commercial register number (السجل التجاري).</summary>
     public string? CommercialRegister { get; set; }
+    /// <summary>
+    /// Bumped whenever the company's own logo (<see cref="CompanyLogo"/>) changes; 0 = no logo.
+    /// The app shows it beside the Evolvix mark (owner, 2026-10-01: a buyer brands the app with
+    /// their office's name and logo, while the program's own name and mark stay).
+    /// </summary>
+    public int LogoVersion { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>The company's uploaded logo (one row at most), kept apart so settings reads stay small.</summary>
+public class CompanyLogo
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>image/png, image/jpeg or image/webp, checked against the file's own bytes.</summary>
+    public string ContentType { get; set; } = "";
+    public byte[] Data { get; set; } = [];
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

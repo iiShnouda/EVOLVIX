@@ -55,7 +55,6 @@ export function DashboardPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('nav.dashboard')}
-        subtitle={t('app.tagline')}
         action={
           <div className="hidden gap-2 sm:flex">
             {can('sales:create') && (
@@ -78,7 +77,7 @@ export function DashboardPage() {
       />
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
         {data.kpis.map((kpi) => (
           <KpiCard key={kpi.key} kpi={kpi} locale={locale} label={t(kpi.key as never)} />
         ))}

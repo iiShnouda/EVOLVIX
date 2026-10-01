@@ -33,8 +33,9 @@
     sans-serif;
 }
 
-:root {
-  /* Light theme */
+:root,
+[data-skin-preview] {
+  /* Light theme (the Evolvix theme; skins.css holds the others) */
   --c-canvas: #f5f6f8;
   --c-surface: #ffffff;
   --c-surface-2: #f0f2f5;
@@ -59,7 +60,8 @@
   color-scheme: light;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+[data-skin-preview][data-theme='dark'] {
   --c-canvas: #0b0f14;
   --c-surface: #131a22;
   --c-surface-2: #1b232d;
@@ -160,7 +162,8 @@ body {
 
 @media print {
   :root,
-  :root[data-theme='dark'] {
+  :root[data-theme='dark'],
+  :root[data-skin][data-theme] {
     --c-canvas: #ffffff;
     --c-surface: #ffffff;
     --c-surface-2: #f0f2f5;
@@ -181,6 +184,9 @@ body {
     --c-info-soft: #e4edfd;
     --shadow-card: none;
     --shadow-pop: none;
+    --font-sans:
+      'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans Arabic', 'Cairo',
+      sans-serif;
     color-scheme: light;
   }
   @page {
@@ -229,6 +235,14 @@ body {
     padding-bottom: 8px;
     margin-bottom: 12px;
     border-bottom: 2px solid var(--c-fg);
+  }
+  .print-logo {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+  }
+  .print-who {
+    flex: 1;
   }
   .print-company {
     font-size: 16px;

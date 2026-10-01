@@ -34,6 +34,8 @@ export function Button({
 }) {
   return (
     <button
+      data-ui="btn"
+      data-variant={variant}
       className={`inline-flex items-center justify-center rounded-[var(--radius-app)] font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none ${VARIANT[variant]} ${SIZE[size]} ${className ?? ''}`}
       disabled={loading || props.disabled}
       {...props}
@@ -57,6 +59,7 @@ export function Card({
 }) {
   return (
     <div
+      data-ui="card"
       className={`rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)] ${padded ? 'p-4 sm:p-5' : ''} ${className ?? ''}`}
     >
       {children}
@@ -157,7 +160,9 @@ export function PageHeader({
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold sm:text-2xl">{title}</h1>
+        <h1 data-ui="title" className="text-xl font-semibold sm:text-2xl">
+          {title}
+        </h1>
         {subtitle ? <p className="mt-0.5 text-sm text-muted">{subtitle}</p> : null}
       </div>
       {action}

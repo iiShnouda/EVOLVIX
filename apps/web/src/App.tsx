@@ -45,19 +45,21 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
 import { PayrollPage } from './pages/PayrollPage';
+import { ThemesPage } from './pages/ThemesPage';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
   const locale = usePrefs((s) => s.locale);
   const theme = usePrefs((s) => s.theme);
+  const skin = usePrefs((s) => s.skin);
   useEffect(() => {
-    applyDocumentPrefs(locale, theme);
+    applyDocumentPrefs(locale, theme, skin);
     if (theme !== 'system') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = () => applyDocumentPrefs(locale, theme);
+    const onChange = () => applyDocumentPrefs(locale, theme, skin);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
-  }, [locale, theme]);
+  }, [locale, theme, skin]);
 }
 
 /** Names come from the server in the screen language: refetch everything when it changes. */
@@ -220,6 +222,7 @@ export default function App() {
             <Route path="/staff" element={<StaffPage />} />
             <Route path="/branches" element={<BranchesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/themes" element={<ThemesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

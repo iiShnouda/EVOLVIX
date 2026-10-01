@@ -1,0 +1,407 @@
+/* ---------------------------------------------------------------------------
+   Themes (الثيمات, owner 2026-10-01): each one changes the colours, the shapes
+   and the effects. A theme is `data-skin` on <html> (or on a preview box on the
+   Themes page), and works in light and dark (`data-theme`). The base tokens in
+   index.css are the Evolvix theme; a theme here only overrides them.
+
+   Colours: light on `[data-skin='x']`, dark on `[data-skin='x'][data-theme='dark']`.
+   Effects hook onto `data-ui` marks: btn (with data-variant), card, title, nav,
+   sidebar. They are screen-only; printing keeps the plain light look.
+--------------------------------------------------------------------------- */
+
+/* A preview box paints itself like a page would. */
+[data-skin-preview] {
+  background: var(--c-canvas);
+  color: var(--c-fg);
+  font-family: var(--font-sans);
+}
+
+/* ================================ Ocean ================================= */
+[data-skin='ocean'] {
+  --c-canvas: #eaf4fa;
+  --c-surface: rgba(255, 255, 255, 0.78);
+  --c-surface-2: #e1eff7;
+  --c-line: #cfe2ee;
+  --c-fg: #0b2233;
+  --c-muted: #3f6178;
+  --c-faint: #7f9bb0;
+  --c-brand: #0284c7;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #dbeffb;
+  --c-info: #0369a1;
+  --radius-app: 1rem;
+  --shadow-card: 0 8px 30px rgba(2, 132, 199, 0.08), 0 1px 2px rgba(2, 132, 199, 0.08);
+}
+[data-skin='ocean'][data-theme='dark'] {
+  --c-canvas: #041520;
+  --c-surface: rgba(10, 37, 53, 0.72);
+  --c-surface-2: #0d2d40;
+  --c-line: #164159;
+  --c-fg: #e3f3fc;
+  --c-muted: #9cc3d9;
+  --c-faint: #5d8aa3;
+  --c-brand: #38bdf8;
+  --c-brand-fg: #04131c;
+  --c-brand-soft: #0b3a52;
+  --c-info: #7dd3fc;
+  --shadow-card: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* ================================ Forest ================================ */
+[data-skin='forest'] {
+  --c-canvas: #f1f6f2;
+  --c-surface: #ffffff;
+  --c-surface-2: #e8f1ea;
+  --c-line: #d4e4d8;
+  --c-fg: #0f1f16;
+  --c-muted: #4b6655;
+  --c-faint: #86a08f;
+  --c-brand: #059669;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #dcf3e8;
+  --radius-app: 0.9rem;
+  --shadow-card: 0 2px 10px rgba(5, 150, 105, 0.07);
+}
+[data-skin='forest'][data-theme='dark'] {
+  --c-canvas: #08130d;
+  --c-surface: #0f1f16;
+  --c-surface-2: #15291d;
+  --c-line: #1f3a2a;
+  --c-fg: #e6f4ea;
+  --c-muted: #9fc0aa;
+  --c-faint: #62806c;
+  --c-brand: #34d399;
+  --c-brand-fg: #052e1c;
+  --c-brand-soft: #123524;
+}
+
+/* ================================ Sunset ================================ */
+[data-skin='sunset'] {
+  --c-canvas: #fff6f1;
+  --c-surface: #ffffff;
+  --c-surface-2: #fdeee6;
+  --c-line: #f6dccf;
+  --c-fg: #2a1410;
+  --c-muted: #7c5249;
+  --c-faint: #b38c82;
+  --c-brand: #f0533c;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #fde4dc;
+  --radius-app: 0.85rem;
+  --shadow-card: 0 4px 18px rgba(240, 83, 60, 0.08);
+  --sunset: linear-gradient(120deg, #f97316, #ef4444 50%, #db2777);
+}
+[data-skin='sunset'][data-theme='dark'] {
+  --c-canvas: #170c0b;
+  --c-surface: #221312;
+  --c-surface-2: #2d1a18;
+  --c-line: #43261f;
+  --c-fg: #fdeee8;
+  --c-muted: #d1a99d;
+  --c-faint: #8f6a60;
+  --c-brand: #fb7155;
+  --c-brand-fg: #1a0b08;
+  --c-brand-soft: #3d1c16;
+}
+
+/* ============================ Royal (black & gold) ===================== */
+[data-skin='royal'] {
+  --c-canvas: #f7f3e9;
+  --c-surface: #fffdf7;
+  --c-surface-2: #f1ead8;
+  --c-line: #e3d6b4;
+  --c-fg: #1d1708;
+  --c-muted: #6b5d39;
+  --c-faint: #a3946b;
+  --c-brand: #a8841f;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #f3e8c4;
+  --radius-app: 0.5rem;
+  --shadow-card: 0 1px 0 rgba(168, 132, 31, 0.25), 0 6px 20px rgba(60, 45, 10, 0.06);
+}
+[data-skin='royal'][data-theme='dark'] {
+  --c-canvas: #0b0a08;
+  --c-surface: #15130e;
+  --c-surface-2: #1d1a13;
+  --c-line: #3a321d;
+  --c-fg: #f5eedb;
+  --c-muted: #c2b48c;
+  --c-faint: #7d724f;
+  --c-brand: #d4af37;
+  --c-brand-fg: #0b0a08;
+  --c-brand-soft: #2f2711;
+  --shadow-card: 0 0 0 1px rgba(212, 175, 55, 0.12), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* =============================== Valorant ============================== */
+/* Red #FF4655 on navy #0F1923 with bone white #ECE8E1: sharp corners, cut
+   edges, uppercase condensed type, red accent bars, a scan-line glow. */
+[data-skin='valorant'] {
+  --c-canvas: #ece8e1;
+  --c-surface: #f7f4ef;
+  --c-surface-2: #e2ddd4;
+  --c-line: #cfc8bc;
+  --c-fg: #0f1923;
+  --c-muted: #4d5a66;
+  --c-faint: #8a939b;
+  --c-brand: #ff4655;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #ffe0e2;
+  --c-destructive: #d1202f;
+  --radius-app: 2px;
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 3px;
+  --radius-2xl: 3px;
+  --radius-3xl: 4px;
+  --shadow-card: none;
+  --font-sans:
+    'Rajdhani', 'DIN Next', 'Segoe UI', system-ui, 'Noto Sans Arabic', 'Cairo', sans-serif;
+  --val-cut: 12px;
+}
+[data-skin='valorant'][data-theme='dark'] {
+  --c-canvas: #0f1923;
+  --c-surface: #17232f;
+  --c-surface-2: #1f2d3a;
+  --c-line: #2c3c4b;
+  --c-fg: #ece8e1;
+  --c-muted: #9aa5ae;
+  --c-faint: #66727c;
+  --c-brand: #ff4655;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #3a1c25;
+  --c-destructive: #ff6b76;
+}
+
+@media screen {
+  /* ---- Ocean: soft gradient water, glass cards ---- */
+  [data-skin='ocean'] body,
+  [data-skin='ocean'][data-skin-preview] {
+    background:
+      radial-gradient(1200px 600px at 100% 0%, rgba(56, 189, 248, 0.18), transparent 60%),
+      radial-gradient(900px 500px at 0% 100%, rgba(14, 165, 233, 0.12), transparent 60%),
+      var(--c-canvas);
+    background-attachment: fixed;
+  }
+  [data-skin='ocean'] [data-ui='card'],
+  [data-skin='ocean'] [data-ui='sidebar'] {
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+  [data-skin='ocean'] [data-ui='btn'][data-variant='primary'] {
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    color: #fff;
+  }
+
+  /* ---- Forest: calm, rounded, a leaf-green active bar ---- */
+  [data-skin='forest'] [data-ui='nav'][aria-current='page'] {
+    box-shadow: inset 3px 0 0 var(--c-brand);
+  }
+  [dir='rtl'] [data-skin='forest'] [data-ui='nav'][aria-current='page'],
+  [data-skin='forest'][dir='rtl'] [data-ui='nav'][aria-current='page'] {
+    box-shadow: inset -3px 0 0 var(--c-brand);
+  }
+
+  /* ---- Sunset: warm gradients on the main actions and titles ---- */
+  [data-skin='sunset'] [data-ui='btn'][data-variant='primary'] {
+    background: var(--sunset);
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(239, 68, 68, 0.28);
+  }
+  [data-skin='sunset'] [data-ui='title'] {
+    background: var(--sunset);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ---- Royal: gold hairlines, serif titles, a soft glow ---- */
+  [data-skin='royal'] [data-ui='title'] {
+    font-family: 'Georgia', 'Times New Roman', 'Amiri', serif;
+    letter-spacing: 0.01em;
+  }
+  [data-skin='royal'] [data-ui='card'] {
+    border-color: color-mix(in srgb, var(--c-brand) 35%, var(--c-line));
+  }
+  [data-skin='royal'] [data-ui='btn'][data-variant='primary'] {
+    background: linear-gradient(135deg, #e9c862, #b8912a);
+    color: #1d1708;
+    transition: box-shadow 0.2s;
+  }
+  [data-skin='royal'] [data-ui='btn'][data-variant='primary']:hover {
+    box-shadow: 0 0 22px rgba(212, 175, 55, 0.45);
+  }
+
+  /* ---- Valorant ---- */
+  [data-skin='valorant'] body,
+  [data-skin='valorant'][data-skin-preview] {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--c-brand) 7%, transparent),
+        transparent 260px
+      ),
+      repeating-linear-gradient(
+        -45deg,
+        transparent 0 22px,
+        color-mix(in srgb, var(--c-fg) 3%, transparent) 22px 23px
+      ),
+      var(--c-canvas);
+  }
+  /* A faint scan-line over the whole screen. */
+  [data-skin='valorant'] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.035) 0 1px,
+      transparent 1px 3px
+    );
+    mix-blend-mode: multiply;
+  }
+  [data-skin='valorant'][data-theme='dark'] body::after {
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px);
+    mix-blend-mode: normal;
+  }
+
+  /* Titles: tall uppercase, a red bar before them. */
+  [data-skin='valorant'] [data-ui='title'] {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    position: relative;
+    padding-inline-start: 14px;
+  }
+  [data-skin='valorant'] [data-ui='title']::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 12%;
+    bottom: 12%;
+    width: 5px;
+    background: var(--c-brand);
+  }
+
+  /* Buttons: cut corners, uppercase, a white flash sweeping across on hover. */
+  [data-skin='valorant'] [data-ui='btn'] {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    position: relative;
+    overflow: hidden;
+    clip-path: polygon(
+      0 0,
+      calc(100% - 10px) 0,
+      100% 10px,
+      100% 100%,
+      10px 100%,
+      0 calc(100% - 10px)
+    );
+  }
+  [data-skin='valorant'] [data-ui='btn'][data-variant='primary'] {
+    background: var(--c-brand);
+    color: #fff;
+  }
+  [data-skin='valorant'] [data-ui='btn']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+    transform: translateX(-120%);
+    transition: transform 0.45s ease;
+    pointer-events: none;
+  }
+  [data-skin='valorant'] [data-ui='btn']:hover::after {
+    transform: translateX(120%);
+  }
+  [data-skin='valorant'] [data-ui='btn'][data-variant='primary']:hover {
+    animation: val-glitch 0.32s steps(2) 1;
+  }
+
+  /* Cards: a cut top corner and a red accent bar. */
+  [data-skin='valorant'] [data-ui='card'] {
+    position: relative;
+    border-color: color-mix(in srgb, var(--c-fg) 14%, transparent);
+  }
+  [data-skin='valorant'] [data-ui='card']::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    inset-inline-start: -1px;
+    width: 42px;
+    height: 3px;
+    background: var(--c-brand);
+  }
+  [data-skin='valorant'] [data-ui='card']::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    inset-inline-end: -1px;
+    width: var(--val-cut);
+    height: var(--val-cut);
+    background: linear-gradient(
+      to bottom left,
+      var(--c-canvas) 50%,
+      color-mix(in srgb, var(--c-fg) 14%, transparent) calc(50% + 0.5px),
+      transparent calc(50% + 1.5px)
+    );
+    pointer-events: none;
+  }
+  [dir='rtl'] [data-skin='valorant'] [data-ui='card']::after,
+  [data-skin='valorant'][dir='rtl'] [data-ui='card']::after {
+    background: linear-gradient(
+      to bottom right,
+      var(--c-canvas) 50%,
+      color-mix(in srgb, var(--c-fg) 14%, transparent) calc(50% + 0.5px),
+      transparent calc(50% + 1.5px)
+    );
+  }
+
+  /* Side menu: uppercase, a red block on the open page. */
+  [data-skin='valorant'] [data-ui='nav'] {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  [data-skin='valorant'] [data-ui='nav'][aria-current='page'] {
+    background: color-mix(in srgb, var(--c-brand) 14%, transparent);
+    color: var(--c-brand);
+    box-shadow: inset 4px 0 0 var(--c-brand);
+  }
+  [dir='rtl'] [data-skin='valorant'] [data-ui='nav'][aria-current='page'],
+  [data-skin='valorant'][dir='rtl'] [data-ui='nav'][aria-current='page'] {
+    box-shadow: inset -4px 0 0 var(--c-brand);
+  }
+  [data-skin='valorant'] [data-ui='sidebar'] {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--c-brand) 10%, transparent), transparent 180px),
+      var(--c-surface);
+  }
+  [data-skin='valorant'] :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: var(--c-brand);
+    border-radius: 0;
+  }
+}
+
+@keyframes val-glitch {
+  0% {
+    transform: translate(0);
+    filter: none;
+  }
+  33% {
+    transform: translate(-2px, 1px);
+    filter: drop-shadow(2px 0 0 rgba(0, 255, 230, 0.6));
+  }
+  66% {
+    transform: translate(2px, -1px);
+    filter: drop-shadow(-2px 0 0 rgba(255, 70, 85, 0.8));
+  }
+  100% {
+    transform: translate(0);
+    filter: none;
+  }
+}

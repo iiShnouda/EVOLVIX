@@ -917,6 +917,16 @@ own permission, and roles bundle them
 - Invoice screen: lines table, quantity-before-add, detailed item search (`/products` gains code, name,
   minPrice/maxPrice, stock in/out/low and supplierId=none).
 
+**Evolvix brand, the company's own logo, themes (owner decisions 2026-10-01)**
+- The program is **Evolvix** (mark in `public/icon.svg` and `components/Logo.tsx`); no tagline.
+- A company using it shows its own name and logo beside the Evolvix mark: sidebar, phone header,
+  sign-in page, printouts and the invoice paper. The logo is uploaded in Settings
+  (`settings:manage`), kept in `CompanyLogos` on the server, checked by its bytes (PNG/JPEG/WebP,
+  ≤ 512 KB) and served from `/api/branding/logo` (readable before sign-in, `nosniff` + sandbox CSP).
+- Themes page (`/themes`, each person's own, stays on the device like light/dark): Evolvix, Ocean,
+  Forest, Sunset, Royal, Valorant. A theme changes colours, shapes and effects (`skins.css`, hooked
+  on `data-ui` marks); printing always uses the plain light look. Check: `branding`.
+
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).
 - **Inventory costing = moving weighted average.** Receipt recomputes avg cost; sale issues at

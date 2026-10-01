@@ -9,7 +9,13 @@ import {
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
-import { useCompanySettings, useUpdateSettings } from '../lib/queries';
+import {
+  useBranding,
+  useCompanyLogo,
+  useCompanySettings,
+  useUpdateSettings,
+} from '../lib/queries';
+import { CompanyMark } from '../components/CompanyBadge';
 import { errorText } from '../lib/errors';
 import { GetApps } from '../components/GetApps';
 import { BackupsCard } from '../components/BackupsCard';
@@ -131,6 +137,7 @@ export function SettingsPage() {
               onChange={(e) => set({ companyName: e.target.value })}
             />
           </label>
+          <CompanyLogoField disabled={disabled} />
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.country')}</span>
             <select
@@ -364,4 +371,96 @@ export function SettingsPage() {
 function clampInt(v: string, min: number, max: number): number {
   const n = Math.floor(Number(v) || 0);
   return Math.max(min, Math.min(max, n));
+}
+
+/** Shrink a picture to at most `max` px a side, as PNG (or WebP when the PNG is too big). */
+async function shrinkPicture(file: File, max = 512): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const png = canvas.toDataURL('image/png');
+    return png.length < 600_000 ? png : canvas.toDataURL('image/webp', 0.9);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * The company's own logo (owner, 2026-10-01): shown beside the Evolvix mark on the sign-in page,
+ * the side bar and the phone header. Kept on the server; the picture is shrunk before sending.
+ */
+function CompanyLogoField({ disabled }: { disabled: boolean }) {
+  const { t } = useT();
+  const { upload, remove } = useCompanyLogo();
+  const [bad, setBad] = useState(false);
+  const busy = upload.isPending || remove.isPending;
+  const error = bad ? t('error.bad_logo') : errorText(t, upload.error ?? remove.error);
+
+  async function pick(file: File | undefined) {
+    setBad(false);
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+      setBad(true);
+      return;
+    }
+    try {
+      upload.mutate(await shrinkPicture(file));
+    } catch {
+      setBad(true);
+    }
+  }
+
+  return (
+    <div className="sm:col-span-2">
+      <span className="mb-1 block text-xs text-muted">{t('settings.logo')}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="grid h-16 w-16 place-items-center rounded-xl border border-dashed border-line bg-surface-2">
+          <CompanyMark size={56} />
+        </div>
+        {!disabled && (
+          <>
+            <label
+              className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm font-medium hover:bg-surface-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}
+            >
+              {busy ? <Spinner size={14} /> : null}
+              {t('settings.logoUpload')}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                onChange={(e) => {
+                  void pick(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <LogoRemove onRemove={() => remove.mutate()} busy={busy} />
+          </>
+        )}
+        <p className="w-full text-xs text-muted">{t('settings.logoHint')}</p>
+        {error && <p className="w-full text-xs text-destructive">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+function LogoRemove({ onRemove, busy }: { onRemove: () => void; busy: boolean }) {
+  const { t } = useT();
+  const { data } = useBranding();
+  if (!data?.logoVersion) return null;
+  return (
+    <Button size="sm" variant="ghost" onClick={onRemove} disabled={busy}>
+      {t('settings.logoRemove')}
+    </Button>
+  );
 }
