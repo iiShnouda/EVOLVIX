@@ -4,12 +4,11 @@ import {
   formatDate,
   formatMoney,
   type SalesDocument,
-  type SalesDocumentSummary,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
-import { Icon } from '../components/Icon';
 import { DocumentPreview } from '../components/DocumentPreview';
+import { DocumentTable } from '../components/DocumentTable';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import {
@@ -31,6 +30,9 @@ import { EditOrderSheet } from '../components/EditOrderSheet';
 import { PartyPicker } from '../components/PartyPicker';
 import { Sheet } from '../components/Sheet';
 import type { Party } from '@skb/shared';
+
+/** Documents per page of the list. */
+const PAGE_SIZE = 50;
 
 const filterField =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -114,15 +116,33 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [status, setStatus] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  // Invoices: all, on account (آجل: something still owed) or paid (تم الدفع).
+  const [payment, setPayment] = useState<'' | 'credit' | 'paid'>('');
+  const [page, setPage] = useState(1);
   const departments = useDepartments();
+  const deferredSearch = useDeferredValue(search.trim());
   const list = useDocumentList(scope, kind, {
-    page: 1,
-    search: useDeferredValue(search.trim()) || undefined,
+    page,
+    pageSize: PAGE_SIZE,
+    search: deferredSearch || undefined,
     status: status || undefined,
     departmentId: isSales ? departmentId || undefined : undefined,
     from: from || undefined,
     to: to || undefined,
+    payment: kind === 'invoices' && payment ? payment : undefined,
   });
+  // Another filter starts again at the first page.
+  useEffect(() => setPage(1), [kind, deferredSearch, status, departmentId, from, to, payment]);
+  const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / PAGE_SIZE));
+  // Escape closes an open document (unless a sheet over it is open: it closes that first).
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) setSelectedId(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectedId]);
   const statuses: Record<DocKind, string[]> = {
     invoices: ['CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'RETURNED', 'CANCELLED'],
     orders: ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED'],
@@ -138,6 +158,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   function switchKind(next: DocKind) {
     setSelectedId(null);
     setStatus('');
+    setPayment('');
     setParams(next === 'invoices' ? {} : { tab: next }, { replace: true });
   }
 
@@ -248,8 +269,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     </Button>
   ) : undefined;
 
-  const partyLabel = isSales ? t('sales.customer') : t('invoice.supplier');
-
   return (
     <div className="space-y-5">
       <PageHeader
@@ -339,100 +358,137 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
           <input type="date" className={`${filterField} tnum`} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         </label>
-      </div>
-
-      <div className={`grid gap-4 ${isPhone ? '' : 'lg:grid-cols-[1fr_minmax(340px,420px)]'}`}>
-        {/* List */}
-        <Card padded={false} className="overflow-hidden">
-          {list.isLoading ? (
-            <div className="grid place-items-center py-16 text-muted">
-              <Spinner size={26} />
-            </div>
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title={
-                kind === 'quotations'
-                  ? t('quote.empty')
-                  : kind === 'orders'
-                    ? t('order.empty')
-                    : t('common.empty')
-              }
-              icon={kind === 'returns' ? 'returns' : scope}
-            />
-          ) : isPhone ? (
-            <ul className="divide-y divide-[var(--c-line)]">
-              {rows.map((doc) => (
-                <li key={doc.id}>
-                  <button
-                    onClick={() => setSelectedId(doc.id)}
-                    className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{doc.partyName}</span>
-                      <span className="text-xs text-muted tnum">
-                        {doc.number} · {formatDate(doc.issueDate, locale)}
-                        {doc.sourceNumber && <> · {doc.sourceNumber}</>}
-                        {doc.departmentName && <> · {doc.departmentName}</>}
-                      </span>
-                    </span>
-                    <span className="text-end">
-                      <span className="block text-sm font-semibold tnum">
-                        {formatMoney(doc.grandTotal, doc.currency, locale)}
-                      </span>
-                      <Badge tone={statusOf(doc).tone}>
-                        {t(statusOf(doc).key as TranslationKey)}
-                      </Badge>
-                    </span>
-                  </button>
-                </li>
+        {kind === 'invoices' && (
+          <div className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.payment')}</span>
+            <div
+              role="radiogroup"
+              aria-label={t('list.payment')}
+              className="flex h-9 items-center gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+            >
+              {(['', 'credit', 'paid'] as const).map((p) => (
+                <button
+                  key={p || 'all'}
+                  type="button"
+                  role="radio"
+                  aria-checked={payment === p}
+                  onClick={() => setPayment(p)}
+                  className={`h-7 rounded-md px-3 text-sm font-medium transition-colors ${payment === p ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'}`}
+                >
+                  {t(p === 'credit' ? 'list.payCredit' : p === 'paid' ? 'list.payPaid' : 'list.payAll')}
+                </button>
               ))}
-            </ul>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="p-3 text-start font-medium">{t('sales.number')}</th>
-                  <th className="p-3 text-start font-medium">{partyLabel}</th>
-                  {kind === 'returns' && (
-                    <th className="hidden p-3 text-start font-medium md:table-cell">
-                      {t('return.against')}
-                    </th>
-                  )}
-                  <th className="hidden p-3 text-start font-medium md:table-cell">
-                    {t('common.date')}
-                  </th>
-                  <th className="p-3 text-start font-medium">{t('common.status')}</th>
-                  <th className="p-3 text-end font-medium">{t('common.total')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {rows.map((doc) => (
-                  <DocumentRow
-                    key={doc.id}
-                    doc={doc}
-                    showSource={kind === 'returns'}
-                    selected={doc.id === selectedId}
-                    onSelect={() => setSelectedId(doc.id)}
-                    locale={locale}
-                    statusLabel={t(statusOf(doc).key as TranslationKey)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
-
-        {/* Detail (side panel on tablet/desktop) */}
-        {!isPhone && (
-          <Card padded={false} className="sticky top-20 h-[calc(100vh-7rem)] overflow-hidden">
-            <DocumentPreview
-              doc={detail.data}
-              loading={detail.isFetching && !!selectedId}
-              action={returnAction}
-            />
-          </Card>
+            </div>
+          </div>
         )}
       </div>
+
+      {/* The list, full width; a document opens over it. */}
+      <Card padded={false} className="overflow-hidden">
+        {list.isLoading ? (
+          <div className="grid place-items-center py-16 text-muted">
+            <Spinner size={26} />
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={
+              kind === 'quotations'
+                ? t('quote.empty')
+                : kind === 'orders'
+                  ? t('order.empty')
+                  : t('common.empty')
+            }
+            icon={kind === 'returns' ? 'returns' : scope}
+          />
+        ) : isPhone ? (
+          <ul className="divide-y divide-[var(--c-line)]">
+            {rows.map((doc) => (
+              <li key={doc.id}>
+                <button
+                  onClick={() => setSelectedId(doc.id)}
+                  className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">
+                      {doc.partyName}
+                      {doc.partyCode != null && (
+                        <span className="ms-1 text-xs font-normal text-muted tnum">({doc.partyCode})</span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted tnum">
+                      {doc.number} · {formatDate(doc.issueDate, locale)}
+                      {doc.sourceNumber && <> · {doc.sourceNumber}</>}
+                      {doc.departmentName && <> · {doc.departmentName}</>}
+                      {doc.repName && <> · {doc.repName}</>}
+                    </span>
+                  </span>
+                  <span className="text-end">
+                    <span className="block text-sm font-semibold tnum">
+                      {formatMoney(doc.grandTotal, doc.currency, locale)}
+                    </span>
+                    {doc.owed > 0 ? (
+                      <span className="block text-xs text-warning tnum">
+                        {t('list.owed')} {formatMoney(doc.owed, doc.currency, locale)}
+                      </span>
+                    ) : (
+                      <Badge tone={statusOf(doc).tone}>{t(statusOf(doc).key as TranslationKey)}</Badge>
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {list.data && (
+              <li className="flex justify-between bg-surface-2 p-4 text-sm font-semibold tnum">
+                <span>
+                  {list.data.totals.count} {t('list.documents')}
+                </span>
+                <span>{formatMoney(list.data.totals.grandTotal, rows[0]?.currency ?? 'EGP', locale)}</span>
+              </li>
+            )}
+          </ul>
+        ) : (
+          list.data && (
+            <DocumentTable
+              scope={scope}
+              kind={kind}
+              list={list.data}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              showDepartment={isSales && (departments.data ?? []).length > 0}
+            />
+          )
+        )}
+      </Card>
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            {t('list.prev')}
+          </Button>
+          <span className="text-muted tnum">
+            {t('list.page')} {page} {t('list.of')} {pages}
+          </span>
+          <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage(page + 1)}>
+            {t('list.next')}
+          </Button>
+        </div>
+      )}
+
+      {/* A document, over the list (a panel at the side on a wide screen). */}
+      {!isPhone && selectedId && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={() => setSelectedId(null)}>
+          <div
+            className="h-full w-full max-w-xl border-s border-line bg-canvas shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DocumentPreview
+              doc={detail.data}
+              loading={detail.isFetching}
+              onClose={() => setSelectedId(null)}
+              action={returnAction}
+            />
+          </div>
+        </div>
+      )}
 
       {cancelQuote.error && (
         <p className="text-sm text-destructive">{errorText(t, cancelQuote.error)}</p>
@@ -488,52 +544,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         </div>
       )}
     </div>
-  );
-}
-
-function DocumentRow({
-  doc,
-  showSource,
-  selected,
-  onSelect,
-  locale,
-  statusLabel,
-}: {
-  doc: SalesDocumentSummary;
-  showSource: boolean;
-  selected: boolean;
-  onSelect: () => void;
-  locale: 'en' | 'ar';
-  statusLabel: string;
-}) {
-  return (
-    <tr
-      onClick={onSelect}
-      className={`cursor-pointer transition-colors hover:bg-surface-2 ${selected ? 'bg-brand-soft' : ''}`}
-    >
-      <td className="p-3 font-medium tnum">{doc.number}</td>
-      <td className="p-3">
-        <span className="flex items-center gap-2">
-          <Icon name="parties" size={16} className="text-faint" />
-          <span className="truncate">{doc.partyName}</span>
-          {doc.departmentName && (
-            <span className="shrink-0 text-xs text-muted">· {doc.departmentName}</span>
-          )}
-        </span>
-      </td>
-      {showSource && (
-        <td className="hidden p-3 text-muted tnum md:table-cell">{doc.sourceNumber ?? '—'}</td>
-      )}
-      <td className="hidden p-3 text-muted tnum md:table-cell">
-        {formatDate(doc.issueDate, locale)}
-      </td>
-      <td className="p-3">
-        <Badge tone={statusOf(doc).tone}>{statusLabel}</Badge>
-      </td>
-      <td className="p-3 text-end font-semibold tnum">
-        {formatMoney(doc.grandTotal, doc.currency, locale)}
-      </td>
-    </tr>
   );
 }
 

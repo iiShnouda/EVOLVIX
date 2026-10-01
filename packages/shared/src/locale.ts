@@ -71,14 +71,15 @@ const PLAIN_DAY = /^\d{4}-\d{2}-\d{2}$/;
  * Format a date per locale (date only). A plain yyyy-MM-dd is shown as that day; an instant is
  * shown on the company's day.
  */
-export function formatDate(iso: string, locale: Locale): string {
+export function formatDate(iso: string, locale: Locale, numeric = false): string {
   const intlLocale = locale === 'ar' ? 'ar-EG' : 'en-US';
   const plain = PLAIN_DAY.test(iso);
   try {
     return new Intl.DateTimeFormat(intlLocale, {
       year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+      // `numeric`: 30/09/2026, for dense tables.
+      month: numeric ? '2-digit' : 'short',
+      day: numeric ? '2-digit' : 'numeric',
       timeZone: plain ? 'UTC' : companyZone,
     }).format(new Date(plain ? `${iso}T00:00:00Z` : iso));
   } catch {

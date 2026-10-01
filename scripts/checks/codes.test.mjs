@@ -169,4 +169,49 @@ eq(
 );
 eq('needs a key', (await s.put('/drafts', { key: ' ', data: '{}' })).data?.code, 'bad_draft');
 
+console.log('== the invoice list, like the old screen');
+const listOf = async (q) =>
+  (await acc.get(`/sales/invoices?pageSize=100&search=${encodeURIComponent(`CodeA2 ${tag}`)}${q}`))
+    .data;
+const all = await listOf('');
+const mine = all.items.find((x) => x.id === inv.id);
+eq(
+  'a row: code, rep, total, net, paid, left',
+  [mine?.partyCode, mine?.repName, mine?.subtotal, mine?.grandTotal, mine?.paidAmount, mine?.owed],
+  [a.code, `cseller ${tag}`, 2400, 2400, 0, 2400],
+);
+eq(
+  'totals of what the filter found',
+  [all.totals.count, all.totals.grandTotal, all.totals.owed],
+  [2, 4400, 4400],
+);
+const cash = (await acc.get('/money-accounts')).data.find((m) => m.kind === 'CASH_BOX');
+ok(
+  'the customer pays the first one',
+  await acc.post('/receipts', {
+    partyId: a.id,
+    lines: [{ method: 'CASH', accountId: cash.id, amount: 2400 }],
+    allocations: [{ documentId: inv.id, amount: 2400 }],
+  }),
+);
+const credit = await listOf('&payment=credit');
+const paid = await listOf('&payment=paid');
+eq(
+  'on account: only the unpaid one',
+  credit.items.map((x) => x.id),
+  [inv2.id],
+);
+eq(
+  'paid: only the paid one',
+  paid.items.map((x) => x.id),
+  [inv.id],
+);
+eq('…its totals', [paid.totals.count, paid.totals.paidAmount, paid.totals.owed], [1, 2400, 0]);
+eq(
+  'a page of one still adds up all',
+  (await acc.get(`/sales/invoices?pageSize=1&search=${encodeURIComponent(`CodeA2 ${tag}`)}`)).data
+    .totals.count,
+  2,
+);
+
 summary('codes');

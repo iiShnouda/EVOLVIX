@@ -42,7 +42,16 @@ public record UnitPriceDto(string PriceLevelId, long Price, string Source);
 public record SalesSummaryDto(
     string Id, string Number, string Type, string Status, string BranchName, string PartyName,
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
-    string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null);
+    string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
+    int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
+    string? Notes = null);
+
+/// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
+public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
+
+/// <param name="Count">Documents counted (cancelled ones aren't).</param>
+/// <param name="Owed">Still owed on them.</param>
+public record DocumentListTotalsDto(int Count, long GrandTotal, long PaidAmount, long Owed);
 
 /// <param name="Quantity">In base units (what stock moved by).</param>
 /// <param name="UnitQuantity">In the line's unit (<paramref name="UnitName"/>, holding <paramref name="UnitFactor"/> base units).</param>

@@ -269,6 +269,11 @@ One shape for every document type:
 - **Quotations (عروض الأسعار)**: priced like an invoice but move no stock, money or balance; the
   customer is given the offer and it becomes an invoice with one click. No "valid until" on screen;
   its prices hold two weeks, after which turning it into an invoice re-checks them.
+- **Invoice lists** like the old program's sales screen (owner, 2026-10-01): a table of serial, date,
+  code, name, rep, department, total, discount, net, paid, left, status and note (columns can be
+  hidden), filtered by period, department, status and payment — all / on account (آجل: something
+  left) / paid — with the totals of everything found and pages of 50. The old "book" (الدفتر) column
+  isn't kept; its "سداد" was the total again.
 - **The app updates itself**: each open app looks for a new version every minute and when it comes back
   to the front. When there is one it waits until nothing is being saved and no sheet is open, saves
   the open screen's work on the server for that person (`WorkDraft`, an hour at most — never on the

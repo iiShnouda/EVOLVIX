@@ -33,40 +33,27 @@ public sealed class PurchasesController : ControllerBase
         _ledger = ledger;
     }
 
+    /// <summary>Purchase invoices, newest first: filtered by period, status and payment, with their totals.</summary>
     [HttpGet("invoices")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null) =>
-        ListAsync(DocumentType.PURCHASE_INVOICE, page, pageSize, search);
+    public Task<ActionResult<DocumentListDto>> List(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
+        [FromQuery] string? status = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? payment = null) =>
+        ListAsync(DocumentType.PURCHASE_INVOICE, page, pageSize, search, status, from, to, payment);
 
     /// <summary>Purchase returns (مرتجعات المشتريات), newest first.</summary>
     [HttpGet("returns")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null) =>
-        ListAsync(DocumentType.PURCHASE_RETURN, page, pageSize, search);
+    public Task<ActionResult<DocumentListDto>> Returns(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
+        [FromQuery] string? status = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
+        ListAsync(DocumentType.PURCHASE_RETURN, page, pageSize, search, status, from, to, null);
 
-    private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
-        DocumentType type, int page, int pageSize, string? search)
+    private async Task<ActionResult<DocumentListDto>> ListAsync(DocumentType type, int page, int pageSize,
+        string? search, string? status, string? from, string? to, string? payment)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
-
-        var q = _db.SalesDocuments.Where(d => d.Type == type);
-        q = q.InBranches(User, d => d.BranchId);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.ToLower();
-            q = q.Where(d => d.Number.ToLower().Contains(s) || d.Party!.Name.ToLower().Contains(s));
-        }
-
-        var total = await q.CountAsync();
-        var rows = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
-            .OrderByDescending(d => d.IssueDate)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
-
-        return Ok(new PaginatedDto<SalesSummaryDto>(
-            rows.Select(Mapper.ToSummary).ToArray(), total, page, pageSize));
+        var q = _db.SalesDocuments.Where(d => d.Type == type).InBranches(User, d => d.BranchId);
+        q = DocumentLists.Filter(q, search, status, from, to);
+        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment));
     }
 
     /// <summary>One purchase invoice or purchase return (invoice lines carry the returned quantity).</summary>

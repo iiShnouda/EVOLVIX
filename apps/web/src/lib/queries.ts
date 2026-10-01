@@ -40,7 +40,7 @@ import type {
   Product,
   ProfitReport,
   SalesDocument,
-  SalesDocumentSummary,
+  DocumentList,
   UnitOfMeasure,
   PriceLevel,
   VariantOption,
@@ -150,12 +150,16 @@ export function useDocumentList(
     departmentId?: string;
     from?: string;
     to?: string;
+    /** 'credit' = still owed (آجل), 'paid' = nothing owed. */
+    payment?: 'credit' | 'paid';
+    pageSize?: number;
     /** Off: not asked for (e.g. no permission to see that list). */
     enabled?: boolean;
   },
 ) {
   const { enabled = true, ...key } = params;
-  const query = new URLSearchParams({ page: String(params.page), pageSize: '20' });
+  const query = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize ?? 20) });
+  if (params.payment) query.set('payment', params.payment);
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
   if (params.departmentId) query.set('departmentId', params.departmentId);
@@ -163,7 +167,7 @@ export function useDocumentList(
   if (params.to) query.set('to', params.to);
   return useQuery({
     queryKey: [scope, kind, key],
-    queryFn: () => api.get<Paginated<SalesDocumentSummary>>(`/${scope}/${kind}?${query}`),
+    queryFn: () => api.get<DocumentList>(`/${scope}/${kind}?${query}`),
     enabled,
   });
 }

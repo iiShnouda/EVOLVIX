@@ -913,6 +913,20 @@ export interface SalesDocumentSummary {
   sourceNumber?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  /** The customer's / supplier's code (كود). */
+  partyCode?: number | null;
+  repName?: string | null;
+  /** Before discounts (الإجمالي); `grandTotal` is the net (الصافي). */
+  subtotal: number;
+  discountTotal: number;
+  /** Still owed on an invoice (الباقي), after payments and returns. */
+  owed: number;
+  notes?: string | null;
+}
+
+/** A page of documents and the totals of everything the filter found (cancelled ones left out). */
+export interface DocumentList extends Paginated<SalesDocumentSummary> {
+  totals: { count: number; grandTotal: number; paidAmount: number; owed: number };
 }
 
 // ---------------------------------------------------------------------------

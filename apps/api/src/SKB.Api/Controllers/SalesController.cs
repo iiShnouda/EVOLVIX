@@ -37,69 +37,51 @@ public sealed class SalesController : ControllerBase
     }
 
     [HttpGet("invoices")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> List(
+    public Task<ActionResult<DocumentListDto>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
-        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? payment = null) =>
+        ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to, payment);
 
     /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
     [HttpGet("quotations")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Quotations(
+    public Task<ActionResult<DocumentListDto>> Quotations(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
-        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId, from, to);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? payment = null) =>
+        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId, from, to, payment);
 
     /// <summary>Pending invoices (فواتير معلّقة) waiting for the accountant, newest first.</summary>
     [HttpGet("orders")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Orders(
+    public Task<ActionResult<DocumentListDto>> Orders(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
-        ListAsync(DocumentType.SALES_ORDER, page, pageSize, search, status, departmentId, from, to);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? payment = null) =>
+        ListAsync(DocumentType.SALES_ORDER, page, pageSize, search, status, departmentId, from, to, payment);
 
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
-    public Task<ActionResult<PaginatedDto<SalesSummaryDto>>> Returns(
+    public Task<ActionResult<DocumentListDto>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
-        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status, departmentId, from, to);
+        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? payment = null) =>
+        ListAsync(DocumentType.SALES_RETURN, page, pageSize, search, status, departmentId, from, to, payment);
 
-    private async Task<ActionResult<PaginatedDto<SalesSummaryDto>>> ListAsync(
+    private async Task<ActionResult<DocumentListDto>> ListAsync(
         DocumentType type, int page, int pageSize, string? search, string? status, string? departmentId,
-        string? from = null, string? to = null)
+        string? from = null, string? to = null, string? payment = null)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
-
         var q = _db.SalesDocuments.Where(d => d.Type == type);
         q = q.InBranches(User, d => d.BranchId).InDepartments(User);
         // "none" = documents of no department.
         if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
         else if (Guid.TryParse(departmentId, out var dept)) q = q.Where(d => d.DepartmentId == dept);
-        // Company days, both ends included.
-        if (DateOnly.TryParse(from, out var fromDay)) { var start = CompanyClock.StartOf(fromDay); q = q.Where(d => d.IssueDate >= start); }
-        if (DateOnly.TryParse(to, out var toDay)) { var end = CompanyClock.StartOf(toDay.AddDays(1)); q = q.Where(d => d.IssueDate < end); }
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<DocumentStatus>(status, out var st))
-            q = q.Where(d => d.Status == st);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.ToLower();
-            q = q.Where(d => d.Number.ToLower().Contains(s) || d.Party!.Name.ToLower().Contains(s));
-        }
-
-        var total = await q.CountAsync();
-        var rows = await q
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
-            .Include(d => d.Department)
-            .OrderByDescending(d => d.IssueDate)
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .ToListAsync();
-
-        return Ok(new PaginatedDto<SalesSummaryDto>(
-            rows.Select(Mapper.ToSummary).ToArray(), total, page, pageSize));
+        q = DocumentLists.Filter(q, search, status, from, to);
+        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment));
     }
 
     /// <summary>
