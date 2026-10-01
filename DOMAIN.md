@@ -278,7 +278,8 @@ One shape for every document type:
   adding (back to 1 after each), the lines as a table on wide screens (code, item, unit, stock, qty,
   price, discount, total; cards on a phone), and a detailed search (البحث المفصل): department,
   category, supplier or none, code / name contain, list-price range, stock in / out / at reorder
-  level — tick items and add them together.
+  level — tick items and add them together. The supplier there, and the invoice's rep, are picked by
+  code or by name, like the customer. A sale may carry a due date (تاريخ الاستحقاق, today or later).
 - **The app updates itself**: each open app looks for a new version every minute and when it comes back
   to the front. When there is one it waits until nothing is being saved and no sheet is open, saves
   the open screen's work on the server for that person (`WorkDraft`, an hour at most — never on the

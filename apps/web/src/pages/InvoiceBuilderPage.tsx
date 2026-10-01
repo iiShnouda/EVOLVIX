@@ -12,6 +12,7 @@ import {
   type DeliveryMethod,
   type Party,
   type Product,
+  companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -130,7 +131,11 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const me = useAuth((s) => s.user);
   // Every sale has a rep (المندوب): whoever makes it unless another is picked.
   const [pickedRep, setPickedRep] = useState('');
+  /** The rep's code while it is being typed (null = show the chosen rep's). */
+  const [repCode, setRepCode] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState('');
   const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
+  const repCodeMissing = !!repCode && !(reps.data ?? []).some((r) => String(r.code) === repCode);
   /** Their discount limit (%); null = none. */
   const maxDiscount = me?.maxDiscountPercent ?? null;
 
@@ -290,7 +295,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const autoDiscountOf = (l: Line, i: number) =>
     l.bonus || (priceEditable && l.touched) ? 0 : (priced?.[i]?.discount ?? 0);
 
-  function addProduct(p: Product, unitId?: string | null) {
+  /** `focus`: back to the search box for the next one (not after the detailed search). */
+  function addProduct(p: Product, unitId?: string | null, focus = true) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
     const qty = Math.max(1, Math.floor(Number(addQty) || 1));
     setAddQty('1');
@@ -315,7 +321,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     });
     setSearch('');
     setListOpen(false);
-    searchBox.current?.focus();
+    if (focus) searchBox.current?.focus();
   }
 
   /** Enter in the search box: a scanned barcode (or a single match) is added at once. */
@@ -489,6 +495,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           priceLevelId,
           repId: repId || undefined,
           departmentId: departmentId || undefined,
+          dueDate: dueDate || undefined,
           deliveryMethod: delivery.method,
           deliveryAddress:
             delivery.method !== 'PICKUP' && delivery.address.trim()
@@ -538,6 +545,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             partyId: party?.id ?? null,
             warehouseId: pickedWarehouse,
             repId: pickedRep,
+            dueDate,
             departmentId: pickedDepartment,
             levelId: pickedLevel,
             delivery,
@@ -572,6 +580,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       }
       setPickedWarehouse(text(d.warehouseId));
       setPickedRep(text(d.repId));
+      setDueDate(text(d.dueDate));
       setPickedDepartment(text(d.departmentId));
       setPickedLevel(text(d.levelId));
       if (d.delivery && METHODS.includes(d.delivery.method))
@@ -862,21 +871,59 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               </label>
             )}
             {isSale && (
+              // The rep by code or by name, like the customer (owner, 2026-10-01).
+              <div className="flex items-start gap-2">
+                <label className="block w-24 shrink-0">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
+                  <input
+                    className={`${field} tnum ${repCodeMissing ? 'border-destructive' : ''}`}
+                    inputMode="numeric"
+                    aria-label={`${t('invoice.rep')} — ${t('invoice.code')}`}
+                    aria-invalid={repCodeMissing}
+                    value={repCode ?? String(reps.data?.find((r) => r.id === repId)?.code ?? '')}
+                    onChange={(e) => {
+                      const text = e.target.value.replace(/[^\d]/g, '');
+                      setRepCode(text);
+                      const hit = (reps.data ?? []).find((r) => String(r.code) === text);
+                      if (hit) setPickedRep(hit.id);
+                    }}
+                    onBlur={() => setRepCode(null)}
+                  />
+                  {repCodeMissing && (
+                    <span className="mt-0.5 block text-xs text-destructive">
+                      {t('invoice.codeNotFound')}
+                    </span>
+                  )}
+                </label>
+                <label className="block min-w-0 flex-1">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
+                  <select
+                    className={field}
+                    value={repId}
+                    aria-invalid={!repId}
+                    onChange={(e) => setPickedRep(e.target.value)}
+                  >
+                    {!repId && <option value="">{t('invoice.chooseRep')}</option>}
+                    {(reps.data ?? []).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {isSale && !isQuote && (
+              // When a sale on account should be paid (تاريخ الاستحقاق); empty = no date.
               <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
-                <select
-                  className={field}
-                  value={repId}
-                  aria-invalid={!repId}
-                  onChange={(e) => setPickedRep(e.target.value)}
-                >
-                  {!repId && <option value="">{t('invoice.chooseRep')}</option>}
-                  {(reps.data ?? []).map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.code})
-                    </option>
-                  ))}
-                </select>
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
+                <input
+                  type="date"
+                  className={`${field} tnum`}
+                  min={companyToday()}
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
               </label>
             )}
           </Card>
@@ -1036,7 +1083,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 inStockFirst={isSale && !isQuote}
                 onClose={() => setFinding(false)}
                 onAdd={(items) => {
-                  items.forEach((p) => addProduct(p));
+                  items.forEach((p) => addProduct(p, null, false));
                   setFinding(false);
                 }}
               />
@@ -1479,6 +1526,7 @@ interface InvoiceDraft {
   partyId: string | null;
   warehouseId: string;
   repId: string;
+  dueDate?: string;
   departmentId: string;
   levelId: string;
   delivery: DeliveryValue;

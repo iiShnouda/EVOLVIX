@@ -447,6 +447,9 @@ public sealed class SalesController : ControllerBase
         var dueDate = ParseDate(req.DueDate);
         if (quote && dueDate is DateTime until && until.Date < CompanyClock.TodayDate)
             return BadRequest(new { message = "A quotation is valid until today or later.", code = "bad_valid_until" });
+        // A new invoice's due date (تاريخ الاستحقاق) is today or later.
+        if (type == DocumentType.SALES_INVOICE && fromId is null && dueDate is DateTime due && due.Date < CompanyClock.TodayDate)
+            return BadRequest(new { message = "The due date is today or later.", code = "bad_due_date" });
 
         var settings = await GetSettingsAsync();
         // A quotation still valid keeps what was approved on it: its prices, level, discounts, free

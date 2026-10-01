@@ -738,6 +738,7 @@ export const ar: TranslationDictionary = {
   'invoice.lineDiscountMode': 'نوع الخصم',
   'invoice.perPiece': 'على الحتة',
   'invoice.onLine': 'على السطر',
+  'error.bad_due_date': 'تاريخ الاستحقاق لازم يكون النهارده أو بعده.',
   'error.supplier_not_found': 'اختر واحدًا من مورديك.',
   'error.too_many_phones': 'حتى 5 أرقام إضافية فقط.',
   'error.department_not_found': 'القسم غير موجود.',

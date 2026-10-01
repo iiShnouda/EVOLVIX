@@ -214,6 +214,19 @@ eq(
   2,
 );
 
+console.log('== due date (تاريخ الاستحقاق)');
+const { companyToday, addDays } = await import('./lib.mjs');
+eq(
+  'before today refused',
+  (await sell(s, 1000, { dueDate: addDays(companyToday(), -1) })).data?.code,
+  'bad_due_date',
+);
+const dueInv = ok(
+  'a sale due in a month',
+  await sell(s, 1000, { dueDate: addDays(companyToday(), 30) }),
+);
+eq('…kept on it', dueInv.dueDate, addDays(companyToday(), 30));
+
 console.log('== the detailed item search (البحث المفصل)');
 const find = async (q) => (await acc.get(`/products?limit=200&${q}`)).data.map((p) => p.id);
 check(

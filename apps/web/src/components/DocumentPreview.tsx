@@ -109,6 +109,12 @@ export function DocumentPreview({
             <p className="text-sm font-semibold text-fg">{t(`doc.${doc.type}`)}</p>
             <p className="tnum font-medium text-fg">{doc.number}</p>
             <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
+            {doc.type === 'SALES_INVOICE' && doc.dueDate && (
+              <p>
+                {t('invoice.dueDate')}:{' '}
+                <span className="font-medium text-fg tnum">{formatDate(doc.dueDate, locale)}</span>
+              </p>
+            )}
             {isQuote && doc.invoiceNumber && (
               <p>
                 {t('quote.becameInvoice')}:{' '}

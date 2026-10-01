@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { formatMoney, formatQuantity, type Product } from '@skb/shared';
+import { formatMoney, formatQuantity, type Party, type Product } from '@skb/shared';
+import { PartyPicker } from './PartyPicker';
 import { Sheet } from './Sheet';
 import { Button, Spinner } from './ui';
 import { useT } from '../lib/i18n';
@@ -7,7 +8,6 @@ import {
   useCategories,
   useDepartments,
   useItemFinder,
-  useParties,
   type ItemFinderFilters,
 } from '../lib/queries';
 
@@ -47,7 +47,7 @@ export function ItemFinderSheet({
   const { t, locale } = useT();
   const departments = useDepartments();
   const categories = useCategories();
-  const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
+  const [supplier, setSupplier] = useState<Party | null>(null);
   const [draft, setDraft] = useState<ItemFinderFilters>({
     ...EMPTY,
     departmentId: departmentId ?? '',
@@ -126,22 +126,31 @@ export function ItemFinderSheet({
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('finder.supplier')}</span>
-            <select
-              className={field}
-              value={draft.supplierId}
-              onChange={(e) => set({ supplierId: e.target.value })}
-            >
-              <option value="">{t('finder.all')}</option>
-              <option value="none">{t('finder.noSupplier')}</option>
-              {(suppliers.data?.items ?? []).map((sp) => (
-                <option key={sp.id} value={sp.id}>
-                  {sp.name} ({sp.code})
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* The supplier (factory) by code or name, or items of none (بدون), as on the old screen. */}
+          <div className="sm:col-span-2">
+            <PartyPicker
+              type="SUPPLIER"
+              withCode
+              value={supplier}
+              onChange={(p) => {
+                setSupplier(p);
+                set({ supplierId: p?.id ?? '' });
+              }}
+              label={t('finder.supplier')}
+              placeholder={t('finder.all')}
+            />
+            <label className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={draft.supplierId === 'none'}
+                onChange={(e) => {
+                  setSupplier(null);
+                  set({ supplierId: e.target.checked ? 'none' : '' });
+                }}
+              />
+              {t('finder.noSupplier')}
+            </label>
+          </div>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('finder.code')}</span>
             <input

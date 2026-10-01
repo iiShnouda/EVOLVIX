@@ -740,6 +740,7 @@ export const en = {
   'invoice.lineDiscountMode': 'Discount type',
   'invoice.perPiece': 'per piece',
   'invoice.onLine': 'on the line',
+  'error.bad_due_date': 'The due date must be today or later.',
   'error.supplier_not_found': 'Choose one of your suppliers.',
   'error.too_many_phones': 'Up to 5 more phone numbers.',
   'error.department_not_found': 'Department not found.',
