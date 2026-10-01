@@ -1,11 +1,6 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  formatDate,
-  formatMoney,
-  type SalesDocument,
-  type TranslationKey,
-} from '@skb/shared';
+import { formatDate, formatMoney, type SalesDocument, type TranslationKey } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { DocumentTable } from '../components/DocumentTable';
@@ -27,9 +22,7 @@ import { errorText } from '../lib/errors';
 import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 import { EditOrderSheet } from '../components/EditOrderSheet';
-import { PartyPicker } from '../components/PartyPicker';
 import { Sheet } from '../components/Sheet';
-import type { Party } from '@skb/shared';
 
 /** Documents per page of the list. */
 const PAGE_SIZE = 50;
@@ -73,7 +66,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   // just save them; the tab shows for them, and for approvers while some are still waiting.
   const mayOrders =
     isSales && (permissions.includes('sales:order') || permissions.includes('sales:approve'));
-  const waiting = useDocumentList(scope, 'orders', { page: 1, status: 'PENDING', enabled: mayOrders });
+  const waiting = useDocumentList(scope, 'orders', {
+    page: 1,
+    status: 'PENDING',
+    enabled: mayOrders,
+  });
   const onlyOrders = permissions.includes('sales:order') && !permissions.includes('sales:create');
   const seesOrders =
     mayOrders && (onlyOrders || tab === 'orders' || (waiting.data?.total ?? 0) > 0);
@@ -150,7 +147,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     returns: [],
   };
   const [rejecting, setRejecting] = useState(false);
-  const [newReturn, setNewReturn] = useState(false);
   const detail = useDocument(scope, selectedId);
   const isPhone = deviceClass === 'phone';
   const rows = list.data?.items ?? [];
@@ -276,7 +272,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
           kind === 'returns' && canReturn ? (
-            <Button icon="plus" size="sm" onClick={() => setNewReturn(true)}>
+            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/returns/new`)}>
               {t('return.new')}
             </Button>
           ) : kind === 'quotations' ? (
@@ -326,7 +322,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         {isSales && (departments.data ?? []).length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-            <select className={filterField} value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+            <select
+              className={filterField}
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+            >
               <option value="">{t('account.allDepartments')}</option>
               {(departments.data ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
@@ -340,7 +340,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         {statuses[kind].length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
-            <select className={filterField} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select
+              className={filterField}
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
               <option value="">{t('sales.allStatuses')}</option>
               {statuses[kind].map((s) => (
                 <option key={s} value={s}>
@@ -352,11 +356,23 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         )}
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
-          <input type="date" className={`${filterField} tnum`} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+          />
         </label>
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
-          <input type="date" className={`${filterField} tnum`} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+          />
         </label>
         {kind === 'invoices' && (
           <div className="block">
@@ -375,7 +391,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   onClick={() => setPayment(p)}
                   className={`h-7 rounded-md px-3 text-sm font-medium transition-colors ${payment === p ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'}`}
                 >
-                  {t(p === 'credit' ? 'list.payCredit' : p === 'paid' ? 'list.payPaid' : 'list.payAll')}
+                  {t(
+                    p === 'credit'
+                      ? 'list.payCredit'
+                      : p === 'paid'
+                        ? 'list.payPaid'
+                        : 'list.payAll',
+                  )}
                 </button>
               ))}
             </div>
@@ -412,7 +434,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     <span className="block truncate font-medium">
                       {doc.partyName}
                       {doc.partyCode != null && (
-                        <span className="ms-1 text-xs font-normal text-muted tnum">({doc.partyCode})</span>
+                        <span className="ms-1 text-xs font-normal text-muted tnum">
+                          ({doc.partyCode})
+                        </span>
                       )}
                     </span>
                     <span className="text-xs text-muted tnum">
@@ -431,7 +455,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                         {t('list.owed')} {formatMoney(doc.owed, doc.currency, locale)}
                       </span>
                     ) : (
-                      <Badge tone={statusOf(doc).tone}>{t(statusOf(doc).key as TranslationKey)}</Badge>
+                      <Badge tone={statusOf(doc).tone}>
+                        {t(statusOf(doc).key as TranslationKey)}
+                      </Badge>
                     )}
                   </span>
                 </button>
@@ -442,7 +468,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 <span>
                   {list.data.totals.count} {t('list.documents')}
                 </span>
-                <span>{formatMoney(list.data.totals.grandTotal, rows[0]?.currency ?? 'EGP', locale)}</span>
+                <span>
+                  {formatMoney(list.data.totals.grandTotal, rows[0]?.currency ?? 'EGP', locale)}
+                </span>
               </li>
             )}
           </ul>
@@ -467,7 +495,12 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           <span className="text-muted tnum">
             {t('list.page')} {page} {t('list.of')} {pages}
           </span>
-          <Button size="sm" variant="ghost" disabled={page >= pages} onClick={() => setPage(page + 1)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={page >= pages}
+            onClick={() => setPage(page + 1)}
+          >
             {t('list.next')}
           </Button>
         </div>
@@ -475,7 +508,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
 
       {/* A document, over the list (a panel at the side on a wide screen). */}
       {!isPhone && selectedId && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={() => setSelectedId(null)}>
+        <div
+          className="fixed inset-0 z-40 flex justify-end bg-black/30"
+          onClick={() => setSelectedId(null)}
+        >
           <div
             className="h-full w-full max-w-xl border-s border-line bg-canvas shadow-xl"
             onClick={(e) => e.stopPropagation()}
@@ -506,7 +542,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       {rejecting && order && (
         <RejectSheet id={order.id} number={order.number} onClose={() => setRejecting(false)} />
       )}
-      {newReturn && <NewReturnSheet scope={scope} onClose={() => setNewReturn(false)} />}
       {approving && order && (
         <ApproveOrderSheet
           order={order}
@@ -553,7 +588,11 @@ function RejectSheet({ id, number, onClose }: { id: string; number: string; onCl
   const reject = useRejectOrder();
   const [reason, setReason] = useState('');
   return (
-    <Sheet title={`${t('order.rejectTitle')} — ${number}`} onClose={onClose} closeLabel={t('common.close')}>
+    <Sheet
+      title={`${t('order.rejectTitle')} — ${number}`}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+    >
       <div className="space-y-3">
         <p className="text-xs text-faint">{t('order.rejectHint')}</p>
         <label className="block">
@@ -579,64 +618,6 @@ function RejectSheet({ id, number, onClose }: { id: string; number: string; onCl
             {t('order.reject')}
           </Button>
         </div>
-      </div>
-    </Sheet>
-  );
-}
-
-/** A new return: the customer (or supplier), then the invoice the goods came on, then its return screen. */
-function NewReturnSheet({ scope, onClose }: { scope: DocScope; onClose: () => void }) {
-  const { t, locale } = useT();
-  const navigate = useNavigate();
-  const isSales = scope === 'sales';
-  const [party, setParty] = useState<Party | null>(null);
-  const invoices = useDocumentList(scope, 'invoices', { page: 1, search: party?.name });
-  const rows = party
-    ? (invoices.data?.items ?? []).filter((d) => d.partyName === party.name && d.status !== 'CANCELLED')
-    : [];
-  return (
-    <Sheet title={t('return.new')} onClose={onClose} closeLabel={t('common.close')}>
-      <div className="space-y-3">
-        <p className="text-xs text-faint">{t('return.pickCustomer')}</p>
-        <PartyPicker
-          type={isSales ? 'CUSTOMER' : 'SUPPLIER'}
-          value={party}
-          onChange={setParty}
-          label={t(isSales ? 'invoice.customer' : 'invoice.supplier')}
-          placeholder={t(isSales ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
-        />
-        {party && (
-          <div>
-            <p className="mb-1 text-xs text-muted">{t('return.pickInvoice')}</p>
-            {invoices.isLoading ? (
-              <div className="grid place-items-center py-6 text-muted">
-                <Spinner size={18} />
-              </div>
-            ) : rows.length === 0 ? (
-              <p className="text-sm text-muted">{t('return.noInvoices')}</p>
-            ) : (
-              <ul className="max-h-80 divide-y divide-[var(--c-line)] overflow-auto rounded-[var(--radius-app)] border border-line">
-                {rows.map((d) => (
-                  <li key={d.id}>
-                    <button
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                      onClick={() => navigate(`/${scope}/invoices/${d.id}/return`)}
-                    >
-                      <span>
-                        <span className="block font-medium tnum">{d.number}</span>
-                        <span className="text-xs text-muted">
-                          {formatDate(d.issueDate, locale)}
-                          {d.departmentName && <> · {d.departmentName}</>}
-                        </span>
-                      </span>
-                      <span className="tnum">{formatMoney(d.grandTotal, d.currency, locale)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
       </div>
     </Sheet>
   );

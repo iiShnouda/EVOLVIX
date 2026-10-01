@@ -1,13 +1,23 @@
 import { useState } from 'react';
 import { useWorkDraft } from '../lib/workDraft';
 import { useNavigate, useParams } from 'react-router-dom';
-import { formatDate, formatMoney, formatQuantity, toMinor, type DocumentLine } from '@skb/shared';
+import {
+  formatDate,
+  formatMoney,
+  formatQuantity,
+  toMinor,
+  type DocumentLine,
+  type Party,
+} from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
-import { useCreateReturn, useDocument, type DocScope } from '../lib/queries';
+import { useCreateReturn, useDocument, useDocumentList, type DocScope } from '../lib/queries';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
+import { TableColumns } from '../components/TableColumns';
+import { PartyPicker } from '../components/PartyPicker';
+import { useDeviceInfo } from '../lib/device';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -28,8 +38,14 @@ const unitsOf = (l: DocumentLine) =>
  * value, cost and profit being reversed before saving; the server's figures are final.
  */
 export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
-  const isSale = scope === 'sales';
   const { id = '' } = useParams();
+  // A new return starts on the same page: the customer (by code or name), then their invoice.
+  return id ? <ReturnForm key={id} scope={scope} id={id} /> : <ReturnStart scope={scope} />;
+}
+
+function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
+  const isSale = scope === 'sales';
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const { t, locale } = useT();
   // The cost and profit a sales return reverses are the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
@@ -62,7 +78,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
       const numbers = Object.fromEntries(
         Object.entries(d.qty ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0),
       );
-      const flags = Object.fromEntries(Object.entries(d.inBase ?? {}).filter(([, v]) => typeof v === 'boolean'));
+      const flags = Object.fromEntries(
+        Object.entries(d.inBase ?? {}).filter(([, v]) => typeof v === 'boolean'),
+      );
       setQty(numbers);
       setInBase(flags);
       setRefund(text(d.refund));
@@ -120,6 +138,48 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   });
   const nothingLeft = rows.every((r) => r.remaining === 0);
 
+  // A line's return quantity and its unit, shared by the table (wide screens) and the cards (phones).
+  type Row = (typeof rows)[number];
+  const cell =
+    'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2';
+  const qtyInput = (r: Row, className = `${field} tnum`) => (
+    <input
+      type="number"
+      min={0}
+      max={Math.floor(r.remaining / r.step)}
+      disabled={r.remaining === 0}
+      className={className}
+      value={r.typed}
+      onChange={(e) =>
+        setQty((prev) => ({
+          ...prev,
+          [r.line.id]: Math.min(
+            Math.floor(r.remaining / r.step),
+            Math.max(0, Math.floor(Number(e.target.value) || 0)),
+          ),
+        }))
+      }
+    />
+  );
+  const unitSelect = (r: Row, className = field) => (
+    <select
+      className={className}
+      value={r.base ? 'base' : 'unit'}
+      disabled={r.remaining === 0}
+      onChange={(e) => {
+        const toBase = e.target.value === 'base';
+        setInBase((prev) => ({ ...prev, [r.line.id]: toBase }));
+        setQty((prev) => ({
+          ...prev,
+          [r.line.id]: toBase ? r.q : Math.floor(r.q / r.factor),
+        }));
+      }}
+    >
+      <option value="unit">{r.line.unitName}</option>
+      <option value="base">{r.line.baseUnitName}</option>
+    </select>
+  );
+
   const value = rows.reduce((s, r) => s + r.value, 0);
   const cost = rows.reduce((s, r) => s + r.cost, 0);
   const profit = value - cost;
@@ -164,7 +224,8 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
           refundAmount: refundMinor,
           refundAccountId: refundMinor > 0 && refundAccountId ? refundAccountId : undefined,
           shippingCost: isSale && Number(shipping) > 0 ? toMinor(Number(shipping)) : undefined,
-          shippingAccountId: isSale && Number(shipping) > 0 && shippingAccountId ? shippingAccountId : undefined,
+          shippingAccountId:
+            isSale && Number(shipping) > 0 && shippingAccountId ? shippingAccountId : undefined,
           notes: notes.trim() || undefined,
         },
       });
@@ -178,23 +239,42 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
     <div className="space-y-5">
       <PageHeader title={title} action={back} />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(300px,360px)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
         {/* Left: invoice + quantities */}
         <div className="min-w-0 space-y-4">
-          <Card>
-            <div className="flex flex-wrap items-start justify-between gap-3 text-sm">
-              <div>
-                <p className="text-xs text-muted">{t('return.against')}</p>
-                <p className="font-semibold tnum">{doc.number}</p>
-                <p className="text-xs text-muted tnum">{formatDate(doc.issueDate, locale)}</p>
-              </div>
-              <div className="text-end">
-                <p className="text-xs text-muted">
-                  {isSale ? t('sales.customer') : t('invoice.supplier')}
-                </p>
-                <p className="font-medium">{doc.partyName}</p>
-              </div>
+          {/* Like the invoice: who, which invoice, its rep and department. */}
+          <Card className="grid gap-4 text-sm sm:grid-cols-2">
+            <div className="flex items-start gap-2">
+              <Info
+                className="w-24 shrink-0"
+                label={t('invoice.code')}
+                value={doc.partyCode ?? ''}
+              />
+              <Info
+                className="min-w-0 flex-1"
+                label={isSale ? t('sales.customer') : t('invoice.supplier')}
+                value={doc.partyName}
+              />
             </div>
+            <div className="flex items-end gap-2">
+              <Info
+                className="min-w-0 flex-1"
+                label={t('return.against')}
+                value={`${doc.number} · ${formatDate(doc.issueDate, locale)}`}
+              />
+              <Button size="sm" variant="ghost" onClick={() => navigate(`/${scope}/returns/new`)}>
+                {t('return.otherInvoice')}
+              </Button>
+            </div>
+            {doc.repName && (
+              <Info
+                label={t('invoice.rep')}
+                value={`${doc.repName}${doc.repCode != null ? ` (${doc.repCode})` : ''}`}
+              />
+            )}
+            {doc.departmentName && (
+              <Info label={t('invoice.department')} value={doc.departmentName} />
+            )}
           </Card>
 
           <Card>
@@ -218,6 +298,83 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
               <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
                 {t('return.nothingLeft')}
               </p>
+            ) : !isPhone ? (
+              <TableColumns id={`return.${scope}`}>
+                <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
+                  <table className="w-full text-[13px]">
+                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                      <tr className="whitespace-nowrap">
+                        <th className="px-1.5 py-2 text-start font-medium">#</th>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
+                        <th className="px-1.5 py-2 text-start font-medium">
+                          {t('warehouse.label')}
+                        </th>
+                        <th className="px-1.5 py-2 text-end font-medium">
+                          {t('return.onInvoice')}
+                        </th>
+                        <th className="px-1.5 py-2 text-end font-medium">
+                          {t('return.alreadyReturned')}
+                        </th>
+                        <th className="px-1.5 py-2 text-end font-medium">
+                          {t('return.remaining')}
+                        </th>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('return.qty')}</th>
+                        <th className="px-1.5 py-2 text-end font-medium">
+                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}
+                        </th>
+                        <th className="px-1.5 py-2 text-end font-medium">{t('return.value')}</th>
+                        {isSale && seeCosts && (
+                          <th className="px-1.5 py-2 text-end font-medium">
+                            {t('return.profitReversed')}
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      {rows.map((r, i) => (
+                        <tr
+                          key={r.line.id}
+                          className={`${r.q > 0 ? 'bg-brand-soft/40' : ''} ${r.remaining === 0 ? 'opacity-60' : ''}`}
+                        >
+                          <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
+                          <td className="min-w-32 px-1.5 py-2 font-medium">{r.line.productName}</td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-muted">
+                            {r.line.warehouseName ?? ''}
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
+                            {formatQuantity(r.line.quantity, unitsOf(r.line), locale)}
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end text-muted tnum">
+                            {r.line.returnedQuantity
+                              ? formatQuantity(r.line.returnedQuantity, unitsOf(r.line), locale)
+                              : ''}
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
+                            {formatQuantity(r.remaining, unitsOf(r.line), locale)}
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-1.5">
+                            <span className="flex items-center gap-1">
+                              {qtyInput(r, `${cell} w-16 tnum`)}
+                              {r.factor > 1 && unitSelect(r, `${cell} w-24`)}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
+                            {formatMoney(r.line.unitPrice, currency, locale)} / {r.line.unitName}
+                          </td>
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
+                            {r.q > 0 ? formatMoney(r.value, currency, locale) : ''}
+                          </td>
+                          {isSale && seeCosts && (
+                            <td className="whitespace-nowrap px-1.5 py-2 text-end text-warning tnum">
+                              {r.q > 0 ? formatMoney(r.profit, currency, locale) : ''}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </TableColumns>
             ) : (
               <ul className="space-y-2">
                 {rows.map((r) => (
@@ -246,45 +403,14 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                       <div className="flex items-end gap-2">
                         <label className="block w-24">
                           <span className="mb-0.5 block text-xs text-muted">{t('return.qty')}</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={Math.floor(r.remaining / r.step)}
-                            disabled={r.remaining === 0}
-                            className={`${field} tnum`}
-                            value={r.typed}
-                            onChange={(e) =>
-                              setQty((prev) => ({
-                                ...prev,
-                                [r.line.id]: Math.min(
-                                  Math.floor(r.remaining / r.step),
-                                  Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                                ),
-                              }))
-                            }
-                          />
+                          {qtyInput(r)}
                         </label>
                         {r.factor > 1 && (
                           <label className="block w-28">
                             <span className="mb-0.5 block text-xs text-muted">
                               {t('invoice.unit')}
                             </span>
-                            <select
-                              className={field}
-                              value={r.base ? 'base' : 'unit'}
-                              disabled={r.remaining === 0}
-                              onChange={(e) => {
-                                const toBase = e.target.value === 'base';
-                                setInBase((prev) => ({ ...prev, [r.line.id]: toBase }));
-                                setQty((prev) => ({
-                                  ...prev,
-                                  [r.line.id]: toBase ? r.q : Math.floor(r.q / r.factor),
-                                }));
-                              }}
-                            >
-                              <option value="unit">{r.line.unitName}</option>
-                              <option value="base">{r.line.baseUnitName}</option>
-                            </select>
+                            {unitSelect(r)}
                           </label>
                         )}
                       </div>
@@ -324,7 +450,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
             </h2>
             <dl className="space-y-1.5 text-sm">
               <Row label={t('return.value')} value={formatMoney(value, currency, locale)} />
-              <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
+              {tax > 0 && (
+                <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
+              )}
               <div className="my-1 border-t border-line" />
               <Row
                 label={t('invoice.grandTotal')}
@@ -380,7 +508,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
               </p>
               {isSale && (
                 <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.shippingCost')}</span>
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {t('invoice.shippingCost')}
+                  </span>
                   <input
                     type="number"
                     min={0}
@@ -389,7 +519,9 @@ export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
                     value={shipping}
                     onChange={(e) => setShipping(e.target.value)}
                   />
-                  <span className="mt-0.5 block text-xs text-faint">{t('return.shippingHint')}</span>
+                  <span className="mt-0.5 block text-xs text-faint">
+                    {t('return.shippingHint')}
+                  </span>
                 </label>
               )}
               {isSale && Number(shipping) > 0 && (
@@ -452,4 +584,146 @@ interface ReturnDraft {
   shipping: string;
   shippingAccountId: string;
   notes: string;
+}
+
+/** A read-only field, laid out like the invoice's inputs. */
+function Info({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string | number;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      <div className="grid h-9 items-center truncate rounded-[var(--radius-app)] border border-line bg-surface-2 px-2.5 text-sm tnum">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A new return, on the same page as the return itself (owner, 2026-10-01: the return page looks like
+ * the sales page): the customer by code or name, then which of their invoices the goods came on.
+ */
+function ReturnStart({ scope }: { scope: DocScope }) {
+  const isSale = scope === 'sales';
+  const { t, locale } = useT();
+  const navigate = useNavigate();
+  const [party, setParty] = useState<Party | null>(null);
+  const invoices = useDocumentList(scope, 'invoices', {
+    page: 1,
+    pageSize: 100,
+    search: party?.name,
+    enabled: !!party,
+  });
+  const rows = party
+    ? (invoices.data?.items ?? []).filter(
+        (d) => d.partyName === party.name && d.status !== 'CANCELLED',
+      )
+    : [];
+  const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title={title}
+        action={
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="close"
+            onClick={() => navigate(`/${scope}?tab=returns`)}
+          >
+            {t('invoice.back')}
+          </Button>
+        }
+      />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+        <div className="min-w-0 space-y-4">
+          <Card className="space-y-3">
+            <PartyPicker
+              type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+              withCode
+              value={party}
+              onChange={setParty}
+              label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
+              placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+            />
+            <p className="text-xs text-faint">{t('return.pickCustomer')}</p>
+          </Card>
+          <Card>
+            <h2 className="mb-2 text-sm font-semibold text-muted">{t('return.pickInvoice')}</h2>
+            {!party ? (
+              <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
+                {t('return.pickCustomerFirst')}
+              </p>
+            ) : invoices.isLoading ? (
+              <div className="grid place-items-center py-6 text-muted">
+                <Spinner size={18} />
+              </div>
+            ) : rows.length === 0 ? (
+              <p className="text-sm text-muted">{t('return.noInvoices')}</p>
+            ) : (
+              <TableColumns id={`return.pick.${scope}`}>
+                <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
+                  <table className="w-full whitespace-nowrap text-[13px]">
+                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                      <tr>
+                        <th className="px-2 py-2 text-start font-medium">{t('sales.number')}</th>
+                        <th className="px-2 py-2 text-start font-medium">{t('common.date')}</th>
+                        <th className="px-2 py-2 text-start font-medium">
+                          {t('invoice.department')}
+                        </th>
+                        <th className="px-2 py-2 text-end font-medium">{t('list.net')}</th>
+                        <th className="px-2 py-2 text-end font-medium">{t('list.owed')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      {rows.map((d) => (
+                        <tr
+                          key={d.id}
+                          className="cursor-pointer hover:bg-surface-2"
+                          onClick={() =>
+                            navigate(`/${scope}/invoices/${d.id}/return`, { replace: true })
+                          }
+                        >
+                          <td className="px-2 py-2 font-medium tnum">{d.number}</td>
+                          <td className="px-2 py-2 tnum">
+                            {formatDate(d.issueDate, locale, true)}
+                          </td>
+                          <td className="px-2 py-2 text-muted">{d.departmentName ?? ''}</td>
+                          <td className="px-2 py-2 text-end tnum">
+                            {formatMoney(d.grandTotal, d.currency, locale)}
+                          </td>
+                          <td className="px-2 py-2 text-end text-warning tnum">
+                            {d.owed ? formatMoney(d.owed, d.currency, locale) : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </TableColumns>
+            )}
+          </Card>
+        </div>
+        <div className="min-w-0 lg:sticky lg:top-20 lg:h-fit">
+          <Card>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+              {t('common.total')}
+            </h2>
+            <p className="text-sm text-muted">{t('return.pickQty')}</p>
+            <Button className="mt-4 w-full" icon="check" disabled>
+              {t('return.save')}
+            </Button>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
 }

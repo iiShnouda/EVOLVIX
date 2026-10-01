@@ -1392,6 +1392,8 @@ export const ar: TranslationDictionary = {
   'notify.ORDER_REJECTED': 'تم رفض فاتورتك',
   'notify.INVOICE_NEW': 'فاتورة جديدة',
   'return.new': 'مرتجع جديد',
+  'return.otherInvoice': 'فاتورة تانية',
+  'return.pickCustomerFirst': 'اختار العميل الأول، وفواتيره هتظهر هنا.',
   'return.pickCustomer': 'اختار العميل، وبعدين الفاتورة اللي البضاعة اتباعت عليها.',
   'return.pickInvoice': 'اختار الفاتورة',
   'return.noInvoices': 'مفيش فواتير للعميل ده.',

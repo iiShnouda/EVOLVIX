@@ -168,6 +168,10 @@ export default function App() {
               path="/sales/invoices/:id/return"
               element={<ReturnBuilderPage scope="sales" />}
             />
+            <Route
+              path="/sales/returns/new"
+              element={<ReturnBuilderPage key="new" scope="sales" />}
+            />
             <Route path="/parties" element={<PartiesPage />} />
             <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
@@ -198,6 +202,10 @@ export default function App() {
             <Route
               path="/purchases/invoices/:id/return"
               element={<ReturnBuilderPage scope="purchases" />}
+            />
+            <Route
+              path="/purchases/returns/new"
+              element={<ReturnBuilderPage key="new" scope="purchases" />}
             />
             <Route path="/receipts" element={<MoneyPage />} />
             <Route path="/ledger" element={<LedgerPage />} />

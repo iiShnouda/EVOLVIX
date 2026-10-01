@@ -1400,6 +1400,8 @@ export const en = {
   'notify.ORDER_REJECTED': 'Your invoice was rejected',
   'notify.INVOICE_NEW': 'New invoice',
   'return.new': 'New return',
+  'return.otherInvoice': 'Another invoice',
+  'return.pickCustomerFirst': 'Choose the customer first: their invoices show here.',
   'return.pickCustomer': 'Choose the customer, then the invoice the goods came on.',
   'return.pickInvoice': 'Choose the invoice',
   'return.noInvoices': 'No invoices for this customer.',
