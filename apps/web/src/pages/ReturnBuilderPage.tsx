@@ -507,7 +507,8 @@ function ReturnStart({ scope }: { scope: DocScope }) {
   const [party, setParty] = useState<Party | null>(null);
   // Typed line by line, without an invoice (owner decision 2026-10-01).
   const [params, setParams] = useSearchParams();
-  const free = params.get('free') === '1';
+  const canFree = useCan()(isSale ? 'sales:return_free' : 'purchases:return_free');
+  const free = canFree && params.get('free') === '1';
   const invoices = useDocumentList(scope, 'invoices', {
     page: 1,
     pageSize: 100,
@@ -536,21 +537,23 @@ function ReturnStart({ scope }: { scope: DocScope }) {
           </Button>
         }
       />
-      <div className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5 text-sm">
-        {([false, true] as const).map((f) => (
-          <button
-            key={String(f)}
-            type="button"
-            aria-pressed={free === f}
-            className={`rounded-[calc(var(--radius-app)-2px)] px-3 py-1.5 font-medium ${
-              free === f ? 'bg-brand text-brand-fg' : 'text-muted hover:text-fg'
-            }`}
-            onClick={() => setParams(f ? { free: '1' } : {}, { replace: true })}
-          >
-            {t(f ? 'return.withoutInvoice' : 'return.fromInvoice')}
-          </button>
-        ))}
-      </div>
+      {canFree && (
+        <div className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5 text-sm">
+          {([false, true] as const).map((f) => (
+            <button
+              key={String(f)}
+              type="button"
+              aria-pressed={free === f}
+              className={`rounded-[calc(var(--radius-app)-2px)] px-3 py-1.5 font-medium ${
+                free === f ? 'bg-brand text-brand-fg' : 'text-muted hover:text-fg'
+              }`}
+              onClick={() => setParams(f ? { free: '1' } : {}, { replace: true })}
+            >
+              {t(f ? 'return.withoutInvoice' : 'return.fromInvoice')}
+            </button>
+          ))}
+        </div>
+      )}
       {free ? (
         <FreeReturnForm scope={scope} initialParty={party} />
       ) : (

@@ -32,7 +32,8 @@ public sealed class TokenService
         access.Branches.Select(b => new BranchOptionDto(b.Id.ToString(), Loc.Name(b), b.IsActive)).ToArray(),
         access.Warehouses?.Select(w => w.ToString()).ToArray(),
         access.MoneyAccounts?.Select(a => a.ToString()).ToArray(),
-        access.Departments?.Select(d => d.ToString()).ToArray(), access.MaxDiscountPercent);
+        access.Departments?.Select(d => d.ToString()).ToArray(), access.MaxDiscountPercent,
+        staff.CustomRole?.Name);
 
     /// <summary>The access token's claim naming the device (sign-in) it belongs to.</summary>
     public const string DeviceClaim = "sid";

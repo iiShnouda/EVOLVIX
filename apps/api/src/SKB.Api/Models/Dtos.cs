@@ -9,7 +9,8 @@ namespace SKB.Api.Models;
 public record AuthUserDto(
     string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions,
     bool AllBranches = false, BranchOptionDto[]? Branches = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null,
+    string? RoleName = null);
 
 public record BranchOptionDto(string Id, string Name, bool IsActive = true);
 
@@ -641,7 +642,8 @@ public record StaffDto(
     string Id, string FullName, string Email, string Role, string BranchId, string BranchName, string? Phone,
     bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
-    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0);
+    string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0,
+    string? CustomRoleId = null, string? CustomRoleName = null);
 
 /// <summary>
 /// What one person may work with; every field replaces what was there. No departments = every
@@ -651,22 +653,28 @@ public record StaffAccessRequest(
     bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds,
     string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
 
+/// <param name="CustomRoleId">A role the company made; the person then works like its base role.</param>
 public record CreateStaffRequest(
-    string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null);
+    string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null,
+    string? CustomRoleId = null);
 
 /// <summary>Any field left null is unchanged. A password here replaces the person's password.</summary>
 public record UpdateStaffRequest(
     string? FullName = null, string? Email = null, string? Role = null, string? BranchId = null,
-    string? Phone = null, bool? IsActive = null, string? Password = null);
+    string? Phone = null, bool? IsActive = null, string? Password = null, string? CustomRoleId = null);
 
 /// <summary>A person's own changes to their role's permissions.</summary>
 public record StaffPermissionsRequest(string[]? Granted, string[]? Revoked);
 
 /// <param name="Custom">The owner changed this role from the default.</param>
 /// <param name="Editable">False for OWNER, which always has every permission.</param>
-public record RoleDto(string Role, string[] Permissions, bool Custom, bool Editable, int Staff);
+/// <param name="Id">Set for a role the company made (<paramref name="Role"/> is then the role it is based on).</param>
+public record RoleDto(string Role, string[] Permissions, bool Custom, bool Editable, int Staff,
+    string? Id = null, string? Name = null);
 
-public record UpdateRoleRequest(string[]? Permissions);
+public record UpdateRoleRequest(string[]? Permissions, string? Name = null);
+
+public record CreateRoleRequest(string? Name, string? BaseRole, string[]? Permissions);
 
 /// <param name="Group">The module it belongs to (the part before the colon).</param>
 public record PermissionInfoDto(string Key, string Group);

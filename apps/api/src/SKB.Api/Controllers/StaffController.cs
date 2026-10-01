@@ -73,11 +73,13 @@ public sealed class StaffController : ControllerBase
             return Forbidden("owner_only", "Only an owner can add another owner.");
         if (!Guid.TryParse(req.BranchId, out var branchId) || !await _db.Branches.AnyAsync(b => b.Id == branchId))
             return Bad("branch_not_found", "Choose a branch.");
+        var (custom, customError) = await CustomRoleAsync(req.CustomRoleId);
+        if (customError is not null) return customError;
 
         var staff = new Staff
         {
-            FullName = name, Email = email, Role = role, BranchId = branchId, Phone = Clean(req.Phone, 40),
-            PasswordHash = _auth.HashPassword(req.Password),
+            FullName = name, Email = email, Role = custom?.BaseRole ?? role, BranchId = branchId, Phone = Clean(req.Phone, 40),
+            PasswordHash = _auth.HashPassword(req.Password), CustomRoleId = custom?.Id,
         };
         _db.Staff.Add(staff);
         await _db.SaveChangesAsync();
@@ -131,6 +133,23 @@ public sealed class StaffController : ControllerBase
                     return Bad("last_owner", "The company needs at least one active owner.");
                 staff.Role = role;
             }
+            // A built-in role picked: no made role any more (unless one is picked with it).
+            if (req.CustomRoleId is null && staff.CustomRoleId is not null)
+            {
+                if (id == me) return Bad("own_role", "You can't change your own role.");
+                staff.CustomRoleId = null;
+                staff.CustomRole = null;
+            }
+        }
+        if (req.CustomRoleId is not null && req.CustomRoleId != (staff.CustomRoleId?.ToString() ?? ""))
+        {
+            if (id == me) return Bad("own_role", "You can't change your own role.");
+            if (staff.Role == Role.OWNER) return Bad("owner_fixed", "An owner has every permission.");
+            var (custom, customError) = await CustomRoleAsync(req.CustomRoleId);
+            if (customError is not null) return customError;
+            staff.CustomRoleId = custom?.Id;
+            staff.CustomRole = custom;
+            if (custom is not null) staff.Role = custom.BaseRole;
         }
         if (req.IsActive is bool active && active != staff.IsActive)
         {
@@ -278,8 +297,14 @@ public sealed class StaffController : ControllerBase
         var sets = await _permissions.RoleSetsAsync();
         var counts = await _db.Staff.Where(s => s.IsActive).GroupBy(s => s.Role)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        var customCounts = await _db.Staff.Where(s => s.IsActive && s.CustomRoleId != null).GroupBy(s => s.CustomRoleId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key!.Value, x => x.Count);
+        var made = await _db.CustomRoles.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
         return Ok(Enum.GetValues<Role>().Select(role => new RoleDto(role.ToString(), sets[role].Permissions,
-            sets[role].Custom, role != Role.OWNER, counts.GetValueOrDefault(role))).ToArray());
+                sets[role].Custom, role != Role.OWNER,
+                // People in a made role count there, not under the role it is based on.
+                counts.GetValueOrDefault(role) - made.Where(m => m.BaseRole == role).Sum(m => customCounts.GetValueOrDefault(m.Id))))
+            .Concat(made.Select(m => ToRoleDto(m, customCounts.GetValueOrDefault(m.Id)))).ToArray());
     }
 
     /// <summary>Set what a role may do. Everyone in the role gets it at their next token refresh.</summary>
@@ -306,6 +331,96 @@ public sealed class StaffController : ControllerBase
         await _db.SaveChangesAsync();
         await AuditAsync("permissions", "role", Guid.Empty, r.ToString());
         return Ok(await RoleAsync(r));
+    }
+
+    /// <summary>
+    /// Make a role (owner decision 2026-10-01): a name, the built-in role it works like, and what it may
+    /// do. Only permissions the maker holds can go in it.
+    /// </summary>
+    [HttpPost("roles")]
+    [Authorize(Policy = Permissions.RolesManage)]
+    public async Task<ActionResult<RoleDto>> CreateRole([FromBody] CreateRoleRequest req)
+    {
+        var name = Loc.Clean(req.Name);
+        if (name is null || name.Length > 60) return Bad("bad_name", "Enter the role's name.");
+        if (await _db.CustomRoles.AnyAsync(r => r.Name.ToLower() == name.ToLower()))
+            return Bad("duplicate_name", $"There is already a role called {name}.");
+        if (!Enum.TryParse<Role>(req.BaseRole, true, out var baseRole) || baseRole == Role.OWNER)
+            return Bad("bad_role", "Choose the role it works like.");
+        var wanted = req.Permissions ?? Array.Empty<string>();
+        var unknown = wanted.FirstOrDefault(p => !Permissions.All.Contains(p));
+        if (unknown is not null) return Bad("unknown_permission", $"{unknown} is not a permission.");
+        var escalation = EscalationIn(wanted);
+        if (escalation is not null) return escalation;
+
+        var role = new CustomRole { Name = name, BaseRole = baseRole, Permissions = PermissionService.Known(wanted).ToList() };
+        _db.CustomRoles.Add(role);
+        await _db.SaveChangesAsync();
+        await AuditAsync("create", "role", role.Id, name);
+        return Created($"/api/roles/custom/{role.Id}", ToRoleDto(role, 0));
+    }
+
+    /// <summary>Rename a made role or set what it may do; everyone in it gets it at their next refresh.</summary>
+    [HttpPut("roles/custom/{id:guid}")]
+    [Authorize(Policy = Permissions.RolesManage)]
+    public async Task<ActionResult<RoleDto>> UpdateCustomRole(Guid id, [FromBody] UpdateRoleRequest req)
+    {
+        var role = await _db.CustomRoles.FirstOrDefaultAsync(r => r.Id == id);
+        if (role is null) return NotFound(new { message = "Role not found.", code = "not_found" });
+        if (await MyCustomRoleAsync() == id) return Bad("own_role", "You can't change your own role's permissions.");
+        if (req.Name is not null)
+        {
+            var name = Loc.Clean(req.Name);
+            if (name is null || name.Length > 60) return Bad("bad_name", "Enter the role's name.");
+            if (await _db.CustomRoles.AnyAsync(r => r.Id != id && r.Name.ToLower() == name.ToLower()))
+                return Bad("duplicate_name", $"There is already a role called {name}.");
+            role.Name = name;
+        }
+        if (req.Permissions is not null)
+        {
+            var unknown = req.Permissions.FirstOrDefault(p => !Permissions.All.Contains(p));
+            if (unknown is not null) return Bad("unknown_permission", $"{unknown} is not a permission.");
+            var before = role.Permissions;
+            var escalation = EscalationIn(req.Permissions.Except(before).Concat(before.Except(req.Permissions)));
+            if (escalation is not null) return escalation;
+            role.Permissions = PermissionService.Known(req.Permissions).ToList();
+        }
+        role.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        await AuditAsync("permissions", "role", role.Id, role.Name);
+        return Ok(ToRoleDto(role, await _db.Staff.CountAsync(s => s.IsActive && s.CustomRoleId == id)));
+    }
+
+    /// <summary>Remove a made role nobody is in.</summary>
+    [HttpDelete("roles/custom/{id:guid}")]
+    [Authorize(Policy = Permissions.RolesManage)]
+    public async Task<IActionResult> DeleteCustomRole(Guid id)
+    {
+        var role = await _db.CustomRoles.FirstOrDefaultAsync(r => r.Id == id);
+        if (role is null) return NotFound(new { message = "Role not found.", code = "not_found" });
+        if (await _db.Staff.AnyAsync(s => s.CustomRoleId == id))
+            return Bad("role_in_use", "Move the people in this role to another role first.");
+        _db.CustomRoles.Remove(role);
+        await _db.SaveChangesAsync();
+        await AuditAsync("delete", "role", role.Id, role.Name);
+        return NoContent();
+    }
+
+    private static RoleDto ToRoleDto(CustomRole r, int staff) =>
+        new(r.BaseRole.ToString(), PermissionService.Known(r.Permissions), true, true, staff, r.Id.ToString(), r.Name);
+
+    private async Task<Guid?> MyCustomRoleAsync() =>
+        Guid.TryParse(CurrentUser.Id(User), out var me)
+            ? await _db.Staff.Where(s => s.Id == me).Select(s => s.CustomRoleId).FirstOrDefaultAsync()
+            : null;
+
+    /// <summary>The made role picked for a person ("" or null = none); its permissions must all be the assigner's.</summary>
+    private async Task<(CustomRole? Role, ActionResult? Error)> CustomRoleAsync(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return (null, null);
+        var role = Guid.TryParse(raw, out var id) ? await _db.CustomRoles.FirstOrDefaultAsync(r => r.Id == id) : null;
+        if (role is null) return (null, Bad("bad_role", "Choose a role."));
+        return (role, EscalationIn(role.Permissions));
     }
 
     /// <summary>Put a role back to the permissions it came with.</summary>
@@ -366,7 +481,8 @@ public sealed class StaffController : ControllerBase
         s.Role == Role.OWNER ? true : s.AllBranches, AccessService.SeesAll(s),
         s.BranchIds.Select(x => x.ToString()).ToArray(), s.WarehouseIds.Select(x => x.ToString()).ToArray(),
         s.MoneyAccountIds.Select(x => x.ToString()).ToArray(),
-        s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent, s.Code);
+        s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent, s.Code,
+        s.CustomRoleId?.ToString(), s.CustomRole?.Name);
 
     private static string? Clean(string? s, int max)
     {

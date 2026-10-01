@@ -462,6 +462,8 @@ export const createStaffSchema = z.object({
   role: z.enum(['OWNER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'INVENTORY', 'VIEWER']),
   branchId: z.string().uuid(),
   phone: z.string().trim().max(40).optional(),
+  /** A role the company made ("" = none); the person then works like its base role. */
+  customRoleId: z.string().optional(),
 });
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 

@@ -96,4 +96,44 @@ eq('reactivated can sign in', await tryLogin(email, 'N3wPassword!'), 200);
 const audit = (await owner.get('/staff')).data.find((x) => x.id === seller.id);
 eq('granted list kept', [...audit.granted].sort(), ['sales:change_price', 'sales:return']);
 
+console.log('== roles the company makes');
+const rtag = Date.now().toString(36).slice(-5);
+const cashier = ok(
+  'make a "cashier" role that works like sales',
+  await owner.post('/roles', {
+    name: `Cashier ${rtag}`,
+    baseRole: 'SALES',
+    permissions: ['dashboard:view', 'sales:view', 'sales:create', 'receipts:view'],
+  }),
+);
+eq('it is listed with its name and base', [cashier.name, cashier.role, cashier.staff], [`Cashier ${rtag}`, 'SALES', 0]);
+eq('the name is taken now', (await owner.post('/roles', { name: `cashier ${rtag}`, baseRole: 'SALES', permissions: [] })).data?.code, 'duplicate_name');
+eq('not based on owner', (await owner.post('/roles', { name: `X ${rtag}`, baseRole: 'OWNER', permissions: [] })).data?.code, 'bad_role');
+eq('no made-up permissions', (await owner.post('/roles', { name: `Y ${rtag}`, baseRole: 'SALES', permissions: ['sales:fly'] })).data?.code, 'unknown_permission');
+const cEmail = `cashier.${rtag}@skb.local`;
+const person = ok(
+  'add someone in it',
+  await owner.post('/staff', { fullName: `Cash ${rtag}`, email: cEmail, password: 'Str0ngPass!', role: 'SALES', branchId: owner.user.branchId, customRoleId: cashier.id }),
+);
+eq('they are in the made role', [person.customRoleId, person.customRoleName, person.role], [cashier.id, `Cashier ${rtag}`, 'SALES']);
+check('with exactly its permissions', !person.permissions.includes('sales:return') && person.permissions.includes('sales:create'), person.permissions);
+const asCashier = await login(cEmail, 'Str0ngPass!');
+eq('their sign-in names the role', asCashier.user.roleName, `Cashier ${rtag}`);
+eq('a sales return is not theirs', (await asCashier.post('/sales/returns', {})).status, 403);
+eq('the role cannot be removed while used', (await owner.del(`/roles/custom/${cashier.id}`)).data?.code, 'role_in_use');
+const widened = ok('give the role returns', await owner.put(`/roles/custom/${cashier.id}`, { permissions: [...cashier.permissions, 'sales:return'] }));
+check('saved', widened.permissions.includes('sales:return'), widened.permissions);
+const back = ok('move them back to plain sales', await owner.put(`/staff/${person.id}`, { role: 'SALES', customRoleId: '' }));
+eq('no made role any more', back.customRoleId ?? null, null);
+ok('now the role can go', await owner.del(`/roles/custom/${cashier.id}`), [204]);
+
+console.log('== finer permissions');
+const all = ok('permission list', await owner.get('/permissions')).map((p) => p.key);
+check(
+  'stocktake, transfers, closing and free returns are their own',
+  ['inventory:stocktake', 'inventory:transfer', 'parties:close', 'products:close', 'sales:return_free', 'purchases:return_free'].every((p) => all.includes(p)),
+);
+const salesRole = (await owner.get('/roles')).data.find((r) => r.role === 'SALES' && !r.id);
+check('sales may edit customers but not close them', salesRole.permissions.includes('parties:edit') && !salesRole.permissions.includes('parties:close'), salesRole.permissions);
+
 process.exit(summary('staff') ? 1 : 0);

@@ -28,6 +28,8 @@ public static class Permissions
     /// a return moves money back out, so it is not granted to the SALES role by default.
     /// </summary>
     public const string SalesReturn = "sales:return";
+    /// <summary>A sales return typed without picking an invoice.</summary>
+    public const string SalesReturnFree = "sales:return_free";
     /// <summary>Make and cancel price quotations (turning one into an invoice needs sales:create).</summary>
     public const string SalesQuote = "sales:quote";
     /// <summary>
@@ -41,6 +43,8 @@ public static class Permissions
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
     public const string PurchasesReturn = "purchases:return";
+    /// <summary>A purchase return typed without picking an invoice.</summary>
+    public const string PurchasesReturnFree = "purchases:return_free";
     /// <summary>See money accounts, their movements (daily cash) and vouchers.</summary>
     public const string ReceiptsView = "receipts:view";
     /// <summary>Record money received from a customer or other party (سند قبض).</summary>
@@ -102,6 +106,8 @@ public static class Permissions
     public const string PayrollPay = "payroll:pay";
     public const string PartiesView = "parties:view";
     public const string PartiesEdit = "parties:edit";
+    /// <summary>Close a party's account (or reopen it).</summary>
+    public const string PartiesClose = "parties:close";
     /// <summary>Add a customer, supplier (factories are suppliers) or shipping company.</summary>
     public const string PartiesCreate = "parties:create";
     /// <summary>See and keep photos of customers' and shipping companies' ID cards.</summary>
@@ -114,6 +120,10 @@ public static class Permissions
     public const string DeliverySettle = "delivery:settle";
     public const string InventoryView = "inventory:view";
     public const string InventoryEdit = "inventory:edit";
+    /// <summary>Count a warehouse and post the differences (الجرد).</summary>
+    public const string InventoryStocktake = "inventory:stocktake";
+    /// <summary>Send goods to another warehouse, receive them, or call a transfer back.</summary>
+    public const string InventoryTransfer = "inventory:transfer";
     public const string StaffView = "staff:view";
     /// <summary>Add staff, change their role, branch or password, and deactivate them.</summary>
     public const string StaffManage = "staff:manage";
@@ -143,6 +153,8 @@ public static class Permissions
     public const string ProductsCreate = "products:create";
     /// <summary>Edit items and models: names, category, units, barcodes, sizes/colors, reorder level, deactivate.</summary>
     public const string ProductsEdit = "products:edit";
+    /// <summary>Stop an item (or reopen it).</summary>
+    public const string ProductsClose = "products:close";
     /// <summary>Set item and model prices at each price level.</summary>
     public const string PricesEdit = "prices:edit";
     /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
@@ -198,7 +210,8 @@ public static class Permissions
         PartiesCashCustomer, SalesChangesReport, SalesOverrideFloor, SalesReturn, SalesQuote,
         SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
-        PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
+        PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
+        ProductsClose, SalesReturnFree, PurchasesReturnFree, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
@@ -237,7 +250,10 @@ public static class RolePermissions
             Permissions.SalesApprove, Permissions.SalesInvoiceAlerts, Permissions.SalesRaisePrice,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
-            Permissions.InventoryView, Permissions.InventoryEdit, Permissions.AnalyticsView, Permissions.SettingsView,
+            Permissions.InventoryView, Permissions.InventoryEdit, Permissions.InventoryStocktake,
+            Permissions.InventoryTransfer, Permissions.ProductsClose, Permissions.PartiesClose,
+            Permissions.SalesReturnFree, Permissions.PurchasesReturnFree,
+            Permissions.AnalyticsView, Permissions.SettingsView,
             Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.PricesEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
             Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
@@ -266,7 +282,7 @@ public static class RolePermissions
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate,
             Permissions.SalesQuote, Permissions.SalesRaisePrice,
             // The seller writes a customer's return; it goes straight back into its warehouse.
-            Permissions.SalesReturn,
+            Permissions.SalesReturn, Permissions.SalesReturnFree,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
         },
@@ -274,6 +290,8 @@ public static class RolePermissions
         [Role.INVENTORY] = new[]
         {
             Permissions.DashboardView, Permissions.InventoryView, Permissions.InventoryEdit,
+            Permissions.InventoryStocktake, Permissions.InventoryTransfer, Permissions.ProductsClose,
+            Permissions.PurchasesReturnFree,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ProductsCreate, Permissions.ProductsEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,

@@ -129,6 +129,9 @@ public class Staff
     public string Email { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public Role Role { get; set; } = Role.VIEWER;
+    /// <summary>A role the company made; its permissions replace <see cref="Role"/>'s (which it is based on).</summary>
+    public Guid? CustomRoleId { get; set; }
+    public CustomRole? CustomRole { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
 
@@ -171,6 +174,20 @@ public class Staff
 /// permissions, and every action has its own). A role without a row uses the default in
 /// <c>RolePermissions</c>. The OWNER role always has every permission and has no row.
 /// </summary>
+/// <summary>
+/// A role the company makes itself (owner decision 2026-10-01), e.g. "cashier": a name, the built-in
+/// role it works like (which branches it sees by default), and exactly what it may do.
+/// </summary>
+public class CustomRole
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public Role BaseRole { get; set; } = Role.SALES;
+    public List<string> Permissions { get; set; } = new();
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class RolePermissionSet
 {
     public Role Role { get; set; }

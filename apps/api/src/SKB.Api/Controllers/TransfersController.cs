@@ -86,7 +86,7 @@ public sealed class TransfersController : ControllerBase
 
     /// <summary>Send goods: out of the source warehouse, into transit (or straight in, if receipt is off).</summary>
     [HttpPost]
-    [Authorize(Policy = Permissions.InventoryEdit)]
+    [Authorize(Policy = Permissions.InventoryTransfer)]
     public async Task<ActionResult<StockTransferDto>> Create([FromBody] CreateTransferRequest req)
     {
         if (req.Lines is null || req.Lines.Length == 0)
@@ -176,12 +176,12 @@ public sealed class TransfersController : ControllerBase
 
     /// <summary>The destination confirms the goods arrived: from transit into the destination warehouse.</summary>
     [HttpPost("{id:guid}/receive")]
-    [Authorize(Policy = Permissions.InventoryEdit)]
+    [Authorize(Policy = Permissions.InventoryTransfer)]
     public Task<ActionResult<StockTransferDto>> Receive(Guid id) => FinishAsync(id, receive: true);
 
     /// <summary>Call a transfer back before it is received: from transit back into the source.</summary>
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.InventoryEdit)]
+    [Authorize(Policy = Permissions.InventoryTransfer)]
     public Task<ActionResult<StockTransferDto>> Cancel(Guid id) => FinishAsync(id, receive: false);
 
     private async Task<ActionResult<StockTransferDto>> FinishAsync(Guid id, bool receive)

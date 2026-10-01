@@ -229,7 +229,7 @@ public sealed class InventoryController : ControllerBase
     /// the difference.
     /// </summary>
     [HttpPost("stocktake")]
-    [Authorize(Policy = Permissions.InventoryEdit)]
+    [Authorize(Policy = Permissions.InventoryStocktake)]
     public async Task<ActionResult<StocktakeResultDto>> Stocktake([FromBody] StocktakeRequest req)
     {
         if (req.Lines is null || req.Lines.Length == 0)

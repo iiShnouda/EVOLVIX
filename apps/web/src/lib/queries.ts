@@ -1063,6 +1063,33 @@ export function useUpdateRole() {
   });
 }
 
+/** Make a role of the company's own. */
+export function useCreateRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; baseRole: string; permissions: string[] }) =>
+      api.post<RoleInfo>('/roles', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useUpdateCustomRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: { name?: string; permissions?: string[] } }) =>
+      api.put<RoleInfo>(`/roles/custom/${id}`, input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useDeleteCustomRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/roles/custom/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
 export function useResetRole() {
   const qc = useQueryClient();
   return useMutation({

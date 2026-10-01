@@ -61,7 +61,7 @@ export function AccountMenu() {
         <span className="hidden text-start sm:block">
           <span className="block text-sm font-medium leading-tight">{user.fullName}</span>
           <span className="block text-xs leading-tight text-muted">
-            {t(`role.${user.role}`)}
+            {user.roleName ?? t(`role.${user.role}`)}
             {branches.length > 1 && current && (
               <>
                 {' · '}

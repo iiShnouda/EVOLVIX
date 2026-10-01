@@ -296,7 +296,7 @@ public sealed class PurchasesController : ControllerBase
     /// on the party's account; a cash customer is paid back from the branch cash box.
     /// </summary>
     [HttpPost("returns")]
-    [Authorize(Policy = Permissions.PurchasesReturn)]
+    [Authorize(Policy = Permissions.PurchasesReturnFree)]
     public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);

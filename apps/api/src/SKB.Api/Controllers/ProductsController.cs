@@ -326,6 +326,8 @@ public sealed class ProductsController : ControllerBase
             if (given) product.SupplierId = supplier;
             if (req.SupplierCode is not null) product.SupplierCode = Catalog.SupplierCode(req.SupplierCode);
         }
+        if (req.IsActive is bool active && active != product.IsActive && !User.HasClaim("permission", Permissions.ProductsClose))
+            return StatusCode(403, new { message = "Stopping or reopening an item needs permission.", code = "close_not_allowed" });
         if (req.IsActive == false && product.IsActive)
         {
             if (product.StockOnHand != 0)

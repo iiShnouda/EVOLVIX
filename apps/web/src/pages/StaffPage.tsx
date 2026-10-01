@@ -28,6 +28,9 @@ import {
   useRoles,
   useSetStaffPermissions,
   useStaff,
+  useCreateRole,
+  useDeleteCustomRole,
+  useUpdateCustomRole,
   useUpdateRole,
   useUpdateStaff,
 } from '../lib/queries';
@@ -194,7 +197,7 @@ function PeopleTab() {
                       <span className="block truncate text-xs text-faint">{accessSummary(s)}</span>
                     </span>
                     <span className="flex flex-col items-end gap-1">
-                      <Badge tone="brand">{t(`role.${s.role}`)}</Badge>
+                      <Badge tone="brand">{s.customRoleName ?? t(`role.${s.role}`)}</Badge>
                       {!s.isActive && <Badge>{t('staff.inactive')}</Badge>}
                     </span>
                   </button>
@@ -223,17 +226,60 @@ function useAssignableRoles(): Role[] {
   return ROLES.filter((r) => r !== 'OWNER' || myRole === 'OWNER');
 }
 
+/** A role picked in a form: a built-in one ("SALES") or one the company made ("custom:<id>"). */
+const CUSTOM = 'custom:';
+const roleKeyOf = (p: { role: Role; customRoleId?: string | null }) =>
+  p.customRoleId ? `${CUSTOM}${p.customRoleId}` : p.role;
+
+/** What a role key means for the API: the role it works like and the made role, if any. */
+function useRoleKeys() {
+  const roles = useRoles();
+  const made = (roles.data ?? []).filter((r) => !!r.id);
+  return {
+    made,
+    resolve: (key: string): { role: Role; customRoleId: string } => {
+      if (!key.startsWith(CUSTOM)) return { role: key as Role, customRoleId: '' };
+      const id = key.slice(CUSTOM.length);
+      return { role: made.find((r) => r.id === id)?.role ?? 'VIEWER', customRoleId: id };
+    },
+  };
+}
+
+/** The built-in roles and the company's own, as one list. */
+function RoleOptions({ builtIn, made }: { builtIn: Role[]; made: RoleInfo[] }) {
+  const { t } = useT();
+  return (
+    <>
+      {builtIn.map((r) => (
+        <option key={r} value={r}>
+          {t(`role.${r}`)}
+        </option>
+      ))}
+      {made.length > 0 && (
+        <optgroup label={t('staff.madeRole')}>
+          {made.map((r) => (
+            <option key={r.id} value={`${CUSTOM}${r.id}`}>
+              {r.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
+}
+
 function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
   const { t } = useT();
   const create = useCreateStaff();
   const branches = useBranches();
   const roles = useAssignableRoles();
+  const keys = useRoleKeys();
   const [form, setForm] = useState({
     fullName: '',
     email: '',
     phone: '',
     password: '',
-    role: 'SALES' as Role,
+    role: 'SALES' as string,
     branchId: '',
   });
   const error = create.error as ApiError | null;
@@ -243,6 +289,7 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
     try {
       const created = await create.mutateAsync({
         ...form,
+        ...keys.resolve(form.role),
         branchId,
         phone: form.phone.trim() || undefined,
       });
@@ -276,13 +323,9 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
           <select
             className={field}
             value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
           >
-            {roles.map((r) => (
-              <option key={r} value={r}>
-                {t(`role.${r}`)}
-              </option>
-            ))}
+            <RoleOptions builtIn={roles} made={keys.made} />
           </select>
         </Field>
         <Field label={t('staff.branch')}>
@@ -346,11 +389,12 @@ function PersonPanel({ person }: { person: StaffMember }) {
   const update = useUpdateStaff();
   const branches = useBranches();
   const roles = useAssignableRoles();
+  const keys = useRoleKeys();
   const [form, setForm] = useState({
     fullName: person.fullName,
     email: person.email,
     phone: person.phone ?? '',
-    role: person.role,
+    role: roleKeyOf(person) as string,
     branchId: person.branchId,
   });
   const [password, setPassword] = useState('');
@@ -369,7 +413,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
   if (form.fullName.trim() !== person.fullName) changed.fullName = form.fullName.trim();
   if (form.email.trim().toLowerCase() !== person.email) changed.email = form.email.trim();
   if (form.phone.trim() !== (person.phone ?? '')) changed.phone = form.phone.trim();
-  if (form.role !== person.role) changed.role = form.role;
+  if (form.role !== roleKeyOf(person)) Object.assign(changed, keys.resolve(form.role));
   if (form.branchId !== person.branchId) changed.branchId = form.branchId;
 
   return (
@@ -404,13 +448,12 @@ function PersonPanel({ person }: { person: StaffMember }) {
               className={field}
               value={form.role}
               disabled={isMe}
-              onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
             >
-              {(roles.includes(person.role) ? roles : [person.role, ...roles]).map((r) => (
-                <option key={r} value={r}>
-                  {t(`role.${r}`)}
-                </option>
-              ))}
+              <RoleOptions
+                builtIn={roles.includes(person.role) ? roles : [person.role, ...roles]}
+                made={keys.made}
+              />
             </select>
           </Field>
           <Field label={t('staff.branch')}>
@@ -802,8 +845,14 @@ function PersonPermissions({ person }: { person: StaffMember }) {
   const catalog = usePermissionCatalog();
   const save = useSetStaffPermissions();
   const roleSet = useMemo(
-    () => new Set<string>(roles.data?.find((r) => r.role === person.role)?.permissions ?? []),
-    [roles.data, person.role],
+    () =>
+      new Set<string>(
+        (person.customRoleId
+          ? roles.data?.find((r) => r.id === person.customRoleId)
+          : roles.data?.find((r) => r.role === person.role && !r.id)
+        )?.permissions ?? [],
+      ),
+    [roles.data, person.role, person.customRoleId],
   );
   const [granted, setGranted] = useState<Set<string>>(new Set(person.granted));
   const [revoked, setRevoked] = useState<Set<string>>(new Set(person.revoked));
@@ -882,56 +931,216 @@ function PersonPermissions({ person }: { person: StaffMember }) {
 
 function RolesTab() {
   const { t } = useT();
+  const can = useCan();
   const roles = useRoles();
-  const [role, setRole] = useState<Role>('ACCOUNTANT');
-  const info = roles.data?.find((r) => r.role === role);
+  // A built-in role by name, a made one by id, or "new".
+  const [pick, setPick] = useState<string>('ACCOUNTANT');
+  const keyOf = (r: RoleInfo) => r.id ?? r.role;
+  const info = roles.data?.find((r) => keyOf(r) === pick);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1.5">
         {(roles.data ?? []).map((r) => (
           <button
-            key={r.role}
-            onClick={() => setRole(r.role)}
+            key={keyOf(r)}
+            onClick={() => setPick(keyOf(r))}
             className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors ${
-              role === r.role
+              pick === keyOf(r)
                 ? 'border-brand bg-brand text-brand-fg'
-                : 'border-line bg-surface text-muted hover:text-fg'
+                : r.id
+                  ? 'border-dashed border-brand/50 bg-surface text-fg hover:border-brand'
+                  : 'border-line bg-surface text-muted hover:text-fg'
             }`}
           >
-            {t(`role.${r.role}`)}
+            {r.name ?? t(`role.${r.role}`)}
             <span className="tnum text-xs opacity-80">{r.staff}</span>
           </button>
         ))}
+        {can('roles:manage') && (
+          <Button size="sm" icon="plus" variant="secondary" onClick={() => setPick('new')}>
+            {t('staff.newRole')}
+          </Button>
+        )}
       </div>
       {roles.isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
           <Spinner size={26} />
         </div>
+      ) : pick === 'new' ? (
+        <NewRole roles={roles.data ?? []} onDone={(id) => setPick(id ?? 'ACCOUNTANT')} />
       ) : info ? (
-        <RoleEditor key={`${info.role}:${info.permissions.join()}`} info={info} />
+        <RoleEditor
+          key={`${keyOf(info)}:${info.permissions.join()}:${info.name ?? ''}`}
+          info={info}
+          onDeleted={() => setPick('ACCOUNTANT')}
+        />
       ) : null}
     </div>
   );
 }
 
-function RoleEditor({ info }: { info: RoleInfo }) {
+/** Make a role: its name, the built-in role it works like, and what it may do. */
+function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) => void }) {
+  const { t } = useT();
+  const catalog = usePermissionCatalog();
+  const create = useCreateRole();
+  const builtIn = useAssignableRoles().filter((r) => r !== 'OWNER');
+  const [name, setName] = useState('');
+  const [base, setBase] = useState<Role>('SALES');
+  const [set, setSet] = useState<Set<string>>(
+    () => new Set(roles.find((r) => r.role === 'SALES' && !r.id)?.permissions ?? []),
+  );
+  const mine = useAuth((s) => s.user?.permissions ?? NO_PERMISSIONS);
+  const error = create.error as ApiError | null;
+
+  return (
+    <Card className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label={t('staff.roleName')}>
+          <input
+            className={field}
+            autoFocus
+            maxLength={60}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <Field label={t('staff.basedOn')} hint={t('staff.basedOnHint')}>
+          <select className={field} value={base} onChange={(e) => setBase(e.target.value as Role)}>
+            {builtIn.map((r) => (
+              <option key={r} value={r}>
+                {t(`role.${r}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t('staff.copyFrom')}>
+          <select
+            className={field}
+            defaultValue=""
+            onChange={(e) => {
+              const from = roles.find((r) => (r.id ?? r.role) === e.target.value);
+              // Only what the maker holds can go in it.
+              if (from) setSet(new Set(from.permissions.filter((p) => mine.includes(p))));
+            }}
+          >
+            <option value="" disabled>
+              —
+            </option>
+            {roles
+              .filter((r) => r.role !== 'OWNER' || r.id)
+              .map((r) => (
+                <option key={r.id ?? r.role} value={r.id ?? r.role}>
+                  {r.name ?? t(`role.${r.role}`)}
+                </option>
+              ))}
+          </select>
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() =>
+            setSet(
+              new Set(
+                (catalog.data ?? [])
+                  .map((p) => p.key)
+                  .filter((p) => mine.includes(p as Permission)),
+              ),
+            )
+          }
+        >
+          {t('staff.selectAll')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setSet(new Set())}>
+          {t('staff.selectNone')}
+        </Button>
+      </div>
+      <PermissionChecklist
+        catalog={catalog.data ?? []}
+        isChecked={(p) => set.has(p)}
+        onToggle={(p) => {
+          const next = new Set(set);
+          if (next.has(p)) next.delete(p);
+          else next.add(p);
+          setSet(next);
+        }}
+        disabled={false}
+      />
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          icon="check"
+          loading={create.isPending}
+          disabled={!name.trim()}
+          onClick={async () => {
+            try {
+              const made = await create.mutateAsync({
+                name: name.trim(),
+                baseRole: base,
+                permissions: [...set],
+              });
+              onDone(made.id ?? undefined);
+            } catch {
+              /* shown below */
+            }
+          }}
+        >
+          {t('staff.createRole')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onDone()}>
+          {t('common.cancel')}
+        </Button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error.message}</p>}
+    </Card>
+  );
+}
+
+function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void }) {
   const { t } = useT();
   const can = useCan();
-  const myRole = useAuth((s) => s.user?.role);
+  const me = useAuth((s) => s.user);
   const catalog = usePermissionCatalog();
   const update = useUpdateRole();
   const reset = useResetRole();
+  const updateMade = useUpdateCustomRole();
+  const remove = useDeleteCustomRole();
+  const made = !!info.id;
   const [set, setSet] = useState<Set<string>>(new Set(info.permissions));
-  const editable = info.editable && can('roles:manage') && info.role !== myRole;
-  const dirty = [...set].sort().join() !== [...info.permissions].sort().join();
-  const error = (update.error ?? reset.error) as ApiError | null;
+  const [name, setName] = useState(info.name ?? '');
+  const mine = made ? me?.roleName === info.name : info.role === me?.role && !me?.roleName;
+  const editable = info.editable && can('roles:manage') && !mine;
+  const dirty =
+    [...set].sort().join() !== [...info.permissions].sort().join() ||
+    (made && name.trim() !== info.name);
+  const error = (update.error ??
+    reset.error ??
+    updateMade.error ??
+    remove.error) as ApiError | null;
 
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-semibold">{t(`role.${info.role}`)}</h2>
-        {info.custom && <Badge tone="warning">{t('staff.custom')}</Badge>}
+        {made && editable ? (
+          <input
+            className={`${field} max-w-60 font-semibold`}
+            aria-label={t('staff.roleName')}
+            maxLength={60}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        ) : (
+          <h2 className="text-base font-semibold">{info.name ?? t(`role.${info.role}`)}</h2>
+        )}
+        {made && (
+          <Badge tone="brand">
+            {t('staff.basedOn')}: {t(`role.${info.role}`)}
+          </Badge>
+        )}
+        {!made && info.custom && <Badge tone="warning">{t('staff.custom')}</Badge>}
         <span className="text-xs text-muted tnum">
           {t('staff.members')}: {info.staff}
         </span>
@@ -953,13 +1162,20 @@ function RoleEditor({ info }: { info: RoleInfo }) {
           <Button
             size="sm"
             icon="check"
-            loading={update.isPending}
-            disabled={!dirty}
-            onClick={() => update.mutate({ role: info.role, permissions: [...set] })}
+            loading={update.isPending || updateMade.isPending}
+            disabled={!dirty || (made && !name.trim())}
+            onClick={() =>
+              made
+                ? updateMade.mutate({
+                    id: info.id!,
+                    input: { name: name.trim(), permissions: [...set] },
+                  })
+                : update.mutate({ role: info.role, permissions: [...set] })
+            }
           >
             {t('staff.saveRole')}
           </Button>
-          {info.custom && (
+          {!made && info.custom && (
             <Button
               size="sm"
               variant="ghost"
@@ -967,6 +1183,24 @@ function RoleEditor({ info }: { info: RoleInfo }) {
               onClick={() => reset.mutate(info.role)}
             >
               {t('staff.resetRole')}
+            </Button>
+          )}
+          {made && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={remove.isPending}
+              disabled={info.staff > 0}
+              onClick={async () => {
+                try {
+                  await remove.mutateAsync(info.id!);
+                  onDeleted();
+                } catch {
+                  /* shown below */
+                }
+              }}
+            >
+              {t('staff.deleteRole')}
             </Button>
           )}
         </div>

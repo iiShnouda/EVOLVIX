@@ -53,6 +53,7 @@ export type Permission =
   | 'parties:cash_customer'
   | 'sales:override_floor'
   | 'sales:return'
+  | 'sales:return_free'
   | 'sales:quote'
   | 'sales:order'
   | 'sales:approve'
@@ -63,12 +64,16 @@ export type Permission =
   | 'purchases:view'
   | 'purchases:create'
   | 'purchases:return'
+  | 'purchases:return_free'
   | 'receipts:view'
   | 'receipts:create'
   | 'parties:view'
   | 'parties:edit'
+  | 'parties:close'
   | 'inventory:view'
   | 'inventory:edit'
+  | 'inventory:stocktake'
+  | 'inventory:transfer'
   | 'staff:view'
   | 'staff:manage'
   | 'roles:manage'
@@ -93,6 +98,7 @@ export type Permission =
   // Catalog (owner decision 2026-09-29: every action has its own permission)
   | 'products:create'
   | 'products:edit'
+  | 'products:close'
   | 'prices:edit'
   | 'price_levels:manage'
   | 'price_lists:manage'
@@ -160,6 +166,8 @@ export interface AuthUser {
   fullName: string;
   email: string;
   role: Role;
+  /** The name of the role the company made for them, if any. */
+  roleName?: string | null;
   /** Their own branch. */
   branchId: string;
   permissions: Permission[];
@@ -1400,6 +1408,9 @@ export interface BranchWithWarehouses {
 /** A person who can sign in, with what they may do. */
 export interface StaffMember {
   id: string;
+  /** A role the company made, when they are in one (`role` is then the role it works like). */
+  customRoleId?: string | null;
+  customRoleName?: string | null;
   /** Their number (كود), shown beside the name. */
   code: number;
   fullName: string;
@@ -1445,6 +1456,9 @@ export interface StaffAccessInput {
 }
 
 export interface RoleInfo {
+  /** For a role the company made: its id and name (`role` is then the role it works like). */
+  id?: string | null;
+  name?: string | null;
   role: Role;
   permissions: Permission[];
   /** The owner changed it from the default. */

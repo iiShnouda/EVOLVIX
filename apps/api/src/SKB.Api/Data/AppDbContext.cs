@@ -51,6 +51,7 @@ public class AppDbContext : DbContext
     public DbSet<PriceListItem> PriceListItems => Set<PriceListItem>();
     public DbSet<QuantityBreak> QuantityBreaks => Set<QuantityBreak>();
     public DbSet<RolePermissionSet> RolePermissionSets => Set<RolePermissionSet>();
+    public DbSet<CustomRole> CustomRoles => Set<CustomRole>();
     public DbSet<DocumentCharge> DocumentCharges => Set<DocumentCharge>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ShipmentInvoice> ShipmentInvoices => Set<ShipmentInvoice>();
@@ -74,6 +75,12 @@ public class AppDbContext : DbContext
         // Store enums as readable strings in Postgres.
         b.Entity<Staff>().Property(s => s.Role).HasConversion<string>();
         b.Entity<RolePermissionSet>().HasKey(r => r.Role);
+        b.Entity<CustomRole>().Property(r => r.BaseRole).HasConversion<string>();
+        b.Entity<CustomRole>().HasIndex(r => r.Name).IsUnique();
+        b.Entity<Staff>().HasOne(s => s.CustomRole).WithMany()
+            .HasForeignKey(s => s.CustomRoleId).OnDelete(DeleteBehavior.Restrict);
+        // A person's permissions come from their custom role, so it always comes with them.
+        b.Entity<Staff>().Navigation(s => s.CustomRole).AutoInclude();
         b.Entity<DocumentCharge>().Property(c => c.Kind).HasConversion<string>();
         b.Entity<DocumentCharge>()
             .HasOne(c => c.Document).WithMany(d => d.Charges)

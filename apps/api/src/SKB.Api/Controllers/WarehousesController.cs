@@ -56,7 +56,7 @@ public sealed class WarehousesController : ControllerBase
     /// branch-scoped staff can pick another branch as the destination.
     /// </summary>
     [HttpGet("warehouses/destinations")]
-    [Authorize(Policy = Permissions.InventoryEdit)]
+    [Authorize(Policy = Permissions.InventoryTransfer)]
     public async Task<ActionResult<WarehouseOptionDto[]>> Destinations()
     {
         var rows = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)

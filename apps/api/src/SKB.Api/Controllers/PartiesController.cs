@@ -102,6 +102,8 @@ public sealed class PartiesController : ControllerBase
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
             req.ExtraAddressLabel, req.TempCarrierName), isNew: false);
         if (error is not null) return error;
+        if (req.IsActive is bool active && active != party.IsActive && !User.HasClaim("permission", Permissions.PartiesClose))
+            return StatusCode(403, new { message = "Closing or reopening an account needs permission.", code = "close_not_allowed" });
         if (req.IsActive == false && party.IsActive)
         {
             if (party.Balance != 0)

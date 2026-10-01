@@ -33,7 +33,7 @@ export function InventoryPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const can = useCan();
-  const canEdit = can('inventory:edit');
+  const canEdit = can('inventory:stocktake');
   // Average cost, stock value and the valuation are the owner's unless given (costs:view).
   const seeCosts = can('costs:view');
   const tab: Tab = seeCosts && params.get('tab') === 'valuation' ? 'valuation' : 'items';

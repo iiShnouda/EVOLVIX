@@ -491,7 +491,7 @@ export function ProductEditorPage() {
             >
               {pending ? t('item.saving') : t('item.save')}
             </Button>
-            {d && canFields && (
+            {d && can('products:close') && (
               <>
                 <Button
                   className="w-full"

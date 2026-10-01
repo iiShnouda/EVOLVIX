@@ -33,7 +33,8 @@ public sealed class PermissionService
     public static string[] Effective(Staff staff, IReadOnlyDictionary<Role, (string[] Permissions, bool Custom)> sets)
     {
         if (staff.Role == Role.OWNER) return Permissions.All;
-        var set = sets.TryGetValue(staff.Role, out var s) ? s.Permissions : RolePermissions.For(staff.Role);
+        var set = staff.CustomRole is { } custom ? custom.Permissions.ToArray()
+            : sets.TryGetValue(staff.Role, out var s) ? s.Permissions : RolePermissions.For(staff.Role);
         return Known(set.Union(staff.GrantedPermissions).Except(staff.RevokedPermissions));
     }
 

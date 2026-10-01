@@ -1032,7 +1032,7 @@ public sealed class SalesController : ControllerBase
     /// on the party's account; a cash customer is paid back from the branch cash box.
     /// </summary>
     [HttpPost("returns")]
-    [Authorize(Policy = Permissions.SalesReturn)]
+    [Authorize(Policy = Permissions.SalesReturnFree)]
     public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);

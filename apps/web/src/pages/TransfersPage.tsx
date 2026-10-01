@@ -40,7 +40,7 @@ export function TransfersPage() {
   const tab: Tab = params.get('tab') === 'open' ? 'open' : 'all';
   const waiting = useTransfers({ page: 1, status: 'SENT' });
   const anyWaiting = (waiting.data?.total ?? 0) > 0;
-  const canSend = useAuth((s) => s.user?.permissions ?? []).includes('inventory:edit');
+  const canSend = useAuth((s) => s.user?.permissions ?? []).includes('inventory:transfer');
   const currency = useCompanySettings().data?.currency ?? 'EGP';
 
   const list = useTransfers({ page: 1, status: tab === 'open' ? 'SENT' : undefined });

@@ -680,7 +680,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          {party ? (
+          {party && can('parties:close') ? (
             party.isActive ? (
               <Button
                 type="button"
