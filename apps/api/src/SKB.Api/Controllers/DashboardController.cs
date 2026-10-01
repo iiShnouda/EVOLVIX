@@ -78,6 +78,130 @@ public sealed class DashboardController : ControllerBase
             Currency));
     }
 
+    /// <summary>
+    /// More of the business at a glance: today, this month against last, the best customers and
+    /// items, sales per branch, money, cheques due this week, invoices waiting for approval and
+    /// customers over their limit. Each part only for those who may see it, in their branches.
+    /// </summary>
+    [HttpGet("more")]
+    public async Task<ActionResult<DashboardMoreDto>> More()
+    {
+        bool Can(string p) => User.HasClaim("permission", p);
+        var today = CompanyClock.Today;
+        var dayStart = CompanyClock.StartOf(today);
+        var monthStart = CompanyClock.StartOf(new DateOnly(today.Year, today.Month, 1));
+        var lastMonthStart = CompanyClock.StartOf(new DateOnly(today.Year, today.Month, 1).AddMonths(-1));
+        var sales = _db.SalesDocuments.InBranches(User, d => d.BranchId).Where(d =>
+            d.Status != DocumentStatus.CANCELLED
+            && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN));
+
+        DashTodayDto? todayDto = null;
+        DashMonthDto? month = null;
+        DashRankDto[]? topCustomers = null, topItems = null, byBranch = null;
+        if (Can(Permissions.SalesView))
+        {
+            var t = await sales.Where(d => d.IssueDate >= dayStart).GroupBy(d => d.Type)
+                .Select(g => new { g.Key, Total = g.Sum(d => d.GrandTotal), Count = g.Count() }).ToListAsync();
+            var inv = t.FirstOrDefault(x => x.Key == DocumentType.SALES_INVOICE);
+            var ret = t.FirstOrDefault(x => x.Key == DocumentType.SALES_RETURN);
+            todayDto = new DashTodayDto((inv?.Total ?? 0) - (ret?.Total ?? 0), inv?.Count ?? 0, ret?.Total ?? 0);
+
+            var m = await sales.Where(d => d.IssueDate >= lastMonthStart)
+                .GroupBy(d => new { This = d.IssueDate >= monthStart, d.Type })
+                .Select(g => new { g.Key.This, g.Key.Type, Total = g.Sum(d => d.GrandTotal), Profit = g.Sum(d => d.ProfitTotal) })
+                .ToListAsync();
+            long Net(bool thisMonth, bool profit = false) =>
+                m.Where(x => x.This == thisMonth).Sum(x =>
+                    (x.Type == DocumentType.SALES_INVOICE ? 1 : -1) * (profit ? x.Profit : x.Total));
+            long? expenses = null;
+            if (Can(Permissions.ReceiptsView))
+                expenses = await _db.Vouchers.InBranches(User, v => v.BranchId)
+                    .Where(v => v.Type == VoucherType.EXPENSE && v.Status == VoucherStatus.POSTED && v.CreatedAt >= monthStart)
+                    .SumAsync(v => (long?)v.Amount) ?? 0;
+            month = new DashMonthDto(Net(true), Net(false),
+                Can(Permissions.CostsView) ? Net(true, profit: true) : null, expenses);
+
+            var monthSales = sales.Where(d => d.IssueDate >= monthStart);
+            var customers = await monthSales.GroupBy(d => d.PartyId)
+                .Select(g => new
+                {
+                    g.Key,
+                    Net = g.Sum(d => d.Type == DocumentType.SALES_INVOICE ? d.GrandTotal : -d.GrandTotal),
+                    Count = g.Count(d => d.Type == DocumentType.SALES_INVOICE),
+                })
+                .OrderByDescending(x => x.Net).Take(5).ToListAsync();
+            var names = await _db.Parties.Where(p => customers.Select(c => c.Key).Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Name);
+            topCustomers = customers.Select(c => new DashRankDto(c.Key.ToString(),
+                names.GetValueOrDefault(c.Key, ""), c.Net, c.Count)).ToArray();
+
+            var items = await _db.DocumentLines.Where(l => monthSales.Any(d => d.Id == l.DocumentId))
+                .GroupBy(l => new { l.ProductId, l.ProductName })
+                .Select(g => new
+                {
+                    g.Key.ProductId,
+                    g.Key.ProductName,
+                    Qty = g.Sum(l => l.Document!.Type == DocumentType.SALES_INVOICE ? l.Quantity : -l.Quantity),
+                    Value = g.Sum(l => l.Document!.Type == DocumentType.SALES_INVOICE ? l.LineTotal : -l.LineTotal),
+                })
+                .OrderByDescending(x => x.Qty).Take(5).ToListAsync();
+            topItems = items.Select(i => new DashRankDto(i.ProductId.ToString(), i.ProductName, i.Value, i.Qty)).ToArray();
+
+            var branches = await monthSales.GroupBy(d => d.BranchId)
+                .Select(g => new { g.Key, Net = g.Sum(d => d.Type == DocumentType.SALES_INVOICE ? d.GrandTotal : -d.GrandTotal) })
+                .ToListAsync();
+            var branchNames = await _db.Branches.ToDictionaryAsync(b => b.Id, b => Loc.Name(b));
+            byBranch = branches.OrderByDescending(b => b.Net).Take(8)
+                .Select(b => new DashRankDto(b.Key.ToString(), branchNames.GetValueOrDefault(b.Key, ""), b.Net)).ToArray();
+        }
+
+        DashAccountDto[]? accounts = null;
+        if (Can(Permissions.ReceiptsView))
+        {
+            var only = Access.MoneyAccounts(User);
+            var rows = await _db.MoneyAccounts.InBranches(User, a => a.BranchId)
+                .Where(a => a.IsActive && (only == null || only.Contains(a.Id)))
+                .OrderByDescending(a => a.Balance).Take(8).ToListAsync();
+            accounts = rows.Select(a => new DashAccountDto(a.Id.ToString(), Loc.Name(a), a.Kind.ToString(), a.Balance)).ToArray();
+        }
+
+        DashNotesDueDto? notes = null;
+        if (Can(Permissions.NotesView))
+        {
+            var weekEnd = CompanyClock.StartOf(today.AddDays(8));
+            var due = await _db.Notes.InBranches(User, n => n.BranchId)
+                .Where(n => n.DueDate < weekEnd
+                    && (n.Status == NoteStatus.IN_HAND || n.Status == NoteStatus.UNDER_COLLECTION || n.Status == NoteStatus.ISSUED))
+                .GroupBy(n => n.Direction)
+                .Select(g => new { g.Key, Count = g.Count(), Amount = g.Sum(n => n.Amount) }).ToListAsync();
+            var r = due.FirstOrDefault(x => x.Key == NoteDirection.RECEIVABLE);
+            var p = due.FirstOrDefault(x => x.Key == NoteDirection.PAYABLE);
+            notes = new DashNotesDueDto(r?.Count ?? 0, r?.Amount ?? 0, p?.Count ?? 0, p?.Amount ?? 0);
+        }
+
+        int? awaiting = Can(Permissions.SalesApprove)
+            ? await _db.SalesDocuments.InBranches(User, d => d.BranchId)
+                .CountAsync(d => d.Type == DocumentType.SALES_ORDER && d.Status == DocumentStatus.PENDING)
+            : null;
+
+        DashRankDto[]? overLimit = null;
+        var overCount = 0;
+        if (Can(Permissions.PartiesView))
+        {
+            var over = _db.Parties.Where(p => p.IsActive && p.CreditLimit != null && p.Balance >= p.CreditLimit);
+            overCount = await over.CountAsync();
+            overLimit = (await over.OrderByDescending(p => p.Balance - p.CreditLimit).Take(5).ToListAsync())
+                .Select(p => new DashRankDto(p.Id.ToString(), p.Name, p.Balance, null, p.CreditLimit)).ToArray();
+        }
+
+        long? stockValue = Can(Permissions.CostsView)
+            ? await _db.Products.Where(p => p.IsActive && p.StockOnHand > 0).SumAsync(p => (long?)p.StockOnHand * p.CostPrice) ?? 0
+            : null;
+
+        return Ok(new DashboardMoreDto(todayDto, month, topCustomers, topItems, byBranch, accounts, notes, awaiting,
+            overLimit, overCount, stockValue));
+    }
+
     private async Task<TrendPointDto[]> BuildTrendAsync()
     {
         var first = CompanyClock.Today.AddDays(-(TrendDays - 1));

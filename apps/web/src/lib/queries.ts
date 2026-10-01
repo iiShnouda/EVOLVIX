@@ -36,6 +36,7 @@ import type {
   UpdateWarehouseInput,
   Warehouse,
   DashboardData,
+  DashboardMore,
   InventoryList,
   ItemCard,
   StocktakeInput,
@@ -136,6 +137,14 @@ export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardData>('/dashboard'),
+  });
+}
+
+/** The dashboard's other widgets (today, the month, rankings, money, cheques, limits). */
+export function useDashboardMore() {
+  return useQuery({
+    queryKey: ['dashboard', 'more'],
+    queryFn: () => api.get<DashboardMore>('/dashboard/more'),
   });
 }
 

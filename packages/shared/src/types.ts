@@ -1496,6 +1496,40 @@ export interface TrendPoint {
   purchases: number;
 }
 
+/** One row of a dashboard ranking (a customer, item or branch). */
+export interface DashRank {
+  id: string;
+  name: string;
+  value: number;
+  quantity?: number | null;
+  extra?: number | null;
+}
+
+/** The dashboard's other widgets; a part is null when the person may not see it. */
+export interface DashboardMore {
+  today: { sales: number; invoices: number; returns: number } | null;
+  month: {
+    sales: number;
+    lastMonth: number;
+    profit: number | null;
+    expenses: number | null;
+  } | null;
+  topCustomers: DashRank[] | null;
+  topItems: DashRank[] | null;
+  branches: DashRank[] | null;
+  accounts: { id: string; name: string; kind: string; balance: number }[] | null;
+  notesDue: {
+    receivable: number;
+    receivableAmount: number;
+    payable: number;
+    payableAmount: number;
+  } | null;
+  awaitingApproval: number | null;
+  overLimit: DashRank[] | null;
+  overLimitCount: number;
+  stockValue: number | null;
+}
+
 export interface DashboardData {
   kpis: KpiValue[];
   trend: TrendPoint[];

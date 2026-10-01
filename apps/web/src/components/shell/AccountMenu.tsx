@@ -95,7 +95,11 @@ export function AccountMenu() {
             </div>
           </div>
           {branches.length > 1 && (
-            <div className="border-b border-line py-1" role="group" aria-label={t('branch.working')}>
+            <div
+              className="border-b border-line py-1"
+              role="group"
+              aria-label={t('branch.working')}
+            >
               {branches.map((b) => (
                 <button
                   key={b.id}

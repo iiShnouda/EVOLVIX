@@ -369,6 +369,21 @@ public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
     SalesSummaryDto[] RecentDocuments, string Currency);
 
+/// <summary>
+/// The dashboard's other widgets (owner, 2026-10-01: the owner sees the whole business). A part is
+/// null when the person may not see it.
+/// </summary>
+public record DashboardMoreDto(
+    DashTodayDto? Today, DashMonthDto? Month, DashRankDto[]? TopCustomers, DashRankDto[]? TopItems,
+    DashRankDto[]? Branches, DashAccountDto[]? Accounts, DashNotesDueDto? NotesDue, int? AwaitingApproval,
+    DashRankDto[]? OverLimit, int OverLimitCount, long? StockValue);
+
+public record DashTodayDto(long Sales, int Invoices, long Returns);
+public record DashMonthDto(long Sales, long LastMonth, long? Profit, long? Expenses);
+public record DashRankDto(string Id, string Name, long Value, long? Quantity = null, long? Extra = null);
+public record DashAccountDto(string Id, string Name, string Kind, long Balance);
+public record DashNotesDueDto(int Receivable, long ReceivableAmount, int Payable, long PayableAmount);
+
 public record PaginatedDto<T>(T[] Items, int Total, int Page, int PageSize);
 
 // ---- Delivery (DOMAIN.md §2.5): deliveries, shipments / waybills, carrier settlements ----
