@@ -926,6 +926,10 @@ own permission, and roles bundle them
 - Themes page (`/themes`, each person's own, stays on the device like light/dark): Evolvix, Ocean,
   Forest, Sunset, Royal, Valorant. A theme changes colours, shapes and effects (`skins.css`, hooked
   on `data-ui` marks); printing always uses the plain light look. Check: `branding`.
+- Screens carry no explanatory notes (owner, 2026-10-01): only labels, values, errors and the warnings
+  next to irreversible actions. Arabic texts are formal and clear, not colloquial.
+- Date fields start on today: list periods (sales, purchases, returns, quotes, activity log), a
+  sale's due date, a new price list's start, the period-lock date.
 
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).

@@ -598,7 +598,6 @@ function NewEntrySheet({ onClose }: { onClose: () => void }) {
             />
           </label>
         </div>
-        <p className="text-xs text-faint">{t('ledger.entryHint')}</p>
         <div className="space-y-2">
           {lines.map((l, i) => (
             <div
@@ -706,7 +705,7 @@ function TrialTab() {
   const { data, isLoading, error } = useTrialBalance(from, to);
   const lock = useLockDate();
   const setLock = useSetLockDate();
-  const [lockTo, setLockTo] = useState('');
+  const [lockTo, setLockTo] = useState(today);
   // A closed year stays locked: the lock can't move back before its 31 December.
   const lastClosed = Math.max(0, ...(useClosedYears().data ?? []).map((c) => c.year));
   const lockMin = lastClosed ? `${lastClosed}-12-31` : undefined;

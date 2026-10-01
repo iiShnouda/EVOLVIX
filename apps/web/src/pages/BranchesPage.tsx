@@ -106,7 +106,6 @@ function NewBranch({ onDone }: { onDone: () => void }) {
           />
         </label>
       </div>
-      <p className="text-xs text-faint">{t('branches.newHint')}</p>
       {error && <p className="text-xs text-destructive">{error.message}</p>}
       <div className="flex gap-2">
         <Button icon="check" loading={create.isPending} disabled={!typed.name} onClick={save}>
@@ -266,9 +265,6 @@ function BranchCard({
             </Button>
           </div>
           {error && <p className="text-xs text-destructive">{error.message}</p>}
-          <p className="text-xs text-faint">
-            {t('warehouse.defaultHint')} {t('warehouse.closeHint')}
-          </p>
         </div>
       )}
     </Card>

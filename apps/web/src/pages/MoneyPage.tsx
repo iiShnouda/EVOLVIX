@@ -442,7 +442,7 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
             />
           </Field>
         )}
-        <Field label={t('money.opening')} hint={t('money.openingHint')}>
+        <Field label={t('money.opening')}>
           <input
             className={`${input} tnum`}
             type="number"
@@ -537,7 +537,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
       </div>
       {!a.hasMovements && a.isActive && (
         <div className="mt-3">
-          <Field label={t('money.opening')} hint={t('money.openingHint')}>
+          <Field label={t('money.opening')}>
             <input
               className={`${input} tnum`}
               type="number"
@@ -606,9 +606,6 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
           </Button>
         </div>
       </div>
-      {a.isActive && (a.balance !== 0 || a.isDefault) && (
-        <p className="mt-2 text-xs text-faint">{t('money.closeHint')}</p>
-      )}
     </Sheet>
   );
 }

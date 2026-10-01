@@ -86,7 +86,6 @@ export function ItemFinderSheet({
   return (
     <Sheet title={t('finder.title')} onClose={onClose} closeLabel={t('common.close')} wide="full">
       <div className="space-y-3">
-        <p className="text-xs text-faint">{t('finder.hint')}</p>
         <form
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
           onSubmit={(e) => {

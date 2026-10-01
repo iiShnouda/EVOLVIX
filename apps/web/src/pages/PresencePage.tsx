@@ -142,7 +142,6 @@ export function PresencePage() {
           })}
         </div>
       )}
-      <p className="text-xs text-faint">{t('presence.hint')}</p>
     </div>
   );
 }

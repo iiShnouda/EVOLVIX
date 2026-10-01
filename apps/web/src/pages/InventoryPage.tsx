@@ -357,7 +357,6 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             </p>
           </div>
         </div>
-        <p className="mt-2 text-xs text-faint">{t('inventory.valuationHint')}</p>
       </Card>
 
       {valuation.isLoading ? (

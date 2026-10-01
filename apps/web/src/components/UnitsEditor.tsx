@@ -72,9 +72,9 @@ export function UnitsEditor({
               </option>
             ))}
           </select>
-          <span className="mt-0.5 block text-xs text-faint">
-            {baseLocked ? t('item.baseLocked') : t('item.baseUnitHint')}
-          </span>
+          {baseLocked && (
+            <span className="mt-0.5 block text-xs text-faint">{t('item.baseLocked')}</span>
+          )}
         </label>
         {withBarcodes && (
           <label className="block">

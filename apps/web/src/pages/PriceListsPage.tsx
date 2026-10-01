@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  companyToday,
   formatMoney,
   formatNumber,
   toMajor,
@@ -89,7 +90,6 @@ function ListsTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       <div className="min-w-0 space-y-3">
-        <p className="text-sm text-muted">{t('pl.intro')}</p>
         {canManage &&
           (adding ? (
             <ListSettings
@@ -159,7 +159,7 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
     name: list?.name ?? '',
     side: list?.side ?? ('SALE' as 'SALE' | 'PURCHASE'),
     forEveryone: list?.forEveryone ?? false,
-    validFrom: list?.validFrom ?? '',
+    validFrom: list ? (list.validFrom ?? '') : companyToday(),
     validTo: list?.validTo ?? '',
     isActive: list?.isActive ?? true,
     notes: list?.notes ?? '',
@@ -527,7 +527,6 @@ function BreaksTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div className="min-w-0 space-y-3">
-        <p className="text-sm text-muted">{t('pl.breaksIntro')}</p>
         {canManage && (
           <Card className="space-y-2">
             <ItemPicker

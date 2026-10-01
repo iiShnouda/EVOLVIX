@@ -152,9 +152,7 @@ export function PriceGrid({
           </TableColumns>
         </div>
       ))}
-      <p className="text-xs text-faint">
-        {readOnly ? t('item.pricesReadonly') : t('item.pricesHint')}
-      </p>
+      {readOnly && <p className="text-xs text-faint">{t('item.pricesReadonly')}</p>}
     </div>
   );
 }

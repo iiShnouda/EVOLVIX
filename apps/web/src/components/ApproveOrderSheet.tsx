@@ -133,7 +133,6 @@ export function ApproveOrderSheet({
             {t('account.paid')}: <span className="tnum">{money(done.paidAmount)}</span> ·{' '}
             {t('account.left')}: <span className="font-medium text-fg tnum">{money(left)}</span>
           </p>
-          {left > 0 && <p className="text-xs text-faint">{t('order.payNoteHint')}</p>}
           <div className="flex flex-wrap justify-end gap-2">
             {left > 0 && can('notes:receive') && done.partyId && (
               <Button
@@ -166,7 +165,6 @@ export function ApproveOrderSheet({
           {order.partyName}
           {order.departmentName && <> · {order.departmentName}</>} · {order.staffName}
         </p>
-        <p className="text-xs text-faint">{t('order.approveHint')}</p>
 
         <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
           <TableColumns id="approveOrder.lines">
@@ -288,7 +286,6 @@ export function ApproveOrderSheet({
             />
           )}
         </div>
-        {paidAmount < total && <p className="text-xs text-faint">{t('order.payNoteHint')}</p>}
         {can('sales:override_floor') && (
           <label className="flex items-center gap-2 text-sm">
             <input

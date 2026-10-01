@@ -214,7 +214,7 @@ export function ProductEditorPage() {
                 <p className="text-xs text-muted">{t('item.variantOf')}</p>
                 <p className="font-medium">{d.modelName}</p>
                 <p className="text-xs text-muted">
-                  {[d.colorName, d.sizeName].filter(Boolean).join(' / ')} · {t('item.variantHint')}
+                  {[d.colorName, d.sizeName].filter(Boolean).join(' / ')}
                 </p>
                 <Link
                   className="mt-1 inline-block text-xs font-medium text-brand hover:underline"
@@ -358,9 +358,6 @@ export function ProductEditorPage() {
                 >
                   {d.isActive ? t('item.close') : t('item.reopen')}
                 </Button>
-                {d.isActive && (
-                  <p className="text-center text-xs text-faint">{t('item.closeHint')}</p>
-                )}
               </>
             )}
           </Card>

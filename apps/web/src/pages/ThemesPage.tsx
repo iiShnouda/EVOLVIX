@@ -18,7 +18,7 @@ export function ThemesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title={t('themes.title')} subtitle={t('themes.hint')} />
+      <PageHeader title={t('themes.title')} />
 
       <Card className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium">{t('themes.mode')}</span>

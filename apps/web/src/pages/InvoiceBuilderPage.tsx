@@ -134,7 +134,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [pickedRep, setPickedRep] = useState('');
   /** The rep's code while it is being typed (null = show the chosen rep's). */
   const [repCode, setRepCode] = useState<string | null>(null);
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(companyToday);
   const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
   const repCodeMissing = !!repCode && !(reps.data ?? []).some((r) => String(r.code) === repCode);
   /** Their discount limit (%); null = none. */
@@ -808,7 +808,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     <div className="space-y-5">
       <PageHeader
         title={t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')}
-        subtitle={isQuote ? t('quote.newHint') : undefined}
         action={
           <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
             {t('invoice.back')}
@@ -1076,7 +1075,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 <span className="hidden lg:inline">{t('finder.button')}</span>
               </Button>
             </div>
-            <p className="mt-1 text-xs text-faint">{t('invoice.scanHint')}</p>
             {scanning && <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />}
             {finding && (
               <ItemFinderSheet
@@ -1392,9 +1390,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     value={shippingCost}
                     onChange={(e) => setShippingCost(e.target.value)}
                   />
-                  <span className="mt-0.5 block text-xs text-faint">
-                    {t('invoice.shippingCostHint')}
-                  </span>
                 </label>
               )}
               {!isSale && Number(shippingCost) > 0 && (
@@ -1447,15 +1442,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             >
               {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
             </Button>
-            {asOrder && (
-              <p className="mt-2 text-center text-xs text-faint">{t('order.saveHint')}</p>
-            )}
-            {isSale && !isQuote && !asOrder && (
-              <p className="mt-2 text-center text-xs text-faint">{t('invoice.savedHint')}</p>
-            )}
-            {isSale && (
-              <p className="mt-2 text-center text-xs text-faint">{t('invoice.floorHint')}</p>
-            )}
             {!canChangePrice && (
               <p className="mt-1 text-center text-xs text-faint">
                 {t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')}

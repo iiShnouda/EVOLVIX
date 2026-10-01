@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { en, formatDateTime, formatNumber, type TranslationKey } from '@skb/shared';
+import { companyToday, en, formatDateTime, formatNumber, type TranslationKey } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { ReportActions } from '../components/ReportActions';
 import { useT } from '../lib/i18n';
@@ -21,7 +21,11 @@ function label(t: (k: TranslationKey) => string, prefix: string, code: string) {
  */
 export function ActivityPage() {
   const { t, locale } = useT();
-  const [filter, setFilter] = useState<AuditFilter>({ page: 1 });
+  const [filter, setFilter] = useState<AuditFilter>(() => ({
+    page: 1,
+    from: companyToday(),
+    to: companyToday(),
+  }));
   const { data, isLoading, isFetching } = useAuditLog(filter);
   const facets = useAuditFacets();
   const report = useReportTools();

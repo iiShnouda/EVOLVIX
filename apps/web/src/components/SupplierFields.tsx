@@ -59,7 +59,6 @@ export function SupplierFields({
           onChange={(e) => onCode(e.target.value)}
         />
       </label>
-      <p className="text-xs text-faint sm:col-span-2">{t('catalog.supplierHint')}</p>
     </div>
   );
 }

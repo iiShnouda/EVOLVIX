@@ -75,7 +75,7 @@ export function StocktakePage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title={t('stocktake.title')} subtitle={t('stocktake.hint')} action={back} />
+      <PageHeader title={t('stocktake.title')} action={back} />
 
       {result && (
         <Card className="border-positive">

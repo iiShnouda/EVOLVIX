@@ -710,7 +710,7 @@ function NewShipmentSheet({ onClose }: { onClose: () => void }) {
               <span
                 className={`mt-0.5 block text-xs ${codBad ? 'text-destructive' : 'text-faint'}`}
               >
-                {codBad ? t('shipment.codMax') : t('shipment.codHint')} (
+                {codBad ? t('shipment.codMax') : t('shipment.codOwed')} (
                 {formatMoney(owed, currency, locale)})
               </span>
             </label>
@@ -756,7 +756,6 @@ function SettlementsTab() {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-sm text-muted">{t('settlement.hint')}</p>
         {can('delivery:settle') && (
           <Button icon="plus" onClick={() => setCreating(true)}>
             {t('settlement.new')}

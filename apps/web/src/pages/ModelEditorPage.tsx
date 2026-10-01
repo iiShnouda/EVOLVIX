@@ -293,7 +293,6 @@ export function ModelEditorPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               {isNew ? t('model.variants') : t('model.addOptions')}
             </h2>
-            {!isNew && <p className="text-xs text-faint">{t('model.addHint')}</p>}
             <fieldset disabled={!canFields} className="space-y-3">
               {hasSizes && (
                 <OptionChips
@@ -344,7 +343,6 @@ export function ModelEditorPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               {t('item.prices')}
             </h2>
-            <p className="text-xs text-muted">{t('model.pricesHint')}</p>
             <PriceGrid
               units={gridUnits}
               levels={levels.data ?? []}
@@ -392,9 +390,6 @@ export function ModelEditorPage() {
               >
                 {m.isActive ? t('model.close') : t('model.reopen')}
               </Button>
-            )}
-            {m?.isActive && canFields && (
-              <p className="text-center text-xs text-faint">{t('item.closeHint')}</p>
             )}
           </Card>
           {m && (

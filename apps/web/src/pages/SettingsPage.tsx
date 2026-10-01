@@ -185,7 +185,7 @@ export function SettingsPage() {
               ))}
             </select>
             <span className="mt-1 block text-xs text-muted">
-              {t('settings.timeZoneHint')} {t('settings.timeZoneNow')}{' '}
+              {t('settings.timeZoneNow')}{' '}
               <bdi className="tnum">{clockIn(form.timeZone, locale)}</bdi>
             </span>
           </label>
@@ -248,7 +248,6 @@ export function SettingsPage() {
               onChange={(e) => set({ commercialRegister: e.target.value })}
             />
           </label>
-          <p className="text-xs text-faint sm:col-span-2">{t('settings.profileHint')}</p>
         </div>
       </Card>
 
@@ -269,7 +268,6 @@ export function SettingsPage() {
               value={form.defaultTaxPercent}
               onChange={(e) => set({ defaultTaxPercent: clampInt(e.target.value, 0, 100) })}
             />
-            <span className="mt-0.5 block text-xs text-faint">{t('settings.vatHint')}</span>
           </label>
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.defaultMarkup')}</span>
@@ -292,7 +290,6 @@ export function SettingsPage() {
               value={form.minMarkupPercent}
               onChange={(e) => set({ minMarkupPercent: clampInt(e.target.value, 0, 1000) })}
             />
-            <span className="mt-0.5 block text-xs text-faint">{t('settings.minMarkupHint')}</span>
           </label>
           <label className="block sm:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.maxDiscount')}</span>
@@ -305,7 +302,6 @@ export function SettingsPage() {
               value={form.maxDiscountPercent ?? 100}
               onChange={(e) => set({ maxDiscountPercent: clampInt(e.target.value, 0, 100) })}
             />
-            <span className="mt-0.5 block text-xs text-faint">{t('settings.maxDiscountHint')}</span>
           </label>
           <label className="block sm:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.pendingHoldDays')}</span>
@@ -318,7 +314,6 @@ export function SettingsPage() {
               value={form.pendingHoldDays ?? 0}
               onChange={(e) => set({ pendingHoldDays: clampInt(e.target.value, 0, 365) })}
             />
-            <span className="mt-0.5 block text-xs text-faint">{t('settings.pendingHoldDaysHint')}</span>
           </label>
         </div>
       </Card>
@@ -337,9 +332,6 @@ export function SettingsPage() {
           />
           <span>
             <span className="block text-sm">{t('settings.transfersRequireReceipt')}</span>
-            <span className="block text-xs text-faint">
-              {t('settings.transfersRequireReceiptHint')}
-            </span>
           </span>
         </label>
       </Card>
@@ -447,7 +439,6 @@ function CompanyLogoField({ disabled }: { disabled: boolean }) {
             <LogoRemove onRemove={() => remove.mutate()} busy={busy} />
           </>
         )}
-        <p className="w-full text-xs text-muted">{t('settings.logoHint')}</p>
         {error && <p className="w-full text-xs text-destructive">{error}</p>}
       </div>
     </div>

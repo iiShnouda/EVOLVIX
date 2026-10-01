@@ -427,7 +427,6 @@ function PerformanceTab() {
               </TableColumns>
             </Card>
           )}
-          <p className="text-xs text-faint">{t('perf.hint')}</p>
         </div>
       )}
     </div>
@@ -590,7 +589,6 @@ function AgingTab() {
               </TableColumns>
             </Card>
           )}
-          <p className="text-xs text-faint">{t('aging.hint')}</p>
         </div>
       )}
       {statement && (

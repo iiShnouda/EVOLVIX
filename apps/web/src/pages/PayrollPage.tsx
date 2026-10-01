@@ -321,7 +321,6 @@ function RunsTab() {
                 )}
               </div>
             </div>
-            {r.status === 'DRAFT' && <p className="text-xs text-faint">{t('payroll.draftHint')}</p>}
             {action.error && (
               <p className="text-sm text-destructive">{errorText(t, action.error)}</p>
             )}
@@ -861,7 +860,6 @@ function AttendanceTab() {
           )}
         </div>
       )}
-      <p className="text-xs text-faint">{t('payroll.attendanceHint')}</p>
       {importing && <ImportSheet onClose={() => setImporting(false)} />}
     </div>
   );
@@ -1351,7 +1349,6 @@ function AdvancesTab() {
                 onChange={(e) => setF({ ...f, notes: e.target.value })}
               />
             </Field>
-            <p className="text-xs text-faint">{t('payroll.advanceHint')}</p>
             {give.error && <p className="text-sm text-destructive">{errorText(t, give.error)}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -1462,7 +1459,6 @@ function SetupTab() {
             ))}
           </ul>
         )}
-        <p className="text-xs text-faint">{t('payroll.defaultShiftHint')}</p>
       </Card>
       <Card className="space-y-3">
         <p className="font-medium">{t('payroll.rules')}</p>
@@ -1502,7 +1498,6 @@ function SetupTab() {
               />
               <span>{t('payroll.missingIsAbsent')}</span>
             </label>
-            <p className="text-xs text-faint">{t('payroll.rulesHint')}</p>
             {manage && (
               <Button
                 size="sm"

@@ -484,9 +484,6 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               maxLength={300}
               onChange={(e) => setAddress(e.target.value)}
             />
-            {types.includes('CUSTOMER') && (
-              <span className="mt-0.5 block text-xs text-faint">{t('parties.addressHint')}</span>
-            )}
           </label>
           {types.includes('CUSTOMER') && (
             <label className="block sm:col-span-2">
@@ -498,7 +495,6 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                 maxLength={300}
                 onChange={(e) => setShippingAddress(e.target.value)}
               />
-              <span className="mt-0.5 block text-xs text-faint">{t('parties.shippingHint')}</span>
             </label>
           )}
           <label className="block sm:col-span-2">
@@ -554,9 +550,6 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
             </Button>
           </div>
         </div>
-        {party?.isActive && party.balance !== 0 && (
-          <p className="text-xs text-faint">{t('parties.closeHint')}</p>
-        )}
       </form>
     </Sheet>
   );

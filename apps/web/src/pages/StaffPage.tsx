@@ -585,7 +585,6 @@ function PersonAccess({ person }: { person: StaffMember }) {
         <p className="text-sm text-muted">{t('access.ownerAll')}</p>
       ) : (
         <>
-          <p className="text-xs text-faint">{t('access.hint')}</p>
 
           <fieldset className="space-y-1">
             <legend className="mb-1 text-xs font-medium text-muted">{t('access.branches')}</legend>
@@ -710,9 +709,9 @@ function PersonAccess({ person }: { person: StaffMember }) {
               onChange={(e) => setF((s) => ({ ...s, maxDiscount: e.target.value }))}
               className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand tnum"
             />
-            <span className={`mt-0.5 block text-xs ${badDiscount ? 'text-destructive' : 'text-faint'}`}>
-              {badDiscount ? t('error.bad_percent') : t('access.maxDiscountHint')}
-            </span>
+            {badDiscount && (
+              <span className="mt-0.5 block text-xs text-destructive">{t('error.bad_percent')}</span>
+            )}
           </label>
 
           {missing && <p className="text-xs text-warning">{t('access.pickOne')}</p>}
@@ -789,7 +788,6 @@ function PersonPermissions({ person }: { person: StaffMember }) {
         <p className="text-sm text-muted">{t('staff.ownerAll')}</p>
       ) : (
         <>
-          <p className="text-xs text-faint">{t('staff.permissionsHint')}</p>
           <PermissionChecklist
             catalog={catalog.data ?? []}
             isChecked={allowed}
@@ -883,9 +881,7 @@ function RoleEditor({ info }: { info: RoleInfo }) {
           {t('staff.members')}: {info.staff}
         </span>
       </div>
-      <p className="text-xs text-faint">
-        {info.editable ? t('staff.roleHint') : t('staff.ownerAll')}
-      </p>
+      {!info.editable && <p className="text-xs text-faint">{t('staff.ownerAll')}</p>}
       <PermissionChecklist
         catalog={catalog.data ?? []}
         isChecked={(p) => set.has(p)}

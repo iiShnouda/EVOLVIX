@@ -110,7 +110,6 @@ export function AccountMenu() {
                   <bdi className="min-w-0 flex-1 truncate">{b.name}</bdi>
                 </button>
               ))}
-              <p className="px-3 pb-1.5 pt-0.5 text-xs text-muted">{t('branch.switchHint')}</p>
             </div>
           )}
           <button

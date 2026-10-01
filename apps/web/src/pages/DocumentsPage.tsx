@@ -1,6 +1,12 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formatDate, formatMoney, type SalesDocument, type TranslationKey } from '@skb/shared';
+import {
+  companyToday,
+  formatDate,
+  formatMoney,
+  type SalesDocument,
+  type TranslationKey,
+} from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { DocumentTable } from '../components/DocumentTable';
@@ -111,8 +117,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [search, setSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [status, setStatus] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [from, setFrom] = useState(companyToday);
+  const [to, setTo] = useState(companyToday);
   // Invoices: all, on account (آجل: something still owed) or paid (تم الدفع).
   const [payment, setPayment] = useState<'' | 'credit' | 'paid'>('');
   const [page, setPage] = useState(1);
@@ -594,7 +600,6 @@ function RejectSheet({ id, number, onClose }: { id: string; number: string; onCl
       closeLabel={t('common.close')}
     >
       <div className="space-y-3">
-        <p className="text-xs text-faint">{t('order.rejectHint')}</p>
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('order.rejectReason')}</span>
           <textarea

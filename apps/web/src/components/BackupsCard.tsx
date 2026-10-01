@@ -56,7 +56,6 @@ export function BackupsCard() {
       <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-muted">
         {t('backup.title')}
       </h2>
-      <p className="mb-3 text-xs text-faint">{t('backup.intro')}</p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">

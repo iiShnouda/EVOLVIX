@@ -144,10 +144,6 @@ export function CatalogSetupPage() {
           </ul>
         )}
       </Card>
-      {tab === 'levels' && <p className="text-xs text-faint">{t('setup.levelsHint')}</p>}
-      {(tab === 'departments' || tab === 'categories') && (
-        <p className="text-xs text-faint">{t('setup.departmentsHint')}</p>
-      )}
     </div>
   );
 }

@@ -178,7 +178,6 @@ export function CashMovePage() {
     <div className="space-y-5">
       <PageHeader
         title={t('move.title')}
-        subtitle={t('move.hint')}
         action={
           <Button
             variant="ghost"

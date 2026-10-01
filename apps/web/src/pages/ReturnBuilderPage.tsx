@@ -436,9 +436,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                 ))}
               </ul>
             )}
-            {!isSale && !nothingLeft && (
-              <p className="mt-3 text-xs text-faint">{t('return.stockHint')}</p>
-            )}
           </Card>
         </div>
 
@@ -503,9 +500,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                   onChange={setRefundAccountId}
                 />
               )}
-              <p className="text-xs text-faint">
-                {isSale ? t('return.creditHint') : t('return.debitHint')}
-              </p>
               {isSale && (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">
@@ -519,9 +513,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                     value={shipping}
                     onChange={(e) => setShipping(e.target.value)}
                   />
-                  <span className="mt-0.5 block text-xs text-faint">
-                    {t('return.shippingHint')}
-                  </span>
                 </label>
               )}
               {isSale && Number(shipping) > 0 && (

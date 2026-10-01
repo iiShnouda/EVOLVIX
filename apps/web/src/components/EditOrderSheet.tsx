@@ -91,7 +91,6 @@ export function EditOrderSheet({
     >
       <div className="space-y-3">
         <p className="text-sm text-muted">{order.partyName}</p>
-        <p className="text-xs text-faint">{t('order.editHint')}</p>
         <ul className="divide-y divide-[var(--c-line)] rounded-[var(--radius-app)] border border-line">
           {order.lines.map((l) => {
             const gone = removed.has(l.id);

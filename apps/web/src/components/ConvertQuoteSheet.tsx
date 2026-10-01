@@ -79,7 +79,6 @@ export function ConvertQuoteSheet({
             {formatMoney(quote.grandTotal, quote.currency, locale)}
           </span>
         </p>
-        <p className="text-xs text-faint">{t('quote.convertHint')}</p>
         <WarehouseSelect
           value={warehouse || quote.lines[0]?.warehouseId || ''}
           onChange={setWarehouse}
