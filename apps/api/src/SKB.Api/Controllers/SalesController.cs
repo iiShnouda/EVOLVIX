@@ -560,6 +560,14 @@ public sealed class SalesController : ControllerBase
             return BadRequest(new { message = "A customer is required.", code = "no_party" });
 
         var branchId = branch ?? Access.Work(User);
+        // The branch picked on the invoice (owner, 2026-10-01), if the person may work in it.
+        if (branch is null && editId is null && Guid.TryParse(req.BranchId, out var pickedBranch))
+        {
+            if (!Access.CanUseBranch(User, pickedBranch)
+                || !await _db.Branches.AnyAsync(b => b.Id == pickedBranch && b.IsActive))
+                return BadRequest(new { message = "Branch not found.", code = "branch_not_found" });
+            branchId = pickedBranch;
+        }
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
 
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
@@ -575,6 +583,9 @@ public sealed class SalesController : ControllerBase
 
         var basis = PriceBasis.Parse(req.PriceBasis);
         if (basis is null) return BadRequest(new { message = "Unknown price basis.", code = "bad_price_basis" });
+        // Each line may have its own basis (else the invoice's).
+        if (req.Lines.Any(l => !string.IsNullOrWhiteSpace(l.PriceBasis) && PriceBasis.Parse(l.PriceBasis) is null))
+            return BadRequest(new { message = "Unknown price basis.", code = "bad_price_basis" });
 
         var settings = await GetSettingsAsync();
         // A quotation still valid keeps what was approved on it: its prices, level, discounts, free
@@ -611,6 +622,13 @@ public sealed class SalesController : ControllerBase
         // ---- The sales department (قسم) it belongs to: sold only from that department's items ----
         var (department, departmentError) = await ResolveDepartmentAsync(req.DepartmentId);
         if (departmentError is not null) return departmentError;
+        // …one the warehouse has, when the warehouse picks its departments (owner decision 2026-10-01).
+        if (department is not null && Guid.TryParse(req.WarehouseId, out var invoiceWarehouse))
+        {
+            var has = _db.WarehouseDepartments.Where(l => l.WarehouseId == invoiceWarehouse);
+            if (await has.AnyAsync() && !await has.AnyAsync(l => l.DepartmentId == department.Id))
+                return BadRequest(new { message = "That department isn't in this warehouse.", code = "department_not_in_warehouse" });
+        }
 
         // Every sale has a rep (المندوب): the one chosen, else whoever makes it. A quotation gets one
         // only if chosen, so turning it into an invoice credits whoever does that.
@@ -739,14 +757,16 @@ public sealed class SalesController : ControllerBase
             new SpecialPrices.LineAsk(r.Product, r.Unit, r.Req.Quantity, r.BaseQty, r.Req.IsBonus, r.BaseCost)).ToList();
         var priced = special.Price(book, level, PriceSide.SALE, asks, settings.DefaultMarkupPercent);
         // Sold at the customer's last price or at cost instead of the selling price: its own permission.
-        if (basis != PriceBasis.List)
+        var bases = resolved.Select(r =>
+            string.IsNullOrWhiteSpace(r.Req.PriceBasis) ? basis : PriceBasis.Parse(r.Req.PriceBasis)!).ToList();
+        if (bases.Any(b => b != PriceBasis.List))
         {
             if (!Approved(Permissions.SalesPriceBasis))
                 return InvoiceLines.Refuse(this, new("price_basis_not_allowed", "Pricing at the last price or at cost needs permission."));
-            var last = basis == PriceBasis.Last
+            var last = bases.Contains(PriceBasis.Last)
                 ? await PriceBasis.LastPricesAsync(_db, partyId, products.Keys)
                 : new Dictionary<(Guid Product, Guid? Unit), long>();
-            priced = PriceBasis.Apply(basis, priced, asks, last);
+            priced = PriceBasis.Apply(bases, priced, asks, last);
         }
         for (var i = 0; i < resolved.Count; i++)
         {

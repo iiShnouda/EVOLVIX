@@ -31,7 +31,6 @@ import { useWorkDraft } from '../lib/workDraft';
 import { useDeviceInfo } from '../lib/device';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
-  useCategories,
   useCompanySettings,
   useDepartments,
   useCreatePurchaseInvoice,
@@ -40,6 +39,7 @@ import {
   useCreateSalesInvoice,
   useHiddenColumns,
   useUpdateSalesInvoice,
+  useWarehouses,
   useInventory,
   useParties,
   usePriceLevels,
@@ -68,6 +68,8 @@ interface Line {
    */
   discMode: LineDiscountMode;
   discValue: string;
+  /** Sold at the selling price, the customer's last price or cost, chosen per item (owner, 2026-10-01). */
+  basis: PriceBasis;
 }
 
 type LineDiscountMode = 'percent' | 'piece' | 'amount';
@@ -84,6 +86,20 @@ function lineDiscount(mode: LineDiscountMode, value: string, gross: number, base
         : toMinor(v);
   return Math.min(gross, Math.max(0, d));
 }
+
+/** A line as kept in a draft. */
+const keepLine = (l: Line) => ({
+  productId: l.product.id,
+  sku: l.product.sku,
+  unitId: l.unitId,
+  quantity: l.quantity,
+  price: l.price,
+  touched: l.touched,
+  bonus: l.bonus,
+  discMode: l.discMode,
+  discValue: l.discValue,
+  basis: l.basis,
+});
 
 /** An invoice discount as typed: a percent or an amount. */
 interface DiscountInput {
@@ -139,7 +155,6 @@ export function InvoiceBuilderPage({
   const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
   // Sold at the selling price, the customer's last price, or the supply price (owner, 2026-10-01).
   const canPriceBasis = isSale && can('sales:price_basis');
-  const [priceBasis, setPriceBasis] = useState<PriceBasis>('LIST');
   // The customer's shipping company and address are theirs unless this person may change them.
   const canChangeShipping = can('sales:change_shipping');
   // Discounts appear only when asked for (owner, 2026-10-01).
@@ -162,6 +177,17 @@ export function InvoiceBuilderPage({
   /** Their discount limit (%); null = none. */
   const maxDiscount = me?.maxDiscountPercent ?? null;
 
+  // Branch, then warehouse, then department (owner decision 2026-10-01): picked by the person, in
+  // that order, with no "all"; the invoice can't be saved until all three are chosen.
+  const myBranches = me?.branches ?? [];
+  const [pickedBranch, setPickedBranch] = useState(
+    isSale && myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '',
+  );
+  const allWarehouses = useWarehouses(true);
+  const branchWarehouses = (allWarehouses.data ?? []).filter(
+    (w) => w.kind === 'STORE' && w.isActive && w.branchId === pickedBranch,
+  );
+
   // The sales department (قسم): only the person's own; one of them is picked for them.
   const departmentList = useDepartments();
   const myDepartments = me?.departmentIds ?? null;
@@ -176,9 +202,7 @@ export function InvoiceBuilderPage({
     ? ''
     : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
       ? pickedDepartment
-      : departments.length === 1 && myDepartments
-        ? (departments[0]?.id ?? '')
-        : '';
+      : '';
 
   const carriers = useParties({
     page: 1,
@@ -225,7 +249,20 @@ export function InvoiceBuilderPage({
   // Goods leave from (sale) or arrive into (purchase) this warehouse; defaults to the branch's.
   const defaultWarehouse = useDefaultWarehouseId();
   const [pickedWarehouse, setPickedWarehouse] = useState('');
-  const warehouseId = pickedWarehouse || defaultWarehouse;
+  // A sale's warehouse is picked (no default); a purchase still lands in the branch's by default.
+  const warehouseId = isSale
+    ? branchWarehouses.some((w) => w.id === pickedWarehouse)
+      ? pickedWarehouse
+      : ''
+    : pickedWarehouse || defaultWarehouse;
+  /** The warehouse's departments (none picked on it = every department). */
+  const warehouseDepartments = (allWarehouses.data ?? []).find(
+    (w) => w.id === warehouseId,
+  )?.departmentIds;
+  const shownDepartments = departments.filter(
+    (d) => !warehouseDepartments?.length || warehouseDepartments.includes(d.id),
+  );
+  const departmentOk = !departmentId || shownDepartments.some((d) => d.id === departmentId);
   const warehouseStock = useInventory({ warehouseId: warehouseId || undefined });
   const stockHere = useMemo(() => {
     if (!warehouseId || !warehouseStock.data) return null;
@@ -250,7 +287,6 @@ export function InvoiceBuilderPage({
   const [addQty, setAddQty] = useState('1');
   const [finding, setFinding] = useState(false);
   const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
-  const categories = useCategories();
   const productList = useProductSearch(
     search,
     inStockOnly,
@@ -261,6 +297,9 @@ export function InvoiceBuilderPage({
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
+  // Items being prepared before they go on the invoice (owner, 2026-10-01): quantity, unit, price,
+  // discount and basis are set here, with the prices to compare, then "Add" puts them all on it.
+  const [staged, setStaged] = useState<Line[]>([]);
   // What each item already has on the invoice (base units), shown in the detailed search.
   const onInvoice = useMemo(() => {
     const m = new Map<string, number>();
@@ -325,15 +364,26 @@ export function InvoiceBuilderPage({
     partyId: partyId || undefined,
     priceLevelId: canChooseLevel && pickedLevel ? pickedLevel : undefined,
     warehouseId: warehouseId || undefined,
-    priceBasis: canPriceBasis && priceBasis !== 'LIST' ? priceBasis : undefined,
     lines: lines.map((l) => ({
       productId: l.product.id,
       unitId: l.unitId || undefined,
       quantity: l.quantity,
       isBonus: l.bonus || undefined,
+      priceBasis: canPriceBasis && l.basis !== 'LIST' ? l.basis : undefined,
     })),
   };
   const pricing = usePricing(isSale ? 'sale' : 'purchase', pricingInput);
+  // The prepared items' prices: the selling, last and cost prices to compare before adding.
+  const stagedPricing = usePricing(isSale ? 'sale' : 'purchase', {
+    ...pricingInput,
+    lines: staged.map((l) => ({
+      productId: l.product.id,
+      unitId: l.unitId || undefined,
+      quantity: l.quantity,
+      priceBasis: canPriceBasis && l.basis !== 'LIST' ? l.basis : undefined,
+    })),
+  });
+  const stagedPriced = stagedPricing.data?.lines ?? null;
   const priced = pricing.data && !pricing.isPlaceholderData ? pricing.data.lines : null;
   // (If pricing fails, saving isn't held up: the server checks prices again anyway.)
   const pricingBusy = lines.length > 0 && !pricing.isError && (pricing.isFetching || !priced);
@@ -353,7 +403,7 @@ export function InvoiceBuilderPage({
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
     const qty = Math.max(1, Math.floor(quantity ?? (Number(addQty) || 1)));
     if (quantity === undefined) setAddQty('1');
-    setLines((prev) => {
+    setStaged((prev) => {
       const existing = prev.find((l) => l.product.id === p.id && l.unitId === unit);
       if (existing)
         return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + qty } : l));
@@ -369,6 +419,7 @@ export function InvoiceBuilderPage({
           bonus: false,
           discMode: 'percent',
           discValue: '',
+          basis: 'LIST',
         },
       ];
     });
@@ -502,6 +553,10 @@ export function InvoiceBuilderPage({
     !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
     !(isSale && !repId) &&
     !(departmentRequired && !departmentId) &&
+    departmentOk &&
+    // A sale names its branch and warehouse (owner decision 2026-10-01).
+    !(isSale && !isQuote && !editId && (!pickedBranch || !warehouseId)) &&
+    staged.length === 0 &&
     !hasUnderList &&
     !pricingBusy &&
     !pending;
@@ -547,12 +602,14 @@ export function InvoiceBuilderPage({
             unitPrice: r.price,
             discount: r.discount,
             isBonus: r.line.bonus || undefined,
+            priceBasis: canPriceBasis && r.line.basis !== 'LIST' ? r.line.basis : undefined,
           })),
           charges: chargeInputs,
           paidAmount,
           overrideFloor,
           notes: notes || undefined,
           warehouseId: warehouseId || undefined,
+          branchId: editId ? undefined : pickedBranch || undefined,
           priceLevelId,
           repId: repId || undefined,
           departmentId: departmentId || undefined,
@@ -566,7 +623,6 @@ export function InvoiceBuilderPage({
             delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
               ? delivery.carrierId
               : undefined,
-          priceBasis: canPriceBasis && priceBasis !== 'LIST' ? priceBasis : undefined,
           paidAccountId: cashCustomer && cashAccountId ? cashAccountId : undefined,
         };
         const saved = editId
@@ -607,29 +663,21 @@ export function InvoiceBuilderPage({
   // What's typed is kept through an app update: the party, choices, lines and totals' inputs.
   // Items and the party are looked up again, so whatever is gone by then is left out.
   const work = useWorkDraft<InvoiceDraft>(
-    1,
+    2,
     () =>
-      !party && lines.length === 0 && !notes
+      !party && lines.length === 0 && staged.length === 0 && !notes
         ? null
         : {
             partyId: party?.id ?? null,
+            branchId: pickedBranch,
             warehouseId: pickedWarehouse,
             repId: pickedRep,
             dueDate,
             departmentId: pickedDepartment,
             levelId: pickedLevel,
             delivery,
-            lines: lines.map((l) => ({
-              productId: l.product.id,
-              sku: l.product.sku,
-              unitId: l.unitId,
-              quantity: l.quantity,
-              price: l.price,
-              touched: l.touched,
-              bonus: l.bonus,
-              discMode: l.discMode,
-              discValue: l.discValue,
-            })),
+            lines: lines.map(keepLine),
+            staged: staged.map(keepLine),
             discount1,
             discount2,
             paidNow,
@@ -648,6 +696,7 @@ export function InvoiceBuilderPage({
         const p = await api.get<Party>(`/parties/${d.partyId}`).catch(() => null);
         if (p?.isActive) setParty(p);
       }
+      setPickedBranch(text(d.branchId));
       setPickedWarehouse(text(d.warehouseId));
       setPickedRep(text(d.repId));
       setDueDate(text(d.dueDate));
@@ -674,7 +723,10 @@ export function InvoiceBuilderPage({
       setSupplierFilter(text(d.supplierFilter));
       setCategoryFilter(text(d.categoryFilter));
       if (typeof d.inStockOnly === 'boolean') setInStockOnly(d.inStockOnly);
-      const saved = Array.isArray(d.lines) ? d.lines : [];
+      const saved = [
+        ...(Array.isArray(d.lines) ? d.lines : []),
+        ...(Array.isArray(d.staged) ? d.staged : []),
+      ];
       const found = new Map<string, Product>();
       await Promise.all(
         [...new Set(saved.map((l) => l.sku).filter(Boolean))].map(async (sku) => {
@@ -685,8 +737,9 @@ export function InvoiceBuilderPage({
         }),
       );
       const modes: LineDiscountMode[] = ['percent', 'piece', 'amount'];
-      setLines(
-        saved.flatMap((l) => {
+      const bases: PriceBasis[] = ['LIST', 'LAST', 'COST'];
+      const back = (list: InvoiceDraft['lines'] | undefined): Line[] =>
+        (Array.isArray(list) ? list : []).flatMap((l) => {
           const product = found.get(l.productId);
           if (!product || !product.units.some((u) => u.unitId === l.unitId)) return [];
           return [
@@ -700,10 +753,12 @@ export function InvoiceBuilderPage({
               bonus: l.bonus === true,
               discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
               discValue: text(l.discValue),
+              basis: bases.includes(l.basis as PriceBasis) ? (l.basis as PriceBasis) : 'LIST',
             },
           ];
-        }),
-      );
+        });
+      setLines(back(d.lines));
+      setStaged(back(d.staged));
     },
   );
 
@@ -737,6 +792,7 @@ export function InvoiceBuilderPage({
       const byId = new Map(items.filter((x): x is Product => !!x).map((x) => [x.id, x]));
       setEditedNumber(doc.number);
       if (who) setParty(who);
+      setPickedBranch(doc.branchId);
       setPickedWarehouse(doc.lines[0]?.warehouseId ?? '');
       setPickedRep(doc.repId ?? '');
       setDueDate(doc.dueDate ? doc.dueDate.slice(0, 10) : '');
@@ -781,6 +837,7 @@ export function InvoiceBuilderPage({
             bonus: false,
             discMode: 'amount' as LineDiscountMode,
             discValue: l.discount > 0 ? String(toMajor(l.discount)) : '',
+            basis: 'LIST' as PriceBasis,
           },
         ];
       });
@@ -793,6 +850,216 @@ export function InvoiceBuilderPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
+
+  /** Put every prepared item on the invoice. */
+  function addStaged() {
+    setLines((prev) => [...prev, ...staged]);
+    setStaged([]);
+    searchBox.current?.focus();
+  }
+  const updateStaged = (key: string, patch: Partial<Line>) =>
+    setStaged((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  function renderStaging() {
+    const cell =
+      'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-sm outline-none focus:border-brand';
+    const money = (v: number | null | undefined) =>
+      v == null ? '–' : formatMoney(v, currency, locale);
+    return (
+      <div className="mt-3 rounded-[var(--radius-app)] border border-brand/40 bg-brand-soft/30 p-2">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <h3 className="text-sm font-semibold">{t('stage.title')}</h3>
+          <span className="text-xs text-muted tnum">
+            {staged.length} {t('stage.items')}
+          </span>
+        </div>
+        <ul className="space-y-2">
+          {staged.map((l, i) => {
+            const unit = unitOf(l);
+            const factor = unit?.factor ?? 1;
+            const info = stagedPriced?.[i];
+            const list = info?.listPrice ?? info?.unitPrice ?? suggested(l);
+            const ruled = info?.unitPrice ?? suggested(l);
+            const price = priceEditable && l.touched ? l.price : ruled;
+            const gross = l.quantity * price;
+            const manual = isSale
+              ? lineDiscount(l.discMode, l.discValue, gross, l.quantity * factor)
+              : 0;
+            const discount =
+              manual > 0 ? manual : priceEditable && l.touched ? 0 : (info?.discount ?? 0);
+            const total = gross - discount;
+            const changed = price !== list;
+            const label = 'mb-0.5 block text-[11px] text-muted';
+            return (
+              <li
+                key={l.key}
+                className="rounded-[var(--radius-app)] border border-line bg-surface p-2"
+              >
+                {/* What it is, how many, and on which basis. */}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-40 flex-1">
+                    <span className="block truncate text-sm font-medium">{l.product.name}</span>
+                    <span className="text-xs text-faint tnum">{l.product.sku}</span>
+                  </div>
+                  <label className="block">
+                    <span className={label}>{t('col.unit')}</span>
+                    <select
+                      className={`${cell} w-28`}
+                      value={l.unitId}
+                      disabled={l.product.units.length < 2}
+                      onChange={(e) =>
+                        updateStaged(l.key, { unitId: e.target.value, touched: false })
+                      }
+                    >
+                      {l.product.units.map((u) => (
+                        <option key={u.unitId} value={u.unitId}>
+                          {u.name}
+                          {u.factor > 1 ? ` (${u.factor})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className={label}>{t('col.qty')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className={`${cell} w-16 tnum`}
+                      value={l.quantity}
+                      onChange={(e) =>
+                        updateStaged(l.key, {
+                          quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                        })
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addStaged();
+                        }
+                      }}
+                    />
+                  </label>
+                  {canPriceBasis && (
+                    <label className="block">
+                      <span className={label}>{t('invoice.priceBasis')}</span>
+                      <select
+                        className={`${cell} w-32`}
+                        value={l.basis}
+                        onChange={(e) =>
+                          updateStaged(l.key, {
+                            basis: e.target.value as PriceBasis,
+                            touched: false,
+                          })
+                        }
+                      >
+                        {(['LIST', 'LAST', 'COST'] as const).map((b) => (
+                          <option key={b} value={b}>
+                            {t(`basis.${b}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    className="ms-auto grid h-8 w-8 place-items-center rounded-md text-muted hover:text-destructive"
+                    aria-label={`${t('col.delete')} ${l.product.name}`}
+                    onClick={() => setStaged((prev) => prev.filter((x) => x.key !== l.key))}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+                {/* Its prices to compare, the price it goes at, its discount and what it comes to. */}
+                <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-line pt-2 text-sm">
+                  <span>
+                    <span className={label}>{t('col.listPrice')}</span>
+                    <span className="tnum">{money(list)}</span>
+                  </span>
+                  {seeCosts && (
+                    <span>
+                      <span className={label}>{t('col.cost')}</span>
+                      <span className="tnum">
+                        {money(info?.unitCost ?? costOf(l.product) * factor)}
+                      </span>
+                    </span>
+                  )}
+                  {isSale && (
+                    <span>
+                      <span className={label}>{t('col.lastPrice')}</span>
+                      <span className="tnum">{money(info?.lastPrice)}</span>
+                    </span>
+                  )}
+                  <label className="block">
+                    <span className={label}>{t('col.price')}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      disabled={!priceEditable}
+                      className={`${cell} w-24 tnum ${changed ? 'border-warning' : ''}`}
+                      value={toMajor(price)}
+                      onChange={(e) =>
+                        updateStaged(l.key, {
+                          price: toMinor(Number(e.target.value) || 0),
+                          touched: true,
+                        })
+                      }
+                    />
+                  </label>
+                  {canDiscount && isSale && (
+                    <label className="block">
+                      <span className={label}>{t('col.discount')}</span>
+                      <span className="flex gap-1">
+                        <select
+                          className={`${cell} w-20`}
+                          value={l.discMode}
+                          aria-label={t('col.discount')}
+                          onChange={(e) =>
+                            updateStaged(l.key, { discMode: e.target.value as LineDiscountMode })
+                          }
+                        >
+                          <option value="percent">%</option>
+                          <option value="piece">{t('invoice.perPiece')}</option>
+                          <option value="amount">{t('invoice.amountShort')}</option>
+                        </select>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className={`${cell} w-20 tnum`}
+                          value={l.discValue}
+                          onChange={(e) => updateStaged(l.key, { discValue: e.target.value })}
+                        />
+                      </span>
+                    </label>
+                  )}
+                  <span>
+                    <span className={label}>{t('col.afterDiscount')}</span>
+                    <span className="tnum">
+                      {money(l.quantity > 0 ? Math.round(total / l.quantity) : 0)}
+                    </span>
+                  </span>
+                  <span className="ms-auto text-end">
+                    <span className={label}>{t('invoice.lineTotal')}</span>
+                    <span className="font-semibold tnum">{money(total)}</span>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setStaged([])}>
+            {t('stage.clear')}
+          </Button>
+          <Button size="sm" icon="plus" onClick={addStaged}>
+            {t('stage.add')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const products = productList.data ?? [];
 
@@ -1154,48 +1421,83 @@ export function InvoiceBuilderPage({
               label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
               placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
             />
-            <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
-            {/* A sale is priced at the customer's own level, not shown (owner decision 2026-09-30). */}
-            {!isSale && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceLevel')}</span>
-                <select
-                  className={field}
-                  value={levelId}
-                  disabled={!canChooseLevel}
-                  onChange={(e) => setPickedLevel(e.target.value)}
-                >
-                  {sideLevels.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
+            {isSale ? (
+              // Branch, then its warehouses, then that warehouse's departments (owner, 2026-10-01).
+              <>
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+                  <select
+                    className={`${field} ${!pickedBranch ? 'border-warning' : ''}`}
+                    value={pickedBranch}
+                    disabled={!!editId}
+                    aria-invalid={!pickedBranch}
+                    onChange={(e) => {
+                      setPickedBranch(e.target.value);
+                      setPickedWarehouse('');
+                      setPickedDepartment('');
+                    }}
+                  >
+                    <option value="" disabled>
+                      {t('invoice.chooseBranch')}
                     </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {isSale && departments.length > 0 && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-                <select
-                  className={`${field} ${departmentRequired && !departmentId ? 'border-warning' : ''}`}
-                  value={departmentId}
-                  required={departmentRequired}
-                  aria-invalid={departmentRequired && !departmentId}
-                  disabled={!!myDepartments && departments.length === 1}
-                  onChange={(e) => setPickedDepartment(e.target.value)}
-                >
-                  <option value="" disabled={departmentRequired}>
-                    {myDepartments || departmentRequired
-                      ? t('invoice.chooseDepartment')
-                      : t('invoice.noDepartment')}
-                  </option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
+                    {myBranches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+                  <select
+                    className={`${field} ${pickedBranch && !warehouseId ? 'border-warning' : ''}`}
+                    value={warehouseId}
+                    disabled={!pickedBranch}
+                    aria-invalid={!warehouseId}
+                    onChange={(e) => {
+                      setPickedWarehouse(e.target.value);
+                      setPickedDepartment('');
+                    }}
+                  >
+                    <option value="" disabled>
+                      {t('invoice.chooseWarehouse')}
                     </option>
-                  ))}
-                </select>
-              </label>
+                    {branchWarehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {departments.length > 0 && (
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">
+                      {t('invoice.department')}
+                    </span>
+                    <select
+                      className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
+                      value={departmentOk ? departmentId : ''}
+                      required={departmentRequired}
+                      disabled={!warehouseId}
+                      aria-invalid={departmentRequired && !departmentId}
+                      onChange={(e) => setPickedDepartment(e.target.value)}
+                    >
+                      <option value="" disabled={departmentRequired}>
+                        {departmentRequired
+                          ? t('invoice.chooseDepartment')
+                          : t('invoice.noDepartment')}
+                      </option>
+                      {shownDepartments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            ) : (
+              <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
             )}
             {isSale && (
               // The rep by code or by name, like the customer (owner, 2026-10-01).
@@ -1253,27 +1555,6 @@ export function InvoiceBuilderPage({
                 />
               </label>
             )}
-            {canPriceBasis && (
-              // Sold at the selling price, the customer's last price or the supply price.
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceBasis')}</span>
-                <select
-                  className={field}
-                  value={priceBasis}
-                  onChange={(e) => {
-                    setPriceBasis(e.target.value as PriceBasis);
-                    // Every line takes the new basis' price.
-                    setLines((prev) => prev.map((l) => ({ ...l, touched: false })));
-                  }}
-                >
-                  {(['LIST', 'LAST', 'COST'] as const).map((b) => (
-                    <option key={b} value={b}>
-                      {t(`basis.${b}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
           </Card>
 
           {isSale && !isQuote && (
@@ -1309,22 +1590,7 @@ export function InvoiceBuilderPage({
                   </option>
                 ))}
               </select>
-              <select
-                className={filterSelect}
-                aria-label={t('invoice.filterCategory')}
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value);
-                  searchBox.current?.focus();
-                }}
-              >
-                <option value="">{t('invoice.filterCategory')}</option>
-                {(categories.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+
               <label className="flex items-center gap-1.5 text-sm text-muted">
                 <input
                   type="checkbox"
@@ -1450,6 +1716,9 @@ export function InvoiceBuilderPage({
                 }}
               />
             )}
+
+            {/* Items being prepared (owner, 2026-10-01): set them up, compare prices, then add. */}
+            {staged.length > 0 && renderStaging()}
 
             {/* Lines */}
             {rows.length === 0 ? (
@@ -1912,6 +2181,7 @@ function DiscountField({
 /** An invoice being written, as kept through an app update. */
 interface InvoiceDraft {
   partyId: string | null;
+  branchId?: string;
   warehouseId: string;
   repId: string;
   dueDate?: string;
@@ -1928,7 +2198,10 @@ interface InvoiceDraft {
     bonus: boolean;
     discMode: LineDiscountMode;
     discValue: string;
+    basis?: PriceBasis;
   }[];
+  /** Items being prepared, not on the invoice yet. */
+  staged?: InvoiceDraft['lines'];
   discount1: DiscountInput;
   discount2: DiscountInput;
   paidNow: string;

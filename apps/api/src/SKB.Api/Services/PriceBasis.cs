@@ -42,10 +42,10 @@ public static class PriceBasis
     }
 
     /// <summary>
-    /// The price of each line on <paramref name="basis"/>: the list price as priced, the last price
+    /// The price of each line on its own basis (owner, 2026-10-01: chosen per item): the list price as priced, the last price
     /// (else the list price), or the cost of one line unit. Last and cost carry no automatic discount.
     /// </summary>
-    public static List<SpecialPrices.Priced> Apply(string basis, IReadOnlyList<SpecialPrices.Priced> priced,
+    public static List<SpecialPrices.Priced> Apply(IReadOnlyList<string> bases, IReadOnlyList<SpecialPrices.Priced> priced,
         IReadOnlyList<SpecialPrices.LineAsk> lines, IReadOnlyDictionary<(Guid Product, Guid? Unit), long> lastPrices)
     {
         var result = new List<SpecialPrices.Priced>(priced.Count);
@@ -53,6 +53,7 @@ public static class PriceBasis
         {
             var p = priced[i];
             var l = lines[i];
+            var basis = bases[i];
             if (l.IsBonus || basis == List) { result.Add(p); continue; }
             if (basis == Last)
             {

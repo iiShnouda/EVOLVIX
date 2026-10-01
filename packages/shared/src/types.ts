@@ -389,6 +389,8 @@ export interface PricingLineInput {
   quantity: number;
   isBonus?: boolean;
   warehouseId?: string | null;
+  /** This line's basis (owner, 2026-10-01: chosen per item). */
+  priceBasis?: PriceBasis;
 }
 
 /** What a sale is priced at: the selling price, the customer's last price, or the supply cost. */

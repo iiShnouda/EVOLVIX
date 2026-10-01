@@ -112,9 +112,10 @@ public record RejectOrderRequest(string? Reason);
 // whole list (the tax too); when left out, TaxPercent — or the company's rate — is the only charge.
 // IsBonus: free goods, sent with price / cost 0.
 
+/// <param name="PriceBasis">This line's basis (LIST, LAST or COST); none = the invoice's (owner, 2026-10-01).</param>
 public record CreateInvoiceLineRequest(
     string ProductId, int Quantity, long UnitPrice, long Discount = 0, string? WarehouseId = null,
-    string? UnitId = null, bool IsBonus = false);
+    string? UnitId = null, bool IsBonus = false, string? PriceBasis = null);
 
 /// <param name="Percent">A rate (14 = 14%, up to 2 decimals); give this or Amount.</param>
 /// <param name="Amount">A fixed amount in minor units; give this or Percent.</param>
@@ -126,7 +127,7 @@ public record CreateSalesInvoiceRequest(
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
-    string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null);
+    string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null, string? BranchId = null);
 
 /// <summary>
 /// Approving a pending invoice: what the customer pays now and into which account; optionally new
@@ -470,7 +471,8 @@ public record QuantityBreakStepRequest(int MinQuantity, decimal Percent);
 /// <summary>An item's (or a model's) quantity discount steps; they replace what it had (none = no discount).</summary>
 public record SetQuantityBreaksRequest(string? ProductId, string? ModelId, QuantityBreakStepRequest[]? Steps);
 
-public record PricingLineRequest(string ProductId, string? UnitId, int Quantity, bool IsBonus = false, string? WarehouseId = null);
+public record PricingLineRequest(string ProductId, string? UnitId, int Quantity, bool IsBonus = false, string? WarehouseId = null,
+    string? PriceBasis = null);
 
 /// <summary>What an invoice's lines would cost for a party (the invoice screen asks as lines change).</summary>
 /// <param name="PriceBasis">LIST (the selling price), LAST (the customer's last price) or COST.</param>

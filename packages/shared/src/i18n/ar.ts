@@ -1879,4 +1879,13 @@ export const ar: TranslationDictionary = {
   'list.perPage': 'عدد الصفوف',
   'list.prevPage': 'الصفحة السابقة',
   'list.nextPage': 'الصفحة التالية',
+  'invoice.chooseBranch': 'اختر الفرع',
+  'invoice.chooseWarehouse': 'اختر المخزن',
+  'stage.title': 'تجهيز الأصناف',
+  'stage.items': 'صنف',
+  'stage.clear': 'مسح',
+  'stage.add': 'إضافة إلى الفاتورة',
+  'invoice.amountShort': 'مبلغ',
+  'invoice.lineTotal': 'الإجمالي',
+  'error.department_not_in_warehouse': 'هذا القسم غير موجود في المخزن المختار.',
 };

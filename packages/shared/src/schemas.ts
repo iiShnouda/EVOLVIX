@@ -63,11 +63,15 @@ export const invoiceLineSchema = z.object({
   unitId: z.string().uuid().optional(),
   /** Free goods: sent with price 0. */
   isBonus: z.boolean().optional(),
+  /** This line's price basis (owner, 2026-10-01); none = the invoice's. */
+  priceBasis: z.enum(['LIST', 'LAST', 'COST']).optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 
 export const createSalesInvoiceSchema = z.object({
   partyId: z.string().uuid(),
+  /** The branch it is made in (one the person may work in); none = their working branch. */
+  branchId: z.string().uuid().optional(),
   lines: z.array(invoiceLineSchema).min(1, 'Add at least one line item'),
   taxPercent: z.number().int().min(0).max(100).optional(),
   notes: z.string().max(1000).optional(),

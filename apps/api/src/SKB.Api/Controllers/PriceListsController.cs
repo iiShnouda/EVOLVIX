@@ -283,11 +283,15 @@ public sealed class PriceListsController : ControllerBase
         var last = isSale && party is not null
             ? await PriceBasis.LastPricesAsync(_db, party.Id, products.Keys)
             : new Dictionary<(Guid Product, Guid? Unit), long>();
-        if (isSale && basis != PriceBasis.List)
+        // Each line may ask for its own basis (owner, 2026-10-01), else the one asked for all.
+        var bases = (req.Lines ?? Array.Empty<PricingLineRequest>())
+            .Select(l => PriceBasis.Parse(l.PriceBasis) is { } b && !string.IsNullOrWhiteSpace(l.PriceBasis) ? b : basis)
+            .ToList();
+        if (isSale && bases.Count == lines.Count && bases.Any(b => b != PriceBasis.List))
         {
             if (!Can(Permissions.SalesPriceBasis))
                 return StatusCode(403, new { message = "Pricing at the last price or at cost needs permission.", code = "price_basis_not_allowed" });
-            priced = PriceBasis.Apply(basis, listed, lines, last);
+            priced = PriceBasis.Apply(bases, listed, lines, last);
         }
         var seeCost = Can(Permissions.CostsView);
         return Ok(new PricingDto(level?.Id.ToString(), priced.Select((x, i) => new PricedLineDto(

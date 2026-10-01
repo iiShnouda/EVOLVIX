@@ -1888,4 +1888,13 @@ export const en = {
   'list.perPage': 'Rows',
   'list.prevPage': 'Previous page',
   'list.nextPage': 'Next page',
+  'invoice.chooseBranch': 'Choose a branch',
+  'invoice.chooseWarehouse': 'Choose a warehouse',
+  'stage.title': 'Prepare items',
+  'stage.items': 'items',
+  'stage.clear': 'Clear',
+  'stage.add': 'Add to invoice',
+  'invoice.amountShort': 'Amount',
+  'invoice.lineTotal': 'Total',
+  'error.department_not_in_warehouse': "That department isn't in the chosen warehouse.",
 } as const;
