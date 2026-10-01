@@ -85,6 +85,8 @@ public sealed class WarehousesController : ControllerBase
         var branchName = Loc.Clean(req.Name);
         if (branchName is null) return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
         var branch = new Branch { Name = branchName, Location = Clean(req.Location, 200) };
+        var (_, branchPrefix, badPrefix) = Catalog.Prefix(req.Prefix);
+        if (badPrefix) return BadPrefix();
 
         var code = string.IsNullOrWhiteSpace(req.Code) ? await NextBranchCodeAsync() : req.Code.Trim().ToUpperInvariant();
         if (code.Length > 20)
@@ -92,11 +94,12 @@ public sealed class WarehousesController : ControllerBase
         if (await _db.Branches.AnyAsync(b => b.Code.ToUpper() == code))
             return BadRequest(new { message = $"Code {code} is already used.", code = "duplicate_code" });
         branch.Code = code;
+        branch.Prefix = branchPrefix ?? code[..Math.Min(10, code.Length)];
 
         // Its first store, named in the language of the screen it was added from.
         var store = new Warehouse
         {
-            Branch = branch, Code = await NextWarehouseCodeAsync(code), IsDefault = true,
+            Branch = branch, Code = await NextWarehouseCodeAsync(code), IsDefault = true, Prefix = "1",
             Name = Loc.Lang == "ar" ? "المخزن الرئيسي" : "Main store",
         };
         // …and its cash box, where paid-now amounts land (DOMAIN.md §2.6).
@@ -128,6 +131,9 @@ public sealed class WarehousesController : ControllerBase
             branch.Name = name;
         }
         if (req.Location is not null) branch.Location = Clean(req.Location, 200);
+        var (prefixGiven, prefix, bad) = Catalog.Prefix(req.Prefix);
+        if (bad) return BadPrefix();
+        if (prefixGiven) branch.Prefix = prefix;
 
         await _db.SaveChangesAsync();
         await AuditAsync("update", "branch", branch.Id, branch.Id);
@@ -147,6 +153,8 @@ public sealed class WarehousesController : ControllerBase
         if (warehouseName is null)
             return BadRequest(new { message = "Warehouse name is required.", code = "bad_name" });
         var warehouse = new Warehouse { BranchId = branchId, Branch = branch, Name = warehouseName };
+        var (_, whPrefix, badWh) = Catalog.Prefix(req.Prefix);
+        if (badWh) return BadPrefix();
 
         var code = string.IsNullOrWhiteSpace(req.Code) ? await NextWarehouseCodeAsync(branch.Code) : req.Code.Trim().ToUpperInvariant();
         if (code.Length > 20)
@@ -154,6 +162,9 @@ public sealed class WarehousesController : ControllerBase
         if (await _db.Warehouses.AnyAsync(w => w.Code.ToUpper() == code))
             return BadRequest(new { message = $"Code {code} is already used.", code = "duplicate_code" });
         warehouse.Code = code;
+        warehouse.Prefix = whPrefix ?? code.Split('-')[^1][..Math.Min(10, code.Split('-')[^1].Length)];
+        var linkError = await DepartmentsAsync(warehouse.Id, req.DepartmentIds);
+        if (linkError is not null) return linkError;
 
         var hasDefault = await _db.Warehouses.AnyAsync(w =>
             w.BranchId == branchId && w.IsActive && w.IsDefault && w.Kind == WarehouseKind.STORE);
@@ -179,6 +190,12 @@ public sealed class WarehousesController : ControllerBase
             if (name is null) return BadRequest(new { message = "Warehouse name is required.", code = "bad_name" });
             warehouse.Name = name;
         }
+
+        var (whPrefixGiven, newPrefix, badPrefix) = Catalog.Prefix(req.Prefix);
+        if (badPrefix) return BadPrefix();
+        if (whPrefixGiven) warehouse.Prefix = newPrefix;
+        var linksError = await DepartmentsAsync(warehouse.Id, req.DepartmentIds);
+        if (linksError is not null) return linksError;
 
         if (req.IsActive == false && warehouse.IsActive)
         {
@@ -222,6 +239,24 @@ public sealed class WarehousesController : ControllerBase
         return Ok(ToDto(warehouse, await StatsAsync()));
     }
 
+    private BadRequestObjectResult BadPrefix() =>
+        BadRequest(new { message = "A prefix is up to 10 letters or digits.", code = "bad_prefix" });
+
+    /// <summary>
+    /// The departments a warehouse has (owner decision 2026-10-01): null = leave them; [] = none
+    /// picked (it offers every department). Saved with the warehouse.
+    /// </summary>
+    private async Task<ActionResult?> DepartmentsAsync(Guid warehouseId, string[]? raw)
+    {
+        if (raw is null) return null;
+        var ids = raw.Select(r => Guid.TryParse(r, out var g) ? g : Guid.Empty).Distinct().ToList();
+        if (ids.Contains(Guid.Empty) || await _db.Departments.CountAsync(d => ids.Contains(d.Id)) != ids.Count)
+            return BadRequest(new { message = "Department not found.", code = "department_not_found" });
+        _db.WarehouseDepartments.RemoveRange(await _db.WarehouseDepartments.Where(l => l.WarehouseId == warehouseId).ToListAsync());
+        foreach (var d in ids) _db.WarehouseDepartments.Add(new WarehouseDepartment { WarehouseId = warehouseId, DepartmentId = d });
+        return null;
+    }
+
     /// <summary>Mark <paramref name="warehouse"/> as its branch's only default.</summary>
     private async Task MakeDefaultAsync(Warehouse warehouse)
     {
@@ -257,8 +292,12 @@ public sealed class WarehousesController : ControllerBase
     private sealed record Stats(int Items, int Quantity, long Value);
 
     /// <summary>What each warehouse holds today: items in stock, units, value at its branch's average cost.</summary>
+    private Dictionary<Guid, string[]> _departments = new();
+
     private async Task<Dictionary<Guid, Stats>> StatsAsync()
     {
+        _departments = (await _db.WarehouseDepartments.AsNoTracking().ToListAsync())
+            .GroupBy(l => l.WarehouseId).ToDictionary(g => g.Key, g => g.Select(l => l.DepartmentId.ToString()).ToArray());
         var state = await _valuation.CurrentAsync();
         return state.Quantity.GroupBy(kv => kv.Key.Warehouse).ToDictionary(g => g.Key, g => new Stats(
             g.Count(kv => kv.Value > 0), g.Sum(kv => kv.Value),
@@ -271,14 +310,15 @@ public sealed class WarehousesController : ControllerBase
             .Where(w => w.Kind == WarehouseKind.STORE)
             .OrderByDescending(w => w.IsActive).ThenByDescending(w => w.IsDefault).ThenBy(w => Loc.Name(w))
             .Select(w => { w.Branch = b; return ToDto(w, stats); })
-            .ToArray());
+            .ToArray(), b.Prefix);
 
     /// <summary>A warehouse with its stock; the stock's value only for people who may see costs.</summary>
     private WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)
     {
         var s = stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0);
         return Costs.Guard(User, new WarehouseDto(w.Id.ToString(), w.Code, Loc.Name(w), w.BranchId.ToString(),
-            Loc.Name(w.Branch), w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value));
+            Loc.Name(w.Branch), w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value,
+            w.Prefix, _departments.GetValueOrDefault(w.Id, Array.Empty<string>())));
     }
 
     private Task AuditAsync(string action, string resource, Guid id, Guid branchId) =>

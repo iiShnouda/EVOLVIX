@@ -35,7 +35,11 @@ export function TransfersPage() {
   const { deviceClass } = useDeviceInfo();
   const isPhone = deviceClass === 'phone';
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'all' ? 'all' : 'open';
+  // No goods "in transit" (owner decision 2026-10-01): every permit is listed; the list of permits
+  // still on the way shows only while older ones wait to be received.
+  const tab: Tab = params.get('tab') === 'open' ? 'open' : 'all';
+  const waiting = useTransfers({ page: 1, status: 'SENT' });
+  const anyWaiting = (waiting.data?.total ?? 0) > 0;
   const canSend = useAuth((s) => s.user?.permissions ?? []).includes('inventory:edit');
   const currency = useCompanySettings().data?.currency ?? 'EGP';
 
@@ -49,7 +53,7 @@ export function TransfersPage() {
 
   function switchTab(next: Tab) {
     setSelectedId(null);
-    setParams(next === 'all' ? { tab: 'all' } : {}, { replace: true });
+    setParams(next === 'open' ? { tab: 'open' } : {}, { replace: true });
   }
 
   return (
@@ -70,24 +74,26 @@ export function TransfersPage() {
         }
       />
 
-      <div
-        role="tablist"
-        className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {(['open', 'all'] as const).map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => switchTab(k)}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(k === 'open' ? 'transfer.tabOpen' : 'transfer.tabAll')}
-          </button>
-        ))}
-      </div>
+      {anyWaiting && (
+        <div
+          role="tablist"
+          className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {(['all', 'open'] as const).map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => switchTab(k)}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(k === 'open' ? 'transfer.tabOpen' : 'transfer.tabAll')}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className={isPhone ? '' : 'grid gap-4 lg:grid-cols-[1fr_minmax(340px,420px)]'}>
         <Card padded={false} className="h-fit overflow-hidden">

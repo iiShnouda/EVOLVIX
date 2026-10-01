@@ -44,6 +44,8 @@ public sealed class Housekeeping : BackgroundService
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // A new year's seasons appear on their own.
+        await Seasons.EnsureAsync(db);
         var now = DateTime.UtcNow;
         var notes = await db.Notifications.Where(n => n.CreatedAt < now - NotificationsFor).ExecuteDeleteAsync(stop);
         var ended = now - SessionsFor;

@@ -111,7 +111,7 @@ public sealed class InventoryController : ControllerBase
     public async Task<ActionResult<ItemCardDto>> Card(Guid id,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? warehouseId = null)
     {
-        var product = await _db.Products.AsNoTracking().Include(p => p.Category)
+        var product = await _db.Products.AsNoTracking().Include(p => p.Category).ThenInclude(c => c!.Department)
             .Include(p => p.Units).ThenInclude(u => u.Unit)
             .FirstOrDefaultAsync(p => p.Id == id);
         if (product is null) return NotFound(new { message = "Item not found", code = "not_found" });
@@ -181,7 +181,7 @@ public sealed class InventoryController : ControllerBase
 
         var today = CompanyClock.Today;
         var date = CompanyClock.ParseDay(asOf) ?? today;
-        var products = await _db.Products.AsNoTracking().Include(p => p.Category).Include(p => p.Model)
+        var products = await _db.Products.AsNoTracking().Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Model)
             .ToDictionaryAsync(p => p.Id);
         var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
         var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(CompanyClock.StartOf(date.AddDays(1)));

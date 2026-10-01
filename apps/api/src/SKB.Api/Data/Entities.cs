@@ -10,6 +10,8 @@ public class Branch : INamed
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
+    /// <summary>Short prefix for item codes, e.g. "EL" (owner decision 2026-10-01).</summary>
+    public string? Prefix { get; set; }
     public string? Location { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -30,6 +32,8 @@ public class Warehouse : INamed
     public string Name { get; set; } = "";
     /// <summary>Short unique code, e.g. "MAIN-1".</summary>
     public string Code { get; set; } = "";
+    /// <summary>Short prefix for item codes, e.g. "H" or "5" (owner decision 2026-10-01).</summary>
+    public string? Prefix { get; set; }
     public Guid BranchId { get; set; }
     public Branch? Branch { get; set; }
     /// <summary>STORE, or the single system TRANSIT warehouse that holds goods on the way.</summary>
@@ -286,6 +290,38 @@ public class Department : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    /// <summary>Short prefix for item codes, e.g. "MEN" (owner decision 2026-10-01).</summary>
+    public string? Prefix { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A department a warehouse has (owner decision 2026-10-01): departments are one list, each
+/// warehouse picks its own; the same department and the same items may be in two warehouses, each
+/// with its own stock. A warehouse with none picked offers every department.
+/// </summary>
+public class WarehouseDepartment
+{
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public Guid DepartmentId { get; set; }
+    public Department? Department { get; set; }
+}
+
+/// <summary>
+/// A season (موسم) goods are bought for (owner decision 2026-10-01): the system adds summer and
+/// winter every year (summer April–September, winter October–March), and "no season" for goods that
+/// have none; more can be added by hand. An item bought for a season carries it, at the end of its
+/// name too, and can be searched by it.
+/// </summary>
+public class Season
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    /// <summary>SUMMER, WINTER, NONE (no season) or CUSTOM.</summary>
+    public string Kind { get; set; } = "CUSTOM";
+    public int? Year { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -298,6 +334,8 @@ public class Unit : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
+    /// <summary>How many pieces it usually holds (a dozen = 12); an item's own count can differ.</summary>
+    public int Pieces { get; set; } = 1;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -416,6 +454,8 @@ public class VariantOption : INamed
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "";
     public VariantKind Kind { get; set; }
+    /// <summary>A color's swatch, e.g. "#1d4ed8" (owner decision 2026-10-01).</summary>
+    public string? Hex { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -508,6 +548,9 @@ public class Product : INamed
     public VariantOption? Size { get; set; }
     public Guid? ColorId { get; set; }
     public VariantOption? Color { get; set; }
+    /// <summary>The season it was bought for (owner decision 2026-10-01).</summary>
+    public Guid? SeasonId { get; set; }
+    public Season? Season { get; set; }
 
     public List<ItemUnit> Units { get; set; } = new();
 
@@ -945,7 +988,7 @@ public class CompanySettings
     /// The receiving warehouse confirms a transfer before the goods count there (old
     /// chkBoxIsConfermTahwel). Off: a transfer arrives the moment it is sent.
     /// </summary>
-    public bool TransfersRequireReceipt { get; set; } = true;
+    public bool TransfersRequireReceipt { get; set; }
     /// <summary>
     /// Period lock (إقفال الحركات): no manual entry may be dated on or before this day, and no
     /// voucher created on or before it may be cancelled. Null = nothing locked.

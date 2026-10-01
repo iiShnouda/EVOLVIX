@@ -17,7 +17,9 @@ import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
 import {
-  useCategories,
+  useDepartments,
+  useSeasons,
+  useVariantOptions,
   useCompanySettings,
   useCreateProduct,
   usePriceLevels,
@@ -38,7 +40,8 @@ const loadKey = (d: ProductDetail) =>
 interface ProductDraft {
   names: NameValues;
   sku: string;
-  categoryId: string;
+  departmentId: string;
+  seasonId: string;
   reorder: string;
   supplierId: string;
   supplierCode: string;
@@ -66,7 +69,9 @@ export function ProductEditorPage() {
 
   const detail = useProductDetail(id ?? null);
   const units = useUnits();
-  const categories = useCategories();
+  const departments = (useDepartments().data ?? []).filter((x) => x.isActive);
+  const seasons = useSeasons();
+  const options = useVariantOptions();
   const levels = usePriceLevels();
   const currency = useCompanySettings().data?.currency ?? 'EGP';
   const create = useCreateProduct();
@@ -75,7 +80,10 @@ export function ProductEditorPage() {
 
   const [names, setNames] = useState<NameValues>('');
   const [sku, setSku] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [seasonId, setSeasonId] = useState('');
+  const [sizeId, setSizeId] = useState('');
+  const [colorId, setColorId] = useState('');
   const [reorder, setReorder] = useState('0');
   const [supplierId, setSupplierId] = useState('');
   const [supplierCode, setSupplierCode] = useState('');
@@ -89,7 +97,8 @@ export function ProductEditorPage() {
     if (!d || loadedId === loadKey(d)) return;
     setNames(namesFrom(d.name));
     setSku(d.sku);
-    setCategoryId(d.categoryId);
+    setDepartmentId(d.departmentId ?? '');
+    setSeasonId(d.seasonId ?? '');
     setReorder(String(d.reorderLevel));
     setSupplierId(d.supplierId ?? '');
     setSupplierCode(d.supplierCode ?? '');
@@ -97,6 +106,13 @@ export function ProductEditorPage() {
     setPricesInput(inputsFrom(d.prices));
     setLoadedId(loadKey(d));
   }, [d, loadedId]);
+
+  // A new item starts in the season it is now (owner decision 2026-10-01).
+  const currentSeason = seasons.data?.find((x) => x.isCurrent)?.id;
+  useEffect(() => {
+    if (isNew && !seasonId && currentSeason) setSeasonId(currentSeason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, currentSeason]);
 
   // A new item starts in pieces.
   useEffect(() => {
@@ -144,7 +160,8 @@ export function ProductEditorPage() {
     : !!d &&
       (!!typedNames.name ||
         (!!sku.trim() && sku.trim() !== d.sku) ||
-        categoryId !== d.categoryId ||
+        departmentId !== (d.departmentId ?? '') ||
+        seasonId !== (d.seasonId ?? '') ||
         nextReorder !== d.reorderLevel ||
         supplierId !== (d.supplierId ?? '') ||
         supplierCode.trim() !== (d.supplierCode ?? '') ||
@@ -154,9 +171,11 @@ export function ProductEditorPage() {
   // Kept on the server while it is written, brought back after a crash or on another device.
   const qc = useQueryClient();
   const work = useWorkDraft<ProductDraft>(
-    1,
+    2,
     () =>
-      dirty ? { names, sku, categoryId, reorder, supplierId, supplierCode, rows, prices } : null,
+      dirty
+        ? { names, sku, departmentId, seasonId, reorder, supplierId, supplierCode, rows, prices }
+        : null,
     async (k) => {
       // An item being changed: fill from the server first, so that doesn't overwrite the work.
       if (id) {
@@ -168,7 +187,8 @@ export function ProductEditorPage() {
       }
       if (typeof k.names === 'string') setNames(k.names);
       if (typeof k.sku === 'string') setSku(k.sku);
-      if (typeof k.categoryId === 'string') setCategoryId(k.categoryId);
+      if (typeof k.departmentId === 'string') setDepartmentId(k.departmentId);
+      if (typeof k.seasonId === 'string') setSeasonId(k.seasonId);
       if (typeof k.reorder === 'string') setReorder(k.reorder);
       if (typeof k.supplierId === 'string') setSupplierId(k.supplierId);
       if (typeof k.supplierCode === 'string') setSupplierCode(k.supplierCode);
@@ -178,7 +198,7 @@ export function ProductEditorPage() {
   );
 
   const canSave = isNew
-    ? canFields && !!typedNames.name && !!categoryId && unitsValid && !pending
+    ? canFields && !!typedNames.name && !!departmentId && unitsValid && !pending
     : !pending && !!d && unitsValid;
 
   async function save() {
@@ -186,7 +206,10 @@ export function ProductEditorPage() {
       if (isNew) {
         const created = await create.mutateAsync({
           ...typedNames,
-          categoryId,
+          departmentId,
+          seasonId: seasonId || undefined,
+          sizeId: sizeId || undefined,
+          colorId: colorId || undefined,
           sku: sku.trim() || undefined,
           reorderLevel: Math.max(0, Math.floor(Number(reorder) || 0)),
           supplierId: supplierId || undefined,
@@ -203,7 +226,9 @@ export function ProductEditorPage() {
         const input: Parameters<typeof update.mutateAsync>[0]['input'] = {};
         if (!isVariant) Object.assign(input, typedNames);
         if (sku.trim() && sku.trim() !== d.sku) input.sku = sku.trim();
-        if (!isVariant && categoryId !== d.categoryId) input.categoryId = categoryId;
+        if (!isVariant && departmentId && departmentId !== (d.departmentId ?? ''))
+          input.departmentId = departmentId;
+        if (seasonId !== (d.seasonId ?? '')) input.seasonId = seasonId;
         if (nextReorder !== d.reorderLevel) input.reorderLevel = nextReorder;
         if (!isVariant && supplierId !== (d.supplierId ?? '')) input.supplierId = supplierId;
         if (!isVariant && supplierCode.trim() !== (d.supplierCode ?? ''))
@@ -300,17 +325,20 @@ export function ProductEditorPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('item.category')}</span>
+                <span className="mb-0.5 block text-xs text-muted">{t('item.department')}</span>
                 <select
                   className={field}
-                  value={categoryId}
+                  value={departmentId}
                   disabled={!canFields || isVariant}
-                  onChange={(e) => setCategoryId(e.target.value)}
+                  onChange={(e) => setDepartmentId(e.target.value)}
                 >
-                  <option value="">{t('item.pickCategory')}</option>
-                  {(categories.data ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
+                  <option value="">{t('item.pickDepartment')}</option>
+                  {d?.departmentId && !departments.some((x) => x.id === d.departmentId) && (
+                    <option value={d.departmentId}>{d.departmentName}</option>
+                  )}
+                  {departments.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
                     </option>
                   ))}
                 </select>
@@ -327,12 +355,67 @@ export function ProductEditorPage() {
                 />
               </label>
             </div>
+            {/* The season (also added to the name of a new item), its size and color. */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
+                <select
+                  className={field}
+                  value={seasonId}
+                  disabled={!canFields}
+                  onChange={(e) => setSeasonId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {(seasons.data ?? []).map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {isNew && (
+                <>
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('setup.sizeName')}</span>
+                    <select
+                      className={field}
+                      value={sizeId}
+                      onChange={(e) => setSizeId(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(options.data ?? [])
+                        .filter((o) => o.kind === 'SIZE' && o.isActive)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('setup.colorName')}</span>
+                    <select
+                      className={field}
+                      value={colorId}
+                      onChange={(e) => setColorId(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(options.data ?? [])
+                        .filter((o) => o.kind === 'COLOR' && o.isActive)
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </>
+              )}
+            </div>
             <SupplierFields
               supplierId={supplierId}
-              supplierCode={supplierCode}
               currentName={d?.supplierName}
               onSupplier={setSupplierId}
-              onCode={setSupplierCode}
               disabled={!canFields || isVariant}
             />
           </Card>
@@ -362,7 +445,12 @@ export function ProductEditorPage() {
             </h2>
             <PriceGrid
               units={gridUnits}
-              levels={levels.data ?? []}
+              levels={(levels.data ?? [])
+                .filter((l) => l.isDefault && l.isActive)
+                .map((l) => ({
+                  ...l,
+                  name: t(l.side === 'SALE' ? 'item.salePrice' : 'item.purchasePrice'),
+                }))}
               inputs={prices}
               onChange={setPricesInput}
               saved={d?.prices}

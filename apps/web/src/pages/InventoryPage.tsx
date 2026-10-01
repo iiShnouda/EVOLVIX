@@ -72,9 +72,6 @@ export function InventoryPage() {
                 {t('catalog.newItem')}
               </Button>
             )}
-            <Button size="sm" variant="secondary" onClick={() => navigate('/inventory/models')}>
-              {t('catalog.models')}
-            </Button>
             <Button
               size="sm"
               variant="secondary"

@@ -44,7 +44,7 @@ public sealed class CatalogController : ControllerBase
     [Authorize(Policy = Permissions.UnitsManage)]
     public async Task<ActionResult<UnitDto>> CreateUnit([FromBody] CreateNamedRequest req)
     {
-        var unit = new Unit();
+        var unit = new Unit { Pieces = Math.Clamp(req.Pieces ?? 1, 1, 100000) };
         var error = await NameAsync(unit, req.Name, _db.Units, "unit");
         if (error is not null) return error;
         _db.Units.Add(unit);
@@ -61,6 +61,7 @@ public sealed class CatalogController : ControllerBase
         var error = await RenameAsync(unit, req, _db.Units, "unit");
         if (error is not null) return error;
         if (req.IsActive is bool active) unit.IsActive = active;
+        if (req.Pieces is int pieces) unit.Pieces = Math.Clamp(pieces, 1, 100000);
         await SaveAsync("update", "unit", unit.Id);
         return Ok(ToDto(unit, await _db.ItemUnits.CountAsync(u => u.UnitId == id)));
     }
@@ -137,8 +138,17 @@ public sealed class CatalogController : ControllerBase
         var departments = await _db.Departments.AsNoTracking().ToListAsync();
         var counts = await _db.Categories.Where(c => c.DepartmentId != null).GroupBy(c => c.DepartmentId!.Value)
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        var items = await _db.Products.Where(p => p.IsActive && p.Category!.DepartmentId != null)
+            .GroupBy(p => p.Category!.DepartmentId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        var links = (await _db.WarehouseDepartments.AsNoTracking().ToListAsync())
+            .GroupBy(l => l.DepartmentId).ToDictionary(g => g.Key, g => g.Select(l => l.WarehouseId.ToString()).ToArray());
         return Ok(departments.OrderByDescending(d => d.IsActive).ThenBy(d => Loc.Name(d))
-            .Select(d => ToDto(d, counts.GetValueOrDefault(d.Id))).ToArray());
+            .Select(d => ToDto(d, counts.GetValueOrDefault(d.Id)) with
+            {
+                WarehouseIds = links.GetValueOrDefault(d.Id, Array.Empty<string>()),
+                ItemCount = items.GetValueOrDefault(d.Id),
+            }).ToArray());
     }
 
     [HttpPost("departments")]
@@ -146,7 +156,8 @@ public sealed class CatalogController : ControllerBase
     public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req)
     {
         var department = new Department();
-        var error = await NameAsync(department, req.Name, _db.Departments, "department");
+        var error = await NameAsync(department, req.Name, _db.Departments, "department")
+                    ?? PrefixOf(department, req.Prefix);
         if (error is not null) return error;
         _db.Departments.Add(department);
         await SaveAsync("create", "department", department.Id);
@@ -160,14 +171,25 @@ public sealed class CatalogController : ControllerBase
     {
         var department = await _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
         if (department is null) return NotFound(new { message = "Department not found.", code = "department_not_found" });
-        var error = await RenameAsync(department, req, _db.Departments, "department");
+        var error = await RenameAsync(department, req, _db.Departments, "department")
+                    ?? PrefixOf(department, req.Prefix);
         if (error is not null) return error;
         if (req.IsActive is bool active) department.IsActive = active;
         await SaveAsync("update", "department", department.Id);
         return Ok(ToDto(department, await _db.Categories.CountAsync(c => c.DepartmentId == id)));
     }
 
-    private static DepartmentDto ToDto(Department d, int count) => new(d.Id.ToString(), Loc.Name(d), d.IsActive, count);
+    private static DepartmentDto ToDto(Department d, int count) =>
+        new(d.Id.ToString(), Loc.Name(d), d.IsActive, count, d.Prefix);
+
+    /// <summary>Set a department's code prefix (null = leave it).</summary>
+    private ActionResult? PrefixOf(Department department, string? raw)
+    {
+        var (given, value, bad) = Catalog.Prefix(raw);
+        if (bad) return BadRequest(new { message = "A prefix is up to 10 letters or digits.", code = "bad_prefix" });
+        if (given) department.Prefix = value;
+        return null;
+    }
 
     // ------------------------------------------------------------------ price levels
 
@@ -266,9 +288,12 @@ public sealed class CatalogController : ControllerBase
         if (!Enum.TryParse<VariantKind>(req.Kind, true, out var kind))
             return BadRequest(new { message = "Choose size or color.", code = "bad_kind" });
         var sameKind = _db.VariantOptions.Where(o => o.Kind == kind);
+        var hex = HexOf(req.Hex);
+        if (hex == "") return BadRequest(new { message = "Pick a color like #1d4ed8.", code = "bad_color" });
         var option = new VariantOption
         {
             Kind = kind,
+            Hex = kind == VariantKind.COLOR ? hex : null,
             SortOrder = (await sameKind.MaxAsync(o => (int?)o.SortOrder) ?? 0) + 1,
         };
         var error = await NameAsync(option, req.Name, sameKind,
@@ -289,6 +314,12 @@ public sealed class CatalogController : ControllerBase
             option.Kind == VariantKind.SIZE ? "size" : "color");
         if (error is not null) return error;
         if (req.SortOrder is int order) option.SortOrder = Math.Clamp(order, 0, 1000);
+        if (req.Hex is not null && option.Kind == VariantKind.COLOR)
+        {
+            var hex = HexOf(req.Hex);
+            if (hex == "") return BadRequest(new { message = "Pick a color like #1d4ed8.", code = "bad_color" });
+            option.Hex = hex;
+        }
         if (req.IsActive is bool active) option.IsActive = active;
         await SaveAsync("update", "variant_option", option.Id);
         // Variant names are made from it: "Shirt X — Red / L".
@@ -298,7 +329,15 @@ public sealed class CatalogController : ControllerBase
 
     // ------------------------------------------------------------------ helpers
 
-    private static UnitDto ToDto(Unit u, int count) => new(u.Id.ToString(), Loc.Name(u), u.IsActive, count);
+    /// <summary>A color swatch "#rrggbb": null = none, "" = not a color.</summary>
+    private static string? HexOf(string? raw)
+    {
+        var t = raw?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(t)) return null;
+        return System.Text.RegularExpressions.Regex.IsMatch(t, "^#[0-9a-f]{6}$") ? t : "";
+    }
+
+    private static UnitDto ToDto(Unit u, int count) => new(u.Id.ToString(), Loc.Name(u), u.IsActive, count, u.Pieces);
 
     /// <summary>Name a new entry from a create form; refuse an empty name or one another entry of the list has.</summary>
     private async Task<ActionResult?> NameAsync<T>(T entity, string? name, IQueryable<T> list, string what)

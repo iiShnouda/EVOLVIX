@@ -30,7 +30,9 @@ public record ProductDto(
     string Currency, int StockOnHand, int ReorderLevel, bool IsActive,
     string? Barcode, string CategoryId, ProductUnitDto[] Units,
     string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId,
-    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null,
+    string? DepartmentId = null, string? DepartmentName = null, string? SeasonId = null, string? SeasonName = null,
+    string? ColorHex = null);
 
 /// <param name="Prices">The unit's price at each active level that has one (see PriceBook for the order).</param>
 public record ProductUnitDto(string UnitId, string Name, int Factor, string? Barcode, UnitPriceDto[] Prices);
@@ -296,7 +298,8 @@ public record StocktakeResultDto(
 /// <param name="Value">Quantity × current average cost, minor units.</param>
 public record WarehouseDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string Kind,
-    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value);
+    bool IsDefault, bool IsActive, int ItemCount, int Quantity, long Value,
+    string? Prefix = null, string[]? DepartmentIds = null);
 
 /// <summary>A warehouse goods can be sent to (any branch), for the transfer form.</summary>
 public record WarehouseOptionDto(string Id, string Name, string BranchName);
@@ -324,24 +327,26 @@ public record CreateTransferRequest(
     string FromWarehouseId, string ToWarehouseId, CreateTransferLineRequest[] Lines, string? Notes = null);
 
 public record BranchDto(
-    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses);
+    string Id, string Code, string Name, string? Location, bool IsActive, WarehouseDto[] Warehouses,
+    string? Prefix = null);
 
 // Names: one name, as typed (Arabic or English); it is never translated (owner decision 2026-09-29).
 
 public record CreateWarehouseRequest(
     string BranchId, string? Code = null, bool IsDefault = false,
-    string? Name = null);
+    string? Name = null, string? Prefix = null, string[]? DepartmentIds = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateWarehouseRequest(
-    bool? IsActive = null, bool? IsDefault = null, string? Name = null);
+    bool? IsActive = null, bool? IsDefault = null, string? Name = null, string? Prefix = null,
+    string[]? DepartmentIds = null);
 
 /// <summary>A new branch also gets its default store.</summary>
 public record CreateBranchRequest(
-    string? Code = null, string? Location = null, string? Name = null);
+    string? Code = null, string? Location = null, string? Name = null, string? Prefix = null);
 
 /// <summary>Any field left null is unchanged.</summary>
-public record UpdateBranchRequest(string? Location = null, string? Name = null);
+public record UpdateBranchRequest(string? Location = null, string? Name = null, string? Prefix = null);
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
@@ -485,7 +490,7 @@ public record PricingDto(string? PriceLevelId, PricedLineDto[] Lines);
 // ---- Catalog (الأصناف): units, categories, price levels, sizes & colors, items, models ----
 
 /// <param name="ItemCount">Items that come in this unit / belong to this category.</param>
-public record UnitDto(string Id, string Name, bool IsActive, int ItemCount);
+public record UnitDto(string Id, string Name, bool IsActive, int ItemCount, int Pieces = 1);
 
 public record CategoryDto(string Id, string Name, int ItemCount, string? DepartmentId = null, string? DepartmentName = null);
 
@@ -496,7 +501,14 @@ public record CreateCategoryRequest(string? Name = null, string? DepartmentId = 
 public record UpdateCategoryRequest(string? Name = null, string? DepartmentId = null);
 
 /// <summary>A sales department (قسم): a group of categories.</summary>
-public record DepartmentDto(string Id, string Name, bool IsActive, int CategoryCount);
+public record DepartmentDto(string Id, string Name, bool IsActive, int CategoryCount, string? Prefix = null,
+    string[]? WarehouseIds = null, int ItemCount = 0);
+
+/// <param name="Kind">SUMMER, WINTER, NONE (no season) or CUSTOM.</param>
+/// <param name="IsCurrent">The season it is now (by the company's date).</param>
+public record SeasonDto(string Id, string Name, string Kind, int? Year, bool IsActive, bool IsCurrent);
+
+public record CreateSeasonRequest(string? Name);
 
 /// <param name="Side">SALE or PURCHASE.</param>
 public record PriceLevelDto(
@@ -504,14 +516,15 @@ public record PriceLevelDto(
 
 /// <param name="Kind">SIZE or COLOR.</param>
 public record VariantOptionDto(
-    string Id, string Kind, string Name, int SortOrder, bool IsActive);
+    string Id, string Kind, string Name, int SortOrder, bool IsActive, string? Hex = null);
 
 /// <summary>A new unit / category / size / color: its name, as typed.</summary>
-public record CreateNamedRequest(string? Name = null);
+public record CreateNamedRequest(string? Name = null, string? Prefix = null, int? Pieces = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateNamedRequest(
-    string? Name = null, bool? IsActive = null, int? SortOrder = null);
+    string? Name = null, bool? IsActive = null, int? SortOrder = null, string? Prefix = null, int? Pieces = null,
+    string? Hex = null);
 
 public record CreatePriceLevelRequest(string? Side, string? Name = null);
 
@@ -519,7 +532,7 @@ public record UpdatePriceLevelRequest(
     string? Name = null,
     bool? IsActive = null, bool? IsDefault = null, int? SortOrder = null);
 
-public record CreateVariantOptionRequest(string? Kind, string? Name = null);
+public record CreateVariantOptionRequest(string? Kind, string? Name = null, string? Hex = null);
 
 /// <summary>One unit of an item: which unit, how many base units it holds (1 = the base unit), its barcode.</summary>
 public record ItemUnitRequest(string? UnitId, int Factor, string? Barcode = null);
@@ -533,7 +546,8 @@ public record CreateProductRequest(
     string? CategoryId, ItemUnitRequest[]? Units,
     string? Name = null, string? Sku = null,
     int ReorderLevel = 0, PriceRequest[]? Prices = null,
-    string? SupplierId = null, string? SupplierCode = null);
+    string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
+    string? SizeId = null, string? ColorId = null);
 
 /// <summary>
 /// Any field left null is unchanged. For a variant only SKU, reorder level, active and the units'
@@ -542,7 +556,7 @@ public record CreateProductRequest(
 public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
     string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
-    string? SupplierId = null, string? SupplierCode = null);
+    string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 
@@ -559,7 +573,8 @@ public record ProductDetailDto(
     int ReorderLevel, bool IsActive, int StockOnHand, long CostPrice, bool HasMovements,
     string? ModelId, string? ModelName, string? SizeId, string? SizeName, string? ColorId, string? ColorName,
     ItemUnitDto[] Units, PriceCellDto[] Prices, string Currency,
-    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null);
+    string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null,
+    string? DepartmentId = null, string? DepartmentName = null, string? SeasonId = null, string? SeasonName = null);
 
 public record ModelSummaryDto(
     string Id, string Code, string Name, string CategoryName, int Variants, int StockOnHand, bool IsActive);

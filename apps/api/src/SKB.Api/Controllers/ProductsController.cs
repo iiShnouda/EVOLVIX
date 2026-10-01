@@ -44,9 +44,17 @@ public sealed class ProductsController : ControllerBase
         // The detailed search (البحث المفصل), as in the old program (owner, 2026-10-01): the code and the
         // name each "contain" what's typed, a list-price range, and stock: in, out, or at/below the reorder level.
         [FromQuery] string? code = null, [FromQuery] string? name = null,
-        [FromQuery] long? minPrice = null, [FromQuery] long? maxPrice = null, [FromQuery] string? stock = null)
+        [FromQuery] long? minPrice = null, [FromQuery] long? maxPrice = null, [FromQuery] string? stock = null,
+        [FromQuery] string? seasonId = null,
+        // Ranges for the finder (owner, 2026-10-01): =, > and < come as from/to bounds. Cost only for
+        // people who may see it.
+        [FromQuery] long? costMin = null, [FromQuery] long? costMax = null,
+        [FromQuery] int? reorderMin = null, [FromQuery] int? reorderMax = null,
+        [FromQuery] int? stockMin = null, [FromQuery] int? stockMax = null,
+        [FromQuery] string? warehouseId = null, [FromQuery] int offset = 0)
     {
         limit = Math.Clamp(limit, 1, 200);
+        offset = Math.Max(0, offset);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
         if (inStockOnly || stock == "in") q = q.Where(p => p.StockOnHand > 0);
         else if (stock == "out") q = q.Where(p => p.StockOnHand <= 0);
@@ -62,9 +70,30 @@ public sealed class ProductsController : ControllerBase
             var n = name.Trim().ToLower();
             q = q.Where(p => p.Name.ToLower().Contains(n));
         }
+        if (Costs.CanSee(User))
+        {
+            if (costMin is long cMin) q = q.Where(p => p.CostPrice >= cMin);
+            if (costMax is long cMax) q = q.Where(p => p.CostPrice <= cMax);
+        }
+        if (reorderMin is int rMin) q = q.Where(p => p.ReorderLevel >= rMin);
+        if (reorderMax is int rMax) q = q.Where(p => p.ReorderLevel <= rMax);
+        if (Guid.TryParse(warehouseId, out var wh))
+        {
+            // That warehouse's items, and their balance there.
+            var held = _db.StockBalances.Where(b => b.WarehouseId == wh);
+            q = q.Where(p => held.Any(b => b.ProductId == p.Id));
+            if (stockMin is int wMin) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) >= wMin);
+            if (stockMax is int wMax) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= wMax);
+        }
+        else
+        {
+            if (stockMin is int sMin) q = q.Where(p => p.StockOnHand >= sMin);
+            if (stockMax is int sMax) q = q.Where(p => p.StockOnHand <= sMax);
+        }
         if (minPrice is long min) q = q.Where(p => p.SalePrice >= min);
         if (maxPrice is long max) q = q.Where(p => p.SalePrice <= max);
         if (Guid.TryParse(categoryId, out var category)) q = q.Where(p => p.CategoryId == category);
+        if (Guid.TryParse(seasonId, out var season)) q = q.Where(p => p.SeasonId == season);
         // A department's items (and items of no department); people limited to departments see only theirs.
         if (!string.IsNullOrWhiteSpace(departmentId))
         {
@@ -112,7 +141,8 @@ public sealed class ProductsController : ControllerBase
             }
         }
         var rows = await q.Include(p => p.Size).Include(p => p.Color).Include(p => p.Supplier)
-            .OrderBy(p => p.Name).Take(limit).ToListAsync();
+            .Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Season)
+            .OrderBy(p => p.Name).ThenBy(p => p.Id).Skip(offset).Take(limit).ToListAsync();
         if (exact is not null)
             rows = rows.OrderByDescending(p => p.Id == exact.ProductId).ToList();
 
@@ -138,9 +168,37 @@ public sealed class ProductsController : ControllerBase
         if (name is null) return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
         var product = new Product { Name = name };
 
-        if (!Guid.TryParse(req.CategoryId, out var categoryId) || !await _db.Categories.AnyAsync(c => c.Id == categoryId))
-            return BadRequest(new { message = "Choose a category.", code = "category_not_found" });
-        product.CategoryId = categoryId;
+        // The department (owner decision 2026-10-01), or, as before, a group.
+        Department? department = null;
+        if (req.DepartmentId is not null)
+        {
+            var (fromDepartment, dept) = await Catalog.CategoryForDepartmentAsync(_db, req.DepartmentId);
+            if (fromDepartment is null) return BadRequest(new { message = "Choose a department.", code = "department_not_found" });
+            product.CategoryId = fromDepartment.Value;
+            department = dept;
+        }
+        else if (!Guid.TryParse(req.CategoryId, out var categoryId) || !await _db.Categories.AnyAsync(c => c.Id == categoryId))
+            return BadRequest(new { message = "Choose a department.", code = "category_not_found" });
+        else product.CategoryId = categoryId;
+
+        // The season it is bought for, also at the end of its name.
+        if (req.SeasonId is not null)
+        {
+            var season = Guid.TryParse(req.SeasonId, out var sid)
+                ? await _db.Seasons.FirstOrDefaultAsync(x => x.Id == sid && x.IsActive) : null;
+            if (season is null) return BadRequest(new { message = "Choose a season.", code = "season_not_found" });
+            product.SeasonId = season.Id;
+            product.Name = Catalog.WithSeason(product.Name, season);
+        }
+        // Its size and color, picked from the company's lists.
+        foreach (var (raw, kind) in new[] { (req.SizeId, VariantKind.SIZE), (req.ColorId, VariantKind.COLOR) })
+        {
+            if (string.IsNullOrEmpty(raw)) continue;
+            var option = Guid.TryParse(raw, out var oid)
+                ? await _db.VariantOptions.FirstOrDefaultAsync(o => o.Id == oid && o.Kind == kind && o.IsActive) : null;
+            if (option is null) return BadRequest(new { message = "Size or color not found.", code = "variant_option_not_found" });
+            if (kind == VariantKind.SIZE) product.SizeId = option.Id; else product.ColorId = option.Id;
+        }
 
         if (req.ReorderLevel < 0)
             return BadRequest(new { message = "The reorder level can't be negative.", code = "bad_reorder" });
@@ -153,7 +211,18 @@ public sealed class ProductsController : ControllerBase
 
         var (sku, skuError) = await SkuAsync(req.Sku, null);
         if (skuError is not null) return skuError;
-        product.Sku = sku ?? await Catalog.NextItemSkuAsync(_db);
+        // Without a code of its own, one from the prefixes of where it is worked on (owner decision 2026-10-01).
+        if (sku is null)
+        {
+            var branchId = Access.Work(User);
+            var branchPrefix = await _db.Branches.Where(b => b.Id == branchId).Select(b => b.Prefix).FirstOrDefaultAsync();
+            var whPrefix = await _db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
+                .Select(w => w.Prefix).FirstOrDefaultAsync();
+            sku = department?.Prefix is { Length: > 0 }
+                ? await Catalog.NextItemCodeAsync(_db, branchPrefix, whPrefix, department.Prefix)
+                : await Catalog.NextItemSkuAsync(_db);
+        }
+        product.Sku = sku;
 
         var (units, unitError) = await Catalog.ParseUnitsAsync(_db, req.Units, withBarcodes: true);
         if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
@@ -200,6 +269,24 @@ public sealed class ProductsController : ControllerBase
             var name = Loc.Clean(req.Name);
             if (name is null) return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
             product.Name = name;
+        }
+        if (req.DepartmentId is not null)
+        {
+            if (isVariant) return variantRule;
+            var (fromDepartment, _) = await Catalog.CategoryForDepartmentAsync(_db, req.DepartmentId);
+            if (fromDepartment is null) return BadRequest(new { message = "Choose a department.", code = "department_not_found" });
+            product.CategoryId = fromDepartment.Value;
+        }
+        if (req.SeasonId is not null)
+        {
+            if (req.SeasonId.Length == 0) product.SeasonId = null;
+            else
+            {
+                var season = Guid.TryParse(req.SeasonId, out var sid)
+                    ? await _db.Seasons.FirstOrDefaultAsync(x => x.Id == sid) : null;
+                if (season is null) return BadRequest(new { message = "Choose a season.", code = "season_not_found" });
+                product.SeasonId = season.Id;
+            }
         }
         if (req.CategoryId is not null)
         {
@@ -338,8 +425,9 @@ public sealed class ProductsController : ControllerBase
     private async Task<ProductDetailDto?> DetailAsync(Guid id)
     {
         var p = await _db.Products.AsNoTracking()
-            .Include(x => x.Category).Include(x => x.Model).Include(x => x.Size).Include(x => x.Color)
-            .Include(x => x.Supplier)
+            .Include(x => x.Category).ThenInclude(c => c!.Department)
+            .Include(x => x.Model).Include(x => x.Size).Include(x => x.Color)
+            .Include(x => x.Supplier).Include(x => x.Season)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (p is null) return null;
         var book = await PriceBook.LoadAsync(_db, new[] { id });
@@ -359,7 +447,9 @@ public sealed class ProductsController : ControllerBase
                 var (price, source) = book.Effective(id, u.UnitId, l.Id);
                 return new PriceCellDto(u.UnitId.ToString(), l.Id.ToString(), book.OwnPrice(id, u.UnitId, l.Id), price, source);
             })).ToArray(),
-            currency, p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode), PurchaseLevelIds(book));
+            currency, p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode,
+            p.Category?.DepartmentId?.ToString(), p.Category?.Department is { } d ? Loc.Name(d) : null,
+            p.SeasonId?.ToString(), p.Season is { } season ? Seasons.NameOf(season) : null), PurchaseLevelIds(book));
     }
 
     /// <summary>Ids of the supplier-side price levels, which only purchasing staff see.</summary>

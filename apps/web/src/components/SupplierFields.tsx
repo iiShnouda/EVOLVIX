@@ -10,18 +10,14 @@ const field =
  */
 export function SupplierFields({
   supplierId,
-  supplierCode,
   currentName,
   onSupplier,
-  onCode,
   disabled,
 }: {
   supplierId: string;
-  supplierCode: string;
   /** Name of the saved supplier, shown even if it is no longer in the open list. */
   currentName?: string | null;
   onSupplier: (id: string) => void;
-  onCode: (code: string) => void;
   disabled?: boolean;
 }) {
   const { t } = useT();
@@ -30,7 +26,7 @@ export function SupplierFields({
   const missing = supplierId && !rows.some((p) => p.id === supplierId);
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3">
       <label className="block">
         <span className="mb-0.5 block text-xs text-muted">{t('catalog.supplier')}</span>
         <select
@@ -43,21 +39,10 @@ export function SupplierFields({
           {missing && <option value={supplierId}>{currentName ?? supplierId}</option>}
           {rows.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}
+              {p.code} - {p.name}
             </option>
           ))}
         </select>
-      </label>
-      <label className="block">
-        <span className="mb-0.5 block text-xs text-muted">{t('catalog.supplierCode')}</span>
-        <input
-          className={field}
-          dir="auto"
-          maxLength={64}
-          value={supplierCode}
-          disabled={disabled}
-          onChange={(e) => onCode(e.target.value)}
-        />
       </label>
     </div>
   );

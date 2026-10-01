@@ -215,12 +215,22 @@ const nameFields = {
   name: z.string().trim().max(200).optional(),
 };
 
+/** A code prefix (branch EL, warehouse H or 5, department MEN): letters and digits, up to 10. */
+const prefixField = z
+  .string()
+  .trim()
+  .max(10)
+  .regex(/^[\p{L}\p{N}]*$/u)
+  .optional();
+
 export const createWarehouseSchema = z.object({
   branchId: z.string().uuid(),
   ...nameFields,
   /** Empty = automatic code from the branch code. */
   code: z.string().trim().max(20).optional(),
   isDefault: z.boolean().optional().default(false),
+  prefix: prefixField,
+  departmentIds: z.array(z.string().uuid()).optional(),
 });
 export type CreateWarehouseInput = z.infer<typeof createWarehouseSchema>;
 
@@ -228,6 +238,9 @@ export const updateWarehouseSchema = z.object({
   ...nameFields,
   isActive: z.boolean().optional(),
   isDefault: z.boolean().optional(),
+  prefix: prefixField,
+  /** The departments it has; [] = every department. */
+  departmentIds: z.array(z.string().uuid()).optional(),
 });
 export type UpdateWarehouseInput = z.infer<typeof updateWarehouseSchema>;
 
@@ -235,12 +248,14 @@ export const createBranchSchema = z.object({
   ...nameFields,
   code: z.string().trim().max(20).optional(),
   location: z.string().trim().max(200).optional(),
+  prefix: prefixField,
 });
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
 
 export const updateBranchSchema = z.object({
   ...nameFields,
   location: z.string().trim().max(200).optional(),
+  prefix: prefixField,
 });
 export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
 
@@ -272,13 +287,25 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 // Catalog: units, categories, price levels, sizes & colors, items, models
 // ---------------------------------------------------------------------------
 
-export const createNamedSchema = z.object({ ...nameFields });
+export const createNamedSchema = z.object({
+  ...nameFields,
+  prefix: prefixField,
+  /** A unit's usual count of pieces (a dozen = 12). */
+  pieces: z.number().int().min(1).max(100000).optional(),
+});
 export type CreateNamedInput = z.infer<typeof createNamedSchema>;
 
 export const updateNamedSchema = z.object({
   ...nameFields,
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
+  prefix: prefixField,
+  pieces: z.number().int().min(1).max(100000).optional(),
+  /** A color's swatch, "#rrggbb". */
+  hex: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
 });
 export type UpdateNamedInput = z.infer<typeof updateNamedSchema>;
 
@@ -296,6 +323,10 @@ export type UpdatePriceLevelInput = z.infer<typeof updatePriceLevelSchema>;
 export const createVariantOptionSchema = z.object({
   kind: z.enum(['SIZE', 'COLOR']),
   ...nameFields,
+  hex: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
 });
 export type CreateVariantOptionInput = z.infer<typeof createVariantOptionSchema>;
 
@@ -317,7 +348,12 @@ export type PriceInput = z.infer<typeof priceSchema>;
 
 export const createProductSchema = z.object({
   ...nameFields,
-  categoryId: z.string().uuid(),
+  /** The department (owner decision 2026-10-01); a group (categoryId) is still accepted. */
+  departmentId: z.string().uuid().optional(),
+  categoryId: z.string().uuid().optional(),
+  seasonId: z.string().uuid().optional(),
+  sizeId: z.string().uuid().optional(),
+  colorId: z.string().uuid().optional(),
   sku: z.string().trim().max(40).optional(),
   reorderLevel: z.number().int().min(0).default(0),
   units: z.array(itemUnitSchema).min(1).max(10),
@@ -330,6 +366,9 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 
 export const updateProductSchema = z.object({
   ...nameFields,
+  departmentId: z.string().uuid().optional(),
+  /** "" clears it. */
+  seasonId: z.union([z.literal(''), z.string().uuid()]).optional(),
   categoryId: z.string().uuid().optional(),
   sku: z.string().trim().max(40).optional(),
   reorderLevel: z.number().int().min(0).optional(),

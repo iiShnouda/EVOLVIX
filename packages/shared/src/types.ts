@@ -99,6 +99,7 @@ export type Permission =
   | 'categories:manage'
   | 'units:manage'
   | 'variant_options:manage'
+  | 'seasons:manage'
   | 'sales:change_price'
   | 'sales:choose_price_level'
   | 'purchases:change_price'
@@ -284,6 +285,23 @@ export interface Department {
   name: string;
   isActive: boolean;
   categoryCount: number;
+  /** Short prefix for item codes, e.g. "MEN". */
+  prefix?: string | null;
+  /** The warehouses that have it (owner decision 2026-10-01). */
+  warehouseIds?: string[];
+  /** Active items in it. */
+  itemCount?: number;
+}
+
+/** A season goods are bought for (owner decision 2026-10-01). */
+export interface Season {
+  id: string;
+  name: string;
+  kind: 'SUMMER' | 'WINTER' | 'NONE' | 'CUSTOM';
+  year?: number | null;
+  isActive: boolean;
+  /** The season it is now. */
+  isCurrent: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +472,12 @@ export interface Product {
   supplierId?: string | null;
   supplierName?: string | null;
   supplierCode?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  seasonId?: string | null;
+  seasonName?: string | null;
+  /** The color's swatch. */
+  colorHex?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,6 +1162,8 @@ export interface UnitOfMeasure {
   isActive: boolean;
   /** Items that come in this unit. */
   itemCount: number;
+  /** How many pieces it usually holds (a dozen = 12). */
+  pieces?: number;
 }
 
 export type PriceSide = 'SALE' | 'PURCHASE';
@@ -1161,6 +1187,8 @@ export interface VariantOption {
   name: string;
   sortOrder: number;
   isActive: boolean;
+  /** A color's swatch, e.g. "#1d4ed8". */
+  hex?: string | null;
 }
 
 /** One unit x level price in an editor. `own` is set by hand; `effective` is what it charges. */
@@ -1205,6 +1233,10 @@ export interface ProductDetail {
   supplierId?: string | null;
   supplierName?: string | null;
   supplierCode?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  seasonId?: string | null;
+  seasonName?: string | null;
 }
 
 export interface ModelSummary {
@@ -1284,6 +1316,10 @@ export interface Warehouse {
   quantity: number;
   /** quantity × current average cost, minor units. */
   value: number;
+  /** Short prefix for item codes, e.g. "H" or "5". */
+  prefix?: string | null;
+  /** The departments it has; none = every department. */
+  departmentIds?: string[];
 }
 
 /** A warehouse goods can be sent to on a transfer (any branch). */
@@ -1340,6 +1376,8 @@ export interface BranchWithWarehouses {
   location?: string | null;
   isActive: boolean;
   warehouses: Warehouse[];
+  /** Short prefix for item codes, e.g. "EL". */
+  prefix?: string | null;
 }
 
 // ---------------------------------------------------------------------------

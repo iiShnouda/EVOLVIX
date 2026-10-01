@@ -151,6 +151,8 @@ public static class Permissions
     public const string UnitsManage = "units:manage";
     /// <summary>Add and rename the company's sizes and colors.</summary>
     public const string VariantOptionsManage = "variant_options:manage";
+    /// <summary>Add a season by hand (summer and winter are added by the system every year).</summary>
+    public const string SeasonsManage = "seasons:manage";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
     /// <summary>
@@ -198,7 +200,7 @@ public static class Permissions
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
-        VariantOptionsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
+        VariantOptionsManage, SeasonsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,

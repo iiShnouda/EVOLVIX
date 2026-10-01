@@ -59,7 +59,9 @@ public static class Mapper
                     .Select(x => new UnitPriceDto(x.Level.Id.ToString(), x.Price.Price!.Value, x.Price.Source!))
                     .ToArray())).ToArray(),
             p.ModelId?.ToString(), p.Size is null ? null : Loc.Name(p.Size), p.Color is null ? null : Loc.Name(p.Color),
-            matchedUnitId?.ToString(), p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode);
+            matchedUnitId?.ToString(), p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode,
+            p.Category?.DepartmentId?.ToString(), p.Category?.Department is { } d ? Loc.Name(d) : null,
+            p.SeasonId?.ToString(), p.Season is { } season ? Seasons.NameOf(season) : null, p.Color?.Hex);
     }
 
     /// <summary>
@@ -73,7 +75,7 @@ public static class Mapper
         var cost = avgCost ?? p.CostPrice;
         var units = p.Units.OrderBy(u => u.Factor).ToList();
         return new(
-            p.Id.ToString(), p.Sku, Loc.Name(p), Loc.Name(units.FirstOrDefault()?.Unit), Loc.Name(p.Category),
+            p.Id.ToString(), p.Sku, Loc.Name(p), Loc.Name(units.FirstOrDefault()?.Unit), p.Category?.Department is { } dept ? Loc.Name(dept) : Loc.Name(p.Category),
             qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty <= p.ReorderLevel,
             units.Select(u => new UnitOptionDto(u.UnitId.ToString(), Loc.Name(u.Unit), u.Factor)).ToArray(),
             p.ModelId?.ToString());
@@ -97,5 +99,5 @@ public static class Mapper
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);
 
     public static VariantOptionDto ToVariantOption(VariantOption o) => new(
-        o.Id.ToString(), o.Kind.ToString(), Loc.Name(o), o.SortOrder, o.IsActive);
+        o.Id.ToString(), o.Kind.ToString(), Loc.Name(o), o.SortOrder, o.IsActive, o.Hex);
 }

@@ -11,6 +11,7 @@ import {
   useCompanySettings,
   useCreateBranch,
   useCreateWarehouse,
+  useDepartments,
   useUpdateBranch,
   useUpdateWarehouse,
 } from '../lib/queries';
@@ -136,6 +137,7 @@ function BranchCard({
   const [editing, setEditing] = useState(false);
   const [branchNames, setBranchNames] = useState<NameValues>(namesFrom(branch.name));
   const [location, setLocation] = useState(branch.location ?? '');
+  const [prefix, setPrefix] = useState(branch.prefix ?? '');
   const error = create.error as ApiError | null;
   const editError = update.error as ApiError | null;
   const typed = changedNames(names);
@@ -162,6 +164,7 @@ function BranchCard({
         input: {
           ...changedNames(branchNames, branch.name),
           location: location.trim() || undefined,
+          prefix: prefix.trim(),
         },
       });
       setEditing(false);
@@ -184,6 +187,17 @@ function BranchCard({
                 onChange={(e) => setLocation(e.target.value)}
               />
             </label>
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('setup.prefix')}</span>
+              <input
+                className={`${field} uppercase`}
+                dir="ltr"
+                maxLength={10}
+                placeholder="EL"
+                value={prefix}
+                onChange={(e) => setPrefix(e.target.value)}
+              />
+            </label>
             {editError && <p className="text-xs text-destructive">{editError.message}</p>}
             <div className="flex gap-2">
               <Button size="sm" icon="check" loading={update.isPending} onClick={saveBranch}>
@@ -202,6 +216,7 @@ function BranchCard({
               </h2>
               <p className="text-xs text-muted">
                 {branch.code}
+                {branch.prefix ? ` · ${t('setup.prefix')}: ${branch.prefix}` : ''}
                 {branch.location ? ` · ${branch.location}` : ''}
               </p>
             </div>
@@ -214,6 +229,7 @@ function BranchCard({
                   onClick={() => {
                     setBranchNames(namesFrom(branch.name));
                     setLocation(branch.location ?? '');
+                    setPrefix(branch.prefix ?? '');
                     setEditing(true);
                   }}
                 >
@@ -286,6 +302,9 @@ function WarehouseRow({
   const update = useUpdateWarehouse();
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(w.name));
+  const [prefix, setPrefix] = useState(w.prefix ?? '');
+  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
+  const mine = new Set(w.departmentIds ?? []);
   const error = update.error as ApiError | null;
 
   async function run(input: Parameters<typeof update.mutateAsync>[0]['input']) {
@@ -300,11 +319,29 @@ function WarehouseRow({
   return (
     <li className={`p-4 ${w.isActive ? '' : 'opacity-60'}`}>
       {editing ? (
-        <NameFields values={names} onChange={setNames} autoFocus />
+        <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
+          <NameFields values={names} onChange={setNames} autoFocus />
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('setup.prefix')}</span>
+            <input
+              className={`${field} uppercase`}
+              dir="ltr"
+              maxLength={10}
+              placeholder="H"
+              value={prefix}
+              onChange={(e) => setPrefix(e.target.value)}
+            />
+          </label>
+        </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{w.name}</span>
           <span className="text-xs text-muted tnum">{w.code}</span>
+          {w.prefix && (
+            <Badge tone="info">
+              <span dir="ltr">{w.prefix}</span>
+            </Badge>
+          )}
           {w.isDefault && <Badge tone="brand">{t('warehouse.default')}</Badge>}
           {!w.isActive && <Badge>{t('warehouse.closed')}</Badge>}
         </div>
@@ -318,6 +355,41 @@ function WarehouseRow({
         )}
       </dl>
 
+      {/* The departments this warehouse has (owner decision 2026-10-01); none picked = all. */}
+      {departments.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1 text-xs text-muted">{t('setup.departments')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {departments.map((d) => {
+              const on = mine.has(d.id);
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  disabled={!canManage || update.isPending}
+                  aria-pressed={on}
+                  onClick={() =>
+                    run({
+                      departmentIds: on ? [...mine].filter((x) => x !== d.id) : [...mine, d.id],
+                    })
+                  }
+                  className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+                    on
+                      ? 'border-brand bg-brand-soft text-brand'
+                      : 'border-line text-muted hover:text-fg'
+                  } disabled:cursor-default`}
+                >
+                  {d.name}
+                </button>
+              );
+            })}
+          </div>
+          {mine.size === 0 && (
+            <p className="mt-1 text-xs text-faint">{t('warehouse.allDepartments')}</p>
+          )}
+        </div>
+      )}
+
       {canManage && (
         <div className="mt-3 flex flex-wrap gap-2">
           {editing ? (
@@ -326,7 +398,7 @@ function WarehouseRow({
                 size="sm"
                 icon="check"
                 loading={update.isPending}
-                onClick={() => run(changedNames(names, w.name))}
+                onClick={() => run({ ...changedNames(names, w.name), prefix: prefix.trim() })}
               >
                 {t('common.save')}
               </Button>
@@ -341,6 +413,7 @@ function WarehouseRow({
                 variant="secondary"
                 onClick={() => {
                   setNames(namesFrom(w.name));
+                  setPrefix(w.prefix ?? '');
                   setEditing(true);
                 }}
               >

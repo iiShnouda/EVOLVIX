@@ -319,19 +319,8 @@ export function SettingsPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
           {t('settings.stock')}
         </h2>
+
         <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            className="mt-1"
-            disabled={disabled}
-            checked={form.transfersRequireReceipt}
-            onChange={(e) => set({ transfersRequireReceipt: e.target.checked })}
-          />
-          <span>
-            <span className="block text-sm">{t('settings.transfersRequireReceipt')}</span>
-          </span>
-        </label>
-        <label className="mt-3 flex items-start gap-3">
           <input
             type="checkbox"
             className="mt-1"

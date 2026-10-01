@@ -191,6 +191,59 @@ public static class Catalog
     public const int MaxSupplierCode = 64;
 
     /// <summary>
+    /// The group an item of a department goes in (owner decision 2026-10-01: the department is what
+    /// people pick; groups are kept behind it): its first one, made with the department's name if none.
+    /// </summary>
+    public static async Task<(Guid? CategoryId, Department? Department)> CategoryForDepartmentAsync(AppDbContext db, string? raw)
+    {
+        if (!Guid.TryParse(raw, out var id)) return (null, null);
+        var department = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.IsActive);
+        if (department is null) return (null, null);
+        var category = await db.Categories.Where(c => c.DepartmentId == id).OrderBy(c => c.Name).FirstOrDefaultAsync();
+        if (category is null)
+        {
+            category = new Category { Name = department.Name, DepartmentId = id };
+            db.Categories.Add(category);
+        }
+        return (category.Id, department);
+    }
+
+    /// <summary>An item's name with its season at the end (none for "no season", or when it's there already).</summary>
+    public static string WithSeason(string name, Season? season)
+    {
+        if (season is null || season.Kind == Seasons.None) return name;
+        var suffix = $" - {season.Name}";
+        return name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) ? name : (name + suffix)[..Math.Min(Loc.MaxName, (name + suffix).Length)];
+    }
+
+    /// <summary>
+    /// A code prefix (branch EL, warehouse H or 5, department MEN): letters and digits, at most 10,
+    /// upper case. Null = not given; "" = cleared; Error when it isn't one.
+    /// </summary>
+    public static (bool Given, string? Value, bool Error) Prefix(string? raw)
+    {
+        if (raw is null) return (false, null, false);
+        var t = raw.Trim().ToUpperInvariant();
+        if (t.Length == 0) return (true, null, false);
+        if (t.Length > 10 || !t.All(char.IsLetterOrDigit)) return (true, null, true);
+        return (true, t, false);
+    }
+
+    /// <summary>
+    /// The next item code from the prefixes of where it is first stored (owner decision 2026-10-01),
+    /// e.g. EL-H-MEN-00012; the number counts up within those prefixes. Without any prefix, ITEM-00012.
+    /// </summary>
+    public static async Task<string> NextItemCodeAsync(AppDbContext db, params string?[] prefixes)
+    {
+        var parts = prefixes.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.Trim().ToUpperInvariant()).ToArray();
+        if (parts.Length == 0) return await NextItemSkuAsync(db);
+        var head = string.Join('-', parts) + "-";
+        var used = await db.Products.AsNoTracking().Where(p => p.Sku.StartsWith(head)).Select(p => p.Sku).ToListAsync();
+        var max = used.Select(s => int.TryParse(s[head.Length..], out var n) ? n : 0).DefaultIfEmpty(0).Max();
+        return $"{head}{max + 1:D5}";
+    }
+
+    /// <summary>
     /// The main supplier asked for on an item or model: null = not given (leave it); "" = none; else
     /// an open party that is a SUPPLIER (a factory is a supplier).
     /// </summary>

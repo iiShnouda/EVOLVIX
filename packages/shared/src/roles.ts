@@ -62,6 +62,7 @@ const ALL: Permission[] = [
   'categories:manage',
   'units:manage',
   'variant_options:manage',
+  'seasons:manage',
   'sales:change_price',
   'sales:choose_price_level',
   'purchases:change_price',
@@ -114,6 +115,7 @@ const ITEMS: Permission[] = [
   'categories:manage',
   'units:manage',
   'variant_options:manage',
+  'seasons:manage',
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {

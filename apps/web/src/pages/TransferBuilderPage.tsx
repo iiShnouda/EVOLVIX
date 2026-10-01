@@ -43,7 +43,7 @@ export function TransferBuilderPage() {
   const navigate = useNavigate();
   const settings = useCompanySettings();
   const currency = settings.data?.currency ?? 'EGP';
-  const requireReceipt = settings.data?.transfersRequireReceipt ?? true;
+  const requireReceipt = settings.data?.transfersRequireReceipt ?? false;
 
   const defaultWarehouse = useDefaultWarehouseId();
   const [pickedFrom, setPickedFrom] = useState('');

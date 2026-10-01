@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toMinor } from '@skb/shared';
 import type {
+  Season,
   Branding,
   InvoiceRevision,
   PaperSize,
@@ -694,6 +695,24 @@ export function useVariantOptions() {
   });
 }
 
+/** Seasons (owner decision 2026-10-01), the current one marked. */
+export function useSeasons(enabled = true) {
+  return useQuery({
+    queryKey: ['catalog', 'seasons'],
+    queryFn: () => api.get<Season[]>('/seasons'),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function useCreateSeason() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.post<Season>('/seasons', { name }),
+    onSuccess: () => invalidateCatalog(qc),
+  });
+}
+
 /** The lists edited on the catalog setup page, keyed by their API path. */
 export type CatalogList =
   'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
@@ -722,7 +741,7 @@ export function useUpdateCatalogEntry(list: CatalogList) {
       input,
     }: {
       id: string;
-      input: UpdateNamedInput | UpdatePriceLevelInput | DepartmentChoice;
+      input: UpdateNamedInput | UpdatePriceLevelInput | DepartmentChoice | Record<string, unknown>;
     }) => api.put<unknown>(`/${list}/${id}`, input),
     onSuccess: () => invalidateCatalog(qc),
   });

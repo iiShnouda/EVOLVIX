@@ -28,6 +28,7 @@ public static class DbSeeder
     public static async Task SeedAsync(AppDbContext db, AuthService auth, IConfiguration config)
     {
         await db.Database.MigrateAsync();
+        await Seasons.EnsureAsync(db);
         if (await db.Staff.AnyAsync()) return;
 
         var main = new Branch { Name = "Main Branch", Code = "MAIN", Location = "Cairo — Downtown" };

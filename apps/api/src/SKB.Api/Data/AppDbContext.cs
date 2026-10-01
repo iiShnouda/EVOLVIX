@@ -36,6 +36,8 @@ public class AppDbContext : DbContext
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
     public DbSet<DocumentNumbering> DocumentNumberings => Set<DocumentNumbering>();
     public DbSet<InvoiceRevision> InvoiceRevisions => Set<InvoiceRevision>();
+    public DbSet<WarehouseDepartment> WarehouseDepartments => Set<WarehouseDepartment>();
+    public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<ItemUnit> ItemUnits => Set<ItemUnit>();
     public DbSet<PriceLevel> PriceLevels => Set<PriceLevel>();
@@ -270,6 +272,16 @@ public class AppDbContext : DbContext
         b.Entity<WorkDraft>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
         b.Entity<CompanyLogo>().Property(l => l.ContentType).HasMaxLength(40);
         b.Entity<DocumentNumbering>().HasKey(n => n.Type);
+        b.Entity<WarehouseDepartment>().HasKey(x => new { x.WarehouseId, x.DepartmentId });
+        b.Entity<WarehouseDepartment>().HasIndex(x => x.DepartmentId);
+        b.Entity<Season>().Property(x => x.Name).HasMaxLength(60);
+        b.Entity<Season>().Property(x => x.Kind).HasMaxLength(10);
+        b.Entity<Season>().HasIndex(x => new { x.Kind, x.Year });
+        b.Entity<Product>().HasIndex(p => p.SeasonId);
+        b.Entity<Branch>().Property(x => x.Prefix).HasMaxLength(10);
+        b.Entity<Warehouse>().Property(x => x.Prefix).HasMaxLength(10);
+        b.Entity<Department>().Property(x => x.Prefix).HasMaxLength(10);
+        b.Entity<VariantOption>().Property(x => x.Hex).HasMaxLength(9);
         b.Entity<InvoiceRevision>().HasIndex(r => r.At);
         b.Entity<InvoiceRevision>().HasIndex(r => r.DocumentId);
         b.Entity<InvoiceRevision>().Property(r => r.Kind).HasMaxLength(10);

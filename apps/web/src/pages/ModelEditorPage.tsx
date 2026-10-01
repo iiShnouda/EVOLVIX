@@ -357,10 +357,8 @@ export function ModelEditorPage() {
               <div className="mt-3">
                 <SupplierFields
                   supplierId={supplierId}
-                  supplierCode={supplierCode}
                   currentName={m?.supplierName}
                   onSupplier={setSupplierId}
-                  onCode={setSupplierCode}
                 />
               </div>
             </fieldset>
