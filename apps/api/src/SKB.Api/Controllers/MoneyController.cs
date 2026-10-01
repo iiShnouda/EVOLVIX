@@ -212,11 +212,14 @@ public sealed class MoneyController : ControllerBase
     [HttpGet("vouchers")]
     public async Task<ActionResult<PaginatedDto<VoucherDto>>> Vouchers(
         [FromQuery] string? type = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
-        [FromQuery] string? accountId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 30)
+        [FromQuery] string? accountId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 30,
+        [FromQuery] string? branchId = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var q = ScopedVouchers();
+        // One of the person's branches (the list is already limited to theirs).
+        if (Guid.TryParse(branchId, out var bid)) q = q.Where(v => v.BranchId == bid);
         if (Enum.TryParse<VoucherType>(type, true, out var vt)) q = q.Where(v => v.Type == vt);
         if (Enum.TryParse<VoucherStatus>(status, true, out var vs)) q = q.Where(v => v.Status == vs);
         if (Guid.TryParse(partyId, out var p)) q = q.Where(v => v.PartyId == p);

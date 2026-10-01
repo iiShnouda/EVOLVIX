@@ -51,16 +51,30 @@ public sealed class InventoryController : ControllerBase
     [HttpGet("items")]
     public async Task<ActionResult<InventoryListDto>> Items(
         [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
-        [FromQuery] string? modelId = null)
+        [FromQuery] string? modelId = null, [FromQuery] string? branchId = null,
+        [FromQuery] string? departmentId = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
-        var products = await _db.Products.AsNoTracking().Where(p => p.IsActive)
+        // One department's items (owner, 2026-10-01: branch, warehouse and department in every search).
+        var productQuery = _db.Products.AsNoTracking().Where(p => p.IsActive);
+        if (Guid.TryParse(departmentId, out var dept))
+            productQuery = productQuery.Where(p => p.Category!.DepartmentId == dept);
+        var products = await productQuery
             .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
         var mine = await _warehouses.LimitAsync(User);
+        // One branch: the stock of its warehouses the person may see.
+        if (wid is null && Guid.TryParse(branchId, out var bid))
+        {
+            if (!Access.CanUseBranch(User, bid))
+                return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
+            var inBranch = (await _warehouses.Visible(User)
+                .Where(w => w.BranchId == bid && w.Kind == WarehouseKind.STORE).Select(w => w.Id).ToListAsync()).ToHashSet();
+            mine = inBranch;
+        }
 
         var all = products.Select(p =>
         {

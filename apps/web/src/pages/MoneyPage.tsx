@@ -711,12 +711,34 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
 function VouchersTab() {
   const { t, locale, rtl } = useT();
   const [type, setType] = useState<VoucherType | ''>('');
-  const { data, isLoading } = useVouchers({ type: type || undefined });
+  const [branchId, setBranchId] = useState('');
+  const myBranches = useAuth((s) => s.user?.branches ?? []);
+  const { data, isLoading } = useVouchers({
+    type: type || undefined,
+    branchId: branchId || undefined,
+  });
   const [open, setOpen] = useState<Voucher | null>(null);
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {myBranches.length > 1 && (
+          <select
+            className="h-8 rounded-full border border-line bg-surface px-3 text-xs"
+            aria-label={t('list.branch')}
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+          >
+            <option value="">
+              {t('list.branch')}: {t('common.all')}
+            </option>
+            {myBranches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
         {(['', ...VOUCHER_TYPES] as (VoucherType | '')[]).map((x) => (
           <button
             key={x || 'all'}

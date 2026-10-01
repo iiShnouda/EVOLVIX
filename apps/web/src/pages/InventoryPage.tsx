@@ -12,8 +12,9 @@ import { Icon } from '../components/Icon';
 import { WarehouseSelect } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
+import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
-import { useInventory, useValuation } from '../lib/queries';
+import { useDepartments, useInventory, useValuation } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
 
 const field =
@@ -39,12 +40,19 @@ export function InventoryPage() {
   const tab: Tab = seeCosts && params.get('tab') === 'valuation' ? 'valuation' : 'items';
   const lowOnly = params.get('low') === '1';
   const warehouseId = params.get('wh') ?? '';
+  // Branch, warehouse and department in every search (owner, 2026-10-01).
+  const branchId = params.get('br') ?? '';
+  const departmentId = params.get('dept') ?? '';
+  const myBranches = useAuth((s) => s.user?.branches ?? []);
+  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
 
   const [search, setSearch] = useState('');
   const list = useInventory({
     search: search.trim() || undefined,
     lowOnly,
     warehouseId: warehouseId || undefined,
+    branchId: (!warehouseId && branchId) || undefined,
+    departmentId: departmentId || undefined,
   });
   const currency = list.data?.currency ?? 'EGP';
 
@@ -148,6 +156,23 @@ export function InventoryPage() {
             </button>
           ))}
         </div>
+        {myBranches.length > 1 && (
+          <select
+            className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+            aria-label={t('list.branch')}
+            value={branchId}
+            onChange={(e) => update({ br: e.target.value || null, wh: null })}
+          >
+            <option value="">
+              {t('list.branch')}: {t('common.all')}
+            </option>
+            {myBranches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
         <WarehouseSelect
           className="w-full sm:w-64"
           value={warehouseId}
@@ -155,6 +180,23 @@ export function InventoryPage() {
           allowAll
           includeClosed
         />
+        {tab === 'items' && departments.length > 0 && (
+          <select
+            className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+            aria-label={t('invoice.department')}
+            value={departmentId}
+            onChange={(e) => update({ dept: e.target.value || null })}
+          >
+            <option value="">
+              {t('invoice.department')}: {t('common.all')}
+            </option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {tab === 'items' ? (

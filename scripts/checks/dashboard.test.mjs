@@ -16,4 +16,20 @@ eq('no profit or stock value for them', [sales.month?.profit ?? null, sales.stoc
 eq('no money accounts or cheques', [sales.accounts, sales.notesDue], [null, null]);
 eq('no approvals count', sales.awaitingApproval, null);
 
+console.log('== branch, warehouse and department in the searches');
+const branches = (await owner.get('/branches')).data;
+const main = owner.user.branchId;
+const all2 = ok('all items', await owner.get('/inventory/items'));
+const inMain = ok('one branch', await owner.get(`/inventory/items?branchId=${main}`));
+check('a branch holds no more than everywhere', inMain.items.reduce((s, i) => s + Math.max(0, i.stockOnHand), 0) <= all2.items.reduce((s, i) => s + Math.max(0, i.stockOnHand), 0) || all2.items.length >= 500);
+const dept = (await owner.get('/departments')).data.find((d) => d.isActive && d.itemCount > 0);
+if (dept) {
+  const ofDept = ok('one department', await owner.get(`/inventory/items?departmentId=${dept.id}`));
+  check('only that department', ofDept.totalItems <= all2.totalItems && ofDept.totalItems > 0, [ofDept.totalItems, all2.totalItems]);
+}
+eq("someone else's branch is refused", (await karim.get(`/inventory/items?branchId=${branches.find((b) => b.id !== karim.user.branchId)?.id}`)).status, 404);
+const vouchers = ok('vouchers of one branch', await owner.get(`/vouchers?branchId=${main}`));
+const mainName = branches.find((b) => b.id === main).name;
+check('all from that branch', vouchers.items.every((v) => v.branchName === mainName), vouchers.items.slice(0, 2));
+
 process.exit(summary('dashboard') ? 1 : 0);

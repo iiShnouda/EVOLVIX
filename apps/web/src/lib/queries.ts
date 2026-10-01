@@ -523,9 +523,13 @@ export function useInventory(params: {
   lowOnly?: boolean;
   warehouseId?: string;
   modelId?: string;
+  branchId?: string;
+  departmentId?: string;
 }) {
   const query = new URLSearchParams();
   if (params.search) query.set('search', params.search);
+  if (params.branchId) query.set('branchId', params.branchId);
+  if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.lowOnly) query.set('lowOnly', 'true');
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   if (params.modelId) query.set('modelId', params.modelId);
@@ -1287,8 +1291,14 @@ export function useUpdateMoneyAccount() {
   });
 }
 
-export function useVouchers(params: { type?: string; status?: string; partyId?: string }) {
+export function useVouchers(params: {
+  type?: string;
+  status?: string;
+  partyId?: string;
+  branchId?: string;
+}) {
   const query = new URLSearchParams({ pageSize: '100' });
+  if (params.branchId) query.set('branchId', params.branchId);
   if (params.type) query.set('type', params.type);
   if (params.status) query.set('status', params.status);
   if (params.partyId) query.set('partyId', params.partyId);
