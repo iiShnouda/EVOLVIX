@@ -275,6 +275,43 @@ public sealed class PurchasesController : ControllerBase
     }
 
     /// <summary>
+    /// What <paramref name="partyId"/> last paid for each of <paramref name="productIds"/>, per unit: a
+    /// return typed without an invoice is priced at it (another price needs the change-price permission).
+    /// </summary>
+    [HttpGet("returns/last-prices")]
+    [Authorize(Policy = Permissions.PurchasesReturn)]
+    public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
+    {
+        if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());
+        var last = await PriceBasis.LastPricesAsync(_db, partyId, productIds, DocumentType.PURCHASE_INVOICE);
+        return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
+    }
+
+    /// <summary>
+    /// A return typed line by line, without picking an invoice (owner decision 2026-10-01). It goes
+    /// on the party's account; a cash customer is paid back from the branch cash box.
+    /// </summary>
+    [HttpPost("returns")]
+    [Authorize(Policy = Permissions.PurchasesReturn)]
+    public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var (doc, error) = await _returns.CreateFreeAsync(false, req, User, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "purchase_return",
+            doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/purchases/returns/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+    }
+
+    /// <summary>
     /// Purchase return (مرتجع مشتريات) against invoice <paramref name="id"/>: goods leave stock at
     /// the price we paid, the weighted average is backed out, and the payable drops (minus any cash
     /// the supplier refunds now). Refused for goods no longer in stock.

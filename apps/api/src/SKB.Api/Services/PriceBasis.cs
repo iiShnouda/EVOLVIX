@@ -27,11 +27,12 @@ public static class PriceBasis
     /// invoice still standing (not cancelled), free goods aside.
     /// </summary>
     public static async Task<Dictionary<(Guid Product, Guid? Unit), long>> LastPricesAsync(
-        AppDbContext db, Guid partyId, IReadOnlyCollection<Guid> productIds)
+        AppDbContext db, Guid partyId, IReadOnlyCollection<Guid> productIds,
+        DocumentType invoiceType = DocumentType.SALES_INVOICE)
     {
         var rows = await db.DocumentLines.AsNoTracking()
             .Where(l => productIds.Contains(l.ProductId) && !l.IsBonus
-                        && l.Document!.PartyId == partyId && l.Document.Type == DocumentType.SALES_INVOICE
+                        && l.Document!.PartyId == partyId && l.Document.Type == invoiceType
                         && l.Document.Status != DocumentStatus.CANCELLED)
             .OrderByDescending(l => l.Document!.IssueDate).ThenByDescending(l => l.LineNo)
             .Select(l => new { l.ProductId, l.UnitId, l.UnitPrice })

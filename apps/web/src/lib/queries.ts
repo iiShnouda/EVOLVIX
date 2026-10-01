@@ -19,6 +19,7 @@ import type {
   CompanySettings,
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
+  CreateFreeReturnInput,
   CreateSalesInvoiceInput,
   ApproveOrderInput,
   CustomerAccount,
@@ -675,6 +676,33 @@ export function useCreateReturn(scope: DocScope) {
     mutationFn: ({ invoiceId, input }: { invoiceId: string; input: CreateReturnInput }) =>
       api.post<SalesDocument>(`/${scope}/invoices/${invoiceId}/returns`, input),
     onSuccess: () => invalidateAfterPosting(qc, scope),
+  });
+}
+
+/** A return typed without an invoice. */
+export function useCreateFreeReturn(scope: DocScope) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateFreeReturnInput) =>
+      api.post<SalesDocument>(`/${scope}/returns`, input),
+    onSuccess: () => invalidateAfterPosting(qc, scope),
+  });
+}
+
+/** What the party last paid for each item, per unit (minor units); keyed `productId:unitId`. */
+export function useLastPrices(scope: DocScope, partyId: string, productIds: string[]) {
+  const ids = [...new Set(productIds)].sort();
+  return useQuery({
+    queryKey: ['lastPrices', scope, partyId, ids],
+    enabled: !!partyId && ids.length > 0,
+    queryFn: async () => {
+      const q = new URLSearchParams({ partyId });
+      ids.forEach((id) => q.append('productIds', id));
+      const rows = await api.get<{ productId: string; unitId: string | null; price: number }[]>(
+        `/${scope}/returns/last-prices?${q}`,
+      );
+      return new Map(rows.map((r) => [`${r.productId}:${r.unitId ?? ''}`, r.price]));
+    },
   });
 }
 

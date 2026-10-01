@@ -1015,6 +1015,43 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
+    /// What <paramref name="partyId"/> last paid for each of <paramref name="productIds"/>, per unit: a
+    /// return typed without an invoice is priced at it (another price needs the change-price permission).
+    /// </summary>
+    [HttpGet("returns/last-prices")]
+    [Authorize(Policy = Permissions.SalesReturn)]
+    public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
+    {
+        if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());
+        var last = await PriceBasis.LastPricesAsync(_db, partyId, productIds, DocumentType.SALES_INVOICE);
+        return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
+    }
+
+    /// <summary>
+    /// A return typed line by line, without picking an invoice (owner decision 2026-10-01). It goes
+    /// on the party's account; a cash customer is paid back from the branch cash box.
+    /// </summary>
+    [HttpPost("returns")]
+    [Authorize(Policy = Permissions.SalesReturn)]
+    public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var (doc, error) = await _returns.CreateFreeAsync(true, req, User, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
+            doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+
+        await InvoiceLines.LoadForDetailAsync(_db, doc);
+        return Created($"/api/sales/returns/{doc.Id}", Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
+    }
+
+    /// <summary>
     /// Sales return (مرتجع مبيعات) against invoice <paramref name="id"/>: restock at the original
     /// cost, reverse revenue + profit, credit the customer (minus any cash refunded now).
     /// </summary>

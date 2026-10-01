@@ -69,6 +69,166 @@ public sealed class ReturnsService
         return rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.DocDiscount, r.Cost));
     }
 
+    /// <summary>
+    /// A return without an invoice (owner decision 2026-10-01), typed like one: goods come back from
+    /// a customer at their branch's current average cost, or go back to a supplier at the net price
+    /// typed (its discount returns to the supplier with it). It goes on the party's account; a cash
+    /// customer is paid back at once from the branch's cash box. All-or-nothing.
+    /// </summary>
+    public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateFreeAsync(
+        bool isSale, CreateFreeReturnRequest req, ClaimsPrincipal user, Guid staffId)
+    {
+        if (req.Lines is null || req.Lines.Length == 0)
+            return (null, new("no_lines", "Add at least one item to return."));
+        if (req.Lines.Length > InvoiceLines.MaxLines)
+            return (null, new("too_many_lines", $"At most {InvoiceLines.MaxLines} lines."));
+        var returnType = isSale ? DocumentType.SALES_RETURN : DocumentType.PURCHASE_RETURN;
+
+        if (!Guid.TryParse(req.PartyId, out var partyId))
+            return (null, new("no_party", isSale ? "Choose the customer." : "Choose the supplier."));
+        var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
+        if (party is null || !party.Types.Contains(isSale ? "CUSTOMER" : "SUPPLIER"))
+            return (null, new("party_not_found", isSale ? "Customer not found." : "Supplier not found."));
+
+        // Where it is made, and where the goods go back to / leave from.
+        var branchId = Access.Work(user);
+        if (Guid.TryParse(req.BranchId, out var picked))
+        {
+            if (!Access.CanUseBranch(user, picked)) return (null, new("branch_not_found", "Branch not found."));
+            branchId = picked;
+        }
+        Warehouse? warehouse;
+        if (Guid.TryParse(req.WarehouseId, out var wid))
+        {
+            warehouse = await _warehouses.Visible(user)
+                .FirstOrDefaultAsync(w => w.Id == wid && w.IsActive && w.Kind == WarehouseKind.STORE);
+            if (warehouse is null || warehouse.BranchId != branchId)
+                return (null, new("warehouse_not_found", "Warehouse not found."));
+        }
+        else warehouse = await _warehouses.DefaultForBranchAsync(branchId);
+        if (warehouse is null) return (null, new("no_warehouse", "The branch has no active warehouse."));
+
+        Guid? departmentId = null;
+        if (Guid.TryParse(req.DepartmentId, out var dept))
+        {
+            if (!await _db.Departments.AnyAsync(d => d.Id == dept && d.IsActive) || !Access.CanUseDepartment(user, dept))
+                return (null, new("department_not_found", "Department not found."));
+            departmentId = dept;
+        }
+
+        // ---- Check every line before anything moves ----
+        var productIds = req.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).Distinct().ToList();
+        if (productIds.Contains(Guid.Empty)) return (null, new("product_not_found", "An item was not found."));
+        var units = await _db.ItemUnits.AsNoTracking().Include(u => u.Unit)
+            .Where(u => productIds.Contains(u.ProductId)).ToListAsync();
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var products = await _inventory.LockProductsAsync(productIds);
+        var lines = new List<(Product Product, ItemUnit Unit, FreeReturnLineRequest Req)>();
+        foreach (var l in req.Lines)
+        {
+            var pid = Guid.Parse(l.ProductId);
+            if (!products.TryGetValue(pid, out var product)) return (null, new("product_not_found", "An item was not found."));
+            var unit = Guid.TryParse(l.UnitId, out var uid)
+                ? units.FirstOrDefault(u => u.ProductId == pid && u.UnitId == uid)
+                : units.Where(u => u.ProductId == pid).OrderBy(u => u.Factor).FirstOrDefault();
+            if (unit is null) return (null, new("unit_not_found", $"{Loc.Name(product)}: unknown unit."));
+            if (l.Quantity <= 0) return (null, new("bad_qty", $"{Loc.Name(product)}: enter a quantity."));
+            if (l.UnitPrice < 0 || l.Discount < 0 || l.Discount > (long)l.Quantity * l.UnitPrice)
+                return (null, new("bad_amount", $"{Loc.Name(product)}: check the price and discount."));
+            lines.Add((product, unit, l));
+        }
+        // The price is the party's last invoice price (or less); another price is its own permission.
+        var canChangePrice = user.HasClaim("permission", isSale ? Permissions.SalesChangePrice : Permissions.PurchasesChangePrice);
+        if (!canChangePrice)
+        {
+            var last = await PriceBasis.LastPricesAsync(_db, party.Id, productIds,
+                isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE);
+            foreach (var (product, unit, l) in lines)
+                if (!last.TryGetValue((product.Id, unit.UnitId), out var lastPrice) || l.UnitPrice > lastPrice)
+                    return (null, new("price_not_allowed",
+                        $"{Loc.Name(product)}: the price can't be more than the last invoice price. Changing a price needs permission."));
+        }
+        // Goods go back to a supplier only while we still hold them.
+        if (!isSale)
+            foreach (var g in lines.GroupBy(x => x.Product.Id))
+            {
+                var qty = g.Sum(x => x.Req.Quantity * x.Unit.Factor);
+                var available = _inventory.Available(g.Key, warehouse.Id);
+                if (qty > available)
+                    return (null, new("insufficient_stock",
+                        $"Not enough {Loc.Name(g.First().Product)} in {Loc.Name(warehouse)} to return: {available} left, {qty} requested."));
+            }
+
+        // ---- Post it ----
+        var number = await DocumentNumbers.NextAsync(_db, returnType);
+        var doc = new SalesDocument
+        {
+            Number = number, Type = returnType, BranchId = branchId, PartyId = party.Id, StaffId = staffId,
+            IssueDate = DateTime.UtcNow, Currency = await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP",
+            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim()[..Math.Min(1000, req.Notes.Trim().Length)],
+            DepartmentId = departmentId, RepId = isSale ? staffId : null,
+        };
+        foreach (var (product, unit, l) in lines)
+        {
+            var baseQty = l.Quantity * unit.Factor;
+            var gross = (long)l.Quantity * l.UnitPrice;
+            var lineTotal = gross - l.Discount;
+            long lineCost;
+            if (isSale)
+            {
+                lineCost = (long)baseQty * _inventory.CostAt(product, warehouse);
+                _inventory.ReceiveValue(product, warehouse, baseQty, lineCost, StockMovementType.SALES_RETURN_IN, doc.Id, number);
+            }
+            else
+            {
+                // Back to the supplier at the net price: its discount goes back with it.
+                lineCost = lineTotal;
+                _inventory.ReturnToSupplierValue(product, warehouse, baseQty, lineCost,
+                    StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
+            }
+            doc.Lines.Add(new DocumentLine
+            {
+                LineNo = doc.Lines.Count + 1, ProductId = product.Id, ProductName = product.Name,
+                Quantity = baseQty, UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = l.Quantity,
+                UnitPrice = l.UnitPrice, Discount = l.Discount, LineTotal = lineTotal,
+                UnitCost = baseQty > 0 ? (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero) : 0,
+                LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
+                WarehouseId = warehouse.Id, Warehouse = warehouse,
+            });
+        }
+        doc.Subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
+        doc.DiscountTotal = doc.Lines.Sum(l => l.Discount);
+        doc.GrandTotal = doc.Subtotal - doc.DiscountTotal;
+        doc.CostTotal = doc.Lines.Sum(l => l.LineCost);
+        doc.ProfitTotal = isSale ? doc.GrandTotal - doc.CostTotal : 0;
+
+        // On the account; a cash customer is paid back now (owner decision 2026-10-01).
+        MoneyAccount? refundAccount = null;
+        if (isSale && party.IsCashCustomer && doc.GrandTotal > 0)
+        {
+            var (account, moneyError) = await _money.ForDocumentAsync(null, branchId, user);
+            moneyError ??= _money.Move(account!, -doc.GrandTotal, MoneyMovementKind.SALES_REFUND, staffId, number,
+                documentId: doc.Id, partyId: party.Id);
+            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
+            refundAccount = account;
+            doc.PaidAmount = doc.GrandTotal;
+            doc.PaidAccountId = account!.Id;
+        }
+        doc.Status = doc.PaidAmount >= doc.GrandTotal && doc.GrandTotal > 0 ? DocumentStatus.PAID : DocumentStatus.CONFIRMED;
+        await MoneyService.LockPartiesAsync(_db, party.Id);
+        await _db.Entry(party).ReloadAsync();
+        var onAccount = doc.GrandTotal - doc.PaidAmount;
+        party.Balance += isSale ? -onAccount : onAccount;
+        if (isSale) await _ledger.PostSalesReturnAsync(doc, party, refundAccount, staffId);
+        else await _ledger.PostPurchaseReturnAsync(doc, party, refundAccount, staffId);
+
+        _db.SalesDocuments.Add(doc);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return (doc, null);
+    }
+
     public static DocumentType ReturnTypeFor(DocumentType invoiceType) => invoiceType switch
     {
         DocumentType.SALES_INVOICE => DocumentType.SALES_RETURN,
@@ -253,7 +413,10 @@ public sealed class ReturnsService
         doc.ProfitTotal = isSale ? taxable - doc.CostTotal : 0;
         // PaidAmount on a return = cash settled now: handed back to the customer (sales) or
         // received back from the supplier (purchases). The rest is settled on account.
-        doc.PaidAmount = Math.Clamp(req.RefundAmount, 0, grand);
+        // A cash customer has no account to carry the credit, so they're paid back in full now
+        // (owner decision 2026-10-01); everyone else's return goes on their account.
+        var refund = isSale && invoice.Party!.IsCashCustomer ? grand : req.RefundAmount;
+        doc.PaidAmount = Math.Clamp(refund, 0, grand);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
             : DocumentStatus.CONFIRMED;

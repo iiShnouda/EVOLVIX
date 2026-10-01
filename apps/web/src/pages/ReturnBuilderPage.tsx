@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useWorkDraft } from '../lib/workDraft';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
   formatMoney,
   formatQuantity,
-  toMinor,
   type DocumentLine,
   type Party,
 } from '@skb/shared';
@@ -14,7 +13,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useCreateReturn, useDocument, useDocumentList, type DocScope } from '../lib/queries';
-import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
+import { FreeReturnForm, ReturnBar } from './FreeReturnForm';
 import { TableColumns } from '../components/TableColumns';
 import { PartyPicker } from '../components/PartyPicker';
 import { useDeviceInfo } from '../lib/device';
@@ -49,7 +48,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
   const { t, locale } = useT();
   // The cost and profit a sales return reverses are the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
-  const canRefund = useCan()('sales:approve');
   const navigate = useNavigate();
 
   const invoice = useDocument(scope, id);
@@ -59,20 +57,12 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
   /** Typed return quantity per line, and whether it is in the line's unit (carton) or base units. */
   const [qty, setQty] = useState<Record<string, number>>({});
   const [inBase, setInBase] = useState<Record<string, boolean>>({});
-  const [refund, setRefund] = useState('');
-  const [refundAccountId, setRefundAccountId] = useState('');
-  // Shipping we paid to get a customer's goods back: our expense.
-  const [shipping, setShipping] = useState('');
-  const [shippingAccountId, setShippingAccountId] = useState('');
   const [notes, setNotes] = useState('');
 
   // What's typed is kept through an app update (lines of the invoice that are gone are skipped).
   const work = useWorkDraft<ReturnDraft>(
     1,
-    () =>
-      Object.keys(qty).length === 0 && !notes && !refund && !shipping
-        ? null
-        : { qty, inBase, refund, refundAccountId, shipping, shippingAccountId, notes },
+    () => (Object.keys(qty).length === 0 && !notes ? null : { qty, inBase, notes }),
     (d) => {
       const text = (v: unknown) => (typeof v === 'string' ? v : '');
       const numbers = Object.fromEntries(
@@ -83,10 +73,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
       );
       setQty(numbers);
       setInBase(flags);
-      setRefund(text(d.refund));
-      setRefundAccountId(text(d.refundAccountId));
-      setShipping(text(d.shipping));
-      setShippingAccountId(text(d.shippingAccountId));
       setNotes(text(d.notes));
     },
   );
@@ -186,10 +172,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
   const invoiceTaxable = doc.subtotal - doc.discountTotal;
   const tax = invoiceTaxable > 0 ? Math.round((doc.taxTotal * value) / invoiceTaxable) : 0;
   const total = value + tax;
-  const refundMinor = Math.min(
-    Math.max(0, refund === '' ? 0 : toMinor(Number(refund) || 0)),
-    total,
-  );
   const anyQty = rows.some((r) => r.q > 0);
   const canSave = anyQty && !create.isPending;
 
@@ -221,11 +203,8 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
         invoiceId: doc.id,
         input: {
           lines: rows.filter((r) => r.q > 0).map((r) => ({ lineId: r.line.id, quantity: r.q })),
-          refundAmount: refundMinor,
-          refundAccountId: refundMinor > 0 && refundAccountId ? refundAccountId : undefined,
-          shippingCost: isSale && Number(shipping) > 0 ? toMinor(Number(shipping)) : undefined,
-          shippingAccountId:
-            isSale && Number(shipping) > 0 && shippingAccountId ? shippingAccountId : undefined,
+          // On the account; a cash customer is paid back by the server (owner decision 2026-10-01).
+          refundAmount: 0,
           notes: notes.trim() || undefined,
         },
       });
@@ -240,8 +219,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
     <div className="space-y-5">
       <PageHeader title={title} action={back} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        {/* Left: invoice + quantities */}
+      <div className="space-y-4 pb-4">
         <div className="min-w-0 space-y-4">
           {/* Like the invoice: who, which invoice, its rep and department. */}
           <Card className="grid gap-4 text-sm sm:grid-cols-2">
@@ -440,120 +418,44 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
           </Card>
         </div>
 
-        {/* Right: summary */}
-        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
-          <Card>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-              {t('common.total')}
-            </h2>
-            <dl className="space-y-1.5 text-sm">
-              <Row label={t('return.value')} value={formatMoney(value, currency, locale)} />
-              {tax > 0 && (
-                <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
-              )}
-              <div className="my-1 border-t border-line" />
+        <Card className="space-y-3">
+          <dl className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <Row label={t('return.value')} value={formatMoney(value, currency, locale)} />
+            {tax > 0 && <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />}
+            {(!isSale || seeCosts) && (
               <Row
-                label={t('invoice.grandTotal')}
-                value={formatMoney(total, currency, locale)}
-                strong
+                label={isSale ? t('return.costBack') : t('return.costOut')}
+                value={formatMoney(cost, currency, locale)}
               />
-              {(!isSale || seeCosts) && (
-                <>
-                  <div className="my-1 border-t border-line" />
-                  <Row
-                    label={isSale ? t('return.costBack') : t('return.costOut')}
-                    value={formatMoney(cost, currency, locale)}
-                  />
-                </>
-              )}
-              {isSale && seeCosts && (
-                <div className="flex items-center justify-between">
-                  <dt className="text-muted">{t('return.profitReversed')}</dt>
-                  <dd className="font-semibold tnum text-warning">
-                    {formatMoney(profit, currency, locale)}
-                  </dd>
-                </div>
-              )}
-            </dl>
-
-            <div className="mt-3 space-y-2">
-              {/* Cash back to a customer is the accountant's; the seller's return goes on the account. */}
-              {(!isSale || canRefund) && (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">
-                    {isSale ? t('return.refundNow') : t('return.refundFromSupplier')}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={refund}
-                    onChange={(e) => setRefund(e.target.value)}
-                  />
-                </label>
-              )}
-              {refundMinor > 0 && (
-                <MoneyAccountPicker
-                  className={field}
-                  label={t('money.refundThrough')}
-                  value={refundAccountId}
-                  onChange={setRefundAccountId}
-                />
-              )}
-              {isSale && (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">
-                    {t('invoice.shippingCost')}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={shipping}
-                    onChange={(e) => setShipping(e.target.value)}
-                  />
-                </label>
-              )}
-              {isSale && Number(shipping) > 0 && (
-                <MoneyAccountPicker
-                  className={field}
-                  label={t('money.paidInto')}
-                  value={shippingAccountId}
-                  onChange={setShippingAccountId}
-                />
-              )}
-              {doc.additionTotal > 0 && (
-                <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
-              )}
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
-                <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />
-              </label>
-            </div>
-
-            {!anyQty && !nothingLeft && (
-              <p className="mt-3 text-xs text-muted">{t('return.pickQty')}</p>
             )}
-            {serverError && (
-              <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-                {serverError.message}
-              </p>
+            {isSale && seeCosts && (
+              <div className="flex items-center justify-between">
+                <dt className="text-muted">{t('return.profitReversed')}</dt>
+                <dd className="font-semibold tnum text-warning">
+                  {formatMoney(profit, currency, locale)}
+                </dd>
+              </div>
             )}
-
-            <Button
-              className="mt-4 w-full"
-              icon="check"
-              loading={create.isPending}
-              disabled={!canSave}
-              onClick={save}
-            >
-              {create.isPending ? t('return.saving') : t('return.save')}
-            </Button>
-          </Card>
-        </div>
+          </dl>
+          {doc.additionTotal > 0 && (
+            <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
+          )}
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
+            <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          {!anyQty && !nothingLeft && <p className="text-xs text-muted">{t('return.pickQty')}</p>}
+        </Card>
       </div>
+
+      <ReturnBar
+        total={formatMoney(total, currency, locale)}
+        note={t(isSale ? 'return.onAccountNote' : 'return.supplierOnAccountNote')}
+        error={serverError?.message ?? null}
+        saving={create.isPending}
+        disabled={!canSave}
+        onSave={save}
+      />
     </div>
   );
 }
@@ -571,10 +473,6 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 interface ReturnDraft {
   qty: Record<string, number>;
   inBase: Record<string, boolean>;
-  refund: string;
-  refundAccountId: string;
-  shipping: string;
-  shippingAccountId: string;
   notes: string;
 }
 
@@ -607,6 +505,9 @@ function ReturnStart({ scope }: { scope: DocScope }) {
   const { t, locale } = useT();
   const navigate = useNavigate();
   const [party, setParty] = useState<Party | null>(null);
+  // Typed line by line, without an invoice (owner decision 2026-10-01).
+  const [params, setParams] = useSearchParams();
+  const free = params.get('free') === '1';
   const invoices = useDocumentList(scope, 'invoices', {
     page: 1,
     pageSize: 100,
@@ -635,7 +536,24 @@ function ReturnStart({ scope }: { scope: DocScope }) {
           </Button>
         }
       />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+      <div className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5 text-sm">
+        {([false, true] as const).map((f) => (
+          <button
+            key={String(f)}
+            type="button"
+            aria-pressed={free === f}
+            className={`rounded-[calc(var(--radius-app)-2px)] px-3 py-1.5 font-medium ${
+              free === f ? 'bg-brand text-brand-fg' : 'text-muted hover:text-fg'
+            }`}
+            onClick={() => setParams(f ? { free: '1' } : {}, { replace: true })}
+          >
+            {t(f ? 'return.withoutInvoice' : 'return.fromInvoice')}
+          </button>
+        ))}
+      </div>
+      {free ? (
+        <FreeReturnForm scope={scope} initialParty={party} />
+      ) : (
         <div className="min-w-0 space-y-4">
           <Card className="space-y-3">
             <PartyPicker
@@ -704,18 +622,7 @@ function ReturnStart({ scope }: { scope: DocScope }) {
             )}
           </Card>
         </div>
-        <div className="min-w-0 lg:sticky lg:top-20 lg:h-fit">
-          <Card>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-              {t('common.total')}
-            </h2>
-            <p className="text-sm text-muted">{t('return.pickQty')}</p>
-            <Button className="mt-4 w-full" icon="check" disabled>
-              {t('return.save')}
-            </Button>
-          </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -185,6 +185,27 @@ export const createReturnSchema = z.object({
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 
+/** A return typed line by line, without an invoice (owner decision 2026-10-01). */
+export const freeReturnLineSchema = z.object({
+  productId: z.string().uuid(),
+  unitId: z.string().uuid().optional(),
+  quantity: z.number().int().min(1),
+  /** Price of one unit (minor units): the party's last invoice price unless the person may change it. */
+  unitPrice: z.number().int().min(0),
+  discount: z.number().int().min(0).default(0),
+});
+export type FreeReturnLineInput = z.infer<typeof freeReturnLineSchema>;
+
+export const createFreeReturnSchema = z.object({
+  partyId: z.string().uuid(),
+  branchId: z.string().uuid().optional(),
+  warehouseId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  lines: z.array(freeReturnLineSchema).min(1, 'Add at least one item to return'),
+  notes: z.string().max(1000).optional(),
+});
+export type CreateFreeReturnInput = z.infer<typeof createFreeReturnSchema>;
+
 // ---------------------------------------------------------------------------
 // Stocktake (الجرد): counted quantity per item; only differences are posted.
 // ---------------------------------------------------------------------------

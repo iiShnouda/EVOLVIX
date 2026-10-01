@@ -195,10 +195,13 @@ check(
 );
 const mv = ok('item movement', await owner.get('/analytics/item-movement?limit=100'));
 const f = mv.topMovers.find((m) => m.productId === fast.id);
-eq(
+// Listed with its figures, unless 100 faster items fill the list (a test database that has run many times).
+check(
   'fast item: 15 out net, 50 in, value net of the return',
+  f
+    ? f.quantityOut === 15 && f.quantityIn === 50 && f.salesValue === 22500
+    : mv.topMovers.length === 100 && mv.topMovers.at(-1).quantityOut >= 15,
   [f?.quantityOut, f?.quantityIn, f?.salesValue],
-  [15, 50, 22500],
 );
 const d = mv.deadStock.find((x) => x.productId === idle.id);
 eq(

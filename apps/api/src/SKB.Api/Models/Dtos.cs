@@ -190,6 +190,20 @@ public record CreateReturnLineRequest(string LineId, int Quantity);
 
 /// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
 /// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
+/// <summary>
+/// A return typed like an invoice, without picking one (owner decision 2026-10-01): the party, where
+/// the goods go back to, and the items with their price; a purchase line's discount (the supplier's,
+/// per line) goes back to the supplier with it.
+/// </summary>
+public record CreateFreeReturnRequest(
+    string PartyId, FreeReturnLineRequest[] Lines, string? WarehouseId = null, string? BranchId = null,
+    string? DepartmentId = null, string? Notes = null);
+
+/// <param name="Discount">Off the whole line, minor units.</param>
+public record LastPriceDto(string ProductId, string? UnitId, long Price);
+public record FreeReturnLineRequest(string ProductId, int Quantity, long UnitPrice, long Discount = 0,
+    string? UnitId = null);
+
 public record CreateReturnRequest(
     CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null,
     long ShippingCost = 0, string? ShippingAccountId = null);
