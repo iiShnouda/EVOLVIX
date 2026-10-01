@@ -5,6 +5,8 @@ import { directionForLocale, type Locale, type ThemeMode } from '@skb/shared';
 /** The look themes (Themes page); colours, shapes and effects live in skins.css. */
 export const SKINS = ['evolvix', 'ocean', 'forest', 'sunset', 'royal', 'valorant'] as const;
 export type Skin = (typeof SKINS)[number];
+export const BACKDROPS = ['none', 'evolvix', 'company', 'custom'] as const;
+export type Backdrop = (typeof BACKDROPS)[number];
 
 interface PrefsState {
   locale: Locale;
@@ -12,6 +14,15 @@ interface PrefsState {
   /** The look theme; a UI preference like the theme mode, so it stays on this device. */
   skin: Skin;
   setSkin: (skin: Skin) => void;
+  /**
+   * A picture behind every page (owner, 2026-10-01): the Evolvix mark, the company's logo, or one
+   * picked from this device (kept only on it, see lib/backdrop.ts). `backdropStrength` is how much
+   * it shows, 4–40%.
+   */
+  backdrop: Backdrop;
+  backdropStrength: number;
+  setBackdrop: (backdrop: Backdrop) => void;
+  setBackdropStrength: (strength: number) => void;
   /** The side menu shrunk to icons, for more room (owner, 2026-10-01). */
   navCollapsed: boolean;
   setNavCollapsed: (collapsed: boolean) => void;
@@ -31,6 +42,11 @@ export const usePrefs = create<PrefsState>()(
       theme: 'system',
       skin: 'evolvix',
       setSkin: (skin) => set({ skin }),
+      backdrop: 'none',
+      backdropStrength: 12,
+      setBackdrop: (backdrop) => set({ backdrop }),
+      setBackdropStrength: (backdropStrength) =>
+        set({ backdropStrength: Math.min(40, Math.max(4, Math.round(backdropStrength))) }),
       navCollapsed: false,
       setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
       setLocale: (locale) => set({ locale }),

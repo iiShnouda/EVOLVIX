@@ -6,6 +6,7 @@ import { Logo, Wordmark } from '../Logo';
 import { CompanyMark, CompanyName } from '../CompanyBadge';
 import { useBranding } from '../../lib/queries';
 import { usePrefs } from '../../stores/prefs';
+import { useBackdropStyle } from '../../lib/backdrop';
 import { useT } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
 import { useDeviceInfo } from '../../lib/device';
@@ -39,12 +40,13 @@ export function Shell() {
 /* ------------------------------ Desktop / iPad -------------------------- */
 
 function SidebarShell() {
+  const backdrop = useBackdropStyle();
   const { t } = useT();
   const items = useVisibleNav();
   const collapsed = usePrefs((s) => s.navCollapsed);
   if (collapsed) return <RailShell canExpand />;
   return (
-    <div className="flex min-h-screen bg-canvas">
+    <div className="flex min-h-screen bg-canvas" style={backdrop}>
       <aside
         data-ui="sidebar"
         className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface"
@@ -69,10 +71,11 @@ function SidebarShell() {
 }
 
 function RailShell({ canExpand = false }: { canExpand?: boolean }) {
+  const backdrop = useBackdropStyle();
   const { t } = useT();
   const items = useVisibleNav();
   return (
-    <div className="flex min-h-screen bg-canvas">
+    <div className="flex min-h-screen bg-canvas" style={backdrop}>
       <aside
         data-ui="sidebar"
         className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3"
@@ -97,6 +100,7 @@ function RailShell({ canExpand = false }: { canExpand?: boolean }) {
 /* --------------------------------- Phone -------------------------------- */
 
 function PhoneShell() {
+  const backdrop = useBackdropStyle();
   const { t } = useT();
   const items = useVisibleNav();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -105,7 +109,7 @@ function PhoneShell() {
   const rest = items.filter((i) => !primary.includes(i));
 
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
+    <div className="flex min-h-screen flex-col bg-canvas" style={backdrop}>
       <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface/95 px-4 py-2 backdrop-blur safe-top">
         <span className="flex min-w-0 items-center gap-2">
           <Logo size={32} />

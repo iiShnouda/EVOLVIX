@@ -1,8 +1,13 @@
+import { useRef, useState } from 'react';
 import type { ThemeMode } from '@skb/shared';
-import { Card, PageHeader } from '../components/ui';
+import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { Logo } from '../components/Logo';
+import { CompanyMark } from '../components/CompanyBadge';
 import { useT } from '../lib/i18n';
-import { SKINS, resolveTheme, usePrefs, type Skin } from '../stores/prefs';
+import { useBranding } from '../lib/queries';
+import { backdropFromFile, setCustomBackdrop, useCustomBackdrop } from '../lib/backdrop';
+import { BACKDROPS, SKINS, resolveTheme, usePrefs, type Skin } from '../stores/prefs';
 
 const MODES: ThemeMode[] = ['light', 'dark', 'system'];
 
@@ -42,6 +47,8 @@ export function ThemesPage() {
         </div>
       </Card>
 
+      <BackdropPicker />
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {SKINS.map((id) => (
           <SkinCard
@@ -55,6 +62,98 @@ export function ThemesPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * A picture behind every page (owner, 2026-10-01): none, the Evolvix mark, the company's logo, or
+ * one from this device, which stays on the device and is never uploaded.
+ */
+function BackdropPicker() {
+  const { t } = useT();
+  const { backdrop, setBackdrop, backdropStrength, setBackdropStrength } = usePrefs();
+  const custom = useCustomBackdrop();
+  const hasLogo = (useBranding().data?.logoVersion ?? 0) > 0;
+  const [error, setError] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setError(false);
+    try {
+      setCustomBackdrop(await backdropFromFile(file));
+      setBackdrop('custom');
+    } catch {
+      setError(true);
+    } finally {
+      if (input.current) input.current.value = '';
+    }
+  }
+
+  const preview = (id: (typeof BACKDROPS)[number]) =>
+    id === 'evolvix' ? (
+      <Logo size={44} />
+    ) : id === 'company' ? (
+      <CompanyMark size={44} />
+    ) : id === 'custom' && custom ? (
+      <img src={custom} alt="" className="h-full w-full object-cover" />
+    ) : id === 'custom' ? (
+      <Icon name="plus" size={22} className="text-muted" />
+    ) : (
+      <Icon name="close" size={20} className="text-faint" />
+    );
+
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-sm font-semibold">{t('themes.backdrop')}</h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {BACKDROPS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={backdrop === id}
+            disabled={id === 'company' && !hasLogo}
+            onClick={() => (id === 'custom' && !custom ? input.current?.click() : setBackdrop(id))}
+            className={`overflow-hidden rounded-[var(--radius-app)] border-2 text-start disabled:opacity-50 ${
+              backdrop === id ? 'border-brand' : 'border-line hover:border-brand/50'
+            }`}
+          >
+            <span className="grid h-20 place-items-center overflow-hidden bg-surface-2">
+              {preview(id)}
+            </span>
+            <span className="block px-2.5 py-2 text-sm font-medium">{t(`themes.bd.${id}`)}</span>
+          </button>
+        ))}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => void pick(e.target.files?.[0])}
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="secondary" icon="plus" onClick={() => input.current?.click()}>
+          {t('themes.bd.pick')}
+        </Button>
+        {backdrop !== 'none' && (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">{t('themes.bd.strength')}</span>
+            <input
+              type="range"
+              min={4}
+              max={40}
+              value={backdropStrength}
+              onChange={(e) => setBackdropStrength(Number(e.target.value))}
+            />
+            <span className="w-10 tnum text-xs text-muted">{backdropStrength}%</span>
+          </label>
+        )}
+      </div>
+      {!hasLogo && <p className="text-xs text-faint">{t('themes.bd.noLogo')}</p>}
+      <p className="text-xs text-faint">{t('themes.bd.local')}</p>
+      {error && <p className="text-xs text-destructive">{t('themes.bd.bad')}</p>}
+    </Card>
   );
 }
 
