@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SKB</string>
+    <string name="app_name">Evolvix</string>
     <string name="dir">ltr</string>
     <string name="offline_title">Can\'t reach the server</string>
     <string name="offline_body">Check the internet or office network connection. Server: %1$s</string>

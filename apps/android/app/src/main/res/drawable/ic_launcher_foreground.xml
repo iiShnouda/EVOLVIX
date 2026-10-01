@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The SKB mark from apps/web/public/icon.svg (512 units), fitted into the 66dp safe zone. -->
+<!-- The Evolvix mark from apps/web/public/icon.svg (512 units), fitted into the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
@@ -11,11 +12,29 @@
         android:translateX="21"
         android:translateY="21">
         <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M176 150c-34 0-58 22-58 54 0 30 20 46 58 56 26 7 34 13 34 25 0 11-10 18-27 18-20 0-33-9-38-27l-46 14c9 38 42 60 84 60 44 0 76-24 76-62 0-33-21-49-62-60-25-7-30-12-30-22 0-9 8-15 22-15 17 0 27 8 31 23l45-14c-9-33-38-53-76-53Z" />
+            android:pathData="M136 126C178.2 144.4 203.7 166.4 221.3 189.9M290.7 322.1C308.3 345.6 333.8 367.6 376 386"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="54" />
         <path
-            android:fillAlpha="0.9"
-            android:fillColor="#FFFFFF"
-            android:pathData="M300 156h48v92l70-92h56l-78 100 82 100h-58l-72-92v92h-48Z" />
+            android:pathData="M136 386C296 316 216 196 376 126"
+            android:strokeLineCap="round"
+            android:strokeWidth="54">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:endX="376"
+                    android:endY="126"
+                    android:startX="136"
+                    android:startY="386"
+                    android:type="linear">
+                    <item android:color="#0EA371" android:offset="0" />
+                    <item android:color="#34D399" android:offset="0.55" />
+                    <item android:color="#B4F8D8" android:offset="1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path
+            android:fillColor="#D1FAE5"
+            android:pathData="M428 60q3 22 25 25q-22 3 -25 25q-3 -22 -25 -25q22 -3 25 -25Z" />
     </group>
 </vector>

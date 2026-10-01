@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
 import { Icon } from '../Icon';
+import { Logo, Wordmark } from '../Logo';
 import { useT } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
 import { useDeviceInfo } from '../../lib/device';
@@ -64,9 +65,7 @@ function RailShell() {
   return (
     <div className="flex min-h-screen bg-canvas">
       <aside className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3">
-        <span className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-brand text-sm font-bold text-brand-fg">
-          SKB
-        </span>
+        <Logo size={40} className="mb-3" />
         <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
           {items.map((item) => (
             <RailLink key={item.key} item={item} label={t(item.labelKey)} />
@@ -95,10 +94,9 @@ function PhoneShell() {
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
       <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface/95 px-4 py-2 backdrop-blur safe-top">
-        <span className="flex items-center gap-2 font-semibold">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-xs font-bold text-brand-fg">
-            SKB
-          </span>
+        <span className="flex items-center gap-2">
+          <Logo size={32} />
+          <Wordmark className="text-base" />
         </span>
         <div className="flex items-center gap-1">
           <ConnectionBadge showLabel={false} />
@@ -161,11 +159,9 @@ function Brand() {
   const { t } = useT();
   return (
     <div className="flex items-center gap-2.5 px-4 py-4">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand text-sm font-bold text-brand-fg">
-        SKB
-      </span>
+      <Logo size={38} />
       <span className="leading-tight">
-        <span className="block text-sm font-semibold">{t('app.name')}</span>
+        <Wordmark className="block text-base" />
         <span className="block text-xs text-muted">{t('app.tagline')}</span>
       </span>
     </div>

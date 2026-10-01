@@ -14,6 +14,7 @@ import { OfflineGate } from './components/OfflineGate';
 import { UpdateNotice } from './components/UpdateNotice';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
+import { Logo } from './components/Logo';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
@@ -90,9 +91,7 @@ function Splash() {
   return (
     <div className="grid min-h-screen place-items-center bg-canvas text-muted">
       <div className="flex flex-col items-center gap-3">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand text-brand-fg font-bold">
-          SKB
-        </span>
+        <Logo size={56} />
         <Spinner size={22} />
       </div>
     </div>

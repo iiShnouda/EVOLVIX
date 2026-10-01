@@ -27,10 +27,10 @@ internal static class Text
         : "Check the internet or office network connection. Server:";
     public static string Retry => Arabic ? "إعادة المحاولة" : "Try again";
     public static string NeedsWebView2 => Arabic
-        ? "يحتاج SKB إلى مكوّن Microsoft Edge WebView2 (موجود في ويندوز 10/11 عادةً). هل تريد فتح صفحة التنزيل؟"
-        : "SKB needs Microsoft Edge WebView2 (normally part of Windows 10/11). Open the download page?";
+        ? "يحتاج Evolvix إلى مكوّن Microsoft Edge WebView2 (موجود في ويندوز 10/11 عادةً). هل تريد فتح صفحة التنزيل؟"
+        : "Evolvix needs Microsoft Edge WebView2 (normally part of Windows 10/11). Open the download page?";
     public static string InstallAsk => Arabic
-        ? "تثبيت SKB على هذا الجهاز؟\n\nسيُضاف إلى قائمة ابدأ وسطح المكتب، ويمكن إزالته من إعدادات ويندوز › التطبيقات."
-        : "Install SKB on this computer?\n\nIt will be added to the Start menu and the desktop, and can be removed from Windows Settings › Apps.";
-    public static string UninstallDone => Arabic ? "تمت إزالة SKB." : "SKB was removed.";
+        ? "تثبيت Evolvix على هذا الجهاز؟\n\nسيُضاف إلى قائمة ابدأ وسطح المكتب، ويمكن إزالته من إعدادات ويندوز › التطبيقات."
+        : "Install Evolvix on this computer?\n\nIt will be added to the Start menu and the desktop, and can be removed from Windows Settings › Apps.";
+    public static string UninstallDone => Arabic ? "تمت إزالة Evolvix." : "Evolvix was removed.";
 }

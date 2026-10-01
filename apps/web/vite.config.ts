@@ -34,8 +34,8 @@ export default defineConfig({
         runtimeCaching: [],
       },
       manifest: {
-        name: 'SKB — Wholesale Accounting',
-        short_name: 'SKB',
+        name: 'Evolvix — Wholesale Accounting',
+        short_name: 'Evolvix',
         description: 'Bilingual wholesale accounting, connected to your company server.',
         theme_color: '#4f46e5',
         background_color: '#0b0f14',

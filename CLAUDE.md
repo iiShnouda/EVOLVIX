@@ -4,6 +4,11 @@ Guidance for anyone (human or AI) working in this repo.
 
 ## Product in one line
 
+**Evolvix** (owner decision 2026-10-01; the code keeps its old name SKB in folders, packages,
+namespaces, the exe/APK file names and registry keys, so installed copies update in place). The
+name shown to people comes from `app.name`; the mark is `apps/web/public/icon.svg` and the
+`Logo` component (`apps/web/src/components/Logo.tsx`) draws the same thing.
+
 Bilingual (AR/EN) wholesale accounting app, delivered as web + installable apps on
 iPhone/Android/Windows, all talking to a self‑hosted company server. Security is the
 first‑class concern.

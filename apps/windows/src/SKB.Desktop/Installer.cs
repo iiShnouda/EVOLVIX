@@ -19,11 +19,22 @@ internal static class Installer
     public static string InstallDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "SKB");
 
+    // The app's shown name (owner, 2026-10-01: SKB became Evolvix). The folder, exe and registry
+    // keys keep the old name so an installed copy updates in place and keeps its settings.
+    public const string Name = "Evolvix";
+
     private static string StartMenuLink =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "SKB.lnk");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name + ".lnk");
 
     private static string DesktopLink =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "SKB.lnk");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Name + ".lnk");
+
+    /// <summary>Shortcuts made before the rename.</summary>
+    private static string[] OldLinks => new[]
+    {
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "SKB.lnk"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "SKB.lnk"),
+    };
 
     private static string RunningDir => Path.GetDirectoryName(Application.ExecutablePath)!;
 
@@ -38,7 +49,7 @@ internal static class Installer
     public static bool OfferInstall()
     {
         if (IsInstalledCopy) return false;
-        var answer = MessageBox.Show(Text.InstallAsk, "SKB", MessageBoxButtons.YesNo, MessageBoxIcon.Question,
+        var answer = MessageBox.Show(Text.InstallAsk, Name, MessageBoxButtons.YesNo, MessageBoxIcon.Question,
             MessageBoxDefaultButton.Button1, Text.Arabic ? MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign : 0);
         if (answer != DialogResult.Yes) return false;
 
@@ -53,14 +64,15 @@ internal static class Installer
         }
 
         var exe = Path.Combine(InstallDir, "SKB.exe");
+        foreach (var link in OldLinks.Where(File.Exists)) File.Delete(link);
         CreateShortcut(StartMenuLink, exe);
         CreateShortcut(DesktopLink, exe);
 
         using (var key = Registry.CurrentUser.CreateSubKey(UninstallKey))
         {
-            key.SetValue("DisplayName", "SKB");
+            key.SetValue("DisplayName", Name);
             key.SetValue("DisplayIcon", exe);
-            key.SetValue("Publisher", "SKB");
+            key.SetValue("Publisher", Name);
             key.SetValue("DisplayVersion", Application.ProductVersion);
             key.SetValue("InstallLocation", InstallDir);
             key.SetValue("UninstallString", $"\"{exe}\" --uninstall");
@@ -75,7 +87,7 @@ internal static class Installer
     /// <summary>Remove shortcuts, the uninstall entry, settings, and (after exit) the program folder.</summary>
     public static void Uninstall()
     {
-        foreach (var link in new[] { StartMenuLink, DesktopLink }.Where(File.Exists)) File.Delete(link);
+        foreach (var link in new[] { StartMenuLink, DesktopLink }.Concat(OldLinks).Where(File.Exists)) File.Delete(link);
         Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
         Registry.CurrentUser.DeleteSubKeyTree(@"Software\SKB", throwOnMissingSubKey: false);
 
@@ -83,7 +95,7 @@ internal static class Installer
         var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SKB");
         var cmd = $"/c timeout /t 2 /nobreak >nul & rmdir /s /q \"{InstallDir}\" & rmdir /s /q \"{data}\"";
         Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false });
-        MessageBox.Show(Text.UninstallDone, "SKB");
+        MessageBox.Show(Text.UninstallDone, Name);
     }
 
     private static void CreateShortcut(string linkPath, string target)
@@ -95,7 +107,7 @@ internal static class Installer
         link.TargetPath = target;
         link.WorkingDirectory = Path.GetDirectoryName(target);
         link.IconLocation = target + ",0";
-        link.Description = "SKB";
+        link.Description = Name;
         link.Save();
     }
 }

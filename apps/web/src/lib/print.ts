@@ -121,6 +121,6 @@ export function safeName(s: string): string {
       .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      .slice(0, 100) || 'SKB'
+      .slice(0, 100) || 'Evolvix'
   );
 }

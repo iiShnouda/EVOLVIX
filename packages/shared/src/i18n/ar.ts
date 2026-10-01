@@ -6,7 +6,7 @@ import type { TranslationDictionary } from './index';
  */
 export const ar: TranslationDictionary = {
   // Brand / generic
-  'app.name': 'SKB',
+  'app.name': 'Evolvix',
   'app.tagline': 'محاسبة الجملة',
 
   // Common actions & labels

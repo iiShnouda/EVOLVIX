@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { loginSchema } from '@skb/shared';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/ui';
+import { Logo, Wordmark } from '../components/Logo';
 import { PrefControls } from '../components/shell/PrefControls';
 import { ConnectionBadge } from '../components/shell/ConnectionBadge';
 import { useT } from '../lib/i18n';
@@ -54,11 +55,9 @@ export function LoginPage() {
       {/* Brand panel (desktop) */}
       <div className="relative hidden flex-col justify-between bg-brand p-10 text-brand-fg lg:flex">
         <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15 text-lg font-bold">
-            SKB
-          </span>
+          <Logo size={48} className="rounded-[13px] ring-1 ring-white/25" />
           <div>
-            <p className="text-lg font-semibold">{t('app.name')}</p>
+            <Wordmark plain className="block text-xl" />
             <p className="text-sm opacity-80">{t('app.tagline')}</p>
           </div>
         </div>
@@ -72,7 +71,7 @@ export function LoginPage() {
             ))}
           </ul>
         </div>
-        <p className="text-xs opacity-70">© {new Date().getFullYear()} SKB</p>
+        <p className="text-xs opacity-70">© {new Date().getFullYear()} {t('app.name')}</p>
       </div>
 
       {/* Form panel */}
@@ -83,10 +82,9 @@ export function LoginPage() {
         </div>
 
         <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5">
-          <div className="lg:hidden">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand text-lg font-bold text-brand-fg">
-              SKB
-            </span>
+          <div className="flex items-center gap-3 lg:hidden">
+            <Logo size={52} />
+            <Wordmark className="text-2xl" />
           </div>
           <div>
             <h1 className="text-2xl font-semibold">{t('auth.signIn')}</h1>

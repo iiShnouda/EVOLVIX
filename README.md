@@ -1,4 +1,6 @@
-# SKB — Wholesale Accounting Platform
+# Evolvix — Wholesale Accounting Platform
+
+(Code name SKB: folders, packages and namespaces keep it.)
 
 An adaptive, bilingual (Arabic / English) wholesale accounting application delivered across
 **every device with the best‑fit technology for each**, all talking to **your own database

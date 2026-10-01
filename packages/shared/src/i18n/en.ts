@@ -5,7 +5,7 @@
  */
 export const en = {
   // Brand / generic
-  'app.name': 'SKB',
+  'app.name': 'Evolvix',
   'app.tagline': 'Wholesale Accounting',
 
   // Common actions & labels

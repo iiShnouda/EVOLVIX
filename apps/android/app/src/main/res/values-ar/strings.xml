@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SKB</string>
+    <string name="app_name">Evolvix</string>
     <string name="dir">rtl</string>
     <string name="offline_title">تعذّر الوصول إلى الخادم</string>
     <string name="offline_body">تحقق من اتصال الإنترنت أو شبكة المكتب. الخادم: %1$s</string>

@@ -13,7 +13,7 @@ using Text_ = SKB.Desktop.Text; // Form.Text is the window title
 namespace SKB.Desktop;
 
 /// <summary>
-/// SKB for Windows. The whole app — screens, rules, data — lives on the company server; this
+/// Evolvix for Windows. The whole app — screens, rules, data — lives on the company server; this
 /// window is a secure view onto it (Edge WebView2), so it is always the latest version the moment
 /// the server is updated. Only pages of the configured server open inside; any other link opens in
 /// the default browser. "Server address…" is in the window menu (right-click the title bar) and on
@@ -30,7 +30,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "SKB";
+        Text = Installer.Name;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         MinimumSize = new Size(800, 560);
         StartPosition = FormStartPosition.Manual;
@@ -62,7 +62,7 @@ internal sealed class MainForm : Form
         }
         catch (WebView2RuntimeNotFoundException)
         {
-            if (MessageBox.Show(this, Text_.NeedsWebView2, "SKB", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            if (MessageBox.Show(this, Text_.NeedsWebView2, Installer.Name, MessageBoxButtons.YesNo) == DialogResult.Yes)
                 OpenExternal("https://go.microsoft.com/fwlink/p/?LinkId=2124703");
             Close();
             return;
@@ -120,11 +120,11 @@ internal sealed class MainForm : Form
         var dir = Text_.Arabic ? "rtl" : "ltr";
         var html = $@"<!doctype html><html dir='{dir}'><head><meta charset='utf-8'>
 <style>body{{font-family:'Segoe UI',sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f6f7fb;color:#1f2937}}
-main{{max-width:360px;padding:24px;text-align:center}}.logo{{width:56px;height:56px;border-radius:14px;background:#4f46e5;color:#fff;
-font-weight:700;display:grid;place-items:center;margin:0 auto 16px}}h1{{font-size:18px;margin:0 0 8px}}p{{color:#6b7280;font-size:14px;
+main{{max-width:360px;padding:24px;text-align:center}}.logo{{font-size:28px;color:#4f46e5;
+font-weight:800;letter-spacing:-0.5px;margin:0 auto 16px}}h1{{font-size:18px;margin:0 0 8px}}p{{color:#6b7280;font-size:14px;
 margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:40px;border-radius:8px;border:0;font-size:14px;margin-top:10px;cursor:pointer}}
 .primary{{background:#4f46e5;color:#fff}}.secondary{{background:#e5e7eb;color:#111827}}</style></head>
-<body><main><div class='logo'>SKB</div><h1>{Enc(Text_.OfflineTitle)}</h1>
+<body><main><div class='logo'>Evolvix</div><h1>{Enc(Text_.OfflineTitle)}</h1>
 <p>{Enc(Text_.OfflineBody)} {Enc(AppSettings.Server)}<br><small>{Enc(reason)}</small></p>
 <button class='primary' onclick=""chrome.webview.postMessage('retry')"">{Enc(Text_.Retry)}</button>
 <button class='secondary' onclick=""chrome.webview.postMessage('settings')"">{Enc(Text_.SettingsTitle)}</button>
