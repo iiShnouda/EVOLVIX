@@ -11,6 +11,7 @@ export function Sheet({
   closeLabel,
   children,
   wide = false,
+  fill = false,
 }: {
   title: string;
   onClose: () => void;
@@ -18,6 +19,11 @@ export function Sheet({
   children: ReactNode;
   /** true = a wider panel; 'full' = as wide as the screen allows (big tables). */
   wide?: boolean | 'full';
+  /**
+   * The panel keeps its height and only a part inside scrolls (owner, 2026-10-01: in the item
+   * search only the list moves): the children get a column that fills the panel.
+   */
+  fill?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -34,10 +40,10 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`max-h-[92vh] w-full overflow-auto rounded-t-[var(--radius-app)] border border-line bg-surface p-4 shadow-xl sm:rounded-[var(--radius-app)] sm:p-5 ${wide === 'full' ? 'sm:max-w-6xl' : wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'}`}
+        className={`max-h-[92vh] w-full ${fill ? 'flex h-[92vh] flex-col overflow-hidden' : 'overflow-auto'} rounded-t-[var(--radius-app)] border border-line bg-surface p-4 shadow-xl sm:rounded-[var(--radius-app)] sm:p-5 ${wide === 'full' ? 'sm:max-w-6xl' : wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-4 flex shrink-0 items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <Button
             variant="ghost"
@@ -47,7 +53,7 @@ export function Sheet({
             aria-label={closeLabel}
           />
         </div>
-        {children}
+        {fill ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
       </div>
     </div>
   );

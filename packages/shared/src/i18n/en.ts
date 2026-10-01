@@ -537,7 +537,7 @@ export const en = {
   'finder.name': 'Name contains',
   'finder.priceFrom': 'Price from',
   'finder.priceTo': 'Price to',
-  'finder.stock': 'Stock',
+  'finder.stock': 'Stock status',
   'finder.stockAny': 'All',
   'finder.stockIn': 'In stock',
   'finder.stockOut': 'Out of stock',
@@ -1883,4 +1883,9 @@ export const en = {
   'item.season': 'Season',
   'item.salePrice': 'Sale price',
   'item.purchasePrice': 'Purchase price',
+  'finder.salePrice': 'Sale price',
+  'finder.costPrice': 'Cost price',
+  'list.perPage': 'Rows',
+  'list.prevPage': 'Previous page',
+  'list.nextPage': 'Next page',
 } as const;

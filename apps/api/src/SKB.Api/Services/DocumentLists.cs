@@ -87,7 +87,7 @@ public static class DocumentLists
         int page, int pageSize, string? payment, string? state = null)
     {
         page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        pageSize = Math.Clamp(pageSize, 1, 200);
 
         var rows = q.Select(d => new Row
         {

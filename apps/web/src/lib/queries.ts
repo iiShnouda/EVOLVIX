@@ -259,36 +259,66 @@ export function useProductSearch(
 }
 
 /** What the detailed item search (البحث المفصل) filters by; empty = any. */
+/** A number condition in the item search: =, more than or less than what is typed. */
+export interface RangeFilter {
+  op: 'eq' | 'gt' | 'lt';
+  value: string;
+}
+
 export interface ItemFinderFilters {
   departmentId: string;
-  categoryId: string;
+  seasonId: string;
+  warehouseId: string;
   /** A supplier, 'none' (items with no supplier) or '' (any). */
   supplierId: string;
   code: string;
   name: string;
-  /** List price from / to, as typed (major units). */
-  minPrice: string;
-  maxPrice: string;
   stock: '' | 'in' | 'out' | 'low';
+  /** Sale price, cost (people who may see it), reorder level and balance (owner, 2026-10-01). */
+  sale: RangeFilter;
+  cost: RangeFilter;
+  reorder: RangeFilter;
+  balance: RangeFilter;
 }
 
-/** The detailed item search; asked again as the filters change (the last results stay meanwhile). */
-export function useItemFinder(filters: ItemFinderFilters) {
-  const query = new URLSearchParams({ limit: '200' });
-  const set = (k: string, v: string) => v.trim() && query.set(k, v.trim());
+/** A condition as from/to bounds; money in minor units (one piastre past the value for > and <). */
+function bounds(f: RangeFilter, money: boolean): [string | null, string | null] {
+  if (!f.value.trim() || Number.isNaN(Number(f.value))) return [null, null];
+  const v = money ? toMinor(Number(f.value)) : Math.floor(Number(f.value));
+  if (f.op === 'eq') return [String(v), String(v)];
+  if (f.op === 'gt') return [String(v + 1), null];
+  return [null, String(v - 1)];
+}
+
+/** The item search, a page at a time; asked again as the filters change (the last results stay meanwhile). */
+export function useItemFinder(filters: ItemFinderFilters, page = 1, size = 50) {
+  // One more than a page, to know whether there is a next one.
+  const query = new URLSearchParams({ limit: String(size + 1), offset: String((page - 1) * size) });
+  const set = (k: string, v: string | null) => v != null && v.trim() && query.set(k, v.trim());
   set('departmentId', filters.departmentId);
-  set('categoryId', filters.categoryId);
+  set('seasonId', filters.seasonId);
+  set('warehouseId', filters.warehouseId);
   set('supplierId', filters.supplierId);
   set('code', filters.code);
   set('name', filters.name);
   set('stock', filters.stock);
-  if (filters.minPrice.trim() && Number(filters.minPrice) >= 0)
-    query.set('minPrice', String(toMinor(Number(filters.minPrice))));
-  if (filters.maxPrice.trim() && Number(filters.maxPrice) >= 0)
-    query.set('maxPrice', String(toMinor(Number(filters.maxPrice))));
+  const pairs: [RangeFilter, boolean, string, string][] = [
+    [filters.sale, true, 'minPrice', 'maxPrice'],
+    [filters.cost, true, 'costMin', 'costMax'],
+    [filters.reorder, false, 'reorderMin', 'reorderMax'],
+    [filters.balance, false, 'stockMin', 'stockMax'],
+  ];
+  for (const [f, money, lo, hi] of pairs) {
+    const [a, b] = bounds(f, money);
+    set(lo, a);
+    set(hi, b);
+  }
   return useQuery({
     queryKey: ['products', 'finder', query.toString()],
-    queryFn: () => api.get<Product[]>(`/products?${query}`),
+    queryFn: async () => {
+      const rows = await api.get<Product[]>(`/products?${query}`);
+      return { items: rows.slice(0, size), hasMore: rows.length > size };
+    },
     placeholderData: keepPreviousData,
   });
 }
@@ -1832,6 +1862,15 @@ export function usePrintPaper(): [PaperSize, (size: PaperSize) => void] {
   const size: PaperSize = saved[0] === 'A5' ? 'A5' : 'A4';
   useEffect(() => setPrintPaper(size), [size]);
   return [size, (next) => save(next === 'A5' ? ['A5'] : [])];
+}
+
+/** How many rows a list shows on a page, kept per person and list (owner, 2026-10-01). */
+export const PAGE_SIZES = [25, 50, 100, 200] as const;
+export function usePageSize(id: string, fallback = 50): [number, (size: number) => void] {
+  const [saved, save] = useHiddenColumns(`pageSize:${id}`);
+  const n = Number(saved[0]);
+  const size = (PAGE_SIZES as readonly number[]).includes(n) ? n : fallback;
+  return [size, (next) => save(next === fallback ? [] : [String(next)])];
 }
 
 /** The columns a table hides (by header text), and a setter that saves the choice for next time. */

@@ -538,7 +538,7 @@ export const ar: TranslationDictionary = {
   'finder.name': 'الاسم يحتوي على',
   'finder.priceFrom': 'سعر البيع من',
   'finder.priceTo': 'سعر البيع إلى',
-  'finder.stock': 'الرصيد',
+  'finder.stock': 'حالة المخزون',
   'finder.stockAny': 'الكل',
   'finder.stockIn': 'متوفر',
   'finder.stockOut': 'نفد',
@@ -1874,4 +1874,9 @@ export const ar: TranslationDictionary = {
   'item.season': 'الموسم',
   'item.salePrice': 'سعر البيع',
   'item.purchasePrice': 'سعر الشراء',
+  'finder.salePrice': 'سعر البيع',
+  'finder.costPrice': 'سعر التوريد',
+  'list.perPage': 'عدد الصفوف',
+  'list.prevPage': 'الصفحة السابقة',
+  'list.nextPage': 'الصفحة التالية',
 };

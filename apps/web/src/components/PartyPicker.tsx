@@ -23,6 +23,7 @@ export function PartyPicker({
   label,
   placeholder,
   withCode,
+  disabled,
 }: {
   type: 'CUSTOMER' | 'SUPPLIER';
   value: Party | null;
@@ -30,6 +31,8 @@ export function PartyPicker({
   label: string;
   placeholder: string;
   withCode?: boolean;
+  /** Locked (e.g. "no supplier" is ticked). */
+  disabled?: boolean;
 }) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -84,7 +87,8 @@ export function PartyPicker({
         <Icon name="search" size={15} />
       </span>
       <input
-        className={`${field} ps-8`}
+        className={`${field} ps-8 disabled:opacity-50`}
+        disabled={disabled}
         role="combobox"
         aria-expanded={open}
         placeholder={value ? value.name : placeholder}
@@ -150,7 +154,8 @@ export function PartyPicker({
       <label className="block w-24 shrink-0">
         <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
         <input
-          className={`${field} tnum ${codeError ? 'border-destructive' : ''}`}
+          className={`${field} tnum disabled:opacity-50 ${codeError ? 'border-destructive' : ''}`}
+          disabled={disabled}
           inputMode="numeric"
           aria-invalid={codeError}
           value={code}

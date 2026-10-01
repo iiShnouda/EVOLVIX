@@ -6,28 +6,77 @@ import { Icon } from './Icon';
 import { Button, Spinner } from './ui';
 import { useT } from '../lib/i18n';
 import {
-  useCategories,
   useDepartments,
   useItemFinder,
+  usePageSize,
+  useSeasons,
+  useWarehouses,
   type ItemFinderFilters,
+  type RangeFilter,
 } from '../lib/queries';
+import { useCan } from '../lib/can';
 import { TableColumns } from './TableColumns';
+import { Pager } from './Pager';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 const cell =
   'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-sm outline-none focus:border-brand';
 
+const NO_RANGE: RangeFilter = { op: 'eq', value: '' };
 const EMPTY: ItemFinderFilters = {
   departmentId: '',
-  categoryId: '',
+  seasonId: '',
+  warehouseId: '',
   supplierId: '',
   code: '',
   name: '',
-  minPrice: '',
-  maxPrice: '',
   stock: '',
+  sale: NO_RANGE,
+  cost: NO_RANGE,
+  reorder: NO_RANGE,
+  balance: NO_RANGE,
 };
+
+/** A number condition: =, > or <, and the value (owner, 2026-10-01: a wider search). */
+function Range({
+  label,
+  value,
+  onChange,
+  money,
+}: {
+  label: string;
+  value: RangeFilter;
+  onChange: (v: RangeFilter) => void;
+  money?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      <span className="flex gap-1">
+        <select
+          className="h-9 w-14 shrink-0 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-sm outline-none focus:border-brand"
+          value={value.op}
+          aria-label={label}
+          onChange={(e) => onChange({ ...value, op: e.target.value as RangeFilter['op'] })}
+        >
+          <option value="eq">=</option>
+          <option value="gt">&gt;</option>
+          <option value="lt">&lt;</option>
+        </select>
+        <input
+          type="number"
+          min={0}
+          step={money ? '0.01' : '1'}
+          inputMode={money ? 'decimal' : 'numeric'}
+          className={`${field} tnum`}
+          value={value.value}
+          onChange={(e) => onChange({ ...value, value: e.target.value })}
+        />
+      </span>
+    </label>
+  );
+}
 
 /** One item to put on the invoice. */
 export interface FinderPick {
@@ -75,7 +124,9 @@ export function ItemFinderSheet({
 }) {
   const { t, locale } = useT();
   const departments = useDepartments();
-  const categories = useCategories();
+  const seasons = useSeasons();
+  const warehouses = useWarehouses(true);
+  const seeCosts = useCan()('costs:view');
   const [supplier, setSupplier] = useState<Party | null>(null);
   const start: ItemFinderFilters = {
     ...EMPTY,
@@ -83,20 +134,20 @@ export function ItemFinderSheet({
     stock: inStockFirst ? 'in' : '',
   };
   const [filters, setFilters] = useState<ItemFinderFilters>(start);
-  const found = useItemFinder(useSettled(filters));
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(50);
+  const [savedSize, saveSize] = usePageSize('itemFinder', 50);
+  useEffect(() => setSize(savedSize), [savedSize]);
+  const settled = useSettled(filters);
+  // Other filters start again at the first page.
+  useEffect(() => setPage(1), [settled]);
+  const found = useItemFinder(settled, page, size);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<Set<string>>(new Set());
   const table = useRef<HTMLDivElement>(null);
   const set = (patch: Partial<ItemFinderFilters>) => setFilters((d) => ({ ...d, ...patch }));
-  const rows = found.data ?? [];
-  const categoryName = useMemo(
-    () => new Map((categories.data ?? []).map((c) => [c.id, c.name])),
-    [categories.data],
-  );
-  const shownCategories = (categories.data ?? []).filter(
-    (c) => !filters.departmentId || !c.departmentId || c.departmentId === filters.departmentId,
-  );
+  const rows = useMemo(() => found.data?.items ?? [], [found.data]);
 
   const unitOf = (p: Product) => unit[p.id] ?? p.units[0]?.unitId ?? '';
   const qtyOf = (p: Product) => Math.max(0, Math.floor(Number(qty[p.id]) || 0));
@@ -147,10 +198,16 @@ export function ItemFinderSheet({
   }
 
   return (
-    <Sheet title={t('finder.title')} onClose={onClose} closeLabel={t('common.close')} wide="full">
-      <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block">
+    <Sheet
+      title={t('finder.title')}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      wide="full"
+      fill
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <label className="block lg:col-span-2">
             <span className="mb-0.5 block text-xs text-muted">{t('finder.name')}</span>
             <input
               autoFocus
@@ -168,13 +225,13 @@ export function ItemFinderSheet({
             />
           </label>
           {/* A sale's department is fixed by the invoice. */}
-          {!departmentId && (departments.data ?? []).length > 0 && (
+          {!departmentId && (
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('finder.department')}</span>
               <select
                 className={field}
                 value={filters.departmentId}
-                onChange={(e) => set({ departmentId: e.target.value, categoryId: '' })}
+                onChange={(e) => set({ departmentId: e.target.value })}
               >
                 <option value="">{t('finder.all')}</option>
                 {(departments.data ?? []).map((d) => (
@@ -186,26 +243,42 @@ export function ItemFinderSheet({
             </label>
           )}
           <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('finder.category')}</span>
+            <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
             <select
               className={field}
-              value={filters.categoryId}
-              onChange={(e) => set({ categoryId: e.target.value })}
+              value={filters.seasonId}
+              onChange={(e) => set({ seasonId: e.target.value })}
             >
               <option value="">{t('finder.all')}</option>
-              {shownCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {(seasons.data ?? []).map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
                 </option>
               ))}
             </select>
           </label>
-          {/* The supplier (factory) by code or name, or items of none (بدون), as on the old screen. */}
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+            <select
+              className={field}
+              value={filters.warehouseId}
+              onChange={(e) => set({ warehouseId: e.target.value })}
+            >
+              <option value="">{t('finder.all')}</option>
+              {(warehouses.data ?? []).map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name} · {w.branchName}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* The supplier by code or name, or items of none (بدون): then no supplier can be picked. */}
           <div className="sm:col-span-2">
             <PartyPicker
               type="SUPPLIER"
               withCode
               value={supplier}
+              disabled={filters.supplierId === 'none'}
               onChange={(p) => {
                 setSupplier(p);
                 set({ supplierId: p?.id ?? '' });
@@ -225,32 +298,30 @@ export function ItemFinderSheet({
               {t('finder.noSupplier')}
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('finder.priceFrom')}</span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                className={`${field} tnum`}
-                value={filters.minPrice}
-                onChange={(e) => set({ minPrice: e.target.value })}
-              />
-            </label>
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('finder.priceTo')}</span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                className={`${field} tnum`}
-                value={filters.maxPrice}
-                onChange={(e) => set({ maxPrice: e.target.value })}
-              />
-            </label>
-          </div>
+          <Range
+            label={t('finder.salePrice')}
+            money
+            value={filters.sale}
+            onChange={(sale) => set({ sale })}
+          />
+          {seeCosts && (
+            <Range
+              label={t('finder.costPrice')}
+              money
+              value={filters.cost}
+              onChange={(cost) => set({ cost })}
+            />
+          )}
+          <Range
+            label={t('inventory.reorder')}
+            value={filters.reorder}
+            onChange={(reorder) => set({ reorder })}
+          />
+          <Range
+            label={t('invoice.balance')}
+            value={filters.balance}
+            onChange={(balance) => set({ balance })}
+          />
           <div className="flex items-end gap-2">
             <label className="block flex-1">
               <span className="mb-0.5 block text-xs text-muted">{t('finder.stock')}</span>
@@ -265,8 +336,11 @@ export function ItemFinderSheet({
                 <option value="low">{t('finder.stockLow')}</option>
               </select>
             </label>
+          </div>
+          <div className="flex items-end">
             <Button
               variant="secondary"
+              className="w-full"
               onClick={() => {
                 setFilters(start);
                 setSupplier(null);
@@ -277,7 +351,8 @@ export function ItemFinderSheet({
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[var(--radius-app)] border border-line">
+        {/* Only the list scrolls (owner, 2026-10-01). */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-app)] border border-line">
           {found.isLoading ? (
             <div className="grid place-items-center py-10 text-muted">
               <Spinner size={22} />
@@ -287,7 +362,7 @@ export function ItemFinderSheet({
           ) : (
             <div
               ref={table}
-              className={`max-h-[55vh] overflow-auto transition-opacity ${found.isPlaceholderData ? 'opacity-60' : ''}`}
+              className={`min-h-0 flex-1 overflow-auto transition-opacity ${found.isPlaceholderData ? 'opacity-60' : ''}`}
             >
               <TableColumns id="itemFinder">
                 <table className="w-full whitespace-nowrap text-[13px]">
@@ -310,6 +385,7 @@ export function ItemFinderSheet({
                         />
                       </th>
                       <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('item.season')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('common.code')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
@@ -340,9 +416,8 @@ export function ItemFinderSheet({
                               onChange={() => toggle(p)}
                             />
                           </td>
-                          <td className="px-2 py-1 text-muted">
-                            {categoryName.get(p.categoryId) ?? ''}
-                          </td>
+                          <td className="px-2 py-1 text-muted">{p.departmentName ?? ''}</td>
+                          <td className="px-2 py-1 text-muted">{p.seasonName ?? ''}</td>
                           <td className="px-2 py-1 tnum">{p.sku}</td>
                           <td
                             className="max-w-64 cursor-pointer truncate px-2 py-1 font-medium"
@@ -421,7 +496,18 @@ export function ItemFinderSheet({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <Pager
+            page={page}
+            size={size}
+            hasMore={found.data?.hasMore}
+            onPage={setPage}
+            onSize={(n) => {
+              setSize(n);
+              setPage(1);
+              saveSize(n);
+            }}
+          />
           <span className="flex items-center gap-2 text-xs text-muted tnum">
             {rows.length} {t('finder.found')}
             {picked.length > 0 && (

@@ -16,6 +16,7 @@ import {
   useCancelOrder,
   useCancelInvoice,
   useDepartments,
+  usePageSize,
   useWarehouses,
   useRejectOrder,
   useDocument,
@@ -25,13 +26,13 @@ import {
 } from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
 import { PAY_STATES, statusOf } from '../lib/status';
+import { Pager } from '../components/Pager';
 import { errorText } from '../lib/errors';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 import { EditOrderSheet } from '../components/EditOrderSheet';
 import { Sheet } from '../components/Sheet';
 
 /** Documents per page of the list. */
-const PAGE_SIZE = 50;
 
 const filterField =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -107,11 +108,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     (w) => w.kind !== 'TRANSIT' && (!branchId || w.branchId === branchId),
   );
   const [page, setPage] = useState(1);
+  // Rows per page, kept per person (owner, 2026-10-01).
+  const [pageSize, setPageSize] = usePageSize(`documents.${scope}`, 50);
   const departments = useDepartments();
   const deferredSearch = useDeferredValue(search.trim());
   const list = useDocumentList(scope, kind, {
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     search: deferredSearch || undefined,
     status: status || undefined,
     departmentId: isSales ? departmentId || undefined : undefined,
@@ -124,9 +127,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   // Another filter starts again at the first page.
   useEffect(
     () => setPage(1),
-    [kind, deferredSearch, status, departmentId, from, to, state, branchId, warehouseId],
+    [kind, deferredSearch, status, departmentId, from, to, state, branchId, warehouseId, pageSize],
   );
-  const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / pageSize));
   // Escape closes an open document (unless a sheet over it is open: it closes that first).
   useEffect(() => {
     if (!selectedId) return;
@@ -478,24 +481,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           )
         )}
       </Card>
-      {pages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-            {t('list.prev')}
-          </Button>
-          <span className="text-muted tnum">
-            {t('list.page')} {page} {t('list.of')} {pages}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={page >= pages}
-            onClick={() => setPage(page + 1)}
-          >
-            {t('list.next')}
-          </Button>
-        </div>
-      )}
+      <div className="flex justify-end">
+        <Pager page={page} size={pageSize} pages={pages} onPage={setPage} onSize={setPageSize} />
+      </div>
 
       {/* A document, over the list (a panel at the side on a wide screen). */}
       {!isPhone && selectedId && (
