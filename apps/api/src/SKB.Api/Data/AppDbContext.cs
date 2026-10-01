@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WorkDraft> WorkDrafts => Set<WorkDraft>();
+    public DbSet<StaffPreference> StaffPreferences => Set<StaffPreference>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<SalesDocument> SalesDocuments => Set<SalesDocument>();
     public DbSet<DocumentLine> DocumentLines => Set<DocumentLine>();
@@ -260,6 +261,10 @@ public class AppDbContext : DbContext
 
         b.Entity<Notification>().HasIndex(n => new { n.StaffId, n.CreatedAt });
         b.Entity<WorkDraft>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
+        b.Entity<StaffPreference>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
+        b.Entity<StaffPreference>().Property(d => d.Key).HasMaxLength(120);
+        b.Entity<StaffPreference>().HasOne(d => d.Staff).WithMany()
+            .HasForeignKey(d => d.StaffId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WorkDraft>().Property(d => d.Key).HasMaxLength(200);
         b.Entity<WorkDraft>().HasOne(d => d.Staff).WithMany()
             .HasForeignKey(d => d.StaffId).OnDelete(DeleteBehavior.Cascade);

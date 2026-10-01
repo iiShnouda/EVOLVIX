@@ -6,6 +6,7 @@ import {
   type PriceSource,
 } from '@skb/shared';
 import { useT } from '../lib/i18n';
+import { TableColumns } from './TableColumns';
 
 const field =
   'h-9 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2 disabled:opacity-80';
@@ -96,57 +97,59 @@ export function PriceGrid({
     <div className="space-y-3">
       {sides.map(({ side, levels: sideLevels }) => (
         <div key={side} className="overflow-hidden rounded-[var(--radius-app)] border border-line">
-          <table className="w-full table-fixed text-sm">
-            <thead className="bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="w-[34%] p-2 text-start font-medium">
-                  {t(side === 'SALE' ? 'item.salesLevels' : 'item.purchaseLevels')}
-                </th>
-                {units.map((u) => (
-                  <th key={u.unitId} className="p-2 text-start font-medium">
-                    {u.name}
-                    {u.factor > 1 && <span className="font-normal tnum"> ×{u.factor}</span>}
+          <TableColumns id="prices.grid">
+            <table className="w-full table-fixed text-sm">
+              <thead className="bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="w-[34%] p-2 text-start font-medium">
+                    {t(side === 'SALE' ? 'item.salesLevels' : 'item.purchaseLevels')}
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {sideLevels.map((level) => (
-                <tr key={level.id}>
-                  <td className="p-2 align-top">
-                    <span className="block truncate font-medium">{level.name}</span>
-                  </td>
-                  {units.map((u) => {
-                    const key = cellKey(u.unitId, level.id);
-                    const hint = inherited(u, level);
-                    return (
-                      <td key={key} className="p-1.5 align-top">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          inputMode="decimal"
-                          className={`${field} tnum`}
-                          disabled={readOnly}
-                          value={inputs[key] ?? ''}
-                          placeholder={hint ? String(toMajor(hint.price)) : undefined}
-                          aria-label={`${level.name} · ${u.name}`}
-                          onChange={(e) => onChange({ ...inputs, [key]: e.target.value })}
-                        />
-                        <span className="mt-0.5 block truncate text-[11px] text-faint">
-                          {inputs[key]?.trim()
-                            ? t('item.source.OWN')
-                            : hint
-                              ? `${formatMoney(hint.price, currency, locale)} · ${t(`item.source.${hint.source}` as const)}`
-                              : t('item.noPrice')}
-                        </span>
-                      </td>
-                    );
-                  })}
+                  {units.map((u) => (
+                    <th key={u.unitId} className="p-2 text-start font-medium">
+                      {u.name}
+                      {u.factor > 1 && <span className="font-normal tnum"> ×{u.factor}</span>}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {sideLevels.map((level) => (
+                  <tr key={level.id}>
+                    <td className="p-2 align-top">
+                      <span className="block truncate font-medium">{level.name}</span>
+                    </td>
+                    {units.map((u) => {
+                      const key = cellKey(u.unitId, level.id);
+                      const hint = inherited(u, level);
+                      return (
+                        <td key={key} className="p-1.5 align-top">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            className={`${field} tnum`}
+                            disabled={readOnly}
+                            value={inputs[key] ?? ''}
+                            placeholder={hint ? String(toMajor(hint.price)) : undefined}
+                            aria-label={`${level.name} · ${u.name}`}
+                            onChange={(e) => onChange({ ...inputs, [key]: e.target.value })}
+                          />
+                          <span className="mt-0.5 block truncate text-[11px] text-faint">
+                            {inputs[key]?.trim()
+                              ? t('item.source.OWN')
+                              : hint
+                                ? `${formatMoney(hint.price, currency, locale)} · ${t(`item.source.${hint.source}` as const)}`
+                                : t('item.noPrice')}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableColumns>
         </div>
       ))}
       <p className="text-xs text-faint">

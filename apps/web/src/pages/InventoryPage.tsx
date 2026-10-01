@@ -14,6 +14,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useDeviceInfo } from '../lib/device';
 import { useInventory, useValuation } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -82,7 +83,11 @@ export function InventoryPage() {
             >
               {t('catalog.setup')}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => navigate('/inventory/price-lists')}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => navigate('/inventory/price-lists')}
+            >
               {t('pl.short')}
             </Button>
             <Button
@@ -252,68 +257,70 @@ function ItemsTab({
           ))}
         </ul>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-            <tr>
-              <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
-              <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
-              <th className="hidden p-3 text-start font-medium xl:table-cell">
-                {t('inventory.category')}
-              </th>
-              <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
-              <th className="hidden p-3 text-end font-medium md:table-cell">
-                {t('inventory.reorder')}
-              </th>
-              {seeCosts && (
-                <>
-                  <th className="hidden p-3 text-end font-medium md:table-cell">
-                    {t('inventory.avgCost')}
-                  </th>
-                  <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
-                </>
-              )}
-              <th className="p-3 text-start font-medium">{t('common.status')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {items.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => onOpen(p.id)}
-                className="cursor-pointer transition-colors hover:bg-surface-2"
-              >
-                <td className="p-3 text-muted tnum">{p.sku}</td>
-                <td className="p-3 font-medium">{p.name}</td>
-                <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
-                <td className="p-3 text-end font-semibold tnum">
-                  {formatNumber(p.stockOnHand, locale)}{' '}
-                  <span className="text-xs font-normal text-muted">{p.unit}</span>
-                  {p.units.length > 1 && p.stockOnHand > 0 && (
-                    <span className="block text-xs font-normal text-muted">
-                      {formatQuantity(p.stockOnHand, p.units, locale)}
-                    </span>
-                  )}
-                </td>
-                <td className="hidden p-3 text-end text-muted tnum md:table-cell">
-                  {formatNumber(p.reorderLevel, locale)}
-                </td>
+        <TableColumns id="inventory.items">
+          <table className="w-full text-sm">
+            <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
+                <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
+                <th className="hidden p-3 text-start font-medium xl:table-cell">
+                  {t('inventory.category')}
+                </th>
+                <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
+                <th className="hidden p-3 text-end font-medium md:table-cell">
+                  {t('inventory.reorder')}
+                </th>
                 {seeCosts && (
                   <>
-                    <td className="hidden p-3 text-end tnum md:table-cell">
-                      {formatMoney(p.avgCost, currency, locale)}
-                    </td>
-                    <td className="p-3 text-end tnum">
-                      {formatMoney(p.stockValue, currency, locale)}
-                    </td>
+                    <th className="hidden p-3 text-end font-medium md:table-cell">
+                      {t('inventory.avgCost')}
+                    </th>
+                    <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
                   </>
                 )}
-                <td className="p-3">
-                  <StockBadge item={p} />
-                </td>
+                <th className="p-3 text-start font-medium">{t('common.status')}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {items.map((p) => (
+                <tr
+                  key={p.id}
+                  onClick={() => onOpen(p.id)}
+                  className="cursor-pointer transition-colors hover:bg-surface-2"
+                >
+                  <td className="p-3 text-muted tnum">{p.sku}</td>
+                  <td className="p-3 font-medium">{p.name}</td>
+                  <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
+                  <td className="p-3 text-end font-semibold tnum">
+                    {formatNumber(p.stockOnHand, locale)}{' '}
+                    <span className="text-xs font-normal text-muted">{p.unit}</span>
+                    {p.units.length > 1 && p.stockOnHand > 0 && (
+                      <span className="block text-xs font-normal text-muted">
+                        {formatQuantity(p.stockOnHand, p.units, locale)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="hidden p-3 text-end text-muted tnum md:table-cell">
+                    {formatNumber(p.reorderLevel, locale)}
+                  </td>
+                  {seeCosts && (
+                    <>
+                      <td className="hidden p-3 text-end tnum md:table-cell">
+                        {formatMoney(p.avgCost, currency, locale)}
+                      </td>
+                      <td className="p-3 text-end tnum">
+                        {formatMoney(p.stockValue, currency, locale)}
+                      </td>
+                    </>
+                  )}
+                  <td className="p-3">
+                    <StockBadge item={p} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableColumns>
       )}
     </Card>
   );
@@ -414,26 +421,28 @@ function ValuationTable({
       <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
         {title}
       </h2>
-      <table className="w-full text-sm">
-        <thead className="bg-surface-2 text-xs text-muted">
-          <tr>
-            <th className="p-3 text-start font-medium">{title}</th>
-            <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
-            <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--c-line)]">
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="p-3">{r.label}</td>
-              <td className="p-3 text-end tnum">{formatNumber(r.quantity, locale)}</td>
-              <td className="p-3 text-end font-medium tnum">
-                {formatMoney(r.value, currency, locale)}
-              </td>
+      <TableColumns id="inventory.valuation">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th className="p-3 text-start font-medium">{title}</th>
+              <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
+              <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td className="p-3">{r.label}</td>
+                <td className="p-3 text-end tnum">{formatNumber(r.quantity, locale)}</td>
+                <td className="p-3 text-end font-medium tnum">
+                  {formatMoney(r.value, currency, locale)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableColumns>
     </Card>
   );
 }

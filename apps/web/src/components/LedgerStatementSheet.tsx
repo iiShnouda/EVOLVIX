@@ -15,10 +15,10 @@ import { useLedgerStatement } from '../lib/queries';
 import { useAuth } from '../stores/auth';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from './ReportActions';
+import { TableColumns } from './TableColumns';
 
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
-
 
 /**
  * What an entry is: a manual entry keeps the description its author typed; an automatic one is
@@ -239,7 +239,11 @@ export function LedgerStatementSheet({
         {isParty && branches.length > 1 && (
           <label className="block">
             <span className="mb-1 block text-xs text-muted">{t('perf.branch')}</span>
-            <select className={small} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+            <select
+              className={small}
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
               <option value="">{t('ledger.allBranches')}</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -251,7 +255,11 @@ export function LedgerStatementSheet({
         )}
         {isParty && (
           <label className="flex h-9 items-center gap-2 text-sm">
-            <input type="checkbox" checked={withItems} onChange={(e) => setWithItems(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={withItems}
+              onChange={(e) => setWithItems(e.target.checked)}
+            />
             {t('ledger.withItems')}
           </label>
         )}
@@ -361,59 +369,66 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   const cell = 'p-2 align-top';
   return (
     <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-      <table className="w-full min-w-[860px] text-sm">
-        <thead className="bg-surface-2 text-xs text-muted">
-          <tr>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.kindCol')}</th>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.entryCol')}</th>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.noteCol')}</th>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.date')}</th>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.book')}</th>
-            <th className={`${cell} text-end font-medium`}>{t('ledger.debit')}</th>
-            <th className={`${cell} text-end font-medium`}>{t('ledger.credit')}</th>
-            <th className={`${cell} text-end font-medium`}>{t('ledger.balance')}</th>
-            <th className={`${cell} text-start font-medium`}>{t('ledger.docNumber')}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--c-line)]">
-          <tr className="bg-surface-2/50 font-medium">
-            <td className={cell}>{t('ledger.previousBalance')}</td>
-            <td className={cell} />
-            <td className={cell} />
-            <td className={`${cell} tnum`}>{formatDate(from, locale)}</td>
-            <td className={cell} />
-            <td className={cell} />
-            <td className={cell} />
-            <td className={`${cell} text-end`}>
-              <SidedMoney value={data.opening} currency={data.currency} />
-            </td>
-            <td className={cell} />
-          </tr>
-          {data.lines.map((l, i) => (
-            <PartyStatementRow key={`${l.entryId}-${i}`} line={l} money={money} currency={data.currency} />
-          ))}
-          {data.lines.length === 0 && (
+      <TableColumns id="statement">
+        <table className="w-full min-w-[860px] text-sm">
+          <thead className="bg-surface-2 text-xs text-muted">
             <tr>
-              <td colSpan={9} className="p-3 text-muted">
-                {t('ledger.noLines')}
-              </td>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.kindCol')}</th>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.entryCol')}</th>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.noteCol')}</th>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.date')}</th>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.book')}</th>
+              <th className={`${cell} text-end font-medium`}>{t('ledger.debit')}</th>
+              <th className={`${cell} text-end font-medium`}>{t('ledger.credit')}</th>
+              <th className={`${cell} text-end font-medium`}>{t('ledger.balance')}</th>
+              <th className={`${cell} text-start font-medium`}>{t('ledger.docNumber')}</th>
             </tr>
-          )}
-        </tbody>
-        <tfoot className="bg-surface-2 font-semibold">
-          <tr>
-            <td className={cell} colSpan={5}>
-              {t('ledger.total')}
-            </td>
-            <td className={`${cell} text-end tnum`}>{money(data.totalDebit)}</td>
-            <td className={`${cell} text-end tnum`}>{money(data.totalCredit)}</td>
-            <td className={`${cell} text-end`}>
-              <SidedMoney value={data.closing} currency={data.currency} />
-            </td>
-            <td className={cell} />
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            <tr className="bg-surface-2/50 font-medium">
+              <td className={cell}>{t('ledger.previousBalance')}</td>
+              <td className={cell} />
+              <td className={cell} />
+              <td className={`${cell} tnum`}>{formatDate(from, locale)}</td>
+              <td className={cell} />
+              <td className={cell} />
+              <td className={cell} />
+              <td className={`${cell} text-end`}>
+                <SidedMoney value={data.opening} currency={data.currency} />
+              </td>
+              <td className={cell} />
+            </tr>
+            {data.lines.map((l, i) => (
+              <PartyStatementRow
+                key={`${l.entryId}-${i}`}
+                line={l}
+                money={money}
+                currency={data.currency}
+              />
+            ))}
+            {data.lines.length === 0 && (
+              <tr data-span>
+                <td colSpan={9} className="p-3 text-muted">
+                  {t('ledger.noLines')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot className="bg-surface-2 font-semibold">
+            <tr data-span>
+              <td className={cell} colSpan={5}>
+                {t('ledger.total')}
+              </td>
+              <td className={`${cell} text-end tnum`}>{money(data.totalDebit)}</td>
+              <td className={`${cell} text-end tnum`}>{money(data.totalCredit)}</td>
+              <td className={`${cell} text-end`}>
+                <SidedMoney value={data.closing} currency={data.currency} />
+              </td>
+              <td className={cell} />
+            </tr>
+          </tfoot>
+        </table>
+      </TableColumns>
     </div>
   );
 }
@@ -453,7 +468,7 @@ function PartyStatementRow({
         <td className={`${cell} tnum`}>{l.documentNumber ?? l.number}</td>
       </tr>
       {(l.items ?? []).map((it, j) => (
-        <tr key={j} className="text-xs text-muted">
+        <tr data-span key={j} className="text-xs text-muted">
           <td className="px-2 py-1" />
           <td className="px-2 py-1 ps-6" colSpan={2}>
             {it.productName}

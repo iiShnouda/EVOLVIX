@@ -22,6 +22,7 @@ const NO_PERMISSIONS: Permission[] = [];
 import { useDeviceInfo } from '../lib/device';
 import { ApiError } from '../lib/api';
 import { useItemCard, useStocktake } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -210,72 +211,74 @@ export function ItemCardPage() {
                 ))}
               </ul>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className="p-3 text-start font-medium">{t('common.date')}</th>
-                    <th className="p-3 text-start font-medium">{t('itemCard.movement')}</th>
-                    <th className="p-3 text-start font-medium">{t('itemCard.reference')}</th>
-                    {!warehouseId && (
-                      <th className="hidden p-3 text-start font-medium lg:table-cell">
-                        {t('warehouse.label')}
-                      </th>
-                    )}
-                    <th className="p-3 text-end font-medium">{t('itemCard.in')}</th>
-                    <th className="p-3 text-end font-medium">{t('itemCard.out')}</th>
-                    <th className="p-3 text-end font-medium">{t('itemCard.balance')}</th>
-                    {seeCosts && (
-                      <th className="hidden p-3 text-end font-medium md:table-cell">
-                        {t('itemCard.unitCost')}
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-line)]">
-                  <tr className="bg-surface-2 text-muted">
-                    <td className="p-3 tnum">{formatDate(data.from, locale)}</td>
-                    <td className="p-3" colSpan={2}>
-                      {t('itemCard.opening')}
-                    </td>
-                    {!warehouseId && <td className="hidden p-3 lg:table-cell" />}
-                    <td className="p-3" />
-                    <td className="p-3" />
-                    <td className="p-3 text-end font-semibold tnum text-fg">
-                      {formatNumber(data.openingBalance, locale)}
-                    </td>
-                    <td className="hidden p-3 md:table-cell" />
-                  </tr>
-                  {data.movements.map((m) => (
-                    <tr key={m.id}>
-                      <td className="p-3 text-muted tnum">{formatDate(m.date, locale)}</td>
-                      <td className="p-3">
-                        {t(`movement.${m.type}`)}
-                        {m.note && <span className="block text-xs text-muted">{m.note}</span>}
-                      </td>
-                      <td className="p-3 tnum">
-                        <Reference m={m} permissions={permissions} />
-                      </td>
+              <TableColumns id="itemCard.movements">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="p-3 text-start font-medium">{t('common.date')}</th>
+                      <th className="p-3 text-start font-medium">{t('itemCard.movement')}</th>
+                      <th className="p-3 text-start font-medium">{t('itemCard.reference')}</th>
                       {!warehouseId && (
-                        <td className="hidden p-3 text-muted lg:table-cell">{m.warehouseName}</td>
+                        <th className="hidden p-3 text-start font-medium lg:table-cell">
+                          {t('warehouse.label')}
+                        </th>
                       )}
-                      <td className="p-3 text-end tnum text-positive">
-                        {m.quantityIn ? formatNumber(m.quantityIn, locale) : ''}
-                      </td>
-                      <td className="p-3 text-end tnum text-warning">
-                        {m.quantityOut ? formatNumber(m.quantityOut, locale) : ''}
-                      </td>
-                      <td className="p-3 text-end font-semibold tnum">
-                        {formatNumber(m.balance, locale)}
-                      </td>
+                      <th className="p-3 text-end font-medium">{t('itemCard.in')}</th>
+                      <th className="p-3 text-end font-medium">{t('itemCard.out')}</th>
+                      <th className="p-3 text-end font-medium">{t('itemCard.balance')}</th>
                       {seeCosts && (
-                        <td className="hidden p-3 text-end tnum text-muted md:table-cell">
-                          {formatMoney(m.unitCost, currency, locale)}
-                        </td>
+                        <th className="hidden p-3 text-end font-medium md:table-cell">
+                          {t('itemCard.unitCost')}
+                        </th>
                       )}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    <tr data-span className="bg-surface-2 text-muted">
+                      <td className="p-3 tnum">{formatDate(data.from, locale)}</td>
+                      <td className="p-3" colSpan={2}>
+                        {t('itemCard.opening')}
+                      </td>
+                      {!warehouseId && <td className="hidden p-3 lg:table-cell" />}
+                      <td className="p-3" />
+                      <td className="p-3" />
+                      <td className="p-3 text-end font-semibold tnum text-fg">
+                        {formatNumber(data.openingBalance, locale)}
+                      </td>
+                      <td className="hidden p-3 md:table-cell" />
+                    </tr>
+                    {data.movements.map((m) => (
+                      <tr key={m.id}>
+                        <td className="p-3 text-muted tnum">{formatDate(m.date, locale)}</td>
+                        <td className="p-3">
+                          {t(`movement.${m.type}`)}
+                          {m.note && <span className="block text-xs text-muted">{m.note}</span>}
+                        </td>
+                        <td className="p-3 tnum">
+                          <Reference m={m} permissions={permissions} />
+                        </td>
+                        {!warehouseId && (
+                          <td className="hidden p-3 text-muted lg:table-cell">{m.warehouseName}</td>
+                        )}
+                        <td className="p-3 text-end tnum text-positive">
+                          {m.quantityIn ? formatNumber(m.quantityIn, locale) : ''}
+                        </td>
+                        <td className="p-3 text-end tnum text-warning">
+                          {m.quantityOut ? formatNumber(m.quantityOut, locale) : ''}
+                        </td>
+                        <td className="p-3 text-end font-semibold tnum">
+                          {formatNumber(m.balance, locale)}
+                        </td>
+                        {seeCosts && (
+                          <td className="hidden p-3 text-end tnum text-muted md:table-cell">
+                            {formatMoney(m.unitCost, currency, locale)}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             )}
           </Card>
         </div>

@@ -558,6 +558,7 @@ export const ar: TranslationDictionary = {
   'list.owed': 'الباقي',
   'list.notes': 'ملحوظة',
   'list.columns': 'الأعمدة',
+  'list.showAll': 'إظهار الكل',
   'list.payAll': 'الكل',
   'list.payCredit': 'آجل',
   'list.payPaid': 'تم الدفع',

@@ -9,6 +9,7 @@ import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
+import { TableColumns } from './TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -118,7 +119,11 @@ export function ApproveOrderSheet({
   if (done) {
     const left = done.grandTotal - done.paidAmount;
     return (
-      <Sheet title={t('order.approved')} onClose={() => onDone(done)} closeLabel={t('common.close')}>
+      <Sheet
+        title={t('order.approved')}
+        onClose={() => onDone(done)}
+        closeLabel={t('common.close')}
+      >
         <div className="space-y-3">
           <p className="text-sm">
             <span className="font-medium tnum">{done.number}</span> · {done.partyName} ·{' '}
@@ -134,9 +139,7 @@ export function ApproveOrderSheet({
               <Button
                 variant="secondary"
                 onClick={() =>
-                  navigate(
-                    `/notes?receiveFor=${done.partyId}&invoice=${done.id}&amount=${left}`,
-                  )
+                  navigate(`/notes?receiveFor=${done.partyId}&invoice=${done.id}&amount=${left}`)
                 }
               >
                 {t('order.receiveNote')}
@@ -166,70 +169,72 @@ export function ApproveOrderSheet({
         <p className="text-xs text-faint">{t('order.approveHint')}</p>
 
         <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="p-2 text-start font-medium">{t('analytics.item')}</th>
-                <th className="p-2 text-end font-medium">{t('invoice.qty')}</th>
-                <th className="p-2 text-end font-medium">{t('invoice.price')}</th>
-                <th className="p-2 text-start font-medium">{t('order.lineDiscount')}</th>
-                <th className="p-2 text-end font-medium">{t('common.total')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {lines.map((l) => {
-                const e = edits[l.id];
-                const d = newDiscount(l);
-                return (
-                  <tr key={l.id}>
-                    <td className="p-2">{l.productName}</td>
-                    <td className="p-2 text-end tnum">
-                      {l.unitQuantity || l.quantity} {l.unitName}
-                    </td>
-                    <td className="p-2 text-end tnum">{money(l.unitPrice)}</td>
-                    <td className="p-2">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          aria-label={t('order.lineDiscount')}
-                          disabled={!canDiscount}
-                          className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-sm tnum outline-none focus:border-brand"
-                          placeholder={l.discount ? String(toMajor(l.discount)) : '0'}
-                          value={e?.value ?? ''}
-                          onChange={(ev) =>
-                            setEdits((s) => ({
-                              ...s,
-                              [l.id]: { mode: e?.mode ?? 'amount', value: ev.target.value },
-                            }))
-                          }
-                        />
-                        <select
-                          aria-label={t('invoice.lineDiscountMode')}
-                          disabled={!canDiscount}
-                          className="h-8 rounded-lg border border-line bg-surface px-1 text-xs outline-none focus:border-brand"
-                          value={e?.mode ?? 'amount'}
-                          onChange={(ev) =>
-                            setEdits((s) => ({
-                              ...s,
-                              [l.id]: { mode: ev.target.value as Mode, value: e?.value ?? '' },
-                            }))
-                          }
-                        >
-                          <option value="percent">%</option>
-                          <option value="piece">{t('invoice.perPiece')}</option>
-                          <option value="amount">{t('invoice.onLine')}</option>
-                        </select>
-                        {d > 0 && <span className="text-xs text-muted tnum">−{money(d)}</span>}
-                      </div>
-                    </td>
-                    <td className="p-2 text-end tnum">{money(grossOf(l) - d)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <TableColumns id="approveOrder.lines">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="p-2 text-start font-medium">{t('analytics.item')}</th>
+                  <th className="p-2 text-end font-medium">{t('invoice.qty')}</th>
+                  <th className="p-2 text-end font-medium">{t('invoice.price')}</th>
+                  <th className="p-2 text-start font-medium">{t('order.lineDiscount')}</th>
+                  <th className="p-2 text-end font-medium">{t('common.total')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {lines.map((l) => {
+                  const e = edits[l.id];
+                  const d = newDiscount(l);
+                  return (
+                    <tr key={l.id}>
+                      <td className="p-2">{l.productName}</td>
+                      <td className="p-2 text-end tnum">
+                        {l.unitQuantity || l.quantity} {l.unitName}
+                      </td>
+                      <td className="p-2 text-end tnum">{money(l.unitPrice)}</td>
+                      <td className="p-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            aria-label={t('order.lineDiscount')}
+                            disabled={!canDiscount}
+                            className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-sm tnum outline-none focus:border-brand"
+                            placeholder={l.discount ? String(toMajor(l.discount)) : '0'}
+                            value={e?.value ?? ''}
+                            onChange={(ev) =>
+                              setEdits((s) => ({
+                                ...s,
+                                [l.id]: { mode: e?.mode ?? 'amount', value: ev.target.value },
+                              }))
+                            }
+                          />
+                          <select
+                            aria-label={t('invoice.lineDiscountMode')}
+                            disabled={!canDiscount}
+                            className="h-8 rounded-lg border border-line bg-surface px-1 text-xs outline-none focus:border-brand"
+                            value={e?.mode ?? 'amount'}
+                            onChange={(ev) =>
+                              setEdits((s) => ({
+                                ...s,
+                                [l.id]: { mode: ev.target.value as Mode, value: e?.value ?? '' },
+                              }))
+                            }
+                          >
+                            <option value="percent">%</option>
+                            <option value="piece">{t('invoice.perPiece')}</option>
+                            <option value="amount">{t('invoice.onLine')}</option>
+                          </select>
+                          {d > 0 && <span className="text-xs text-muted tnum">−{money(d)}</span>}
+                        </div>
+                      </td>
+                      <td className="p-2 text-end tnum">{money(grossOf(l) - d)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableColumns>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

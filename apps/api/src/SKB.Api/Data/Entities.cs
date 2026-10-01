@@ -1298,3 +1298,19 @@ public class WorkDraft
     public string Data { get; set; } = "";
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// One of a person's screen preferences, e.g. which columns a table hides (owner, 2026-10-01: "saved
+/// for the next time I use the page", on any device). Not company data: a UI choice, kept per person.
+/// </summary>
+public class StaffPreference
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>e.g. "columns:sales.invoices".</summary>
+    public string Key { get; set; } = "";
+    /// <summary>The screen's own JSON.</summary>
+    public string Value { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

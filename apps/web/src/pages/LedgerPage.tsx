@@ -32,6 +32,7 @@ import {
   useSetLockDate,
   useTrialBalance,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 type Tab = 'accounts' | 'journal' | 'trial' | 'income' | 'balance';
 const TABS: { key: Tab; label: TranslationKey }[] = [
@@ -464,36 +465,38 @@ function EntrySheet({ e, onClose }: { e: JournalEntry; onClose: () => void }) {
         {t(`ledger.source.${e.sourceType}` as TranslationKey)} · {e.createdByName}
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[28rem] text-sm">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="py-1 text-start font-normal">{t('ledger.account')}</th>
-              <th className="py-1 text-end font-normal">{t('ledger.debit')}</th>
-              <th className="py-1 text-end font-normal">{t('ledger.credit')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {e.lines.map((l, i) => (
-              <tr key={i}>
-                <td className="py-1.5">
-                  <span className="text-xs text-muted tnum">{l.accountCode}</span> {l.accountName}
-                  {l.memo && <span className="block text-xs text-faint">{l.memo}</span>}
-                </td>
-                <td className="py-1.5 text-end tnum">{l.debit ? money(l.debit) : ''}</td>
-                <td className="py-1.5 text-end tnum">{l.credit ? money(l.credit) : ''}</td>
+        <TableColumns id="ledger.accounts">
+          <table className="w-full min-w-[28rem] text-sm">
+            <thead className="text-xs text-muted">
+              <tr>
+                <th className="py-1 text-start font-normal">{t('ledger.account')}</th>
+                <th className="py-1 text-end font-normal">{t('ledger.debit')}</th>
+                <th className="py-1 text-end font-normal">{t('ledger.credit')}</th>
               </tr>
-            ))}
-            <tr className="font-semibold">
-              <td className="py-1.5">{t('ledger.total')}</td>
-              <td className="py-1.5 text-end tnum">
-                {money(e.lines.reduce((s, l) => s + l.debit, 0))}
-              </td>
-              <td className="py-1.5 text-end tnum">
-                {money(e.lines.reduce((s, l) => s + l.credit, 0))}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {e.lines.map((l, i) => (
+                <tr key={i}>
+                  <td className="py-1.5">
+                    <span className="text-xs text-muted tnum">{l.accountCode}</span> {l.accountName}
+                    {l.memo && <span className="block text-xs text-faint">{l.memo}</span>}
+                  </td>
+                  <td className="py-1.5 text-end tnum">{l.debit ? money(l.debit) : ''}</td>
+                  <td className="py-1.5 text-end tnum">{l.credit ? money(l.credit) : ''}</td>
+                </tr>
+              ))}
+              <tr className="font-semibold">
+                <td className="py-1.5">{t('ledger.total')}</td>
+                <td className="py-1.5 text-end tnum">
+                  {money(e.lines.reduce((s, l) => s + l.debit, 0))}
+                </td>
+                <td className="py-1.5 text-end tnum">
+                  {money(e.lines.reduce((s, l) => s + l.credit, 0))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </TableColumns>
       </div>
       {reverse.error && (
         <p className="mt-3 text-sm text-destructive">{errorText(t, reverse.error)}</p>

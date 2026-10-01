@@ -12,6 +12,7 @@ import { useT } from '../lib/i18n';
 import { statusOf } from '../lib/status';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
+import { TableColumns } from './TableColumns';
 
 /**
  * Printable-style document preview: company, branch, party, lines, totals, staff, status.
@@ -202,57 +203,59 @@ export function DocumentPreview({
 
         {/* Line items */}
         <div className="overflow-hidden rounded-[var(--radius-app)] border border-line">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="p-2 text-start font-medium">{t('inventory.products')}</th>
-                <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
-                <th className="hidden p-2 text-end font-medium sm:table-cell">
-                  {t('sales.unitPrice')}
-                </th>
-                <th className="p-2 text-end font-medium">{t('common.total')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {doc.lines.map((l) => (
-                <tr key={l.id}>
-                  <td className="p-2">
-                    {l.productName}
-                    {l.warehouseName && (
-                      <span className="block text-xs text-muted">{l.warehouseName}</span>
-                    )}
-                    {l.returnedQuantity > 0 && (
-                      <span className="block text-xs text-warning tnum">
-                        {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}{' '}
-                        {l.baseUnitName}
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 text-end tnum">
-                    {formatNumber(l.unitQuantity || l.quantity, locale)}{' '}
-                    <span className="text-xs text-muted">{l.unitName}</span>
-                    {l.unitFactor > 1 && (
-                      <span className="block text-xs text-muted">
-                        = {formatNumber(l.quantity, locale)} {l.baseUnitName}
-                      </span>
-                    )}
-                  </td>
-                  <td className="hidden p-2 text-end tnum sm:table-cell">
-                    {formatMoney(l.unitPrice, doc.currency, locale)}
-                  </td>
-                  <td className="p-2 text-end font-medium tnum">
-                    {l.isBonus ? (
-                      <span className="text-xs font-medium text-positive">
-                        {t('invoice.bonus')}
-                      </span>
-                    ) : (
-                      formatMoney(l.lineTotal, doc.currency, locale)
-                    )}
-                  </td>
+          <TableColumns id="document.lines">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="p-2 text-start font-medium">{t('inventory.products')}</th>
+                  <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
+                  <th className="hidden p-2 text-end font-medium sm:table-cell">
+                    {t('sales.unitPrice')}
+                  </th>
+                  <th className="p-2 text-end font-medium">{t('common.total')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {doc.lines.map((l) => (
+                  <tr key={l.id}>
+                    <td className="p-2">
+                      {l.productName}
+                      {l.warehouseName && (
+                        <span className="block text-xs text-muted">{l.warehouseName}</span>
+                      )}
+                      {l.returnedQuantity > 0 && (
+                        <span className="block text-xs text-warning tnum">
+                          {t('return.alreadyReturned')}: {formatNumber(l.returnedQuantity, locale)}{' '}
+                          {l.baseUnitName}
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-2 text-end tnum">
+                      {formatNumber(l.unitQuantity || l.quantity, locale)}{' '}
+                      <span className="text-xs text-muted">{l.unitName}</span>
+                      {l.unitFactor > 1 && (
+                        <span className="block text-xs text-muted">
+                          = {formatNumber(l.quantity, locale)} {l.baseUnitName}
+                        </span>
+                      )}
+                    </td>
+                    <td className="hidden p-2 text-end tnum sm:table-cell">
+                      {formatMoney(l.unitPrice, doc.currency, locale)}
+                    </td>
+                    <td className="p-2 text-end font-medium tnum">
+                      {l.isBonus ? (
+                        <span className="text-xs font-medium text-positive">
+                          {t('invoice.bonus')}
+                        </span>
+                      ) : (
+                        formatMoney(l.lineTotal, doc.currency, locale)
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableColumns>
         </div>
 
         {/* Totals */}

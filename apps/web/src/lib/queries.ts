@@ -1702,3 +1702,33 @@ export function usePayrollAction() {
     },
   });
 }
+
+/** The person's own screen preferences (key → JSON), kept on the server; asked for once. */
+export function usePreferences() {
+  return useQuery({
+    queryKey: ['preferences'],
+    queryFn: () => api.get<Record<string, string>>('/preferences'),
+    staleTime: Infinity,
+  });
+}
+
+/** The columns a table hides (by header text), and a setter that saves the choice for next time. */
+export function useHiddenColumns(id: string): [string[], (hidden: string[]) => void] {
+  const qc = useQueryClient();
+  const prefs = usePreferences();
+  const key = `columns:${id}`;
+  let hidden: string[] = [];
+  try {
+    const saved = prefs.data?.[key];
+    const parsed: unknown = saved ? JSON.parse(saved) : [];
+    if (Array.isArray(parsed)) hidden = parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    /* a bad value shows every column */
+  }
+  const set = (next: string[]) => {
+    const value = next.length ? JSON.stringify(next) : '';
+    qc.setQueryData<Record<string, string>>(['preferences'], (old) => ({ ...(old ?? {}), [key]: value }));
+    void api.put('/preferences', { key, value }).catch(() => undefined);
+  };
+  return [hidden, set];
+}

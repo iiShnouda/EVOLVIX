@@ -559,6 +559,7 @@ export const en = {
   'list.owed': 'Left',
   'list.notes': 'Note',
   'list.columns': 'Columns',
+  'list.showAll': 'Show all',
   'list.payAll': 'All',
   'list.payCredit': 'On account',
   'list.payPaid': 'Paid',

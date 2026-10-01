@@ -23,6 +23,7 @@ import {
   usePerformance,
   useTopParties,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items';
 const TABS: { key: Tab; label: TranslationKey }[] = [
@@ -220,32 +221,36 @@ function MonthlyTab() {
             />
           </Card>
           <Card padded={false} className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-sm">
-              <thead className="bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="px-3 py-2 text-start font-normal">{t('analytics.month')}</th>
-                  <th className="px-3 py-2 text-end font-normal">{t('analytics.sales')}</th>
-                  <th className="px-3 py-2 text-end font-normal">{t('analytics.returns')}</th>
-                  <th className="px-3 py-2 text-end font-normal">{t('analytics.netSales')}</th>
-                  <th className="px-3 py-2 text-end font-normal">{t('analytics.netPurchases')}</th>
-                  <th className="px-3 py-2 text-end font-normal">{t('analytics.invoices')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {[...data].reverse().map((x) => (
-                  <tr key={x.month}>
-                    <td className="px-3 py-1.5">{monthName(x.month)}</td>
-                    <td className="px-3 py-1.5 text-end tnum">{m(x.sales)}</td>
-                    <td className="px-3 py-1.5 text-end tnum">{m(x.returns)}</td>
-                    <td className="px-3 py-1.5 text-end font-medium tnum">{m(x.netSales)}</td>
-                    <td className="px-3 py-1.5 text-end tnum">{m(x.netPurchases)}</td>
-                    <td className="px-3 py-1.5 text-end tnum">
-                      {formatNumber(x.invoices, locale)}
-                    </td>
+            <TableColumns id="analytics.1">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="px-3 py-2 text-start font-normal">{t('analytics.month')}</th>
+                    <th className="px-3 py-2 text-end font-normal">{t('analytics.sales')}</th>
+                    <th className="px-3 py-2 text-end font-normal">{t('analytics.returns')}</th>
+                    <th className="px-3 py-2 text-end font-normal">{t('analytics.netSales')}</th>
+                    <th className="px-3 py-2 text-end font-normal">
+                      {t('analytics.netPurchases')}
+                    </th>
+                    <th className="px-3 py-2 text-end font-normal">{t('analytics.invoices')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {[...data].reverse().map((x) => (
+                    <tr key={x.month}>
+                      <td className="px-3 py-1.5">{monthName(x.month)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">{m(x.sales)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">{m(x.returns)}</td>
+                      <td className="px-3 py-1.5 text-end font-medium tnum">{m(x.netSales)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">{m(x.netPurchases)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">
+                        {formatNumber(x.invoices, locale)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
           </Card>
         </div>
       )}
@@ -368,54 +373,58 @@ function PerformanceTab() {
             </Card>
           ) : (
             <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-[48rem] text-sm">
-                <thead className="bg-surface-2 text-xs text-muted">
-                  <tr>
-                    {header.map((h, i) => (
-                      <th
-                        key={h}
-                        className={`px-2 py-2 font-normal ${i === 0 ? 'px-3 text-start' : 'text-end'}`}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {data.rows.map((r) => (
-                    <tr key={r.id}>
-                      <td className="px-3 py-1.5 font-medium">{r.name || t('invoice.noDepartment')}</td>
-                      <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.netSales)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {formatNumber(r.share, locale)}%
-                        <div className="mt-0.5 h-1 rounded-full bg-surface-2">
-                          <div
-                            className="h-1 rounded-full bg-brand"
-                            style={{ width: `${Math.max(0, Math.min(100, r.share))}%` }}
-                          />
-                        </div>
-                      </td>
-                      {seeCosts && (
-                        <td
-                          className={`px-2 py-1.5 text-end tnum ${r.profit < 0 ? 'text-destructive' : ''}`}
+              <TableColumns id="analytics.2">
+                <table className="w-full min-w-[48rem] text-sm">
+                  <thead className="bg-surface-2 text-xs text-muted">
+                    <tr>
+                      {header.map((h, i) => (
+                        <th
+                          key={h}
+                          className={`px-2 py-2 font-normal ${i === 0 ? 'px-3 text-start' : 'text-end'}`}
                         >
-                          {m(r.profit)}
-                        </td>
-                      )}
-                      <td className="px-2 py-1.5 text-end tnum">{n(r.invoices)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">{n(r.customers)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">{m(r.averageInvoice)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {r.returns ? m(r.returns) : '–'}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">{m(r.collected)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {r.quotes ? `${n(r.quotesWon)} / ${n(r.quotes)}` : '–'}
-                      </td>
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {data.rows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-3 py-1.5 font-medium">
+                          {r.name || t('invoice.noDepartment')}
+                        </td>
+                        <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.netSales)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatNumber(r.share, locale)}%
+                          <div className="mt-0.5 h-1 rounded-full bg-surface-2">
+                            <div
+                              className="h-1 rounded-full bg-brand"
+                              style={{ width: `${Math.max(0, Math.min(100, r.share))}%` }}
+                            />
+                          </div>
+                        </td>
+                        {seeCosts && (
+                          <td
+                            className={`px-2 py-1.5 text-end tnum ${r.profit < 0 ? 'text-destructive' : ''}`}
+                          >
+                            {m(r.profit)}
+                          </td>
+                        )}
+                        <td className="px-2 py-1.5 text-end tnum">{n(r.invoices)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">{n(r.customers)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">{m(r.averageInvoice)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {r.returns ? m(r.returns) : '–'}
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">{m(r.collected)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {r.quotes ? `${n(r.quotesWon)} / ${n(r.quotes)}` : '–'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             </Card>
           )}
           <p className="text-xs text-faint">{t('perf.hint')}</p>
@@ -526,53 +535,59 @@ function AgingTab() {
             </Card>
           ) : (
             <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-[40rem] text-sm">
-                <thead className="bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className="px-3 py-2 text-start font-normal">{t('common.name')}</th>
-                    {cols.map((c) => (
-                      <th key={c} className="px-2 py-2 text-end font-normal">
-                        {c}
-                      </th>
-                    ))}
-                    <th className="px-2 py-2 text-end font-normal">{t('aging.total')}</th>
-                    <th className="px-3 py-2 text-end font-normal">{t('aging.balance')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {data.rows.map((r) => (
-                    <tr key={r.partyId}>
-                      <td className="px-3 py-1.5">
-                        {can('ledger:view') ? (
-                          <button
-                            type="button"
-                            className="text-start hover:text-brand hover:underline"
-                            onClick={() => setStatement({ id: r.partyId, name: r.name })}
-                          >
-                            {r.name}
-                          </button>
-                        ) : (
-                          r.name
-                        )}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">{m(r.current)}</td>
-                      <td className="px-2 py-1.5 text-end tnum">{m(r.days31To60)}</td>
-                      <td className="px-2 py-1.5 text-end tnum text-warning">{m(r.days61To90)}</td>
-                      <td className="px-2 py-1.5 text-end tnum text-destructive">{m(r.over90)}</td>
-                      <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.total)}</td>
-                      <td className="px-3 py-1.5 text-end tnum">
-                        {formatMoney(r.balance, data.currency, locale)}
-                        {r.onAccount !== 0 && (
-                          <span className="block text-xs text-muted">
-                            {t('aging.onAccount')}:{' '}
-                            {formatMoney(r.onAccount, data.currency, locale)}
-                          </span>
-                        )}
-                      </td>
+              <TableColumns id="analytics.3">
+                <table className="w-full min-w-[40rem] text-sm">
+                  <thead className="bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="px-3 py-2 text-start font-normal">{t('common.name')}</th>
+                      {cols.map((c) => (
+                        <th key={c} className="px-2 py-2 text-end font-normal">
+                          {c}
+                        </th>
+                      ))}
+                      <th className="px-2 py-2 text-end font-normal">{t('aging.total')}</th>
+                      <th className="px-3 py-2 text-end font-normal">{t('aging.balance')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {data.rows.map((r) => (
+                      <tr key={r.partyId}>
+                        <td className="px-3 py-1.5">
+                          {can('ledger:view') ? (
+                            <button
+                              type="button"
+                              className="text-start hover:text-brand hover:underline"
+                              onClick={() => setStatement({ id: r.partyId, name: r.name })}
+                            >
+                              {r.name}
+                            </button>
+                          ) : (
+                            r.name
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">{m(r.current)}</td>
+                        <td className="px-2 py-1.5 text-end tnum">{m(r.days31To60)}</td>
+                        <td className="px-2 py-1.5 text-end tnum text-warning">
+                          {m(r.days61To90)}
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum text-destructive">
+                          {m(r.over90)}
+                        </td>
+                        <td className="px-2 py-1.5 text-end font-medium tnum">{m(r.total)}</td>
+                        <td className="px-3 py-1.5 text-end tnum">
+                          {formatMoney(r.balance, data.currency, locale)}
+                          {r.onAccount !== 0 && (
+                            <span className="block text-xs text-muted">
+                              {t('aging.onAccount')}:{' '}
+                              {formatMoney(r.onAccount, data.currency, locale)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             </Card>
           )}
           <p className="text-xs text-faint">{t('aging.hint')}</p>
@@ -672,32 +687,34 @@ function ItemsTab() {
             {data.topMovers.length === 0 ? (
               <EmptyState title={t('analytics.empty')} icon="inventory" />
             ) : (
-              <table className="w-full min-w-[26rem] text-sm">
-                <thead className="text-xs text-muted">
-                  <tr>
-                    <th className="px-4 py-1 text-start font-normal">{t('analytics.item')}</th>
-                    <th className="px-2 py-1 text-end font-normal">{t('analytics.qtyOut')}</th>
-                    <th className="px-2 py-1 text-end font-normal">{t('analytics.qtyIn')}</th>
-                    <th className="px-4 py-1 text-end font-normal">{t('analytics.netSales')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {data.topMovers.map((x) => (
-                    <tr key={x.productId}>
-                      <td className="max-w-[12rem] truncate px-4 py-1.5">
-                        {x.name} <span className="text-xs text-faint">{x.sku}</span>
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {formatNumber(x.quantityOut, locale)}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {formatNumber(x.quantityIn, locale)}
-                      </td>
-                      <td className="px-4 py-1.5 text-end tnum">{m(x.salesValue)}</td>
+              <TableColumns id="analytics.4">
+                <table className="w-full min-w-[26rem] text-sm">
+                  <thead className="text-xs text-muted">
+                    <tr>
+                      <th className="px-4 py-1 text-start font-normal">{t('analytics.item')}</th>
+                      <th className="px-2 py-1 text-end font-normal">{t('analytics.qtyOut')}</th>
+                      <th className="px-2 py-1 text-end font-normal">{t('analytics.qtyIn')}</th>
+                      <th className="px-4 py-1 text-end font-normal">{t('analytics.netSales')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {data.topMovers.map((x) => (
+                      <tr key={x.productId}>
+                        <td className="max-w-[12rem] truncate px-4 py-1.5">
+                          {x.name} <span className="text-xs text-faint">{x.sku}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatNumber(x.quantityOut, locale)}
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatNumber(x.quantityIn, locale)}
+                        </td>
+                        <td className="px-4 py-1.5 text-end tnum">{m(x.salesValue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             )}
           </Card>
           <Card padded={false} className="overflow-x-auto">
@@ -707,34 +724,40 @@ function ItemsTab() {
             {data.deadStock.length === 0 ? (
               <EmptyState title={t('analytics.empty')} icon="inventory" />
             ) : (
-              <table className="w-full min-w-[26rem] text-sm">
-                <thead className="text-xs text-muted">
-                  <tr>
-                    <th className="px-4 py-1 text-start font-normal">{t('analytics.item')}</th>
-                    <th className="px-2 py-1 text-end font-normal">{t('analytics.stock')}</th>
-                    {seeCosts && (
-                      <th className="px-2 py-1 text-end font-normal">
-                        {t('analytics.valueAtCost')}
-                      </th>
-                    )}
-                    <th className="px-4 py-1 text-end font-normal">{t('analytics.lastSale')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {data.deadStock.map((x) => (
-                    <tr key={x.productId}>
-                      <td className="max-w-[12rem] truncate px-4 py-1.5">
-                        {x.name} <span className="text-xs text-faint">{x.sku}</span>
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">{formatNumber(x.stock, locale)}</td>
-                      {seeCosts && <td className="px-2 py-1.5 text-end tnum">{m(x.stockValue)}</td>}
-                      <td className="px-4 py-1.5 text-end text-xs">
-                        {x.lastSale ? formatDate(x.lastSale, locale) : t('analytics.never')}
-                      </td>
+              <TableColumns id="analytics.5">
+                <table className="w-full min-w-[26rem] text-sm">
+                  <thead className="text-xs text-muted">
+                    <tr>
+                      <th className="px-4 py-1 text-start font-normal">{t('analytics.item')}</th>
+                      <th className="px-2 py-1 text-end font-normal">{t('analytics.stock')}</th>
+                      {seeCosts && (
+                        <th className="px-2 py-1 text-end font-normal">
+                          {t('analytics.valueAtCost')}
+                        </th>
+                      )}
+                      <th className="px-4 py-1 text-end font-normal">{t('analytics.lastSale')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {data.deadStock.map((x) => (
+                      <tr key={x.productId}>
+                        <td className="max-w-[12rem] truncate px-4 py-1.5">
+                          {x.name} <span className="text-xs text-faint">{x.sku}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatNumber(x.stock, locale)}
+                        </td>
+                        {seeCosts && (
+                          <td className="px-2 py-1.5 text-end tnum">{m(x.stockValue)}</td>
+                        )}
+                        <td className="px-4 py-1.5 text-end text-xs">
+                          {x.lastSale ? formatDate(x.lastSale, locale) : t('analytics.never')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             )}
           </Card>
         </div>

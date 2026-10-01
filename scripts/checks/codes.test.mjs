@@ -256,4 +256,20 @@ check('…a supplied one isn’t', !(await find(`supplierId=none&name=${tag}`)).
 check('at its reorder level', (await find(`stock=low&name=${tag}`)).includes(loose.id));
 check('…a well-stocked one isn’t', !(await find(`stock=low&name=${tag}`)).includes(item.id));
 
+console.log('== screen preferences (hidden columns), per person');
+ok('saved', await s.put('/preferences', { key: 'columns:test', value: '["Rep"]' }), [204]);
+eq('read back', (await s.get('/preferences')).data['columns:test'], '["Rep"]');
+check('not someone else’s', !('columns:test' in (await acc.get('/preferences')).data));
+ok(
+  'an empty value forgets it',
+  await s.put('/preferences', { key: 'columns:test', value: '' }),
+  [204],
+);
+check('…gone', !('columns:test' in (await s.get('/preferences')).data));
+eq(
+  'too big refused',
+  (await s.put('/preferences', { key: 'x', value: 'y'.repeat(9000) })).data?.code,
+  'bad_preference',
+);
+
 summary('codes');

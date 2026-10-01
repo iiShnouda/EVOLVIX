@@ -10,6 +10,7 @@ import {
   useItemFinder,
   type ItemFinderFilters,
 } from '../lib/queries';
+import { TableColumns } from './TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -220,63 +221,65 @@ export function ItemFinderSheet({
             <p className="p-4 text-center text-sm text-muted">{t('common.empty')}</p>
           ) : (
             <div className="max-h-[50vh] overflow-auto">
-              <table className="w-full whitespace-nowrap text-[13px]">
-                <thead className="sticky top-0 border-b border-line bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className="w-8 px-2 py-2">
-                      <input
-                        type="checkbox"
-                        aria-label={t('finder.add')}
-                        checked={allPicked}
-                        onChange={() =>
-                          setPicked(allPicked ? new Set() : new Set(rows.map((p) => p.id)))
-                        }
-                      />
-                    </th>
-                    <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
-                    <th className="px-2 py-2 text-start font-medium">{t('common.code')}</th>
-                    <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
-                    <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('invoice.price')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('inventory.reorder')}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t('invoice.balance')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-line)]">
-                  {rows.map((p) => (
-                    <tr
-                      key={p.id}
-                      onClick={() => toggle(p.id)}
-                      className={`cursor-pointer hover:bg-surface-2 ${picked.has(p.id) ? 'bg-brand-soft' : ''}`}
-                    >
-                      <td className="px-2 py-1.5 text-center">
+              <TableColumns id="itemFinder">
+                <table className="w-full whitespace-nowrap text-[13px]">
+                  <thead className="sticky top-0 border-b border-line bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="w-8 px-2 py-2">
                         <input
                           type="checkbox"
-                          aria-label={p.name}
-                          checked={picked.has(p.id)}
-                          onChange={() => toggle(p.id)}
-                          onClick={(e) => e.stopPropagation()}
+                          aria-label={t('finder.add')}
+                          checked={allPicked}
+                          onChange={() =>
+                            setPicked(allPicked ? new Set() : new Set(rows.map((p) => p.id)))
+                          }
                         />
-                      </td>
-                      <td className="px-2 py-1.5 text-muted">
-                        {categoryName.get(p.categoryId) ?? ''}
-                      </td>
-                      <td className="px-2 py-1.5 tnum">{p.sku}</td>
-                      <td className="max-w-64 truncate px-2 py-1.5 font-medium">{p.name}</td>
-                      <td className="px-2 py-1.5 text-muted">{p.supplierName ?? ''}</td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {formatMoney(p.salePrice, p.currency, locale)}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">{p.reorderLevel || ''}</td>
-                      <td
-                        className={`px-2 py-1.5 text-end tnum ${p.stockOnHand <= 0 ? 'text-destructive' : p.reorderLevel > 0 && p.stockOnHand <= p.reorderLevel ? 'text-warning' : ''}`}
-                      >
-                        {formatQuantity(p.stockOnHand, p.units, locale)}
-                      </td>
+                      </th>
+                      <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('common.code')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
+                      <th className="px-2 py-2 text-end font-medium">{t('invoice.price')}</th>
+                      <th className="px-2 py-2 text-end font-medium">{t('inventory.reorder')}</th>
+                      <th className="px-2 py-2 text-end font-medium">{t('invoice.balance')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {rows.map((p) => (
+                      <tr
+                        key={p.id}
+                        onClick={() => toggle(p.id)}
+                        className={`cursor-pointer hover:bg-surface-2 ${picked.has(p.id) ? 'bg-brand-soft' : ''}`}
+                      >
+                        <td className="px-2 py-1.5 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={p.name}
+                            checked={picked.has(p.id)}
+                            onChange={() => toggle(p.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 text-muted">
+                          {categoryName.get(p.categoryId) ?? ''}
+                        </td>
+                        <td className="px-2 py-1.5 tnum">{p.sku}</td>
+                        <td className="max-w-64 truncate px-2 py-1.5 font-medium">{p.name}</td>
+                        <td className="px-2 py-1.5 text-muted">{p.supplierName ?? ''}</td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatMoney(p.salePrice, p.currency, locale)}
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">{p.reorderLevel || ''}</td>
+                        <td
+                          className={`px-2 py-1.5 text-end tnum ${p.stockOnHand <= 0 ? 'text-destructive' : p.reorderLevel > 0 && p.stockOnHand <= p.reorderLevel ? 'text-warning' : ''}`}
+                        >
+                          {formatQuantity(p.stockOnHand, p.units, locale)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             </div>
           )}
         </div>

@@ -25,6 +25,7 @@ import {
   useUpdateModel,
   useVariantOptions,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
@@ -479,53 +480,55 @@ function VariantGrid({ model }: { model: ModelDetail }) {
         {t('model.variants')}
       </h2>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-surface-2 text-xs text-muted">
-            <tr>
-              <th className="p-2 text-start font-medium">
-                {model.colors.length > 0 ? t('model.colors') : ''}
-              </th>
-              {colsOf.map((s) => (
-                <th key={s?.id ?? 'none'} className="p-2 text-start font-medium">
-                  {s?.name ?? ''}
+        <TableColumns id="model.variants">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className="p-2 text-start font-medium">
+                  {model.colors.length > 0 ? t('model.colors') : ''}
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {rowsOf.map((c) => (
-              <tr key={c?.id ?? 'none'}>
-                <td className="p-2 font-medium">{c?.name ?? ''}</td>
-                {colsOf.map((s) => {
-                  const v = find(c?.id, s?.id);
-                  return (
-                    <td key={s?.id ?? 'none'} className="p-1.5 align-top">
-                      {v ? (
-                        <Link
-                          to={`/inventory/items/${v.productId}`}
-                          className={`block rounded-[var(--radius-app)] border border-line p-2 hover:bg-surface-2 ${v.isActive ? '' : 'opacity-50'}`}
-                        >
-                          <span className="block truncate text-xs text-muted tnum" dir="ltr">
-                            {v.sku}
-                          </span>
-                          <span className="block font-semibold tnum">
-                            {formatNumber(v.stockOnHand, locale)}
-                          </span>
-                          <span className="block text-xs tnum">
-                            {formatMoney(v.salePrice, model.currency, locale)}
-                          </span>
-                          {v.ownPrices && <Badge tone="info">{t('model.ownPrice')}</Badge>}
-                        </Link>
-                      ) : (
-                        <span className="text-faint">—</span>
-                      )}
-                    </td>
-                  );
-                })}
+                {colsOf.map((s) => (
+                  <th key={s?.id ?? 'none'} className="p-2 text-start font-medium">
+                    {s?.name ?? ''}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {rowsOf.map((c) => (
+                <tr key={c?.id ?? 'none'}>
+                  <td className="p-2 font-medium">{c?.name ?? ''}</td>
+                  {colsOf.map((s) => {
+                    const v = find(c?.id, s?.id);
+                    return (
+                      <td key={s?.id ?? 'none'} className="p-1.5 align-top">
+                        {v ? (
+                          <Link
+                            to={`/inventory/items/${v.productId}`}
+                            className={`block rounded-[var(--radius-app)] border border-line p-2 hover:bg-surface-2 ${v.isActive ? '' : 'opacity-50'}`}
+                          >
+                            <span className="block truncate text-xs text-muted tnum" dir="ltr">
+                              {v.sku}
+                            </span>
+                            <span className="block font-semibold tnum">
+                              {formatNumber(v.stockOnHand, locale)}
+                            </span>
+                            <span className="block text-xs tnum">
+                              {formatMoney(v.salePrice, model.currency, locale)}
+                            </span>
+                            {v.ownPrices && <Badge tone="info">{t('model.ownPrice')}</Badge>}
+                          </Link>
+                        ) : (
+                          <span className="text-faint">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableColumns>
       </div>
     </Card>
   );

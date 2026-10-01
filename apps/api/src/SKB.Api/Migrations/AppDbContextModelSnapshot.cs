@@ -2130,6 +2130,35 @@ namespace SKB.Api.Migrations
                     b.ToTable("Staff");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.StaffPreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StaffId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("StaffPreferences");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.StockBalance", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -3390,6 +3419,17 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.StaffPreference", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Staff");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockBalance", b =>

@@ -9,6 +9,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useCustomerAccount, useDepartments, useDocument } from '../lib/queries';
 import { statusOf } from '../lib/status';
+import { TableColumns } from '../components/TableColumns';
 
 /**
  * A customer's account for the accountant (owner decision 2026-09-30): what they owe now; their
@@ -122,30 +123,32 @@ export function CustomerAccountPage() {
           <p className="p-4 text-sm text-muted">{t('common.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
-                  <th className="p-3 text-end font-medium">{t('analytics.invoices')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.invoiced')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.discounts')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.returned')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.left')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {a.departments.map((d) => (
-                  <tr key={d.departmentId ?? 'none'}>
-                    <td className="p-3 font-medium">{d.name || t('invoice.noDepartment')}</td>
-                    <td className="p-3 text-end tnum">{d.invoices}</td>
-                    <td className="p-3 text-end tnum">{money(d.total)}</td>
-                    <td className="p-3 text-end tnum">{money(d.discounts)}</td>
-                    <td className="p-3 text-end tnum">{money(d.returns)}</td>
-                    <td className="p-3 text-end font-semibold tnum">{money(d.outstanding)}</td>
+            <TableColumns id="account.departments">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
+                    <th className="p-3 text-end font-medium">{t('analytics.invoices')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.invoiced')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.discounts')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.returned')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.left')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {a.departments.map((d) => (
+                    <tr key={d.departmentId ?? 'none'}>
+                      <td className="p-3 font-medium">{d.name || t('invoice.noDepartment')}</td>
+                      <td className="p-3 text-end tnum">{d.invoices}</td>
+                      <td className="p-3 text-end tnum">{money(d.total)}</td>
+                      <td className="p-3 text-end tnum">{money(d.discounts)}</td>
+                      <td className="p-3 text-end tnum">{money(d.returns)}</td>
+                      <td className="p-3 text-end font-semibold tnum">{money(d.outstanding)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
           </div>
         )}
       </Card>
@@ -158,88 +161,104 @@ export function CustomerAccountPage() {
           <p className="p-4 text-sm text-muted">{t('common.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="p-3 text-start font-medium">{t('common.date')}</th>
-                  <th className="p-3 text-start font-medium">#</th>
-                  <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
-                  <th className="p-3 text-end font-medium">{t('common.total')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.discounts')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.paid')}</th>
-                  <th className="p-3 text-end font-medium">{t('account.left')}</th>
-                  <th className="p-3 text-start font-medium">{t('invoice.notes')}</th>
-                  <th className="p-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {a.documents.map((d) => {
-                  const status = statusOf(d);
-                  const isReturn = d.type === 'SALES_RETURN';
-                  return (
-                    <tr
-                      key={d.id}
-                      onClick={() => setOpenId(d.id)}
-                      className="cursor-pointer hover:bg-surface-2"
-                    >
-                      <td className="p-3 tnum">{formatDate(d.issueDate, locale)}</td>
-                      <td className="p-3">
-                        <span className="font-medium tnum">{d.number}</span>
-                        <span className="ms-2">
-                          {d.type === 'SALES_INVOICE' ? (
-                            <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
-                          ) : (
-                            <Badge tone={isReturn ? 'warning' : 'info'}>{t(`doc.${d.type}`)}</Badge>
-                          )}
-                        </span>
-                      </td>
-                      <td className="p-3 text-muted">{d.departmentName ?? '—'}</td>
-                      <td className="p-3 text-end tnum">
-                        {isReturn ? '−' : ''}
-                        {money(d.grandTotal)}
-                      </td>
-                      <td className="p-3 text-end tnum text-muted">
-                        {d.discountTotal ? money(d.discountTotal) : '—'}
-                      </td>
-                      <td className="p-3 text-end tnum">
-                        {d.type === 'SALES_INVOICE' ? money(d.paidAmount) : '—'}
-                      </td>
-                      <td className="p-3 text-end font-semibold tnum">
-                        {d.type === 'SALES_INVOICE' ? money(d.outstanding) : '—'}
-                      </td>
-                      <td className="max-w-48 truncate p-3 text-muted">{d.notes ?? ''}</td>
-                      <td className="p-3 text-end">
-                        {d.type === 'SALES_INVOICE' && d.outstanding > 0 && can('notes:receive') && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              receiveNote(d);
-                            }}
-                          >
-                            {t('order.receiveNote')}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <TableColumns id="account.documents">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-3 text-start font-medium">{t('common.date')}</th>
+                    <th className="p-3 text-start font-medium">#</th>
+                    <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
+                    <th className="p-3 text-end font-medium">{t('common.total')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.discounts')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.paid')}</th>
+                    <th className="p-3 text-end font-medium">{t('account.left')}</th>
+                    <th className="p-3 text-start font-medium">{t('invoice.notes')}</th>
+                    <th className="p-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {a.documents.map((d) => {
+                    const status = statusOf(d);
+                    const isReturn = d.type === 'SALES_RETURN';
+                    return (
+                      <tr
+                        key={d.id}
+                        onClick={() => setOpenId(d.id)}
+                        className="cursor-pointer hover:bg-surface-2"
+                      >
+                        <td className="p-3 tnum">{formatDate(d.issueDate, locale)}</td>
+                        <td className="p-3">
+                          <span className="font-medium tnum">{d.number}</span>
+                          <span className="ms-2">
+                            {d.type === 'SALES_INVOICE' ? (
+                              <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
+                            ) : (
+                              <Badge tone={isReturn ? 'warning' : 'info'}>
+                                {t(`doc.${d.type}`)}
+                              </Badge>
+                            )}
+                          </span>
+                        </td>
+                        <td className="p-3 text-muted">{d.departmentName ?? '—'}</td>
+                        <td className="p-3 text-end tnum">
+                          {isReturn ? '−' : ''}
+                          {money(d.grandTotal)}
+                        </td>
+                        <td className="p-3 text-end tnum text-muted">
+                          {d.discountTotal ? money(d.discountTotal) : '—'}
+                        </td>
+                        <td className="p-3 text-end tnum">
+                          {d.type === 'SALES_INVOICE' ? money(d.paidAmount) : '—'}
+                        </td>
+                        <td className="p-3 text-end font-semibold tnum">
+                          {d.type === 'SALES_INVOICE' ? money(d.outstanding) : '—'}
+                        </td>
+                        <td className="max-w-48 truncate p-3 text-muted">{d.notes ?? ''}</td>
+                        <td className="p-3 text-end">
+                          {d.type === 'SALES_INVOICE' &&
+                            d.outstanding > 0 &&
+                            can('notes:receive') && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  receiveNote(d);
+                                }}
+                              >
+                                {t('order.receiveNote')}
+                              </Button>
+                            )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableColumns>
           </div>
         )}
       </Card>
 
       {openId && (
-        <Sheet title={doc.data?.number ?? ''} onClose={() => setOpenId(null)} closeLabel={t('common.close')} wide>
+        <Sheet
+          title={doc.data?.number ?? ''}
+          onClose={() => setOpenId(null)}
+          closeLabel={t('common.close')}
+          wide
+        >
           <div className="h-[70vh]">
             <DocumentPreview doc={doc.data} loading={doc.isFetching} />
           </div>
         </Sheet>
       )}
       {statement && (
-        <LedgerStatementSheet kind="parties" id={a.partyId} title={a.name} onClose={() => setStatement(false)} />
+        <LedgerStatementSheet
+          kind="parties"
+          id={a.partyId}
+          title={a.name}
+          onClose={() => setStatement(false)}
+        />
       )}
     </div>
   );

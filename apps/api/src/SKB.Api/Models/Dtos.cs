@@ -916,3 +916,6 @@ public record NotificationsDto(int Unread, NotificationDto[] Items);
 public record WorkDraftDto(string Key, string Data, string UpdatedAt);
 public record SaveWorkDraftRequest(string Key, string Data);
 public record TakeWorkDraftRequest(string Key);
+
+/// <summary>A person's screen preference (e.g. a table's hidden columns).</summary>
+public record SavePreferenceRequest(string Key, string Value);

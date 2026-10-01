@@ -43,6 +43,7 @@ import {
   useProductSearch,
   useReps,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 interface Line {
   /** Local id: the same item may be on two lines (e.g. cartons and pieces). */
@@ -1097,99 +1098,105 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             ) : !isPhone ? (
               // Wide screens: the lines as a table, like the old program's grid.
               <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                <table className="w-full text-[13px]">
-                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                    <tr className="whitespace-nowrap">
-                      <th className="px-1.5 py-2 text-start font-medium">#</th>
-                      <th className="px-1.5 py-2 text-start font-medium">{t('common.code')}</th>
-                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
-                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
-                      {isSale && (
-                        <th className="px-1.5 py-2 text-end font-medium">{t('invoice.balance')}</th>
-                      )}
-                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
-                      <th className="px-1.5 py-2 text-start font-medium">
-                        {isSale ? t('invoice.price') : t('invoice.receiveCost')}
-                      </th>
-                      {showDiscountColumn && (
-                        <th className="px-1.5 py-2 text-start font-medium">
-                          {t('invoice.lineDiscount')}
-                        </th>
-                      )}
-                      <th className="px-1.5 py-2 text-end font-medium">{t('common.total')}</th>
-                      {isSale && seeCosts && (
-                        <th className="px-1.5 py-2 text-end font-medium">
-                          {t('invoice.lineProfit')}
-                        </th>
-                      )}
-                      {showBonusColumn && (
-                        <th className="px-1.5 py-2 font-medium">{t('invoice.bonus')}</th>
-                      )}
-                      <th className="w-8" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--c-line)]">
-                    {rows.map((r, i) => (
-                      <tr key={r.line.key} className="align-top">
-                        <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
-                        <td className="whitespace-nowrap px-1.5 py-2 tnum">{r.line.product.sku}</td>
-                        <td className="min-w-32 px-1.5 py-2">
-                          <span className="block font-medium">{r.line.product.name}</span>
-                          <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">
-                            {seeCosts && (
-                              <span>
-                                {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
-                              </span>
-                            )}
-                            {lineNotes(r)}
-                          </span>
-                          {lineWarning(r, 'mt-1')}
-                        </td>
-                        <td className="px-1.5 py-1.5">{unitSelect(r, `${cell} w-20`)}</td>
+                <TableColumns id={`invoice.${mode}`}>
+                  <table className="w-full text-[13px]">
+                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                      <tr className="whitespace-nowrap">
+                        <th className="px-1.5 py-2 text-start font-medium">#</th>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('common.code')}</th>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
                         {isSale && (
-                          <td
-                            className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.overStock ? 'text-destructive' : 'text-muted'}`}
-                          >
-                            {formatQuantity(
-                              available(r.line.product),
-                              r.line.product.units,
-                              locale,
-                            )}
-                          </td>
+                          <th className="px-1.5 py-2 text-end font-medium">
+                            {t('invoice.balance')}
+                          </th>
                         )}
-                        <td className="px-1.5 py-1.5">{qtyInput(r, `${cell} w-16 tnum`)}</td>
-                        <td className="px-1.5 py-1.5">{priceInput(r, `${cell} w-20`)}</td>
+                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
+                        <th className="px-1.5 py-2 text-start font-medium">
+                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}
+                        </th>
                         {showDiscountColumn && (
-                          <td className="whitespace-nowrap px-1.5 py-1.5 text-xs">
-                            {discountControls(r, false)}
-                          </td>
+                          <th className="px-1.5 py-2 text-start font-medium">
+                            {t('invoice.lineDiscount')}
+                          </th>
                         )}
-                        <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
-                          {plain.format(toMajor(r.lineTotal))}
-                        </td>
+                        <th className="px-1.5 py-2 text-end font-medium">{t('common.total')}</th>
                         {isSale && seeCosts && (
-                          <td
-                            className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.lineProfit < 0 ? 'text-destructive' : 'text-positive'}`}
-                          >
-                            {formatMoney(r.lineProfit, currency, locale)}
-                          </td>
+                          <th className="px-1.5 py-2 text-end font-medium">
+                            {t('invoice.lineProfit')}
+                          </th>
                         )}
                         {showBonusColumn && (
-                          <td className="px-1.5 py-2 text-center text-xs">{bonusBox(r)}</td>
+                          <th className="px-1.5 py-2 font-medium">{t('invoice.bonus')}</th>
                         )}
-                        <td className="px-1 py-2">
-                          <button
-                            onClick={() => removeLine(r.line.key)}
-                            className="text-faint hover:text-destructive"
-                            aria-label={t('invoice.remove')}
-                          >
-                            <Icon name="close" size={16} />
-                          </button>
-                        </td>
+                        <th className="w-8" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      {rows.map((r, i) => (
+                        <tr key={r.line.key} className="align-top">
+                          <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
+                          <td className="whitespace-nowrap px-1.5 py-2 tnum">
+                            {r.line.product.sku}
+                          </td>
+                          <td className="min-w-32 px-1.5 py-2">
+                            <span className="block font-medium">{r.line.product.name}</span>
+                            <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">
+                              {seeCosts && (
+                                <span>
+                                  {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                                </span>
+                              )}
+                              {lineNotes(r)}
+                            </span>
+                            {lineWarning(r, 'mt-1')}
+                          </td>
+                          <td className="px-1.5 py-1.5">{unitSelect(r, `${cell} w-20`)}</td>
+                          {isSale && (
+                            <td
+                              className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.overStock ? 'text-destructive' : 'text-muted'}`}
+                            >
+                              {formatQuantity(
+                                available(r.line.product),
+                                r.line.product.units,
+                                locale,
+                              )}
+                            </td>
+                          )}
+                          <td className="px-1.5 py-1.5">{qtyInput(r, `${cell} w-16 tnum`)}</td>
+                          <td className="px-1.5 py-1.5">{priceInput(r, `${cell} w-20`)}</td>
+                          {showDiscountColumn && (
+                            <td className="whitespace-nowrap px-1.5 py-1.5 text-xs">
+                              {discountControls(r, false)}
+                            </td>
+                          )}
+                          <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
+                            {plain.format(toMajor(r.lineTotal))}
+                          </td>
+                          {isSale && seeCosts && (
+                            <td
+                              className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.lineProfit < 0 ? 'text-destructive' : 'text-positive'}`}
+                            >
+                              {formatMoney(r.lineProfit, currency, locale)}
+                            </td>
+                          )}
+                          {showBonusColumn && (
+                            <td className="px-1.5 py-2 text-center text-xs">{bonusBox(r)}</td>
+                          )}
+                          <td className="px-1 py-2">
+                            <button
+                              onClick={() => removeLine(r.line.key)}
+                              className="text-faint hover:text-destructive"
+                              aria-label={t('invoice.remove')}
+                            >
+                              <Icon name="close" size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableColumns>
               </div>
             ) : (
               <ul className="mt-3 space-y-2">

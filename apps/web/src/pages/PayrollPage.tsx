@@ -46,6 +46,7 @@ import {
   useSaveShift,
   useShifts,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 type Tab = 'runs' | 'attendance' | 'employees' | 'advances' | 'setup';
 const TABS: { key: Tab; label: TranslationKey }[] = [
@@ -341,58 +342,60 @@ function RunsTab() {
               ))}
             </div>
             <Card padded={false} className="overflow-x-auto">
-              <table className="w-full min-w-[60rem] text-sm">
-                <thead className="bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className="px-3 py-2 text-start font-normal">{t('payroll.employee')}</th>
-                    <th className="px-2 py-2 text-end font-normal">{t('payroll.days')}</th>
-                    {cols.map((c) => (
-                      <th key={c.key} className="px-2 py-2 text-end font-normal">
-                        {t(c.label)}
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-end font-normal">{t('payroll.paid')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line">
-                  {r.lines.map((l) => (
-                    <tr key={l.id}>
-                      <td className="px-3 py-1.5">
-                        <span className="font-medium">{l.employeeName}</span>
-                        <span className="block text-xs text-faint tnum">
-                          {l.employeeCode}
-                          {l.lateMinutes > 0 &&
-                            ` · ${t('payroll.lateMin')} ${formatNumber(l.lateMinutes, locale)}`}
-                          {l.overtimeMinutes > 0 &&
-                            ` · ${t('payroll.overtimeMin')} ${formatNumber(l.overtimeMinutes, locale)}`}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-end tnum">
-                        {formatNumber(l.workDays - l.absentDays, locale)}/
-                        {formatNumber(l.workDays, locale)}
-                      </td>
-                      {cols.map((c) => {
-                        const v = l[c.key] as number;
-                        return (
-                          <td
-                            key={c.key}
-                            className={`px-2 py-1.5 text-end tnum ${c.key === 'net' ? 'font-semibold' : ''} ${c.minus && v ? 'text-destructive' : ''}`}
-                          >
-                            {v ? money(c.minus ? -v : v) : '–'}
-                          </td>
-                        );
-                      })}
-                      <td className="px-3 py-1.5 text-end">
-                        {l.paidAmount >= l.net && r.status !== 'DRAFT' ? (
-                          <Badge tone="positive">{t('payroll.yes')}</Badge>
-                        ) : (
-                          '–'
-                        )}
-                      </td>
+              <TableColumns id="payroll.sheet">
+                <table className="w-full min-w-[60rem] text-sm">
+                  <thead className="bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="px-3 py-2 text-start font-normal">{t('payroll.employee')}</th>
+                      <th className="px-2 py-2 text-end font-normal">{t('payroll.days')}</th>
+                      {cols.map((c) => (
+                        <th key={c.key} className="px-2 py-2 text-end font-normal">
+                          {t(c.label)}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-end font-normal">{t('payroll.paid')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {r.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td className="px-3 py-1.5">
+                          <span className="font-medium">{l.employeeName}</span>
+                          <span className="block text-xs text-faint tnum">
+                            {l.employeeCode}
+                            {l.lateMinutes > 0 &&
+                              ` · ${t('payroll.lateMin')} ${formatNumber(l.lateMinutes, locale)}`}
+                            {l.overtimeMinutes > 0 &&
+                              ` · ${t('payroll.overtimeMin')} ${formatNumber(l.overtimeMinutes, locale)}`}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">
+                          {formatNumber(l.workDays - l.absentDays, locale)}/
+                          {formatNumber(l.workDays, locale)}
+                        </td>
+                        {cols.map((c) => {
+                          const v = l[c.key] as number;
+                          return (
+                            <td
+                              key={c.key}
+                              className={`px-2 py-1.5 text-end tnum ${c.key === 'net' ? 'font-semibold' : ''} ${c.minus && v ? 'text-destructive' : ''}`}
+                            >
+                              {v ? money(c.minus ? -v : v) : '–'}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-1.5 text-end">
+                          {l.paidAmount >= l.net && r.status !== 'DRAFT' ? (
+                            <Badge tone="positive">{t('payroll.yes')}</Badge>
+                          ) : (
+                            '–'
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             </Card>
           </div>
           {paying && <PaySheet run={r} onClose={() => setPaying(false)} />}
@@ -732,98 +735,100 @@ function AttendanceTab() {
         </Card>
       ) : (
         <Card padded={false} className="overflow-x-auto">
-          <table className="w-full min-w-[46rem] text-sm">
-            <thead className="bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="px-3 py-2 text-start font-normal">{t('payroll.employee')}</th>
-                <th className="px-2 py-2 text-start font-normal">{t('payroll.status')}</th>
-                <th className="px-2 py-2 text-start font-normal">{t('payroll.in')}</th>
-                <th className="px-2 py-2 text-start font-normal">{t('payroll.out')}</th>
-                <th className="px-2 py-2 text-end font-normal">{t('payroll.lateMin')}</th>
-                <th className="px-2 py-2 text-end font-normal">{t('payroll.overtimeMin')}</th>
-                <th className="px-3 py-2 text-start font-normal">{t('payroll.notes')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.map((r) => {
-                const d = draft[r.employeeId];
-                if (!d) return null;
-                const disabled = !editable || r.locked;
-                return (
-                  <tr key={r.employeeId} className={r.dayOff ? 'bg-surface-2/50' : ''}>
-                    <td className="px-3 py-1.5">
-                      <span className="font-medium">{r.name}</span>
-                      <span className="block text-xs text-faint">
-                        {r.code}
-                        {r.shiftName && ` · ${r.shiftName}`}
-                        {r.dayOff && ` · ${t('payroll.dayOff')}`}
-                        {r.source === 'DEVICE' && ` · ${t('payroll.fromDevice')}`}
-                        {r.locked && ` · ${t('payroll.locked')}`}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <select
-                        className={`${field} w-36`}
-                        disabled={disabled}
-                        aria-label={t('payroll.status')}
-                        value={d.status}
-                        onChange={(e) =>
-                          set(r.employeeId, { status: e.target.value as AttendanceStatus | '' })
-                        }
+          <TableColumns id="payroll.history">
+            <table className="w-full min-w-[46rem] text-sm">
+              <thead className="bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-start font-normal">{t('payroll.employee')}</th>
+                  <th className="px-2 py-2 text-start font-normal">{t('payroll.status')}</th>
+                  <th className="px-2 py-2 text-start font-normal">{t('payroll.in')}</th>
+                  <th className="px-2 py-2 text-start font-normal">{t('payroll.out')}</th>
+                  <th className="px-2 py-2 text-end font-normal">{t('payroll.lateMin')}</th>
+                  <th className="px-2 py-2 text-end font-normal">{t('payroll.overtimeMin')}</th>
+                  <th className="px-3 py-2 text-start font-normal">{t('payroll.notes')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {rows.map((r) => {
+                  const d = draft[r.employeeId];
+                  if (!d) return null;
+                  const disabled = !editable || r.locked;
+                  return (
+                    <tr key={r.employeeId} className={r.dayOff ? 'bg-surface-2/50' : ''}>
+                      <td className="px-3 py-1.5">
+                        <span className="font-medium">{r.name}</span>
+                        <span className="block text-xs text-faint">
+                          {r.code}
+                          {r.shiftName && ` · ${r.shiftName}`}
+                          {r.dayOff && ` · ${t('payroll.dayOff')}`}
+                          {r.source === 'DEVICE' && ` · ${t('payroll.fromDevice')}`}
+                          {r.locked && ` · ${t('payroll.locked')}`}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          className={`${field} w-36`}
+                          disabled={disabled}
+                          aria-label={t('payroll.status')}
+                          value={d.status}
+                          onChange={(e) =>
+                            set(r.employeeId, { status: e.target.value as AttendanceStatus | '' })
+                          }
+                        >
+                          <option value="">—</option>
+                          {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {t(`payroll.att.${s}` as TranslationKey)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          className={`${field} w-28 tnum`}
+                          type="time"
+                          disabled={disabled || d.status !== 'PRESENT'}
+                          aria-label={t('payroll.in')}
+                          value={d.checkIn}
+                          onChange={(e) => set(r.employeeId, { checkIn: e.target.value })}
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input
+                          className={`${field} w-28 tnum`}
+                          type="time"
+                          disabled={disabled || d.status !== 'PRESENT'}
+                          aria-label={t('payroll.out')}
+                          value={d.checkOut}
+                          onChange={(e) => set(r.employeeId, { checkOut: e.target.value })}
+                        />
+                      </td>
+                      <td
+                        className={`px-2 py-1.5 text-end tnum ${r.lateMinutes ? 'text-warning' : 'text-faint'}`}
                       >
-                        <option value="">—</option>
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {t(`payroll.att.${s}` as TranslationKey)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        className={`${field} w-28 tnum`}
-                        type="time"
-                        disabled={disabled || d.status !== 'PRESENT'}
-                        aria-label={t('payroll.in')}
-                        value={d.checkIn}
-                        onChange={(e) => set(r.employeeId, { checkIn: e.target.value })}
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        className={`${field} w-28 tnum`}
-                        type="time"
-                        disabled={disabled || d.status !== 'PRESENT'}
-                        aria-label={t('payroll.out')}
-                        value={d.checkOut}
-                        onChange={(e) => set(r.employeeId, { checkOut: e.target.value })}
-                      />
-                    </td>
-                    <td
-                      className={`px-2 py-1.5 text-end tnum ${r.lateMinutes ? 'text-warning' : 'text-faint'}`}
-                    >
-                      {formatNumber(r.lateMinutes, locale)}
-                    </td>
-                    <td
-                      className={`px-2 py-1.5 text-end tnum ${r.overtimeMinutes ? 'text-positive' : 'text-faint'}`}
-                    >
-                      {formatNumber(r.overtimeMinutes, locale)}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <input
-                        className={field}
-                        disabled={disabled}
-                        maxLength={200}
-                        aria-label={t('payroll.notes')}
-                        value={d.notes}
-                        onChange={(e) => set(r.employeeId, { notes: e.target.value })}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        {formatNumber(r.lateMinutes, locale)}
+                      </td>
+                      <td
+                        className={`px-2 py-1.5 text-end tnum ${r.overtimeMinutes ? 'text-positive' : 'text-faint'}`}
+                      >
+                        {formatNumber(r.overtimeMinutes, locale)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <input
+                          className={field}
+                          disabled={disabled}
+                          maxLength={200}
+                          aria-label={t('payroll.notes')}
+                          value={d.notes}
+                          onChange={(e) => set(r.employeeId, { notes: e.target.value })}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableColumns>
         </Card>
       )}
       {editable && rows.length > 0 && (

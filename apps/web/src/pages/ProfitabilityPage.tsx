@@ -3,6 +3,7 @@ import { formatMoney, formatNumber, type ProfitGroupBy, companyToday } from '@sk
 import { Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useProfitReport } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const startOfMonth = () => `${companyToday().slice(0, 7)}-01`;
 
@@ -108,60 +109,62 @@ export function ProfitabilityPage({ embedded = false }: { embedded?: boolean }) 
         ) : !data || data.rows.length === 0 ? (
           <EmptyState title={t('report.noData')} icon="analytics" />
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="p-3 text-start font-medium">
-                  {by === 'customer'
-                    ? t('report.byCustomer')
-                    : by === 'product'
-                      ? t('report.byProduct')
-                      : by === 'model'
-                        ? t('report.byModel')
-                        : by === 'rep'
-                          ? t('report.byRep')
-                          : t('report.byDay')}
-                </th>
-                <th className="p-3 text-end font-medium">{t('report.revenue')}</th>
-                <th className="hidden p-3 text-end font-medium sm:table-cell">
-                  {t('report.cost')}
-                </th>
-                <th className="p-3 text-end font-medium">{t('report.profit')}</th>
-                <th className="p-3 text-end font-medium">{t('report.margin')}</th>
-                <th className="hidden p-3 text-end font-medium md:table-cell">
-                  {by === 'product' || by === 'model' ? t('report.qty') : t('report.invoices')}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {data.rows.map((r) => {
-                const m = r.revenue > 0 ? (r.profit / r.revenue) * 100 : 0;
-                return (
-                  <tr key={r.key} className="hover:bg-surface-2">
-                    <td className="p-3 font-medium">{r.label}</td>
-                    <td className="p-3 text-end tnum">
-                      {formatMoney(r.revenue, currency, locale)}
-                    </td>
-                    <td className="hidden p-3 text-end tnum text-muted sm:table-cell">
-                      {formatMoney(r.cost, currency, locale)}
-                    </td>
-                    <td
-                      className={`p-3 text-end font-semibold tnum ${r.profit >= 0 ? 'text-positive' : 'text-destructive'}`}
-                    >
-                      {formatMoney(r.profit, currency, locale)}
-                    </td>
-                    <td className="p-3 text-end tnum">{m.toFixed(1)}%</td>
-                    <td className="hidden p-3 text-end tnum text-muted md:table-cell">
-                      {formatNumber(
-                        by === 'product' || by === 'model' ? r.quantity : r.invoices,
-                        locale,
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <TableColumns id="profitability">
+            <table className="w-full text-sm">
+              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="p-3 text-start font-medium">
+                    {by === 'customer'
+                      ? t('report.byCustomer')
+                      : by === 'product'
+                        ? t('report.byProduct')
+                        : by === 'model'
+                          ? t('report.byModel')
+                          : by === 'rep'
+                            ? t('report.byRep')
+                            : t('report.byDay')}
+                  </th>
+                  <th className="p-3 text-end font-medium">{t('report.revenue')}</th>
+                  <th className="hidden p-3 text-end font-medium sm:table-cell">
+                    {t('report.cost')}
+                  </th>
+                  <th className="p-3 text-end font-medium">{t('report.profit')}</th>
+                  <th className="p-3 text-end font-medium">{t('report.margin')}</th>
+                  <th className="hidden p-3 text-end font-medium md:table-cell">
+                    {by === 'product' || by === 'model' ? t('report.qty') : t('report.invoices')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {data.rows.map((r) => {
+                  const m = r.revenue > 0 ? (r.profit / r.revenue) * 100 : 0;
+                  return (
+                    <tr key={r.key} className="hover:bg-surface-2">
+                      <td className="p-3 font-medium">{r.label}</td>
+                      <td className="p-3 text-end tnum">
+                        {formatMoney(r.revenue, currency, locale)}
+                      </td>
+                      <td className="hidden p-3 text-end tnum text-muted sm:table-cell">
+                        {formatMoney(r.cost, currency, locale)}
+                      </td>
+                      <td
+                        className={`p-3 text-end font-semibold tnum ${r.profit >= 0 ? 'text-positive' : 'text-destructive'}`}
+                      >
+                        {formatMoney(r.profit, currency, locale)}
+                      </td>
+                      <td className="p-3 text-end tnum">{m.toFixed(1)}%</td>
+                      <td className="hidden p-3 text-end tnum text-muted md:table-cell">
+                        {formatNumber(
+                          by === 'product' || by === 'model' ? r.quantity : r.invoices,
+                          locale,
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </TableColumns>
         )}
       </Card>
     </div>

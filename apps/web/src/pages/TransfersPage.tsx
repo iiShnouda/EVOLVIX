@@ -14,6 +14,7 @@ import { ApiError } from '../lib/api';
 import { useDeviceInfo } from '../lib/device';
 import { useAuth } from '../stores/auth';
 import { useCompanySettings, useFinishTransfer, useTransfer, useTransfers } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 type Tab = 'open' | 'all';
 
@@ -251,33 +252,35 @@ function TransferDetail({
         {tr.notes && <p className="col-span-2 text-sm text-muted">{tr.notes}</p>}
       </dl>
 
-      <table className="w-full text-sm">
-        <thead className="bg-surface-2 text-xs text-muted">
-          <tr>
-            <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
-            <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
-            {seeCosts && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--c-line)]">
-          {tr.lines.map((l) => (
-            <tr key={l.id}>
-              <td className="p-3">{l.productName}</td>
-              <td className="p-3 text-end tnum">{formatNumber(l.quantity, locale)}</td>
+      <TableColumns id="transfers.lines">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
+              <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
+              {seeCosts && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {tr.lines.map((l) => (
+              <tr key={l.id}>
+                <td className="p-3">{l.productName}</td>
+                <td className="p-3 text-end tnum">{formatNumber(l.quantity, locale)}</td>
+                {seeCosts && (
+                  <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>
+                )}
+              </tr>
+            ))}
+            <tr className="bg-surface-2 font-semibold">
+              <td className="p-3">{t('common.total')}</td>
+              <td className="p-3 text-end tnum">{formatNumber(tr.quantity, locale)}</td>
               {seeCosts && (
-                <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>
+                <td className="p-3 text-end tnum">{formatMoney(tr.value, currency, locale)}</td>
               )}
             </tr>
-          ))}
-          <tr className="bg-surface-2 font-semibold">
-            <td className="p-3">{t('common.total')}</td>
-            <td className="p-3 text-end tnum">{formatNumber(tr.quantity, locale)}</td>
-            {seeCosts && (
-              <td className="p-3 text-end tnum">{formatMoney(tr.value, currency, locale)}</td>
-            )}
-          </tr>
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </TableColumns>
 
       {(tr.canReceive || tr.canCancel) && (
         <div className="flex flex-wrap gap-2 border-t border-line p-4">
