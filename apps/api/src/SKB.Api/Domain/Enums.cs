@@ -57,6 +57,7 @@ public enum StockMovementType
     ADJUSTMENT,     // stocktake / manual correction
     TRANSFER_OUT,   // left this store on a transfer permit
     TRANSFER_IN,    // arrived at this store on a transfer permit
+    SALE_CANCELLED, // back into stock when a sales invoice is cancelled or changed
 }
 
 /// <summary>STORE holds stock people use; TRANSIT is the system place goods sit while being transferred.</summary>

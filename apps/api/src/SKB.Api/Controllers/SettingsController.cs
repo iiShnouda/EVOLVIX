@@ -53,6 +53,7 @@ public sealed class SettingsController : ControllerBase
         if (req.TransfersRequireReceipt is bool receipt) s.TransfersRequireReceipt = receipt;
         if (req.MaxDiscountPercent is int maxDiscount) s.MaxDiscountPercent = Math.Clamp(maxDiscount, 0, 100);
         if (req.PendingHoldDays is int holdDays) s.PendingHoldDays = Math.Clamp(holdDays, 0, 365);
+        if (req.RequireDepartment is bool requireDepartment) s.RequireDepartment = requireDepartment;
         if (req.CompanyName is not null && req.CompanyName.Trim().Length > 200)
             return BadRequest(new { message = "The name is too long.", code = "bad_name" });
         if (req.Address is not null) s.Address = Text(req.Address, 300);
@@ -81,6 +82,67 @@ public sealed class SettingsController : ControllerBase
             Request.Headers.UserAgent.ToString(), s.Id.ToString());
 
         return Ok(Mapper.ToSettings(s));
+    }
+
+    /// <summary>The document kinds whose serial number (الرقم المسلسل) the company may shape.</summary>
+    private static readonly DocumentType[] Numbered =
+    {
+        DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN, DocumentType.QUOTATION, DocumentType.SALES_ORDER,
+        DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN,
+    };
+
+    /// <summary>How each kind of document is numbered, and the number the next one gets.</summary>
+    [HttpGet("numbering")]
+    public async Task<ActionResult<NumberingDto[]>> GetNumbering()
+    {
+        var rows = await _db.DocumentNumberings.AsNoTracking().ToDictionaryAsync(n => n.Type);
+        var result = new List<NumberingDto>();
+        foreach (var type in Numbered)
+        {
+            rows.TryGetValue(type.ToString(), out var n);
+            result.Add(new NumberingDto(type.ToString(), n?.Prefix ?? "", n?.StartAt ?? 1, n?.Digits ?? 6, n is not null,
+                await DocumentNumbers.NextAsync(_db, type)));
+        }
+        return Ok(result.ToArray());
+    }
+
+    /// <summary>
+    /// Set how one kind of document is numbered (owner, 2026-10-01): a prefix such as "KM-" ({YYYY} =
+    /// the year), the number to start at and the digits. Numbers never go back: the next one is
+    /// past the highest already used with that prefix. An empty prefix = the built-in numbering.
+    /// </summary>
+    [HttpPut("numbering")]
+    [Authorize(Policy = Permissions.SettingsManage)]
+    public async Task<ActionResult<NumberingDto[]>> SaveNumbering([FromBody] SaveNumberingRequest req)
+    {
+        if (!Enum.TryParse<DocumentType>(req.Type, out var type) || !Numbered.Contains(type))
+            return BadRequest(new { message = "Unknown document kind.", code = "bad_type" });
+        var prefix = req.Prefix?.Trim() ?? "";
+        var row = await _db.DocumentNumberings.FirstOrDefaultAsync(n => n.Type == type.ToString());
+        if (prefix.Length == 0)
+        {
+            if (row is not null) _db.DocumentNumberings.Remove(row);
+        }
+        else
+        {
+            if (prefix.Length > 20 || !System.Text.RegularExpressions.Regex.IsMatch(prefix, @"^([A-Za-z0-9/._-]|\{YYYY\})+$")
+                || char.IsDigit(prefix[^1]))
+                return BadRequest(new { message = "Use letters, digits, - / . _ and {YYYY}, not ending in a digit.", code = "bad_prefix" });
+            if (req.StartAt < 1 || req.StartAt > 999_999_999)
+                return BadRequest(new { message = "Start from 1 to 999999999.", code = "bad_start" });
+            if (req.Digits < 1 || req.Digits > 10)
+                return BadRequest(new { message = "From 1 to 10 digits.", code = "bad_digits" });
+            if (row is null) _db.DocumentNumberings.Add(row = new DocumentNumbering { Type = type.ToString() });
+            row.Prefix = prefix;
+            row.StartAt = req.StartAt;
+            row.Digits = req.Digits;
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "update", "numbering",
+            CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), type.ToString());
+        return await GetNumbering();
     }
 
     private static string? Text(string s, int max)

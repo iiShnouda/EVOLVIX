@@ -6,7 +6,19 @@ public static class Permissions
     public const string DashboardView = "dashboard:view";
     public const string SalesView = "sales:view";
     public const string SalesCreate = "sales:create";
+    /// <summary>
+    /// Change a posted sales invoice (owner decision 2026-10-01): its effects (stock, balance, money,
+    /// ledger) are reversed and it is posted again under its own number.
+    /// </summary>
     public const string SalesEdit = "sales:edit";
+    /// <summary>Cancel (delete) a posted sales invoice: everything it moved is reversed; it stays listed as cancelled.</summary>
+    public const string SalesCancel = "sales:cancel";
+    /// <summary>Price a sale at the customer's last price for the item, or at its supply cost, instead of the selling price.</summary>
+    public const string SalesPriceBasis = "sales:price_basis";
+    /// <summary>Change the shipping company or address the customer's file gives a sale.</summary>
+    public const string SalesChangeShipping = "sales:change_shipping";
+    /// <summary>Mark a customer as a cash customer (عميل نقدي), who pays every invoice in full.</summary>
+    public const string PartiesCashCustomer = "parties:cash_customer";
     /// <summary>Allowed to sell below the configured profit floor (never below cost).</summary>
     public const string SalesOverrideFloor = "sales:override_floor";
     /// <summary>
@@ -176,7 +188,8 @@ public static class Permissions
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
-        DashboardView, SalesView, SalesCreate, SalesEdit, SalesOverrideFloor, SalesReturn, SalesQuote,
+        DashboardView, SalesView, SalesCreate, SalesEdit, SalesCancel, SalesPriceBasis, SalesChangeShipping,
+        PartiesCashCustomer, SalesOverrideFloor, SalesReturn, SalesQuote,
         SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, InventoryView, InventoryEdit, StaffView, StaffManage, RolesManage, StaffAccess,
@@ -210,6 +223,8 @@ public static class RolePermissions
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
+            Permissions.SalesCancel, Permissions.SalesPriceBasis, Permissions.SalesChangeShipping,
+            Permissions.PartiesCashCustomer,
             Permissions.SalesOverrideFloor, Permissions.SalesReturn, Permissions.SalesQuote,
             // Invoices post at once and the accountant is told (owner decision 2026-09-30); approving
             // stays only for pending invoices someone may still be asked to save.
@@ -241,7 +256,7 @@ public static class RolePermissions
         // invoices post at once; the accountant is told and takes the payment.
         [Role.SALES] = new[]
         {
-            Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
+            Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate,
             Permissions.SalesQuote, Permissions.SalesRaisePrice,
             // The seller writes a customer's return; it goes straight back into its warehouse.
             Permissions.SalesReturn,

@@ -181,9 +181,15 @@ eq(
   [own.deliveryMethod, own.deliveryStatus, own.deliveryAddress, own.driverName],
   ['OWN_DELIVERY', 'PENDING', '5 Nile St.', 'Karim Sales'],
 );
+// The address comes from the customer's file; another one needs sales:change_shipping (2026-10-01).
+eq(
+  'a seller may not type another address',
+  (await sale(karim, { deliveryMethod: 'OWN_DELIVERY', deliveryAddress: 'Gate 3' })).data?.code,
+  'shipping_not_allowed',
+);
 const own2 = ok(
   'own delivery to another address',
-  await sale(karim, { deliveryMethod: 'OWN_DELIVERY', deliveryAddress: '  Gate 3  ' }),
+  await sale(owner, { deliveryMethod: 'OWN_DELIVERY', deliveryAddress: '  Gate 3  ' }),
 );
 eq('address typed wins', [own2.deliveryAddress, own2.driverName], ['Gate 3', null]);
 const readBack = ok('read back', await owner.get(`/sales/invoices/${own.id}`));

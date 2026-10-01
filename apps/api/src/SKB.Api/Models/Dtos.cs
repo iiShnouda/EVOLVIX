@@ -44,7 +44,7 @@ public record SalesSummaryDto(
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
-    string? Notes = null);
+    string? Notes = null, string? State = null);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
@@ -115,7 +115,7 @@ public record CreateSalesInvoiceRequest(
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
-    string? PaidAccountId = null, string? DepartmentId = null);
+    string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null);
 
 /// <summary>
 /// Approving a pending invoice: what the customer pays now and into which account; optionally new
@@ -187,7 +187,13 @@ public record CompanySettingsDto(
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
-    int PendingHoldDays = 0, int LogoVersion = 0);
+    int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true);
+
+/// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
+public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
+
+/// <summary>An empty prefix goes back to the built-in numbering.</summary>
+public record SaveNumberingRequest(string Type, string? Prefix, int StartAt = 1, int Digits = 6);
 
 /// <summary>
 /// What the app shows of the company before and after sign-in: its name and logo version
@@ -204,7 +210,7 @@ public record UpdateSettingsRequest(
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
-    int? MaxDiscountPercent = null, int? PendingHoldDays = null);
+    int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -389,7 +395,8 @@ public record PartyDto(
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
     string? Email, string? TaxNumber, string? Address, bool IsActive,
     string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null,
-    int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null);
+    int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null,
+    string? DefaultCarrierId = null, bool IsCashCustomer = false);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -400,14 +407,14 @@ public record SetCreditLimitRequest(long? CreditLimit);
 public record CreatePartyRequest(
     string? Name, string[]? Types, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
-    string? ShippingAddress = null, string? Notes = null);
+    string? ShippingAddress = null, string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null);
 
 /// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
     string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? Address = null, bool? IsActive = null,
     string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
-    string? Notes = null);
+    string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null);
 
 /// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
 public record SetPartyPriceLevelsRequest(
@@ -452,11 +459,17 @@ public record SetQuantityBreaksRequest(string? ProductId, string? ModelId, Quant
 public record PricingLineRequest(string ProductId, string? UnitId, int Quantity, bool IsBonus = false, string? WarehouseId = null);
 
 /// <summary>What an invoice's lines would cost for a party (the invoice screen asks as lines change).</summary>
-public record PricingRequest(string? PartyId, string? PriceLevelId, string? WarehouseId, PricingLineRequest[]? Lines);
+/// <param name="PriceBasis">LIST (the selling price), LAST (the customer's last price) or COST.</param>
+public record PricingRequest(string? PartyId, string? PriceLevelId, string? WarehouseId, PricingLineRequest[]? Lines,
+    string? PriceBasis = null);
 
 /// <param name="Source">LIST, LEVEL, COST or BONUS.</param>
 /// <param name="BreakBp">The quantity discount applied (hundredths of a percent).</param>
-public record PricedLineDto(long UnitPrice, long Discount, string Source, string? ListName, int BreakBp);
+/// <param name="ListPrice">The selling price (list / level) before any basis.</param>
+/// <param name="UnitCost">The supply cost of one line unit; only for those who may see costs.</param>
+/// <param name="LastPrice">What the customer last paid per line unit, if they bought it in this unit before.</param>
+public record PricedLineDto(long UnitPrice, long Discount, string Source, string? ListName, int BreakBp,
+    long ListPrice = 0, long? UnitCost = null, long? LastPrice = null);
 
 public record PricingDto(string? PriceLevelId, PricedLineDto[] Lines);
 

@@ -265,6 +265,26 @@ public sealed class LedgerService
     }
 
     /// <summary>
+    /// A sales invoice cancelled or changed: the exact reverse of what it stands at now (its last
+    /// posting), so it can be changed any number of times. Paid now: Dr customer · Cr money.
+    /// </summary>
+    public async Task PostSalesInvoiceReversalAsync(SalesDocument doc, Party party, MoneyAccount? paidInto,
+        Guid staffId, string number)
+    {
+        var customer = await ForPartyAsync(party, PartyRole.Customer);
+        var draft = Begin("SALES_INVOICE_CANCEL", doc.Id, number, $"Sales invoice {doc.Number} reversed", doc.BranchId, staffId)
+            .Credit(customer, doc.GrandTotal)
+            .Debit(await SystemAsync(LedgerKeys.Sales), doc.Subtotal - doc.DiscountTotal)
+            .Debit(await SystemAsync(LedgerKeys.VatOutput), doc.TaxTotal)
+            .Debit(await SystemAsync(LedgerKeys.OtherIncome), doc.AdditionTotal)
+            .Credit(await SystemAsync(LedgerKeys.Cogs), doc.CostTotal)
+            .Debit(await SystemAsync(LedgerKeys.Inventory), doc.CostTotal);
+        if (doc.PaidAmount > 0 && paidInto is not null)
+            draft.Credit(await ForMoneyAsync(paidInto), doc.PaidAmount).Debit(customer, doc.PaidAmount);
+        Post(draft);
+    }
+
+    /// <summary>
     /// Sales return: Dr sales returns (net) · Dr VAT · Cr customer (total) · Dr inventory · Cr COGS;
     /// cash back: Dr customer · Cr money.
     /// </summary>

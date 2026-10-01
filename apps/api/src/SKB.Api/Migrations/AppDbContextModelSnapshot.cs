@@ -309,6 +309,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
+                    b.Property<bool>("RequireDepartment")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("TaxNumber")
                         .HasColumnType("text");
 
@@ -457,6 +460,31 @@ namespace SKB.Api.Migrations
                     b.HasIndex("WarehouseId");
 
                     b.ToTable("DocumentLines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.DocumentNumbering", b =>
+                {
+                    b.Property<string>("Type")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int>("Digits")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("StartAt")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Type");
+
+                    b.ToTable("DocumentNumberings");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Employee", b =>
@@ -1203,10 +1231,16 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("DefaultCarrierId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsCashCustomer")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")

@@ -77,7 +77,8 @@ public sealed class PartiesController : ControllerBase
             Currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP",
         };
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
-            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes), isNew: true);
+            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
+            req.DefaultCarrierId, req.IsCashCustomer), isNew: true);
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
@@ -96,7 +97,8 @@ public sealed class PartiesController : ControllerBase
         await using var tx = await _db.Database.BeginTransactionAsync();
         await MoneyService.LockPartiesAsync(_db, party.Id);
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
-            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes), isNew: false);
+            req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
+            req.DefaultCarrierId, req.IsCashCustomer), isNew: false);
         if (error is not null) return error;
         if (req.IsActive == false && party.IsActive)
         {
@@ -117,7 +119,8 @@ public sealed class PartiesController : ControllerBase
 
     private sealed record Fields(
         string? Name, string[]? Types, string? Phone, string? Email, string? TaxNumber, string? Address,
-        string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes);
+        string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes,
+        string? DefaultCarrierId = null, bool? IsCashCustomer = null);
 
     private const int MaxOtherPhones = 5;
 
@@ -163,6 +166,20 @@ public sealed class PartiesController : ControllerBase
         if (f.ShippingAddress is not null) party.ShippingAddress = Text(f.ShippingAddress, 300);
         if (f.ContactName is not null) party.ContactName = Text(f.ContactName, 200);
         if (f.Notes is not null) party.Notes = Text(f.Notes, 1000);
+        if (f.DefaultCarrierId is not null)
+        {
+            if (f.DefaultCarrierId == "") party.DefaultCarrierId = null;
+            else if (!Guid.TryParse(f.DefaultCarrierId, out var carrier)
+                     || !await _db.Parties.AnyAsync(p => p.Id == carrier && p.IsActive && p.Types.Contains(nameof(PartyType.CARRIER))))
+                return BadRequest(new { message = "Choose the shipping company.", code = "carrier_not_found" });
+            else party.DefaultCarrierId = carrier;
+        }
+        if (f.IsCashCustomer is bool cash && cash != party.IsCashCustomer)
+        {
+            if (!User.HasClaim("permission", Permissions.PartiesCashCustomer))
+                return StatusCode(403, new { message = "Marking a cash customer needs permission.", code = "cash_customer_not_allowed" });
+            party.IsCashCustomer = cash;
+        }
         if (f.Email is not null)
         {
             var e = Text(f.Email, 200)?.ToLowerInvariant();

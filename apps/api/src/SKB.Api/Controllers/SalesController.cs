@@ -81,7 +81,8 @@ public sealed class SalesController : ControllerBase
         if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
         else if (Guid.TryParse(departmentId, out var dept)) q = q.Where(d => d.DepartmentId == dept);
         q = DocumentLists.Filter(q, search, status, from, to);
-        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment));
+        q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
+        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment, Request.Query["state"]));
     }
 
     /// <summary>
@@ -194,6 +195,99 @@ public sealed class SalesController : ControllerBase
     [Authorize(Policy = Permissions.SalesCreate)]
     public Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req) =>
         CreateCore(req, DocumentType.SALES_INVOICE, fromId: null);
+
+    /// <summary>
+    /// Change a posted sales invoice (owner decision 2026-10-01): what it moved — stock, the
+    /// customer's balance, money paid now and its ledger entry — is reversed, and it is posted again
+    /// from the request under its own number and date, checked like a new invoice. Not once goods
+    /// were returned on it, payments or notes were taken against it, it went out for delivery, or
+    /// it is in a locked period.
+    /// </summary>
+    [HttpPut("invoices/{id:guid}")]
+    [Authorize(Policy = Permissions.SalesEdit)]
+    public async Task<ActionResult<SalesDetailDto>> UpdateInvoice(Guid id, [FromBody] CreateSalesInvoiceRequest req)
+    {
+        var branch = await ScopedInvoices().Where(d => d.Id == id).Select(d => (Guid?)d.BranchId).FirstOrDefaultAsync();
+        if (branch is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: branch, editId: id);
+    }
+
+    /// <summary>
+    /// Cancel (delete) a posted sales invoice: its goods go back into their warehouses at the cost
+    /// they left at, the customer no longer owes it, money paid now goes back out, and its ledger
+    /// entry is reversed. It stays on the list as cancelled, under its number.
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/cancel")]
+    [Authorize(Policy = Permissions.SalesCancel)]
+    public async Task<ActionResult<SalesDetailDto>> CancelInvoice(Guid id)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var doc = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse)
+            .FirstOrDefaultAsync(d => d.Id == id);
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var error = await ReverseInvoiceAsync(doc, staffId);
+        if (error is not null) return InvoiceLines.Refuse(this, error);
+        doc.Status = DocumentStatus.CANCELLED;
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("cancel", "sales_invoice", doc);
+        return await GetOne(id);
+    }
+
+    private IQueryable<SalesDocument> ScopedInvoices() =>
+        _db.SalesDocuments.Where(d => d.Type == DocumentType.SALES_INVOICE)
+            .InBranches(User, d => d.BranchId).InDepartments(User);
+
+    /// <summary>
+    /// Undo everything posted sales invoice <paramref name="doc"/> moved, as it stands now (so it can
+    /// be changed again and again): goods back at the cost they left at, the customer's balance,
+    /// money paid now, and the ledger. The caller holds the transaction and the invoice's row lock;
+    /// the changes are saved (not committed) so what follows reads them.
+    /// </summary>
+    private async Task<InvoiceLines.LineError?> ReverseInvoiceAsync(SalesDocument doc, Guid staffId)
+    {
+        if (doc.Status == DocumentStatus.CANCELLED)
+            return new("invoice_cancelled", "This invoice is already cancelled.");
+        if (await _db.SalesDocuments.AnyAsync(d => d.SourceDocumentId == doc.Id && d.Type == DocumentType.SALES_RETURN
+                                                   && d.Status != DocumentStatus.CANCELLED))
+            return new("invoice_has_returns", "Goods were returned on this invoice, so it can no longer be changed.");
+        if (await _db.VoucherAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Voucher!.Status == VoucherStatus.POSTED))
+            return new("invoice_has_payments", "Payments were received against this invoice. Cancel those vouchers first.");
+        if (await _db.NoteAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Note!.Status != NoteStatus.CANCELLED))
+            return new("invoice_has_notes", "Cheques or notes were taken against this invoice. Cancel them first.");
+        if (doc.DeliveryStatus is DeliveryStatus.OUT_FOR_DELIVERY or DeliveryStatus.DELIVERED or DeliveryStatus.RETURNED
+            || await _db.ShipmentInvoices.AnyAsync(x => x.DocumentId == doc.Id && x.Shipment!.Status != ShipmentStatus.CANCELLED))
+            return new("invoice_shipped", "This invoice went out for delivery, so it can no longer be changed.");
+        var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
+        if (lockDate is DateTime locked && CompanyClock.DayOf(doc.IssueDate) <= DateOnly.FromDateTime(locked))
+            return new("period_locked", "This invoice is in a locked period.");
+
+        // Goods back where they left from, at what they cost when they left.
+        var products = await _inventory.LockProductsAsync(doc.Lines.Select(l => l.ProductId));
+        foreach (var line in doc.Lines.Where(l => l.Quantity > 0 && l.Warehouse is not null))
+            if (products.TryGetValue(line.ProductId, out var product))
+                _inventory.ReceiveValue(product, line.Warehouse!, line.Quantity, line.LineCost,
+                    StockMovementType.SALE_CANCELLED, doc.Id, doc.Number);
+
+        // The customer no longer owes it; money paid on it now goes back out.
+        await MoneyService.LockPartiesAsync(_db, doc.PartyId);
+        var party = await _db.Parties.FirstAsync(p => p.Id == doc.PartyId);
+        await _db.Entry(party).ReloadAsync();
+        party.Balance -= doc.GrandTotal - doc.PaidAmount;
+        MoneyAccount? paidInto = null;
+        if (doc.PaidAmount > 0 && doc.PaidAccountId is Guid accountId)
+        {
+            paidInto = (await _money.LockAsync(new[] { accountId }))[accountId];
+            var moneyError = _money.Move(paidInto, -doc.PaidAmount, MoneyMovementKind.CANCELLATION, staffId, doc.Number,
+                documentId: doc.Id, partyId: doc.PartyId);
+            if (moneyError is not null) return new(moneyError.Code, moneyError.Message);
+        }
+        await _ledger.PostSalesInvoiceReversalAsync(doc, party, paidInto, staffId, doc.Number);
+        await _db.SaveChangesAsync();
+        return null;
+    }
 
     /// <summary>
     /// A price quotation (عرض سعر): priced exactly like an invoice — same levels, charges, permissions
@@ -426,7 +520,7 @@ public sealed class SalesController : ControllerBase
     /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
     private async Task<ActionResult<SalesDetailDto>> CreateCore(
         CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true,
-        Guid? replaceId = null)
+        Guid? replaceId = null, Guid? editId = null)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -448,8 +542,12 @@ public sealed class SalesController : ControllerBase
         if (quote && dueDate is DateTime until && until.Date < CompanyClock.TodayDate)
             return BadRequest(new { message = "A quotation is valid until today or later.", code = "bad_valid_until" });
         // A new invoice's due date (تاريخ الاستحقاق) is today or later.
-        if (type == DocumentType.SALES_INVOICE && fromId is null && dueDate is DateTime due && due.Date < CompanyClock.TodayDate)
+        if (type == DocumentType.SALES_INVOICE && fromId is null && editId is null
+            && dueDate is DateTime due && due.Date < CompanyClock.TodayDate)
             return BadRequest(new { message = "The due date is today or later.", code = "bad_due_date" });
+
+        var basis = PriceBasis.Parse(req.PriceBasis);
+        if (basis is null) return BadRequest(new { message = "Unknown price basis.", code = "bad_price_basis" });
 
         var settings = await GetSettingsAsync();
         // A quotation still valid keeps what was approved on it: its prices, level, discounts, free
@@ -509,15 +607,27 @@ public sealed class SalesController : ControllerBase
                 return BadRequest(new { message = "Driver not found.", code = "driver_not_found" });
             driverId = driver;
         }
+        // The shipping company and address come from the customer's file (owner, 2026-10-01);
+        // another one on this sale needs its own permission.
+        var canChangeShipping = Approved(Permissions.SalesChangeShipping);
         if (method == DeliveryMethod.SHIPPING_COMPANY)
         {
-            if (!Guid.TryParse(req.CarrierId, out var carrier)
+            var asked = string.IsNullOrWhiteSpace(req.CarrierId) ? party.DefaultCarrierId?.ToString() : req.CarrierId;
+            if (!Guid.TryParse(asked, out var carrier)
                 || !await _db.Parties.AnyAsync(p => p.Id == carrier && p.IsActive && p.Types.Contains(nameof(PartyType.CARRIER))))
                 return BadRequest(new { message = "Choose the shipping company.", code = "carrier_not_found" });
+            if (party.DefaultCarrierId is Guid usual && carrier != usual && !canChangeShipping)
+                return InvoiceLines.Refuse(this, new("shipping_not_allowed",
+                    "This customer ships with another company. Changing it needs permission."));
             carrierId = carrier;
         }
-        var deliveryAddress = method == DeliveryMethod.PICKUP ? null
-            : Clean(req.DeliveryAddress, 300) ?? party.ShippingAddress ?? party.Address;
+        var fileAddress = party.ShippingAddress ?? party.Address;
+        var askedAddress = Clean(req.DeliveryAddress, 300);
+        if (method != DeliveryMethod.PICKUP && askedAddress is not null && fileAddress is not null
+            && askedAddress != fileAddress && !canChangeShipping)
+            return InvoiceLines.Refuse(this, new("shipping_not_allowed",
+                "The shipping address comes from the customer's file. Changing it needs permission."));
+        var deliveryAddress = method == DeliveryMethod.PICKUP ? null : askedAddress ?? fileAddress;
 
         // ---- Shape checks and warehouse per line (no stock read yet) ----
         var cache = new Dictionary<string, Warehouse>();
@@ -549,6 +659,18 @@ public sealed class SalesController : ControllerBase
                 return BadRequest(fromQuote.Type == DocumentType.SALES_ORDER
                     ? new { message = "This invoice is no longer pending.", code = "order_closed" }
                     : new { message = "This quotation is already closed.", code = "quote_closed" });
+        }
+        // A posted invoice being changed: undo it first, so its goods and the customer's balance
+        // are back before the new version is checked and posted.
+        SalesDocument? edited = null;
+        if (editId is Guid eid)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {eid} FOR UPDATE");
+            edited = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse).Include(d => d.Charges)
+                .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == eid);
+            if (edited is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+            var reverseError = await ReverseInvoiceAsync(edited, staffId);
+            if (reverseError is not null) return InvoiceLines.Refuse(this, reverseError);
         }
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         var book = await PriceBook.LoadAsync(_db, products.Keys);
@@ -584,9 +706,19 @@ public sealed class SalesController : ControllerBase
         // What each line costs by the rules: price list, level (or cost), and its quantity discount.
         var special = await SpecialPrices.LoadAsync(_db, PriceSide.SALE, party.SalesPriceListId,
             resolved.Select(r => r.Product).ToList());
-        var priced = special.Price(book, level, PriceSide.SALE, resolved.Select(r =>
-            new SpecialPrices.LineAsk(r.Product, r.Unit, r.Req.Quantity, r.BaseQty, r.Req.IsBonus, r.BaseCost)).ToList(),
-            settings.DefaultMarkupPercent);
+        var asks = resolved.Select(r =>
+            new SpecialPrices.LineAsk(r.Product, r.Unit, r.Req.Quantity, r.BaseQty, r.Req.IsBonus, r.BaseCost)).ToList();
+        var priced = special.Price(book, level, PriceSide.SALE, asks, settings.DefaultMarkupPercent);
+        // Sold at the customer's last price or at cost instead of the selling price: its own permission.
+        if (basis != PriceBasis.List)
+        {
+            if (!Approved(Permissions.SalesPriceBasis))
+                return InvoiceLines.Refuse(this, new("price_basis_not_allowed", "Pricing at the last price or at cost needs permission."));
+            var last = basis == PriceBasis.Last
+                ? await PriceBasis.LastPricesAsync(_db, partyId, products.Keys)
+                : new Dictionary<(Guid Product, Guid? Unit), long>();
+            priced = PriceBasis.Apply(basis, priced, asks, last);
+        }
         for (var i = 0; i < resolved.Count; i++)
         {
             var (line, product, unit, _, _, _) = resolved[i];
@@ -671,8 +803,15 @@ public sealed class SalesController : ControllerBase
             await _db.DocumentCharges.Where(c => c.DocumentId == rid).ExecuteDeleteAsync();
             await _db.SalesDocuments.Where(d => d.Id == rid).ExecuteDeleteAsync();
         }
-        var number = replaced?.Number ?? await DocumentNumbers.NextAsync(_db, type);
-        var doc = new SalesDocument
+        var number = edited?.Number ?? replaced?.Number ?? await DocumentNumbers.NextAsync(_db, type);
+        if (edited is not null)
+        {
+            _db.DocumentLines.RemoveRange(edited.Lines);
+            _db.DocumentCharges.RemoveRange(edited.Charges);
+            edited.Lines.Clear();
+            edited.Charges.Clear();
+        }
+        var doc = edited ?? new SalesDocument
         {
             Id = replaced?.Id ?? Guid.NewGuid(), CreatedAt = replaced?.CreatedAt ?? DateTime.UtcNow,
             Number = number, Type = type, BranchId = branchId,
@@ -686,6 +825,23 @@ public sealed class SalesController : ControllerBase
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
             DeliveryAddress = deliveryAddress, DriverId = driverId, CarrierId = carrierId,
         };
+        if (edited is not null)
+        {
+            // Same document, number, date and maker; everything else as asked now.
+            doc.PartyId = partyId;
+            doc.DueDate = dueDate;
+            doc.Currency = settings.Currency;
+            doc.Notes = Clean(req.Notes, 500);
+            doc.PriceLevelId = level?.Id;
+            doc.RepId = repId;
+            doc.DepartmentId = department?.Id;
+            doc.DeliveryMethod = method;
+            doc.DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING;
+            doc.DeliveryAddress = deliveryAddress;
+            doc.DriverId = driverId;
+            doc.CarrierId = carrierId;
+            doc.PaidAccountId = null;
+        }
 
         for (var i = 0; i < resolved.Count; i++)
         {
@@ -740,6 +896,13 @@ public sealed class SalesController : ControllerBase
                 Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
         }
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
+        // A cash customer (عميل نقدي) pays the whole invoice now.
+        if (party.IsCashCustomer && doc.PaidAmount < grand)
+            return BadRequest(new
+            {
+                message = $"{party.Name} is a cash customer: the whole {InvoiceLines.Major(grand)} is paid now.",
+                code = "cash_customer_must_pay",
+            });
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
             : DocumentStatus.CONFIRMED;
@@ -773,13 +936,20 @@ public sealed class SalesController : ControllerBase
         if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
         if (fromQuote?.Type == DocumentType.SALES_ORDER) await _notifications.OrderDecidedAsync(fromQuote, approved: true, User);
         // Whoever takes the payment hears of it: the customer and the department.
-        else await _notifications.InvoiceNewAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
+        else if (edited is null)
+            await _notifications.InvoiceNewAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
 
-        _db.SalesDocuments.Add(doc);
+        if (edited is null) _db.SalesDocuments.Add(doc);
+        else
+        {
+            // New rows under a document already tracked: insert them (their ids are set already).
+            foreach (var l in doc.Lines) _db.Entry(l).State = EntityState.Added;
+            foreach (var c in doc.Charges) _db.Entry(c).State = EntityState.Added;
+        }
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        await AuditAsync("create", "sales_invoice", doc);
+        await AuditAsync(edited is null ? "create" : "update", "sales_invoice", doc);
         if (fromQuote is not null)
             await AuditAsync(fromQuote.Type == DocumentType.SALES_ORDER ? "approve" : "convert",
                 fromQuote.Type == DocumentType.SALES_ORDER ? "sales_order" : "quotation", fromQuote);
@@ -840,7 +1010,12 @@ public sealed class SalesController : ControllerBase
         Guid id;
         if (string.IsNullOrWhiteSpace(raw))
         {
-            if (mine is null) return (null, null);
+            // Every sale names its department while the company has any (Settings).
+            if (mine is null)
+                return await _db.CompanySettings.Select(s => s.RequireDepartment).FirstOrDefaultAsync()
+                       && await _db.Departments.AnyAsync(d => d.IsActive)
+                    ? (null, BadRequest(new { message = "Choose the department.", code = "department_required" }))
+                    : (null, null);
             if (mine.Length != 1)
                 return (null, BadRequest(new { message = "Choose the department.", code = "department_required" }));
             id = mine[0];

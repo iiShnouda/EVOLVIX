@@ -53,7 +53,8 @@ public sealed class PurchasesController : ControllerBase
     {
         var q = _db.SalesDocuments.Where(d => d.Type == type).InBranches(User, d => d.BranchId);
         q = DocumentLists.Filter(q, search, status, from, to);
-        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment));
+        q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
+        return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment, Request.Query["state"]));
     }
 
     /// <summary>One purchase invoice or purchase return (invoice lines carry the returned quantity).</summary>

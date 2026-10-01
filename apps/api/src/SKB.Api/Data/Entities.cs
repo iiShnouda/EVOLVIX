@@ -220,6 +220,14 @@ public class Party
     public string? ContactName { get; set; }
     /// <summary>Where goods are shipped (عنوان الشحن); delivered sales start at it, else at <see cref="Address"/>.</summary>
     public string? ShippingAddress { get; set; }
+    /// <summary>
+    /// The shipping company this customer's parcels go with (owner, 2026-10-01): a sale shipped by a
+    /// company takes it, and the shipping address, from here; changing them on a sale needs
+    /// <c>sales:change_shipping</c>.
+    /// </summary>
+    public Guid? DefaultCarrierId { get; set; }
+    /// <summary>A cash customer (عميل نقدي): pays every invoice in full when it is made, never on account.</summary>
+    public bool IsCashCustomer { get; set; }
     public string? Notes { get; set; }
     /// <summary>
     /// The most a customer may owe (حد الائتمان, minor units); null = no limit. A sale that would take
@@ -943,6 +951,27 @@ public class CompanySettings
     /// their office's name and logo, while the program's own name and mark stay).
     /// </summary>
     public int LogoVersion { get; set; }
+    /// <summary>
+    /// Every sale names its department (owner, 2026-10-01: the store holds departments and each has
+    /// its own goods). Only enforced while the company has departments.
+    /// </summary>
+    public bool RequireDepartment { get; set; } = true;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// How one kind of document is numbered (الرقم المسلسل, owner 2026-10-01): its own prefix (e.g.
+/// "KM-", with {YYYY} for the year) and the number it starts at. A kind with no row keeps the
+/// built-in INV-2026-000001 style.
+/// </summary>
+public class DocumentNumbering
+{
+    /// <summary>The document type (SALES_INVOICE, SALES_RETURN, …).</summary>
+    public string Type { get; set; } = "";
+    public string Prefix { get; set; } = "";
+    public int StartAt { get; set; } = 1;
+    /// <summary>At least this many digits, zero-padded.</summary>
+    public int Digits { get; set; } = 6;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -18,15 +18,25 @@ public static class DocumentNumbers
         _ => $"DOC-{year}-",
     };
 
+    /// <summary>A custom prefix with its year filled in ({YYYY}).</summary>
+    public static string CustomPrefix(string prefix, int year) => prefix.Replace("{YYYY}", year.ToString());
+
     public static async Task<string> NextAsync(AppDbContext db, DocumentType type)
     {
-        var prefix = PrefixFor(type, CompanyClock.Year);
+        // The company's own numbering for this kind (Settings), else the built-in one.
+        var custom = await db.DocumentNumberings.AsNoTracking().FirstOrDefaultAsync(n => n.Type == type.ToString());
+        var prefix = custom is null ? PrefixFor(type, CompanyClock.Year) : CustomPrefix(custom.Prefix, CompanyClock.Year);
+        var digits = custom?.Digits ?? 6;
         await LockAsync(db, prefix);
-        var last = await db.SalesDocuments.Where(d => d.Number.StartsWith(prefix))
-            .OrderByDescending(d => d.Number).Select(d => d.Number).FirstOrDefaultAsync();
-        var seq = 1;
-        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
-        return $"{prefix}{seq:D6}";
+        // The highest number already used after this prefix, compared as a number.
+        var from = prefix.Length + 1;
+        var like = prefix.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        var last = await db.Database.SqlQuery<long?>($"""
+            SELECT MAX(CAST(substr("Number", {from}) AS bigint)) AS "Value" FROM "SalesDocuments"
+            WHERE "Number" LIKE {like} AND substr("Number", {from}) ~ '^[0-9]+$' AND length("Number") - {from} < 18
+            """).SingleAsync() ?? 0;
+        var seq = Math.Max(last + 1, custom?.StartAt ?? 1);
+        return $"{prefix}{seq.ToString().PadLeft(digits, '0')}";
     }
 
     /// <summary>Next stocktake reference, e.g. ADJ-2026-000007 (kept on the stock movements it posts).</summary>

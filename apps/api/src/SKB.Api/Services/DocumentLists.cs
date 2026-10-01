@@ -23,6 +23,32 @@ public static class DocumentLists
         public long PaidAmount { get; set; }
         /// <summary>Still owed on an invoice: total − paid − what its returns put on the account (≤ 0 = nothing).</summary>
         public long Owed { get; set; }
+        public bool IsInvoice { get; set; }
+        /// <summary>A shipping company still has to pay us cash on delivery for it.</summary>
+        public bool Collecting { get; set; }
+    }
+
+    /// <summary>
+    /// The payment state of an invoice (owner, 2026-10-01), one list instead of status + payment:
+    /// CREDIT (آجل: nothing paid), COLLECTING (جاري الدفع: cash on delivery not yet paid to us),
+    /// PARTIAL (مدفوعة جزئيًا), PAID (مدفوعة) or CANCELLED (ملغاة). Other documents keep their status.
+    /// </summary>
+    public static readonly string[] States = { "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED" };
+
+    private static string StateOf(Row r) =>
+        r.Status == DocumentStatus.CANCELLED ? "CANCELLED"
+        : !r.IsInvoice ? r.Status.ToString()
+        : r.Owed <= 0 ? "PAID"
+        : r.Collecting ? "COLLECTING"
+        : r.PaidAmount > 0 || r.Owed < r.GrandTotal ? "PARTIAL"
+        : "CREDIT";
+
+    /// <summary>Only one branch (of those the person may see) and documents with goods in one warehouse.</summary>
+    public static IQueryable<SalesDocument> Narrow(IQueryable<SalesDocument> q, string? branchId, string? warehouseId)
+    {
+        if (Guid.TryParse(branchId, out var b)) q = q.Where(d => d.BranchId == b);
+        if (Guid.TryParse(warehouseId, out var w)) q = q.Where(d => d.Lines.Any(l => l.WarehouseId == w));
+        return q;
     }
 
     /// <summary>Search (number, name, or the customer's code), status and company days.</summary>
@@ -44,8 +70,9 @@ public static class DocumentLists
 
     /// <summary>One page, newest first, with what is owed on each and the totals of the whole filter.</summary>
     /// <param name="payment">"credit" (آجل: still owed) or "paid" (nothing owed); anything else = all.</param>
+    /// <param name="state">One of <see cref="States"/>; anything else = all.</param>
     public static async Task<DocumentListDto> PageAsync(AppDbContext db, IQueryable<SalesDocument> q,
-        int page, int pageSize, string? payment)
+        int page, int pageSize, string? payment, string? state = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -61,7 +88,24 @@ public static class DocumentLists
                                 && (r.Type == DocumentType.SALES_RETURN || r.Type == DocumentType.PURCHASE_RETURN)
                                 && r.Status != DocumentStatus.CANCELLED)
                     .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0),
+            IsInvoice = d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE,
+            Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
+                && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
+                    || x.Shipment.Status == ShipmentStatus.DELIVERED)),
         });
+        switch (state?.ToUpperInvariant())
+        {
+            case "CANCELLED": rows = rows.Where(r => r.Status == DocumentStatus.CANCELLED); break;
+            case "PAID": rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed <= 0); break;
+            case "COLLECTING":
+                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed > 0 && r.Collecting); break;
+            case "PARTIAL":
+                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed > 0 && !r.Collecting
+                                       && (r.PaidAmount > 0 || r.Owed < r.GrandTotal)); break;
+            case "CREDIT":
+                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed > 0 && !r.Collecting
+                                       && r.PaidAmount == 0 && r.Owed >= r.GrandTotal); break;
+        }
         if (payment == "credit") rows = rows.Where(r => r.Owed > 0);
         else if (payment == "paid") rows = rows.Where(r => r.Owed <= 0 && r.Status != DocumentStatus.CANCELLED);
 
@@ -72,14 +116,14 @@ public static class DocumentLists
             .FirstOrDefaultAsync() ?? new DocumentListTotalsDto(0, 0, 0, 0);
         var pageRows = await rows.OrderByDescending(r => r.IssueDate).ThenByDescending(r => r.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(r => new { r.Id, r.Owed }).ToListAsync();
+            .ToListAsync();
         var ids = pageRows.Select(r => r.Id).ToList();
         var docs = await db.SalesDocuments.AsNoTracking().Where(d => ids.Contains(d.Id))
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .Include(d => d.Department).Include(d => d.Rep)
             .ToDictionaryAsync(d => d.Id);
         var items = pageRows.Where(r => docs.ContainsKey(r.Id))
-            .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed) }).ToArray();
+            .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed), State = StateOf(r) }).ToArray();
         return new DocumentListDto(items, total, page, pageSize, sums);
     }
 }

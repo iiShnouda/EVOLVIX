@@ -275,9 +275,25 @@ public sealed class PriceListsController : ControllerBase
         var markup = await _db.CompanySettings.Select(s => s.DefaultMarkupPercent).FirstOrDefaultAsync();
         var special = await SpecialPrices.LoadAsync(_db, priceSide,
             isSale ? party?.SalesPriceListId : party?.PurchasePriceListId, products.Values);
-        var priced = special.Price(book, level, priceSide, lines, markup);
-        return Ok(new PricingDto(level?.Id.ToString(),
-            priced.Select(x => new PricedLineDto(x.UnitPrice, x.Discount, x.Source, x.ListName, x.BreakBp)).ToArray()));
+        var listed = special.Price(book, level, priceSide, lines, markup);
+        var priced = listed;
+        // A sale may be priced at the customer's last price or at cost (owner, 2026-10-01).
+        var basis = PriceBasis.Parse(req.PriceBasis);
+        if (basis is null) return Bad("bad_price_basis", "Unknown price basis.");
+        var last = isSale && party is not null
+            ? await PriceBasis.LastPricesAsync(_db, party.Id, products.Keys)
+            : new Dictionary<(Guid Product, Guid? Unit), long>();
+        if (isSale && basis != PriceBasis.List)
+        {
+            if (!Can(Permissions.SalesPriceBasis))
+                return StatusCode(403, new { message = "Pricing at the last price or at cost needs permission.", code = "price_basis_not_allowed" });
+            priced = PriceBasis.Apply(basis, listed, lines, last);
+        }
+        var seeCost = Can(Permissions.CostsView);
+        return Ok(new PricingDto(level?.Id.ToString(), priced.Select((x, i) => new PricedLineDto(
+            x.UnitPrice, x.Discount, x.Source, x.ListName, x.BreakBp, listed[i].UnitPrice,
+            seeCost ? lines[i].BaseCost * lines[i].Unit.Factor : null,
+            last.TryGetValue((lines[i].Product.Id, lines[i].Unit.UnitId), out var lp) ? lp : null)).ToArray()));
     }
 
     // ------------------------------------------------------------------ helpers
