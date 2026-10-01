@@ -40,7 +40,8 @@ public static class Mapper
         d.PaidAccountId?.ToString(), d.PaidAccount is null ? null : Loc.Name(d.PaidAccount),
         DepartmentId: d.DepartmentId?.ToString(), DepartmentName: d.Department is null ? null : Loc.Name(d.Department),
         StaffId: d.StaffId.ToString(), PartyId: d.PartyId.ToString(), BranchId: d.BranchId.ToString(),
-        RejectReason: d.RejectReason, PartyCode: d.Party?.Code, RepCode: d.Rep?.Code);
+        RejectReason: d.RejectReason, PartyCode: d.Party?.Code, RepCode: d.Rep?.Code,
+        CancelReason: d.CancelReason);
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)

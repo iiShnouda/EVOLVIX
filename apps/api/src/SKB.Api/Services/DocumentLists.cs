@@ -29,8 +29,9 @@ public static class DocumentLists
     }
 
     /// <summary>
-    /// The payment state of an invoice (owner, 2026-10-01), one list instead of status + payment:
-    /// CREDIT (آجل: nothing paid), COLLECTING (جاري الدفع: cash on delivery not yet paid to us),
+    /// The payment state of an invoice (owner, 2026-10-01), one list instead of status + payment, as
+    /// the accountant settles it: CREDIT (آجل: nothing paid), COLLECTING (جاري الدفع: paid by a cheque
+    /// or note not yet collected, or cash on delivery not yet handed to us),
     /// PARTIAL (مدفوعة جزئيًا), PAID (مدفوعة) or CANCELLED (ملغاة). Other documents keep their status.
     /// </summary>
     public static readonly string[] States = { "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED" };
@@ -38,8 +39,9 @@ public static class DocumentLists
     private static string StateOf(Row r) =>
         r.Status == DocumentStatus.CANCELLED ? "CANCELLED"
         : !r.IsInvoice ? r.Status.ToString()
-        : r.Owed <= 0 ? "PAID"
+        // Paid by a cheque not yet collected, or by cash on delivery not yet handed to us.
         : r.Collecting ? "COLLECTING"
+        : r.Owed <= 0 ? "PAID"
         : r.PaidAmount > 0 || r.Owed < r.GrandTotal ? "PARTIAL"
         : "CREDIT";
 
@@ -91,14 +93,17 @@ public static class DocumentLists
             IsInvoice = d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE,
             Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
                 && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
-                    || x.Shipment.Status == ShipmentStatus.DELIVERED)),
+                    || x.Shipment.Status == ShipmentStatus.DELIVERED))
+                || db.NoteAllocations.Any(a => a.DocumentId == d.Id
+                    && (a.Note!.Status == NoteStatus.IN_HAND || a.Note.Status == NoteStatus.UNDER_COLLECTION)),
         });
         switch (state?.ToUpperInvariant())
         {
             case "CANCELLED": rows = rows.Where(r => r.Status == DocumentStatus.CANCELLED); break;
-            case "PAID": rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed <= 0); break;
+            case "PAID":
+                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed <= 0 && !r.Collecting); break;
             case "COLLECTING":
-                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed > 0 && r.Collecting); break;
+                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Collecting); break;
             case "PARTIAL":
                 rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Owed > 0 && !r.Collecting
                                        && (r.PaidAmount > 0 || r.Owed < r.GrandTotal)); break;

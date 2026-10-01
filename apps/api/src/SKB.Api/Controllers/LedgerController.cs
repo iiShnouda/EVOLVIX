@@ -168,6 +168,17 @@ public sealed class LedgerController : ControllerBase
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
         if (party is null) return NotFound(new { message = "Party not found.", code = "not_found" });
         var lines = _db.JournalLines.Where(l => l.Account!.PartyId == partyId);
+        // A cancelled invoice is not on the customer's statement, and a changed one shows only as it
+        // stands now (owner, 2026-10-01): its earlier postings and their reversals cancel out, so
+        // leaving them all out keeps every balance the same.
+        var superseded = _db.JournalEntries.Where(e =>
+            e.SourceType == "SALES_INVOICE_CANCEL"
+            || (e.SourceType == "SALES_INVOICE"
+                && (_db.SalesDocuments.Any(d => d.Id == e.SourceId && d.Status == DocumentStatus.CANCELLED)
+                    || _db.JournalEntries.Any(o => o.SourceType == "SALES_INVOICE" && o.SourceId == e.SourceId
+                                                   && o.Serial > e.Serial))))
+            .Select(e => e.Id);
+        lines = lines.Where(l => !superseded.Contains(l.EntryId));
         if (!string.IsNullOrWhiteSpace(branchId))
         {
             if (!Guid.TryParse(branchId, out var branch)) return Bad("branch_not_found", "Branch not found.");

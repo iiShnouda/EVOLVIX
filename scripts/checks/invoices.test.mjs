@@ -4,7 +4,7 @@
 // (sales:change_shipping to change them); a cash customer pays every invoice in full; each sale
 // names its department (Settings); the serial number's prefix and start are set in Settings; the
 // list has one payment state (credit, collecting, partly paid, paid, cancelled). Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -222,5 +222,71 @@ ok('start lowered', await owner.put('/settings/numbering', { type: 'SALES_INVOIC
 eq('never goes back', ok('after', await accountant.post('/sales/invoices', sale(1))).number, `${kmPrefix}000102`);
 const back = ok('built-in again', await owner.put('/settings/numbering', { type: 'SALES_INVOICE', prefix: '' }));
 check('INV- style again', back.find((n) => n.type === 'SALES_INVOICE').next.startsWith('INV-'));
+
+console.log('== a cheque not collected yet: being paid');
+const byCheque = ok('sold 2 on credit', await accountant.post('/sales/invoices', sale(2)));
+eq('on credit', await stateOf(byCheque), 'CREDIT');
+const cheque = ok(
+  'a cheque against it',
+  await owner.post('/notes/receive', {
+    partyId: customer.id, kind: 'CHEQUE', serialNumber: `CH${tag}`, amount: 2000,
+    dueDate: new Date().toISOString().slice(0, 10), bankName: 'CIB',
+    allocations: [{ documentId: byCheque.id, amount: 2000 }],
+  }),
+);
+eq('being paid until the cheque is collected', await stateOf(byCheque), 'COLLECTING');
+const box2 = (await accountant.get('/money-accounts')).data.find((m) => m.kind === 'CASH_BOX');
+ok('cheque collected', await owner.post(`/notes/${cheque.id}/collect`, { accountId: box2.id }));
+eq('then paid', await stateOf(byCheque), 'PAID');
+
+console.log('== cancelled invoices are not on the customer statement');
+const st = async () => (await owner.get(`/ledger/parties/${customer.id}/statement`)).data;
+const before = await st();
+const temp = ok('another sale', await accountant.post('/sales/invoices', sale(1)));
+const during = await st();
+check('it shows while it stands', JSON.stringify(during).includes(temp.number));
+ok('cancelled, with a reason', await accountant.post(`/sales/invoices/${temp.id}/cancel`, { reason: 'Wrong customer' }));
+const after = await st();
+check('gone from the statement', !JSON.stringify(after).includes(temp.number));
+eq('the closing balance is back', after.closing ?? after.closingBalance, before.closing ?? before.closingBalance);
+eq('the reason is kept', (await accountant.get(`/sales/invoices/${temp.id}`)).data.cancelReason, 'Wrong customer');
+const changedTwice = ok('a sale changed twice', await accountant.post('/sales/invoices', sale(1)));
+ok('changed', await accountant.put(`/sales/invoices/${changedTwice.id}`, sale(2)));
+ok('changed again', await accountant.put(`/sales/invoices/${changedTwice.id}`, sale(3)));
+const lines = JSON.stringify((await st()).lines.filter((l) => JSON.stringify(l).includes(changedTwice.number)));
+eq('shown once, as it stands', (lines.match(/"debit":3000/g) ?? []).length, 1);
+
+console.log('== report of cancelled and changed invoices');
+eq('a seller may not see it', (await karim.get('/reports/invoice-changes')).status, 403);
+const changes = ok('the accountant sees it', await accountant.get('/reports/invoice-changes'));
+const mine = changes.filter((r) => r.documentId === temp.id || r.documentId === changedTwice.id);
+eq('cancel with its reason and totals', mine.filter((r) => r.kind === 'CANCEL').map((r) => [r.number, r.reason, r.totalBefore, r.totalAfter]), [[temp.number, 'Wrong customer', 1000, 0]]);
+eq('two changes', mine.filter((r) => r.kind === 'EDIT').map((r) => [r.totalBefore, r.totalAfter]), [[2000, 3000], [1000, 2000]]);
+eq('only cancellations', (await accountant.get('/reports/invoice-changes?kind=CANCEL')).data.every((r) => r.kind === 'CANCEL'), true);
+
+console.log('== one device per account; remember this device');
+const signIn = async (remember) => {
+  const r = await fetch(`${BASE}/auth/login`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: `invacc.${tag}@skb.local`, password: PASS, rememberDevice: remember }),
+  });
+  return { token: (await r.json()).accessToken, cookie: r.headers.get('set-cookie') ?? '' };
+};
+const first = await signIn(false);
+check('not remembered: the cookie ends with the browser', !/expires=/i.test(first.cookie), first.cookie);
+const me = (token) => fetch(`${BASE}/auth/me`, { headers: { authorization: `Bearer ${token}` } });
+eq('works', (await me(first.token)).status, 200);
+const second = await signIn(true);
+check('remembered: the cookie lasts', /expires=/i.test(second.cookie), second.cookie);
+const kicked = await me(first.token);
+eq('the first device is signed out', kicked.status, 401);
+eq('…told why', (await kicked.json()).code, 'SIGNED_IN_ELSEWHERE');
+eq('the new one works', (await me(second.token)).status, 200);
+const rt = (c) => c.split(';')[0];
+const refreshOld = await fetch(`${BASE}/auth/refresh`, { method: 'POST', headers: { cookie: rt(first.cookie) } });
+eq('the old device cannot come back by refreshing', [refreshOld.status, (await refreshOld.json()).code], [401, 'SIGNED_IN_ELSEWHERE']);
+const refreshNew = await fetch(`${BASE}/auth/refresh`, { method: 'POST', headers: { cookie: rt(second.cookie) } });
+eq('the new one refreshes', refreshNew.status, 200);
+check('and stays remembered', /expires=/i.test(refreshNew.headers.get('set-cookie') ?? ''));
 
 summary('invoices');

@@ -13,6 +13,8 @@ namespace SKB.Api.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private const string RefreshCookie = "skb_rt";
+    /// <summary>The page the person was on, kept so a sign-in (here or on another device) opens there.</summary>
+    public const string LastPageKey = "session:lastPage";
     private const string RefreshPath = "/api/auth";
 
     private readonly AuthService _auth;
@@ -57,10 +59,16 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new { message = "No session", code = "NO_SESSION" });
 
         var result = await _auth.RefreshAsync(raw, Context());
+        if (result?.Refused == "other_device")
+        {
+            Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });
+            return Unauthorized(new { message = "This account signed in on another device.", code = "SIGNED_IN_ELSEWHERE" });
+        }
         if (result is null)
             return Unauthorized(new { message = "Invalid or expired session", code = "NO_SESSION" });
 
-        SetRefreshCookie(result.RefreshToken, true);
+        // The session keeps what was chosen at sign-in: remembered on this device, or not.
+        SetRefreshCookie(result.RefreshToken, result.Remember);
         return Ok(new { user = result.User, accessToken = result.AccessToken });
     }
 
@@ -70,6 +78,12 @@ public sealed class AuthController : ControllerBase
     {
         var raw = Request.Cookies[RefreshCookie];
         if (!string.IsNullOrEmpty(raw)) await _tokens.RevokeByRawTokenAsync(raw);
+        // Signing out starts afresh (owner, 2026-10-01): no page to come back to, no kept work.
+        if (Guid.TryParse(CurrentUser.Id(User), out var me))
+        {
+            await _db.StaffPreferences.Where(p => p.StaffId == me && p.Key == LastPageKey).ExecuteDeleteAsync();
+            await _db.WorkDrafts.Where(d => d.StaffId == me).ExecuteDeleteAsync();
+        }
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "auth.logout", "auth",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString());
         Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });

@@ -219,7 +219,8 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     [HttpPost("invoices/{id:guid}/cancel")]
     [Authorize(Policy = Permissions.SalesCancel)]
-    public async Task<ActionResult<SalesDetailDto>> CancelInvoice(Guid id)
+    public async Task<ActionResult<SalesDetailDto>> CancelInvoice(Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelInvoiceRequest? req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -227,9 +228,16 @@ public sealed class SalesController : ControllerBase
         var doc = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .FirstOrDefaultAsync(d => d.Id == id);
         if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var totalBefore = doc.GrandTotal;
         var error = await ReverseInvoiceAsync(doc, staffId);
         if (error is not null) return InvoiceLines.Refuse(this, error);
         doc.Status = DocumentStatus.CANCELLED;
+        doc.CancelReason = Clean(req?.Reason, 300);
+        _db.InvoiceRevisions.Add(new InvoiceRevision
+        {
+            DocumentId = doc.Id, Kind = "CANCEL", StaffId = staffId, StaffName = CurrentUser.Name(User) ?? "",
+            Reason = doc.CancelReason, TotalBefore = totalBefore, TotalAfter = 0,
+        });
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("cancel", "sales_invoice", doc);
@@ -663,12 +671,14 @@ public sealed class SalesController : ControllerBase
         // A posted invoice being changed: undo it first, so its goods and the customer's balance
         // are back before the new version is checked and posted.
         SalesDocument? edited = null;
+        long editedTotal = 0;
         if (editId is Guid eid)
         {
             await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {eid} FOR UPDATE");
             edited = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse).Include(d => d.Charges)
                 .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == eid);
             if (edited is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+            editedTotal = edited.GrandTotal;
             var reverseError = await ReverseInvoiceAsync(edited, staffId);
             if (reverseError is not null) return InvoiceLines.Refuse(this, reverseError);
         }
@@ -942,6 +952,11 @@ public sealed class SalesController : ControllerBase
         if (edited is null) _db.SalesDocuments.Add(doc);
         else
         {
+            _db.InvoiceRevisions.Add(new InvoiceRevision
+            {
+                DocumentId = doc.Id, Kind = "EDIT", StaffId = staffId, StaffName = CurrentUser.Name(User) ?? "",
+                TotalBefore = editedTotal, TotalAfter = doc.GrandTotal,
+            });
             // New rows under a document already tracked: insert them (their ids are set already).
             foreach (var l in doc.Lines) _db.Entry(l).State = EntityState.Added;
             foreach (var c in doc.Charges) _db.Entry(c).State = EntityState.Added;

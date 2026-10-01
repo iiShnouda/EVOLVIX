@@ -83,7 +83,16 @@ public record SalesDetailDto(
     string? CarrierId, string? CarrierName, string? PaidAccountId = null, string? PaidAccountName = null,
     string? InvoiceId = null, string? InvoiceNumber = null,
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
-    string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null);
+    string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
+    string? CancelReason = null);
+
+/// <summary>Cancelling a posted sales invoice; the reason is optional.</summary>
+public record CancelInvoiceRequest(string? Reason = null);
+
+/// <summary>One change to a posted invoice, for the "cancelled and changed invoices" report.</summary>
+public record InvoiceRevisionDto(
+    string Id, string DocumentId, string Number, string PartyName, int? PartyCode, string Kind, string At,
+    string StaffName, string? Reason, long TotalBefore, long TotalAfter, string BranchName);
 
 /// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
 public record RejectOrderRequest(string? Reason);

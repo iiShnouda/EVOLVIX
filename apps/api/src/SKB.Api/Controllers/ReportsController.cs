@@ -18,6 +18,34 @@ public sealed class ReportsController : ControllerBase
     public ReportsController(AppDbContext db) => _db = db;
 
     /// <summary>
+    /// Cancelled and changed sales invoices (owner, 2026-10-01): each change with who made it, when,
+    /// why (if given) and the invoice total before and after. <paramref name="kind"/> EDIT or CANCEL.
+    /// </summary>
+    [HttpGet("invoice-changes")]
+    [Authorize(Policy = Permissions.SalesChangesReport)]
+    public async Task<ActionResult<InvoiceRevisionDto[]>> InvoiceChanges(
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? kind = null)
+    {
+        var today = CompanyClock.Today;
+        var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);
+        var toDay = CompanyClock.ParseDay(to) ?? today;
+        var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
+        var q = _db.InvoiceRevisions.AsNoTracking().Where(r => r.At >= fromDate && r.At < toExclusive);
+        if (kind is "EDIT" or "CANCEL") q = q.Where(r => r.Kind == kind);
+        var allowed = _db.SalesDocuments.InBranches(User, d => d.BranchId).Select(d => d.Id);
+        q = q.Where(r => allowed.Contains(r.DocumentId));
+        var rows = await q.OrderByDescending(r => r.At).Take(1000)
+            .Select(r => new
+            {
+                r.Id, r.DocumentId, r.Document!.Number, PartyName = r.Document.Party!.Name, PartyCode = (int?)r.Document.Party.Code,
+                r.Kind, r.At, r.StaffName, r.Reason, r.TotalBefore, r.TotalAfter, BranchName = r.Document.Branch!.Name,
+            }).ToListAsync();
+        return Ok(rows.Select(r => new InvoiceRevisionDto(r.Id.ToString(), r.DocumentId.ToString(), r.Number,
+            r.PartyName, r.PartyCode, r.Kind, r.At.ToString("o"), r.StaffName, r.Reason, r.TotalBefore, r.TotalAfter,
+            r.BranchName)).ToArray());
+    }
+
+    /// <summary>
     /// Profitability report (تقارير الربحية). Sums net sales, cost of goods and profit for
     /// non-cancelled sales invoices in a date range, broken down by customer, product, or day.
     /// "Net" means after returns: a sales return in the period counts negative (its revenue, cost

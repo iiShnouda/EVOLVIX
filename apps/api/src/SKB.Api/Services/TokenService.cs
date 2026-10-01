@@ -34,7 +34,10 @@ public sealed class TokenService
         access.MoneyAccounts?.Select(a => a.ToString()).ToArray(),
         access.Departments?.Select(d => d.ToString()).ToArray(), access.MaxDiscountPercent);
 
-    public string IssueAccessToken(Staff staff, string[] permissions, StaffAccess access)
+    /// <summary>The access token's claim naming the device (sign-in) it belongs to.</summary>
+    public const string DeviceClaim = "sid";
+
+    public string IssueAccessToken(Staff staff, string[] permissions, StaffAccess access, Guid? deviceId = null)
     {
         var secret = _config["Jwt:AccessSecret"]!;
         var ttl = int.Parse(_config["Jwt:AccessTtlSeconds"] ?? "900");
@@ -49,6 +52,7 @@ public sealed class TokenService
             new("branchId", staff.BranchId.ToString()),
             new("name", staff.FullName),
         };
+        if (deviceId is Guid device) claims.Add(new Claim(DeviceClaim, device.ToString()));
         foreach (var p in permissions)
             claims.Add(new Claim("permission", p));
         claims.AddRange(Access.Claims(access));
@@ -64,35 +68,54 @@ public sealed class TokenService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public async Task<string> CreateSessionAsync(Guid staffId, SessionContext ctx)
+    /// <summary>
+    /// A new sign-in: its own device id, and (owner, 2026-10-01) the only one the account works on —
+    /// every other session of it ends ("other_device"), so the device signed in before is signed out.
+    /// </summary>
+    public async Task<(string Raw, Guid DeviceId)> CreateSessionAsync(Staff staff, SessionContext ctx, bool remember)
     {
         var raw = CryptoService.GenerateOpaqueToken();
         var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
+        var device = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        await _db.Sessions.Where(s => s.StaffId == staff.Id && s.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, "other_device"));
         _db.Sessions.Add(new Session
         {
-            StaffId = staffId,
+            StaffId = staff.Id,
             TokenHash = CryptoService.Sha256(raw),
             EncryptedToken = _crypto.Encrypt(raw),
             Ip = ctx.Ip,
             UserAgent = ctx.UserAgent,
             DeviceLabel = ctx.DeviceLabel,
-            ExpiresAt = DateTime.UtcNow.AddSeconds(ttl),
+            ExpiresAt = now.AddSeconds(ttl),
+            DeviceId = device,
+            Remember = remember,
         });
+        staff.CurrentDeviceId = device;
         await _db.SaveChangesAsync();
-        return raw;
+        DeviceGate.Set(staff.Id, device);
+        return (raw, device);
     }
 
-    public async Task<(Staff staff, string refreshToken)?> RotateSessionAsync(string rawToken, SessionContext ctx)
+    /// <summary>Why a refresh was refused: null = fine; "other_device" = signed in elsewhere since.</summary>
+    public sealed record Rotated(Staff Staff, string RefreshToken, Guid DeviceId, bool Remember);
+
+    public async Task<(Rotated? Result, string? Refused)> RotateSessionAsync(string rawToken, SessionContext ctx)
     {
         var hash = CryptoService.Sha256(rawToken);
         var session = await _db.Sessions.Include(s => s.Staff)
             .FirstOrDefaultAsync(s => s.TokenHash == hash);
-        if (session is null || session.RevokedAt is not null || session.ExpiresAt < DateTime.UtcNow)
-            return null;
+        if (session is null) return (null, null);
+        if (session.RevokedReason == "other_device"
+            || (session.RevokedAt is null && session.Staff?.CurrentDeviceId is Guid current && current != session.DeviceId))
+            return (null, "other_device");
+        if (session.RevokedAt is not null || session.ExpiresAt < DateTime.UtcNow)
+            return (null, null);
         if (session.Staff is null || !session.Staff.IsActive)
-            return null;
+            return (null, null);
         if (_crypto.Decrypt(session.EncryptedToken) != rawToken)
-            return null;
+            return (null, null);
 
         session.RevokedAt = DateTime.UtcNow;
         var newRaw = CryptoService.GenerateOpaqueToken();
@@ -106,15 +129,17 @@ public sealed class TokenService
             UserAgent = ctx.UserAgent,
             DeviceLabel = ctx.DeviceLabel,
             ExpiresAt = DateTime.UtcNow.AddSeconds(ttl),
+            DeviceId = session.DeviceId,
+            Remember = session.Remember,
         });
         await _db.SaveChangesAsync();
-        return (session.Staff, newRaw);
+        return (new Rotated(session.Staff, newRaw, session.DeviceId, session.Remember), null);
     }
 
     public async Task RevokeByRawTokenAsync(string rawToken)
     {
         var hash = CryptoService.Sha256(rawToken);
         await _db.Sessions.Where(s => s.TokenHash == hash && s.RevokedAt == null)
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, DateTime.UtcNow));
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, DateTime.UtcNow).SetProperty(x => x.RevokedReason, "logout"));
     }
 }

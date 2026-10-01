@@ -82,6 +82,31 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
                 return Task.CompletedTask;
             },
+            // One device per account (owner, 2026-10-01): a token from a device the account has
+            // since left (signed in elsewhere) no longer works.
+            OnTokenValidated = async ctx =>
+            {
+                var sub = ctx.Principal?.FindFirst("sub")?.Value;
+                if (!Guid.TryParse(sub, out var staffId)) return;
+                var db = ctx.HttpContext.RequestServices.GetRequiredService<SKB.Api.Data.AppDbContext>();
+                var current = await SKB.Api.Services.DeviceGate.CurrentAsync(db, staffId);
+                if (current is null) return;
+                var sid = ctx.Principal?.FindFirst(SKB.Api.Services.TokenService.DeviceClaim)?.Value;
+                if (!Guid.TryParse(sid, out var device) || device != current)
+                {
+                    ctx.HttpContext.Items["signedInElsewhere"] = true;
+                    ctx.Fail("Signed in on another device.");
+                }
+            },
+            OnChallenge = async ctx =>
+            {
+                if (ctx.HttpContext.Items.ContainsKey("signedInElsewhere"))
+                {
+                    ctx.HandleResponse();
+                    ctx.Response.StatusCode = 401;
+                    await ctx.Response.WriteAsJsonAsync(new { message = "This account signed in on another device.", code = "SIGNED_IN_ELSEWHERE" });
+                }
+            },
         };
     });
 

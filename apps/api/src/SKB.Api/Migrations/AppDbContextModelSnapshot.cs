@@ -633,6 +633,50 @@ namespace SKB.Api.Migrations
                     b.ToTable("ExpenseCategories");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.InvoiceRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StaffName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("TotalAfter")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TotalBefore")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("DocumentId");
+
+                    b.ToTable("InvoiceRevisions");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>
                 {
                     b.Property<Guid>("ProductId")
@@ -1822,6 +1866,10 @@ namespace SKB.Api.Migrations
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<Guid?>("CarrierId")
                         .HasColumnType("uuid");
 
@@ -1954,6 +2002,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("DeviceLabel")
                         .HasColumnType("text");
 
@@ -1970,8 +2021,15 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("Remember")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<Guid>("StaffId")
                         .HasColumnType("uuid");
@@ -2141,6 +2199,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CurrentDeviceId")
+                        .HasColumnType("uuid");
 
                     b.PrimitiveCollection<List<Guid>>("DepartmentIds")
                         .IsRequired()
@@ -2819,6 +2880,17 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.InvoiceRevision", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>

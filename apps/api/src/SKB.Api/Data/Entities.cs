@@ -132,6 +132,11 @@ public class Staff
     public Branch? Branch { get; set; }
 
     /// <summary>Permissions this person has on top of their role's.</summary>
+    /// <summary>
+    /// The one device this account works on (owner, 2026-10-01): a new sign-in takes it over and
+    /// ends the others. Null = not yet signed in since the rule came in.
+    /// </summary>
+    public Guid? CurrentDeviceId { get; set; }
     public List<string> GrantedPermissions { get; set; } = new();
     /// <summary>Permissions of their role this person does not get.</summary>
     public List<string> RevokedPermissions { get; set; } = new();
@@ -183,6 +188,12 @@ public class Session
     public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; }
     public DateTime? RevokedAt { get; set; }
+    /// <summary>One sign-in on one device: every refresh of it keeps this id (the access token's "sid").</summary>
+    public Guid DeviceId { get; set; } = Guid.NewGuid();
+    /// <summary>"Remember this device": the cookie outlives the browser; else it ends with it.</summary>
+    public bool Remember { get; set; }
+    /// <summary>Why it ended early: "logout", or "other_device" (the account signed in elsewhere).</summary>
+    public string? RevokedReason { get; set; }
 }
 
 public class AuditEntry
@@ -546,6 +557,9 @@ public class SalesDocument
 
     /// <summary>Why a pending invoice was turned down (REJECTED).</summary>
     public string? RejectReason { get; set; }
+
+    /// <summary>Why a posted invoice was cancelled (optional, owner 2026-10-01).</summary>
+    public string? CancelReason { get; set; }
 
     /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
     public Guid? DepartmentId { get; set; }
@@ -1363,4 +1377,23 @@ public class StaffPreference
     /// <summary>The screen's own JSON.</summary>
     public string Value { get; set; } = "";
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A posted sales invoice changed or cancelled (owner, 2026-10-01): who, when, why, and its total
+/// before and after — the "cancelled and changed invoices" report reads these.
+/// </summary>
+public class InvoiceRevision
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    /// <summary>EDIT or CANCEL.</summary>
+    public string Kind { get; set; } = "";
+    public DateTime At { get; set; } = DateTime.UtcNow;
+    public Guid StaffId { get; set; }
+    public string StaffName { get; set; } = "";
+    public string? Reason { get; set; }
+    public long TotalBefore { get; set; }
+    public long TotalAfter { get; set; }
 }

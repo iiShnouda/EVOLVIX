@@ -5,7 +5,10 @@ using SKB.Api.Models;
 
 namespace SKB.Api.Services;
 
-public sealed record LoginResult(AuthUserDto User, string AccessToken, string RefreshToken);
+/// <param name="Remember">Keep the session past the browser ("remember this device").</param>
+/// <param name="Refused">A refresh refused because the account signed in on another device.</param>
+public sealed record LoginResult(AuthUserDto User, string AccessToken, string RefreshToken, bool Remember = false,
+    string? Refused = null);
 
 public sealed class AuthService
 {
@@ -47,21 +50,23 @@ public sealed class AuthService
 
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
-        var access = _tokens.IssueAccessToken(staff, permissions, scope);
-        var refresh = await _tokens.CreateSessionAsync(staff.Id, ctx);
+        var (refresh, device) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
+        var access = _tokens.IssueAccessToken(staff, permissions, scope, device);
         await _audit.RecordAsync(staff.Id.ToString(), staff.FullName, "auth.login", "auth",
             staff.BranchId.ToString(), ctx.Ip, ctx.UserAgent);
-        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, refresh);
+        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, refresh, req.RememberDevice);
     }
 
     public async Task<LoginResult?> RefreshAsync(string rawToken, SessionContext ctx)
     {
-        var rotated = await _tokens.RotateSessionAsync(rawToken, ctx);
+        var (rotated, refused) = await _tokens.RotateSessionAsync(rawToken, ctx);
+        if (refused is not null)
+            return new LoginResult(null!, "", "", Refused: refused);
         if (rotated is null) return null;
-        var (staff, refresh) = rotated.Value;
+        var staff = rotated.Staff;
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
-        var access = _tokens.IssueAccessToken(staff, permissions, scope);
-        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, refresh);
+        var access = _tokens.IssueAccessToken(staff, permissions, scope, rotated.DeviceId);
+        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, rotated.RefreshToken, rotated.Remember);
     }
 }

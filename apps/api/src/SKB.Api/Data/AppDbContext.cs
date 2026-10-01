@@ -35,6 +35,7 @@ public class AppDbContext : DbContext
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
     public DbSet<DocumentNumbering> DocumentNumberings => Set<DocumentNumbering>();
+    public DbSet<InvoiceRevision> InvoiceRevisions => Set<InvoiceRevision>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<ItemUnit> ItemUnits => Set<ItemUnit>();
     public DbSet<PriceLevel> PriceLevels => Set<PriceLevel>();
@@ -246,6 +247,7 @@ public class AppDbContext : DbContext
         b.Entity<Staff>().HasIndex(x => x.BranchId);
         b.Entity<Session>().HasIndex(x => x.TokenHash).IsUnique();
         b.Entity<Session>().HasIndex(x => x.StaffId);
+        b.Entity<Session>().Property(x => x.RevokedReason).HasMaxLength(40);
         b.Entity<Session>().HasIndex(x => x.ExpiresAt);
         b.Entity<Product>().HasIndex(x => x.Sku).IsUnique();
         b.Entity<Product>().HasIndex(x => x.CategoryId);
@@ -268,6 +270,12 @@ public class AppDbContext : DbContext
         b.Entity<WorkDraft>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
         b.Entity<CompanyLogo>().Property(l => l.ContentType).HasMaxLength(40);
         b.Entity<DocumentNumbering>().HasKey(n => n.Type);
+        b.Entity<InvoiceRevision>().HasIndex(r => r.At);
+        b.Entity<InvoiceRevision>().HasIndex(r => r.DocumentId);
+        b.Entity<InvoiceRevision>().Property(r => r.Kind).HasMaxLength(10);
+        b.Entity<InvoiceRevision>().Property(r => r.StaffName).HasMaxLength(200);
+        b.Entity<InvoiceRevision>().Property(r => r.Reason).HasMaxLength(300);
+        b.Entity<SalesDocument>().Property(d => d.CancelReason).HasMaxLength(300);
         b.Entity<DocumentNumbering>().Property(n => n.Type).HasMaxLength(40);
         b.Entity<DocumentNumbering>().Property(n => n.Prefix).HasMaxLength(20);
         b.Entity<StaffPreference>().HasIndex(d => new { d.StaffId, d.Key }).IsUnique();
