@@ -131,6 +131,9 @@ public class AppDbContext : DbContext
             .HasForeignKey(a => a.ExpenseCategoryId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<JournalEntry>().HasIndex(e => new { e.SourceType, e.SourceId });
         b.Entity<JournalEntry>().HasIndex(e => e.Date);
+        b.HasSequence<int>("JournalSerials");
+        b.Entity<JournalEntry>().Property(e => e.Serial).HasDefaultValueSql("nextval('\"JournalSerials\"')");
+        b.Entity<JournalEntry>().HasIndex(e => e.Serial).IsUnique();
         b.Entity<JournalEntry>().HasOne(e => e.CreatedBy).WithMany()
             .HasForeignKey(e => e.CreatedById).OnDelete(DeleteBehavior.Restrict);
         b.Entity<JournalLine>().HasOne(l => l.Entry).WithMany(e => e.Lines)

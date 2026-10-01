@@ -1064,6 +1064,11 @@ public class JournalEntry
     public Guid Id { get; set; } = Guid.NewGuid();
     /// <summary>The source document's number (INV-…, RCV-…) or, for a manual entry, JV-YYYY-NNNNNN.</summary>
     public string Number { get; set; } = "";
+    /// <summary>
+    /// The entry's own running number (رقم القيد): 1, 2, 3… in the order entries are made, as in the
+    /// old program's statement (owner, 2026-10-01). Given by the database.
+    /// </summary>
+    public int Serial { get; set; }
     public DateTime Date { get; set; } = DateTime.UtcNow;
     public string Description { get; set; } = "";
     /// <summary>OPENING, SALES_INVOICE, SALES_RETURN, PURCHASE_INVOICE, PURCHASE_RETURN, VOUCHER,

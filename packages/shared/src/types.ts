@@ -1495,6 +1495,8 @@ export interface LedgerLine {
   note?: string | null;
   branchName?: string | null;
   items?: StatementItem[] | null;
+  /** The entry's own running number (رقم القيد). */
+  entrySerial: number;
 }
 
 /** One item line of an invoice or return on a statement (no cost). */

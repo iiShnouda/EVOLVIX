@@ -255,7 +255,7 @@ public sealed class LedgerController : ControllerBase
             running += l.Debit - l.Credit;
             return new LedgerLineDto(l.EntryId.ToString(), l.Entry!.Date.ToString("o"), l.Entry.Number, l.Entry.Description,
                 l.Entry.SourceType, l.Entry.SourceId?.ToString(), l.Account!.Code, names[l.AccountId], l.Debit, l.Credit,
-                l.Memo, running);
+                l.Memo, running, EntrySerial: l.Entry.Serial);
         }).ToArray();
         if (detail is not null) dto = await detail(rows, dto);
         var debit = rows.Sum(l => l.Debit);

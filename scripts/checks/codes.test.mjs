@@ -256,6 +256,20 @@ check('…a supplied one isn’t', !(await find(`supplierId=none&name=${tag}`)).
 check('at its reorder level', (await find(`stock=low&name=${tag}`)).includes(loose.id));
 check('…a well-stocked one isn’t', !(await find(`stock=low&name=${tag}`)).includes(item.id));
 
+console.log('== statement: each entry has its own number (رقم القيد)');
+const stm = ok('the customer’s statement', await acc.get(`/ledger/parties/${a.id}/statement`));
+const serials = stm.lines.map((l) => l.entrySerial);
+check('every entry is numbered', serials.length > 0 && serials.every((n) => n > 0), serials);
+check(
+  '…in order',
+  serials.every((n, i) => i === 0 || n > serials[i - 1]),
+  serials,
+);
+check(
+  '…and apart from the document number',
+  stm.lines.every((l) => typeof l.number === 'string'),
+);
+
 console.log('== screen preferences (hidden columns), per person');
 ok('saved', await s.put('/preferences', { key: 'columns:test', value: '["Rep"]' }), [204]);
 eq('read back', (await s.get('/preferences')).data['columns:test'], '["Rep"]');

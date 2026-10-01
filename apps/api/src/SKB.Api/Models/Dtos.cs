@@ -695,7 +695,7 @@ public record LedgerLineDto(
     string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
     string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
     string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
-    StatementItemDto[]? Items = null);
+    StatementItemDto[]? Items = null, int EntrySerial = 0);
 
 /// <summary>One item line of an invoice or return on a statement (no cost).</summary>
 public record StatementItemDto(

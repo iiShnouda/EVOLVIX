@@ -284,6 +284,10 @@ One shape for every document type:
   the customer by code or name and their invoices to pick from; then the invoice's customer, number,
   rep and department on top, its lines as a table (sold, returned before, left, qty to return, price,
   value) and the totals with save on the side. Still always against one invoice.
+- **Statement page** (كشف الحساب) in the menu, like the old program (owner, 2026-10-01): customers or
+  suppliers, the account by code or name, then period, branch and items; columns branch, kind, entry,
+  note, date, book, debit, credit, balance, entry number (رقم القيد — every journal entry now has its
+  own running number) and document number, with the count of lines.
 - **Every table's columns** can be hidden or shown ("الأعمدة" above it); the choice is kept per
   person on the server (`StaffPreference`), so it is the same next time and on any device.
 - **The app updates itself**: each open app looks for a new version every minute and when it comes back

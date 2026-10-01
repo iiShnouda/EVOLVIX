@@ -23,6 +23,8 @@ namespace SKB.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence<int>("JournalSerials");
+
             modelBuilder.HasSequence<int>("PartyCodes");
 
             modelBuilder.HasSequence<int>("StaffCodes");
@@ -658,6 +660,11 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("Serial")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValueSql("nextval('\"JournalSerials\"')");
+
                     b.Property<Guid?>("SourceId")
                         .HasColumnType("uuid");
 
@@ -670,6 +677,9 @@ namespace SKB.Api.Migrations
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("Date");
+
+                    b.HasIndex("Serial")
+                        .IsUnique();
 
                     b.HasIndex("SourceType", "SourceId");
 

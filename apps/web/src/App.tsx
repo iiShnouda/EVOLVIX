@@ -38,6 +38,7 @@ import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
+import { StatementPage } from './pages/StatementPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
@@ -174,6 +175,7 @@ export default function App() {
             />
             <Route path="/parties" element={<PartiesPage />} />
             <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
+            <Route path="/statement" element={<StatementPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inventory/items/:id" element={<ItemCardPage />} />

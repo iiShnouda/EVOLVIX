@@ -74,6 +74,14 @@ export const NAV_ITEMS: NavItem[] = [
     primaryOnPhone: true,
   },
   {
+    // The old program's كشف الحساب: any customer's or supplier's account, picked by code.
+    key: 'statement',
+    labelKey: 'nav.statement',
+    icon: 'ledger',
+    path: '/statement',
+    permission: 'ledger:view',
+  },
+  {
     key: 'deliveries',
     labelKey: 'nav.deliveries',
     icon: 'delivery',
