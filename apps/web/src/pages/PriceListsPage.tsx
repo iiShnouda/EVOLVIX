@@ -122,7 +122,9 @@ function ListsTab() {
                   >
                     <span className="flex flex-wrap items-center gap-2">
                       <bdi className="font-medium">{l.name}</bdi>
-                      <Badge tone="brand">{t(l.side === 'SALE' ? 'pl.sideSale' : 'pl.sidePurchase')}</Badge>
+                      <Badge tone="brand">
+                        {t(l.side === 'SALE' ? 'pl.sideSale' : 'pl.sidePurchase')}
+                      </Badge>
                       {l.forEveryone && <Badge tone="info">{t('pl.forEveryone')}</Badge>}
                       <Badge tone={l.current ? 'positive' : 'neutral'}>
                         {t(!l.isActive ? 'pl.closed' : l.current ? 'pl.current' : 'pl.notCurrent')}
@@ -130,7 +132,8 @@ function ListsTab() {
                     </span>
                     <span className="text-xs text-muted">
                       {t('pl.itemsCount')} {formatNumber(l.items, locale)}
-                      {!l.forEveryone && ` · ${t('pl.partiesCount')} ${formatNumber(l.parties, locale)}`}
+                      {!l.forEveryone &&
+                        ` · ${t('pl.partiesCount')} ${formatNumber(l.parties, locale)}`}
                       {(l.validFrom || l.validTo) &&
                         ` · ${l.validFrom ?? '…'} → ${l.validTo ?? t('pl.openEnded')}`}
                     </span>
@@ -258,7 +261,13 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
       </div>
       {!disabled && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" icon="check" loading={save.isPending} disabled={!f.name.trim()} onClick={submit}>
+          <Button
+            size="sm"
+            icon="check"
+            loading={save.isPending}
+            disabled={!f.name.trim()}
+            onClick={submit}
+          >
             {t('common.save')}
           </Button>
           {!list && (
@@ -323,7 +332,8 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
   const list = detail.data.list;
   const saved = detail.data.items.map(rowOf);
   const dirty =
-    JSON.stringify(rows.map((r) => [r.key, r.price])) !== JSON.stringify(saved.map((r) => [r.key, r.price]));
+    JSON.stringify(rows.map((r) => [r.key, r.price])) !==
+    JSON.stringify(saved.map((r) => [r.key, r.price]));
   const bad = rows.some((r) => r.price.trim() === '' || !(Number(r.price) >= 0));
 
   function add(p: Product, unitId: string) {
@@ -352,14 +362,24 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
 
   return (
     <div className="space-y-4">
-      <ListSettings key={`${list.id}:${list.name}:${list.validFrom}:${list.validTo}:${list.isActive}`} list={list} onDone={() => undefined} />
+      <ListSettings
+        key={`${list.id}:${list.name}:${list.validFrom}:${list.validTo}:${list.isActive}`}
+        list={list}
+        onDone={() => undefined}
+      />
       <Card className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{t('pl.items')}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('pl.items')}
+        </h2>
         {canManage && (
           <div className="space-y-2">
             <ItemPicker onPick={add} />
             <label className="flex items-center gap-2 text-xs text-muted">
-              <input type="checkbox" checked={wholeModel} onChange={(e) => setWholeModel(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={wholeModel}
+                onChange={(e) => setWholeModel(e.target.checked)}
+              />
               {t('pl.wholeModel')}
             </label>
           </div>
@@ -386,7 +406,9 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
                   disabled={!canManage}
                   value={r.price}
                   onChange={(e) =>
-                    setRows(rows.map((x) => (x.key === r.key ? { ...x, price: e.target.value } : x)))
+                    setRows(
+                      rows.map((x) => (x.key === r.key ? { ...x, price: e.target.value } : x)),
+                    )
                   }
                 />
                 {canManage && (
@@ -438,7 +460,9 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
           </div>
         )}
         {(saveItems.error || remove.error) && (
-          <p className="text-xs text-destructive">{errorText(t, saveItems.error ?? remove.error)}</p>
+          <p className="text-xs text-destructive">
+            {errorText(t, saveItems.error ?? remove.error)}
+          </p>
         )}
       </Card>
     </div>
@@ -469,7 +493,10 @@ function ItemPicker({ onPick }: { onPick: (p: Product, unitId: string) => void }
       {results.length > 0 && (
         <ul className="max-h-60 overflow-auto rounded-[var(--radius-app)] border border-line">
           {results.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-1 border-b border-line p-2 last:border-0">
+            <li
+              key={p.id}
+              className="flex flex-wrap items-center gap-1 border-b border-line p-2 last:border-0"
+            >
               <bdi className="min-w-0 flex-1 truncate text-sm">{p.name}</bdi>
               {p.units.map((u) => (
                 <Button
@@ -534,13 +561,21 @@ function BreaksTab() {
                 const base = p.units.find((u) => u.factor === 1) ?? p.units[0];
                 setTarget(
                   wholeModel && p.modelId
-                    ? { modelId: p.modelId, name: `${p.name.split(' — ')[0]} (${t('pl.model')})`, baseUnitName: base?.name ?? '' }
+                    ? {
+                        modelId: p.modelId,
+                        name: `${p.name.split(' — ')[0]} (${t('pl.model')})`,
+                        baseUnitName: base?.name ?? '',
+                      }
                     : { productId: p.id, name: p.name, baseUnitName: base?.name ?? '' },
                 );
               }}
             />
             <label className="flex items-center gap-2 text-xs text-muted">
-              <input type="checkbox" checked={wholeModel} onChange={(e) => setWholeModel(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={wholeModel}
+                onChange={(e) => setWholeModel(e.target.checked)}
+              />
               {t('pl.wholeModel')}
             </label>
           </Card>
@@ -582,7 +617,9 @@ function BreaksTab() {
             key={target.productId ?? target.modelId}
             target={target}
             steps={(breaks.data ?? []).filter(
-              (b) => (b.productId ?? undefined) === target.productId && (b.modelId ?? undefined) === target.modelId,
+              (b) =>
+                (b.productId ?? undefined) === target.productId &&
+                (b.modelId ?? undefined) === target.modelId,
             )}
           />
         )}
@@ -595,7 +632,8 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
   const { t } = useT();
   const can = useCan();
   const save = useSetQuantityBreaks();
-  const initial = () => steps.map((s) => ({ min: String(s.minQuantity), percent: String(s.percentBp / 100) }));
+  const initial = () =>
+    steps.map((s) => ({ min: String(s.minQuantity), percent: String(s.percentBp / 100) }));
   const [rows, setRows] = useState(initial);
   const canManage = can('price_lists:manage');
   const bad = rows.some((r) => !(Number(r.min) >= 2) || !(Number(r.percent) > 0));
@@ -613,7 +651,9 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
             inputMode="numeric"
             disabled={!canManage}
             value={r.min}
-            onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))}
+            onChange={(e) =>
+              setRows(rows.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))
+            }
           />
           <bdi className="text-muted">{target.baseUnitName}</bdi>
           <input
@@ -621,7 +661,9 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
             inputMode="decimal"
             disabled={!canManage}
             value={r.percent}
-            onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))}
+            onChange={(e) =>
+              setRows(rows.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))
+            }
           />
           <span className="text-muted">{t('pl.percentOff')}</span>
           {canManage && (
@@ -637,7 +679,12 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
       ))}
       {canManage && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" icon="plus" onClick={() => setRows([...rows, { min: '', percent: '' }])}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="plus"
+            onClick={() => setRows([...rows, { min: '', percent: '' }])}
+          >
             {t('pl.addStep')}
           </Button>
           <Button
@@ -649,7 +696,10 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
               save.mutate({
                 productId: target.productId,
                 modelId: target.modelId,
-                steps: rows.map((r) => ({ minQuantity: Number(r.min), percent: Number(r.percent) })),
+                steps: rows.map((r) => ({
+                  minQuantity: Number(r.min),
+                  percent: Number(r.percent),
+                })),
               })
             }
           >

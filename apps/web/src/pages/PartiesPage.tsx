@@ -240,7 +240,11 @@ function PartyCard({
         (party.types.includes('CUSTOMER') && can('sales:view'))) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {party.types.includes('CUSTOMER') && can('sales:view') && (
-            <Button size="sm" variant="secondary" onClick={() => navigate(`/parties/${party.id}/account`)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => navigate(`/parties/${party.id}/account`)}
+            >
               {t('account.open')}
             </Button>
           )}
@@ -663,7 +667,9 @@ function PriceLevelPicker({
                   className={field}
                   value={s.list}
                   disabled={!canSet || set.isPending}
-                  onChange={(e) => set.mutate({ id: party.id, input: { [s.listKey]: e.target.value } })}
+                  onChange={(e) =>
+                    set.mutate({ id: party.id, input: { [s.listKey]: e.target.value } })
+                  }
                 >
                   <option value="">{t('pl.noList')}</option>
                   {listOptions.map((l) => (

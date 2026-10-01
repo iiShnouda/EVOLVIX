@@ -101,6 +101,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const canStart = canCreate || (isSales && permissions.includes('sales:order'));
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
   const canQuote = isSales && permissions.includes('sales:quote');
+  const showChanges =
+    isSales &&
+    permissions.includes('sales:changes_report') &&
+    permissions.includes('analytics:view');
   const [converting, setConverting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [editingOrder, setEditingOrder] = useState(false);
@@ -109,6 +113,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const myId = useAuth((s) => s.user?.id);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const cancelInvoice = useCancelInvoice();
 
   // `?doc=<id>` (e.g. from an item card) opens that document straight away.
@@ -323,10 +328,24 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 {t('quote.new')}
               </Button>
             ) : undefined
-          ) : canStart ? (
-            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
-              {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
-            </Button>
+          ) : canStart || showChanges ? (
+            <div className="flex flex-wrap gap-2">
+              {showChanges && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="audit"
+                  onClick={() => navigate('/analytics?tab=changes')}
+                >
+                  {t('changes.title')}
+                </Button>
+              )}
+              {canStart && (
+                <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
+                  {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -619,6 +638,15 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         >
           <div className="space-y-3">
             <p className="text-sm">{t('invoice.cancelConfirm')}</p>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium">{t('invoice.cancelReason')}</span>
+              <textarea
+                className="min-h-20 w-full rounded-[var(--radius-app)] border border-line bg-surface p-2.5 text-sm outline-none focus:border-brand"
+                maxLength={300}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+            </label>
             {cancelInvoice.error && (
               <p className="text-sm text-destructive">{errorText(t, cancelInvoice.error)}</p>
             )}
@@ -630,7 +658,15 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 variant="danger"
                 loading={cancelInvoice.isPending}
                 onClick={() =>
-                  cancelInvoice.mutate(invoice.id, { onSuccess: () => setDeleting(false) })
+                  cancelInvoice.mutate(
+                    { id: invoice.id, reason: cancelReason.trim() || undefined },
+                    {
+                      onSuccess: () => {
+                        setDeleting(false);
+                        setCancelReason('');
+                      },
+                    },
+                  )
                 }
               >
                 {t('invoice.cancel')}

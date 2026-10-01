@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { toMinor } from '@skb/shared';
 import type {
   Branding,
+  InvoiceRevision,
+  PaperSize,
   Numbering,
   Category,
   PriceList,
@@ -124,7 +126,9 @@ import type {
   EmployeeAdvance,
   PayrollRun,
 } from '@skb/shared';
+import { useEffect } from 'react';
 import { api } from './api';
+import { setPrintPaper } from './print';
 
 export function useDashboard() {
   return useQuery({
@@ -165,7 +169,10 @@ export function useDocumentList(
   },
 ) {
   const { enabled = true, ...key } = params;
-  const query = new URLSearchParams({ page: String(params.page), pageSize: String(params.pageSize ?? 20) });
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize ?? 20),
+  });
   if (params.payment) query.set('payment', params.payment);
   if (params.search) query.set('search', params.search);
   if (params.status) query.set('status', params.status);
@@ -688,7 +695,8 @@ export function useVariantOptions() {
 }
 
 /** The lists edited on the catalog setup page, keyed by their API path. */
-export type CatalogList = 'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
+export type CatalogList =
+  'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
 
 /** A category's department: an id, or '' for none (every department). */
 type DepartmentChoice = { departmentId?: string };
@@ -715,8 +723,7 @@ export function useUpdateCatalogEntry(list: CatalogList) {
     }: {
       id: string;
       input: UpdateNamedInput | UpdatePriceLevelInput | DepartmentChoice;
-    }) =>
-      api.put<unknown>(`/${list}/${id}`, input),
+    }) => api.put<unknown>(`/${list}/${id}`, input),
     onSuccess: () => invalidateCatalog(qc),
   });
 }
@@ -895,7 +902,8 @@ export function useQuantityBreaks(productId?: string) {
 export function useSetQuantityBreaks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: SetQuantityBreaksInput) => api.put<QuantityBreak[]>('/quantity-breaks', input),
+    mutationFn: (input: SetQuantityBreaksInput) =>
+      api.put<QuantityBreak[]>('/quantity-breaks', input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['quantityBreaks'] }),
   });
 }
@@ -1540,7 +1548,8 @@ export function useConvertQuotation() {
 export function useCancelInvoice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/invoices/${id}/cancel`),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.post<SalesDocument>(`/sales/invoices/${id}/cancel`, { reason: reason ?? null }),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
   });
 }
@@ -1787,6 +1796,25 @@ export function usePreferences() {
   });
 }
 
+/** Cancelled and changed sales invoices in a period (sales:changes_report). */
+export function useInvoiceChanges(from: string, to: string, kind: '' | 'EDIT' | 'CANCEL') {
+  const q = new URLSearchParams({ from, to });
+  if (kind) q.set('kind', kind);
+  return useQuery({
+    queryKey: ['reports', 'invoice-changes', from, to, kind],
+    queryFn: () => api.get<InvoiceRevision[]>(`/reports/invoice-changes?${q}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The paper the person prints on, kept with their preferences; the print helper follows it. */
+export function usePrintPaper(): [PaperSize, (size: PaperSize) => void] {
+  const [saved, save] = useHiddenColumns('print.paper');
+  const size: PaperSize = saved[0] === 'A5' ? 'A5' : 'A4';
+  useEffect(() => setPrintPaper(size), [size]);
+  return [size, (next) => save(next === 'A5' ? ['A5'] : [])];
+}
+
 /** The columns a table hides (by header text), and a setter that saves the choice for next time. */
 export function useHiddenColumns(id: string): [string[], (hidden: string[]) => void] {
   const qc = useQueryClient();
@@ -1802,7 +1830,10 @@ export function useHiddenColumns(id: string): [string[], (hidden: string[]) => v
   }
   const set = (next: string[]) => {
     const value = next.length ? JSON.stringify(next) : '';
-    qc.setQueryData<Record<string, string>>(['preferences'], (old) => ({ ...(old ?? {}), [key]: value }));
+    qc.setQueryData<Record<string, string>>(['preferences'], (old) => ({
+      ...(old ?? {}),
+      [key]: value,
+    }));
     void api.put('/preferences', { key, value }).catch(() => undefined);
   };
   return [hidden, set];

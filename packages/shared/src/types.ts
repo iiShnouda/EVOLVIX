@@ -47,6 +47,7 @@ export type Permission =
   | 'sales:create'
   | 'sales:edit'
   | 'sales:cancel'
+  | 'sales:changes_report'
   | 'sales:price_basis'
   | 'sales:change_shipping'
   | 'parties:cash_customer'
@@ -583,6 +584,8 @@ export interface SalesDocument {
   invoiceNumber?: string | null;
   /** Why a pending invoice was turned down. */
   rejectReason?: string | null;
+  /** Why a cancelled invoice was cancelled (optional). */
+  cancelReason?: string | null;
   /** The customer's / supplier's and the rep's codes (كود). */
   partyCode?: number | null;
   repCode?: number | null;
@@ -932,6 +935,26 @@ export interface Branding {
  * company (جاري الدفع), partly paid, paid, or cancelled.
  */
 export type PayState = 'CREDIT' | 'COLLECTING' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+
+/** One change to a posted sales invoice: edited (with the totals before and after) or cancelled. */
+export interface InvoiceRevision {
+  id: string;
+  documentId: string;
+  number: string;
+  partyName: string;
+  partyCode?: number | null;
+  kind: 'EDIT' | 'CANCEL';
+  at: string;
+  staffName: string;
+  reason?: string | null;
+  /** Minor units. */
+  totalBefore: number;
+  totalAfter: number;
+  branchName: string;
+}
+
+/** Printed paper size. */
+export type PaperSize = 'A4' | 'A5';
 
 /** How one kind of document is numbered (Settings). */
 export interface Numbering {

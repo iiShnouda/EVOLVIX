@@ -42,7 +42,9 @@ export function BarcodeScanner({
             if (now - (seen.get(code) ?? 0) < 1500) return;
             seen.set(code, now);
             navigator.vibrate?.(60);
-            void handler.current(code).then((found) => setLast(found ?? `${code} — ${t('scan.notFound')}`));
+            void handler
+              .current(code)
+              .then((found) => setLast(found ?? `${code} — ${t('scan.notFound')}`));
           },
         );
         if (cancelled) controls.stop();
@@ -61,7 +63,9 @@ export function BarcodeScanner({
     <Sheet title={t('scan.title')} onClose={onClose} closeLabel={t('common.close')}>
       <div className="space-y-3">
         {error ? (
-          <p className="rounded-[var(--radius-app)] bg-destructive-soft p-3 text-sm text-destructive">{error}</p>
+          <p className="rounded-[var(--radius-app)] bg-destructive-soft p-3 text-sm text-destructive">
+            {error}
+          </p>
         ) : (
           <video
             ref={video}

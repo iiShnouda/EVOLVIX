@@ -14,7 +14,7 @@ import { statusOf } from '../lib/status';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 import { TableColumns } from './TableColumns';
-import { useHiddenColumns } from '../lib/queries';
+import { useHiddenColumns, usePrintPaper } from '../lib/queries';
 
 /** The parts of a printed document a person may leave out (owner, 2026-10-01). */
 const PRINT_PARTS = ['company', 'party', 'meta', 'lines', 'totals', 'notes', 'staff'] as const;
@@ -158,6 +158,12 @@ export function DocumentPreview({
               </p>
             )}
             <div {...skip('meta')}>
+              {doc.status === 'CANCELLED' && doc.cancelReason && (
+                <p className="text-destructive">
+                  {t('invoice.cancelledReason')}:{' '}
+                  <span className="font-medium">{doc.cancelReason}</span>
+                </p>
+              )}
               {doc.rejectReason && (
                 <p className="text-destructive">
                   {t('order.rejectedBecause')}{' '}
@@ -377,6 +383,30 @@ function Row({ label, value, emphasize }: { label: string; value: string; emphas
   );
 }
 
+/** A4 or A5, for every printout (owner, 2026-10-01). */
+function PaperChoice() {
+  const { t } = useT();
+  const [size, setSize] = usePrintPaper();
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
+      <span>{t('print.paper')}</span>
+      <div className="flex overflow-hidden rounded-md border border-line">
+        {(['A4', 'A5'] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSize(s)}
+            aria-pressed={size === s}
+            className={`px-2.5 py-1 text-xs font-semibold ${size === s ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Choose what the printout carries; the columns follow the table's own column choice. */
 function PrintOptions({
   skipped,
@@ -410,6 +440,7 @@ function PrintOptions({
       {open && (
         <div className="absolute end-0 z-30 mt-1 w-56 rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
           <p className="px-2 py-1 text-xs font-semibold text-muted">{t('print.options')}</p>
+          <PaperChoice />
           {PRINT_PARTS.map((part) => (
             <label
               key={part}

@@ -23,7 +23,14 @@ export function Logo({ size = 36, className }: { size?: number; className?: stri
           <stop offset=".55" stopColor="#4f46e5" />
           <stop offset="1" stopColor="#3423b5" />
         </linearGradient>
-        <linearGradient id={`${id}up`} x1="136" y1="386" x2="376" y2="126" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id={`${id}up`}
+          x1="136"
+          y1="386"
+          x2="376"
+          y2="126"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop offset="0" stopColor="#0ea371" />
           <stop offset=".55" stopColor="#34d399" />
           <stop offset="1" stopColor="#b4f8d8" />

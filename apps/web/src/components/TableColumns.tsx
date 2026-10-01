@@ -11,6 +11,11 @@ import { useHiddenColumns } from '../lib/queries';
  *
  * Columns are known by their header text. A row that spans columns (a note under a line, a totals
  * label) carries `data-span` and is left as it is.
+ *
+ * The person may also put the columns in their own order, from the same menu (owner, 2026-10-01).
+ * The table's markup stays as React made it: once a table has an order of its own it is laid out
+ * as a grid whose cells take their place from CSS `order` (row by row), so no table needs a change.
+ * A table with cells spanning several columns keeps its order.
  */
 export function TableColumns({
   id,
@@ -34,13 +39,22 @@ export function TableColumns({
   const box = useRef<HTMLDivElement>(null);
   const scope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [headers, setHeaders] = useState<string[]>([]);
+  const [spans, setSpans] = useState(false);
   const [hidden, setHidden] = useHiddenColumns(id);
+  const [savedOrder, setOrder] = useHiddenColumns(`order:${id}`);
 
   // Read the header after each render, and whenever the table changes underneath.
   const read = () => {
     const cells = box.current?.querySelectorAll('thead tr:first-child > th');
     const next = cells ? [...cells].map((c) => c.textContent?.trim() ?? '') : [];
     setHeaders((prev) => (prev.join('\u0001') === next.join('\u0001') ? prev : next));
+    setSpans(
+      !!box.current &&
+        ([...box.current.querySelectorAll('td[colspan], th[colspan]')].some(
+          (c) => (c as HTMLTableCellElement).colSpan > 1,
+        ) ||
+          !!box.current.querySelector('tr[data-span]')),
+    );
   };
   useLayoutEffect(read);
   useEffect(() => {
@@ -56,7 +70,51 @@ export function TableColumns({
   const css = positions
     .map((n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n}){display:none}`)
     .join('\n');
-  const choices = headers.filter((h, i) => h && headers.indexOf(h) === i);
+  // Columns with a unique, non-empty header can move; the others keep their place.
+  const movable = headers.filter((h) => h && headers.indexOf(h) === headers.lastIndexOf(h));
+  const known = savedOrder.filter((h) => movable.includes(h));
+  const ordered = [...known, ...movable.filter((h) => !known.includes(h))];
+  const slots = headers.map((h, i) => (movable.includes(h) ? i : -1)).filter((i) => i >= 0);
+  // Where each column (by its place in the markup) is shown, 1-based.
+  const place = headers.map((h, i) => (movable.includes(h) ? slots[ordered.indexOf(h)]! : i) + 1);
+  const reorder = !onMove && !spans && place.some((p, i) => p !== i + 1);
+  const choices =
+    onMove || spans ? headers.filter((h, i) => h && headers.indexOf(h) === i) : ordered;
+  const visible = headers.length - positions.length;
+  const s = `[data-cols="${scope}"][data-reorder]`;
+  const orderCss = reorder
+    ? [
+        `@layer base{${s} table{display:grid;grid-template-columns:repeat(${visible},auto)}`,
+        `${s} :is(thead,tbody,tfoot,tr){display:contents;background-color:inherit}`,
+        `${s} :is(colgroup,caption){display:none}`,
+        `${s} :is(th,td){background-color:inherit;border-bottom:1px solid var(--c-line)}}`,
+        ...place.map((p, i) => `${s} tr > :nth-child(${i + 1}){order:calc(var(--r,0)*256 + ${p})}`),
+      ].join('\n')
+    : '';
+
+  // Each row's cells come one after the other: number the rows for the cells' `order`.
+  useLayoutEffect(() => {
+    if (!reorder || !box.current) return;
+    const number = () =>
+      box.current?.querySelectorAll('tr').forEach((row, i) => {
+        if (row.style.getPropertyValue('--r') !== String(i))
+          row.style.setProperty('--r', String(i));
+      });
+    number();
+    const watch = new MutationObserver(number);
+    watch.observe(box.current, { childList: true, subtree: true });
+    return () => watch.disconnect();
+  }, [reorder]);
+
+  /** Move a column one place earlier or later, and keep that order for next time. */
+  function move(label: string, step: -1 | 1) {
+    const next = [...ordered];
+    const at = next.indexOf(label);
+    const to = at + step;
+    if (at < 0 || to < 0 || to >= next.length) return;
+    [next[at], next[to]] = [next[to]!, next[at]!];
+    setOrder(next.join('\u0001') === movable.join('\u0001') ? [] : next);
+  }
 
   // Rows that span columns (a totals label over several): hide their one-column cells that sit
   // under a hidden column; a cell spanning several stays.
@@ -95,7 +153,9 @@ export function TableColumns({
               hidden={hidden}
               onToggle={toggle}
               onReset={() => setHidden([])}
-              onMove={onMove}
+              onMove={onMove ?? (spans ? undefined : move)}
+              ordered={!onMove && known.length > 0}
+              onResetOrder={() => setOrder([])}
             />
           ) : (
             <span />
@@ -103,8 +163,8 @@ export function TableColumns({
           <span className="min-w-0 text-xs text-muted">{toolbar}</span>
         </div>
       )}
-      {css && <style>{css}</style>}
-      <div ref={box} data-cols={scope}>
+      {(css || orderCss) && <style>{[css, orderCss].filter(Boolean).join('\n')}</style>}
+      <div ref={box} data-cols={scope} data-reorder={reorder ? '' : undefined}>
         {children}
       </div>
     </div>
@@ -117,12 +177,17 @@ function ColumnMenu({
   onToggle,
   onReset,
   onMove,
+  ordered,
+  onResetOrder,
 }: {
   choices: string[];
   hidden: string[];
   onToggle: (label: string) => void;
   onReset: () => void;
   onMove?: (label: string, step: -1 | 1) => void;
+  /** The person has put the columns in their own order (offer to undo it). */
+  ordered?: boolean;
+  onResetOrder?: () => void;
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -189,6 +254,15 @@ function ColumnMenu({
               onClick={onReset}
             >
               {t('list.showAll')}
+            </button>
+          )}
+          {ordered && (
+            <button
+              type="button"
+              className="mt-1 w-full rounded-md px-2 py-1.5 text-start text-xs text-brand hover:bg-surface-2"
+              onClick={onResetOrder}
+            >
+              {t('list.defaultOrder')}
             </button>
           )}
         </div>

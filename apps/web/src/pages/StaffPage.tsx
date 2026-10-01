@@ -184,7 +184,9 @@ function PeopleTab() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">
                         {s.fullName}
-                        <span className="ms-1.5 text-xs font-normal text-muted tnum">({s.code})</span>
+                        <span className="ms-1.5 text-xs font-normal text-muted tnum">
+                          ({s.code})
+                        </span>
                       </span>
                       <span className="block truncate text-xs text-muted" dir="ltr">
                         {s.email}
@@ -518,7 +520,15 @@ function PersonAccess({ person }: { person: StaffMember }) {
     setF(initial());
     save.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person.id, person.allBranches, person.branchIds, person.warehouseIds, person.moneyAccountIds, person.departmentIds, person.maxDiscountPercent]);
+  }, [
+    person.id,
+    person.allBranches,
+    person.branchIds,
+    person.warehouseIds,
+    person.moneyAccountIds,
+    person.departmentIds,
+    person.maxDiscountPercent,
+  ]);
 
   const isOwner = person.role === 'OWNER';
   const editable = can('staff:access') && !isOwner && person.id !== myId;
@@ -536,11 +546,14 @@ function PersonAccess({ person }: { person: StaffMember }) {
 
   const pickedWarehouses = stores.filter((w) => f.warehouses.has(w.id)).map((w) => w.id);
   const pickedAccounts = accounts.filter((a) => f.accounts.has(a.id)).map((a) => a.id);
-  const departments = (departmentList.data ?? []).filter((d) => d.isActive || f.departments.has(d.id));
+  const departments = (departmentList.data ?? []).filter(
+    (d) => d.isActive || f.departments.has(d.id),
+  );
   const pickedDepartments = departments.filter((d) => f.departments.has(d.id)).map((d) => d.id);
   const maxDiscount = f.maxDiscount.trim() === '' ? null : Number(f.maxDiscount);
   const badDiscount =
-    maxDiscount !== null && !(Number.isInteger(maxDiscount) && maxDiscount >= 0 && maxDiscount <= 100);
+    maxDiscount !== null &&
+    !(Number.isInteger(maxDiscount) && maxDiscount >= 0 && maxDiscount <= 100);
   const input = {
     allBranches: f.mode === 'role' ? null : f.mode === 'all',
     branchIds: f.mode === 'some' ? [...f.branches].filter((id) => id !== person.branchId) : [],
@@ -580,18 +593,26 @@ function PersonAccess({ person }: { person: StaffMember }) {
 
   return (
     <Card className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{t('access.title')}</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        {t('access.title')}
+      </h2>
       {isOwner ? (
         <p className="text-sm text-muted">{t('access.ownerAll')}</p>
       ) : (
         <>
-
           <fieldset className="space-y-1">
             <legend className="mb-1 text-xs font-medium text-muted">{t('access.branches')}</legend>
-            {radio(f.mode === 'role', () => setF((s) => ({ ...s, mode: 'role' })),
-              roleAll ? t('access.byRoleAll') : t('access.byRoleOwn'))}
+            {radio(
+              f.mode === 'role',
+              () => setF((s) => ({ ...s, mode: 'role' })),
+              roleAll ? t('access.byRoleAll') : t('access.byRoleOwn'),
+            )}
             {radio(f.mode === 'all', () => setF((s) => ({ ...s, mode: 'all' })), t('access.all'))}
-            {radio(f.mode === 'some', () => setF((s) => ({ ...s, mode: 'some' })), t('access.some'))}
+            {radio(
+              f.mode === 'some',
+              () => setF((s) => ({ ...s, mode: 'some' })),
+              t('access.some'),
+            )}
             {f.mode === 'some' && (
               <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
                 {(branchList.data ?? []).map((b) => (
@@ -613,9 +634,19 @@ function PersonAccess({ person }: { person: StaffMember }) {
           </fieldset>
 
           <fieldset className="space-y-1">
-            <legend className="mb-1 text-xs font-medium text-muted">{t('access.warehouses')}</legend>
-            {radio(!f.someWarehouses, () => setF((s) => ({ ...s, someWarehouses: false })), t('access.everyOne'))}
-            {radio(f.someWarehouses, () => setF((s) => ({ ...s, someWarehouses: true })), t('access.onlyTicked'))}
+            <legend className="mb-1 text-xs font-medium text-muted">
+              {t('access.warehouses')}
+            </legend>
+            {radio(
+              !f.someWarehouses,
+              () => setF((s) => ({ ...s, someWarehouses: false })),
+              t('access.everyOne'),
+            )}
+            {radio(
+              f.someWarehouses,
+              () => setF((s) => ({ ...s, someWarehouses: true })),
+              t('access.onlyTicked'),
+            )}
             {f.someWarehouses && (
               <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
                 {stores.map((w) => (
@@ -643,9 +674,19 @@ function PersonAccess({ person }: { person: StaffMember }) {
 
           {can('receipts:view') && (
             <fieldset className="space-y-1">
-              <legend className="mb-1 text-xs font-medium text-muted">{t('access.moneyAccounts')}</legend>
-              {radio(!f.someAccounts, () => setF((s) => ({ ...s, someAccounts: false })), t('access.everyOne'))}
-              {radio(f.someAccounts, () => setF((s) => ({ ...s, someAccounts: true })), t('access.onlyTicked'))}
+              <legend className="mb-1 text-xs font-medium text-muted">
+                {t('access.moneyAccounts')}
+              </legend>
+              {radio(
+                !f.someAccounts,
+                () => setF((s) => ({ ...s, someAccounts: false })),
+                t('access.everyOne'),
+              )}
+              {radio(
+                f.someAccounts,
+                () => setF((s) => ({ ...s, someAccounts: true })),
+                t('access.onlyTicked'),
+              )}
               {f.someAccounts && (
                 <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
                   {accounts.map((a) => (
@@ -674,9 +715,19 @@ function PersonAccess({ person }: { person: StaffMember }) {
 
           {departments.length > 0 && (
             <fieldset className="space-y-1">
-              <legend className="mb-1 text-xs font-medium text-muted">{t('access.departments')}</legend>
-              {radio(!f.someDepartments, () => setF((s) => ({ ...s, someDepartments: false })), t('access.everyDepartment'))}
-              {radio(f.someDepartments, () => setF((s) => ({ ...s, someDepartments: true })), t('access.onlyTicked'))}
+              <legend className="mb-1 text-xs font-medium text-muted">
+                {t('access.departments')}
+              </legend>
+              {radio(
+                !f.someDepartments,
+                () => setF((s) => ({ ...s, someDepartments: false })),
+                t('access.everyDepartment'),
+              )}
+              {radio(
+                f.someDepartments,
+                () => setF((s) => ({ ...s, someDepartments: true })),
+                t('access.onlyTicked'),
+              )}
               {f.someDepartments && (
                 <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
                   {departments.map((d) => (
@@ -698,7 +749,9 @@ function PersonAccess({ person }: { person: StaffMember }) {
           )}
 
           <label className="block max-w-xs">
-            <span className="mb-0.5 block text-xs font-medium text-muted">{t('access.maxDiscount')}</span>
+            <span className="mb-0.5 block text-xs font-medium text-muted">
+              {t('access.maxDiscount')}
+            </span>
             <input
               type="number"
               inputMode="numeric"
@@ -710,7 +763,9 @@ function PersonAccess({ person }: { person: StaffMember }) {
               className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand tnum"
             />
             {badDiscount && (
-              <span className="mt-0.5 block text-xs text-destructive">{t('error.bad_percent')}</span>
+              <span className="mt-0.5 block text-xs text-destructive">
+                {t('error.bad_percent')}
+              </span>
             )}
           </label>
 

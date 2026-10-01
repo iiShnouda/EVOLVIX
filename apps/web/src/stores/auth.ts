@@ -6,9 +6,11 @@ interface AuthState {
   /** Access token is kept in MEMORY ONLY — never localStorage — to limit XSS token theft. */
   accessToken: string | null;
   status: 'unknown' | 'authenticated' | 'anonymous';
+  /** Why the last session ended, shown on the sign-in page (e.g. signed in on another device). */
+  notice: 'signedInElsewhere' | null;
   setSession: (user: AuthUser, accessToken: string) => void;
   setAccessToken: (token: string) => void;
-  clear: () => void;
+  clear: (notice?: 'signedInElsewhere') => void;
   setAnonymous: () => void;
 }
 
@@ -16,9 +18,12 @@ export const useAuth = create<AuthState>((set) => ({
   user: null,
   accessToken: null,
   status: 'unknown',
-  setSession: (user, accessToken) => set({ user, accessToken, status: 'authenticated' }),
+  notice: null,
+  setSession: (user, accessToken) =>
+    set({ user, accessToken, status: 'authenticated', notice: null }),
   setAccessToken: (accessToken) => set({ accessToken }),
-  clear: () => set({ user: null, accessToken: null, status: 'anonymous' }),
+  clear: (notice) =>
+    set({ user: null, accessToken: null, status: 'anonymous', notice: notice ?? null }),
   setAnonymous: () => set({ status: 'anonymous' }),
 }));
 

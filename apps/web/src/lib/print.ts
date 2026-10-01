@@ -1,3 +1,4 @@
+import type { PaperSize } from '@skb/shared';
 import { buildXlsx, type Sheet } from './xlsx';
 
 /**
@@ -30,7 +31,28 @@ export interface PrintFrame {
   footer: string;
 }
 
+/** The paper the person prints on (A4 or A5), from their preferences. */
+let paper: PaperSize = 'A4';
+export function setPrintPaper(size: PaperSize) {
+  paper = size;
+}
+
+/** Tell the print dialog the paper size; A5 gets narrower margins and slightly smaller type. */
+function pageRule() {
+  let style = document.getElementById('print-page') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'print-page';
+    document.head.appendChild(style);
+  }
+  style.textContent =
+    paper === 'A5'
+      ? '@media print { @page { size: A5; margin: 7mm; } #print-root { font-size: 11px; } }'
+      : '@media print { @page { size: A4; margin: 12mm; } }';
+}
+
 export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFrame) {
+  pageRule();
   let root = document.getElementById('print-root');
   if (!root) {
     root = document.createElement('div');

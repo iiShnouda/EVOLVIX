@@ -89,8 +89,8 @@ export function CatalogSetupPage() {
         : tab === 'departments'
           ? (departments.data ?? [])
           : tab === 'levels'
-          ? (levels.data ?? [])
-          : (options.data ?? []).filter((o) => o.kind === (tab === 'sizes' ? 'SIZE' : 'COLOR'));
+            ? (levels.data ?? [])
+            : (options.data ?? []).filter((o) => o.kind === (tab === 'sizes' ? 'SIZE' : 'COLOR'));
 
   return (
     <div className="space-y-5">

@@ -67,7 +67,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
   const [notes, setNotes] = useState('');
 
   // What's typed is kept through an app update (lines of the invoice that are gone are skipped).
-  useWorkDraft<ReturnDraft>(
+  const work = useWorkDraft<ReturnDraft>(
     1,
     () =>
       Object.keys(qty).length === 0 && !notes && !refund && !shipping
@@ -229,6 +229,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
           notes: notes.trim() || undefined,
         },
       });
+      work.finished();
       navigate(`${backTo}?tab=returns`);
     } catch {
       /* surfaced via serverError */

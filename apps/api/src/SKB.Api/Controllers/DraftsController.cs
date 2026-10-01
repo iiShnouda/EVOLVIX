@@ -19,8 +19,8 @@ namespace SKB.Api.Controllers;
 [Authorize]
 public sealed class DraftsController : ControllerBase
 {
-    /// <summary>A draft older than this is not given back (the update it was saved for is long done).</summary>
-    public static readonly TimeSpan KeepFor = TimeSpan.FromHours(1);
+    /// <summary>A draft older than this is not given back (work left that long is not picked up again).</summary>
+    public static readonly TimeSpan KeepFor = TimeSpan.FromDays(7);
     private const int MaxKey = 200, MaxData = 256 * 1024, MaxPerPerson = 20;
 
     private readonly AppDbContext _db;

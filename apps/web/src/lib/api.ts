@@ -1,7 +1,8 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
 import { getAccessToken, useAuth } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
-import { getWorkBranch } from '../stores/workBranch';
+import { getWorkBranch, useWorkBranchStore } from '../stores/workBranch';
+import { queryClient } from './queryClient';
 
 // Default to a relative "/api" (same-origin) so the API can serve the web app as one unit.
 // In split-server dev the Vite proxy forwards /api to the API; in a split deploy set VITE_API_URL.
@@ -30,6 +31,26 @@ function branchHeader(): Record<string, string> {
   return branch ? { 'X-Branch': branch } : {};
 }
 
+/** The server ends a session when the same account signs in on another device. */
+const SIGNED_IN_ELSEWHERE = 'SIGNED_IN_ELSEWHERE';
+
+/**
+ * The session is over: forget the token and everything read with it (nothing of the business is
+ * kept on the device), and say why on the sign-in page when another device took the account.
+ */
+function endSession(notice?: 'signedInElsewhere'): void {
+  queryClient.clear();
+  useAuth.getState().clear(notice);
+}
+
+async function codeOf(res: Response): Promise<string | undefined> {
+  const payload = (await res
+    .clone()
+    .json()
+    .catch(() => ({}))) as { code?: string };
+  return payload.code;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, _retried, headers, ...rest } = options;
   const token = getAccessToken();
@@ -51,9 +72,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   // Transparent one-shot refresh on 401 (expired access token).
   if (res.status === 401 && !_retried && path !== '/auth/refresh' && path !== '/auth/login') {
-    const refreshed = await tryRefresh();
-    if (refreshed) return request<T>(path, { ...options, _retried: true });
-    useAuth.getState().clear();
+    if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
+    else {
+      const refreshed = await tryRefresh();
+      if (refreshed) return request<T>(path, { ...options, _retried: true });
+      if (useAuth.getState().status !== 'anonymous') endSession();
+    }
   }
 
   if (!res.ok) {
@@ -74,7 +98,11 @@ async function tryRefresh(): Promise<boolean> {
           method: 'POST',
           credentials: 'include',
         });
-        if (!res.ok) return false;
+        if (!res.ok) {
+          if (res.status === 401 && (await codeOf(res)) === SIGNED_IN_ELSEWHERE)
+            endSession('signedInElsewhere');
+          return false;
+        }
         const data = (await res.json()) as { user: AuthUser; accessToken: string };
         useAuth.getState().setSession(data.user, data.accessToken);
         return true;
@@ -106,8 +134,9 @@ async function download(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 401 && !retried) {
-    if (await tryRefresh()) return download(path, body, true);
-    useAuth.getState().clear();
+    if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
+    else if (await tryRefresh()) return download(path, body, true);
+    else if (useAuth.getState().status !== 'anonymous') endSession();
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
@@ -137,9 +166,17 @@ export const api = {
   async refreshSession(): Promise<boolean> {
     return tryRefresh();
   },
+  /** Signing out starts everything afresh: the server forgets the last page and drafts. */
   async logout(): Promise<void> {
     await request('/auth/logout', { method: 'POST' }).catch(() => undefined);
-    useAuth.getState().clear();
+    const user = useAuth.getState().user;
+    if (user)
+      useWorkBranchStore.setState((s) => {
+        const byUser = { ...s.byUser };
+        delete byUser[user.id];
+        return { byUser };
+      });
+    endSession();
   },
 };
 

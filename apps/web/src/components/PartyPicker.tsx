@@ -35,7 +35,14 @@ export function PartyPicker({
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const search = useDeferredValue(text.trim());
-  const list = useParties({ page: 1, pageSize: 30, type, active: true, search: search || undefined, enabled: open });
+  const list = useParties({
+    page: 1,
+    pageSize: 30,
+    type,
+    active: true,
+    search: search || undefined,
+    enabled: open,
+  });
   const rows = list.data?.items ?? [];
 
   // The code box shows the chosen one's code until something else is typed in it.
@@ -57,7 +64,9 @@ export function PartyPicker({
     }
     setLooking(true);
     try {
-      const found = await api.get<Paginated<Party>>(`/parties?type=${type}&active=true&code=${n}&pageSize=1`);
+      const found = await api.get<Paginated<Party>>(
+        `/parties?type=${type}&active=true&code=${n}&pageSize=1`,
+      );
       const hit = found.items[0];
       setCodeError(!hit);
       if (hit) onChange(hit);
@@ -146,7 +155,11 @@ export function PartyPicker({
           aria-invalid={codeError}
           value={code}
           onChange={(e) => {
-            setCode(e.target.value.replace(/[^\d٠-٩]/g, '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))));
+            setCode(
+              e.target.value
+                .replace(/[^\d٠-٩]/g, '')
+                .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))),
+            );
             setCodeError(false);
           }}
           onBlur={() => void findByCode()}
@@ -160,7 +173,11 @@ export function PartyPicker({
         {looking ? (
           <span className="mt-0.5 block text-xs text-faint">…</span>
         ) : (
-          codeError && <span className="mt-0.5 block text-xs text-destructive">{t('invoice.codeNotFound')}</span>
+          codeError && (
+            <span className="mt-0.5 block text-xs text-destructive">
+              {t('invoice.codeNotFound')}
+            </span>
+          )
         )}
       </label>
       {name}

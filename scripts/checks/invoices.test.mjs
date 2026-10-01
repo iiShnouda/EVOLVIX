@@ -223,7 +223,7 @@ eq('never goes back', ok('after', await accountant.post('/sales/invoices', sale(
 const back = ok('built-in again', await owner.put('/settings/numbering', { type: 'SALES_INVOICE', prefix: '' }));
 check('INV- style again', back.find((n) => n.type === 'SALES_INVOICE').next.startsWith('INV-'));
 
-console.log('== a cheque not collected yet: being paid');
+console.log('== a cheque not collected yet: still on credit (آجل)');
 const byCheque = ok('sold 2 on credit', await accountant.post('/sales/invoices', sale(2)));
 eq('on credit', await stateOf(byCheque), 'CREDIT');
 const cheque = ok(
@@ -234,7 +234,7 @@ const cheque = ok(
     allocations: [{ documentId: byCheque.id, amount: 2000 }],
   }),
 );
-eq('being paid until the cheque is collected', await stateOf(byCheque), 'COLLECTING');
+eq('a cheque counts as credit until it is collected', await stateOf(byCheque), 'CREDIT');
 const box2 = (await accountant.get('/money-accounts')).data.find((m) => m.kind === 'CASH_BOX');
 ok('cheque collected', await owner.post(`/notes/${cheque.id}/collect`, { accountId: box2.id }));
 eq('then paid', await stateOf(byCheque), 'PAID');

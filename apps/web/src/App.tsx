@@ -1,9 +1,17 @@
 import { useEffect, useRef } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Navigate,
+  Route,
+  RouterProvider,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { setCompanyTimeZone } from '@skb/shared';
 import { queryClient } from './lib/queryClient';
-import { useCompanySettings } from './lib/queries';
+import { useCompanySettings, usePreferences, usePrintPaper } from './lib/queries';
 import { api, API_BASE } from './lib/api';
 import { applyDocumentPrefs, usePrefs } from './stores/prefs';
 import { useAuth } from './stores/auth';
@@ -12,6 +20,7 @@ import { useConnectionMonitor } from './lib/useConnectionMonitor';
 import { Shell } from './components/shell/Shell';
 import { OfflineGate } from './components/OfflineGate';
 import { UpdateNotice } from './components/UpdateNotice';
+import { LeavePrompt } from './components/LeavePrompt';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
@@ -129,6 +138,9 @@ function ProtectedApp() {
   return (
     <>
       <CompanyClock />
+      <RememberPage />
+      <PrintPaper />
+      <LeavePrompt />
       <Shell />
     </>
   );
@@ -143,9 +155,46 @@ function CompanyClock() {
   return null;
 }
 
+/** Where the person was is kept on the server (not the device), so signing in again reopens it. */
+const LAST_PAGE = 'session:lastPage';
+
+function RememberPage() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    if (pathname === '/' || pathname === '/login') return;
+    const params = new URLSearchParams(search);
+    params.delete('print');
+    const query = params.toString();
+    const page = query ? `${pathname}?${query}` : pathname;
+    const timer = window.setTimeout(() => {
+      queryClient.setQueryData<Record<string, string>>(['preferences'], (old) =>
+        old ? { ...old, [LAST_PAGE]: page } : old,
+      );
+      void api.put('/preferences', { key: LAST_PAGE, value: page }).catch(() => undefined);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [pathname, search]);
+  return null;
+}
+
+/** Every printout uses the person's paper (A4 or A5). */
+function PrintPaper() {
+  usePrintPaper();
+  return null;
+}
+
+/** Opening the app (or signing in) lands on the page the person was on, else the dashboard. */
+function Landing() {
+  const prefs = usePreferences();
+  if (prefs.isPending) return <Splash />;
+  const page = prefs.data?.[LAST_PAGE];
+  const safe = page?.startsWith('/') && !page.startsWith('//') && page !== '/';
+  return <Navigate to={safe && page ? page : '/dashboard'} replace />;
+}
+
 function LoginRoute() {
   const status = useAuth((s) => s.status);
-  if (status === 'authenticated') return <Navigate to="/dashboard" replace />;
+  if (status === 'authenticated') return <Navigate to="/" replace />;
   return <LoginPage />;
 }
 
@@ -154,6 +203,67 @@ function EditSalesInvoiceRoute() {
   const { id } = useParams();
   return <InvoiceBuilderPage key={`edit-${id}`} mode="sale" editId={id} />;
 }
+
+// A data router, so a screen with work on it can ask before it is left (useBlocker).
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
+      <Route path="/login" element={<LoginRoute />} />
+      <Route element={<ProtectedApp />}>
+        <Route index element={<Landing />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
+        <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
+        <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
+        <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
+        <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />
+        <Route path="/parties" element={<PartiesPage />} />
+        <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
+        <Route path="/statement" element={<StatementPage />} />
+        <Route path="/deliveries" element={<DeliveriesPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/items/:id" element={<ItemCardPage />} />
+        <Route path="/inventory/stocktake" element={<StocktakePage />} />
+        <Route path="/inventory/transfers" element={<TransfersPage />} />
+        <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
+        <Route path="/inventory/setup" element={<CatalogSetupPage />} />
+        <Route path="/inventory/price-lists" element={<PriceListsPage />} />
+        <Route path="/inventory/products/new" element={<ProductEditorPage key="new" />} />
+        <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
+        <Route path="/inventory/models" element={<ModelsPage />} />
+        <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
+        <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
+        <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
+        <Route
+          path="/purchases/new"
+          element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
+        />
+        <Route path="/sales/quotes/new" element={<InvoiceBuilderPage key="quote" mode="quote" />} />
+        <Route
+          path="/purchases/invoices/:id/return"
+          element={<ReturnBuilderPage scope="purchases" />}
+        />
+        <Route
+          path="/purchases/returns/new"
+          element={<ReturnBuilderPage key="new" scope="purchases" />}
+        />
+        <Route path="/receipts" element={<MoneyPage />} />
+        <Route path="/receipts/move" element={<CashMovePage />} />
+        <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/notes" element={<NotesPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/audit" element={<ActivityPage />} />
+        <Route path="/presence" element={<PresencePage />} />
+        <Route path="/payroll" element={<PayrollPage />} />
+        <Route path="/staff" element={<StaffPage />} />
+        <Route path="/branches" element={<BranchesPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/themes" element={<ThemesPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </>,
+  ),
+);
 
 export default function App() {
   useApplyPrefs();
@@ -165,75 +275,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <UpdateNotice />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginRoute />} />
-          <Route element={<ProtectedApp />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
-            <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
-            <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
-            <Route
-              path="/sales/invoices/:id/return"
-              element={<ReturnBuilderPage scope="sales" />}
-            />
-            <Route
-              path="/sales/returns/new"
-              element={<ReturnBuilderPage key="new" scope="sales" />}
-            />
-            <Route path="/parties" element={<PartiesPage />} />
-            <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
-            <Route path="/statement" element={<StatementPage />} />
-            <Route path="/deliveries" element={<DeliveriesPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/inventory/items/:id" element={<ItemCardPage />} />
-            <Route path="/inventory/stocktake" element={<StocktakePage />} />
-            <Route path="/inventory/transfers" element={<TransfersPage />} />
-            <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
-            <Route path="/inventory/setup" element={<CatalogSetupPage />} />
-            <Route path="/inventory/price-lists" element={<PriceListsPage />} />
-            <Route path="/inventory/products/new" element={<ProductEditorPage key="new" />} />
-            <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
-            <Route path="/inventory/models" element={<ModelsPage />} />
-            <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
-            <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
-            <Route
-              path="/purchases"
-              element={<DocumentsPage key="purchases" scope="purchases" />}
-            />
-            <Route
-              path="/purchases/new"
-              element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
-            />
-            <Route
-              path="/sales/quotes/new"
-              element={<InvoiceBuilderPage key="quote" mode="quote" />}
-            />
-            <Route
-              path="/purchases/invoices/:id/return"
-              element={<ReturnBuilderPage scope="purchases" />}
-            />
-            <Route
-              path="/purchases/returns/new"
-              element={<ReturnBuilderPage key="new" scope="purchases" />}
-            />
-            <Route path="/receipts" element={<MoneyPage />} />
-            <Route path="/receipts/move" element={<CashMovePage />} />
-            <Route path="/ledger" element={<LedgerPage />} />
-            <Route path="/notes" element={<NotesPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/audit" element={<ActivityPage />} />
-            <Route path="/presence" element={<PresencePage />} />
-            <Route path="/payroll" element={<PayrollPage />} />
-            <Route path="/staff" element={<StaffPage />} />
-            <Route path="/branches" element={<BranchesPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/themes" element={<ThemesPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   );
 }

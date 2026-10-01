@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  COUNTRIES,
-  CURRENCIES,
-  TIME_ZONES,
-  findCountry,
-  type CompanySettings,
-} from '@skb/shared';
+import { COUNTRIES, CURRENCIES, TIME_ZONES, findCountry, type CompanySettings } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
@@ -479,7 +473,9 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
   const { t } = useT();
   const numbering = useNumbering();
   const save = useSaveNumbering();
-  const [edits, setEdits] = useState<Record<string, { prefix: string; startAt: string; digits: string }>>({});
+  const [edits, setEdits] = useState<
+    Record<string, { prefix: string; startAt: string; digits: string }>
+  >({});
   const rows = numbering.data ?? [];
   if (rows.length === 0) return null;
   return (
@@ -507,7 +503,9 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
                 digits: String(n.digits),
               };
               const changed =
-                e.prefix !== n.prefix || e.startAt !== String(n.startAt) || e.digits !== String(n.digits);
+                e.prefix !== n.prefix ||
+                e.startAt !== String(n.startAt) ||
+                e.digits !== String(n.digits);
               const set = (patch: Partial<typeof e>) =>
                 setEdits((all) => ({ ...all, [n.type]: { ...e, ...patch } }));
               return (

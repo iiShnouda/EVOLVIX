@@ -534,6 +534,7 @@ export function InvoiceBuilderPage({
           repId: repId || undefined,
           departmentId: departmentId || undefined,
         });
+        work.finished();
         navigate(backTo);
       } else if (isSale) {
         const input = {
@@ -570,6 +571,7 @@ export function InvoiceBuilderPage({
         const saved = editId
           ? await updateSale.mutateAsync({ id: editId, input })
           : await (asOrder ? createOrder : createSale).mutateAsync(input);
+        work.finished();
         if (asOrder) navigate('/sales?tab=orders');
         else navigate(`/sales?doc=${saved.id}${print ? '&print=1' : ''}`);
       } else {
@@ -592,6 +594,7 @@ export function InvoiceBuilderPage({
           shippingAccountId:
             Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
         });
+        work.finished();
         navigate('/purchases');
       }
     } catch {
@@ -601,7 +604,7 @@ export function InvoiceBuilderPage({
 
   // What's typed is kept through an app update: the party, choices, lines and totals' inputs.
   // Items and the party are looked up again, so whatever is gone by then is left out.
-  useWorkDraft<InvoiceDraft>(
+  const work = useWorkDraft<InvoiceDraft>(
     1,
     () =>
       !party && lines.length === 0 && !notes

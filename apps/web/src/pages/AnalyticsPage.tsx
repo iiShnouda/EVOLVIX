@@ -1,14 +1,15 @@
 import { useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
+  formatDateTime,
   formatMoney,
   formatNumber,
   type TranslationKey,
   addDays,
   companyToday,
 } from '@skb/shared';
-import { Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
+import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { TrendChart } from '../components/charts/TrendChart';
 import { ProfitabilityPage } from './ProfitabilityPage';
 import { ReportActions } from '../components/ReportActions';
@@ -18,6 +19,8 @@ import { useCan } from '../lib/can';
 import { useReportTools } from '../lib/report';
 import {
   useAging,
+  useCompanySettings,
+  useInvoiceChanges,
   useItemMovement,
   useMonthlySales,
   usePerformance,
@@ -25,7 +28,7 @@ import {
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
 
-type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items';
+type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
 const TABS: { key: Tab; label: TranslationKey }[] = [
   { key: 'profit', label: 'analytics.tabProfit' },
   { key: 'monthly', label: 'analytics.tabMonthly' },
@@ -33,6 +36,7 @@ const TABS: { key: Tab; label: TranslationKey }[] = [
   { key: 'parties', label: 'analytics.tabParties' },
   { key: 'aging', label: 'analytics.tabAging' },
   { key: 'items', label: 'analytics.tabItems' },
+  { key: 'changes', label: 'changes.title' },
 ];
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -46,8 +50,11 @@ export function AnalyticsPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
   // Profitability is the owner's unless given (costs:view): the server refuses it otherwise.
-  const seeCosts = useCan()('costs:view');
-  const tabs = seeCosts ? TABS : TABS.filter((x) => x.key !== 'profit');
+  const can = useCan();
+  const seeCosts = can('costs:view');
+  const tabs = TABS.filter(
+    (x) => (x.key !== 'profit' || seeCosts) && (x.key !== 'changes' || can('sales:changes_report')),
+  );
   const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]!.key) as Tab;
   return (
     <div className="space-y-5">
@@ -76,6 +83,7 @@ export function AnalyticsPage() {
       {tab === 'parties' && <PartiesTab />}
       {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
+      {tab === 'changes' && <ChangesTab />}
     </div>
   );
 }
@@ -759,6 +767,143 @@ function ItemsTab() {
             )}
           </Card>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Cancelled and changed sales invoices (owner, 2026-10-01): who, when, why, and the totals. */
+function ChangesTab() {
+  const { t, locale } = useT();
+  const [from, setFrom] = useState(daysAgo(29));
+  const [to, setTo] = useState(companyToday);
+  const [kind, setKind] = useState<'' | 'EDIT' | 'CANCEL'>('');
+  const { data, isLoading } = useInvoiceChanges(from, to, kind);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const currency = useCompanySettings().data?.currency ?? 'EGP';
+  const m = (v: number) => formatMoney(v, currency, locale);
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
+  const header = [
+    t('changes.at'),
+    t('changes.kind'),
+    t('list.serial'),
+    t('invoice.customer'),
+    t('list.branch'),
+    t('changes.user'),
+    t('changes.before'),
+    t('changes.after'),
+    t('changes.difference'),
+    t('changes.reason'),
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('changes.kind')}</span>
+            <select
+              className={small}
+              value={kind}
+              onChange={(e) => setKind(e.target.value as '' | 'EDIT' | 'CANCEL')}
+            >
+              <option value="">{t('changes.all')}</option>
+              <option value="CANCEL">{t('changes.CANCEL')}</option>
+              <option value="EDIT">{t('changes.EDIT')}</option>
+            </select>
+          </label>
+        </div>
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('changes.title'), period)}
+          onExcel={() =>
+            data &&
+            report.excel(
+              t('changes.title'),
+              period,
+              header,
+              data.map((r) => [
+                formatDateTime(r.at, locale),
+                t(`changes.${r.kind}`),
+                r.number,
+                r.partyCode ? `${r.partyCode} — ${r.partyName}` : r.partyName,
+                r.branchName,
+                r.staffName,
+                { money: r.totalBefore },
+                { money: r.totalAfter },
+                { money: r.totalAfter - r.totalBefore },
+                r.reason ?? '',
+              ]),
+            )
+          }
+        />
+      </div>
+      {isLoading || !data ? (
+        <Loading />
+      ) : data.length === 0 ? (
+        <Card>
+          <EmptyState title={t('changes.empty')} icon="sales" />
+        </Card>
+      ) : (
+        <Card padded={false} className="overflow-x-auto">
+          <div ref={paper}>
+            <TableColumns id="analytics.changes">
+              <table className="w-full min-w-[60rem] text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    {header.map((h, i) => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 font-normal ${i >= 6 && i <= 8 ? 'text-end' : 'text-start'}`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {data.map((r) => (
+                    <tr key={r.id}>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-xs tnum">
+                        {formatDateTime(r.at, locale)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Badge tone={r.kind === 'CANCEL' ? 'destructive' : 'warning'}>
+                          {t(`changes.${r.kind}`)}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-1.5 tnum">
+                        <Link
+                          to={`/sales?doc=${r.documentId}`}
+                          className="font-medium hover:text-brand hover:underline"
+                        >
+                          {r.number}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {r.partyName}
+                        {r.partyCode ? (
+                          <span className="ms-1 text-xs text-faint tnum">{r.partyCode}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-1.5">{r.branchName}</td>
+                      <td className="px-3 py-1.5">{r.staffName}</td>
+                      <td className="px-3 py-1.5 text-end tnum">{m(r.totalBefore)}</td>
+                      <td className="px-3 py-1.5 text-end tnum">{m(r.totalAfter)}</td>
+                      <td
+                        className={`px-3 py-1.5 text-end tnum ${r.totalAfter < r.totalBefore ? 'text-destructive' : ''}`}
+                      >
+                        {m(r.totalAfter - r.totalBefore)}
+                      </td>
+                      <td className="max-w-[16rem] px-3 py-1.5 text-muted">{r.reason ?? '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
+          </div>
+        </Card>
       )}
     </div>
   );

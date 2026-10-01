@@ -30,7 +30,9 @@ export function ThemesPage() {
               aria-pressed={theme === m}
               onClick={() => setTheme(m)}
               className={`inline-flex h-8 items-center gap-1.5 rounded-[calc(var(--radius-app)-2px)] px-3 text-sm ${
-                theme === m ? 'bg-surface font-semibold text-fg shadow-sm' : 'text-muted hover:text-fg'
+                theme === m
+                  ? 'bg-surface font-semibold text-fg shadow-sm'
+                  : 'text-muted hover:text-fg'
               }`}
             >
               <Icon name={m === 'light' ? 'sun' : m === 'dark' ? 'moon' : 'settings'} size={15} />
@@ -109,7 +111,10 @@ function SkinPreview({ id, mode, rtl }: { id: Skin; mode: 'light' | 'dark'; rtl:
       aria-hidden="true"
       className="pointer-events-none flex h-44 select-none overflow-hidden border-b border-line"
     >
-      <div data-ui="sidebar" className="w-24 shrink-0 space-y-1 border-e border-line bg-surface p-2">
+      <div
+        data-ui="sidebar"
+        className="w-24 shrink-0 space-y-1 border-e border-line bg-surface p-2"
+      >
         <div className="mb-2 h-2 w-12 rounded-full bg-brand" />
         {[true, false, false].map((on, i) => (
           <div

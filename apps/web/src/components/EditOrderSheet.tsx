@@ -95,9 +95,14 @@ export function EditOrderSheet({
           {order.lines.map((l) => {
             const gone = removed.has(l.id);
             return (
-              <li key={l.id} className={`flex items-center gap-2 p-2 text-sm ${gone ? 'opacity-50' : ''}`}>
+              <li
+                key={l.id}
+                className={`flex items-center gap-2 p-2 text-sm ${gone ? 'opacity-50' : ''}`}
+              >
                 <span className="min-w-0 flex-1">
-                  <span className={`block truncate ${gone ? 'line-through' : ''}`}>{l.productName}</span>
+                  <span className={`block truncate ${gone ? 'line-through' : ''}`}>
+                    {l.productName}
+                  </span>
                   <span className="text-xs text-muted tnum">
                     {money(l.unitPrice)} / {l.unitName}
                   </span>
@@ -139,7 +144,12 @@ export function EditOrderSheet({
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button icon="check" loading={update.isPending} disabled={!valid} onClick={() => void save()}>
+          <Button
+            icon="check"
+            loading={update.isPending}
+            disabled={!valid}
+            onClick={() => void save()}
+          >
             {t('common.save')}
           </Button>
         </div>
