@@ -87,7 +87,26 @@ export function formatDate(iso: string, locale: Locale, numeric = false): string
   }
 }
 
-/** Format an instant per locale (date + time), on the company's clock. */
+/** The time of an instant on the company's clock, to the millisecond (e.g. 14:05:09.123). */
+export function formatTime(iso: string, locale: Locale): string {
+  try {
+    return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
+      hour12: false,
+      timeZone: companyZone,
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Format an instant per locale (date + time), on the company's clock: to the second and the
+ * millisecond (owner, 2026-10-01: everything done is recorded that exactly).
+ */
 export function formatDateTime(iso: string, locale: Locale): string {
   const intlLocale = locale === 'ar' ? 'ar-EG' : 'en-US';
   try {
@@ -97,6 +116,8 @@ export function formatDateTime(iso: string, locale: Locale): string {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
       timeZone: companyZone,
     }).format(new Date(iso));
   } catch {

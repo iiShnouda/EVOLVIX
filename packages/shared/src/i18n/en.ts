@@ -26,6 +26,7 @@ export const en = {
   'common.none': 'None',
   'common.total': 'Total',
   'common.date': 'Date',
+  'common.time': 'Time',
   'common.status': 'Status',
   'common.actions': 'Actions',
   'common.branch': 'Branch',

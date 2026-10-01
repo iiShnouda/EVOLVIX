@@ -27,6 +27,7 @@ export const ar: TranslationDictionary = {
   'common.none': 'لا يوجد',
   'common.total': 'الإجمالي',
   'common.date': 'التاريخ',
+  'common.time': 'الوقت',
   'common.status': 'الحالة',
   'common.actions': 'إجراءات',
   'common.branch': 'الفرع',

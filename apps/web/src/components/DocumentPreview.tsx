@@ -2,6 +2,7 @@ import { CompanyMark } from './CompanyBadge';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   formatDate,
+  formatDateTime,
   formatMoney,
   formatNumber,
   type SalesDocument,
@@ -132,7 +133,7 @@ export function DocumentPreview({
           <div className="shrink-0 text-end text-xs text-muted">
             <p className="text-sm font-semibold text-fg">{t(`doc.${doc.type}`)}</p>
             <p className="tnum font-medium text-fg">{doc.number}</p>
-            <p className="tnum">{formatDate(doc.issueDate, locale)}</p>
+            <p className="tnum">{formatDateTime(doc.issueDate, locale)}</p>
             {doc.type === 'SALES_INVOICE' && doc.dueDate && (
               <p>
                 {t('invoice.dueDate')}:{' '}
