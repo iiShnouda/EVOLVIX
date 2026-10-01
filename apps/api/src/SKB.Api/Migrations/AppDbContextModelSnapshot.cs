@@ -1289,6 +1289,18 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
+                    b.Property<string>("ExtraAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExtraAddressLabel")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("HasIdBack")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("HasIdFront")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -1301,6 +1313,10 @@ namespace SKB.Api.Migrations
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.PrimitiveCollection<List<string>>("OtherPhoneLabels")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.PrimitiveCollection<List<string>>("OtherPhones")
                         .IsRequired()
@@ -1327,6 +1343,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("TaxNumber")
                         .HasColumnType("text");
 
+                    b.Property<string>("TempCarrierName")
+                        .HasColumnType("text");
+
                     b.PrimitiveCollection<List<string>>("Types")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -1347,6 +1366,41 @@ namespace SKB.Api.Migrations
                     b.HasIndex("SalesPriceListId");
 
                     b.ToTable("Parties");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PartyIdCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PartyId", "Side")
+                        .IsUnique();
+
+                    b.ToTable("PartyIdCards");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>
@@ -3276,6 +3330,15 @@ namespace SKB.Api.Migrations
                     b.Navigation("SalesPriceLevel");
 
                     b.Navigation("SalesPriceList");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PartyIdCard", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Party", null)
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>

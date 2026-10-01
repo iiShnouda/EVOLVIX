@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
+    public DbSet<PartyIdCard> PartyIdCards => Set<PartyIdCard>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -254,6 +255,8 @@ public class AppDbContext : DbContext
         b.Entity<Product>().HasIndex(x => x.Sku).IsUnique();
         b.Entity<Product>().HasIndex(x => x.CategoryId);
         b.Entity<Party>().HasIndex(x => x.Name);
+        b.Entity<PartyIdCard>().HasIndex(x => new { x.PartyId, x.Side }).IsUnique();
+        b.Entity<PartyIdCard>().HasOne<Party>().WithMany().HasForeignKey(x => x.PartyId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AuditEntry>().HasIndex(x => x.CreatedAt);
         b.Entity<AuditEntry>().HasIndex(x => x.Resource);
         b.Entity<SalesDocument>().HasIndex(x => x.Number).IsUnique();

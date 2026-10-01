@@ -270,7 +270,9 @@ const o = byRep.rows.find((r) => r.id === owner.user.id);
 check('quotations won counted', o && o.quotesWon >= 1, o);
 check(
   'shares add to about 100%',
-  Math.abs(byRep.rows.reduce((s, r) => s + r.share, 0) - 100) < 1 || byRep.netSales <= 0,
+  // Each share is rounded to 0.1%, so many people today can drift by up to 0.05% each.
+  Math.abs(byRep.rows.reduce((s, r) => s + r.share, 0) - 100) <
+    Math.max(1, byRep.rows.length * 0.05) || byRep.netSales <= 0,
 );
 const before = byRep.rows.find((r) => r.id === karim.user.id)?.netSales ?? 0;
 ok(

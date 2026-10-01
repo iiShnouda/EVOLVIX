@@ -78,7 +78,8 @@ public sealed class PartiesController : ControllerBase
         };
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
-            req.DefaultCarrierId, req.IsCashCustomer), isNew: true);
+            req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
+            req.ExtraAddressLabel, req.TempCarrierName), isNew: true);
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
@@ -98,7 +99,8 @@ public sealed class PartiesController : ControllerBase
         await MoneyService.LockPartiesAsync(_db, party.Id);
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
-            req.DefaultCarrierId, req.IsCashCustomer), isNew: false);
+            req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
+            req.ExtraAddressLabel, req.TempCarrierName), isNew: false);
         if (error is not null) return error;
         if (req.IsActive == false && party.IsActive)
         {
@@ -120,7 +122,8 @@ public sealed class PartiesController : ControllerBase
     private sealed record Fields(
         string? Name, string[]? Types, string? Phone, string? Email, string? TaxNumber, string? Address,
         string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes,
-        string? DefaultCarrierId = null, bool? IsCashCustomer = null);
+        string? DefaultCarrierId = null, bool? IsCashCustomer = null, string[]? OtherPhoneLabels = null,
+        string? ExtraAddress = null, string? ExtraAddressLabel = null, string? TempCarrierName = null);
 
     private const int MaxOtherPhones = 5;
 
@@ -155,12 +158,24 @@ public sealed class PartiesController : ControllerBase
         if (f.Phone is not null) party.Phone = Text(f.Phone, 40);
         if (f.OtherPhones is not null)
         {
-            var phones = f.OtherPhones.Select(p => Text(p ?? "", 40)).OfType<string>()
-                .Where(p => p != party.Phone).Distinct().ToList();
+            // Each extra phone may name whose it is (by position); a number is kept once.
+            var phones = new List<string>();
+            var labels = new List<string>();
+            for (var i = 0; i < f.OtherPhones.Length; i++)
+            {
+                var phone = Text(f.OtherPhones[i] ?? "", 40);
+                if (phone is null || phone == party.Phone || phones.Contains(phone)) continue;
+                phones.Add(phone);
+                labels.Add(Text(f.OtherPhoneLabels is { } l && i < l.Length ? l[i] ?? "" : "", 60) ?? "");
+            }
             if (phones.Count > MaxOtherPhones)
                 return BadRequest(new { message = $"Up to {MaxOtherPhones} more phone numbers.", code = "too_many_phones" });
             party.OtherPhones = phones;
+            party.OtherPhoneLabels = labels;
         }
+        if (f.ExtraAddress is not null) party.ExtraAddress = Text(f.ExtraAddress, 300);
+        if (f.ExtraAddressLabel is not null) party.ExtraAddressLabel = Text(f.ExtraAddressLabel, 60);
+        if (f.TempCarrierName is not null) party.TempCarrierName = Text(f.TempCarrierName, 200);
         if (f.TaxNumber is not null) party.TaxNumber = Text(f.TaxNumber, 40);
         if (f.Address is not null) party.Address = Text(f.Address, 300);
         if (f.ShippingAddress is not null) party.ShippingAddress = Text(f.ShippingAddress, 300);
@@ -256,6 +271,85 @@ public sealed class PartiesController : ControllerBase
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "price_levels", "party",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), id.ToString());
+        return Ok(Mapper.ToParty(party));
+    }
+
+    private const int MaxIdCardBytes = 3 * 1024 * 1024;
+
+    /// <summary>The image type of <paramref name="data"/> from its first bytes (JPEG, PNG or WebP); null = not a photo.</summary>
+    private static string? ImageType(byte[] data) =>
+        data.Length > 12 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF ? "image/jpeg"
+        : data.Length > 12 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 ? "image/png"
+        : data.Length > 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+          && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P' ? "image/webp"
+        : null;
+
+    private static string? Side(string side) => side.ToUpperInvariant() switch
+    {
+        "FRONT" => "FRONT",
+        "BACK" => "BACK",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Keep a photo of a customer's or shipping company's ID card (front or back), replacing the one
+    /// before. Only JPEG, PNG or WebP photos up to 3 MB; stored in the database, never on disk.
+    /// </summary>
+    [HttpPut("{id:guid}/id-card/{side}")]
+    [Authorize(Policy = Permissions.PartiesIdCards)]
+    [RequestSizeLimit(MaxIdCardBytes + 64 * 1024)]
+    public async Task<ActionResult<PartyDto>> PutIdCard(Guid id, string side, IFormFile? file)
+    {
+        var which = Side(side);
+        if (which is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
+        if (party is null) return NotFound(new { message = "Party not found", code = "not_found" });
+        if (file is null || file.Length == 0 || file.Length > MaxIdCardBytes)
+            return BadRequest(new { message = "Choose a photo of up to 3 MB.", code = "bad_photo" });
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var data = buffer.ToArray();
+        var type = ImageType(data);
+        if (type is null) return BadRequest(new { message = "Only JPEG, PNG or WebP photos.", code = "bad_photo" });
+
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var card = await _db.PartyIdCards.FirstOrDefaultAsync(c => c.PartyId == id && c.Side == which);
+        if (card is null) _db.PartyIdCards.Add(card = new PartyIdCard { PartyId = id, Side = which });
+        card.ContentType = type;
+        card.Data = data;
+        card.UploadedAt = DateTime.UtcNow;
+        card.UploadedBy = staffId == Guid.Empty ? null : staffId;
+        if (which == "FRONT") party.HasIdFront = true; else party.HasIdBack = true;
+        await _db.SaveChangesAsync();
+        await AuditAsync($"id_card_{which.ToLowerInvariant()}", id);
+        return Ok(Mapper.ToParty(party));
+    }
+
+    /// <summary>The ID card photo, never cached anywhere.</summary>
+    [HttpGet("{id:guid}/id-card/{side}")]
+    [Authorize(Policy = Permissions.PartiesIdCards)]
+    public async Task<IActionResult> GetIdCard(Guid id, string side)
+    {
+        var which = Side(side);
+        var card = which is null ? null
+            : await _db.PartyIdCards.AsNoTracking().FirstOrDefaultAsync(c => c.PartyId == id && c.Side == which);
+        if (card is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(card.Data, card.ContentType);
+    }
+
+    [HttpDelete("{id:guid}/id-card/{side}")]
+    [Authorize(Policy = Permissions.PartiesIdCards)]
+    public async Task<ActionResult<PartyDto>> DeleteIdCard(Guid id, string side)
+    {
+        var which = Side(side);
+        var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
+        if (which is null || party is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        await _db.PartyIdCards.Where(c => c.PartyId == id && c.Side == which).ExecuteDeleteAsync();
+        if (which == "FRONT") party.HasIdFront = false; else party.HasIdBack = false;
+        await _db.SaveChangesAsync();
+        await AuditAsync($"id_card_{which.ToLowerInvariant()}_removed", id);
         return Ok(Mapper.ToParty(party));
     }
 

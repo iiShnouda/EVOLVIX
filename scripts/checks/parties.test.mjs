@@ -1,7 +1,7 @@
 // Parties (owner decisions 2026-09-30): a factory is a supplier (no FACTORY type), and customers /
 // suppliers carry more details — other phones, the owner / person in charge, the factory address,
 // a shipping address that delivered sales start at, and notes. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -257,5 +257,54 @@ eq(
   vs.map(() => [S2.id, 'R-2']),
 );
 eq('found under Loom', ids(await find(owner, `supplierId=${S2.id}`)).sort(), [Fresh.id, ...vs.map((v) => v.id)].sort());
+
+console.log('== contacts, extra address, temporary shipping company, ID card photos');
+const contact = ok(
+  'a customer with named phones and a second address',
+  await P({
+    name: `Contacts ${tag}`,
+    types: ['CUSTOMER'],
+    phone: '0100 000 0001',
+    otherPhones: ['0100 000 0002', '0100 000 0003', '0100 000 0002'],
+    otherPhoneLabels: ['his brother', '', 'dup'],
+    address: '1 Main St',
+    extraAddress: '9 Market Rd',
+    extraAddressLabel: 'The shop',
+    tempCarrierName: 'Fast Boxes',
+  }),
+);
+eq('phones kept once, each with its name', [contact.otherPhones, contact.otherPhoneLabels], [['0100 000 0002', '0100 000 0003'], ['his brother', '']]);
+eq('second address', [contact.extraAddress, contact.extraAddressLabel], ['9 Market Rd', 'The shop']);
+eq('temporary shipping company', contact.tempCarrierName, 'Fast Boxes');
+const relabeled = ok('rename a phone', await owner.put(`/parties/${contact.id}`, { otherPhones: ['0100 000 0003'], otherPhoneLabels: ['office'] }));
+eq('labels follow their phones', [relabeled.otherPhones, relabeled.otherPhoneLabels], [['0100 000 0003'], ['office']]);
+
+const upload = async (who, side, bytes, type = 'image/jpeg') => {
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type }), 'photo');
+  const r = await fetch(`${BASE}/parties/${contact.id}/id-card/${side}`, {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${who.token}` },
+    body: form,
+  });
+  return { status: r.status, data: await r.json().catch(() => null) };
+};
+const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array(60).fill(7)]);
+const front = ok('keep the front of the ID card', await upload(owner, 'front', jpeg));
+eq('marked kept', [front.hasIdFront, front.hasIdBack], [true, false]);
+eq('not a photo is refused', (await upload(owner, 'back', new TextEncoder().encode('<script>alert(1)</script> not an image'))).data?.code, 'bad_photo');
+eq('only front or back', (await upload(owner, 'side', jpeg)).status, 404);
+const got = await fetch(`${BASE}/parties/${contact.id}/id-card/front`, { headers: { authorization: `Bearer ${owner.token}` } });
+eq('served back as it was, never cached', [got.status, got.headers.get('content-type'), got.headers.get('cache-control'), (await got.arrayBuffer()).byteLength], [200, 'image/jpeg', 'no-store', jpeg.length]);
+const viewerEmail = `viewer.${tag}@skb.local`;
+ok('a viewer', await owner.post('/staff', { fullName: `Viewer ${tag}`, email: viewerEmail, password: 'Str0ngPass!', role: 'VIEWER', branchId: owner.user.branchId }));
+const viewer = await login(viewerEmail, 'Str0ngPass!');
+{
+  eq("someone without the permission can't see it", (await viewer.get(`/parties/${contact.id}/id-card/front`)).status, 403);
+  eq("…or keep one", (await upload(viewer, 'back', jpeg)).status, 403);
+}
+const removed = ok('remove it', await owner.del(`/parties/${contact.id}/id-card/front`));
+eq('no longer kept', removed.hasIdFront, false);
+eq('gone', (await owner.get(`/parties/${contact.id}/id-card/front`)).status, 404);
 
 process.exit(summary('parties') ? 1 : 0);

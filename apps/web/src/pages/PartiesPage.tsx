@@ -8,20 +8,20 @@ import {
   toMinor,
   type Party,
   type PartyType,
-  type PriceLevel,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
+import { IdCardFields, IdCardView, type IdSide } from '../components/IdCards';
+import { api } from '../lib/api';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
   useCreateParty,
   useParties,
-  usePriceLevels,
   usePriceLists,
   useSetCreditLimit,
   useSetPartyPriceLevels,
@@ -41,6 +41,8 @@ const TYPE_LABEL: Record<PartyType, TranslationKey> = {
 /** A supplier-only party is a factory: its contact is the owner and its address the factory's. */
 const isFactory = (types: PartyType[]) => types.includes('SUPPLIER') && !types.includes('CUSTOMER');
 const MAX_OTHER_PHONES = 5;
+/** The shipping-company choice for a company with no file of its own. */
+const OTHER = '__other__';
 
 const field =
   'h-8 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-xs outline-none focus:border-brand disabled:opacity-70';
@@ -62,8 +64,6 @@ export function PartiesPage() {
     search: query || undefined,
     active: showClosed ? undefined : true,
   });
-  const levels = usePriceLevels();
-
   return (
     <div className="space-y-5">
       <PageHeader
@@ -133,7 +133,6 @@ export function PartiesPage() {
             <PartyCard
               key={party.id}
               party={party}
-              levels={levels.data ?? []}
               onEdit={can('parties:edit') ? () => setEditing(party) : undefined}
             />
           ))}
@@ -151,15 +150,7 @@ export function PartiesPage() {
   );
 }
 
-function PartyCard({
-  party,
-  levels,
-  onEdit,
-}: {
-  party: Party;
-  levels: PriceLevel[];
-  onEdit?: () => void;
-}) {
+function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
   const { t, locale } = useT();
   const can = useCan();
   const navigate = useNavigate();
@@ -167,6 +158,16 @@ function PartyCard({
   const money = (kind: 'receipt' | 'payment') =>
     navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
   const [statement, setStatement] = useState(false);
+  const [idCard, setIdCard] = useState(false);
+  // What they owe against their purchase limit (owner, 2026-10-01: a warning on the customer).
+  const limit =
+    party.creditLimit == null || !party.types.includes('CUSTOMER')
+      ? null
+      : party.balance >= party.creditLimit
+        ? 'over'
+        : party.balance >= party.creditLimit * 0.8
+          ? 'near'
+          : null;
   const balLabel =
     bal.direction === 'receivable'
       ? t('parties.theyOweUs')
@@ -207,6 +208,8 @@ function PartyCard({
                 </Badge>
               ))}
               {!party.isActive && <Badge tone="warning">{t('parties.closed')}</Badge>}
+              {limit === 'over' && <Badge tone="destructive">{t('parties.overLimit')}</Badge>}
+              {limit === 'near' && <Badge tone="warning">{t('parties.nearLimit')}</Badge>}
             </div>
           </div>
         </div>
@@ -227,9 +230,7 @@ function PartyCard({
         </p>
       </div>
 
-      {levels.length > 0 && (
-        <PriceLevelPicker party={party} levels={levels} canSet={can('parties:set_price_level')} />
-      )}
+      <PriceListPicker party={party} canSet={can('parties:set_price_level')} />
       {party.types.includes('CUSTOMER') &&
         (can('parties:credit_limit') || party.creditLimit != null) && (
           <CreditLimitField party={party} canSet={can('parties:credit_limit')} />
@@ -266,7 +267,17 @@ function PartyCard({
         </div>
       )}
 
+      {(party.hasIdFront || party.hasIdBack) && can('parties:id_cards') && (
+        <Button size="sm" variant="ghost" className="mt-2" onClick={() => setIdCard(true)}>
+          {t('parties.idShow')}
+        </Button>
+      )}
       <PartyDetails party={party} />
+      {idCard && (
+        <Sheet title={party.name} onClose={() => setIdCard(false)} closeLabel={t('common.close')}>
+          <IdCardView party={party} />
+        </Sheet>
+      )}
       {statement && (
         <LedgerStatementSheet
           kind="parties"
@@ -287,8 +298,12 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const update = useUpdateParty();
   const can = useCan();
   const carriers = useParties({ page: 1, pageSize: 100, type: 'CARRIER', active: true });
-  // The shipping company a customer's sales go with, and whether they are a cash customer.
-  const [defaultCarrierId, setDefaultCarrierId] = useState(party?.defaultCarrierId ?? '');
+  // The shipping company a customer's sales go with (or one with no file, by name), and whether
+  // they are a cash customer.
+  const [defaultCarrierId, setDefaultCarrierId] = useState(
+    party?.defaultCarrierId ?? (party?.tempCarrierName ? OTHER : ''),
+  );
+  const [tempCarrierName, setTempCarrierName] = useState(party?.tempCarrierName ?? '');
   const [isCashCustomer, setIsCashCustomer] = useState(party?.isCashCustomer ?? false);
   const [name, setName] = useState(party?.name ?? '');
   const [types, setTypes] = useState<PartyType[]>(party?.types ?? ['CUSTOMER']);
@@ -296,32 +311,60 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const [email, setEmail] = useState(party?.email ?? '');
   const [taxNumber, setTaxNumber] = useState(party?.taxNumber ?? '');
   const [address, setAddress] = useState(party?.address ?? '');
-  const [otherPhones, setOtherPhones] = useState<string[]>(party?.otherPhones ?? []);
+  // Extra phones, each with whose it is (optional).
+  const [otherPhones, setOtherPhones] = useState<{ phone: string; label: string }[]>(
+    (party?.otherPhones ?? []).map((phone, i) => ({
+      phone,
+      label: party?.otherPhoneLabels?.[i] ?? '',
+    })),
+  );
+  const [extraAddress, setExtraAddress] = useState(party?.extraAddress ?? '');
+  const [extraAddressLabel, setExtraAddressLabel] = useState(party?.extraAddressLabel ?? '');
   const [contactName, setContactName] = useState(party?.contactName ?? '');
   const [shippingAddress, setShippingAddress] = useState(party?.shippingAddress ?? '');
   const [notes, setNotes] = useState(party?.notes ?? '');
+  // ID card photos picked before a new party is saved; sent right after.
+  const [idPending, setIdPending] = useState<Record<IdSide, Blob | null>>({
+    front: null,
+    back: null,
+  });
   const [touched, setTouched] = useState(false);
   const factory = isFactory(types);
+  const carrierOnly = types.length === 1 && types[0] === 'CARRIER';
+  const customer = types.includes('CUSTOMER');
+  const withIdCard = (customer || types.includes('CARRIER')) && can('parties:id_cards');
+  // The address is required (owner, 2026-10-01), except for a walk-in cash customer.
+  const addressMissing = !address.trim() && !(customer && isCashCustomer);
+  const phones = otherPhones.filter((x) => x.phone.trim());
 
   const values = {
     name: name.trim(),
     types,
     phone: phone.trim(),
-    email: email.trim(),
-    taxNumber: taxNumber.trim(),
+    email: carrierOnly ? '' : email.trim(),
+    taxNumber: carrierOnly ? '' : taxNumber.trim(),
     address: address.trim(),
-    otherPhones: otherPhones.map((x) => x.trim()).filter(Boolean),
+    otherPhones: phones.map((x) => x.phone.trim()),
+    otherPhoneLabels: phones.map((x) => x.label.trim()),
+    extraAddress: extraAddress.trim(),
+    extraAddressLabel: extraAddress.trim() ? extraAddressLabel.trim() : '',
     contactName: contactName.trim(),
     shippingAddress: shippingAddress.trim(),
     notes: notes.trim(),
-    ...(types.includes('CUSTOMER') ? { defaultCarrierId } : {}),
+    ...(customer
+      ? {
+          defaultCarrierId: defaultCarrierId === OTHER ? '' : defaultCarrierId,
+          tempCarrierName: defaultCarrierId === OTHER ? tempCarrierName.trim() : '',
+        }
+      : {}),
     ...(can('parties:cash_customer') && isCashCustomer !== (party?.isCashCustomer ?? false)
       ? { isCashCustomer }
       : {}),
   };
   const parsed = partySchema.safeParse(values);
   const issues = new Set(parsed.success ? [] : parsed.error.issues.map((i) => String(i.path[0])));
-  const pending = create.isPending || update.isPending;
+  const [sending, setSending] = useState(false);
+  const pending = create.isPending || update.isPending || sending;
   const error = errorText(t, create.error ?? update.error);
 
   const toggle = (type: PartyType) =>
@@ -329,13 +372,24 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
 
   async function save() {
     setTouched(true);
-    if (!parsed.success) return;
+    if (!parsed.success || addressMissing) return;
     try {
-      if (isNew) await create.mutateAsync(values);
-      else await update.mutateAsync({ id: party.id, input: values });
+      if (isNew) {
+        const created = await create.mutateAsync(values);
+        setSending(true);
+        for (const side of ['front', 'back'] as const) {
+          const photo = idPending[side];
+          if (photo && withIdCard)
+            await api
+              .upload(`/parties/${created.id}/id-card/${side}`, photo)
+              .catch(() => undefined);
+        }
+      } else await update.mutateAsync({ id: party.id, input: values });
       onClose();
     } catch {
       /* shown below */
+    } finally {
+      setSending(false);
     }
   }
 
@@ -348,6 +402,12 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
       /* shown below */
     }
   }
+
+  const nameLabel = factory
+    ? 'parties.factoryName'
+    : carrierOnly
+      ? 'parties.companyName'
+      : 'common.name';
 
   return (
     <Sheet
@@ -363,18 +423,6 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
           void save();
         }}
       >
-        <label className="block">
-          <span className="mb-1 block text-xs text-muted">{t('common.name')}</span>
-          <input
-            className={input}
-            value={name}
-            maxLength={200}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-            aria-invalid={touched && issues.has('name')}
-          />
-        </label>
-
         <fieldset>
           <legend className="mb-1 block text-xs text-muted">{t('parties.types')}</legend>
           <div className="flex flex-wrap gap-2">
@@ -402,16 +450,30 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
         </fieldset>
 
         <label className="block">
-          <span className="mb-1 block text-xs text-muted">
-            {t(factory ? 'parties.ownerName' : 'parties.contactName')}
-          </span>
+          <span className="mb-1 block text-xs text-muted">{t(nameLabel)}</span>
           <input
             className={input}
-            value={contactName}
+            value={name}
             maxLength={200}
-            onChange={(e) => setContactName(e.target.value)}
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            aria-invalid={touched && issues.has('name')}
           />
         </label>
+
+        {(factory || contactName) && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">
+              {t(factory ? 'parties.ownerName' : 'parties.contactName')}
+            </span>
+            <input
+              className={input}
+              value={contactName}
+              maxLength={200}
+              onChange={(e) => setContactName(e.target.value)}
+            />
+          </label>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
@@ -425,18 +487,20 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               onChange={(e) => setPhone(e.target.value)}
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('parties.email')}</span>
-            <input
-              className={input}
-              dir="ltr"
-              type="email"
-              value={email}
-              maxLength={200}
-              onChange={(e) => setEmail(e.target.value)}
-              aria-invalid={touched && issues.has('email')}
-            />
-          </label>
+          {!carrierOnly && (
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted">{t('parties.email')}</span>
+              <input
+                className={input}
+                dir="ltr"
+                type="email"
+                value={email}
+                maxLength={200}
+                onChange={(e) => setEmail(e.target.value)}
+                aria-invalid={touched && issues.has('email')}
+              />
+            </label>
+          )}
           <fieldset className="sm:col-span-2">
             <legend className="mb-1 block text-xs text-muted">{t('parties.otherPhones')}</legend>
             <div className="space-y-2">
@@ -446,11 +510,25 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                     className={input}
                     dir="ltr"
                     inputMode="tel"
-                    value={p}
+                    value={p.phone}
                     maxLength={40}
                     aria-label={`${t('parties.otherPhones')} ${i + 1}`}
                     onChange={(e) =>
-                      setOtherPhones((cur) => cur.map((x, j) => (j === i ? e.target.value : x)))
+                      setOtherPhones((cur) =>
+                        cur.map((x, j) => (j === i ? { ...x, phone: e.target.value } : x)),
+                      )
+                    }
+                  />
+                  <input
+                    className={input}
+                    value={p.label}
+                    maxLength={60}
+                    placeholder={t('parties.phoneLabel')}
+                    aria-label={t('parties.phoneLabel')}
+                    onChange={(e) =>
+                      setOtherPhones((cur) =>
+                        cur.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)),
+                      )
                     }
                   />
                   <Button
@@ -469,48 +547,75 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                   variant="ghost"
                   size="sm"
                   icon="plus"
-                  onClick={() => setOtherPhones((cur) => [...cur, ''])}
+                  onClick={() => setOtherPhones((cur) => [...cur, { phone: '', label: '' }])}
                 >
                   {t('parties.addPhone')}
                 </Button>
               )}
             </div>
           </fieldset>
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">{t('parties.taxNumber')}</span>
-            <input
-              className={input}
-              dir="ltr"
-              value={taxNumber}
-              maxLength={40}
-              onChange={(e) => setTaxNumber(e.target.value)}
-            />
-          </label>
+          {!carrierOnly && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-muted">
+                {t(factory ? 'parties.taxFile' : 'parties.taxNumber')}
+              </span>
+              <input
+                className={input}
+                dir="ltr"
+                value={taxNumber}
+                maxLength={40}
+                onChange={(e) => setTaxNumber(e.target.value)}
+              />
+            </label>
+          )}
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-xs text-muted">
               {t(factory ? 'parties.factoryAddress' : 'parties.address')}
             </span>
             <textarea
-              className={`${input} h-auto min-h-16 py-2`}
+              className={`${input} h-auto min-h-16 py-2 ${touched && addressMissing ? 'border-destructive' : ''}`}
               rows={2}
               value={address}
               maxLength={300}
+              aria-invalid={touched && addressMissing}
               onChange={(e) => setAddress(e.target.value)}
             />
+            {touched && addressMissing && (
+              <span className="mt-0.5 block text-xs text-destructive">
+                {t('parties.addressRequired')}
+              </span>
+            )}
           </label>
-          {types.includes('CUSTOMER') && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('parties.extraAddressLabel')}</span>
+            <input
+              className={input}
+              value={extraAddressLabel}
+              maxLength={60}
+              onChange={(e) => setExtraAddressLabel(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('parties.extraAddress')}</span>
+            <input
+              className={input}
+              value={extraAddress}
+              maxLength={300}
+              onChange={(e) => setExtraAddress(e.target.value)}
+            />
+          </label>
+          {customer && shippingAddress && (
             <label className="block sm:col-span-2">
               <span className="mb-1 block text-xs text-muted">{t('parties.shippingAddress')}</span>
-              <textarea
-                className={`${input} h-auto min-h-16 py-2`}
-                rows={2}
+              <input
+                className={input}
                 value={shippingAddress}
                 maxLength={300}
                 onChange={(e) => setShippingAddress(e.target.value)}
               />
             </label>
           )}
-          {types.includes('CUSTOMER') && (
+          {customer && (
             <label className="block">
               <span className="mb-1 block text-xs text-muted">{t('parties.defaultCarrier')}</span>
               <select
@@ -524,10 +629,22 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                     {c.name}
                   </option>
                 ))}
+                <option value={OTHER}>{t('parties.otherCarrier')}</option>
               </select>
             </label>
           )}
-          {types.includes('CUSTOMER') && (
+          {customer && defaultCarrierId === OTHER && (
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted">{t('parties.tempCarrier')}</span>
+              <input
+                className={input}
+                value={tempCarrierName}
+                maxLength={200}
+                onChange={(e) => setTempCarrierName(e.target.value)}
+              />
+            </label>
+          )}
+          {customer && (
             <label className="flex items-center gap-2 self-end pb-2 text-sm">
               <input
                 type="checkbox"
@@ -537,6 +654,13 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               />
               {t('parties.cashCustomer')}
             </label>
+          )}
+          {withIdCard && (
+            <IdCardFields
+              party={party}
+              pending={idPending}
+              onPending={(side, b) => setIdPending((cur) => ({ ...cur, [side]: b }))}
+            />
           )}
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-xs text-muted">{t('parties.notes')}</span>
@@ -596,16 +720,8 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   );
 }
 
-/** The party's own price levels and price lists: what new invoices to / from them start at. */
-function PriceLevelPicker({
-  party,
-  levels,
-  canSet,
-}: {
-  party: Party;
-  levels: PriceLevel[];
-  canSet: boolean;
-}) {
+/** The party's own price list: its prices replace the usual ones for its items. */
+function PriceListPicker({ party, canSet }: { party: Party; canSet: boolean }) {
   const { t } = useT();
   const set = useSetPartyPriceLevels();
   const lists = usePriceLists();
@@ -613,76 +729,46 @@ function PriceLevelPicker({
   const sides = [
     party.types.includes('CUSTOMER') && {
       side: 'SALE' as const,
-      label: t('parties.salesLevel'),
-      value: party.salesPriceLevelId ?? '',
-      key: 'salesPriceLevelId' as const,
       list: party.salesPriceListId ?? '',
       listKey: 'salesPriceListId' as const,
     },
     party.types.includes('SUPPLIER') && {
       side: 'PURCHASE' as const,
-      label: t('parties.purchaseLevel'),
-      value: party.purchasePriceLevelId ?? '',
-      key: 'purchasePriceLevelId' as const,
       list: party.purchasePriceListId ?? '',
       listKey: 'purchasePriceListId' as const,
     },
-  ].filter((x) => !!x);
+  ]
+    .filter((x) => !!x)
+    .map((s) => ({
+      ...s,
+      // Lists given one by one (an offer for everyone applies without being given).
+      options: (lists.data ?? []).filter(
+        (l) => l.side === s.side && !l.forEveryone && (l.isActive || l.id === s.list),
+      ),
+    }))
+    .filter((s) => s.options.length > 0 || s.list);
   if (sides.length === 0) return null;
 
   return (
     <div className="mt-3 grid gap-2">
-      {sides.map((s) => {
-        const options = levels.filter((l) => l.side === s.side && (l.isActive || l.id === s.value));
-        const def = options.find((l) => l.isDefault);
-        // Lists given one by one (an offer for everyone applies without being given).
-        const listOptions = (lists.data ?? []).filter(
-          (l) => l.side === s.side && !l.forEveryone && (l.isActive || l.id === s.list),
-        );
-        return (
-          <div key={s.side} className="grid gap-2 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{s.label}</span>
-              <select
-                className={field}
-                value={s.value}
-                disabled={!canSet || set.isPending}
-                onChange={(e) => set.mutate({ id: party.id, input: { [s.key]: e.target.value } })}
-              >
-                <option value="">
-                  {t('parties.defaultLevel')}
-                  {def ? ` (${def.name})` : ''}
-                </option>
-                {options.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {(listOptions.length > 0 || s.list) && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('pl.partyList')}</span>
-                <select
-                  className={field}
-                  value={s.list}
-                  disabled={!canSet || set.isPending}
-                  onChange={(e) =>
-                    set.mutate({ id: party.id, input: { [s.listKey]: e.target.value } })
-                  }
-                >
-                  <option value="">{t('pl.noList')}</option>
-                  {listOptions.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-        );
-      })}
+      {sides.map((s) => (
+        <label key={s.side} className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.partyList')}</span>
+          <select
+            className={field}
+            value={s.list}
+            disabled={!canSet || set.isPending}
+            onChange={(e) => set.mutate({ id: party.id, input: { [s.listKey]: e.target.value } })}
+          >
+            <option value="">{t('pl.noList')}</option>
+            {s.options.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
@@ -692,12 +778,20 @@ function PriceLevelPicker({
 function PartyDetails({ party }: { party: Party }) {
   const { t } = useT();
   const factory = isFactory(party.types);
-  const phones = [party.phone, ...(party.otherPhones ?? [])].filter((x): x is string => !!x);
+  const phones = [
+    ...(party.phone ? [{ phone: party.phone, label: '' }] : []),
+    ...(party.otherPhones ?? []).map((phone, i) => ({
+      phone,
+      label: party.otherPhoneLabels?.[i] ?? '',
+    })),
+  ];
   if (
     !party.contactName &&
     phones.length === 0 &&
     !party.address &&
+    !party.extraAddress &&
     !party.shippingAddress &&
+    !party.tempCarrierName &&
     !party.notes
   )
     return null;
@@ -716,9 +810,12 @@ function PartyDetails({ party }: { party: Party }) {
           <dt className="sr-only">{t('parties.phone')}</dt>
           <dd className="flex min-w-0 flex-wrap gap-x-3">
             {phones.map((p) => (
-              <a key={p} href={`tel:${p.replace(/\s+/g, '')}`} dir="ltr" className="hover:text-fg">
-                {p}
-              </a>
+              <span key={p.phone}>
+                <a href={`tel:${p.phone.replace(/\s+/g, '')}`} dir="ltr" className="hover:text-fg">
+                  {p.phone}
+                </a>
+                {p.label && <span className="ms-1">({p.label})</span>}
+              </span>
             ))}
           </dd>
         </div>
@@ -728,6 +825,20 @@ function PartyDetails({ party }: { party: Party }) {
           <Icon name="building" size={14} className="mt-0.5 shrink-0" />
           <dt className="shrink-0">{t(factory ? 'parties.factoryAddress' : 'parties.address')}:</dt>
           <dd className="min-w-0 break-words">{party.address}</dd>
+        </div>
+      )}
+      {party.extraAddress && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="building" size={14} className="mt-0.5 shrink-0" />
+          <dt className="shrink-0">{party.extraAddressLabel || t('parties.extraAddress')}:</dt>
+          <dd className="min-w-0 break-words">{party.extraAddress}</dd>
+        </div>
+      )}
+      {party.tempCarrierName && (
+        <div className="flex items-start gap-1.5">
+          <Icon name="delivery" size={14} className="mt-0.5 shrink-0" />
+          <dt className="sr-only">{t('parties.tempCarrier')}</dt>
+          <dd className="min-w-0 break-words">{party.tempCarrierName}</dd>
         </div>
       )}
       {party.shippingAddress && (

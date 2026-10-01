@@ -426,7 +426,9 @@ public record PartyDto(
     string? Email, string? TaxNumber, string? Address, bool IsActive,
     string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null,
     int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null,
-    string? DefaultCarrierId = null, bool IsCashCustomer = false);
+    string? DefaultCarrierId = null, bool IsCashCustomer = false,
+    string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
+    string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -437,14 +439,18 @@ public record SetCreditLimitRequest(long? CreditLimit);
 public record CreatePartyRequest(
     string? Name, string[]? Types, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
-    string? ShippingAddress = null, string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null);
+    string? ShippingAddress = null, string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
+    string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
+    string? TempCarrierName = null);
 
 /// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
     string? Name = null, string[]? Types = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? Address = null, bool? IsActive = null,
     string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
-    string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null);
+    string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
+    string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
+    string? TempCarrierName = null);
 
 /// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
 public record SetPartyPriceLevelsRequest(

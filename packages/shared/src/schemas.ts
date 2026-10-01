@@ -494,6 +494,12 @@ export const partySchema = z.object({
   /** "" clears it. */
   defaultCarrierId: z.string().optional(),
   isCashCustomer: z.boolean().optional(),
+  /** Whose each extra phone is, by position ("" = no name). */
+  otherPhoneLabels: z.array(z.string().trim().max(60)).max(5).optional(),
+  extraAddress: z.string().max(300).optional(),
+  extraAddressLabel: z.string().max(60).optional(),
+  /** A shipping company without a file of its own, by name ("" clears it). */
+  tempCarrierName: z.string().max(200).optional(),
 });
 export type CreatePartyInput = z.infer<typeof partySchema>;
 /** On an edit, a field left out is unchanged; closing needs a zero balance. */

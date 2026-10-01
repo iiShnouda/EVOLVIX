@@ -231,6 +231,22 @@ public class Party
     public string? Address { get; set; }
     /// <summary>Phone numbers besides <see cref="Phone"/> (up to 5).</summary>
     public List<string> OtherPhones { get; set; } = new();
+    /// <summary>
+    /// Whose each of <see cref="OtherPhones"/> is, by position (owner, 2026-10-01: e.g. a relative's);
+    /// "" = no name.
+    /// </summary>
+    public List<string> OtherPhoneLabels { get; set; } = new();
+    /// <summary>A second address and what it is called (e.g. "the shop"), both optional.</summary>
+    public string? ExtraAddress { get; set; }
+    public string? ExtraAddressLabel { get; set; }
+    /// <summary>
+    /// A shipping company the customer uses that has no file of its own (owner, 2026-10-01): just its
+    /// name, until it is added as a shipping company.
+    /// </summary>
+    public string? TempCarrierName { get; set; }
+    /// <summary>Whether a photo of the ID card's front / back is kept (<see cref="PartyIdCard"/>).</summary>
+    public bool HasIdFront { get; set; }
+    public bool HasIdBack { get; set; }
     /// <summary>Who to deal with: the factory owner (صاحب المصنع) for a supplier, the person in charge for a customer.</summary>
     public string? ContactName { get; set; }
     /// <summary>Where goods are shipped (عنوان الشحن); delivered sales start at it, else at <see cref="Address"/>.</summary>
@@ -268,6 +284,22 @@ public class Party
     public PriceList? PurchasePriceList { get; set; }
 
     public List<SalesDocument> Documents { get; set; } = new();
+}
+
+/// <summary>
+/// A photo of a customer's or shipping company's ID card, one side. Kept in the database, never as
+/// a file on the server's disk, and only served to people with <c>parties:id_cards</c>.
+/// </summary>
+public class PartyIdCard
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PartyId { get; set; }
+    /// <summary>FRONT or BACK.</summary>
+    public string Side { get; set; } = "FRONT";
+    public string ContentType { get; set; } = "image/jpeg";
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public Guid? UploadedBy { get; set; }
 }
 
 public class Category : INamed

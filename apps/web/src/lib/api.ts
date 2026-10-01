@@ -121,7 +121,7 @@ async function download(
   path: string,
   body?: unknown,
   retried = false,
-): Promise<{ name: string; bytes: Uint8Array }> {
+): Promise<{ name: string; type: string; bytes: Uint8Array }> {
   const token = getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -147,12 +147,40 @@ async function download(
     /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] ??
     /filename="?([^";]+)"?/i.exec(disposition)?.[1] ??
     'download';
-  return { name: decodeURIComponent(name), bytes: new Uint8Array(await res.arrayBuffer()) };
+  return {
+    name: decodeURIComponent(name),
+    type: res.headers.get('content-type') ?? '',
+    bytes: new Uint8Array(await res.arrayBuffer()),
+  };
+}
+
+/** Send one file (multipart, field "file") with PUT; the reply is JSON. */
+async function upload<T>(path: string, file: Blob, retried = false): Promise<T> {
+  const token = getAccessToken();
+  const form = new FormData();
+  form.append('file', file, 'photo');
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...branchHeader() },
+    body: form,
+  });
+  if (res.status === 401 && !retried) {
+    if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
+    else if (await tryRefresh()) return upload(path, file, true);
+    else if (useAuth.getState().status !== 'anonymous') endSession();
+  }
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, payload.message ?? res.statusText, payload.code);
+  }
+  return (await res.json()) as T;
 }
 
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
   download,
+  upload,
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

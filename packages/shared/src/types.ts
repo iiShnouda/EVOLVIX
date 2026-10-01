@@ -115,6 +115,7 @@ export type Permission =
   | 'purchases:additions'
   // Parties and delivery (DOMAIN step 4b)
   | 'parties:create'
+  | 'parties:id_cards'
   | 'delivery:view'
   | 'delivery:manage'
   | 'delivery:settle'
@@ -232,6 +233,16 @@ export interface Party {
   defaultCarrierId?: string | null;
   /** A cash customer (عميل نقدي): pays every invoice in full when it is made. */
   isCashCustomer?: boolean;
+  /** Whose each of `otherPhones` is, by position ("" = no name). */
+  otherPhoneLabels?: string[];
+  /** A second address and what it is called, both optional. */
+  extraAddress?: string | null;
+  extraAddressLabel?: string | null;
+  /** A shipping company they use that has no file of its own, by name. */
+  tempCarrierName?: string | null;
+  /** Whether photos of the ID card's front / back are kept (shown with parties:id_cards). */
+  hasIdFront?: boolean;
+  hasIdBack?: boolean;
   notes?: string | null;
   /** The most they may owe (حد الائتمان), minor units; null = no limit. */
   creditLimit?: number | null;

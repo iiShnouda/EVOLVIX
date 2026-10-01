@@ -104,6 +104,8 @@ public static class Permissions
     public const string PartiesEdit = "parties:edit";
     /// <summary>Add a customer, supplier (factories are suppliers) or shipping company.</summary>
     public const string PartiesCreate = "parties:create";
+    /// <summary>See and keep photos of customers' and shipping companies' ID cards.</summary>
+    public const string PartiesIdCards = "parties:id_cards";
     /// <summary>See deliveries, shipments and carrier settlements.</summary>
     public const string DeliveryView = "delivery:view";
     /// <summary>Hand parcels to carriers and move deliveries along (out, delivered, returned).</summary>
@@ -204,7 +206,7 @@ public static class Permissions
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
-        PartiesCreate, DeliveryView, DeliveryManage, DeliverySettle,
+        PartiesCreate, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
         MoneyAccountsManage, ExpenseCategoriesManage,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
@@ -244,7 +246,8 @@ public static class RolePermissions
             Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
-            Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
+            Permissions.PartiesCreate, Permissions.PartiesIdCards,
+            Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
             Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
             Permissions.ExpenseCategoriesManage,
@@ -265,7 +268,7 @@ public static class RolePermissions
             // The seller writes a customer's return; it goes straight back into its warehouse.
             Permissions.SalesReturn,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
-            Permissions.PartiesCreate, Permissions.DeliveryView, Permissions.DeliveryManage,
+            Permissions.PartiesCreate, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
         },
         // Store staff add items and enter supplier invoices as printed; they don't set selling prices.
         [Role.INVENTORY] = new[]
