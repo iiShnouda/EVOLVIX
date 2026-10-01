@@ -39,6 +39,7 @@ import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { StatementPage } from './pages/StatementPage';
+import { CashMovePage } from './pages/CashMovePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
@@ -210,6 +211,7 @@ export default function App() {
               element={<ReturnBuilderPage key="new" scope="purchases" />}
             />
             <Route path="/receipts" element={<MoneyPage />} />
+            <Route path="/receipts/move" element={<CashMovePage />} />
             <Route path="/ledger" element={<LedgerPage />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />

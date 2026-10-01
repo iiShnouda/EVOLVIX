@@ -288,6 +288,12 @@ One shape for every document type:
   suppliers, the account by code or name, then period, branch and items; columns branch, kind, entry,
   note, date, book, debit, credit, balance, entry number (رقم القيد — every journal entry now has its
   own running number) and document number, with the count of lines.
+- **Withdraw / deposit** (سحب / إيداع نقدي), the old program's money screen (owner, 2026-10-01): money
+  is withdrawn from one account and deposited into another, each a customer, a supplier or a cash box /
+  bank picked by code or name, with its balance. A customer paying = from their account into the
+  branch's main cash box (the default). Saved as what it is: party → cash box = receipt, cash box →
+  party = payment (with the open invoices it settles, oldest first or by hand), cash box → cash box =
+  transfer; each under its own permission. Party → party is a journal entry, not this screen.
 - **Every table's columns** can be hidden or shown ("الأعمدة" above it); the choice is kept per
   person on the server (`StaffPreference`), so it is the same next time and on any device.
 - **The app updates itself**: each open app looks for a new version every minute and when it comes back

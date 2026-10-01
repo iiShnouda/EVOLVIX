@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   METHOD_ACCOUNT_KINDS,
   formatDate,
@@ -78,6 +78,7 @@ const minor = (v: string) => (v.trim() === '' ? 0 : toMinor(Number(v) || 0));
  */
 export function MoneyPage() {
   const { t } = useT();
+  const navigate = useNavigate();
   const can = useCan();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
@@ -108,13 +109,19 @@ export function MoneyPage() {
         subtitle={t('money.subtitle')}
         action={
           <div className="flex flex-wrap gap-2">
+            {/* The old program's withdraw / deposit: one screen for receipts, payments and transfers. */}
+            {(can('receipts:create') || can('payments:create') || can('cash:transfer')) && (
+              <Button size="sm" icon="receipts" onClick={() => navigate('/receipts/move')}>
+                {t('move.button')}
+              </Button>
+            )}
             {actions
               .filter((a) => can(a.perm))
               .map((a) => (
                 <Button
                   key={a.key}
                   size="sm"
-                  variant={a.key === 'receipt' ? 'primary' : 'secondary'}
+                  variant="secondary"
                   icon="plus"
                   onClick={() => open(a.key)}
                 >
