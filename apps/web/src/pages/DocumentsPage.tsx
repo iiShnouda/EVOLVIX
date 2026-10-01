@@ -15,7 +15,9 @@ import { useAuth } from '../stores/auth';
 import {
   useCancelOrder,
   useCancelQuotation,
+  useCancelInvoice,
   useDepartments,
+  useWarehouses,
   useRejectOrder,
   useDocument,
   useDocumentList,
@@ -23,7 +25,7 @@ import {
   type DocScope,
 } from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
-import { statusOf } from '../lib/status';
+import { PAY_STATES, statusOf } from '../lib/status';
 import { errorText } from '../lib/errors';
 import { ConvertQuoteSheet } from '../components/ConvertQuoteSheet';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
@@ -106,6 +108,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const cancelOrder = useCancelOrder();
   const myId = useAuth((s) => s.user?.id);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const cancelInvoice = useCancelInvoice();
 
   // `?doc=<id>` (e.g. from an item card) opens that document straight away.
   const linkedId = params.get('doc');
@@ -119,8 +123,15 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [status, setStatus] = useState('');
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
-  // Invoices: all, on account (آجل: something still owed) or paid (تم الدفع).
-  const [payment, setPayment] = useState<'' | 'credit' | 'paid'>('');
+  // Invoices: one payment state (owner, 2026-10-01) instead of status + payment.
+  const [state, setState] = useState('');
+  const [branchId, setBranchId] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const myBranches = useAuth((s) => s.user?.branches ?? []);
+  const warehouses = useWarehouses(true);
+  const shownWarehouses = (warehouses.data ?? []).filter(
+    (w) => w.kind !== 'TRANSIT' && (!branchId || w.branchId === branchId),
+  );
   const [page, setPage] = useState(1);
   const departments = useDepartments();
   const deferredSearch = useDeferredValue(search.trim());
@@ -132,10 +143,15 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     departmentId: isSales ? departmentId || undefined : undefined,
     from: from || undefined,
     to: to || undefined,
-    payment: kind === 'invoices' && payment ? payment : undefined,
+    state: kind === 'invoices' && state ? state : undefined,
+    branchId: branchId || undefined,
+    warehouseId: warehouseId || undefined,
   });
   // Another filter starts again at the first page.
-  useEffect(() => setPage(1), [kind, deferredSearch, status, departmentId, from, to, payment]);
+  useEffect(
+    () => setPage(1),
+    [kind, deferredSearch, status, departmentId, from, to, state, branchId, warehouseId],
+  );
   const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / PAGE_SIZE));
   // Escape closes an open document (unless a sheet over it is open: it closes that first).
   useEffect(() => {
@@ -147,7 +163,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [selectedId]);
   const statuses: Record<DocKind, string[]> = {
-    invoices: ['CONFIRMED', 'PARTIALLY_PAID', 'PAID', 'RETURNED', 'CANCELLED'],
+    invoices: [],
     orders: ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED'],
     quotations: ['PENDING', 'CONFIRMED', 'CANCELLED'],
     returns: [],
@@ -160,7 +176,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   function switchKind(next: DocKind) {
     setSelectedId(null);
     setStatus('');
-    setPayment('');
+    setState('');
     setParams(next === 'invoices' ? {} : { tab: next }, { replace: true });
   }
 
@@ -256,20 +272,40 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     </>
   ) : undefined;
 
-  const returnAction = quote ? (
-    quoteActions
-  ) : order ? (
-    orderActions
-  ) : canReturn && isReturnable(detail.data) ? (
-    <Button
-      size="sm"
-      variant="secondary"
-      icon="returns"
-      onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
-    >
-      {t('return.action')}
-    </Button>
-  ) : undefined;
+  // A posted sales invoice: edit it or delete (cancel) it, each with its own permission.
+  const invoice =
+    isSales && detail.data?.type === 'SALES_INVOICE' && detail.data.status !== 'CANCELLED'
+      ? detail.data
+      : undefined;
+  const invoiceActions = (
+    <>
+      {canReturn && isReturnable(detail.data) && (
+        <Button
+          size="sm"
+          variant="secondary"
+          icon="returns"
+          onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
+        >
+          {t('return.action')}
+        </Button>
+      )}
+      {invoice && permissions.includes('sales:edit') && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => navigate(`/sales/invoices/${invoice.id}/edit`)}
+        >
+          {t('invoice.edit')}
+        </Button>
+      )}
+      {invoice && permissions.includes('sales:cancel') && (
+        <Button size="sm" variant="ghost" onClick={() => setDeleting(true)}>
+          {t('invoice.cancel')}
+        </Button>
+      )}
+    </>
+  );
+  const returnAction = quote ? quoteActions : order ? orderActions : invoiceActions;
 
   return (
     <div className="space-y-5">
@@ -320,11 +356,48 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           <input
             type="search"
             className={filterField}
-            placeholder={t('sales.filterSearch')}
+            placeholder={t('list.searchHint')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
+        {myBranches.length > 1 && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+            <select
+              className={filterField}
+              value={branchId}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+                setWarehouseId('');
+              }}
+            >
+              <option value="">{t('list.all')}</option>
+              {myBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {shownWarehouses.length > 1 && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+            <select
+              className={filterField}
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              <option value="">{t('list.all')}</option>
+              {shownWarehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {isSales && (departments.data ?? []).length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
@@ -333,7 +406,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
             >
-              <option value="">{t('account.allDepartments')}</option>
+              <option value="">{t('list.all')}</option>
               {(departments.data ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -381,33 +454,21 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           />
         </label>
         {kind === 'invoices' && (
-          <div className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.payment')}</span>
-            <div
-              role="radiogroup"
-              aria-label={t('list.payment')}
-              className="flex h-9 items-center gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.state')}</span>
+            <select
+              className={filterField}
+              value={state}
+              onChange={(e) => setState(e.target.value)}
             >
-              {(['', 'credit', 'paid'] as const).map((p) => (
-                <button
-                  key={p || 'all'}
-                  type="button"
-                  role="radio"
-                  aria-checked={payment === p}
-                  onClick={() => setPayment(p)}
-                  className={`h-7 rounded-md px-3 text-sm font-medium transition-colors ${payment === p ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'}`}
-                >
-                  {t(
-                    p === 'credit'
-                      ? 'list.payCredit'
-                      : p === 'paid'
-                        ? 'list.payPaid'
-                        : 'list.payAll',
-                  )}
-                </button>
+              <option value="">{t('list.all')}</option>
+              {PAY_STATES.map((s) => (
+                <option key={s} value={s}>
+                  {t(`state.${s}`)}
+                </option>
               ))}
-            </div>
-          </div>
+            </select>
+          </label>
         )}
       </div>
 
@@ -527,6 +588,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               loading={detail.isFetching}
               onClose={() => setSelectedId(null)}
               action={returnAction}
+              autoPrint={params.get('print') === '1'}
+              onPrinted={() => setParams({ doc: selectedId ?? '' }, { replace: true })}
             />
           </div>
         </div>
@@ -547,6 +610,34 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       )}
       {rejecting && order && (
         <RejectSheet id={order.id} number={order.number} onClose={() => setRejecting(false)} />
+      )}
+      {deleting && invoice && (
+        <Sheet
+          title={`${t('invoice.cancelTitle')} — ${invoice.number}`}
+          onClose={() => setDeleting(false)}
+          closeLabel={t('common.close')}
+        >
+          <div className="space-y-3">
+            <p className="text-sm">{t('invoice.cancelConfirm')}</p>
+            {cancelInvoice.error && (
+              <p className="text-sm text-destructive">{errorText(t, cancelInvoice.error)}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDeleting(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                loading={cancelInvoice.isPending}
+                onClick={() =>
+                  cancelInvoice.mutate(invoice.id, { onSuccess: () => setDeleting(false) })
+                }
+              >
+                {t('invoice.cancel')}
+              </Button>
+            </div>
+          </div>
+        </Sheet>
       )}
       {approving && order && (
         <ApproveOrderSheet
@@ -580,6 +671,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               loading={detail.isFetching}
               onClose={() => setSelectedId(null)}
               action={returnAction}
+              autoPrint={params.get('print') === '1'}
+              onPrinted={() => setParams({ doc: selectedId ?? '' }, { replace: true })}
             />
           </div>
         </div>

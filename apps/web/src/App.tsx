@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { setCompanyTimeZone } from '@skb/shared';
 import { queryClient } from './lib/queryClient';
@@ -149,6 +149,12 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
+/** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
+function EditSalesInvoiceRoute() {
+  const { id } = useParams();
+  return <InvoiceBuilderPage key={`edit-${id}`} mode="sale" editId={id} />;
+}
+
 export default function App() {
   useApplyPrefs();
   useRefetchOnLocale();
@@ -167,6 +173,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
             <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
+            <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
             <Route
               path="/sales/invoices/:id/return"
               element={<ReturnBuilderPage scope="sales" />}

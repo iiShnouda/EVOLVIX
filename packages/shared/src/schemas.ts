@@ -98,6 +98,8 @@ export const createSalesInvoiceSchema = z.object({
   paidAccountId: z.string().uuid().optional(),
   /** The sales department (قسم); someone limited to one department may leave it out. */
   departmentId: z.string().uuid().optional(),
+  /** LIST (default), LAST (the customer's last price) or COST; the last two need sales:price_basis. */
+  priceBasis: z.enum(['LIST', 'LAST', 'COST']).optional(),
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
@@ -262,6 +264,7 @@ export const updateSettingsSchema = z.object({
   commercialRegister: z.string().trim().max(60).optional(),
   /** One of TIME_ZONES (IANA id). */
   timeZone: z.string().trim().min(1).max(64).optional(),
+  requireDepartment: z.boolean().optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 
@@ -420,6 +423,9 @@ export const partySchema = z.object({
   contactName: z.string().max(200).optional(),
   shippingAddress: z.string().max(300).optional(),
   notes: z.string().max(1000).optional(),
+  /** "" clears it. */
+  defaultCarrierId: z.string().optional(),
+  isCashCustomer: z.boolean().optional(),
 });
 export type CreatePartyInput = z.infer<typeof partySchema>;
 /** On an edit, a field left out is unchanged; closing needs a zero balance. */

@@ -1,5 +1,5 @@
 import { CompanyMark } from './CompanyBadge';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   formatDate,
   formatMoney,
@@ -14,6 +14,11 @@ import { statusOf } from '../lib/status';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 import { TableColumns } from './TableColumns';
+import { useHiddenColumns } from '../lib/queries';
+
+/** The parts of a printed document a person may leave out (owner, 2026-10-01). */
+const PRINT_PARTS = ['company', 'party', 'meta', 'lines', 'totals', 'notes', 'staff'] as const;
+type PrintPart = (typeof PRINT_PARTS)[number];
 
 /**
  * Printable-style document preview: company, branch, party, lines, totals, staff, status.
@@ -25,16 +30,31 @@ export function DocumentPreview({
   loading,
   onClose,
   action,
+  autoPrint,
+  onPrinted,
 }: {
   doc?: SalesDocument;
   loading?: boolean;
   onClose?: () => void;
   /** Extra control in the header, e.g. "Return items" on an invoice. */
   action?: ReactNode;
+  /** Print it as soon as it shows (after "Save and print"); then `onPrinted`. */
+  autoPrint?: boolean;
+  onPrinted?: () => void;
 }) {
   const { t, locale } = useT();
   const { company, details } = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
+  // What is left out of the printout, kept per person like hidden columns.
+  const [skipped, setSkipped] = useHiddenColumns('print.document');
+  const skip = (part: PrintPart) => (skipped.includes(part) ? { 'data-noprint': '' } : {});
+  const ready = !loading && !!doc;
+  useEffect(() => {
+    if (!autoPrint || !ready || !paper.current || !doc) return;
+    printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
+    onPrinted?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPrint, ready]);
 
   if (loading) {
     return (
@@ -73,6 +93,7 @@ export function DocumentPreview({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {action}
+          <PrintOptions skipped={skipped} onChange={setSkipped} />
           <Button
             size="sm"
             variant="ghost"
@@ -99,7 +120,7 @@ export function DocumentPreview({
       <div className="flex-1 overflow-y-auto p-4 sm:p-5">
         <div className="mb-5 flex items-start justify-between gap-3">
           <CompanyMark size={48} logoOnly />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1" {...skip('company')}>
             <p className="text-base font-bold">{company}</p>
             {details.map((d) => (
               <p key={d} className="break-words text-xs text-muted">
@@ -136,40 +157,46 @@ export function DocumentPreview({
                 <span className="font-medium text-fg">{doc.sourceNumber}</span>
               </p>
             )}
-            {doc.rejectReason && (
-              <p className="text-destructive">
-                {t('order.rejectedBecause')} <span className="font-medium">{doc.rejectReason}</span>
-              </p>
-            )}
-            {doc.departmentName && (
-              <p>
-                {t('invoice.department')}:{' '}
-                <span className="font-medium text-fg">{doc.departmentName}</span>
-              </p>
-            )}
-            {doc.repName && (
-              <p>
-                {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
-                {doc.repCode != null && <span className="tnum"> ({doc.repCode})</span>}
-              </p>
-            )}
-            {doc.paidAccountName && doc.paidAmount > 0 && (
-              <p>
-                {t('money.paidInto')}:{' '}
-                <span className="font-medium text-fg">{doc.paidAccountName}</span>
-              </p>
-            )}
-            {/* Sales invoices don't show a price level (owner decision 2026-09-30). */}
-            {isPurchaseSide && doc.priceLevelName && (
-              <p>
-                {t('invoice.priceLevel')}:{' '}
-                <span className="font-medium text-fg">{doc.priceLevelName}</span>
-              </p>
-            )}
+            <div {...skip('meta')}>
+              {doc.rejectReason && (
+                <p className="text-destructive">
+                  {t('order.rejectedBecause')}{' '}
+                  <span className="font-medium">{doc.rejectReason}</span>
+                </p>
+              )}
+              {doc.departmentName && (
+                <p>
+                  {t('invoice.department')}:{' '}
+                  <span className="font-medium text-fg">{doc.departmentName}</span>
+                </p>
+              )}
+              {doc.repName && (
+                <p>
+                  {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
+                  {doc.repCode != null && <span className="tnum"> ({doc.repCode})</span>}
+                </p>
+              )}
+              {doc.paidAccountName && doc.paidAmount > 0 && (
+                <p>
+                  {t('money.paidInto')}:{' '}
+                  <span className="font-medium text-fg">{doc.paidAccountName}</span>
+                </p>
+              )}
+              {/* Sales invoices don't show a price level (owner decision 2026-09-30). */}
+              {isPurchaseSide && doc.priceLevelName && (
+                <p>
+                  {t('invoice.priceLevel')}:{' '}
+                  <span className="font-medium text-fg">{doc.priceLevelName}</span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="mb-4 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
+        <div
+          className="mb-4 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm"
+          {...skip('party')}
+        >
           <p className="text-xs text-muted">
             {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
           </p>
@@ -204,7 +231,10 @@ export function DocumentPreview({
         </div>
 
         {/* Line items */}
-        <div className="overflow-hidden rounded-[var(--radius-app)] border border-line">
+        <div
+          className="overflow-hidden rounded-[var(--radius-app)] border border-line"
+          {...skip('lines')}
+        >
           <TableColumns id="document.lines">
             <table className="w-full text-sm">
               <thead className="bg-surface-2 text-xs text-muted">
@@ -261,7 +291,7 @@ export function DocumentPreview({
         </div>
 
         {/* Totals */}
-        <dl className="mt-4 space-y-1.5 text-sm">
+        <dl className="mt-4 space-y-1.5 text-sm" {...skip('totals')}>
           <Row
             label={t('sales.subtotal')}
             value={formatMoney(doc.subtotal, doc.currency, locale)}
@@ -314,10 +344,22 @@ export function DocumentPreview({
             </>
           )}
         </dl>
+        {doc.notes && (
+          <p
+            className="mt-4 whitespace-pre-wrap rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm"
+            {...skip('notes')}
+          >
+            <span className="block text-xs text-muted">{t('invoice.notes')}</span>
+            {doc.notes}
+          </p>
+        )}
       </div>
 
       {/* Staff footer (required on every document) */}
-      <div className="flex items-center gap-2 border-t border-line p-4 text-xs text-muted">
+      <div
+        className="flex items-center gap-2 border-t border-line p-4 text-xs text-muted"
+        {...skip('staff')}
+      >
         <Icon name="staff" size={14} />
         <span>{t('sales.issuedBy')}:</span>
         <span className="font-medium text-fg">{doc.staffName}</span>
@@ -331,6 +373,62 @@ function Row({ label, value, emphasize }: { label: string; value: string; emphas
     <div className="flex items-center justify-between">
       <dt className="text-muted">{label}</dt>
       <dd className={`tnum ${emphasize ? 'font-semibold text-destructive' : ''}`}>{value}</dd>
+    </div>
+  );
+}
+
+/** Choose what the printout carries; the columns follow the table's own column choice. */
+function PrintOptions({
+  skipped,
+  onChange,
+}: {
+  skipped: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  return (
+    <div ref={box} className="relative">
+      <Button
+        size="sm"
+        variant="ghost"
+        icon="settings"
+        aria-label={t('print.options')}
+        title={t('print.options')}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      />
+      {open && (
+        <div className="absolute end-0 z-30 mt-1 w-56 rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
+          <p className="px-2 py-1 text-xs font-semibold text-muted">{t('print.options')}</p>
+          {PRINT_PARTS.map((part) => (
+            <label
+              key={part}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2"
+            >
+              <input
+                type="checkbox"
+                checked={!skipped.includes(part)}
+                onChange={() =>
+                  onChange(
+                    skipped.includes(part) ? skipped.filter((p) => p !== part) : [...skipped, part],
+                  )
+                }
+              />
+              {t(`print.${part}`)}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

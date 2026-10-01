@@ -12,6 +12,9 @@ interface PrefsState {
   /** The look theme; a UI preference like the theme mode, so it stays on this device. */
   skin: Skin;
   setSkin: (skin: Skin) => void;
+  /** The side menu shrunk to icons, for more room (owner, 2026-10-01). */
+  navCollapsed: boolean;
+  setNavCollapsed: (collapsed: boolean) => void;
   setLocale: (locale: Locale) => void;
   toggleLocale: () => void;
   setTheme: (theme: ThemeMode) => void;
@@ -28,6 +31,8 @@ export const usePrefs = create<PrefsState>()(
       theme: 'system',
       skin: 'evolvix',
       setSkin: (skin) => set({ skin }),
+      navCollapsed: false,
+      setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
       setLocale: (locale) => set({ locale }),
       toggleLocale: () => set({ locale: get().locale === 'en' ? 'ar' : 'en' }),
       setTheme: (theme) => set({ theme }),

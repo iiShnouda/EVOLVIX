@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   applyCharges,
@@ -11,7 +11,9 @@ import {
   type ChargeKind,
   type DeliveryMethod,
   type Party,
+  type PriceBasis,
   type Product,
+  type SalesDocument,
   companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
@@ -36,6 +38,8 @@ import {
   useCreateOrder,
   useCreateQuotation,
   useCreateSalesInvoice,
+  useHiddenColumns,
+  useUpdateSalesInvoice,
   useInventory,
   useParties,
   usePriceLevels,
@@ -108,7 +112,14 @@ let nextKey = 0;
  * Live cost, markup and profit use the cost of the chosen warehouse's branch. What's typed is kept
  * through an app update (useWorkDraft).
  */
-export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quote' }) {
+export function InvoiceBuilderPage({
+  mode,
+  editId,
+}: {
+  mode: 'sale' | 'purchase' | 'quote';
+  /** A saved sales invoice being changed (sales:edit); it is posted again under its number. */
+  editId?: string;
+}) {
   const isQuote = mode === 'quote';
   const isSale = mode !== 'purchase';
   const backTo = isQuote ? '/sales?tab=quotations' : isSale ? '/sales' : '/purchases';
@@ -126,7 +137,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const priceEditable = canChangePrice || canRaisePrice;
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
   const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
-  const canBonus = can(isSale ? 'sales:bonus' : 'purchases:bonus');
+  // Sold at the selling price, the customer's last price, or the supply price (owner, 2026-10-01).
+  const canPriceBasis = isSale && can('sales:price_basis');
+  const [priceBasis, setPriceBasis] = useState<PriceBasis>('LIST');
+  // The customer's shipping company and address are theirs unless this person may change them.
+  const canChangeShipping = can('sales:change_shipping');
+  // Discounts appear only when asked for (owner, 2026-10-01).
+  const [showDiscount1, setShowDiscount1] = useState(false);
+  const [showDiscount2, setShowDiscount2] = useState(false);
+  const [lineDiscountOpen, setLineDiscountOpen] = useState<Set<string>>(new Set());
+  // Order of the line columns, kept per person.
+  const [columnOrder, setColumnOrder] = useHiddenColumns(`order.invoice.${mode}`);
+  const [cashAccountId, setCashAccountId] = useState('');
   const isPhone = useDeviceInfo().deviceClass === 'phone';
   const reps = useReps(isSale);
   const me = useAuth((s) => s.user);
@@ -147,6 +169,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     (d) => d.isActive && (!myDepartments || myDepartments.includes(d.id)),
   );
   const [pickedDepartment, setPickedDepartment] = useState('');
+  // Every sale names its department while the company has any (Settings; owner 2026-10-01).
+  const departmentRequired =
+    isSale && departments.length > 0 && settings.data?.requireDepartment !== false;
   const departmentId = !isSale
     ? ''
     : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
@@ -169,6 +194,20 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   });
   const [party, setParty] = useState<Party | null>(null);
   const partyId = party?.id ?? '';
+  // Shipped by a company: the customer's own company and address fill in by themselves.
+  const fileCarrier = party?.defaultCarrierId ?? '';
+  const fileAddress = party?.shippingAddress || party?.address || '';
+  useEffect(() => {
+    if (delivery.method !== 'SHIPPING_COMPANY' || !party) return;
+    setDelivery((d) => ({
+      ...d,
+      carrierId: fileCarrier && (!canChangeShipping || !d.carrierId) ? fileCarrier : d.carrierId,
+      address: fileAddress && (!canChangeShipping || !d.address) ? fileAddress : d.address,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [party?.id, delivery.method]);
+  /** A cash customer (عميل نقدي) pays the whole invoice when it is made. */
+  const cashCustomer = isSale && !isQuote && !!party?.isCashCustomer;
 
   // Price level: the party's own, else the default of this side. Another needs permission.
   const levels = usePriceLevels();
@@ -245,6 +284,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const createPurchase = useCreatePurchaseInvoice();
   const createQuote = useCreateQuotation();
   const createOrder = useCreateOrder();
+  const updateSale = useUpdateSalesInvoice();
   // A sale posts at once and the accountant is told, to take the payment (owner decision 2026-09-30).
   // Only someone who may just save pending invoices (sales:order without sales:create) saves one.
   const asOrder = isSale && !isQuote && !can('sales:create') && can('sales:order');
@@ -252,11 +292,13 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     createSale.isPending ||
     createPurchase.isPending ||
     createQuote.isPending ||
-    createOrder.isPending;
+    createOrder.isPending ||
+    updateSale.isPending;
   const serverError = (createSale.error ??
     createPurchase.error ??
     createQuote.error ??
-    createOrder.error) as ApiError | null;
+    createOrder.error ??
+    updateSale.error) as ApiError | null;
 
   const currency = settings.data?.currency ?? 'EGP';
   const minMarkup = settings.data?.minMarkupPercent ?? 0;
@@ -283,6 +325,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     partyId: partyId || undefined,
     priceLevelId: canChooseLevel && pickedLevel ? pickedLevel : undefined,
     warehouseId: warehouseId || undefined,
+    priceBasis: canPriceBasis && priceBasis !== 'LIST' ? priceBasis : undefined,
     lines: lines.map((l) => ({
       productId: l.product.id,
       unitId: l.unitId || undefined,
@@ -457,12 +500,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     !outcome.error &&
     !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
     !(isSale && !repId) &&
+    !(departmentRequired && !departmentId) &&
     !hasUnderList &&
     !pricingBusy &&
     !pending;
 
-  async function save() {
-    const paidAmount = isSale || paidNow === '' ? 0 : toMinor(Number(paidNow));
+  /** `print`: open the saved invoice and print it (حفظ وطباعة). */
+  async function save(print = false) {
+    const paidAmount = cashCustomer
+      ? grand
+      : isSale || paidNow === ''
+        ? 0
+        : toMinor(Number(paidNow));
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
       if (isQuote) {
@@ -487,7 +536,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         });
         navigate(backTo);
       } else if (isSale) {
-        await (asOrder ? createOrder : createSale).mutateAsync({
+        const input = {
           partyId,
           lines: rows.map((r) => ({
             productId: r.line.product.id,
@@ -515,8 +564,14 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
               ? delivery.carrierId
               : undefined,
-        });
-        navigate(asOrder ? '/sales?tab=orders' : '/sales');
+          priceBasis: canPriceBasis && priceBasis !== 'LIST' ? priceBasis : undefined,
+          paidAccountId: cashCustomer && cashAccountId ? cashAccountId : undefined,
+        };
+        const saved = editId
+          ? await updateSale.mutateAsync({ id: editId, input })
+          : await (asOrder ? createOrder : createSale).mutateAsync(input);
+        if (asOrder) navigate('/sales?tab=orders');
+        else navigate(`/sales?doc=${saved.id}${print ? '&print=1' : ''}`);
       } else {
         await createPurchase.mutateAsync({
           partyId,
@@ -647,14 +702,99 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     },
   );
 
+  // Changing a saved invoice: its customer, choices, lines and discounts fill the screen.
+  const [loadingEdit, setLoadingEdit] = useState(!!editId);
+  const [editedNumber, setEditedNumber] = useState('');
+  useEffect(() => {
+    if (!editId) return;
+    let gone = false;
+    void (async () => {
+      const doc = await api.get<SalesDocument>(`/sales/invoices/${editId}`).catch(() => null);
+      if (!doc || gone) {
+        setLoadingEdit(false);
+        return;
+      }
+      const [who, items] = await Promise.all([
+        api.get<Party>(`/parties/${doc.partyId}`).catch(() => null),
+        // The items as the invoice screen lists them (units with their prices), found by code.
+        Promise.all(
+          [...new Set(doc.lines.map((l) => l.productId))].map(async (id) => {
+            const detail = await api.get<{ sku: string }>(`/products/${id}`).catch(() => null);
+            if (!detail) return null;
+            const found = await api
+              .get<Product[]>(`/products?search=${encodeURIComponent(detail.sku)}&limit=20`)
+              .catch(() => []);
+            return found.find((p) => p.id === id) ?? null;
+          }),
+        ),
+      ]);
+      if (gone) return;
+      const byId = new Map(items.filter((x): x is Product => !!x).map((x) => [x.id, x]));
+      setEditedNumber(doc.number);
+      if (who) setParty(who);
+      setPickedWarehouse(doc.lines[0]?.warehouseId ?? '');
+      setPickedRep(doc.repId ?? '');
+      setDueDate(doc.dueDate ? doc.dueDate.slice(0, 10) : '');
+      setPickedDepartment(doc.departmentId ?? '');
+      setDelivery({
+        method:
+          doc.deliveryMethod && METHODS.includes(doc.deliveryMethod)
+            ? doc.deliveryMethod
+            : 'PICKUP',
+        address: doc.deliveryAddress ?? '',
+        carrierId: doc.carrierId ?? '',
+      });
+      setNotes(doc.notes ?? '');
+      const asInput = (kind: ChargeKind): DiscountInput | null => {
+        const c = doc.charges.find((x) => x.kind === kind);
+        if (!c) return null;
+        return c.rate != null
+          ? { mode: 'percent', value: String(c.rate) }
+          : { mode: 'amount', value: String(toMajor(c.amount)) };
+      };
+      const d1 = asInput('DISCOUNT');
+      const d2 = asInput('EXTRA_DISCOUNT');
+      if (d1) {
+        setDiscount1(d1);
+        setShowDiscount1(true);
+      }
+      if (d2) {
+        setDiscount2(d2);
+        setShowDiscount2(true);
+      }
+      const loaded = doc.lines.flatMap((l) => {
+        const product = byId.get(l.productId);
+        if (!product || l.isBonus) return [];
+        return [
+          {
+            key: `l${nextKey++}`,
+            product,
+            unitId: l.unitId ?? product.units[0]?.unitId ?? '',
+            quantity: l.unitQuantity || l.quantity,
+            price: l.unitPrice,
+            touched: true,
+            bonus: false,
+            discMode: 'amount' as LineDiscountMode,
+            discValue: l.discount > 0 ? String(toMajor(l.discount)) : '',
+          },
+        ];
+      });
+      setLines(loaded);
+      setLineDiscountOpen(new Set(loaded.filter((l) => l.discValue).map((l) => l.key)));
+      setLoadingEdit(false);
+    })();
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
+
   const products = productList.data ?? [];
 
   // A line's controls, shared by the table (wide screens) and the cards (phones).
   type Row = (typeof rows)[number];
   const cell =
     'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2';
-  const showDiscountColumn = isSale && (canDiscount || lines.some((l) => l.discValue));
-  const showBonusColumn = canBonus || lines.some((l) => l.bonus);
   /** Amounts in the table without the currency, as on the old grid (the totals show it). */
   const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
     minimumFractionDigits: 2,
@@ -751,21 +891,6 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       )}
     </>
   );
-  const bonusBox = (r: Row) => (
-    <>
-      {(canBonus || r.line.bonus) && (
-        <label className="inline-flex items-center gap-1.5" title={t('invoice.bonusHint')}>
-          <input
-            type="checkbox"
-            checked={r.line.bonus}
-            disabled={!canBonus}
-            onChange={(e) => updateLine(r.line.key, { bonus: e.target.checked })}
-          />
-          {t('invoice.bonus')}
-        </label>
-      )}
-    </>
-  );
   /** Notes under a line: the units it makes, its price list, quantity discount, list price, share of the invoice discount. */
   const lineNotes = (r: Row) => (
     <>
@@ -785,7 +910,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           {formatMoney(r.discount, currency, locale)}
         </span>
       )}
-      {isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
+      {isPhone && isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
         <span className={underList(r.line, r.index) ? 'text-destructive' : ''}>
           {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
         </span>
@@ -813,10 +938,194 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     </>
   );
 
+  /** A line's own discount: hidden behind "Add discount" until asked for (owner, 2026-10-01). */
+  const lineDiscountCell = (r: Row) => {
+    if (!isSale || r.line.bonus) return null;
+    const open = lineDiscountOpen.has(r.line.key) || !!r.line.discValue;
+    if (!open)
+      return canDiscount ? (
+        <button
+          type="button"
+          className="whitespace-nowrap text-xs font-medium text-brand hover:underline"
+          onClick={() => setLineDiscountOpen((s) => new Set(s).add(r.line.key))}
+        >
+          + {t('invoice.addDiscount')}
+        </button>
+      ) : null;
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs">
+        {discountControls(r, false)}
+        {canDiscount && (
+          <button
+            type="button"
+            className="text-faint hover:text-destructive"
+            aria-label={t('invoice.removeDiscount')}
+            title={t('invoice.removeDiscount')}
+            onClick={() => {
+              updateLine(r.line.key, { discValue: '' });
+              setLineDiscountOpen((s) => {
+                const next = new Set(s);
+                next.delete(r.line.key);
+                return next;
+              });
+            }}
+          >
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </span>
+    );
+  };
+
+  // The lines table (owner, 2026-10-01): stock, selling and supply price, last price, the
+  // increase, before and after discount; each column may be hidden and put in its own place.
+  type ColumnKey =
+    | 'no'
+    | 'code'
+    | 'item'
+    | 'unit'
+    | 'balance'
+    | 'qty'
+    | 'listPrice'
+    | 'cost'
+    | 'lastPrice'
+    | 'price'
+    | 'raise'
+    | 'beforeDiscount'
+    | 'discount'
+    | 'afterDiscount'
+    | 'profit';
+  interface LineColumn {
+    key: ColumnKey;
+    label: string;
+    end?: boolean;
+    className?: string;
+    cell: (r: Row, i: number) => ReactNode;
+  }
+  const when = (on: boolean, column: LineColumn): LineColumn[] => (on ? [column] : []);
+  const sellingPrice = (r: Row) => priced?.[r.index]?.listPrice ?? listPriceOf(r.line, r.index);
+  const lastPrice = (r: Row) => priced?.[r.index]?.lastPrice ?? null;
+  const allColumns: LineColumn[] = [
+    { key: 'no', label: '#', cell: (_r, i) => <span className="text-muted tnum">{i + 1}</span> },
+    {
+      key: 'code',
+      label: t('col.code'),
+      cell: (r) => <span className="whitespace-nowrap tnum">{r.line.product.sku}</span>,
+    },
+    {
+      key: 'item',
+      label: t('col.item'),
+      className: 'min-w-40',
+      cell: (r) => (
+        <>
+          <span className="block font-medium">{r.line.product.name}</span>
+          <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">{lineNotes(r)}</span>
+          {lineWarning(r, 'mt-1')}
+        </>
+      ),
+    },
+    { key: 'unit', label: t('col.unit'), cell: (r) => unitSelect(r, `${cell} w-24`) },
+    ...when(isSale, {
+      key: 'balance',
+      label: t('col.balance'),
+      end: true,
+      cell: (r) => (
+        <span className={r.overStock ? 'text-destructive' : 'text-muted'}>
+          {formatQuantity(available(r.line.product), r.line.product.units, locale)}
+        </span>
+      ),
+    }),
+    { key: 'qty', label: t('col.qty'), cell: (r) => qtyInput(r, `${cell} w-16 tnum`) },
+    ...when(isSale, {
+      key: 'listPrice',
+      label: t('col.listPrice'),
+      end: true,
+      cell: (r) => plain.format(toMajor(sellingPrice(r))),
+    }),
+    ...when(seeCosts, {
+      key: 'cost',
+      label: t('col.cost'),
+      end: true,
+      cell: (r) => plain.format(toMajor(r.cost)),
+    }),
+    ...when(isSale && !!partyId, {
+      key: 'lastPrice',
+      label: t('col.lastPrice'),
+      end: true,
+      cell: (r) => (lastPrice(r) != null ? plain.format(toMajor(lastPrice(r)!)) : ''),
+    }),
+    {
+      key: 'price',
+      label: isSale ? t('col.price') : t('invoice.receiveCost'),
+      cell: (r) => priceInput(r, `${cell} w-24`),
+    },
+    ...when(isSale, {
+      key: 'raise',
+      label: t('col.raise'),
+      end: true,
+      cell: (r) => {
+        const up = r.price - sellingPrice(r);
+        return up > 0 ? <span className="text-positive">+{plain.format(toMajor(up))}</span> : '';
+      },
+    }),
+    {
+      key: 'beforeDiscount',
+      label: t('col.beforeDiscount'),
+      end: true,
+      cell: (r) => plain.format(toMajor(r.gross)),
+    },
+    ...when(isSale, {
+      key: 'discount',
+      label: t('col.discount'),
+      cell: (r) => lineDiscountCell(r),
+    }),
+    {
+      key: 'afterDiscount',
+      label: t('col.afterDiscount'),
+      end: true,
+      cell: (r) => <span className="font-semibold">{plain.format(toMajor(r.lineTotal))}</span>,
+    },
+    ...when(isSale && seeCosts, {
+      key: 'profit',
+      label: t('col.profit'),
+      end: true,
+      cell: (r) => (
+        <span className={r.lineProfit < 0 ? 'text-destructive' : 'text-positive'}>
+          {plain.format(toMajor(r.lineProfit))}
+        </span>
+      ),
+    }),
+  ];
+  const placeOf = (key: string) => {
+    const i = columnOrder.indexOf(key);
+    return i < 0 ? 1000 + allColumns.findIndex((c) => c.key === key) : i;
+  };
+  const columns = [...allColumns].sort((a, b) => placeOf(a.key) - placeOf(b.key));
+  /** Move a column one place earlier or later; the order is kept per person. */
+  function moveColumn(label: string, step: -1 | 1) {
+    const keys = columns.map((c) => c.key);
+    const at = columns.findIndex((c) => c.label === label);
+    const to = at + step;
+    if (at < 0 || to < 0 || to >= keys.length) return;
+    [keys[at], keys[to]] = [keys[to]!, keys[at]!];
+    setColumnOrder(keys);
+  }
+
+  if (loadingEdit)
+    return (
+      <div className="grid place-items-center py-24 text-muted">
+        <Spinner size={26} />
+      </div>
+    );
+
   return (
     <div className="space-y-5">
       <PageHeader
-        title={t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')}
+        title={
+          editId
+            ? `${t('invoice.editTitle')} ${editedNumber}`
+            : t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')
+        }
         action={
           <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
             {t('invoice.back')}
@@ -863,13 +1172,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
                 <select
-                  className={field}
+                  className={`${field} ${departmentRequired && !departmentId ? 'border-warning' : ''}`}
                   value={departmentId}
+                  required={departmentRequired}
+                  aria-invalid={departmentRequired && !departmentId}
                   disabled={!!myDepartments && departments.length === 1}
                   onChange={(e) => setPickedDepartment(e.target.value)}
                 >
-                  <option value="">
-                    {myDepartments ? t('invoice.chooseDepartment') : t('invoice.noDepartment')}
+                  <option value="" disabled={departmentRequired}>
+                    {myDepartments || departmentRequired
+                      ? t('invoice.chooseDepartment')
+                      : t('invoice.noDepartment')}
                   </option>
                   {departments.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -929,10 +1242,31 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 <input
                   type="date"
                   className={`${field} tnum`}
-                  min={companyToday()}
+                  min={editId ? undefined : companyToday()}
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
+              </label>
+            )}
+            {canPriceBasis && (
+              // Sold at the selling price, the customer's last price or the supply price.
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.priceBasis')}</span>
+                <select
+                  className={field}
+                  value={priceBasis}
+                  onChange={(e) => {
+                    setPriceBasis(e.target.value as PriceBasis);
+                    // Every line takes the new basis' price.
+                    setLines((prev) => prev.map((l) => ({ ...l, touched: false })));
+                  }}
+                >
+                  {(['LIST', 'LAST', 'COST'] as const).map((b) => (
+                    <option key={b} value={b}>
+                      {t(`basis.${b}`)}
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
           </Card>
@@ -943,6 +1277,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               onChange={setDelivery}
               party={party ?? undefined}
               carriers={carriers.data?.items ?? []}
+              lockCarrier={!canChangeShipping && !!fileCarrier}
+              lockAddress={!canChangeShipping && !!fileAddress}
             />
           )}
 
@@ -993,80 +1329,91 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                 {t('invoice.inStockOnly')}
               </label>
             </div>
-            <div className="relative flex gap-2">
-              <div className="relative min-w-0 flex-1">
-                <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
-                  <Icon name="search" size={16} />
-                </span>
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="mb-0.5 block text-xs text-muted">{t('col.item')}</span>
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+                    <Icon name="search" size={16} />
+                  </span>
+                  <input
+                    ref={searchBox}
+                    className={`${field} ps-8`}
+                    placeholder={t('invoice.searchHint')}
+                    aria-label={t('invoice.searchProduct')}
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setListOpen(true);
+                    }}
+                    onFocus={() => setListOpen(true)}
+                    onClick={() => setListOpen(true)}
+                    // Later than a click on a result, so the click still lands.
+                    onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void addFromSearch();
+                      } else if (e.key === 'Escape') {
+                        setSearch('');
+                        setListOpen(false);
+                      }
+                    }}
+                  />
+                  {listOpen && (
+                    <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+                      {productList.isLoading ? (
+                        <div className="grid place-items-center py-6 text-muted">
+                          <Spinner size={18} />
+                        </div>
+                      ) : products.length === 0 ? (
+                        <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+                      ) : (
+                        products.map((p) => (
+                          <button
+                            key={p.id}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => addProduct(p)}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{p.name}</span>
+                              <span className="text-xs text-muted tnum">
+                                {p.sku}
+                                {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
+                                {formatQuantity(available(p), p.units, locale)}{' '}
+                                {t('invoice.inStock')}
+                                {seeCosts &&
+                                  ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
+                              </span>
+                            </span>
+                            <Icon name="plus" size={16} className="text-brand" />
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <label className="block w-20 shrink-0">
+                <span className="mb-0.5 block text-xs text-muted">{t('col.qty')}</span>
                 <input
-                  ref={searchBox}
-                  className={`${field} ps-8`}
-                  placeholder={t('invoice.searchHint')}
-                  aria-label={t('invoice.searchProduct')}
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setListOpen(true);
-                  }}
-                  onFocus={() => setListOpen(true)}
-                  onClick={() => setListOpen(true)}
-                  // Later than a click on a result, so the click still lands.
-                  onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  className={`${field} text-center tnum`}
+                  value={addQty}
+                  onChange={(e) => setAddQty(e.target.value)}
+                  onFocus={(e) => e.target.select()}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      void addFromSearch();
-                    } else if (e.key === 'Escape') {
-                      setSearch('');
-                      setListOpen(false);
+                      searchBox.current?.focus();
                     }
                   }}
                 />
-                {listOpen && (
-                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
-                    {productList.isLoading ? (
-                      <div className="grid place-items-center py-6 text-muted">
-                        <Spinner size={18} />
-                      </div>
-                    ) : products.length === 0 ? (
-                      <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-                    ) : (
-                      products.map((p) => (
-                        <button
-                          key={p.id}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => addProduct(p)}
-                          className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                        >
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{p.name}</span>
-                            <span className="text-xs text-muted tnum">
-                              {p.sku}
-                              {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
-                              {formatQuantity(available(p), p.units, locale)} {t('invoice.inStock')}
-                              {seeCosts &&
-                                ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
-                            </span>
-                          </span>
-                          <Icon name="plus" size={16} className="text-brand" />
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                inputMode="numeric"
-                aria-label={t('invoice.addQty')}
-                title={t('invoice.addQty')}
-                className="h-9 w-16 shrink-0 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-center text-sm tnum outline-none focus:border-brand"
-                value={addQty}
-                onChange={(e) => setAddQty(e.target.value)}
-                onFocus={(e) => e.target.select()}
-              />
+              </label>
               <Button
                 variant="secondary"
                 icon="scan"
@@ -1107,100 +1454,42 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             ) : !isPhone ? (
               // Wide screens: the lines as a table, like the old program's grid.
               <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                <TableColumns id={`invoice.${mode}`}>
+                <TableColumns id={`invoice.${mode}`} onMove={moveColumn}>
                   <table className="w-full text-[13px]">
                     <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                       <tr className="whitespace-nowrap">
-                        <th className="px-1.5 py-2 text-start font-medium">#</th>
-                        <th className="px-1.5 py-2 text-start font-medium">{t('common.code')}</th>
-                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
-                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
-                        {isSale && (
-                          <th className="px-1.5 py-2 text-end font-medium">
-                            {t('invoice.balance')}
+                        <th className="w-8" aria-label={t('col.delete')} />
+                        {columns.map((c) => (
+                          <th
+                            key={c.key}
+                            className={`px-1.5 py-2 font-medium ${c.end ? 'text-end' : 'text-start'}`}
+                          >
+                            {c.label}
                           </th>
-                        )}
-                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
-                        <th className="px-1.5 py-2 text-start font-medium">
-                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}
-                        </th>
-                        {showDiscountColumn && (
-                          <th className="px-1.5 py-2 text-start font-medium">
-                            {t('invoice.lineDiscount')}
-                          </th>
-                        )}
-                        <th className="px-1.5 py-2 text-end font-medium">{t('common.total')}</th>
-                        {isSale && seeCosts && (
-                          <th className="px-1.5 py-2 text-end font-medium">
-                            {t('invoice.lineProfit')}
-                          </th>
-                        )}
-                        {showBonusColumn && (
-                          <th className="px-1.5 py-2 font-medium">{t('invoice.bonus')}</th>
-                        )}
-                        <th className="w-8" />
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--c-line)]">
                       {rows.map((r, i) => (
                         <tr key={r.line.key} className="align-top">
-                          <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
-                          <td className="whitespace-nowrap px-1.5 py-2 tnum">
-                            {r.line.product.sku}
-                          </td>
-                          <td className="min-w-32 px-1.5 py-2">
-                            <span className="block font-medium">{r.line.product.name}</span>
-                            <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">
-                              {seeCosts && (
-                                <span>
-                                  {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
-                                </span>
-                              )}
-                              {lineNotes(r)}
-                            </span>
-                            {lineWarning(r, 'mt-1')}
-                          </td>
-                          <td className="px-1.5 py-1.5">{unitSelect(r, `${cell} w-20`)}</td>
-                          {isSale && (
-                            <td
-                              className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.overStock ? 'text-destructive' : 'text-muted'}`}
-                            >
-                              {formatQuantity(
-                                available(r.line.product),
-                                r.line.product.units,
-                                locale,
-                              )}
-                            </td>
-                          )}
-                          <td className="px-1.5 py-1.5">{qtyInput(r, `${cell} w-16 tnum`)}</td>
-                          <td className="px-1.5 py-1.5">{priceInput(r, `${cell} w-20`)}</td>
-                          {showDiscountColumn && (
-                            <td className="whitespace-nowrap px-1.5 py-1.5 text-xs">
-                              {discountControls(r, false)}
-                            </td>
-                          )}
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
-                            {plain.format(toMajor(r.lineTotal))}
-                          </td>
-                          {isSale && seeCosts && (
-                            <td
-                              className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.lineProfit < 0 ? 'text-destructive' : 'text-positive'}`}
-                            >
-                              {formatMoney(r.lineProfit, currency, locale)}
-                            </td>
-                          )}
-                          {showBonusColumn && (
-                            <td className="px-1.5 py-2 text-center text-xs">{bonusBox(r)}</td>
-                          )}
                           <td className="px-1 py-2">
                             <button
                               onClick={() => removeLine(r.line.key)}
-                              className="text-faint hover:text-destructive"
+                              className="grid h-7 w-7 place-items-center rounded text-faint hover:bg-destructive-soft hover:text-destructive"
                               aria-label={t('invoice.remove')}
+                              title={t('invoice.remove')}
                             >
                               <Icon name="close" size={16} />
                             </button>
                           </td>
+                          {columns.map((c) => (
+                            <td
+                              key={c.key}
+                              className={`px-1.5 py-1.5 ${c.end ? 'whitespace-nowrap pt-2.5 text-end tnum' : ''} ${c.className ?? ''}`}
+                            >
+                              {c.cell(r, i)}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
@@ -1290,8 +1579,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
                       {lineNotes(r)}
-                      {discountControls(r, true)}
-                      {bonusBox(r)}
+                      {lineDiscountCell(r)}
                     </div>
 
                     {lineWarning(r)}
@@ -1310,32 +1598,76 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             </h2>
             <dl className="space-y-1.5 text-sm">
               <Row label={t('invoice.subtotal')} value={formatMoney(subtotal, currency, locale)} />
-              {(canDiscount || discount1.value || discount2.value) && (
-                <>
-                  <DiscountField
-                    label={t('charge.DISCOUNT')}
-                    value={discount1}
-                    onChange={setDiscount1}
-                    disabled={!canDiscount}
-                    amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
-                    currency={currency}
-                  />
-                  <DiscountField
-                    label={t('charge.EXTRA_DISCOUNT')}
-                    value={discount2}
-                    onChange={setDiscount2}
-                    disabled={!canDiscount}
-                    amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
-                    currency={currency}
-                  />
-                  <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
-                  {isSale && canDiscount && maxDiscount !== null && (
-                    <p className="text-xs text-faint">
-                      {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
-                    </p>
-                  )}
-                </>
+              {/* Discounts only when asked for (owner, 2026-10-01). */}
+              {(showDiscount1 || discount1.value) && (
+                <DiscountField
+                  label={t('charge.DISCOUNT')}
+                  value={discount1}
+                  onChange={setDiscount1}
+                  disabled={!canDiscount}
+                  amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
+                  currency={currency}
+                  onRemove={
+                    canDiscount
+                      ? () => {
+                          setDiscount1({ ...discount1, value: '' });
+                          setShowDiscount1(false);
+                        }
+                      : undefined
+                  }
+                />
               )}
+              {(showDiscount2 || discount2.value) && (
+                <DiscountField
+                  label={t('charge.EXTRA_DISCOUNT')}
+                  value={discount2}
+                  onChange={setDiscount2}
+                  disabled={!canDiscount}
+                  amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
+                  currency={currency}
+                  onRemove={
+                    canDiscount
+                      ? () => {
+                          setDiscount2({ ...discount2, value: '' });
+                          setShowDiscount2(false);
+                        }
+                      : undefined
+                  }
+                />
+              )}
+              {canDiscount && (!showDiscount1 || !showDiscount2) && (
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {!showDiscount1 && !discount1.value && (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-brand hover:underline"
+                      onClick={() => setShowDiscount1(true)}
+                    >
+                      + {t('invoice.addDiscount')}
+                    </button>
+                  )}
+                  {!showDiscount2 && !discount2.value && (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-brand hover:underline"
+                      onClick={() => setShowDiscount2(true)}
+                    >
+                      + {t('invoice.addExtraDiscount')}
+                    </button>
+                  )}
+                </div>
+              )}
+              {outcome.discount > 0 && (
+                <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+              )}
+              {isSale &&
+                canDiscount &&
+                maxDiscount !== null &&
+                (showDiscount1 || showDiscount2) && (
+                  <p className="text-xs text-faint">
+                    {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
+                  </p>
+                )}
               {tax > 0 && (
                 <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
               )}
@@ -1367,6 +1699,21 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             </dl>
 
             <div className="mt-4 space-y-3">
+              {cashCustomer && (
+                <div className="space-y-2 rounded-[var(--radius-app)] bg-positive-soft p-2.5">
+                  <Row
+                    label={`${t('parties.cashCustomer')} — ${t('invoice.paidNow')}`}
+                    value={formatMoney(grand, currency, locale)}
+                    strong
+                  />
+                  <MoneyAccountPicker
+                    className={field}
+                    label={t('money.paidInto')}
+                    value={cashAccountId}
+                    onChange={setCashAccountId}
+                  />
+                </div>
+              )}
               {isSale ? null : (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
@@ -1444,20 +1791,34 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               </p>
             )}
 
-            <Button
-              className="mt-4 w-full"
-              icon="check"
-              loading={pending}
-              disabled={!canSave}
-              onClick={() => void save()}
-            >
-              {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
-            </Button>
-            {!canChangePrice && (
-              <p className="mt-1 text-center text-xs text-faint">
-                {t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')}
-              </p>
-            )}
+            <div className="mt-4 grid gap-2">
+              <Button
+                className="w-full"
+                icon="check"
+                loading={pending}
+                disabled={!canSave}
+                onClick={() => void save()}
+              >
+                {pending
+                  ? t('invoice.saving')
+                  : isQuote
+                    ? t('quote.save')
+                    : editId
+                      ? t('invoice.saveChanges')
+                      : t('invoice.save')}
+              </Button>
+              {isSale && !isQuote && !asOrder && (
+                <Button
+                  className="w-full"
+                  variant="secondary"
+                  icon="print"
+                  disabled={!canSave}
+                  onClick={() => void save(true)}
+                >
+                  {t('invoice.saveAndPrint')}
+                </Button>
+              )}
+            </div>
           </Card>
         </div>
       </div>
@@ -1482,6 +1843,7 @@ function DiscountField({
   disabled,
   amount,
   currency,
+  onRemove,
 }: {
   label: string;
   value: DiscountInput;
@@ -1489,15 +1851,31 @@ function DiscountField({
   disabled: boolean;
   amount: number;
   currency: string;
+  onRemove?: () => void;
 }) {
   const { t, locale } = useT();
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <dt className="text-muted">{label}</dt>
-        {amount > 0 && (
-          <span className="text-xs text-muted tnum">−{formatMoney(amount, currency, locale)}</span>
-        )}
+        <span className="flex items-center gap-2">
+          {amount > 0 && (
+            <span className="text-xs text-muted tnum">
+              −{formatMoney(amount, currency, locale)}
+            </span>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              className="text-faint hover:text-destructive"
+              aria-label={t('invoice.removeDiscount')}
+              title={t('invoice.removeDiscount')}
+              onClick={onRemove}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          )}
+        </span>
       </div>
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <input
@@ -1573,11 +1951,16 @@ function DeliveryCard({
   onChange,
   party,
   carriers,
+  lockCarrier,
+  lockAddress,
 }: {
   value: DeliveryValue;
   onChange: (v: DeliveryValue) => void;
   party: Party | undefined;
   carriers: Party[];
+  /** From the customer's file, and this person may not change it. */
+  lockCarrier?: boolean;
+  lockAddress?: boolean;
 }) {
   const { t } = useT();
   const set = (patch: Partial<DeliveryValue>) => onChange({ ...value, ...patch });
@@ -1615,8 +1998,9 @@ function DeliveryCard({
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('delivery.address')}</span>
             <input
-              className={field}
+              className={`${field} ${lockAddress ? 'bg-surface-2' : ''}`}
               value={value.address}
+              readOnly={lockAddress}
               maxLength={300}
               placeholder={
                 party?.shippingAddress || party?.address || t('delivery.addressPlaceholder')
@@ -1628,8 +2012,9 @@ function DeliveryCard({
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('delivery.carrier')}</span>
               <select
-                className={field}
+                className={`${field} ${lockCarrier ? 'bg-surface-2' : ''}`}
                 value={value.carrierId}
+                disabled={lockCarrier}
                 onChange={(e) => set({ carrierId: e.target.value })}
                 aria-invalid={!value.carrierId}
               >
@@ -1643,7 +2028,6 @@ function DeliveryCard({
               {carriers.length === 0 && (
                 <span className="mt-0.5 block text-xs text-faint">{t('delivery.noCarriers')}</span>
               )}
-              <span className="mt-0.5 block text-xs text-faint">{t('delivery.customerPays')}</span>
             </label>
           }
         </div>

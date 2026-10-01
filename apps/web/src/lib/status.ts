@@ -1,4 +1,4 @@
-import { companyToday, type DocumentStatus } from '@skb/shared';
+import { companyToday, type DocumentStatus, type PayState } from '@skb/shared';
 import type { Tone } from '../components/ui';
 
 export const STATUS_TONE: Record<DocumentStatus, Tone> = {
@@ -37,8 +37,38 @@ export function quoteState(doc: { status: DocumentStatus; dueDate?: string | nul
   return doc.dueDate && doc.dueDate.slice(0, 10) < companyToday() ? 'EXPIRED' : 'OPEN';
 }
 
+/** An invoice's payment state (owner, 2026-10-01): credit, being collected, partly paid, paid, cancelled. */
+export const STATE_TONE: Record<PayState, Tone> = {
+  CREDIT: 'warning',
+  COLLECTING: 'info',
+  PARTIAL: 'warning',
+  PAID: 'positive',
+  CANCELLED: 'neutral',
+};
+export const PAY_STATES: PayState[] = ['CREDIT', 'COLLECTING', 'PARTIAL', 'PAID', 'CANCELLED'];
+
+/** An invoice's payment state from what it holds (lists carry it from the server). */
+function payStateOf(doc: {
+  status: DocumentStatus;
+  state?: string | null;
+  grandTotal?: number;
+  paidAmount?: number;
+}): PayState {
+  if (doc.state && (PAY_STATES as string[]).includes(doc.state)) return doc.state as PayState;
+  if (doc.status === 'CANCELLED') return 'CANCELLED';
+  if (doc.status === 'PAID') return 'PAID';
+  return (doc.paidAmount ?? 0) > 0 ? 'PARTIAL' : 'CREDIT';
+}
+
 /** A document's status label key and tone (a quotation has its own states). */
-export function statusOf(doc: { type: string; status: DocumentStatus; dueDate?: string | null }): {
+export function statusOf(doc: {
+  type: string;
+  status: DocumentStatus;
+  dueDate?: string | null;
+  state?: string | null;
+  grandTotal?: number;
+  paidAmount?: number;
+}): {
   key: string;
   tone: Tone;
 } {
@@ -51,6 +81,10 @@ export function statusOf(doc: { type: string; status: DocumentStatus; dueDate?: 
     if (doc.status === 'REJECTED') return { key: 'order.state.REJECTED', tone: 'destructive' };
     const s = quoteState(doc);
     return { key: `order.state.${s}`, tone: QUOTE_TONE[s] };
+  }
+  if (doc.type === 'SALES_INVOICE' || doc.type === 'PURCHASE_INVOICE') {
+    const s = payStateOf(doc);
+    return { key: `state.${s}`, tone: STATE_TONE[s] };
   }
   return { key: `status.${doc.status}`, tone: STATUS_TONE[doc.status] };
 }

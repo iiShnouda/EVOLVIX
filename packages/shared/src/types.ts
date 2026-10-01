@@ -46,6 +46,10 @@ export type Permission =
   | 'sales:view'
   | 'sales:create'
   | 'sales:edit'
+  | 'sales:cancel'
+  | 'sales:price_basis'
+  | 'sales:change_shipping'
+  | 'parties:cash_customer'
   | 'sales:override_floor'
   | 'sales:return'
   | 'sales:quote'
@@ -222,6 +226,10 @@ export interface Party {
   contactName?: string | null;
   /** Where goods are shipped (عنوان الشحن); delivered sales start at it, else at `address`. */
   shippingAddress?: string | null;
+  /** The shipping company their parcels go with; a shipped sale takes it (and the address) from here. */
+  defaultCarrierId?: string | null;
+  /** A cash customer (عميل نقدي): pays every invoice in full when it is made. */
+  isCashCustomer?: boolean;
   notes?: string | null;
   /** The most they may owe (حد الائتمان), minor units; null = no limit. */
   creditLimit?: number | null;
@@ -364,21 +372,31 @@ export interface PricingLineInput {
   warehouseId?: string | null;
 }
 
+/** What a sale is priced at: the selling price, the customer's last price, or the supply cost. */
+export type PriceBasis = 'LIST' | 'LAST' | 'COST';
+
 export interface PricingInput {
   partyId?: string | null;
   priceLevelId?: string | null;
   warehouseId?: string | null;
   lines: PricingLineInput[];
+  priceBasis?: PriceBasis;
 }
 
 export interface PricedLine {
   unitPrice: number;
   discount: number;
-  /** LIST, LEVEL, COST or BONUS. */
-  source: 'LIST' | 'LEVEL' | 'COST' | 'BONUS';
+  /** LIST, LEVEL, COST, BONUS or LAST. */
+  source: 'LIST' | 'LEVEL' | 'COST' | 'BONUS' | 'LAST';
   listName?: string | null;
   /** The quantity discount applied (hundredths of a percent). */
   breakBp: number;
+  /** The selling price before any basis. */
+  listPrice?: number;
+  /** Supply cost of one line unit; only for those who may see costs. */
+  unitCost?: number | null;
+  /** What this customer last paid per line unit. */
+  lastPrice?: number | null;
 }
 
 export interface Pricing {
@@ -895,6 +913,8 @@ export interface CompanySettings {
   pendingHoldDays: number;
   /** Bumped when the company logo changes; 0 = none (see Branding). */
   logoVersion?: number;
+  /** Every sale names its department (while the company has departments). */
+  requireDepartment?: boolean;
 }
 
 /**
@@ -907,6 +927,23 @@ export interface Branding {
 }
 
 /** Lightweight row for list views (no line items). */
+/**
+ * An invoice's payment state (owner, 2026-10-01): on credit (آجل), being collected by a shipping
+ * company (جاري الدفع), partly paid, paid, or cancelled.
+ */
+export type PayState = 'CREDIT' | 'COLLECTING' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+
+/** How one kind of document is numbered (Settings). */
+export interface Numbering {
+  type: DocumentType;
+  prefix: string;
+  startAt: number;
+  digits: number;
+  custom: boolean;
+  /** The number the next one gets. */
+  next: string;
+}
+
 export interface SalesDocumentSummary {
   id: string;
   number: string;
@@ -933,6 +970,8 @@ export interface SalesDocumentSummary {
   /** Still owed on an invoice (الباقي), after payments and returns. */
   owed: number;
   notes?: string | null;
+  /** An invoice's payment state; other documents carry their status. */
+  state?: PayState | DocumentStatus | null;
 }
 
 /** A page of documents and the totals of everything the filter found (cancelled ones left out). */
@@ -948,6 +987,7 @@ export type StockMovementType =
   | 'OPENING'
   | 'PURCHASE_IN'
   | 'SALE_OUT'
+  | 'SALE_CANCELLED'
   | 'SALES_RETURN_IN'
   | 'PURCHASE_RETURN_OUT'
   | 'ADJUSTMENT'

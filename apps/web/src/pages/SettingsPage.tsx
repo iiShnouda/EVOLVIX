@@ -13,6 +13,8 @@ import {
   useBranding,
   useCompanyLogo,
   useCompanySettings,
+  useNumbering,
+  useSaveNumbering,
   useUpdateSettings,
 } from '../lib/queries';
 import { CompanyMark } from '../components/CompanyBadge';
@@ -100,6 +102,7 @@ export function SettingsPage() {
       maxDiscountPercent: form.maxDiscountPercent,
       pendingHoldDays: form.pendingHoldDays,
       transfersRequireReceipt: form.transfersRequireReceipt,
+      requireDepartment: form.requireDepartment !== false,
       address: form.address ?? '',
       phone: form.phone ?? '',
       email: form.email ?? '',
@@ -334,7 +337,19 @@ export function SettingsPage() {
             <span className="block text-sm">{t('settings.transfersRequireReceipt')}</span>
           </span>
         </label>
+        <label className="mt-3 flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            disabled={disabled}
+            checked={form.requireDepartment !== false}
+            onChange={(e) => set({ requireDepartment: e.target.checked })}
+          />
+          <span className="block text-sm">{t('settings.requireDepartment')}</span>
+        </label>
       </Card>
+
+      <NumberingCard disabled={disabled} />
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -453,5 +468,121 @@ function LogoRemove({ onRemove, busy }: { onRemove: () => void; busy: boolean })
     <Button size="sm" variant="ghost" onClick={onRemove} disabled={busy}>
       {t('settings.logoRemove')}
     </Button>
+  );
+}
+
+/**
+ * Serial numbers (الرقم المسلسل, owner 2026-10-01): each kind of document may have its own prefix
+ * (e.g. KM-, {YYYY} for the year), starting number and digits; empty = the default numbering.
+ */
+function NumberingCard({ disabled }: { disabled: boolean }) {
+  const { t } = useT();
+  const numbering = useNumbering();
+  const save = useSaveNumbering();
+  const [edits, setEdits] = useState<Record<string, { prefix: string; startAt: string; digits: string }>>({});
+  const rows = numbering.data ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <Card>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+        {t('settings.numbering')}
+      </h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-muted">
+            <tr>
+              <th className="py-1.5 text-start font-medium" />
+              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.prefix')}</th>
+              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.startAt')}</th>
+              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.digits')}</th>
+              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.nextNumber')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {rows.map((n) => {
+              const e = edits[n.type] ?? {
+                prefix: n.prefix,
+                startAt: String(n.startAt),
+                digits: String(n.digits),
+              };
+              const changed =
+                e.prefix !== n.prefix || e.startAt !== String(n.startAt) || e.digits !== String(n.digits);
+              const set = (patch: Partial<typeof e>) =>
+                setEdits((all) => ({ ...all, [n.type]: { ...e, ...patch } }));
+              return (
+                <tr key={n.type}>
+                  <td className="whitespace-nowrap py-1.5 pe-2">{t(`doc.${n.type}`)}</td>
+                  <td className="px-1.5 py-1.5">
+                    <input
+                      dir="ltr"
+                      className={`${field} w-28`}
+                      disabled={disabled}
+                      placeholder={t('settings.builtIn')}
+                      maxLength={20}
+                      value={e.prefix}
+                      onChange={(ev) => set({ prefix: ev.target.value })}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      className={`${field} w-24 tnum`}
+                      disabled={disabled || !e.prefix.trim()}
+                      value={e.startAt}
+                      onChange={(ev) => set({ startAt: ev.target.value })}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      className={`${field} w-16 tnum`}
+                      disabled={disabled || !e.prefix.trim()}
+                      value={e.digits}
+                      onChange={(ev) => set({ digits: ev.target.value })}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-1.5 py-1.5 font-medium tnum" dir="ltr">
+                    {n.next}
+                  </td>
+                  <td className="py-1.5">
+                    {!disabled && changed && (
+                      <Button
+                        size="sm"
+                        loading={save.isPending && save.variables?.type === n.type}
+                        onClick={() =>
+                          save.mutate(
+                            {
+                              type: n.type,
+                              prefix: e.prefix.trim(),
+                              startAt: Math.max(1, Math.floor(Number(e.startAt) || 1)),
+                              digits: Math.min(10, Math.max(1, Math.floor(Number(e.digits) || 6))),
+                            },
+                            {
+                              onSuccess: () =>
+                                setEdits((all) => {
+                                  const next = { ...all };
+                                  delete next[n.type];
+                                  return next;
+                                }),
+                            },
+                          )
+                        }
+                      >
+                        {t('settings.save')}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {save.error && <p className="mt-2 text-sm text-destructive">{errorText(t, save.error)}</p>}
+    </Card>
   );
 }

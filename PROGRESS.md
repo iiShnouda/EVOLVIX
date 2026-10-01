@@ -933,6 +933,16 @@ own permission, and roles bundle them
 - Detailed item search is live (the list follows the filters as they are typed) and takes a unit and
   quantity per row: Enter or + adds that row to the invoice and moves on; "Add selected" adds every
   row with a quantity. Shows what is already on the invoice and marks a quantity above the stock.
+- Invoice screen (owner list, 2026-10-01): lines table with stock, selling / supply / last price, the
+  increase, before and after discount, profit; columns hidden and reordered per person; delete on
+  the start side; discounts (line, invoice, extra) behind "Add discount"; no free goods; price
+  basis (selling / last / supply, `sales:price_basis`); department required (Settings); shipping
+  company and address from the customer file (`sales:change_shipping` to change); cash customers
+  pay in full; Save and Save & print. A saved invoice can be edited (`sales:edit`) or deleted
+  (`sales:cancel`) with everything it moved reversed. Lists: one payment state (credit, being
+  collected, partly paid, paid, cancelled), branch / warehouse / department filters, serial number
+  with its own prefix and start (Settings → numbering). Side menu collapses; print options choose
+  what prints; no number-box arrows. Check: `invoices`.
 
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).

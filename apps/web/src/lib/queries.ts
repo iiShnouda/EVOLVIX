@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { toMinor } from '@skb/shared';
 import type {
   Branding,
+  Numbering,
   Category,
   PriceList,
   PriceListDetail,
@@ -154,6 +155,10 @@ export function useDocumentList(
     to?: string;
     /** 'credit' = still owed (آجل), 'paid' = nothing owed. */
     payment?: 'credit' | 'paid';
+    /** An invoice's payment state (CREDIT, COLLECTING, PARTIAL, PAID, CANCELLED). */
+    state?: string;
+    branchId?: string;
+    warehouseId?: string;
     pageSize?: number;
     /** Off: not asked for (e.g. no permission to see that list). */
     enabled?: boolean;
@@ -167,6 +172,9 @@ export function useDocumentList(
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
+  if (params.state) query.set('state', params.state);
+  if (params.branchId) query.set('branchId', params.branchId);
+  if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   return useQuery({
     queryKey: [scope, kind, key],
     queryFn: () => api.get<DocumentList>(`/${scope}/${kind}?${query}`),
@@ -290,6 +298,23 @@ export function useCompanySettings() {
     queryKey: ['settings'],
     queryFn: () => api.get<CompanySettings>('/settings'),
     staleTime: 5 * 60_000,
+  });
+}
+
+/** How each kind of document is numbered (الرقم المسلسل) and its next number. */
+export function useNumbering() {
+  return useQuery({
+    queryKey: ['settings', 'numbering'],
+    queryFn: () => api.get<Numbering[]>('/settings/numbering'),
+  });
+}
+
+export function useSaveNumbering() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { type: string; prefix: string; startAt: number; digits: number }) =>
+      api.put<Numbering[]>('/settings/numbering', input),
+    onSuccess: (data) => qc.setQueryData(['settings', 'numbering'], data),
   });
 }
 
@@ -1507,6 +1532,25 @@ export function useConvertQuotation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: ConvertQuotationInput }) =>
       api.post<SalesDocument>(`/sales/quotations/${id}/convert`, input),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** Cancel (delete) a posted sales invoice: everything it moved goes back. */
+export function useCancelInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/invoices/${id}/cancel`),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** Change a posted sales invoice: it is posted again under its own number. */
+export function useUpdateSalesInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateSalesInvoiceInput }) =>
+      api.put<SalesDocument>(`/sales/invoices/${id}`, input),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
   });
 }

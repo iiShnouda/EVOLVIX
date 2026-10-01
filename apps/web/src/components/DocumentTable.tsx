@@ -68,7 +68,7 @@ export function DocumentTable({
   const all: Column[] = [
     {
       key: 'number',
-      label: 'sales.number',
+      label: 'list.serial',
       cell: (d) => <span className="font-medium">{d.number}</span>,
     },
     { key: 'date', label: 'common.date', cell: (d) => formatDate(d.issueDate, locale, true) },

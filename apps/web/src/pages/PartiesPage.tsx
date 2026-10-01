@@ -281,6 +281,11 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const isNew = !party;
   const create = useCreateParty();
   const update = useUpdateParty();
+  const can = useCan();
+  const carriers = useParties({ page: 1, pageSize: 100, type: 'CARRIER', active: true });
+  // The shipping company a customer's sales go with, and whether they are a cash customer.
+  const [defaultCarrierId, setDefaultCarrierId] = useState(party?.defaultCarrierId ?? '');
+  const [isCashCustomer, setIsCashCustomer] = useState(party?.isCashCustomer ?? false);
   const [name, setName] = useState(party?.name ?? '');
   const [types, setTypes] = useState<PartyType[]>(party?.types ?? ['CUSTOMER']);
   const [phone, setPhone] = useState(party?.phone ?? '');
@@ -305,6 +310,10 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
     contactName: contactName.trim(),
     shippingAddress: shippingAddress.trim(),
     notes: notes.trim(),
+    ...(types.includes('CUSTOMER') ? { defaultCarrierId } : {}),
+    ...(can('parties:cash_customer') && isCashCustomer !== (party?.isCashCustomer ?? false)
+      ? { isCashCustomer }
+      : {}),
   };
   const parsed = partySchema.safeParse(values);
   const issues = new Set(parsed.success ? [] : parsed.error.issues.map((i) => String(i.path[0])));
@@ -495,6 +504,34 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                 maxLength={300}
                 onChange={(e) => setShippingAddress(e.target.value)}
               />
+            </label>
+          )}
+          {types.includes('CUSTOMER') && (
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted">{t('parties.defaultCarrier')}</span>
+              <select
+                className={input}
+                value={defaultCarrierId}
+                onChange={(e) => setDefaultCarrierId(e.target.value)}
+              >
+                <option value="">{t('parties.noCarrier')}</option>
+                {(carriers.data?.items ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {types.includes('CUSTOMER') && (
+            <label className="flex items-center gap-2 self-end pb-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isCashCustomer}
+                disabled={!can('parties:cash_customer')}
+                onChange={(e) => setIsCashCustomer(e.target.checked)}
+              />
+              {t('parties.cashCustomer')}
             </label>
           )}
           <label className="block sm:col-span-2">

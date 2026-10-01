@@ -17,13 +17,19 @@ export function TableColumns({
   children,
   className,
   toolbar,
+  onMove,
 }: {
   /** Which table this is, e.g. "sales.invoices"; the same table everywhere shares its choice. */
   id: string;
   children: ReactNode;
   className?: string;
-  /** Shown at the start of the toolbar line (e.g. a count). */
+  /** Shown after the columns button on the toolbar line (e.g. a count). */
   toolbar?: ReactNode;
+  /**
+   * Tables that render their columns in a chosen order (e.g. the invoice lines) let the person
+   * move a column earlier (-1) or later (+1) from the menu.
+   */
+  onMove?: (label: string, step: -1 | 1) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const scope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -83,15 +89,18 @@ export function TableColumns({
     <div className={className}>
       {(choices.length > 1 || toolbar) && (
         <div className="flex items-center justify-between gap-2 px-1 pb-1">
-          <span className="min-w-0 text-xs text-muted">{toolbar}</span>
-          {choices.length > 1 && (
+          {choices.length > 1 ? (
             <ColumnMenu
               choices={choices}
               hidden={hidden}
               onToggle={toggle}
               onReset={() => setHidden([])}
+              onMove={onMove}
             />
+          ) : (
+            <span />
           )}
+          <span className="min-w-0 text-xs text-muted">{toolbar}</span>
         </div>
       )}
       {css && <style>{css}</style>}
@@ -107,11 +116,13 @@ function ColumnMenu({
   hidden,
   onToggle,
   onReset,
+  onMove,
 }: {
   choices: string[];
   hidden: string[];
   onToggle: (label: string) => void;
   onReset: () => void;
+  onMove?: (label: string, step: -1 | 1) => void;
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -138,15 +149,38 @@ function ColumnMenu({
         <Icon name="chevronDown" size={14} />
       </button>
       {open && (
-        <div className="absolute end-0 z-30 mt-1 max-h-80 w-56 overflow-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-card)]">
-          {choices.map((c) => (
-            <label
-              key={c}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2"
-            >
-              <input type="checkbox" checked={!hidden.includes(c)} onChange={() => onToggle(c)} />
-              <span className="truncate">{c}</span>
-            </label>
+        <div className="absolute start-0 z-30 mt-1 max-h-80 w-64 overflow-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-card)]">
+          {choices.map((c, i) => (
+            <div key={c} className="flex items-center gap-1 rounded-md hover:bg-surface-2">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2 py-1.5 text-sm">
+                <input type="checkbox" checked={!hidden.includes(c)} onChange={() => onToggle(c)} />
+                <span className="truncate">{c}</span>
+              </label>
+              {onMove && (
+                <>
+                  <button
+                    type="button"
+                    disabled={i === 0}
+                    title={t('list.moveStart')}
+                    aria-label={`${t('list.moveStart')} ${c}`}
+                    onClick={() => onMove(c, -1)}
+                    className="grid h-7 w-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
+                  >
+                    <Icon name="chevronRight" size={14} className="rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === choices.length - 1}
+                    title={t('list.moveEnd')}
+                    aria-label={`${t('list.moveEnd')} ${c}`}
+                    onClick={() => onMove(c, 1)}
+                    className="grid h-7 w-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
+                  >
+                    <Icon name="chevronRight" size={14} />
+                  </button>
+                </>
+              )}
+            </div>
           ))}
           {count > 0 && (
             <button

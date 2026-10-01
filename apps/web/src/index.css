@@ -105,6 +105,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Number boxes without the up/down arrows (owner, 2026-10-01): typed, not clicked. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Tabular numerals for all financial figures. */
 .tnum {
   font-variant-numeric: tabular-nums;

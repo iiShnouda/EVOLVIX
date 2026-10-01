@@ -138,11 +138,11 @@
    edges, uppercase condensed type, red accent bars, a scan-line glow. */
 [data-skin='valorant'] {
   --c-canvas: #ece8e1;
-  --c-surface: #f7f4ef;
-  --c-surface-2: #e2ddd4;
-  --c-line: #cfc8bc;
+  --c-surface: #ffffff;
+  --c-surface-2: #f1eee9;
+  --c-line: #d6d0c6;
   --c-fg: #0f1923;
-  --c-muted: #4d5a66;
+  --c-muted: #3f4b56;
   --c-faint: #8a939b;
   --c-brand: #ff4655;
   --c-brand-fg: #ffffff;
@@ -162,11 +162,11 @@
 }
 [data-skin='valorant'][data-theme='dark'] {
   --c-canvas: #0f1923;
-  --c-surface: #17232f;
-  --c-surface-2: #1f2d3a;
-  --c-line: #2c3c4b;
-  --c-fg: #ece8e1;
-  --c-muted: #9aa5ae;
+  --c-surface: #182633;
+  --c-surface-2: #213242;
+  --c-line: #34475a;
+  --c-fg: #f4f1ec;
+  --c-muted: #b3bdc6;
   --c-faint: #66727c;
   --c-brand: #ff4655;
   --c-brand-fg: #ffffff;
@@ -245,29 +245,10 @@
       repeating-linear-gradient(
         -45deg,
         transparent 0 22px,
-        color-mix(in srgb, var(--c-fg) 3%, transparent) 22px 23px
+        color-mix(in srgb, var(--c-fg) 2%, transparent) 22px 23px
       ),
       var(--c-canvas);
   }
-  /* A faint scan-line over the whole screen. */
-  [data-skin='valorant'] body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 100;
-    background: repeating-linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.035) 0 1px,
-      transparent 1px 3px
-    );
-    mix-blend-mode: multiply;
-  }
-  [data-skin='valorant'][data-theme='dark'] body::after {
-    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px);
-    mix-blend-mode: normal;
-  }
-
   /* Titles: tall uppercase, a red bar before them. */
   [data-skin='valorant'] [data-ui='title'] {
     font-weight: 700;
@@ -310,7 +291,12 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.55) 50%,
+      transparent 70%
+    );
     transform: translateX(-120%);
     transition: transform 0.45s ease;
     pointer-events: none;
@@ -378,8 +364,33 @@
   }
   [data-skin='valorant'] [data-ui='sidebar'] {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--c-brand) 10%, transparent), transparent 180px),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--c-brand) 10%, transparent),
+        transparent 180px
+      ),
       var(--c-surface);
+  }
+  /* Table headings: a solid band, bold and spaced, so columns read at a glance. */
+  [data-skin='valorant'] thead tr {
+    background: color-mix(in srgb, var(--c-fg) 92%, transparent);
+    color: var(--c-canvas);
+  }
+  [data-skin='valorant'] thead th {
+    color: var(--c-canvas);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  [data-skin='valorant'] tbody tr:hover {
+    background: color-mix(in srgb, var(--c-brand) 7%, transparent);
+  }
+  /* Inputs: a crisp edge that turns red when in use. */
+  [data-skin='valorant'] :where(input, select, textarea) {
+    border-color: color-mix(in srgb, var(--c-fg) 22%, transparent);
+  }
+  [data-skin='valorant'] :where(input, select, textarea):focus {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 1px var(--c-brand);
   }
   [data-skin='valorant'] :where(button, a, input, select, textarea, [tabindex]):focus-visible {
     outline-color: var(--c-brand);

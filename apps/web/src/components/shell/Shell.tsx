@@ -5,6 +5,7 @@ import { Icon } from '../Icon';
 import { Logo, Wordmark } from '../Logo';
 import { CompanyMark, CompanyName } from '../CompanyBadge';
 import { useBranding } from '../../lib/queries';
+import { usePrefs } from '../../stores/prefs';
 import { useT } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
 import { useDeviceInfo } from '../../lib/device';
@@ -40,17 +41,23 @@ export function Shell() {
 function SidebarShell() {
   const { t } = useT();
   const items = useVisibleNav();
+  const collapsed = usePrefs((s) => s.navCollapsed);
+  if (collapsed) return <RailShell canExpand />;
   return (
     <div className="flex min-h-screen bg-canvas">
-      <aside data-ui="sidebar" className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface">
+      <aside
+        data-ui="sidebar"
+        className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface"
+      >
         <Brand />
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
           {items.map((item) => (
             <SidebarLink key={item.key} item={item} label={t(item.labelKey)} />
           ))}
         </nav>
-        <div className="border-t border-line p-3">
+        <div className="flex items-center justify-between gap-2 border-t border-line p-3">
           <ConnectionBadge />
+          <NavSizeToggle collapsed={false} />
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
@@ -61,12 +68,15 @@ function SidebarShell() {
   );
 }
 
-function RailShell() {
+function RailShell({ canExpand = false }: { canExpand?: boolean }) {
   const { t } = useT();
   const items = useVisibleNav();
   return (
     <div className="flex min-h-screen bg-canvas">
-      <aside data-ui="sidebar" className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3">
+      <aside
+        data-ui="sidebar"
+        className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3"
+      >
         <Logo size={40} className="mb-3" />
         <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
           {items.map((item) => (
@@ -74,6 +84,7 @@ function RailShell() {
           ))}
         </nav>
         <ConnectionBadge showLabel={false} />
+        {canExpand && <NavSizeToggle collapsed />}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
@@ -155,6 +166,24 @@ function PhoneShell() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Shrink the side menu to icons, or open it again; remembered on this device. */
+function NavSizeToggle({ collapsed }: { collapsed: boolean }) {
+  const { t } = useT();
+  const set = usePrefs((s) => s.setNavCollapsed);
+  const label = t(collapsed ? 'shell.expand' : 'shell.collapse');
+  return (
+    <button
+      type="button"
+      onClick={() => set(!collapsed)}
+      title={label}
+      aria-label={label}
+      className="mt-2 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+    >
+      <Icon name="chevronRight" size={18} className={collapsed ? '' : 'rotate-180'} />
+    </button>
   );
 }
 
