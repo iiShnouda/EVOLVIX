@@ -930,6 +930,9 @@ own permission, and roles bundle them
   next to irreversible actions. Arabic texts are formal and clear, not colloquial.
 - Date fields start on today: list periods (sales, purchases, returns, quotes, activity log), a
   sale's due date, a new price list's start, the period-lock date.
+- Detailed item search is live (the list follows the filters as they are typed) and takes a unit and
+  quantity per row: Enter or + adds that row to the invoice and moves on; "Add selected" adds every
+  row with a quantity. Shows what is already on the invoice and marks a quantity above the stock.
 
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).

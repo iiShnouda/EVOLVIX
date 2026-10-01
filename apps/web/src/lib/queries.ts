@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toMinor } from '@skb/shared';
 import type {
   Branding,
@@ -256,8 +256,8 @@ export interface ItemFinderFilters {
   stock: '' | 'in' | 'out' | 'low';
 }
 
-/** The detailed item search: asked for only when the person presses "Show" (`run` changes). */
-export function useItemFinder(filters: ItemFinderFilters, run: number) {
+/** The detailed item search; asked again as the filters change (the last results stay meanwhile). */
+export function useItemFinder(filters: ItemFinderFilters) {
   const query = new URLSearchParams({ limit: '200' });
   const set = (k: string, v: string) => v.trim() && query.set(k, v.trim());
   set('departmentId', filters.departmentId);
@@ -271,9 +271,9 @@ export function useItemFinder(filters: ItemFinderFilters, run: number) {
   if (filters.maxPrice.trim() && Number(filters.maxPrice) >= 0)
     query.set('maxPrice', String(toMinor(Number(filters.maxPrice))));
   return useQuery({
-    queryKey: ['products', 'finder', run, query.toString()],
+    queryKey: ['products', 'finder', query.toString()],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
-    enabled: run > 0,
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -222,6 +222,15 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
+  // What each item already has on the invoice (base units), shown in the detailed search.
+  const onInvoice = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lines) {
+      const factor = l.product.units.find((u) => u.unitId === l.unitId)?.factor ?? 1;
+      m.set(l.product.id, (m.get(l.product.id) ?? 0) + l.quantity * factor);
+    }
+    return m;
+  }, [lines]);
   const [discount1, setDiscount1] = useState<DiscountInput>({ mode: 'percent', value: '' });
   const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
   // Purchases only: what we pay the supplier now, and the shipping we pay to bring the goods.
@@ -297,10 +306,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
     l.bonus || (priceEditable && l.touched) ? 0 : (priced?.[i]?.discount ?? 0);
 
   /** `focus`: back to the search box for the next one (not after the detailed search). */
-  function addProduct(p: Product, unitId?: string | null, focus = true) {
+  function addProduct(p: Product, unitId?: string | null, focus = true, quantity?: number) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
-    const qty = Math.max(1, Math.floor(Number(addQty) || 1));
-    setAddQty('1');
+    const qty = Math.max(1, Math.floor(quantity ?? (Number(addQty) || 1)));
+    if (quantity === undefined) setAddQty('1');
     setLines((prev) => {
       const existing = prev.find((l) => l.product.id === p.id && l.unitId === unit);
       if (existing)
@@ -1080,10 +1089,12 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               <ItemFinderSheet
                 departmentId={departmentId || undefined}
                 inStockFirst={isSale && !isQuote}
+                checkStock={isSale && !isQuote}
+                onInvoice={onInvoice}
                 onClose={() => setFinding(false)}
-                onAdd={(items) => {
-                  items.forEach((p) => addProduct(p, null, false));
-                  setFinding(false);
+                onAdd={(items, close) => {
+                  items.forEach((i) => addProduct(i.product, i.unitId, false, i.quantity));
+                  if (close) setFinding(false);
                 }}
               />
             )}
