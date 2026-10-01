@@ -40,11 +40,30 @@ public sealed class ProductsController : ControllerBase
     public async Task<ActionResult<ProductDto[]>> List(
         [FromQuery] string? search = null, [FromQuery] bool inStockOnly = false, [FromQuery] int limit = 50,
         [FromQuery] string? supplierId = null, [FromQuery] string? departmentId = null,
-        [FromQuery] string? categoryId = null)
+        [FromQuery] string? categoryId = null,
+        // The detailed search (البحث المفصل), as in the old program (owner, 2026-10-01): the code and the
+        // name each "contain" what's typed, a list-price range, and stock: in, out, or at/below the reorder level.
+        [FromQuery] string? code = null, [FromQuery] string? name = null,
+        [FromQuery] long? minPrice = null, [FromQuery] long? maxPrice = null, [FromQuery] string? stock = null)
     {
         limit = Math.Clamp(limit, 1, 200);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
-        if (inStockOnly) q = q.Where(p => p.StockOnHand > 0);
+        if (inStockOnly || stock == "in") q = q.Where(p => p.StockOnHand > 0);
+        else if (stock == "out") q = q.Where(p => p.StockOnHand <= 0);
+        else if (stock == "low") q = q.Where(p => p.ReorderLevel > 0 && p.StockOnHand <= p.ReorderLevel);
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            var c = code.Trim().ToLower();
+            q = q.Where(p => p.Sku.ToLower().Contains(c) || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(c))
+                             || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(c)));
+        }
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var n = name.Trim().ToLower();
+            q = q.Where(p => p.Name.ToLower().Contains(n));
+        }
+        if (minPrice is long min) q = q.Where(p => p.SalePrice >= min);
+        if (maxPrice is long max) q = q.Where(p => p.SalePrice <= max);
         if (Guid.TryParse(categoryId, out var category)) q = q.Where(p => p.CategoryId == category);
         // A department's items (and items of no department); people limited to departments see only theirs.
         if (!string.IsNullOrWhiteSpace(departmentId))
@@ -55,7 +74,9 @@ public sealed class ProductsController : ControllerBase
         }
         if (Access.Departments(User) is { } mine)
             q = q.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
-        if (!string.IsNullOrWhiteSpace(supplierId))
+        // "none" = items with no supplier (بدون).
+        if (supplierId == "none") q = q.Where(p => p.SupplierId == null);
+        else if (!string.IsNullOrWhiteSpace(supplierId))
         {
             if (!Guid.TryParse(supplierId, out var sup))
                 return BadRequest(new { message = "Unknown supplier.", code = "supplier_not_found" });

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toMinor } from '@skb/shared';
 import type {
   Category,
   PriceList,
@@ -237,6 +238,41 @@ export function useProductSearch(
   return useQuery({
     queryKey: ['products', search, inStockOnly, supplierId, departmentId, categoryId],
     queryFn: () => api.get<Product[]>(`/products?${query}`),
+  });
+}
+
+/** What the detailed item search (البحث المفصل) filters by; empty = any. */
+export interface ItemFinderFilters {
+  departmentId: string;
+  categoryId: string;
+  /** A supplier, 'none' (items with no supplier) or '' (any). */
+  supplierId: string;
+  code: string;
+  name: string;
+  /** List price from / to, as typed (major units). */
+  minPrice: string;
+  maxPrice: string;
+  stock: '' | 'in' | 'out' | 'low';
+}
+
+/** The detailed item search: asked for only when the person presses "Show" (`run` changes). */
+export function useItemFinder(filters: ItemFinderFilters, run: number) {
+  const query = new URLSearchParams({ limit: '200' });
+  const set = (k: string, v: string) => v.trim() && query.set(k, v.trim());
+  set('departmentId', filters.departmentId);
+  set('categoryId', filters.categoryId);
+  set('supplierId', filters.supplierId);
+  set('code', filters.code);
+  set('name', filters.name);
+  set('stock', filters.stock);
+  if (filters.minPrice.trim() && Number(filters.minPrice) >= 0)
+    query.set('minPrice', String(toMinor(Number(filters.minPrice))));
+  if (filters.maxPrice.trim() && Number(filters.maxPrice) >= 0)
+    query.set('maxPrice', String(toMinor(Number(filters.maxPrice))));
+  return useQuery({
+    queryKey: ['products', 'finder', run, query.toString()],
+    queryFn: () => api.get<Product[]>(`/products?${query}`),
+    enabled: run > 0,
   });
 }
 

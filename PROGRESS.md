@@ -914,6 +914,8 @@ own permission, and roles bundle them
   restore after reload. Check: `codes`.
 - Invoice lists as a table like the old sales screen (`DocumentLists`: owed per row from payments and
   returns, on-account / paid filter, totals of the whole filter); the document opens in a side panel.
+- Invoice screen: lines table, quantity-before-add, detailed item search (`/products` gains code, name,
+  minPrice/maxPrice, stock in/out/low and supplierId=none).
 
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).

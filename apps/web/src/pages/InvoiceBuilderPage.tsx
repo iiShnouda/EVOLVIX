@@ -25,6 +25,8 @@ import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
+import { useDeviceInfo } from '../lib/device';
+import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCategories,
   useCompanySettings,
@@ -123,6 +125,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
   const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
   const canBonus = can(isSale ? 'sales:bonus' : 'purchases:bonus');
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const reps = useReps(isSale);
   const me = useAuth((s) => s.user);
   // Every sale has a rep (المندوب): whoever makes it unless another is picked.
@@ -198,9 +201,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   const [categoryFilter, setCategoryFilter] = useState('');
   const [inStockOnly, setInStockOnly] = useState(isSale && !isQuote);
   const [scanning, setScanning] = useState(false);
+  /** How many the next item comes in (كمية), as in the old program; back to 1 after each. */
+  const [addQty, setAddQty] = useState('1');
+  const [finding, setFinding] = useState(false);
   const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
   const categories = useCategories();
-  const productList = useProductSearch(search, inStockOnly, supplierFilter, departmentId, categoryFilter);
+  const productList = useProductSearch(
+    search,
+    inStockOnly,
+    supplierFilter,
+    departmentId,
+    categoryFilter,
+  );
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
@@ -222,7 +234,10 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
   // Only someone who may just save pending invoices (sales:order without sales:create) saves one.
   const asOrder = isSale && !isQuote && !can('sales:create') && can('sales:order');
   const pending =
-    createSale.isPending || createPurchase.isPending || createQuote.isPending || createOrder.isPending;
+    createSale.isPending ||
+    createPurchase.isPending ||
+    createQuote.isPending ||
+    createOrder.isPending;
   const serverError = (createSale.error ??
     createPurchase.error ??
     createQuote.error ??
@@ -277,17 +292,19 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
 
   function addProduct(p: Product, unitId?: string | null) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
+    const qty = Math.max(1, Math.floor(Number(addQty) || 1));
+    setAddQty('1');
     setLines((prev) => {
       const existing = prev.find((l) => l.product.id === p.id && l.unitId === unit);
       if (existing)
-        return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + 1 } : l));
+        return prev.map((l) => (l === existing ? { ...l, quantity: l.quantity + qty } : l));
       return [
         ...prev,
         {
           key: `l${nextKey++}`,
           product: p,
           unitId: unit,
-          quantity: 1,
+          quantity: qty,
           price: 0,
           touched: false,
           bonus: false,
@@ -500,7 +517,8 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
           priceLevelId,
           paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
           shippingCost: Number(shippingCost) > 0 ? toMinor(Number(shippingCost)) : undefined,
-          shippingAccountId: Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
+          shippingAccountId:
+            Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
         });
         navigate('/purchases');
       }
@@ -557,9 +575,15 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       setPickedDepartment(text(d.departmentId));
       setPickedLevel(text(d.levelId));
       if (d.delivery && METHODS.includes(d.delivery.method))
-        setDelivery({ method: d.delivery.method, address: text(d.delivery.address), carrierId: text(d.delivery.carrierId) });
+        setDelivery({
+          method: d.delivery.method,
+          address: text(d.delivery.address),
+          carrierId: text(d.delivery.carrierId),
+        });
       const discount = (v: DiscountInput | undefined, fallback: DiscountInput): DiscountInput =>
-        v && (v.mode === 'percent' || v.mode === 'amount') ? { mode: v.mode, value: text(v.value) } : fallback;
+        v && (v.mode === 'percent' || v.mode === 'amount')
+          ? { mode: v.mode, value: text(v.value) }
+          : fallback;
       setDiscount1(discount(d.discount1, discount1));
       setDiscount2(discount(d.discount2, discount2));
       setPaidNow(text(d.paidNow));
@@ -575,7 +599,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
       const found = new Map<string, Product>();
       await Promise.all(
         [...new Set(saved.map((l) => l.sku).filter(Boolean))].map(async (sku) => {
-          const list = await api.get<Product[]>(`/products?search=${encodeURIComponent(sku)}`).catch(() => []);
+          const list = await api
+            .get<Product[]>(`/products?search=${encodeURIComponent(sku)}`)
+            .catch(() => []);
           for (const p of list) found.set(p.id, p);
         }),
       );
@@ -604,6 +630,170 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
 
   const products = productList.data ?? [];
 
+  // A line's controls, shared by the table (wide screens) and the cards (phones).
+  type Row = (typeof rows)[number];
+  const cell =
+    'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2';
+  const showDiscountColumn = isSale && (canDiscount || lines.some((l) => l.discValue));
+  const showBonusColumn = canBonus || lines.some((l) => l.bonus);
+  /** Amounts in the table without the currency, as on the old grid (the totals show it). */
+  const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const unitSelect = (r: Row, className = field) => (
+    <select
+      className={className}
+      value={r.line.unitId}
+      disabled={r.line.product.units.length < 2}
+      onChange={(e) => updateLine(r.line.key, { unitId: e.target.value, touched: false })}
+    >
+      {r.line.product.units.map((u) => (
+        <option key={u.unitId} value={u.unitId}>
+          {u.name}
+          {u.factor > 1 ? ` (${u.factor})` : ''}
+        </option>
+      ))}
+    </select>
+  );
+  const qtyInput = (r: Row, className = `${field} tnum`) => (
+    <input
+      type="number"
+      min={1}
+      className={className}
+      value={r.line.quantity}
+      onChange={(e) =>
+        updateLine(r.line.key, {
+          quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+        })
+      }
+    />
+  );
+  const priceInput = (r: Row, base = field) => (
+    <input
+      type="number"
+      min={canChangePrice ? 0 : toMajor(suggested(r.line))}
+      step="0.01"
+      readOnly={!priceEditable || r.line.bonus}
+      title={
+        canChangePrice ? undefined : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
+      }
+      aria-invalid={underList(r.line, r.index)}
+      className={`${base} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line, r.index) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+      value={toMajor(r.price)}
+      onChange={(e) =>
+        updateLine(r.line.key, {
+          price: Math.max(0, toMinor(Number(e.target.value) || 0)),
+          touched: true,
+        })
+      }
+      // Only up: a lower price goes back to the list price.
+      onBlur={() => {
+        if (underList(r.line, r.index)) updateLine(r.line.key, { touched: false });
+      }}
+    />
+  );
+  /** A line's own discount: the value and whether it is a %, per piece or an amount. */
+  const discountControls = (r: Row, withLabel: boolean) => (
+    <>
+      {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
+        <span className="inline-flex items-center gap-1">
+          {withLabel && <span>{t('invoice.lineDiscount')}</span>}
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
+            aria-label={t('invoice.lineDiscount')}
+            disabled={!canDiscount}
+            value={r.line.discValue}
+            onChange={(e) => updateLine(r.line.key, { discValue: e.target.value })}
+          />
+          <select
+            className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
+            aria-label={t('invoice.lineDiscountMode')}
+            disabled={!canDiscount}
+            value={r.line.discMode}
+            onChange={(e) =>
+              updateLine(r.line.key, {
+                discMode: e.target.value as LineDiscountMode,
+              })
+            }
+          >
+            <option value="percent">%</option>
+            <option value="piece">{t('invoice.perPiece')}</option>
+            <option value="amount">{t('invoice.onLine')}</option>
+          </select>
+          {r.discount > 0 && (
+            <span className="text-warning">−{formatMoney(r.discount, currency, locale)}</span>
+          )}
+        </span>
+      )}
+    </>
+  );
+  const bonusBox = (r: Row) => (
+    <>
+      {(canBonus || r.line.bonus) && (
+        <label className="inline-flex items-center gap-1.5" title={t('invoice.bonusHint')}>
+          <input
+            type="checkbox"
+            checked={r.line.bonus}
+            disabled={!canBonus}
+            onChange={(e) => updateLine(r.line.key, { bonus: e.target.checked })}
+          />
+          {t('invoice.bonus')}
+        </label>
+      )}
+    </>
+  );
+  /** Notes under a line: the units it makes, its price list, quantity discount, list price, share of the invoice discount. */
+  const lineNotes = (r: Row) => (
+    <>
+      {r.factor > 1 && (
+        <span>
+          = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
+        </span>
+      )}
+      {r.listName && (
+        <span className="text-brand">
+          {t('pl.fromList')} <bdi>{r.listName}</bdi>
+        </span>
+      )}
+      {r.breakBp > 0 && r.discount === autoDiscountOf(r.line, r.index) && r.discount > 0 && (
+        <span className="text-positive">
+          {t('pl.qtyDiscount')} {formatNumber(r.breakBp / 100, locale)}%: −
+          {formatMoney(r.discount, currency, locale)}
+        </span>
+      )}
+      {isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
+        <span className={underList(r.line, r.index) ? 'text-destructive' : ''}>
+          {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
+        </span>
+      )}
+      {r.docDiscount > 0 && (
+        <span>
+          {t('charge.DISCOUNT')}: −{formatMoney(r.docDiscount, currency, locale)}
+        </span>
+      )}
+    </>
+  );
+  const lineWarning = (r: Row, className = 'mt-2') => (
+    <>
+      {(r.belowCost || r.belowFloor || r.overStock) && (
+        <p
+          className={`${className} text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
+        >
+          {r.overStock
+            ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
+            : r.belowCost
+              ? t('invoice.belowCost')
+              : t('invoice.belowFloor')}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -616,7 +806,7 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_minmax(340px,400px)]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
         {/* Left: builder */}
         <div className="min-w-0 space-y-4">
           {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
@@ -809,6 +999,18 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   </div>
                 )}
               </div>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                aria-label={t('invoice.addQty')}
+                title={t('invoice.addQty')}
+                className="h-9 w-16 shrink-0 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-center text-sm tnum outline-none focus:border-brand"
+                value={addQty}
+                onChange={(e) => setAddQty(e.target.value)}
+                onFocus={(e) => e.target.select()}
+              />
               <Button
                 variant="secondary"
                 icon="scan"
@@ -817,15 +1019,131 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               >
                 <span className="hidden sm:inline">{t('scan.button')}</span>
               </Button>
+              <Button
+                variant="secondary"
+                icon="search"
+                aria-label={t('finder.button')}
+                onClick={() => setFinding(true)}
+              >
+                <span className="hidden lg:inline">{t('finder.button')}</span>
+              </Button>
             </div>
             <p className="mt-1 text-xs text-faint">{t('invoice.scanHint')}</p>
             {scanning && <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />}
+            {finding && (
+              <ItemFinderSheet
+                departmentId={departmentId || undefined}
+                inStockFirst={isSale && !isQuote}
+                onClose={() => setFinding(false)}
+                onAdd={(items) => {
+                  items.forEach((p) => addProduct(p));
+                  setFinding(false);
+                }}
+              />
+            )}
 
             {/* Lines */}
             {rows.length === 0 ? (
               <p className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
                 {t('invoice.noItems')}
               </p>
+            ) : !isPhone ? (
+              // Wide screens: the lines as a table, like the old program's grid.
+              <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
+                <table className="w-full text-[13px]">
+                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                    <tr className="whitespace-nowrap">
+                      <th className="px-1.5 py-2 text-start font-medium">#</th>
+                      <th className="px-1.5 py-2 text-start font-medium">{t('common.code')}</th>
+                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
+                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
+                      {isSale && (
+                        <th className="px-1.5 py-2 text-end font-medium">{t('invoice.balance')}</th>
+                      )}
+                      <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
+                      <th className="px-1.5 py-2 text-start font-medium">
+                        {isSale ? t('invoice.price') : t('invoice.receiveCost')}
+                      </th>
+                      {showDiscountColumn && (
+                        <th className="px-1.5 py-2 text-start font-medium">
+                          {t('invoice.lineDiscount')}
+                        </th>
+                      )}
+                      <th className="px-1.5 py-2 text-end font-medium">{t('common.total')}</th>
+                      {isSale && seeCosts && (
+                        <th className="px-1.5 py-2 text-end font-medium">
+                          {t('invoice.lineProfit')}
+                        </th>
+                      )}
+                      {showBonusColumn && (
+                        <th className="px-1.5 py-2 font-medium">{t('invoice.bonus')}</th>
+                      )}
+                      <th className="w-8" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {rows.map((r, i) => (
+                      <tr key={r.line.key} className="align-top">
+                        <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
+                        <td className="whitespace-nowrap px-1.5 py-2 tnum">{r.line.product.sku}</td>
+                        <td className="min-w-32 px-1.5 py-2">
+                          <span className="block font-medium">{r.line.product.name}</span>
+                          <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">
+                            {seeCosts && (
+                              <span>
+                                {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                              </span>
+                            )}
+                            {lineNotes(r)}
+                          </span>
+                          {lineWarning(r, 'mt-1')}
+                        </td>
+                        <td className="px-1.5 py-1.5">{unitSelect(r, `${cell} w-20`)}</td>
+                        {isSale && (
+                          <td
+                            className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.overStock ? 'text-destructive' : 'text-muted'}`}
+                          >
+                            {formatQuantity(
+                              available(r.line.product),
+                              r.line.product.units,
+                              locale,
+                            )}
+                          </td>
+                        )}
+                        <td className="px-1.5 py-1.5">{qtyInput(r, `${cell} w-16 tnum`)}</td>
+                        <td className="px-1.5 py-1.5">{priceInput(r, `${cell} w-20`)}</td>
+                        {showDiscountColumn && (
+                          <td className="whitespace-nowrap px-1.5 py-1.5 text-xs">
+                            {discountControls(r, false)}
+                          </td>
+                        )}
+                        <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
+                          {plain.format(toMajor(r.lineTotal))}
+                        </td>
+                        {isSale && seeCosts && (
+                          <td
+                            className={`whitespace-nowrap px-1.5 py-2 text-end tnum ${r.lineProfit < 0 ? 'text-destructive' : 'text-positive'}`}
+                          >
+                            {formatMoney(r.lineProfit, currency, locale)}
+                          </td>
+                        )}
+                        {showBonusColumn && (
+                          <td className="px-1.5 py-2 text-center text-xs">{bonusBox(r)}</td>
+                        )}
+                        <td className="px-1 py-2">
+                          <button
+                            onClick={() => removeLine(r.line.key)}
+                            className="text-faint hover:text-destructive"
+                            aria-label={t('invoice.remove')}
+                          >
+                            <Icon name="close" size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <ul className="mt-3 space-y-2">
                 {rows.map((r) => (
@@ -868,64 +1186,17 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
                       <label className="block">
                         <span className="mb-0.5 block text-xs text-muted">{t('invoice.unit')}</span>
-                        <select
-                          className={field}
-                          value={r.line.unitId}
-                          disabled={r.line.product.units.length < 2}
-                          onChange={(e) =>
-                            updateLine(r.line.key, { unitId: e.target.value, touched: false })
-                          }
-                        >
-                          {r.line.product.units.map((u) => (
-                            <option key={u.unitId} value={u.unitId}>
-                              {u.name}
-                              {u.factor > 1 ? ` (${u.factor})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                        {unitSelect(r)}
                       </label>
                       <label className="block">
                         <span className="mb-0.5 block text-xs text-muted">{t('invoice.qty')}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          className={`${field} tnum`}
-                          value={r.line.quantity}
-                          onChange={(e) =>
-                            updateLine(r.line.key, {
-                              quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
-                            })
-                          }
-                        />
+                        {qtyInput(r)}
                       </label>
                       <label className="block">
                         <span className="mb-0.5 block text-xs text-muted">
                           {isSale ? t('invoice.price') : t('invoice.receiveCost')}
                         </span>
-                        <input
-                          type="number"
-                          min={canChangePrice ? 0 : toMajor(suggested(r.line))}
-                          step="0.01"
-                          readOnly={!priceEditable || r.line.bonus}
-                          title={
-                            canChangePrice
-                              ? undefined
-                              : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
-                          }
-                          aria-invalid={underList(r.line, r.index)}
-                          className={`${field} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line, r.index) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
-                          value={toMajor(r.price)}
-                          onChange={(e) =>
-                            updateLine(r.line.key, {
-                              price: Math.max(0, toMinor(Number(e.target.value) || 0)),
-                              touched: true,
-                            })
-                          }
-                          // Only up: a lower price goes back to the list price.
-                          onBlur={() => {
-                            if (underList(r.line, r.index)) updateLine(r.line.key, { touched: false });
-                          }}
-                        />
+                        {priceInput(r)}
                       </label>
                       {isSale && seeCosts && (
                         <div className="block">
@@ -955,95 +1226,12 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                       </div>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
-                      {r.factor > 1 && (
-                        <span>
-                          = {formatNumber(r.line.quantity * r.factor, locale)} {r.line.product.unit}
-                        </span>
-                      )}
-                      {r.listName && (
-                        <span className="text-brand">
-                          {t('pl.fromList')} <bdi>{r.listName}</bdi>
-                        </span>
-                      )}
-                      {r.breakBp > 0 && r.discount === autoDiscountOf(r.line, r.index) && r.discount > 0 && (
-                        <span className="text-positive">
-                          {t('pl.qtyDiscount')} {formatNumber(r.breakBp / 100, locale)}%: −
-                          {formatMoney(r.discount, currency, locale)}
-                        </span>
-                      )}
-                      {isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
-                        <span className={underList(r.line, r.index) ? 'text-destructive' : ''}>
-                          {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
-                        </span>
-                      )}
-                      {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
-                        <span className="inline-flex items-center gap-1">
-                          <span>{t('invoice.lineDiscount')}</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            inputMode="decimal"
-                            className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
-                            aria-label={t('invoice.lineDiscount')}
-                            disabled={!canDiscount}
-                            value={r.line.discValue}
-                            onChange={(e) => updateLine(r.line.key, { discValue: e.target.value })}
-                          />
-                          <select
-                            className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
-                            aria-label={t('invoice.lineDiscountMode')}
-                            disabled={!canDiscount}
-                            value={r.line.discMode}
-                            onChange={(e) =>
-                              updateLine(r.line.key, {
-                                discMode: e.target.value as LineDiscountMode,
-                              })
-                            }
-                          >
-                            <option value="percent">%</option>
-                            <option value="piece">{t('invoice.perPiece')}</option>
-                            <option value="amount">{t('invoice.onLine')}</option>
-                          </select>
-                          {r.discount > 0 && (
-                            <span className="text-warning">
-                              −{formatMoney(r.discount, currency, locale)}
-                            </span>
-                          )}
-                        </span>
-                      )}
-                      {r.docDiscount > 0 && (
-                        <span>
-                          {t('charge.DISCOUNT')}: −{formatMoney(r.docDiscount, currency, locale)}
-                        </span>
-                      )}
-                      {(canBonus || r.line.bonus) && (
-                        <label
-                          className="inline-flex items-center gap-1.5"
-                          title={t('invoice.bonusHint')}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={r.line.bonus}
-                            disabled={!canBonus}
-                            onChange={(e) => updateLine(r.line.key, { bonus: e.target.checked })}
-                          />
-                          {t('invoice.bonus')}
-                        </label>
-                      )}
+                      {lineNotes(r)}
+                      {discountControls(r, true)}
+                      {bonusBox(r)}
                     </div>
 
-                    {(r.belowCost || r.belowFloor || r.overStock) && (
-                      <p
-                        className={`mt-2 text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
-                      >
-                        {r.overStock
-                          ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
-                          : r.belowCost
-                            ? t('invoice.belowCost')
-                            : t('invoice.belowFloor')}
-                      </p>
-                    )}
+                    {lineWarning(r)}
                   </li>
                 ))}
               </ul>
@@ -1085,7 +1273,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                   )}
                 </>
               )}
-              {tax > 0 && <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />}
+              {tax > 0 && (
+                <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
+              )}
               {outcome.error && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
               <div className="my-1 border-t border-line" />
               <Row
@@ -1137,7 +1327,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
               )}
               {!isSale && (
                 <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.shippingCost')}</span>
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {t('invoice.shippingCost')}
+                  </span>
                   <input
                     type="number"
                     min={0}
@@ -1146,7 +1338,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
                     value={shippingCost}
                     onChange={(e) => setShippingCost(e.target.value)}
                   />
-                  <span className="mt-0.5 block text-xs text-faint">{t('invoice.shippingCostHint')}</span>
+                  <span className="mt-0.5 block text-xs text-faint">
+                    {t('invoice.shippingCostHint')}
+                  </span>
                 </label>
               )}
               {!isSale && Number(shippingCost) > 0 && (
@@ -1199,7 +1393,9 @@ export function InvoiceBuilderPage({ mode }: { mode: 'sale' | 'purchase' | 'quot
             >
               {pending ? t('invoice.saving') : isQuote ? t('quote.save') : t('invoice.save')}
             </Button>
-            {asOrder && <p className="mt-2 text-center text-xs text-faint">{t('order.saveHint')}</p>}
+            {asOrder && (
+              <p className="mt-2 text-center text-xs text-faint">{t('order.saveHint')}</p>
+            )}
             {isSale && !isQuote && !asOrder && (
               <p className="mt-2 text-center text-xs text-faint">{t('invoice.savedHint')}</p>
             )}

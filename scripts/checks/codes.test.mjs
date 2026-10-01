@@ -214,4 +214,33 @@ eq(
   2,
 );
 
+console.log('== the detailed item search (البحث المفصل)');
+const find = async (q) => (await acc.get(`/products?limit=200&${q}`)).data.map((p) => p.id);
+check(
+  'code contains',
+  (await find(`code=${encodeURIComponent(item.sku.slice(-4))}`)).includes(item.id),
+);
+check('name contains', (await find(`name=${encodeURIComponent(`tem ${tag}`)}`)).includes(item.id));
+check(
+  'in the price range',
+  (await find(`name=${tag}&minPrice=1000&maxPrice=1000`)).includes(item.id),
+);
+check('…not outside it', !(await find(`name=${tag}&minPrice=1001`)).includes(item.id));
+check('in stock', (await find(`name=${tag}&stock=in`)).includes(item.id));
+check('…not out of stock', !(await find(`name=${tag}&stock=out`)).includes(item.id));
+const loose = ok(
+  'an item of no supplier',
+  await owner.post('/products', {
+    name: `Loose ${tag}`,
+    categoryId: cat.id,
+    reorderLevel: 5,
+    units: [{ unitId: piece.id, factor: 1 }],
+    prices: [{ unitId: piece.id, priceLevelId: level.id, price: 500 }],
+  }),
+);
+check('no supplier', (await find(`supplierId=none&name=${tag}`)).includes(loose.id));
+check('…a supplied one isn’t', !(await find(`supplierId=none&name=${tag}`)).includes(item.id));
+check('at its reorder level', (await find(`stock=low&name=${tag}`)).includes(loose.id));
+check('…a well-stocked one isn’t', !(await find(`stock=low&name=${tag}`)).includes(item.id));
+
 summary('codes');
