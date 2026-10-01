@@ -243,6 +243,8 @@ function MoreWidgets({
 }) {
   const { t, locale } = useT();
   const navigate = useNavigate();
+  // Profit and stock at cost only when the person turned costs on (owner, 2026-10-02).
+  const seeCosts = useCan()('costs:view');
   const money = (v: number) => formatMoney(v, currency, locale);
   const change =
     more.month && more.month.lastMonth > 0
@@ -294,13 +296,13 @@ function MoreWidgets({
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <Stat label={t('dash.todaySales')} value={money(more.month.sales)} strong />
               <Stat label={t('dash.lastMonth')} value={money(more.month.lastMonth)} />
-              {more.month.profit != null && (
+              {seeCosts && more.month.profit != null && (
                 <Stat label={t('dash.profit')} value={money(more.month.profit)} />
               )}
               {more.month.expenses != null && (
                 <Stat label={t('dash.expenses')} value={money(more.month.expenses)} />
               )}
-              {more.stockValue != null && (
+              {seeCosts && more.stockValue != null && (
                 <Stat label={t('dash.stockValue')} value={money(more.stockValue)} />
               )}
             </dl>

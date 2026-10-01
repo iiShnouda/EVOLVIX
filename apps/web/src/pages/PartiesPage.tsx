@@ -298,13 +298,15 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const update = useUpdateParty();
   const can = useCan();
   const carriers = useParties({ page: 1, pageSize: 100, type: 'CARRIER', active: true });
-  // The shipping company a customer's sales go with (or one with no file, by name), and whether
-  // they are a cash customer.
+  // The shipping company a customer's sales go with (or one with no file, by name). Whether they
+  // are a cash customer isn't ticked here any more: walk-in customers are sold to on the cash
+  // customer account, code 0 (owner, 2026-10-02).
+  const system = !!party?.isSystem;
   const [defaultCarrierId, setDefaultCarrierId] = useState(
     party?.defaultCarrierId ?? (party?.tempCarrierName ? OTHER : ''),
   );
   const [tempCarrierName, setTempCarrierName] = useState(party?.tempCarrierName ?? '');
-  const [isCashCustomer, setIsCashCustomer] = useState(party?.isCashCustomer ?? false);
+  const isCashCustomer = party?.isCashCustomer ?? false;
   const [name, setName] = useState(party?.name ?? '');
   const [types, setTypes] = useState<PartyType[]>(party?.types ?? ['CUSTOMER']);
   const [phone, setPhone] = useState(party?.phone ?? '');
@@ -356,9 +358,6 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
           defaultCarrierId: defaultCarrierId === OTHER ? '' : defaultCarrierId,
           tempCarrierName: defaultCarrierId === OTHER ? tempCarrierName.trim() : '',
         }
-      : {}),
-    ...(can('parties:cash_customer') && isCashCustomer !== (party?.isCashCustomer ?? false)
-      ? { isCashCustomer }
       : {}),
   };
   const parsed = partySchema.safeParse(values);
@@ -437,6 +436,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
                   type="checkbox"
                   className="sr-only"
                   checked={types.includes(type)}
+                  disabled={system}
                   onChange={() => toggle(type)}
                 />
                 {types.includes(type) && <Icon name="check" size={14} />}
@@ -644,17 +644,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               />
             </label>
           )}
-          {customer && (
-            <label className="flex items-center gap-2 self-end pb-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isCashCustomer}
-                disabled={!can('parties:cash_customer')}
-                onChange={(e) => setIsCashCustomer(e.target.checked)}
-              />
-              {t('parties.cashCustomer')}
-            </label>
-          )}
+          {system && <p className="self-end pb-2 text-sm text-muted">{t('parties.systemCash')}</p>}
           {withIdCard && (
             <IdCardFields
               party={party}
@@ -680,7 +670,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          {party && can('parties:close') ? (
+          {party && !system && can('parties:close') ? (
             party.isActive ? (
               <Button
                 type="button"

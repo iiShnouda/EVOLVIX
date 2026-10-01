@@ -213,7 +213,10 @@ const o6 = ok('a pending one for them is saved', await rep.post('/sales/orders',
 // The accountant's approval is the decision on the limit.
 const approvedOver = ok('the accountant approves it over the limit', await acc.post(`/sales/orders/${o6.id}/approve`, {}));
 eq('it is an invoice', approvedOver.type, 'SALES_INVOICE');
-ok('the owner may go over it', await sellTo(owner, 1));
+// Whoever makes it, a sale over the limit waits for the accountant (owner decision 2026-10-02).
+const ownerOver = ok('the owner over it: it waits too', await sellTo(owner, 1));
+eq('the owner’s waits for approval, marked as over the limit', [ownerOver.type, ownerOver.overLimit], ['SALES_ORDER', true]);
+ok('…cancelled', await owner.post(`/sales/orders/${ownerOver.id}/cancel`));
 eq('the account shows the limit', (await acc.get(`/sales/customers/${buyer.id}/account`)).data.creditLimit, 1500);
 ok('limit cleared', await acc.put(`/parties/${buyer.id}/credit-limit`, { creditLimit: null }));
 

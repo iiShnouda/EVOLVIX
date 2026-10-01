@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatMoney, toMinor, type Party, type Product } from '@skb/shared';
 import { Button, Card, Spinner } from '../components/ui';
@@ -9,6 +9,8 @@ import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
+import { useWorkPlace } from '../lib/workPlace';
+import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
   useCreateFreeReturn,
@@ -74,6 +76,19 @@ export function FreeReturnForm({
   const [branch, setBranch] = useState(myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '');
   const [warehouse, setWarehouse] = useState('');
   const [department, setDepartment] = useState('');
+  // They start where the person works (owner, 2026-10-02), and picking another changes it there too.
+  const [place, setPlace] = useWorkPlace();
+  const placed = useRef(false);
+  useEffect(() => {
+    if (placed.current || (!place.branchId && !place.warehouseId)) return;
+    placed.current = true;
+    if (place.branchId && myBranches.some((b) => b.id === place.branchId))
+      setBranch((b) => b || place.branchId);
+    if (place.warehouseId) setWarehouse((w) => w || place.warehouseId);
+    if (place.departmentId) setDepartment((d) => d || place.departmentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.branchId, place.warehouseId, place.departmentId]);
+  const [finding, setFinding] = useState(false);
   const allWarehouses = useWarehouses(true);
   const branchWarehouses = (allWarehouses.data ?? []).filter(
     (w) => w.kind === 'STORE' && w.isActive && w.branchId === branch,
@@ -122,7 +137,7 @@ export function FreeReturnForm({
     },
   );
 
-  function add(p: Product) {
+  function add(p: Product, unitId?: string, quantity?: number) {
     const units = p.units.map((u) => ({
       unitId: u.unitId,
       name: u.name,
@@ -137,8 +152,9 @@ export function FreeReturnForm({
         name: p.name,
         sku: p.sku,
         units,
-        unitId: units[0]?.unitId ?? '',
-        qty: '1',
+        unitId:
+          unitId && units.some((u) => u.unitId === unitId) ? unitId : (units[0]?.unitId ?? ''),
+        qty: String(quantity ?? 1),
         price: '',
         discount: '',
       },
@@ -221,6 +237,7 @@ export function FreeReturnForm({
               setBranch(e.target.value);
               setWarehouse('');
               setDepartment('');
+              setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
             }}
           >
             <option value="" disabled>
@@ -242,6 +259,7 @@ export function FreeReturnForm({
             onChange={(e) => {
               setWarehouse(e.target.value);
               setDepartment('');
+              setPlace({ branchId: branch, warehouseId: e.target.value, departmentId: '' });
             }}
           >
             <option value="" disabled>
@@ -261,7 +279,10 @@ export function FreeReturnForm({
               className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
               value={departmentId}
               disabled={!warehouseId}
-              onChange={(e) => setDepartment(e.target.value)}
+              onChange={(e) => {
+                setDepartment(e.target.value);
+                setPlace({ departmentId: e.target.value });
+              }}
             >
               <option value="" disabled={departmentRequired}>
                 {departmentRequired ? t('invoice.chooseDepartment') : t('invoice.noDepartment')}
@@ -288,7 +309,28 @@ export function FreeReturnForm({
               onChange={(e) => setSearch(e.target.value)}
             />
             {found.isFetching && search.trim() && <Spinner size={14} />}
+            {/* The detailed search with its filters, as on the invoice (owner, 2026-10-02). */}
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="search"
+              disabled={!warehouseId || !party}
+              onClick={() => setFinding(true)}
+            >
+              <span className="hidden sm:inline">{t('finder.button')}</span>
+            </Button>
           </span>
+          {finding && (
+            <ItemFinderSheet
+              departmentId={departmentId || undefined}
+              warehouseId={warehouseId || undefined}
+              onClose={() => setFinding(false)}
+              onAdd={(items, close) => {
+                items.forEach((i) => add(i.product, i.unitId, i.quantity));
+                if (close) setFinding(false);
+              }}
+            />
+          )}
           {results.length > 0 && (
             <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-lg">
               {results.map((p) => (

@@ -186,8 +186,6 @@ public static class Permissions
     public const string PartiesSetPriceLevel = "parties:set_price_level";
     /// <summary>Set a customer's credit limit (حد الائتمان).</summary>
     public const string PartiesCreditLimit = "parties:credit_limit";
-    /// <summary>Post a sale that takes a customer over their credit limit.</summary>
-    public const string SalesOverCredit = "sales:over_credit";
 
     // ---- Invoice charges (DOMAIN.md step 4) ----
     /// <summary>Give an invoice-level discount on a sale (خصم مسموح به / خصم إضافي).</summary>
@@ -208,7 +206,7 @@ public static class Permissions
     {
         DashboardView, SalesView, SalesCreate, SalesEdit, SalesCancel, SalesPriceBasis, SalesChangeShipping,
         PartiesCashCustomer, SalesChangesReport, SalesOverrideFloor, SalesReturn, SalesQuote,
-        SalesOrder, SalesApprove, SalesOverCredit, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
+        SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
         ProductsClose, SalesReturnFree, PurchasesReturnFree, StaffView, StaffManage, RolesManage, StaffAccess,

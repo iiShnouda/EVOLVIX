@@ -291,6 +291,9 @@ public sealed class PriceListsController : ControllerBase
         {
             if (!Can(Permissions.SalesPriceBasis))
                 return StatusCode(403, new { message = "Pricing at the last price or at cost needs permission.", code = "price_basis_not_allowed" });
+            // Selling at the supply price shows it: only for whoever may see costs (owner, 2026-10-02).
+            if (bases.Contains(PriceBasis.Cost) && !Can(Permissions.CostsView))
+                return StatusCode(403, new { message = "Selling at the supply price needs permission to see costs.", code = "cost_basis_not_allowed" });
             priced = PriceBasis.Apply(bases, listed, lines, last);
         }
         var seeCost = Can(Permissions.CostsView);

@@ -353,7 +353,7 @@ function SideCard({
   const account = accounts.find((a) => a.id === accountId);
   const currency = account?.currency ?? accounts[0]?.currency ?? 'EGP';
   // Plain amounts in the table, as on the old screen.
-  const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+  const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

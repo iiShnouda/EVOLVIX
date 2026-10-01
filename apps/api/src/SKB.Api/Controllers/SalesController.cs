@@ -126,6 +126,9 @@ public sealed class SalesController : ControllerBase
                 .Where(i => i.SourceDocumentId == doc.Id && i.Type == DocumentType.SALES_INVOICE)
                 .Select(i => new { i.Id, i.Number }).FirstOrDefaultAsync() is { } invoice)
             dto = dto with { InvoiceId = invoice.Id.ToString(), InvoiceNumber = invoice.Number };
+        if (doc.Type == DocumentType.SALES_INVOICE
+            && await _db.InvoiceRevisions.AnyAsync(x => x.DocumentId == doc.Id && x.Kind == "EDIT"))
+            dto = dto with { Edited = true };
         return Ok(Costs.Guard(User, dto));
     }
 
@@ -180,6 +183,186 @@ public sealed class SalesController : ControllerBase
             departments, rows, party.CreditLimit));
     }
 
+    /// <summary>
+    /// A customer's invoices together, for the accountant (owner, 2026-10-02): what they took from
+    /// every department in the period (today unless given) — posted invoices and those waiting for
+    /// approval — one after another with their lines, so a discount can be given on each or on all,
+    /// and each printed alone or together. Also what they owed before these invoices.
+    /// </summary>
+    [HttpGet("customers/{partyId:guid}/invoices")]
+    public async Task<ActionResult<CustomerInvoicesDto>> CustomerInvoices(Guid partyId, [FromQuery] string? from = null,
+        [FromQuery] string? to = null)
+    {
+        var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
+        if (party is null) return NotFound(new { message = "Customer not found.", code = "party_not_found" });
+        var today = CompanyClock.Today;
+        var fromDay = DateOnly.TryParse(from, out var f) ? f : today;
+        var toDay = DateOnly.TryParse(to, out var t) ? t : fromDay;
+        if (toDay < fromDay || toDay.DayNumber - fromDay.DayNumber > 92)
+            return BadRequest(new { message = "Choose up to three months.", code = "bad_period" });
+        var start = CompanyClock.StartOf(fromDay);
+        var end = CompanyClock.StartOf(toDay.AddDays(1));
+        var docs = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.PartyId == partyId && d.IssueDate >= start && d.IssueDate < end
+                        && ((d.Type == DocumentType.SALES_INVOICE && d.Status != DocumentStatus.CANCELLED)
+                            || (d.Type == DocumentType.SALES_ORDER && d.Status == DocumentStatus.PENDING)))
+            .InBranches(User, d => d.BranchId).InDepartments(User)
+            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
+            .Include(d => d.Lines).ThenInclude(l => l.Warehouse)
+            .Include(d => d.Lines).ThenInclude(l => l.Unit)
+            .Include(d => d.SourceDocument).Include(d => d.PriceLevel)
+            .Include(d => d.Charges).Include(d => d.Rep).Include(d => d.Driver).Include(d => d.Carrier)
+            .Include(d => d.PaidAccount).Include(d => d.Department)
+            .AsSplitQuery().OrderBy(d => d.IssueDate).Take(200).ToListAsync();
+        var ids = docs.Select(d => d.Id).ToList();
+        var edited = await _db.InvoiceRevisions.Where(x => ids.Contains(x.DocumentId) && x.Kind == "EDIT")
+            .Select(x => x.DocumentId).Distinct().ToListAsync();
+        var invoices = new List<SalesDetailDto>();
+        foreach (var d in docs)
+            invoices.Add(Costs.Guard(User, Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d))
+                with { Edited = edited.Contains(d.Id) }));
+        // What they owed before these: the balance less what the posted ones still put on it.
+        var posted = docs.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
+        var owed = await MoneyService.OutstandingAsync(_db, posted);
+        var onThese = posted.Sum(d => owed.GetValueOrDefault(d.Id));
+        var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
+        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party), party.Balance, party.Balance - onThese, onThese,
+            currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray()));
+    }
+
+    /// <summary>
+    /// The accountant's discount on one invoice (owner, 2026-10-02), posted or waiting for approval:
+    /// its invoice discount (or, with <c>Kind = EXTRA_DISCOUNT</c>, its second one) becomes this
+    /// percent or amount (neither = none). Everything else stays as it was approved; the discount is
+    /// checked against the person's own permission and limit, and the invoice is posted again under
+    /// its number (shown as changed).
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/discount")]
+    [HttpPost("orders/{id:guid}/discount")]
+    [Authorize(Policy = Permissions.SalesDiscount)]
+    public async Task<ActionResult<SalesDetailDto>> SetDiscount(Guid id, [FromBody] SetInvoiceDiscountRequest req)
+    {
+        var kind = string.Equals(req.Kind, nameof(ChargeKind.EXTRA_DISCOUNT), StringComparison.OrdinalIgnoreCase)
+            ? ChargeKind.EXTRA_DISCOUNT : ChargeKind.DISCOUNT;
+        var doc = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
+            .InBranches(User, d => d.BranchId).InDepartments(User)
+            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery().FirstOrDefaultAsync();
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var error = CheckDiscountTarget(doc);
+        if (error is not null) return error;
+        var result = await ApplyDiscountAsync(doc, kind, req.Percent, req.Amount);
+        _db.ChangeTracker.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// One discount over several invoices of one customer (owner, 2026-10-02): a percent comes off
+    /// each; an amount is shared out in proportion to what each comes to (the last takes what is left,
+    /// so it adds up exactly). It is each invoice's second discount. All or nothing.
+    /// </summary>
+    [HttpPost("invoices/discount-all")]
+    [Authorize(Policy = Permissions.SalesDiscount)]
+    public async Task<ActionResult<SalesDetailDto[]>> SetDiscountAll([FromBody] SetDiscountAllRequest req)
+    {
+        var ids = (req.InvoiceIds ?? Array.Empty<string>()).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty)
+            .Distinct().ToList();
+        if (ids.Count == 0 || ids.Contains(Guid.Empty) || ids.Count > 50)
+            return BadRequest(new { message = "Choose the invoices.", code = "invoice_not_found" });
+        if (req.Percent is decimal p && (p < 0 || p > 100))
+            return BadRequest(new { message = "A percent is between 0 and 100.", code = "bad_charge" });
+        if (req.Amount is long a && a < 0)
+            return BadRequest(new { message = "Enter an amount above zero.", code = "bad_amount" });
+        var docs = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => ids.Contains(d.Id) && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
+            .InBranches(User, d => d.BranchId).InDepartments(User)
+            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery()
+            .OrderBy(d => d.IssueDate).ThenBy(d => d.Number).ToListAsync();
+        if (docs.Count != ids.Count) return NotFound(new { message = "An invoice was not found.", code = "invoice_not_found" });
+        if (docs.Select(d => d.PartyId).Distinct().Count() != 1)
+            return BadRequest(new { message = "The invoices must be one customer's.", code = "not_one_customer" });
+        foreach (var d in docs)
+            if (CheckDiscountTarget(d) is { } bad) return bad;
+
+        // An amount is shared by what each invoice comes to before its second discount.
+        var shares = new long[docs.Count];
+        if (req.Amount is long amount && amount > 0)
+        {
+            var bases = docs.Select(d => d.GrandTotal + d.Charges.Where(c => c.Kind == ChargeKind.EXTRA_DISCOUNT)
+                .Sum(c => c.Amount)).ToArray();
+            var all = bases.Sum();
+            if (all <= 0 || amount > all)
+                return BadRequest(new { message = "The discount is more than the invoices.", code = "charge_too_big" });
+            long given = 0;
+            for (var i = 0; i < docs.Count; i++)
+            {
+                shares[i] = i == docs.Count - 1 ? amount - given
+                    : (long)decimal.Round((decimal)amount * bases[i] / all, MidpointRounding.AwayFromZero);
+                given += shares[i];
+            }
+        }
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var done = new List<string>();
+        for (var i = 0; i < docs.Count; i++)
+        {
+            var result = await ApplyDiscountAsync(docs[i], ChargeKind.EXTRA_DISCOUNT, req.Percent,
+                req.Amount is null ? null : shares[i]);
+            if (result.Result is ObjectResult { StatusCode: >= 400 } failed) return failed;
+            done.Add(docs[i].Id.ToString());
+        }
+        await tx.CommitAsync();
+        _db.ChangeTracker.Clear();
+        var back = new List<SalesDetailDto>();
+        foreach (var docId in docs.Select(d => d.Type == DocumentType.SALES_ORDER ? d.Id : d.Id))
+            if ((await GetOne(docId)).Result is OkObjectResult { Value: SalesDetailDto dto }) back.Add(dto);
+        return Ok(back.ToArray());
+    }
+
+    /// <summary>A discount can be given on an open invoice: not cancelled or turned down.</summary>
+    private ActionResult? CheckDiscountTarget(SalesDocument doc)
+    {
+        if (doc.Type == DocumentType.SALES_ORDER && doc.Status != DocumentStatus.PENDING)
+            return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
+        if (doc.Type == DocumentType.SALES_INVOICE && doc.Status == DocumentStatus.CANCELLED)
+            return BadRequest(new { message = "This invoice is already cancelled.", code = "invoice_cancelled" });
+        if (doc.Type == DocumentType.SALES_INVOICE && !Can(Permissions.SalesEdit) && !Can(Permissions.SalesApprove))
+            return StatusCode(403, new { message = "Changing a saved invoice needs permission.", code = "edit_not_allowed" });
+        return null;
+    }
+
+    private bool Can(string permission) => User.HasClaim("permission", permission);
+
+    /// <summary>Post <paramref name="doc"/> again with one of its discounts set; nothing else changes.</summary>
+    private async Task<ActionResult<SalesDetailDto>> ApplyDiscountAsync(SalesDocument doc, ChargeKind kind,
+        decimal? percent, long? amount)
+    {
+        var charges = doc.Charges.OrderBy(c => c.Seq).Where(c => c.Kind != kind)
+            .Select(c => new ChargeRequest(c.Kind.ToString(),
+                c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label))
+            .ToList();
+        if (percent is decimal pc && pc > 0) charges.Add(new ChargeRequest(kind.ToString(), pc, null));
+        else if (amount is long am && am > 0) charges.Add(new ChargeRequest(kind.ToString(), null, am));
+        // The invoice's own discount before the second one, as the charges apply in order.
+        charges = charges.OrderBy(c => c.Kind == nameof(ChargeKind.DISCOUNT) ? 0
+            : c.Kind == nameof(ChargeKind.EXTRA_DISCOUNT) ? 1 : 2).ToList();
+        var req = new CreateSalesInvoiceRequest(
+            doc.PartyId.ToString(),
+            doc.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
+                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
+                l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
+            Notes: doc.Notes, DueDate: doc.DueDate?.ToString("yyyy-MM-dd"), PaidAmount: doc.PaidAmount,
+            PriceLevelId: doc.PriceLevelId?.ToString(), Charges: charges.ToArray(), RepId: doc.RepId?.ToString(),
+            DeliveryMethod: doc.DeliveryMethod.ToString(), DeliveryAddress: doc.DeliveryAddress,
+            DriverId: doc.DriverId?.ToString(), CarrierId: doc.CarrierId?.ToString(),
+            PaidAccountId: doc.PaidAccountId?.ToString(), DepartmentId: doc.DepartmentId?.ToString());
+        return doc.Type == DocumentType.SALES_ORDER
+            ? await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null,
+                branch: doc.BranchId, replaceId: doc.Id, trustPrices: true, discountsKept: false)
+            : await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId, editId: doc.Id,
+                trustPrices: true, discountsKept: false);
+    }
+
     /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
     [HttpGet("reps")]
     public async Task<ActionResult<RepOptionDto[]>> Reps()
@@ -206,7 +389,8 @@ public sealed class SalesController : ControllerBase
         // in the sales list for the accountant to accept or turn it down. Nothing was posted.
         if (ErrorCode(result.Result) != "over_credit_limit") return result;
         _db.ChangeTracker.Clear();
-        return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null);
+        return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null,
+            overLimit: true);
     }
 
     /// <summary>The <c>code</c> of an error answer, if it is one.</summary>
@@ -413,7 +597,135 @@ public sealed class SalesController : ControllerBase
             DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
             PaidAccountId: req.PaidAccountId, DepartmentId: order.DepartmentId?.ToString());
         return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId, approved: true,
-            discountsKept: discountsKept);
+            discountsKept: discountsKept, approvalNote: order.OverLimit ? $"BY:{CurrentUser.Name(User)}" : null);
+    }
+
+    /// <summary>
+    /// The accountant accepts a posted invoice that waits over the customer's purchase limit (it was
+    /// changed after it was saved and the change took the customer over it).
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/approve-limit")]
+    [Authorize(Policy = Permissions.SalesApprove)]
+    public async Task<ActionResult<SalesDetailDto>> ApproveLimit(Guid id)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var doc = await ScopedInvoices().FirstOrDefaultAsync(d => d.Id == id);
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        if (!doc.OverLimit || doc.Status == DocumentStatus.CANCELLED)
+            return BadRequest(new { message = "This invoice isn't waiting for approval.", code = "not_awaiting" });
+        doc.OverLimit = false;
+        doc.ApprovalNote = $"BY:{CurrentUser.Name(User)}";
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("approve", "sales_invoice", doc);
+        return await GetOne(id);
+    }
+
+    /// <summary>
+    /// The accountant turns down a posted invoice that waits over the purchase limit: it is cancelled
+    /// (everything it moved goes back), with the reason.
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/reject-limit")]
+    [Authorize(Policy = Permissions.SalesApprove)]
+    public async Task<ActionResult<SalesDetailDto>> RejectLimit(Guid id, [FromBody] RejectOrderRequest req)
+    {
+        var reason = Clean(req.Reason, 300);
+        if (reason is null) return BadRequest(new { message = "Say why it is turned down.", code = "reason_required" });
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var doc = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse)
+            .FirstOrDefaultAsync(d => d.Id == id);
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        if (!doc.OverLimit || doc.Status == DocumentStatus.CANCELLED)
+            return BadRequest(new { message = "This invoice isn't waiting for approval.", code = "not_awaiting" });
+        var totalBefore = doc.GrandTotal;
+        var error = await ReverseInvoiceAsync(doc, staffId);
+        if (error is not null) return InvoiceLines.Refuse(this, error);
+        doc.Status = DocumentStatus.CANCELLED;
+        doc.OverLimit = false;
+        doc.RejectReason = reason;
+        doc.CancelReason = reason;
+        _db.InvoiceRevisions.Add(new InvoiceRevision
+        {
+            DocumentId = doc.Id, Kind = "CANCEL", StaffId = staffId, StaffName = CurrentUser.Name(User) ?? "",
+            Reason = reason, TotalBefore = totalBefore, TotalAfter = 0,
+        });
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("reject", "sales_invoice", doc);
+        return await GetOne(id);
+    }
+
+    /// <summary>
+    /// After money comes in from <paramref name="partyId"/> (a receipt), whatever waits over their
+    /// purchase limit and now fits in it is accepted by the system, oldest first (owner, 2026-10-02):
+    /// changed invoices are simply released; pending invoices are posted as if the accountant had
+    /// approved them, with their discounts and prices as they are and nothing paid now. One that
+    /// can't be posted now (stock gone, cost risen above the price) stays waiting. Each one says
+    /// it was accepted by the system because of <paramref name="voucherNumber"/>.
+    /// </summary>
+    [NonAction]
+    public async Task<int> AutoApproveAsync(Guid partyId, string voucherNumber)
+    {
+        var accepted = 0;
+        var note = $"AUTO:{voucherNumber}";
+        var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
+        if (party?.CreditLimit is not long limit) return 0;
+
+        // Changed invoices are already in the balance: they fit once it is within the limit.
+        if (party.Balance <= limit)
+        {
+            var flagged = await _db.SalesDocuments.Where(d => d.PartyId == partyId && d.Type == DocumentType.SALES_INVOICE
+                                                              && d.OverLimit && d.Status != DocumentStatus.CANCELLED)
+                .ToListAsync();
+            foreach (var d in flagged)
+            {
+                d.OverLimit = false;
+                d.ApprovalNote = note;
+            }
+            if (flagged.Count > 0)
+            {
+                await _db.SaveChangesAsync();
+                foreach (var d in flagged) await AuditAsync("auto_approve", "sales_invoice", d);
+                accepted += flagged.Count;
+            }
+        }
+
+        var waiting = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.PartyId == partyId && d.Type == DocumentType.SALES_ORDER && d.Status == DocumentStatus.PENDING
+                        && d.OverLimit)
+            .OrderBy(d => d.IssueDate).Select(d => d.Id).ToListAsync();
+        foreach (var orderId in waiting)
+        {
+            _db.ChangeTracker.Clear();
+            var balance = await _db.Parties.AsNoTracking().Where(p => p.Id == partyId).Select(p => p.Balance).FirstAsync();
+            var order = await _db.SalesDocuments.AsNoTracking().Include(d => d.Lines).Include(d => d.Charges)
+                .AsSplitQuery().FirstAsync(d => d.Id == orderId);
+            if (balance + order.GrandTotal > limit) break;
+            var repId = order.RepId
+                        ?? (await _db.Staff.AnyAsync(x => x.Id == order.StaffId && x.IsActive) ? order.StaffId : null);
+            var invoice = new CreateSalesInvoiceRequest(
+                order.PartyId.ToString(),
+                order.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
+                    l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
+                    l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
+                Notes: order.Notes, PaidAmount: 0, PriceLevelId: order.PriceLevelId?.ToString(),
+                Charges: order.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
+                    c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
+                RepId: repId?.ToString(),
+                DeliveryMethod: order.DeliveryMethod.ToString(), DeliveryAddress: order.DeliveryAddress,
+                DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
+                DepartmentId: order.DepartmentId?.ToString());
+            var result = await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: orderId, branch: order.BranchId,
+                approved: true, approvalNote: note, systemApproval: true);
+            if (result.Result is ObjectResult { StatusCode: >= 400 }) continue;
+            accepted++;
+            await AuditAsync("auto_approve", "sales_order", order);
+        }
+        _db.ChangeTracker.Clear();
+        return accepted;
     }
 
     /// <summary>
@@ -547,7 +859,8 @@ public sealed class SalesController : ControllerBase
     /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
     private async Task<ActionResult<SalesDetailDto>> CreateCore(
         CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true,
-        Guid? replaceId = null, Guid? editId = null, bool approved = false)
+        Guid? replaceId = null, Guid? editId = null, bool approved = false, bool overLimit = false,
+        bool trustPrices = false, string? approvalNote = null, bool systemApproval = false)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -599,6 +912,9 @@ public sealed class SalesController : ControllerBase
             trusted = source?.Type == DocumentType.SALES_ORDER
                       || source?.DueDate is null || source.DueDate.Value.Date >= CompanyClock.TodayDate;
         }
+        // Only the discounts of a saved invoice change (the accountant's discount): its prices,
+        // free goods, taxes and delivery stay as they were approved when it was made.
+        if (trustPrices) trusted = true;
         bool Can(string permission) => User.HasClaim("permission", permission);
         bool Approved(string permission) => trusted || Can(permission);
         // Discounts someone changes now are theirs: their permission and their limit.
@@ -620,7 +936,7 @@ public sealed class SalesController : ControllerBase
                 $"The tax is {settings.DefaultTaxPercent}%. Changing it needs permission."));
 
         // ---- The sales department (قسم) it belongs to: sold only from that department's items ----
-        var (department, departmentError) = await ResolveDepartmentAsync(req.DepartmentId);
+        var (department, departmentError) = await ResolveDepartmentAsync(req.DepartmentId, systemApproval);
         if (departmentError is not null) return departmentError;
         // …one the warehouse has, when the warehouse picks its departments (owner decision 2026-10-01).
         if (department is not null && Guid.TryParse(req.WarehouseId, out var invoiceWarehouse))
@@ -688,12 +1004,19 @@ public sealed class SalesController : ControllerBase
                 if (line.UnitPrice != 0 || line.Discount != 0)
                     return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
             }
-            var (warehouse, whError) = await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
+            // The system accepting a pending invoice takes the warehouses it was made with.
+            var (warehouse, whError) = systemApproval && Guid.TryParse(line.WarehouseId, out var lineWarehouse)
+                ? (await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == lineWarehouse && w.IsActive
+                                                                && w.Kind == WarehouseKind.STORE) is { } found
+                    ? (found, (WarehouseService.WarehouseError?)null)
+                    : (null, new WarehouseService.WarehouseError("warehouse_not_found", "Warehouse not found.")))
+                : await _warehouses.ResolveAsync(User, line.WarehouseId ?? req.WarehouseId, cache);
             if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
             lines.Add((line, shape.ProductId, shape.UnitId, warehouse!));
         }
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        // Inside a caller's transaction (a discount over several invoices), that one commits.
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         // The quotation first (documents before items): only one invoice can come from it.
         SalesDocument? fromQuote = null;
         if (fromId is Guid qid)
@@ -763,6 +1086,9 @@ public sealed class SalesController : ControllerBase
         {
             if (!Approved(Permissions.SalesPriceBasis))
                 return InvoiceLines.Refuse(this, new("price_basis_not_allowed", "Pricing at the last price or at cost needs permission."));
+            // Selling at the supply price shows it: only for whoever may see costs (owner, 2026-10-02).
+            if (bases.Contains(PriceBasis.Cost) && !trusted && !Costs.CanSee(User))
+                return InvoiceLines.Refuse(this, new("cost_basis_not_allowed", "Selling at the supply price needs permission to see costs."));
             var last = bases.Contains(PriceBasis.Last)
                 ? await PriceBasis.LastPricesAsync(_db, partyId, products.Keys)
                 : new Dictionary<(Guid Product, Guid? Unit), long>();
@@ -933,12 +1259,14 @@ public sealed class SalesController : ControllerBase
         if (!posts)
         {
             doc.Status = DocumentStatus.PENDING;
+            // Saved because of the purchase limit: a pending invoice being changed keeps that.
+            doc.OverLimit = type == DocumentType.SALES_ORDER && (overLimit || replaced?.OverLimit == true);
             _db.SalesDocuments.Add(doc);
             // A new pending invoice goes to whoever may approve it.
             if (type == DocumentType.SALES_ORDER && replaced is null)
                 await _notifications.OrderPendingAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
             await _db.SaveChangesAsync();
-            await tx.CommitAsync();
+            if (tx is not null) await tx.CommitAsync();
             await AuditAsync(replaced is null ? "create" : "update", quote ? "quotation" : "sales_order", doc);
             await InvoiceLines.LoadForDetailAsync(_db, doc);
             return Created($"/api/sales/{(quote ? "quotations" : "orders")}/{doc.Id}",
@@ -960,16 +1288,24 @@ public sealed class SalesController : ControllerBase
         await MoneyService.LockPartiesAsync(_db, party.Id);
         await _db.Entry(party).ReloadAsync();
         party.Balance += grand - doc.PaidAmount;
-        // Not over their credit limit (حد الائتمان), unless the person may allow it.
-        // An invoice the accountant approves is their decision on the limit (owner decision 2026-10-01).
-        if (party.CreditLimit is long limit && grand > doc.PaidAmount && party.Balance > limit
-            && !approved && !Can(Permissions.SalesOverCredit))
+        // Not over their purchase limit (حد الائتمان): whoever makes it, a new sale over it waits for
+        // the accountant instead (Create), whose approval is the decision on the limit (owner,
+        // 2026-10-02). A change to a posted invoice that takes the customer over it is saved, and
+        // the invoice waits for the accountant all the same.
+        var over = party.CreditLimit is long limit && grand > doc.PaidAmount && party.Balance > limit;
+        if (over && !approved && edited is null)
             return BadRequest(new
             {
                 message = $"{party.Name} would owe {InvoiceLines.Major(party.Balance)}, over their credit limit of " +
-                          $"{InvoiceLines.Major(limit)}. Take more now, or ask a manager.",
+                          $"{InvoiceLines.Major(party.CreditLimit!.Value)}. It waits for the accountant.",
                 code = "over_credit_limit",
             });
+        if (approved) { doc.OverLimit = false; doc.ApprovalNote = approvalNote ?? doc.ApprovalNote; }
+        else if (edited is not null)
+        {
+            if (over) { doc.OverLimit = true; doc.ApprovalNote = null; }
+            else if (doc.OverLimit) { doc.OverLimit = false; doc.ApprovalNote = "WITHIN_LIMIT"; }
+        }
 
         // Money paid now lands in a money account: the one picked, else the branch's cash box.
         MoneyAccount? paidInto = null;
@@ -1002,7 +1338,7 @@ public sealed class SalesController : ControllerBase
             foreach (var c in doc.Charges) _db.Entry(c).State = EntityState.Added;
         }
         await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
 
         await AuditAsync(edited is null ? "create" : "update", "sales_invoice", doc);
         if (fromQuote is not null)
@@ -1060,6 +1396,19 @@ public sealed class SalesController : ControllerBase
     public async Task<ActionResult<SalesDetailDto>> CreateReturn(Guid id, [FromBody] CreateReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        // Goods come back on an invoice only some hours after it was made (Settings, 12 by default;
+        // owner 2026-10-02): until then the invoice itself is changed.
+        var hours = await _db.CompanySettings.Select(x => x.ReturnAfterHours).FirstOrDefaultAsync();
+        var made = await _db.SalesDocuments.Where(d => d.Id == id && d.Type == DocumentType.SALES_INVOICE)
+            .Select(d => (DateTime?)d.CreatedAt).FirstOrDefaultAsync();
+        if (hours > 0 && made is DateTime createdAt && DateTime.UtcNow < createdAt.AddHours(hours))
+            return BadRequest(new
+            {
+                message = $"Goods can be returned on this invoice {hours} hours after it was made " +
+                          $"(from {createdAt.AddHours(hours):o}). Until then, change the invoice.",
+                code = "return_too_soon",
+                from = createdAt.AddHours(hours).ToString("o"),
+            });
         var (doc, error) = await _returns.CreateAsync(id, DocumentType.SALES_INVOICE, req, User, staffId);
         if (error is not null)
         {
@@ -1096,9 +1445,10 @@ public sealed class SalesController : ControllerBase
     /// person works in. Someone limited to one department sells in it without asking; someone
     /// limited to several must choose. Others may leave it out (a sale of no department).
     /// </summary>
-    private async Task<(Department? Department, ActionResult? Error)> ResolveDepartmentAsync(string? raw)
+    private async Task<(Department? Department, ActionResult? Error)> ResolveDepartmentAsync(string? raw,
+        bool system = false)
     {
-        var mine = Access.Departments(User);
+        var mine = system ? null : Access.Departments(User);
         Guid id;
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -1118,7 +1468,7 @@ public sealed class SalesController : ControllerBase
         var department = await _db.Departments.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
         if (department is null || !department.IsActive)
             return (null, BadRequest(new { message = "Department not found.", code = "department_not_found" }));
-        if (!Access.CanUseDepartment(User, id))
+        if (!system && !Access.CanUseDepartment(User, id))
             return (null, StatusCode(403, new { message = "You don't sell for this department.", code = "not_your_department" }));
         return (department, null);
     }

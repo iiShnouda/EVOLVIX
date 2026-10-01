@@ -51,6 +51,7 @@ import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
+import { CustomerInvoicesPage } from './pages/CustomerInvoicesPage';
 import { StatementPage } from './pages/StatementPage';
 import { CashMovePage } from './pages/CashMovePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
@@ -220,6 +221,8 @@ const router = createBrowserRouter(
         <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
         <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
         <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />
+        <Route path="/sales/together" element={<CustomerInvoicesPage />} />
+        <Route path="/sales/together/:partyId" element={<CustomerInvoicesPage />} />
         <Route path="/parties" element={<PartiesPage />} />
         <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
         <Route path="/statement" element={<StatementPage />} />

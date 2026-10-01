@@ -65,7 +65,7 @@ export function DocumentTable({
 }) {
   const { t, locale } = useT();
   // Plain amounts, as on the old screen: the currency is the company's, said once in the header.
-  const number = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+  const number = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -144,7 +144,11 @@ export function DocumentTable({
       cell: (d) => (
         <span className="inline-flex items-center gap-1">
           <Badge tone={statusOf(d).tone}>{t(statusOf(d).key as TranslationKey)}</Badge>
+          {/* A changed invoice over the limit shows all three: paid state, changed, waiting. */}
           {d.edited && d.status !== 'CANCELLED' && <Badge tone="info">{t('state.EDITED')}</Badge>}
+          {d.overLimit && d.type === 'SALES_INVOICE' && d.status !== 'CANCELLED' && (
+            <Badge tone="warning">{t('state.AWAITING')}</Badge>
+          )}
         </span>
       ),
     },

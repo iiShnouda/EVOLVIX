@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatMoney,
@@ -45,6 +46,9 @@ export function InventoryPage() {
   const departmentId = params.get('dept') ?? '';
   const myBranches = useAuth((s) => s.user?.branches ?? []);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
+  // The filters start where the person works (owner, 2026-10-02).
+  const [place, setPlace] = useWorkPlace();
+  const placed = useRef(false);
 
   const [search, setSearch] = useState('');
   const list = useInventory({
@@ -68,6 +72,17 @@ export function InventoryPage() {
   const setTab = (next: Tab) =>
     update({ tab: next === 'valuation' ? 'valuation' : null, low: null });
   const setLowOnly = (on: boolean) => update({ low: on ? '1' : null });
+  useEffect(() => {
+    if (placed.current || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
+    placed.current = true;
+    if (params.get('br') || params.get('wh') || params.get('dept')) return;
+    update({
+      br: myBranches.length > 1 ? place.branchId || null : null,
+      wh: place.warehouseId || null,
+      dept: place.departmentId || null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.branchId, place.warehouseId, place.departmentId]);
 
   return (
     <div className="space-y-5">
@@ -161,7 +176,10 @@ export function InventoryPage() {
             className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
             aria-label={t('list.branch')}
             value={branchId}
-            onChange={(e) => update({ br: e.target.value || null, wh: null })}
+            onChange={(e) => {
+              update({ br: e.target.value || null, wh: null });
+              if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+            }}
           >
             <option value="">
               {t('list.branch')}: {t('common.all')}
@@ -176,7 +194,10 @@ export function InventoryPage() {
         <WarehouseSelect
           className="w-full sm:w-64"
           value={warehouseId}
-          onChange={(id) => update({ wh: id || null })}
+          onChange={(id) => {
+            update({ wh: id || null });
+            if (id) setPlace({ warehouseId: id });
+          }}
           allowAll
           includeClosed
         />
@@ -185,7 +206,10 @@ export function InventoryPage() {
             className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
             aria-label={t('invoice.department')}
             value={departmentId}
-            onChange={(e) => update({ dept: e.target.value || null })}
+            onChange={(e) => {
+              update({ dept: e.target.value || null });
+              if (e.target.value) setPlace({ departmentId: e.target.value });
+            }}
           >
             <option value="">
               {t('invoice.department')}: {t('common.all')}

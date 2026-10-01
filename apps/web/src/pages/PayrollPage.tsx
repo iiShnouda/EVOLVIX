@@ -149,7 +149,7 @@ function RunsTab() {
   const paper = useRef<HTMLDivElement>(null);
   const money = (v: number) => formatMoney(v, currency, locale);
   const monthName = new Date(`${month}-15`).toLocaleDateString(
-    locale === 'ar' ? 'ar-EG' : 'en-US',
+    locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
     {
       month: 'long',
       year: 'numeric',
@@ -1536,7 +1536,7 @@ function useDayNames() {
   return useMemo(
     () =>
       [...Array(7).keys()].map((d) =>
-        new Date(Date.UTC(2023, 0, 1 + d)).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+        new Date(Date.UTC(2023, 0, 1 + d)).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
           weekday: 'short',
           timeZone: 'UTC',
         }),

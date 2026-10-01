@@ -17,6 +17,7 @@ import type {
   SetQuantityBreaksInput,
   Department,
   CompanySettings,
+  CustomerInvoices,
   CreatePurchaseInvoiceInput,
   CreateReturnInput,
   CreateFreeReturnInput,
@@ -444,6 +445,68 @@ export function useApproveOrder() {
 }
 
 /** The accountant turns a pending invoice down, saying why. */
+/** The accountant accepts a posted invoice waiting over the purchase limit. */
+export function useApproveLimit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/invoices/${id}/approve-limit`, {}),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+/** …or turns it down: it is cancelled with the reason. */
+export function useRejectLimit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<SalesDocument>(`/sales/invoices/${id}/reject-limit`, { reason }),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** A customer's invoices of a period together (today unless given), for the accountant. */
+export function useCustomerInvoices(partyId: string | null, from: string, to: string) {
+  const q = new URLSearchParams({ from, to });
+  return useQuery({
+    queryKey: ['sales', 'together', partyId, from, to],
+    queryFn: () => api.get<CustomerInvoices>(`/sales/customers/${partyId}/invoices?${q}`),
+    enabled: !!partyId,
+  });
+}
+
+/** The accountant's discount on one invoice (posted or pending): a percent or an amount. */
+export function useSetInvoiceDiscount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      doc,
+      percent,
+      amount,
+      kind,
+    }: {
+      doc: Pick<SalesDocument, 'id' | 'type'>;
+      percent?: number;
+      amount?: number;
+      kind?: 'DISCOUNT' | 'EXTRA_DISCOUNT';
+    }) =>
+      api.post<SalesDocument>(
+        `/sales/${doc.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${doc.id}/discount`,
+        { percent, amount, kind },
+      ),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** One discount shared over several invoices of a customer. */
+export function useDiscountAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { invoiceIds: string[]; percent?: number; amount?: number }) =>
+      api.post<SalesDocument[]>('/sales/invoices/discount-all', input),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
 export function useRejectOrder() {
   const qc = useQueryClient();
   return useMutation({

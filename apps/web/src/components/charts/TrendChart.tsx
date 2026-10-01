@@ -81,7 +81,7 @@ export function TrendChart({
                 fill="var(--c-faint)"
               >
                 {new Date(d.date).toLocaleDateString(
-                  locale === 'ar' ? 'ar-EG' : 'en-US',
+                  locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
                   labels === 'month'
                     ? { month: 'short', timeZone: 'UTC' }
                     : { weekday: 'short', timeZone: 'UTC' },

@@ -57,7 +57,6 @@ export type Permission =
   | 'sales:quote'
   | 'sales:order'
   | 'sales:approve'
-  | 'sales:over_credit'
   | 'parties:credit_limit'
   | 'sales:raise_price'
   | 'sales:invoice_alerts'
@@ -251,6 +250,8 @@ export interface Party {
   /** Whether photos of the ID card's front / back are kept (shown with parties:id_cards). */
   hasIdFront?: boolean;
   hasIdBack?: boolean;
+  /** The walk-in cash customer (code 0): always there, can't be closed. */
+  isSystem?: boolean;
   notes?: string | null;
   /** The most they may owe (حد الائتمان), minor units; null = no limit. */
   creditLimit?: number | null;
@@ -631,6 +632,18 @@ export interface SalesDocument {
   rejectReason?: string | null;
   /** Why a cancelled invoice was cancelled (optional). */
   cancelReason?: string | null;
+  /**
+   * Waiting for the accountant over the customer's purchase limit (owner, 2026-10-02): a pending
+   * invoice saved because of it, or a posted one whose change crossed it.
+   */
+  overLimit?: boolean;
+  /**
+   * How the limit was settled: `BY:<name>` (the accountant accepted it), `AUTO:<receipt no.>` (the
+   * system accepted it after that payment) or `WITHIN_LIMIT` (a change brought it back within).
+   */
+  approvalNote?: string | null;
+  /** Changed after it was saved. */
+  edited?: boolean;
   /** The customer's / supplier's and the rep's codes (كود). */
   partyCode?: number | null;
   repCode?: number | null;
@@ -963,6 +976,8 @@ export interface CompanySettings {
   logoVersion?: number;
   /** Every sale names its department (while the company has departments). */
   requireDepartment?: boolean;
+  /** Goods on a sales invoice come back only this many hours after it was made (0 = at once). */
+  returnAfterHours?: number;
 }
 
 /**
@@ -1042,6 +1057,30 @@ export interface SalesDocumentSummary {
   state?: PayState | DocumentStatus | null;
   /** Changed after it was saved (owner, 2026-10-01): shown as معدّلة. */
   edited?: boolean;
+  /**
+   * Waiting for the accountant over the customer's purchase limit (owner, 2026-10-02): a pending
+   * invoice saved because of it, or a posted one whose change crossed it.
+   */
+  overLimit?: boolean;
+  /**
+   * How the limit was settled: `BY:<name>` (the accountant accepted it), `AUTO:<receipt no.>` (the
+   * system accepted it after that payment) or `WITHIN_LIMIT` (a change brought it back within).
+   */
+  approvalNote?: string | null;
+}
+
+/** A customer's invoices of a period together, for the accountant (owner, 2026-10-02). */
+export interface CustomerInvoices {
+  party: Party;
+  balance: number;
+  /** What they owed before these invoices. */
+  previousBalance: number;
+  /** What the posted ones still put on their account. */
+  onThese: number;
+  currency: string;
+  from: string;
+  to: string;
+  invoices: SalesDocument[];
 }
 
 /** A page of documents and the totals of everything the filter found (cancelled ones left out). */

@@ -173,6 +173,17 @@ input[type='number'] {
 #print-root {
   display: none;
 }
+/* A printout set to bold (print options): every word in it. */
+[data-paper-bold] * {
+  font-weight: 700 !important;
+}
+/* Each document of "print all" starts on its own page. */
+.print-page {
+  break-before: page;
+}
+.print-page:first-child {
+  break-before: auto;
+}
 
 @media print {
   :root,

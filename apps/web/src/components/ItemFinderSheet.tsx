@@ -106,6 +106,7 @@ export function ItemFinderSheet({
   onAdd,
   onClose,
   departmentId,
+  warehouseId,
   inStockFirst,
   checkStock,
   onInvoice,
@@ -115,6 +116,8 @@ export function ItemFinderSheet({
   onClose: () => void;
   /** The invoice's department: only its items (and items of no department). */
   departmentId?: string;
+  /** The invoice's warehouse: the search starts at its stock. */
+  warehouseId?: string;
   /** Sales start with in-stock items only. */
   inStockFirst?: boolean;
   /** Sales: mark a quantity above the stock. */
@@ -131,6 +134,7 @@ export function ItemFinderSheet({
   const start: ItemFinderFilters = {
     ...EMPTY,
     departmentId: departmentId ?? '',
+    warehouseId: warehouseId ?? '',
     stock: inStockFirst ? 'in' : '',
   };
   const [filters, setFilters] = useState<ItemFinderFilters>(start);
@@ -312,11 +316,6 @@ export function ItemFinderSheet({
               onChange={(cost) => set({ cost })}
             />
           )}
-          <Range
-            label={t('inventory.reorder')}
-            value={filters.reorder}
-            onChange={(reorder) => set({ reorder })}
-          />
           <Range
             label={t('invoice.balance')}
             value={filters.balance}

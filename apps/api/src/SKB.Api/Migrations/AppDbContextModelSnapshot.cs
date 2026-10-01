@@ -75,7 +75,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("EmployeeId", "Date")
                         .IsUnique();
 
-                    b.ToTable("AttendanceDays", (string)null);
+                    b.ToTable("AttendanceDays");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.AuditEntry", b =>
@@ -121,7 +121,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Resource");
 
-                    b.ToTable("AuditEntries", (string)null);
+                    b.ToTable("AuditEntries");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>
@@ -156,7 +156,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Branches", (string)null);
+                    b.ToTable("Branches");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.CarrierSettlement", b =>
@@ -207,7 +207,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Number")
                         .IsUnique();
 
-                    b.ToTable("CarrierSettlements", (string)null);
+                    b.ToTable("CarrierSettlements");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Category", b =>
@@ -227,7 +227,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DepartmentId");
 
-                    b.ToTable("Categories", (string)null);
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.CompanyLogo", b =>
@@ -250,7 +250,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CompanyLogos", (string)null);
+                    b.ToTable("CompanyLogos");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.CompanySettings", b =>
@@ -316,6 +316,9 @@ namespace SKB.Api.Migrations
                     b.Property<bool>("RequireDepartment")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("ReturnAfterHours")
+                        .HasColumnType("integer");
+
                     b.Property<string>("TaxNumber")
                         .HasColumnType("text");
 
@@ -331,7 +334,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CompanySettings", (string)null);
+                    b.ToTable("CompanySettings");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.CustomRole", b =>
@@ -363,7 +366,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("CustomRoles", (string)null);
+                    b.ToTable("CustomRoles");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Department", b =>
@@ -388,7 +391,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Departments", (string)null);
+                    b.ToTable("Departments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
@@ -423,7 +426,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("DocumentCharges", (string)null);
+                    b.ToTable("DocumentCharges");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
@@ -499,7 +502,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("DocumentLines", (string)null);
+                    b.ToTable("DocumentLines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentNumbering", b =>
@@ -524,7 +527,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Type");
 
-                    b.ToTable("DocumentNumberings", (string)null);
+                    b.ToTable("DocumentNumberings");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Employee", b =>
@@ -592,7 +595,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("StaffId");
 
-                    b.ToTable("Employees", (string)null);
+                    b.ToTable("Employees");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.EmployeeAdvance", b =>
@@ -647,7 +650,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Number")
                         .IsUnique();
 
-                    b.ToTable("EmployeeAdvances", (string)null);
+                    b.ToTable("EmployeeAdvances");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ExpenseCategory", b =>
@@ -670,7 +673,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("ParentId");
 
-                    b.ToTable("ExpenseCategories", (string)null);
+                    b.ToTable("ExpenseCategories");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.InvoiceRevision", b =>
@@ -714,7 +717,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("InvoiceRevisions", (string)null);
+                    b.ToTable("InvoiceRevisions");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>
@@ -738,7 +741,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("PriceLevelId");
 
-                    b.ToTable("ItemPrices", (string)null);
+                    b.ToTable("ItemPrices");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ItemUnit", b =>
@@ -769,7 +772,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("ProductId", "UnitId")
                         .IsUnique();
 
-                    b.ToTable("ItemUnits", (string)null);
+                    b.ToTable("ItemUnits");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.JournalEntry", b =>
@@ -821,7 +824,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("SourceType", "SourceId");
 
-                    b.ToTable("JournalEntries", (string)null);
+                    b.ToTable("JournalEntries");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.JournalLine", b =>
@@ -854,7 +857,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("EntryId");
 
-                    b.ToTable("JournalLines", (string)null);
+                    b.ToTable("JournalLines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.LedgerAccount", b =>
@@ -922,7 +925,7 @@ namespace SKB.Api.Migrations
                         .IsUnique()
                         .HasFilter("\"PartyId\" IS NOT NULL");
 
-                    b.ToTable("LedgerAccounts", (string)null);
+                    b.ToTable("LedgerAccounts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ModelPrice", b =>
@@ -946,7 +949,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("PriceLevelId");
 
-                    b.ToTable("ModelPrices", (string)null);
+                    b.ToTable("ModelPrices");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ModelUnit", b =>
@@ -964,7 +967,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("UnitId");
 
-                    b.ToTable("ModelUnits", (string)null);
+                    b.ToTable("ModelUnits");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.MoneyAccount", b =>
@@ -1020,7 +1023,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("CustodianId");
 
-                    b.ToTable("MoneyAccounts", (string)null);
+                    b.ToTable("MoneyAccounts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.MoneyMovement", b =>
@@ -1090,7 +1093,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("AccountId", "Seq")
                         .IsUnique();
 
-                    b.ToTable("MoneyMovements", (string)null);
+                    b.ToTable("MoneyMovements");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Note", b =>
@@ -1177,7 +1180,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Direction", "Status", "DueDate");
 
-                    b.ToTable("Notes", (string)null);
+                    b.ToTable("Notes");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.NoteAllocation", b =>
@@ -1195,7 +1198,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("NoteAllocations", (string)null);
+                    b.ToTable("NoteAllocations");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.NoteEvent", b =>
@@ -1235,7 +1238,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("StaffId");
 
-                    b.ToTable("NoteEvents", (string)null);
+                    b.ToTable("NoteEvents");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Notification", b =>
@@ -1282,7 +1285,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("StaffId", "CreatedAt");
 
-                    b.ToTable("Notifications", (string)null);
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Party", b =>
@@ -1337,6 +1340,9 @@ namespace SKB.Api.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsCashCustomer")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSystem")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
@@ -1397,7 +1403,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("SalesPriceListId");
 
-                    b.ToTable("Parties", (string)null);
+                    b.ToTable("Parties");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PartyIdCard", b =>
@@ -1432,7 +1438,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("PartyId", "Side")
                         .IsUnique();
 
-                    b.ToTable("PartyIdCards", (string)null);
+                    b.ToTable("PartyIdCards");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollAdjustment", b =>
@@ -1478,7 +1484,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Year", "Month");
 
-                    b.ToTable("PayrollAdjustments", (string)null);
+                    b.ToTable("PayrollAdjustments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollLine", b =>
@@ -1558,7 +1564,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("RunId", "EmployeeId")
                         .IsUnique();
 
-                    b.ToTable("PayrollLines", (string)null);
+                    b.ToTable("PayrollLines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PayrollRun", b =>
@@ -1621,7 +1627,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Year", "Month");
 
-                    b.ToTable("PayrollRuns", (string)null);
+                    b.ToTable("PayrollRuns");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Portfolio", b =>
@@ -1657,7 +1663,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Number")
                         .IsUnique();
 
-                    b.ToTable("Portfolios", (string)null);
+                    b.ToTable("Portfolios");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PriceLevel", b =>
@@ -1688,7 +1694,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PriceLevels", (string)null);
+                    b.ToTable("PriceLevels");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PriceList", b =>
@@ -1728,7 +1734,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PriceLists", (string)null);
+                    b.ToTable("PriceLists");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PriceListItem", b =>
@@ -1768,7 +1774,7 @@ namespace SKB.Api.Migrations
                         .IsUnique()
                         .HasFilter("\"ProductId\" IS NOT NULL");
 
-                    b.ToTable("PriceListItems", null, t =>
+                    b.ToTable("PriceListItems", t =>
                         {
                             t.HasCheckConstraint("CK_PriceListItem_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)");
                         });
@@ -1852,7 +1858,7 @@ namespace SKB.Api.Migrations
 
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("ModelId", "SizeId", "ColorId"), false);
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ProductModel", b =>
@@ -1896,7 +1902,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("ProductModels", (string)null);
+                    b.ToTable("ProductModels");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.QuantityBreak", b =>
@@ -1930,7 +1936,7 @@ namespace SKB.Api.Migrations
                         .IsUnique()
                         .HasFilter("\"ProductId\" IS NOT NULL");
 
-                    b.ToTable("QuantityBreaks", null, t =>
+                    b.ToTable("QuantityBreaks", t =>
                         {
                             t.HasCheckConstraint("CK_QuantityBreak_Target", "(\"ProductId\" IS NULL) <> (\"ModelId\" IS NULL)");
                         });
@@ -1950,7 +1956,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Role");
 
-                    b.ToTable("RolePermissionSets", (string)null);
+                    b.ToTable("RolePermissionSets");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>
@@ -1961,6 +1967,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<long>("AdditionTotal")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("ApprovalNote")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
@@ -2016,6 +2025,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Number")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("OverLimit")
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("PaidAccountId")
                         .HasColumnType("uuid");
@@ -2089,7 +2101,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Type", "Status");
 
-                    b.ToTable("SalesDocuments", (string)null);
+                    b.ToTable("SalesDocuments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Season", b =>
@@ -2121,7 +2133,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Kind", "Year");
 
-                    b.ToTable("Seasons", (string)null);
+                    b.ToTable("Seasons");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Session", b =>
@@ -2181,7 +2193,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("Sessions", (string)null);
+                    b.ToTable("Sessions");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Shift", b =>
@@ -2215,7 +2227,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Shifts", (string)null);
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Shipment", b =>
@@ -2286,7 +2298,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("CarrierId", "Status");
 
-                    b.ToTable("Shipments", (string)null);
+                    b.ToTable("Shipments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ShipmentInvoice", b =>
@@ -2304,7 +2316,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("ShipmentInvoices", (string)null);
+                    b.ToTable("ShipmentInvoices");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Staff", b =>
@@ -2394,7 +2406,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("Staff", (string)null);
+                    b.ToTable("Staff");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StaffPreference", b =>
@@ -2423,7 +2435,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("StaffId", "Key")
                         .IsUnique();
 
-                    b.ToTable("StaffPreferences", (string)null);
+                    b.ToTable("StaffPreferences");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockBalance", b =>
@@ -2444,7 +2456,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("StockBalances", (string)null);
+                    b.ToTable("StockBalances");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockCost", b =>
@@ -2463,7 +2475,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("ProductId", "PoolId");
 
-                    b.ToTable("StockCosts", (string)null);
+                    b.ToTable("StockCosts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockMovement", b =>
@@ -2522,7 +2534,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("WarehouseId", "ProductId", "CreatedAt");
 
-                    b.ToTable("StockMovements", (string)null);
+                    b.ToTable("StockMovements");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockTransfer", b =>
@@ -2583,7 +2595,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Status", "CreatedAt");
 
-                    b.ToTable("StockTransfers", (string)null);
+                    b.ToTable("StockTransfers");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.StockTransferLine", b =>
@@ -2617,7 +2629,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("TransferId");
 
-                    b.ToTable("StockTransferLines", (string)null);
+                    b.ToTable("StockTransferLines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Unit", b =>
@@ -2641,7 +2653,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Units", (string)null);
+                    b.ToTable("Units");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.VariantOption", b =>
@@ -2673,7 +2685,7 @@ namespace SKB.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("VariantOptions", (string)null);
+                    b.ToTable("VariantOptions");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Voucher", b =>
@@ -2748,7 +2760,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Type", "CreatedAt");
 
-                    b.ToTable("Vouchers", (string)null);
+                    b.ToTable("Vouchers");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.VoucherAllocation", b =>
@@ -2766,7 +2778,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.ToTable("VoucherAllocations", (string)null);
+                    b.ToTable("VoucherAllocations");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.VoucherLine", b =>
@@ -2800,7 +2812,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("VoucherId");
 
-                    b.ToTable("VoucherLines", (string)null);
+                    b.ToTable("VoucherLines");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Warehouse", b =>
@@ -2844,7 +2856,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Warehouses", (string)null);
+                    b.ToTable("Warehouses");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.WarehouseDepartment", b =>
@@ -2859,7 +2871,7 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("DepartmentId");
 
-                    b.ToTable("WarehouseDepartments", (string)null);
+                    b.ToTable("WarehouseDepartments");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.WorkDraft", b =>
@@ -2888,7 +2900,7 @@ namespace SKB.Api.Migrations
                     b.HasIndex("StaffId", "Key")
                         .IsUnique();
 
-                    b.ToTable("WorkDrafts", (string)null);
+                    b.ToTable("WorkDrafts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>

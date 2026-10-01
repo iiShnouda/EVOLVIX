@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   companyToday,
   formatDate,
+  formatDateTime,
   formatMoney,
   type SalesDocument,
   type TranslationKey,
@@ -12,7 +13,11 @@ import { DocumentPreview } from '../components/DocumentPreview';
 import { DocumentTable } from '../components/DocumentTable';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
+import { useWorkPlace } from '../lib/workPlace';
 import {
+  useApproveLimit,
+  useCompanySettings,
+  useRejectLimit,
   useCancelOrder,
   useCancelInvoice,
   useDepartments,
@@ -103,6 +108,18 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [branchId, setBranchId] = useState('');
   const [warehouseId, setWarehouseId] = useState('');
   const myBranches = useAuth((s) => s.user?.branches ?? []);
+  // The filters start at the branch, warehouse and department the person works in (owner,
+  // 2026-10-02); picking one here changes it everywhere.
+  const [place, setPlace] = useWorkPlace();
+  const [placed, setPlaced] = useState(false);
+  useEffect(() => {
+    if (placed || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
+    setPlaced(true);
+    if (place.branchId && myBranches.length > 1) setBranchId(place.branchId);
+    if (place.warehouseId) setWarehouseId(place.warehouseId);
+    if (isSales && place.departmentId) setDepartmentId(place.departmentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.branchId, place.warehouseId, place.departmentId]);
   const warehouses = useWarehouses(true);
   const shownWarehouses = (warehouses.data ?? []).filter(
     (w) => w.kind !== 'TRANSIT' && (!branchId || w.branchId === branchId),
@@ -215,16 +232,57 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     isSales && detail.data?.type === 'SALES_INVOICE' && detail.data.status !== 'CANCELLED'
       ? detail.data
       : undefined;
+  // Goods come back on a sales invoice only some hours after it was made (Settings; owner
+  // 2026-10-02): until then it is changed instead.
+  const returnAfterHours = useCompanySettings().data?.returnAfterHours ?? 0;
+  const returnFrom =
+    invoice && returnAfterHours > 0
+      ? new Date(new Date(invoice.issueDate).getTime() + returnAfterHours * 3_600_000)
+      : null;
+  const returnTooSoon = !!returnFrom && returnFrom.getTime() > Date.now();
+  const approveLimit = useApproveLimit();
+  const [rejectingLimit, setRejectingLimit] = useState(false);
+  const waitsOverLimit = !!invoice?.overLimit;
   const invoiceActions = (
     <>
+      {waitsOverLimit && canApprove && (
+        <Button
+          size="sm"
+          icon="check"
+          loading={approveLimit.isPending}
+          onClick={() => approveLimit.mutate(invoice!.id)}
+        >
+          {t('order.approve')}
+        </Button>
+      )}
+      {waitsOverLimit && canApprove && (
+        <Button size="sm" variant="danger" onClick={() => setRejectingLimit(true)}>
+          {t('order.reject')}
+        </Button>
+      )}
       {canReturn && isReturnable(detail.data) && (
         <Button
           size="sm"
           variant="secondary"
           icon="returns"
+          disabled={returnTooSoon}
+          title={
+            returnTooSoon && returnFrom
+              ? `${t('return.from')} ${formatDateTime(returnFrom.toISOString(), locale)}`
+              : undefined
+          }
           onClick={() => navigate(`/${scope}/invoices/${detail.data!.id}/return`)}
         >
           {t('return.action')}
+        </Button>
+      )}
+      {invoice && canApprove && invoice.partyCode !== 0 && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => navigate(`/sales/together/${invoice.partyId}`)}
+        >
+          {t('together.open')}
         </Button>
       )}
       {invoice && permissions.includes('sales:edit') && (
@@ -251,14 +309,25 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         title={t(isSales ? 'nav.sales' : 'nav.purchases')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
-          kind === 'returns' && canReturn ? (
+          kind === 'invoices' && isSales && permissions.includes('sales:approve') && !canStart ? (
+            <Button variant="secondary" size="sm" onClick={() => navigate('/sales/together')}>
+              {t('together.open')}
+            </Button>
+          ) : kind === 'returns' && canReturn ? (
             <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/returns/new`)}>
               {t('return.new')}
             </Button>
           ) : canStart ? (
-            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
-              {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
-            </Button>
+            <span className="flex gap-2">
+              {isSales && permissions.includes('sales:approve') && (
+                <Button variant="secondary" size="sm" onClick={() => navigate('/sales/together')}>
+                  {t('together.open')}
+                </Button>
+              )}
+              <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/new`)}>
+                {t(isSales ? 'sales.newInvoice' : 'invoice.newPurchase')}
+              </Button>
+            </span>
           ) : undefined
         }
       />
@@ -302,6 +371,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               onChange={(e) => {
                 setBranchId(e.target.value);
                 setWarehouseId('');
+                if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
               }}
             >
               <option value="">{t('list.all')}</option>
@@ -319,7 +389,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <select
               className={filterField}
               value={warehouseId}
-              onChange={(e) => setWarehouseId(e.target.value)}
+              onChange={(e) => {
+                setWarehouseId(e.target.value);
+                if (e.target.value) setPlace({ warehouseId: e.target.value });
+              }}
             >
               <option value="">{t('list.all')}</option>
               {shownWarehouses.map((w) => (
@@ -336,7 +409,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <select
               className={filterField}
               value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
+              onChange={(e) => {
+                setDepartmentId(e.target.value);
+                if (e.target.value && e.target.value !== 'none')
+                  setPlace({ departmentId: e.target.value });
+              }}
             >
               <option value="">{t('list.all')}</option>
               {(departments.data ?? []).map((d) => (
@@ -435,6 +512,13 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                       {doc.departmentName && <> · {doc.departmentName}</>}
                       {doc.repName && <> · {doc.repName}</>}
                     </span>
+                    {(doc.edited || (doc.overLimit && doc.type === 'SALES_INVOICE')) &&
+                      doc.status !== 'CANCELLED' && (
+                        <span className="mt-1 flex gap-1">
+                          {doc.edited && <Badge tone="info">{t('state.EDITED')}</Badge>}
+                          {doc.overLimit && <Badge tone="warning">{t('state.AWAITING')}</Badge>}
+                        </span>
+                      )}
                   </span>
                   <span className="text-end">
                     <span className="block text-sm font-semibold tnum">
@@ -520,6 +604,17 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       {rejecting && order && (
         <RejectSheet id={order.id} number={order.number} onClose={() => setRejecting(false)} />
       )}
+      {rejectingLimit && invoice && (
+        <RejectSheet
+          id={invoice.id}
+          number={invoice.number}
+          posted
+          onClose={() => setRejectingLimit(false)}
+        />
+      )}
+      {approveLimit.error && (
+        <p className="text-sm text-destructive">{errorText(t, approveLimit.error)}</p>
+      )}
       {deleting && invoice && (
         <Sheet
           title={`${t('invoice.cancelTitle')} — ${invoice.number}`}
@@ -597,9 +692,22 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
 }
 
 /** Turn a pending invoice down, saying why (its maker sees it; the goods are free again). */
-function RejectSheet({ id, number, onClose }: { id: string; number: string; onClose: () => void }) {
+function RejectSheet({
+  id,
+  number,
+  posted,
+  onClose,
+}: {
+  id: string;
+  number: string;
+  /** A posted invoice waiting over the limit: turning it down cancels it. */
+  posted?: boolean;
+  onClose: () => void;
+}) {
   const { t } = useT();
-  const reject = useRejectOrder();
+  const rejectOrder = useRejectOrder();
+  const rejectPosted = useRejectLimit();
+  const reject = posted ? rejectPosted : rejectOrder;
   const [reason, setReason] = useState('');
   return (
     <Sheet

@@ -6,6 +6,8 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../stores/auth';
 import { useWorkBranch, useWorkBranchStore } from '../../stores/workBranch';
 import { queryClient } from '../../lib/queryClient';
+import { SHOW_COSTS_KEY, useMaySeeCosts } from '../../lib/can';
+import { usePreferences } from '../../lib/queries';
 
 export function AccountMenu() {
   const { t } = useT();
@@ -15,6 +17,18 @@ export function AccountMenu() {
   const ref = useRef<HTMLDivElement>(null);
   const workBranch = useWorkBranch();
   const pickBranch = useWorkBranchStore((s) => s.pick);
+  // Supply prices and profit show only when the person turns them on (owner, 2026-10-02).
+  const maySeeCosts = useMaySeeCosts();
+  const prefs = usePreferences();
+  const showCosts = prefs.data?.[SHOW_COSTS_KEY] === '1';
+  const toggleCosts = () => {
+    const value = showCosts ? '' : '1';
+    queryClient.setQueryData<Record<string, string>>(['preferences'], (old) => ({
+      ...(old ?? {}),
+      [SHOW_COSTS_KEY]: value,
+    }));
+    void api.put('/preferences', { key: SHOW_COSTS_KEY, value }).catch(() => undefined);
+  };
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -115,6 +129,24 @@ export function AccountMenu() {
                 </button>
               ))}
             </div>
+          )}
+          {maySeeCosts && (
+            <button
+              role="menuitemcheckbox"
+              aria-checked={showCosts}
+              onClick={toggleCosts}
+              className="flex w-full items-center gap-2 border-b border-line px-3 py-2.5 text-start text-sm transition-colors hover:bg-surface-2"
+            >
+              <span
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${showCosts ? 'bg-brand' : 'bg-line'}`}
+                aria-hidden
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${showCosts ? 'start-[18px]' : 'start-0.5'}`}
+                />
+              </span>
+              <span className="min-w-0 flex-1">{t('costs.show')}</span>
+            </button>
           )}
           <button
             role="menuitem"

@@ -45,7 +45,9 @@ public sealed class ReturnsService
     /// What has been returned of one invoice line: base units, and the gross amount, line discount,
     /// share of the invoice discount and cost taken back.
     /// </summary>
-    public sealed record Returned(int Quantity, long Gross, long Discount, long DocDiscount, long Cost);
+    /// <param name="Free">Of <paramref name="Quantity"/>, base units taken back by returns typed without
+    /// the invoice that counted against this line (no amounts of the line went back with them).</param>
+    public sealed record Returned(int Quantity, long Gross, long Discount, long DocDiscount, long Cost, int Free = 0);
 
     private static readonly Returned Nothing = new(0, 0, 0, 0, 0);
 
@@ -66,7 +68,20 @@ public sealed class ReturnsService
                 Cost = g.Sum(l => l.LineCost),
             })
             .ToListAsync();
-        return rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.DocDiscount, r.Cost));
+        var result = rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.DocDiscount, r.Cost));
+        // Returns typed without an invoice that were counted against this invoice's lines.
+        var free = await _db.DocumentLines
+            .Where(l => l.SourceLineId != null && l.Document!.SourceDocumentId == null
+                        && l.Document.Status != DocumentStatus.CANCELLED
+                        && _db.DocumentLines.Any(src => src.Id == l.SourceLineId && src.DocumentId == invoiceId))
+            .GroupBy(l => l.SourceLineId!.Value)
+            .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity) })
+            .ToListAsync();
+        foreach (var f in free)
+            result[f.LineId] = result.TryGetValue(f.LineId, out var r)
+                ? r with { Quantity = r.Quantity + f.Quantity, Free = f.Quantity }
+                : new Returned(f.Quantity, 0, 0, 0, 0, f.Quantity);
+        return result;
     }
 
     /// <summary>
@@ -160,6 +175,32 @@ public sealed class ReturnsService
                         $"Not enough {Loc.Name(g.First().Product)} in {Loc.Name(warehouse)} to return: {available} left, {qty} requested."));
             }
 
+        // What comes back is counted against the party's own invoices of those items, newest first
+        // (owner, 2026-10-02): the same pieces can't then be returned again on the invoice. A line
+        // one invoice line can't take whole stays on its own.
+        var invoiceType = isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
+        var candidates = await _db.DocumentLines.AsNoTracking()
+            .Where(l => productIds.Contains(l.ProductId) && !l.IsBonus && l.Document!.PartyId == party.Id
+                        && l.Document.Type == invoiceType && l.Document.Status != DocumentStatus.CANCELLED)
+            .OrderByDescending(l => l.Document!.IssueDate).ThenBy(l => l.LineNo)
+            .Select(l => new { l.Id, l.ProductId, l.Quantity })
+            .ToListAsync();
+        var candidateIds = candidates.Select(c => c.Id).ToList();
+        var taken = await _db.DocumentLines.AsNoTracking()
+            .Where(l => l.SourceLineId != null && candidateIds.Contains(l.SourceLineId.Value)
+                        && l.Document!.Status != DocumentStatus.CANCELLED)
+            .GroupBy(l => l.SourceLineId!.Value)
+            .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity) })
+            .ToDictionaryAsync(x => x.LineId, x => x.Quantity);
+        Guid? SourceFor(Guid productId, int baseQty)
+        {
+            var hit = candidates.FirstOrDefault(c => c.ProductId == productId
+                                                     && c.Quantity - taken.GetValueOrDefault(c.Id) >= baseQty);
+            if (hit is null) return null;
+            taken[hit.Id] = taken.GetValueOrDefault(hit.Id) + baseQty;
+            return hit.Id;
+        }
+
         // ---- Post it ----
         var number = await DocumentNumbers.NextAsync(_db, returnType);
         var doc = new SalesDocument
@@ -195,6 +236,7 @@ public sealed class ReturnsService
                 UnitCost = baseQty > 0 ? (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero) : 0,
                 LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
+                SourceLineId = SourceFor(product.Id, baseQty),
             });
         }
         doc.Subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
@@ -349,7 +391,8 @@ public sealed class ReturnsService
             // The return's share of the line's gross amount, discount and cost, in proportion to the
             // base units coming back; the return that empties the line takes exactly what is left,
             // so rounding never strands or over-returns a piastre.
-            var completesLine = qty == src.Quantity - already.Quantity;
+            // (Not once a return without the invoice took some of it: its amounts never came off the line.)
+            var completesLine = qty == src.Quantity - already.Quantity && already.Free == 0;
             long Share(long total, long done) => completesLine
                 ? total - done
                 : (long)decimal.Round(total * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);

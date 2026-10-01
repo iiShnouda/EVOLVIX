@@ -5,7 +5,7 @@ session (or teammate) can pick up without losing context. Pair this with **`ROAD
 (the full feature catalog of the old ERP), **`DOMAIN.md`** (how SKB models it: entities, rules,
 postings, build order) and **`CLAUDE.md`** (the non-negotiable rules).
 
-_Last updated: 2026-09-30._
+_Last updated: 2026-10-02._
 
 ---
 
@@ -917,6 +917,61 @@ own permission, and roles bundle them
 - Invoice screen: lines table, quantity-before-add, detailed item search (`/products` gains code, name,
   minPrice/maxPrice, stock in/out/low and supplierId=none).
 
+**Purchase limits, the cash customer, the accountant's checkout, printing (owner list 2026-10-02)**
+- **Over the purchase limit, everyone waits for the accountant:** a new sale over the customer's
+  limit is saved as a pending invoice marked `OverLimit`, whoever makes it (the old
+  `sales:over_credit` bypass is gone). A change to a posted invoice that takes the customer over the
+  limit is saved and the invoice waits (`SalesDocument.OverLimit`): the list and the invoice show
+  its payment state, "Edited" and "Awaiting approval" together. The accountant accepts it
+  (`POST /sales/invoices/{id}/approve-limit`) or turns it down with a reason, which cancels it
+  (`…/reject-limit`).
+- **A payment accepts it by itself:** after a receipt (also from Withdraw / deposit), whatever waits
+  over that customer's limit and now fits is accepted, oldest first: changed invoices are released
+  and pending ones are posted on the account (`SalesController.AutoApproveAsync`, no person's
+  warehouse or department scoping). Each says so (`ApprovalNote = AUTO:<receipt no.>`, shown as
+  "Accepted by the system after payment R-…"), and the activity log records `auto_approve`.
+  One that can't post now (stock gone, cost above the price) stays waiting.
+- **Editing keeps what was paid** when the invoice was made (the screen used to send 0, which put
+  the paid-now money back out of the cash box).
+- **Returns only after Settings → hours** (`ReturnAfterHours`, 12 by default, 0 = at once): before
+  that a return on the invoice is refused (`return_too_soon`, with the time it opens) and the
+  button is off with that time; the invoice is changed instead.
+- **A return without the invoice counts against it:** each line is matched to the newest invoice
+  line of that customer and item that can take it whole (`SourceLineId` on a return with no source
+  document), so the same pieces can't be returned again on the invoice. Only its quantity counts
+  against the line, not its amounts (the invariant checks the same).
+- **The walk-in cash customer, code 0:** migration `LimitApprovalCashCustomer` adds one
+  `Party.IsSystem` cash customer ("عميل نقدي"); it can't be closed, stop being a customer or stop
+  paying in full. The cash-customer tick box is gone from the party form (customers ticked before
+  keep it). Code 0 can be typed in any code box.
+- **The accountant's checkout** (`/sales/together/:partyId`, `GET /sales/customers/{id}/invoices`):
+  a customer's invoices of the day (or a period) from every department one after another, each with
+  its own discount (`POST /sales/invoices|orders/{id}/discount`, % or amount, posted again under
+  its number) and print button; one discount over all of them (`POST /sales/invoices/discount-all`:
+  a percent off each, or an amount shared by what each comes to, all or nothing); a combined
+  invoice with every department's lines, discounts, the previous balance and the balance now; and
+  "print every invoice + combined", each on its own page.
+- **Printing:** print options show at once on the document (what you see is what prints); type size
+  (S / M / L / XL) and bold; the customer's and rep's codes off unless turned on; the time to the
+  minute; tax and discount rows and the discount column only when there is some; "Invoice no."
+  instead of "against invoice"; a return names itself once; "Credited to the account" and "Paid back
+  in cash" on returns.
+- **Digits:** every number and date is in Latin digits, also in Arabic (`ar-EG-u-nu-latn`).
+- **Costs:** supply price, cost and profit show only when someone allowed to see them turns on
+  "Show supply price & profit" in the account menu (kept per person, off by default) — every screen
+  that checks `costs:view` follows it, the dashboard too. Selling at the supply price needs
+  `costs:view` (`cost_basis_not_allowed`).
+- **Where you work is remembered:** the branch, warehouse and department picked on an invoice, a
+  return without invoice, the sales / purchase lists or the stock list are kept on the server per
+  account (`work:place` preference) and every one of those screens and filters starts at them.
+- **Invoice screen:** prepared items go on one at a time ("Add") or all together; once on the
+  invoice a line is fixed until its pencil is pressed; Save and Save & print always answer and list
+  what is still missing; both invoice discounts are offered at once (each % or amount); the item
+  finder starts at the invoice's warehouse and no longer filters by reorder level; the customer box
+  has an arrow that opens the list.
+- Check: `limits` (113), plus every earlier suite, on a fresh database and on one upgraded from the
+  previous version.
+
 **Evolvix brand, the company's own logo, themes (owner decisions 2026-10-01)**
 - The program is **Evolvix** (mark in `public/icon.svg` and `components/Logo.tsx`); no tagline.
 - A company using it shows its own name and logo beside the Evolvix mark: sidebar, phone header,
@@ -1040,6 +1095,11 @@ and warehouses shipped):
      second branch; sign in as them, pick that branch from the account menu and make a sale.
    - **Verify on the live DB** after deploy: Settings shows the time zone as Cairo with the right
      time; a sale made late in the evening counts on today's daily cash and profitability.
+   - **Verify on the live DB** after deploy (2026-10-02 list): the cash customer has code 0; a
+     customer with a small limit: a sale over it waits, a receipt that brings them within accepts it
+     ("Accepted by the system after payment"); an edit over the limit shows paid state + Edited +
+     Awaiting; a return on an invoice opens 12 hours after it (Settings); the accountant's
+     "Customer's invoices together" with a discount on one and on all, and the combined print.
 6. **Phase 3 — Accounts / general ledger:** chart of accounts, journal entries, account statements.
 7. **Phase 4 — Notes** (أوراق قبض/دفع) & due payments.
 8. **Phase 5 — Financial statements:** trial balance, income statement, balance sheet (from the ledger).

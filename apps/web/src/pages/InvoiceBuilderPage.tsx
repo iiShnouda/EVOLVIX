@@ -29,6 +29,7 @@ import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { useDeviceInfo } from '../lib/device';
+import { useWorkPlace } from '../lib/workPlace';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
@@ -180,6 +181,9 @@ export function InvoiceBuilderPage({
   // Branch, then warehouse, then department (owner decision 2026-10-01): picked by the person, in
   // that order, with no "all"; the invoice can't be saved until all three are chosen.
   const myBranches = me?.branches ?? [];
+  // They start at the branch, warehouse and department last picked (owner, 2026-10-02), and
+  // picking another here changes it on every screen.
+  const [place, setPlace] = useWorkPlace();
   const [pickedBranch, setPickedBranch] = useState(
     isSale && myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '',
   );
@@ -195,6 +199,17 @@ export function InvoiceBuilderPage({
     (d) => d.isActive && (!myDepartments || myDepartments.includes(d.id)),
   );
   const [pickedDepartment, setPickedDepartment] = useState('');
+  const placeApplied = useRef(false);
+  useEffect(() => {
+    if (placeApplied.current || editId || !isSale) return;
+    if (!place.branchId && !place.warehouseId && !place.departmentId) return;
+    placeApplied.current = true;
+    if (place.branchId && myBranches.some((b) => b.id === place.branchId))
+      setPickedBranch((b) => b || place.branchId);
+    if (place.warehouseId) setPickedWarehouse((w) => w || place.warehouseId);
+    if (place.departmentId) setPickedDepartment((d) => d || place.departmentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.branchId, place.warehouseId, place.departmentId]);
   // Every sale names its department while the company has any (Settings; owner 2026-10-01).
   const departmentRequired =
     isSale && departments.length > 0 && settings.data?.requireDepartment !== false;
@@ -297,6 +312,23 @@ export function InvoiceBuilderPage({
   const searchBox = useRef<HTMLInputElement>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
+  // Once on the invoice a line is fixed; its pencil opens it to change (owner, 2026-10-02).
+  const [openLines, setOpenLines] = useState<Set<string>>(new Set());
+  const isOpen = (key: string) => openLines.has(key);
+  const toggleLine = (key: string) =>
+    setOpenLines((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  // Pressing Save with something not done yet says what (owner, 2026-10-02).
+  const [showMissing, setShowMissing] = useState(false);
+  // What a saved invoice being changed had paid when it was made: it stays paid.
+  const [editPaid, setEditPaid] = useState<{ amount: number; accountId: string }>({
+    amount: 0,
+    accountId: '',
+  });
   // Items being prepared before they go on the invoice (owner, 2026-10-01): quantity, unit, price,
   // discount and basis are set here, with the prices to compare, then "Add" puts them all on it.
   const [staged, setStaged] = useState<Line[]>([]);
@@ -543,6 +575,28 @@ export function InvoiceBuilderPage({
   const hasBlockedFloor = rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
   const hasOverStock = rows.some((r) => r.overStock);
   const hasUnderList = lines.some((l, i) => underList(l, i));
+  /** What still has to be done before it can be saved, in the order it is on the screen. */
+  const missing: string[] = [
+    ...(!partyId ? [t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')] : []),
+    ...(isSale && !isQuote && !editId && !pickedBranch ? [t('invoice.chooseBranch')] : []),
+    ...(isSale && !isQuote && !editId && pickedBranch && !warehouseId
+      ? [t('invoice.chooseWarehouse')]
+      : []),
+    ...((departmentRequired && !departmentId) || !departmentOk
+      ? [t('invoice.chooseDepartment')]
+      : []),
+    ...(isSale && !repId ? [t('invoice.chooseRep')] : []),
+    ...(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId
+      ? [t('delivery.pickCarrier')]
+      : []),
+    ...(staged.length > 0 ? [t('stage.notAdded')] : []),
+    ...(lines.length === 0 && staged.length === 0 ? [t('invoice.noItems')] : []),
+    ...(hasBelowCost ? [t('invoice.belowCost')] : []),
+    ...(hasBlockedFloor ? [t('invoice.belowFloor')] : []),
+    ...(!isQuote && hasOverStock ? [t('invoice.overStock')] : []),
+    ...(hasUnderList ? [t('invoice.raiseOnly')] : []),
+    ...(outcome.error ? [t('charge.tooBig')] : []),
+  ];
   const canSave =
     !!partyId &&
     lines.length > 0 &&
@@ -563,11 +617,19 @@ export function InvoiceBuilderPage({
 
   /** `print`: open the saved invoice and print it (حفظ وطباعة). */
   async function save(print = false) {
+    if (!canSave) {
+      setShowMissing(true);
+      return;
+    }
+    setShowMissing(false);
+    // A change keeps what was paid when the invoice was made (no more than it now comes to).
     const paidAmount = cashCustomer
       ? grand
-      : isSale || paidNow === ''
-        ? 0
-        : toMinor(Number(paidNow));
+      : isSale && editId
+        ? Math.min(editPaid.amount, grand)
+        : isSale || paidNow === ''
+          ? 0
+          : toMinor(Number(paidNow));
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
       if (isQuote) {
@@ -623,7 +685,12 @@ export function InvoiceBuilderPage({
             delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
               ? delivery.carrierId
               : undefined,
-          paidAccountId: cashCustomer && cashAccountId ? cashAccountId : undefined,
+          paidAccountId:
+            cashCustomer && cashAccountId
+              ? cashAccountId
+              : editId && paidAmount > 0 && editPaid.accountId
+                ? editPaid.accountId
+                : undefined,
         };
         const saved = editId
           ? await updateSale.mutateAsync({ id: editId, input })
@@ -791,6 +858,7 @@ export function InvoiceBuilderPage({
       if (gone) return;
       const byId = new Map(items.filter((x): x is Product => !!x).map((x) => [x.id, x]));
       setEditedNumber(doc.number);
+      setEditPaid({ amount: doc.paidAmount, accountId: doc.paidAccountId ?? '' });
       if (who) setParty(who);
       setPickedBranch(doc.branchId);
       setPickedWarehouse(doc.lines[0]?.warehouseId ?? '');
@@ -856,6 +924,13 @@ export function InvoiceBuilderPage({
     setLines((prev) => [...prev, ...staged]);
     setStaged([]);
     searchBox.current?.focus();
+  }
+  /** Put one prepared item on the invoice; the others stay to be prepared. */
+  function addOneStaged(key: string) {
+    const one = staged.find((l) => l.key === key);
+    if (!one) return;
+    setLines((prev) => [...prev, one]);
+    setStaged((prev) => prev.filter((l) => l.key !== key));
   }
   const updateStaged = (key: string, patch: Partial<Line>) =>
     setStaged((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -952,7 +1027,10 @@ export function InvoiceBuilderPage({
                           })
                         }
                       >
-                        {(['LIST', 'LAST', 'COST'] as const).map((b) => (
+                        {(seeCosts
+                          ? (['LIST', 'LAST', 'COST'] as const)
+                          : (['LIST', 'LAST'] as const)
+                        ).map((b) => (
                           <option key={b} value={b}>
                             {t(`basis.${b}`)}
                           </option>
@@ -960,9 +1038,18 @@ export function InvoiceBuilderPage({
                       </select>
                     </label>
                   )}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon="plus"
+                    className="ms-auto"
+                    onClick={() => addOneStaged(l.key)}
+                  >
+                    {t('stage.addOne')}
+                  </Button>
                   <button
                     type="button"
-                    className="ms-auto grid h-8 w-8 place-items-center rounded-md text-muted hover:text-destructive"
+                    className="grid h-8 w-8 place-items-center rounded-md text-muted hover:text-destructive"
                     aria-label={`${t('col.delete')} ${l.product.name}`}
                     onClick={() => setStaged((prev) => prev.filter((x) => x.key !== l.key))}
                   >
@@ -1054,7 +1141,7 @@ export function InvoiceBuilderPage({
             {t('stage.clear')}
           </Button>
           <Button size="sm" icon="plus" onClick={addStaged}>
-            {t('stage.add')}
+            {t('stage.addAll')}
           </Button>
         </div>
       </div>
@@ -1068,62 +1155,78 @@ export function InvoiceBuilderPage({
   const cell =
     'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2';
   /** Amounts in the table without the currency, as on the old grid (the totals show it). */
-  const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+  const plain = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  const unitSelect = (r: Row, className = field) => (
-    <select
-      className={className}
-      value={r.line.unitId}
-      disabled={r.line.product.units.length < 2}
-      onChange={(e) => updateLine(r.line.key, { unitId: e.target.value, touched: false })}
-    >
-      {r.line.product.units.map((u) => (
-        <option key={u.unitId} value={u.unitId}>
-          {u.name}
-          {u.factor > 1 ? ` (${u.factor})` : ''}
-        </option>
-      ))}
-    </select>
-  );
-  const qtyInput = (r: Row, className = `${field} tnum`) => (
-    <input
-      type="number"
-      min={1}
-      className={className}
-      value={r.line.quantity}
-      onChange={(e) =>
-        updateLine(r.line.key, {
-          quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
-        })
-      }
-    />
-  );
-  const priceInput = (r: Row, base = field) => (
-    <input
-      type="number"
-      min={canChangePrice ? 0 : toMajor(suggested(r.line))}
-      step="0.01"
-      readOnly={!priceEditable || r.line.bonus}
-      title={
-        canChangePrice ? undefined : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
-      }
-      aria-invalid={underList(r.line, r.index)}
-      className={`${base} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line, r.index) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
-      value={toMajor(r.price)}
-      onChange={(e) =>
-        updateLine(r.line.key, {
-          price: Math.max(0, toMinor(Number(e.target.value) || 0)),
-          touched: true,
-        })
-      }
-      // Only up: a lower price goes back to the list price.
-      onBlur={() => {
-        if (underList(r.line, r.index)) updateLine(r.line.key, { touched: false });
-      }}
-    />
-  );
+  const unitSelect = (r: Row, className = field) =>
+    !isOpen(r.line.key) ? (
+      <span className="block py-1.5 text-sm">
+        {r.unit?.name}
+        {(r.unit?.factor ?? 1) > 1 ? ` (${r.unit?.factor})` : ''}
+      </span>
+    ) : (
+      <select
+        className={className}
+        value={r.line.unitId}
+        disabled={r.line.product.units.length < 2}
+        onChange={(e) => updateLine(r.line.key, { unitId: e.target.value, touched: false })}
+      >
+        {r.line.product.units.map((u) => (
+          <option key={u.unitId} value={u.unitId}>
+            {u.name}
+            {u.factor > 1 ? ` (${u.factor})` : ''}
+          </option>
+        ))}
+      </select>
+    );
+  const qtyInput = (r: Row, className = `${field} tnum`) =>
+    !isOpen(r.line.key) ? (
+      <span className="block py-1.5 text-sm font-medium tnum">
+        {formatNumber(r.line.quantity, locale)}
+      </span>
+    ) : (
+      <input
+        type="number"
+        min={1}
+        className={className}
+        value={r.line.quantity}
+        onChange={(e) =>
+          updateLine(r.line.key, {
+            quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+          })
+        }
+      />
+    );
+  const priceInput = (r: Row, base = field) =>
+    !isOpen(r.line.key) ? (
+      <span className="block py-1.5 text-sm tnum">{plain.format(toMajor(r.price))}</span>
+    ) : (
+      <input
+        type="number"
+        min={canChangePrice ? 0 : toMajor(suggested(r.line))}
+        step="0.01"
+        readOnly={!priceEditable || r.line.bonus}
+        title={
+          canChangePrice
+            ? undefined
+            : t(canRaisePrice ? 'invoice.raiseOnly' : 'invoice.priceLocked')
+        }
+        aria-invalid={underList(r.line, r.index)}
+        className={`${base} tnum ${priceEditable && !r.line.bonus ? '' : 'bg-surface-2'} ${r.belowCost || underList(r.line, r.index) ? 'border-destructive' : r.belowFloor ? 'border-warning' : ''}`}
+        value={toMajor(r.price)}
+        onChange={(e) =>
+          updateLine(r.line.key, {
+            price: Math.max(0, toMinor(Number(e.target.value) || 0)),
+            touched: true,
+          })
+        }
+        // Only up: a lower price goes back to the list price.
+        onBlur={() => {
+          if (underList(r.line, r.index)) updateLine(r.line.key, { touched: false });
+        }}
+      />
+    );
   /** A line's own discount: the value and whether it is a %, per piece or an amount. */
   const discountControls = (r: Row, withLabel: boolean) => (
     <>
@@ -1213,6 +1316,12 @@ export function InvoiceBuilderPage({
   /** A line's own discount: hidden behind "Add discount" until asked for (owner, 2026-10-01). */
   const lineDiscountCell = (r: Row) => {
     if (!isSale || r.line.bonus) return null;
+    if (!isOpen(r.line.key))
+      return r.discount > 0 ? (
+        <span className="whitespace-nowrap text-xs text-warning tnum">
+          −{formatMoney(r.discount, currency, locale)}
+        </span>
+      ) : null;
     const open = lineDiscountOpen.has(r.line.key) || !!r.line.discValue;
     if (!open)
       return canDiscount ? (
@@ -1435,6 +1544,7 @@ export function InvoiceBuilderPage({
                       setPickedBranch(e.target.value);
                       setPickedWarehouse('');
                       setPickedDepartment('');
+                      setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
                     }}
                   >
                     <option value="" disabled>
@@ -1457,6 +1567,11 @@ export function InvoiceBuilderPage({
                     onChange={(e) => {
                       setPickedWarehouse(e.target.value);
                       setPickedDepartment('');
+                      setPlace({
+                        branchId: pickedBranch,
+                        warehouseId: e.target.value,
+                        departmentId: '',
+                      });
                     }}
                   >
                     <option value="" disabled>
@@ -1480,7 +1595,10 @@ export function InvoiceBuilderPage({
                       required={departmentRequired}
                       disabled={!warehouseId}
                       aria-invalid={departmentRequired && !departmentId}
-                      onChange={(e) => setPickedDepartment(e.target.value)}
+                      onChange={(e) => {
+                        setPickedDepartment(e.target.value);
+                        setPlace({ departmentId: e.target.value });
+                      }}
                     >
                       <option value="" disabled={departmentRequired}>
                         {departmentRequired
@@ -1706,6 +1824,7 @@ export function InvoiceBuilderPage({
             {finding && (
               <ItemFinderSheet
                 departmentId={departmentId || undefined}
+                warehouseId={warehouseId || undefined}
                 inStockFirst={isSale && !isQuote}
                 checkStock={isSale && !isQuote}
                 onInvoice={onInvoice}
@@ -1747,14 +1866,29 @@ export function InvoiceBuilderPage({
                       {rows.map((r, i) => (
                         <tr key={r.line.key} className="align-top">
                           <td className="px-1 py-2">
-                            <button
-                              onClick={() => removeLine(r.line.key)}
-                              className="grid h-7 w-7 place-items-center rounded text-faint hover:bg-destructive-soft hover:text-destructive"
-                              aria-label={t('invoice.remove')}
-                              title={t('invoice.remove')}
-                            >
-                              <Icon name="close" size={16} />
-                            </button>
+                            <span className="flex gap-0.5">
+                              <button
+                                onClick={() => removeLine(r.line.key)}
+                                className="grid h-7 w-7 place-items-center rounded text-faint hover:bg-destructive-soft hover:text-destructive"
+                                aria-label={t('invoice.remove')}
+                                title={t('invoice.remove')}
+                              >
+                                <Icon name="close" size={16} />
+                              </button>
+                              <button
+                                onClick={() => toggleLine(r.line.key)}
+                                className={`grid h-7 w-7 place-items-center rounded hover:bg-surface-2 ${isOpen(r.line.key) ? 'bg-brand-soft text-brand' : 'text-faint'}`}
+                                aria-label={t(
+                                  isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                                )}
+                                title={t(
+                                  isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                                )}
+                                aria-pressed={isOpen(r.line.key)}
+                              >
+                                <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={15} />
+                              </button>
+                            </span>
                           </td>
                           {columns.map((c) => (
                             <td
@@ -1800,13 +1934,25 @@ export function InvoiceBuilderPage({
                           )}
                         </p>
                       </div>
-                      <button
-                        onClick={() => removeLine(r.line.key)}
-                        className="text-faint hover:text-destructive"
-                        aria-label={t('invoice.remove')}
-                      >
-                        <Icon name="close" size={16} />
-                      </button>
+                      <span className="flex shrink-0 gap-2">
+                        <button
+                          onClick={() => toggleLine(r.line.key)}
+                          className={isOpen(r.line.key) ? 'text-brand' : 'text-faint hover:text-fg'}
+                          aria-label={t(
+                            isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                          )}
+                          aria-pressed={isOpen(r.line.key)}
+                        >
+                          <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={16} />
+                        </button>
+                        <button
+                          onClick={() => removeLine(r.line.key)}
+                          className="text-faint hover:text-destructive"
+                          aria-label={t('invoice.remove')}
+                        >
+                          <Icon name="close" size={16} />
+                        </button>
+                      </span>
                     </div>
 
                     <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -1920,8 +2066,8 @@ export function InvoiceBuilderPage({
                       + {t('invoice.addDiscount')}
                     </button>
                   )}
-                  {/* The extra discount is offered once a discount is open (owner, 2026-10-01). */}
-                  {(showDiscount1 || !!discount1.value) && !showDiscount2 && !discount2.value && (
+                  {/* Two discounts, each a percent or an amount (owner, 2026-10-02). */}
+                  {!showDiscount2 && !discount2.value && (
                     <button
                       type="button"
                       className="text-xs font-medium text-brand hover:underline"
@@ -2065,13 +2211,26 @@ export function InvoiceBuilderPage({
                 {errorText(t, serverError)}
               </p>
             )}
+            {showMissing && !canSave && missing.length > 0 && (
+              <div
+                role="alert"
+                className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning"
+              >
+                <p className="font-semibold">{t('invoice.notReady')}</p>
+                <ul className="mt-1 list-inside list-disc space-y-0.5">
+                  {missing.map((m) => (
+                    <li key={m}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="mt-4 grid gap-2">
               <Button
                 className="w-full"
                 icon="check"
                 loading={pending}
-                disabled={!canSave}
+                disabled={pending}
                 onClick={() => void save()}
               >
                 {pending
@@ -2087,7 +2246,7 @@ export function InvoiceBuilderPage({
                   className="w-full"
                   variant="secondary"
                   icon="print"
-                  disabled={!canSave}
+                  disabled={pending}
                   onClick={() => void save(true)}
                 >
                   {t('invoice.saveAndPrint')}

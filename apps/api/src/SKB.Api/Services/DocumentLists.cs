@@ -28,6 +28,8 @@ public static class DocumentLists
         public bool IsPending { get; set; }
         /// <summary>Changed after it was saved (a revision of kind EDIT).</summary>
         public bool Edited { get; set; }
+        /// <summary>A posted invoice waiting for the accountant over the purchase limit.</summary>
+        public bool OverLimit { get; set; }
         /// <summary>A shipping company still has to pay us cash on delivery for it.</summary>
         public bool Collecting { get; set; }
         /// <summary>
@@ -103,6 +105,7 @@ public static class DocumentLists
             IsInvoice = d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE,
             IsPending = d.Type == DocumentType.SALES_ORDER,
             Edited = db.InvoiceRevisions.Any(x => x.DocumentId == d.Id && x.Kind == "EDIT"),
+            OverLimit = d.OverLimit,
             Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
                 && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
                     || x.Shipment.Status == ShipmentStatus.DELIVERED)),
@@ -121,7 +124,9 @@ public static class DocumentLists
         switch (state?.ToUpperInvariant())
         {
             case "CANCELLED": rows = rows.Where(r => r.Status == DocumentStatus.CANCELLED); break;
-            case "AWAITING": rows = rows.Where(r => r.IsPending && r.Status == DocumentStatus.PENDING); break;
+            case "AWAITING":
+                rows = rows.Where(r => (r.IsPending && r.Status == DocumentStatus.PENDING)
+                                       || (r.IsInvoice && r.OverLimit && r.Status != DocumentStatus.CANCELLED)); break;
             case "EDITED": rows = rows.Where(r => r.Edited && r.Status != DocumentStatus.CANCELLED); break;
             case "PAID":
                 rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Unpaid <= 0

@@ -102,6 +102,14 @@ public sealed class PartiesController : ControllerBase
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
             req.ExtraAddressLabel, req.TempCarrierName), isNew: false);
         if (error is not null) return error;
+        // The walk-in cash customer stays a cash customer, and stays open.
+        if (party.IsSystem && (req.IsActive == false || !party.IsCashCustomer
+                               || !party.Types.Contains(nameof(PartyType.CUSTOMER))))
+            return BadRequest(new
+            {
+                message = "The cash customer account is always open and always a cash customer.",
+                code = "system_party",
+            });
         if (req.IsActive is bool active && active != party.IsActive && !User.HasClaim("permission", Permissions.PartiesClose))
             return StatusCode(403, new { message = "Closing or reopening an account needs permission.", code = "close_not_allowed" });
         if (req.IsActive == false && party.IsActive)

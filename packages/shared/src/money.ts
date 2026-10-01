@@ -22,7 +22,7 @@ export function toMajor(minor: number): number {
  */
 export function formatMoney(minor: number, currency: string, locale: Locale): string {
   const value = toMajor(minor);
-  const intlLocale = locale === 'ar' ? 'ar-EG' : 'en-US';
+  const intlLocale = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
   try {
     return new Intl.NumberFormat(intlLocale, {
       style: 'currency',
@@ -37,7 +37,7 @@ export function formatMoney(minor: number, currency: string, locale: Locale): st
 
 /** Format a plain number (counts, quantities) per locale, with tabular grouping. */
 export function formatNumber(value: number, locale: Locale): string {
-  const intlLocale = locale === 'ar' ? 'ar-EG' : 'en-US';
+  const intlLocale = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
   try {
     return new Intl.NumberFormat(intlLocale).format(value);
   } catch {

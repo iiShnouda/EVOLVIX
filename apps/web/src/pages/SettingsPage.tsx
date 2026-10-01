@@ -35,7 +35,7 @@ function offsetOf(zone: string): string {
 /** The time of day now in a zone. */
 function clockIn(zone: string, locale: string): string {
   try {
-    return new Date().toLocaleTimeString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+    return new Date().toLocaleTimeString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
       timeZone: zone,
@@ -95,6 +95,7 @@ export function SettingsPage() {
       minMarkupPercent: form.minMarkupPercent,
       maxDiscountPercent: form.maxDiscountPercent,
       pendingHoldDays: form.pendingHoldDays,
+      returnAfterHours: form.returnAfterHours ?? 12,
       transfersRequireReceipt: form.transfersRequireReceipt,
       requireDepartment: form.requireDepartment !== false,
       address: form.address ?? '',
@@ -310,6 +311,21 @@ export function SettingsPage() {
               disabled={disabled}
               value={form.pendingHoldDays ?? 0}
               onChange={(e) => set({ pendingHoldDays: clampInt(e.target.value, 0, 365) })}
+            />
+          </label>
+          {/* Goods on an invoice come back only after this many hours (owner, 2026-10-02). */}
+          <label className="block sm:col-span-2">
+            <span className="mb-0.5 block text-xs text-muted">
+              {t('settings.returnAfterHours')}
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={720}
+              className={`${field} tnum`}
+              disabled={disabled}
+              value={form.returnAfterHours ?? 12}
+              onChange={(e) => set({ returnAfterHours: clampInt(e.target.value, 0, 720) })}
             />
           </label>
         </div>

@@ -47,7 +47,8 @@ public record SalesSummaryDto(
     string StaffName, string IssueDate, string? DueDate, long GrandTotal, long PaidAmount, string Currency,
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
-    string? Notes = null, string? State = null, bool Edited = false);
+    string? Notes = null, string? State = null, bool Edited = false, bool OverLimit = false,
+    string? ApprovalNote = null);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
@@ -87,7 +88,19 @@ public record SalesDetailDto(
     string? InvoiceId = null, string? InvoiceNumber = null,
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
-    string? CancelReason = null);
+    string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false);
+
+/// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
+/// <param name="PreviousBalance">What they owed before these invoices.</param>
+/// <param name="OnThese">What the posted ones still put on their account.</param>
+public record CustomerInvoicesDto(PartyDto Party, long Balance, long PreviousBalance, long OnThese, string Currency,
+    string From, string To, SalesDetailDto[] Invoices);
+
+/// <summary>One invoice's discount: a percent or an amount (neither = none).</summary>
+public record SetInvoiceDiscountRequest(decimal? Percent = null, long? Amount = null, string? Kind = null);
+
+/// <summary>One discount shared over several invoices of a customer.</summary>
+public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = null, long? Amount = null);
 
 /// <summary>Cancelling a posted sales invoice; the reason is optional.</summary>
 public record CancelInvoiceRequest(string? Reason = null);
@@ -215,7 +228,7 @@ public record CompanySettingsDto(
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
-    int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true);
+    int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -238,7 +251,8 @@ public record UpdateSettingsRequest(
     int? DefaultMarkupPercent, int? MinMarkupPercent, int? DefaultTaxPercent,
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
-    int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null);
+    int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
+    int? ReturnAfterHours = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -444,7 +458,7 @@ public record PartyDto(
     int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null,
     string? DefaultCarrierId = null, bool IsCashCustomer = false,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false);
+    string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false, bool IsSystem = false);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);

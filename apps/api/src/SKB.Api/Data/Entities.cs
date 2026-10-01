@@ -276,10 +276,16 @@ public class Party
     public Guid? DefaultCarrierId { get; set; }
     /// <summary>A cash customer (عميل نقدي): pays every invoice in full when it is made, never on account.</summary>
     public bool IsCashCustomer { get; set; }
+    /// <summary>
+    /// The company's own walk-in cash customer (العميل النقدي, code 0; owner 2026-10-02): every
+    /// one-time customer is sold to on it. It is always there: it can't be closed, stop being a
+    /// customer or stop paying in full.
+    /// </summary>
+    public bool IsSystem { get; set; }
     public string? Notes { get; set; }
     /// <summary>
     /// The most a customer may owe (حد الائتمان, minor units); null = no limit. A sale that would take
-    /// their balance over it is refused unless the person may go over it (sales:over_credit).
+    /// their balance over it waits for the accountant (owner, 2026-10-02).
     /// </summary>
     public long? CreditLimit { get; set; }
     public long Balance { get; set; }
@@ -652,6 +658,16 @@ public class SalesDocument
 
     /// <summary>Why a posted invoice was cancelled (optional, owner 2026-10-01).</summary>
     public string? CancelReason { get; set; }
+
+    /// <summary>
+    /// Waiting for the accountant because of the customer's purchase limit (owner, 2026-10-02): a
+    /// pending invoice (SALES_ORDER) saved because the sale went over the limit, or a posted invoice
+    /// whose change took the customer over it. The accountant accepts or turns it down; a payment
+    /// that brings the customer back within the limit accepts it by itself.
+    /// </summary>
+    public bool OverLimit { get; set; }
+    /// <summary>How the limit was settled: who accepted it, or that the system did after a payment.</summary>
+    public string? ApprovalNote { get; set; }
 
     /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
     public Guid? DepartmentId { get; set; }
@@ -1062,6 +1078,11 @@ public class CompanySettings
     /// its own goods). Only enforced while the company has departments.
     /// </summary>
     public bool RequireDepartment { get; set; } = true;
+    /// <summary>
+    /// Goods on a sales invoice can be returned only this many hours after it was made (owner,
+    /// 2026-10-02: until then the invoice itself is changed); 0 = at once.
+    /// </summary>
+    public int ReturnAfterHours { get; set; } = 12;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

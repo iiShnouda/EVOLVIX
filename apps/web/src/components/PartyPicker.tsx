@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import type { Party } from '@skb/shared';
 import { Spinner } from './ui';
 import { Icon } from './Icon';
@@ -14,7 +14,8 @@ const field =
  * Pick a customer or supplier by typing part of the name or phone: the list narrows as you type
  * (the server searches), and opens with the first ones before anything is typed. Each shows its
  * code (كود). With `withCode`, a code box sits beside the name (owner decision 2026-09-30): typing
- * a code fills in the name, and picking a name fills in its code.
+ * a code fills in the name, and picking a name fills in its code. The arrow at its end opens the
+ * whole list (owner, 2026-10-02); code 0 is the walk-in cash customer.
  */
 export function PartyPicker({
   type,
@@ -37,6 +38,7 @@ export function PartyPicker({
   const { t } = useT();
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
   const search = useDeferredValue(text.trim());
   const list = useParties({
     page: 1,
@@ -61,7 +63,7 @@ export function PartyPicker({
     const n = Number(code.trim());
     if (!code.trim()) return;
     if (value && n === value.code) return;
-    if (!Number.isInteger(n) || n <= 0) {
+    if (!Number.isInteger(n) || n < 0) {
       setCodeError(true);
       return;
     }
@@ -87,7 +89,8 @@ export function PartyPicker({
         <Icon name="search" size={15} />
       </span>
       <input
-        className={`${field} ps-8 disabled:opacity-50`}
+        ref={input}
+        className={`${field} ps-8 pe-8 disabled:opacity-50`}
         disabled={disabled}
         role="combobox"
         aria-expanded={open}
@@ -109,6 +112,23 @@ export function PartyPicker({
           } else if (e.key === 'Escape') setOpen(false);
         }}
       />
+      <button
+        type="button"
+        tabIndex={-1}
+        disabled={disabled}
+        aria-label={t('common.showAll')}
+        title={t('common.showAll')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            input.current?.blur();
+          } else input.current?.focus();
+        }}
+        className="absolute bottom-0 end-0 grid h-9 w-8 place-items-center text-muted hover:text-fg disabled:opacity-50"
+      >
+        <Icon name="chevronDown" size={16} className={open ? 'rotate-180' : ''} />
+      </button>
       {open && (
         <div className="absolute z-30 mt-1 max-h-72 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
           {list.isLoading ? (

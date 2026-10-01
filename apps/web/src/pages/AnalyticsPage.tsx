@@ -143,7 +143,7 @@ function MonthlyTab() {
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const monthName = (month: string) =>
-    new Date(`${month}-15`).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US', {
+    new Date(`${month}-15`).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
       month: 'long',
       year: 'numeric',
     });

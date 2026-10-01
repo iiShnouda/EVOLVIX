@@ -467,6 +467,14 @@ public sealed class MoneyController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("create", type.ToString().ToLowerInvariant(), voucher.Id, voucher.BranchId);
+        // Money in from a customer may bring them back within their purchase limit: what waits for
+        // the accountant because of it, and now fits, is accepted by the system (owner, 2026-10-02).
+        if (type == VoucherType.RECEIPT && party?.CreditLimit is not null)
+        {
+            var sales = ActivatorUtilities.CreateInstance<SalesController>(HttpContext.RequestServices);
+            sales.ControllerContext = ControllerContext;
+            await sales.AutoApproveAsync(party.Id, voucher.Number);
+        }
         return Created($"/api/vouchers/{voucher.Id}", ToDto(await ReloadVoucherAsync(voucher.Id), await CurrencyAsync()));
     }
 

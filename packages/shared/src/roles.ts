@@ -22,7 +22,6 @@ const ALL: Permission[] = [
   'sales:quote',
   'sales:order',
   'sales:approve',
-  'sales:over_credit',
   'parties:credit_limit',
   'sales:raise_price',
   'sales:invoice_alerts',

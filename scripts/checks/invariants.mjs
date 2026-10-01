@@ -52,7 +52,7 @@ await expectNone(
 );
 await expectNone(
   'returns never exceed line',
-  `select s."Id" from "DocumentLines" s join "DocumentLines" r on r."SourceLineId"=s."Id" join "SalesDocuments" rd on rd."Id"=r."DocumentId" and rd."Status"<>'CANCELLED' group by s."Id" having sum(r."Quantity") > s."Quantity" or sum(r."LineTotal"+r."Discount") > s."LineTotal"+s."Discount" or sum(r."LineCost") > s."LineCost"`,
+  `select s."Id" from "DocumentLines" s join "DocumentLines" r on r."SourceLineId"=s."Id" join "SalesDocuments" rd on rd."Id"=r."DocumentId" and rd."Status"<>'CANCELLED' group by s."Id" having sum(r."Quantity") > s."Quantity" or sum(case when rd."SourceDocumentId" is not null then r."LineTotal"+r."Discount" else 0 end) > s."LineTotal"+s."Discount" or sum(case when rd."SourceDocumentId" is not null then r."LineCost" else 0 end) > s."LineCost"`,
 );
 await expectNone(
   'one default active level per side',
