@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatMoney, formatNumber, type ModelDetail, type VariantOption } from '@skb/shared';
 import { Badge, Button, Card, PageHeader, Spinner } from '../components/ui';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
@@ -13,7 +14,8 @@ import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../compon
 import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
-import { ApiError } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { useWorkDraft } from '../lib/workDraft';
 import {
   useCategories,
   useCompanySettings,
@@ -29,6 +31,24 @@ import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
+
+/** Which version of the model the form was filled from. */
+const stampOf = (m: ModelDetail) =>
+  `${m.id}:${m.variants.length}:${m.units.length}:${m.prices.map((p) => p.own).join()}:${m.name}:${m.supplierId}:${m.supplierCode}`;
+
+/** What is kept of a model being added or changed. */
+interface ModelDraft {
+  names: NameValues;
+  code: string;
+  categoryId: string;
+  reorder: string;
+  supplierId: string;
+  supplierCode: string;
+  sizeIds: string[];
+  colorIds: string[];
+  rows: UnitRow[];
+  prices: PriceInputs;
+}
 
 const rowsFrom = (m: ModelDetail): UnitRow[] =>
   m.units.map((u) => ({ unitId: u.unitId, factor: u.factor, barcode: '' }));
@@ -72,9 +92,7 @@ export function ModelEditorPage() {
 
   const m = model.data;
   useEffect(() => {
-    const stamp = m
-      ? `${m.id}:${m.variants.length}:${m.units.length}:${m.prices.map((p) => p.own).join()}:${m.name}:${m.supplierId}:${m.supplierCode}`
-      : '';
+    const stamp = m ? stampOf(m) : '';
     if (!m || loaded === stamp) return;
     setNames(namesFrom(m.name));
     setCategoryId(m.categoryId);
@@ -136,6 +154,64 @@ export function ModelEditorPage() {
     gridUnits,
     levels.data ?? [],
   );
+  // Changed from what was loaded (or anything typed on a new model).
+  const dirty = isNew
+    ? !!names.trim() ||
+      !!code.trim() ||
+      !!supplierCode.trim() ||
+      sizeIds.length + colorIds.length > 0 ||
+      priceList.some((p) => p.price !== null)
+    : !!m &&
+      (!!typedNames.name ||
+        categoryId !== m.categoryId ||
+        Math.max(0, Math.floor(Number(reorder) || 0)) !== m.reorderLevel ||
+        supplierId !== (m.supplierId ?? '') ||
+        supplierCode.trim() !== (m.supplierCode ?? '') ||
+        sizeIds.length + colorIds.length > 0 ||
+        JSON.stringify(unitsInput) !== JSON.stringify(unitRowsToInput(rowsFrom(m), false)) ||
+        priceList.length > 0);
+
+  // Kept on the server while it is written, brought back after a crash or on another device.
+  const qc = useQueryClient();
+  const work = useWorkDraft<ModelDraft>(
+    1,
+    () =>
+      dirty
+        ? {
+            names,
+            code,
+            categoryId,
+            reorder,
+            supplierId,
+            supplierCode,
+            sizeIds,
+            colorIds,
+            rows,
+            prices,
+          }
+        : null,
+    async (k) => {
+      // A model being changed: fill from the server first, so that doesn't overwrite the work.
+      if (id) {
+        const fresh = await qc.fetchQuery({
+          queryKey: ['catalog', 'model', id],
+          queryFn: () => api.get<ModelDetail>(`/models/${id}`),
+        });
+        setLoaded(stampOf(fresh));
+      }
+      if (typeof k.names === 'string') setNames(k.names);
+      if (typeof k.code === 'string') setCode(k.code);
+      if (typeof k.categoryId === 'string') setCategoryId(k.categoryId);
+      if (typeof k.reorder === 'string') setReorder(k.reorder);
+      if (typeof k.supplierId === 'string') setSupplierId(k.supplierId);
+      if (typeof k.supplierCode === 'string') setSupplierCode(k.supplierCode);
+      if (Array.isArray(k.sizeIds)) setSizeIds(k.sizeIds);
+      if (Array.isArray(k.colorIds)) setColorIds(k.colorIds);
+      if (Array.isArray(k.rows) && k.rows.length) setRows(k.rows);
+      if (k.prices && typeof k.prices === 'object') setPricesInput(k.prices);
+    },
+  );
+
   const canSave = isNew
     ? canFields &&
       !!typedNames.name &&
@@ -160,6 +236,7 @@ export function ModelEditorPage() {
           units: unitsInput,
           prices: canPrices ? priceList.filter((p) => p.price !== null) : undefined,
         });
+        work.finished();
         navigate(`/inventory/models/${created.id}`, { replace: true });
         return;
       }

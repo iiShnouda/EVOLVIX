@@ -30,10 +30,13 @@ public static class DocumentNumbers
         await LockAsync(db, prefix);
         // The highest number already used after this prefix, compared as a number.
         var from = prefix.Length + 1;
-        var like = prefix.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+        // Numbers after the prefix, as a text range the prefix index serves (migration PerformanceIndexes):
+        // [prefix, prefix with its last character + 1).
+        var upper = prefix[..^1] + (char)(prefix[^1] + 1);
         var last = await db.Database.SqlQuery<long?>($"""
             SELECT MAX(CAST(substr("Number", {from}) AS bigint)) AS "Value" FROM "SalesDocuments"
-            WHERE "Number" LIKE {like} AND substr("Number", {from}) ~ '^[0-9]+$' AND length("Number") - {from} < 18
+            WHERE "Number" ~>=~ {prefix} AND "Number" ~<~ {upper}
+              AND substr("Number", {from}) ~ '^[0-9]+$' AND length("Number") - {from} < 18
             """).SingleAsync() ?? 0;
         var seq = Math.Max(last + 1, custom?.StartAt ?? 1);
         return $"{prefix}{seq.ToString().PadLeft(digits, '0')}";

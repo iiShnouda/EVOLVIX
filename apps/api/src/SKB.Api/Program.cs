@@ -25,6 +25,13 @@ if (!string.IsNullOrEmpty(cloudPort))
 // --- Database (PostgreSQL) with EF Core context pooling + Npgsql connection pooling ------
 var connString = builder.Configuration.GetConnectionString("Default")
                  ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
+// Keep the server's plans for the queries the app repeats (prepared statements). Opening an
+// invoice joins about ten tables: PostgreSQL took ~20 ms to plan it and 0.2 ms to run it, on every
+// request. A server's own connection string can still set its own values.
+var csb = new Npgsql.NpgsqlConnectionStringBuilder(connString);
+if (csb.MaxAutoPrepare == 0) csb.MaxAutoPrepare = 100;
+if (!connString.Contains("Auto Prepare Min Usages", StringComparison.OrdinalIgnoreCase)) csb.AutoPrepareMinUsages = 2;
+connString = csb.ConnectionString;
 builder.Services.AddDbContextPool<AppDbContext>(o => o.UseNpgsql(connString));
 
 // --- Services ---------------------------------------------------------------------------
@@ -47,6 +54,7 @@ builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<PayrollService>();
 builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
+builder.Services.AddHostedService<Housekeeping>();
 
 
 // --- Authentication (JWT bearer) --------------------------------------------------------

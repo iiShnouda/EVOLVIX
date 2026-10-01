@@ -15,6 +15,7 @@ public sealed class DashboardController : ControllerBase
 {
     private const string Currency = "EGP";
     private const int TrendDays = 7;
+    private const int LowStockShown = 12;
     private readonly AppDbContext _db;
 
     public DashboardController(AppDbContext db) => _db = db;
@@ -40,13 +41,16 @@ public sealed class DashboardController : ControllerBase
             .Where(a => a.IsActive && (only == null || only.Contains(a.Id)))
             .SumAsync(a => (long?)a.Balance) ?? 0;
 
-        var balances = await _db.Parties.Select(p => p.Balance).ToListAsync();
-        var receivables = balances.Where(b => b > 0).Sum();
-        var payables = balances.Where(b => b < 0).Sum(b => -b);
+        // Summed by the database (not every balance brought over).
+        var receivables = await _db.Parties.Where(p => p.Balance > 0).SumAsync(p => (long?)p.Balance) ?? 0;
+        var payables = await _db.Parties.Where(p => p.Balance < 0).SumAsync(p => (long?)-p.Balance) ?? 0;
 
-        var lowStock = await _db.Products.AsNoTracking().Where(p => p.IsActive && p.StockOnHand <= p.ReorderLevel)
-            .Include(p => p.Size).Include(p => p.Color)
-            .OrderBy(p => p.StockOnHand).ToListAsync();
+        // How many items are low, and only the few the dashboard shows (a big catalogue may have
+        // thousands out of stock).
+        var low = _db.Products.AsNoTracking().Where(p => p.IsActive && p.StockOnHand <= p.ReorderLevel);
+        var lowCount = await low.CountAsync();
+        var lowStock = await low.Include(p => p.Size).Include(p => p.Color)
+            .OrderBy(p => p.StockOnHand).ThenBy(p => p.Id).Take(LowStockShown).ToListAsync();
         var book = await PriceBook.LoadAsync(_db, lowStock.Select(p => p.Id));
 
         // Posted documents only: quotations and pending invoices move nothing.
@@ -61,7 +65,7 @@ public sealed class DashboardController : ControllerBase
             new KpiDto("kpi.purchases", purchases, true, Currency, "info", null),
             new KpiDto("kpi.receivables", receivables, true, Currency, "positive", null),
             new KpiDto("kpi.payables", payables, true, Currency, "warning", null),
-            new KpiDto("kpi.lowStock", lowStock.Count, false, null, lowStock.Count > 0 ? "destructive" : "neutral", null),
+            new KpiDto("kpi.lowStock", lowCount, false, null, lowCount > 0 ? "destructive" : "neutral", null),
             new KpiDto("kpi.cashPosition", cash, true, Currency, "neutral", null),
         };
 

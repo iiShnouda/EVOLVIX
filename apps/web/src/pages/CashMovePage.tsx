@@ -20,6 +20,8 @@ import { SidedMoney } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { api } from '../lib/api';
+import { useWorkDraft } from '../lib/workDraft';
 import {
   useCreateCashTransfer,
   useCreateVoucher,
@@ -36,6 +38,15 @@ interface Side {
   kind: SideKind;
   party: Party | null;
   accountId: string;
+}
+
+/** What is kept of a withdraw / deposit being written (parties by id; read again). */
+interface CashMoveDraft {
+  from: { kind: SideKind; partyId: string | null; accountId: string };
+  to: { kind: SideKind; partyId: string | null; accountId: string };
+  amount: string;
+  alloc: Record<string, string>;
+  notes: string;
 }
 
 /** How money reaches or leaves an account of each kind. */
@@ -72,6 +83,32 @@ export function CashMovePage() {
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
   const [done, setDone] = useState<string | null>(null);
+
+  // Kept on the server while it is written, brought back after a crash or on another device.
+  const keep = (x: Side) => ({
+    kind: x.kind,
+    partyId: x.party?.id ?? null,
+    accountId: x.accountId,
+  });
+  useWorkDraft<CashMoveDraft>(
+    1,
+    () =>
+      !amount.trim() && !notes.trim() && !from.party && !to.party
+        ? null
+        : { from: keep(from), to: keep(to), amount, alloc, notes },
+    async (d) => {
+      const side = async (x: CashMoveDraft['from']): Promise<Side> => ({
+        kind: x.kind,
+        accountId: typeof x.accountId === 'string' ? x.accountId : '',
+        party: x.partyId ? await api.get<Party>(`/parties/${x.partyId}`).catch(() => null) : null,
+      });
+      if (d.from) setFrom(await side(d.from));
+      if (d.to) setTo(await side(d.to));
+      if (typeof d.amount === 'string') setAmount(d.amount);
+      if (d.alloc && typeof d.alloc === 'object') setAlloc(d.alloc);
+      if (typeof d.notes === 'string') setNotes(d.notes);
+    },
+  );
 
   const voucher = useCreateVoucher();
   const transfer = useCreateCashTransfer();

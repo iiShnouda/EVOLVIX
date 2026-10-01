@@ -186,7 +186,13 @@ check(
   top.every((p, i) => i === 0 || top[i - 1].net >= p.net),
 );
 const tops = ok('top suppliers', await owner.get('/analytics/top-parties?side=suppliers&limit=50'));
-eq('our supplier', tops.find((p) => p.partyId === supp.id)?.net, 55600);
+// Listed with its net, unless 50 bigger suppliers fill the list (a test database that has run many times).
+const ourSupplier = tops.find((p) => p.partyId === supp.id);
+check(
+  'our supplier',
+  ourSupplier ? ourSupplier.net === 55600 : tops.length === 50 && tops.at(-1).net >= 55600,
+  ourSupplier?.net,
+);
 const mv = ok('item movement', await owner.get('/analytics/item-movement?limit=100'));
 const f = mv.topMovers.find((m) => m.productId === fast.id);
 eq(

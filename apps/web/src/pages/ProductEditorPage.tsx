@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatNumber, type ProductDetail } from '@skb/shared';
 import { Badge, Button, Card, PageHeader, Spinner } from '../components/ui';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
@@ -13,7 +14,8 @@ import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../compon
 import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
-import { ApiError } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { useWorkDraft } from '../lib/workDraft';
 import {
   useCategories,
   useCompanySettings,
@@ -27,6 +29,22 @@ import {
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
+
+/** Which version of the item the form was filled from. */
+const loadKey = (d: ProductDetail) =>
+  `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}:${d.supplierId}:${d.supplierCode}`;
+
+/** What is kept of an item being added or changed. */
+interface ProductDraft {
+  names: NameValues;
+  sku: string;
+  categoryId: string;
+  reorder: string;
+  supplierId: string;
+  supplierCode: string;
+  rows: UnitRow[];
+  prices: PriceInputs;
+}
 
 const rowsFrom = (d: ProductDetail): UnitRow[] =>
   d.units.map((u) => ({ unitId: u.unitId, factor: u.factor, barcode: u.barcode ?? '' }));
@@ -68,12 +86,7 @@ export function ProductEditorPage() {
   // Fill the form once the item has loaded (and again after a save returns fresh data).
   const d = detail.data;
   useEffect(() => {
-    if (
-      !d ||
-      loadedId ===
-        `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}:${d.supplierId}:${d.supplierCode}`
-    )
-      return;
+    if (!d || loadedId === loadKey(d)) return;
     setNames(namesFrom(d.name));
     setSku(d.sku);
     setCategoryId(d.categoryId);
@@ -82,9 +95,7 @@ export function ProductEditorPage() {
     setSupplierCode(d.supplierCode ?? '');
     setRows(rowsFrom(d));
     setPricesInput(inputsFrom(d.prices));
-    setLoadedId(
-      `${d.id}:${d.sku}:${d.units.length}:${d.prices.map((p) => p.own).join()}:${d.supplierId}:${d.supplierCode}`,
-    );
+    setLoadedId(loadKey(d));
   }, [d, loadedId]);
 
   // A new item starts in pieces.
@@ -123,6 +134,49 @@ export function ProductEditorPage() {
     levels.data ?? [],
   );
 
+  // Changed from what was loaded (or anything typed on a new item).
+  const nextReorder = Math.max(0, Math.floor(Number(reorder) || 0));
+  const dirty = isNew
+    ? !!names.trim() ||
+      !!sku.trim() ||
+      !!supplierCode.trim() ||
+      priceList.some((p) => p.price !== null)
+    : !!d &&
+      (!!typedNames.name ||
+        (!!sku.trim() && sku.trim() !== d.sku) ||
+        categoryId !== d.categoryId ||
+        nextReorder !== d.reorderLevel ||
+        supplierId !== (d.supplierId ?? '') ||
+        supplierCode.trim() !== (d.supplierCode ?? '') ||
+        JSON.stringify(unitRowsToInput(rows)) !== JSON.stringify(unitRowsToInput(rowsFrom(d))) ||
+        priceList.length > 0);
+
+  // Kept on the server while it is written, brought back after a crash or on another device.
+  const qc = useQueryClient();
+  const work = useWorkDraft<ProductDraft>(
+    1,
+    () =>
+      dirty ? { names, sku, categoryId, reorder, supplierId, supplierCode, rows, prices } : null,
+    async (k) => {
+      // An item being changed: fill from the server first, so that doesn't overwrite the work.
+      if (id) {
+        const fresh = await qc.fetchQuery({
+          queryKey: ['catalog', 'product', id],
+          queryFn: () => api.get<ProductDetail>(`/products/${id}`),
+        });
+        setLoadedId(loadKey(fresh));
+      }
+      if (typeof k.names === 'string') setNames(k.names);
+      if (typeof k.sku === 'string') setSku(k.sku);
+      if (typeof k.categoryId === 'string') setCategoryId(k.categoryId);
+      if (typeof k.reorder === 'string') setReorder(k.reorder);
+      if (typeof k.supplierId === 'string') setSupplierId(k.supplierId);
+      if (typeof k.supplierCode === 'string') setSupplierCode(k.supplierCode);
+      if (Array.isArray(k.rows) && k.rows.length) setRows(k.rows);
+      if (k.prices && typeof k.prices === 'object') setPricesInput(k.prices);
+    },
+  );
+
   const canSave = isNew
     ? canFields && !!typedNames.name && !!categoryId && unitsValid && !pending
     : !pending && !!d && unitsValid;
@@ -140,6 +194,7 @@ export function ProductEditorPage() {
           units: unitsInput,
           prices: canPrices ? priceList.filter((p) => p.price !== null) : undefined,
         });
+        work.finished();
         navigate(`/inventory/items/${created.id}`);
         return;
       }
@@ -149,7 +204,6 @@ export function ProductEditorPage() {
         if (!isVariant) Object.assign(input, typedNames);
         if (sku.trim() && sku.trim() !== d.sku) input.sku = sku.trim();
         if (!isVariant && categoryId !== d.categoryId) input.categoryId = categoryId;
-        const nextReorder = Math.max(0, Math.floor(Number(reorder) || 0));
         if (nextReorder !== d.reorderLevel) input.reorderLevel = nextReorder;
         if (!isVariant && supplierId !== (d.supplierId ?? '')) input.supplierId = supplierId;
         if (!isVariant && supplierCode.trim() !== (d.supplierCode ?? ''))
@@ -163,6 +217,7 @@ export function ProductEditorPage() {
       }
       if (canPrices && priceList.length > 0)
         await setPrices.mutateAsync({ id: d.id, input: { prices: priceList } });
+      work.finished();
       navigate(`/inventory/items/${d.id}`);
     } catch {
       /* shown below */

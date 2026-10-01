@@ -7,6 +7,7 @@ import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseS
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
+import { useWorkDraft } from '../lib/workDraft';
 import { useInventory, useStocktake } from '../lib/queries';
 
 const field =
@@ -33,6 +34,20 @@ export function StocktakePage() {
   const [counted, setCounted] = useState<Record<string, string>>({});
   const [reason, setReason] = useState('');
   const [result, setResult] = useState<StocktakeResult | null>(null);
+
+  // A count in progress is kept on the server, brought back after a crash or on another device.
+  useWorkDraft<{ warehouseId: string; counted: Record<string, string>; reason: string }>(
+    1,
+    () =>
+      Object.values(counted).every((v) => v === '') && !reason.trim()
+        ? null
+        : { warehouseId: picked, counted, reason },
+    (d) => {
+      if (typeof d.warehouseId === 'string') setPicked(d.warehouseId);
+      if (d.counted && typeof d.counted === 'object') setCounted(d.counted);
+      if (typeof d.reason === 'string') setReason(d.reason);
+    },
+  );
 
   const currency = list.data?.currency ?? 'EGP';
   const all = list.data?.items ?? [];

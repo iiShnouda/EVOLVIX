@@ -8,6 +8,22 @@ works fully **offline on your local network (LAN)** — no cloud, no Neon.
 - A PC/server that stays on (Windows, Linux, or Mac) — **not** a personal laptop ideally.
 - **Docker Desktop** (Windows/Mac) or Docker Engine (Linux). That's it.
 
+### How big a machine (measured 2026-10-01)
+A load test with 10 people working at a normal pace (lists, searches, prices, saving invoices,
+statements, the dashboard, the work-in-progress autosave every 3 s) used about a third of one CPU
+core and ~330 MB of memory for the app. 30 people working non-stop with no pauses (≈210 requests a
+second, 1,100+ invoices a minute) used under 2 cores and ~470 MB.
+
+| People working at once | CPU | Memory (app + database + OS) | Disk |
+|---|---|---|---|
+| up to 15 | 2 cores | 4 GB | 128 GB SSD |
+| 15–40 | 4 cores | 8 GB | 256 GB SSD |
+| 40+ or several branches over the internet | 4–8 cores | 16 GB | 512 GB SSD |
+
+- **No graphics card is needed**: the server draws nothing; screens are drawn on each device.
+- **An SSD matters more than a faster CPU** (the database writes on every save).
+- Keep backups on a different disk or machine (see Backups below).
+
 ## Steps
 ```bash
 # 1. Get the code on the server

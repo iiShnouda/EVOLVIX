@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatMoney, formatNumber, type InventoryItem } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
@@ -7,6 +7,7 @@ import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseS
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
+import { useWorkDraft } from '../lib/workDraft';
 import {
   useCompanySettings,
   useCreateTransfer,
@@ -20,6 +21,14 @@ const field =
 interface Line {
   item: InventoryItem;
   quantity: number;
+}
+
+/** What is kept of a transfer being written (lines by item; their stock is read again). */
+interface TransferDraft {
+  fromId: string;
+  toId: string;
+  lines: { productId: string; quantity: number }[];
+  notes: string;
 }
 
 /**
@@ -48,6 +57,39 @@ export function TransferBuilderPage() {
   const [notes, setNotes] = useState('');
   const create = useCreateTransfer();
   const error = create.error as ApiError | null;
+
+  // Kept on the server while it is written, brought back after a crash or on another device.
+  const [pending, setPending] = useState<TransferDraft['lines'] | null>(null);
+  const work = useWorkDraft<TransferDraft>(
+    1,
+    () =>
+      lines.length === 0 && !notes.trim() && !toId
+        ? null
+        : {
+            fromId,
+            toId,
+            lines: lines.map((l) => ({ productId: l.item.id, quantity: l.quantity })),
+            notes,
+          },
+    (d) => {
+      if (typeof d.fromId === 'string') setPickedFrom(d.fromId);
+      if (typeof d.toId === 'string') setToId(d.toId);
+      if (typeof d.notes === 'string') setNotes(d.notes);
+      if (Array.isArray(d.lines)) setPending(d.lines);
+    },
+  );
+  // The kept lines come back once the sending warehouse's stock is read (items gone are skipped).
+  useEffect(() => {
+    if (!pending || !stock.data) return;
+    const items = new Map(stock.data.items.map((i) => [i.id, i]));
+    setLines(
+      pending.flatMap((l) => {
+        const item = items.get(l.productId);
+        return item && l.quantity > 0 ? [{ item, quantity: l.quantity }] : [];
+      }),
+    );
+    setPending(null);
+  }, [pending, stock.data]);
 
   const s = search.trim().toLowerCase();
   const matches = s
@@ -96,6 +138,7 @@ export function TransferBuilderPage() {
         lines: lines.map((l) => ({ productId: l.item.id, quantity: l.quantity })),
         notes: notes.trim() || undefined,
       });
+      work.finished();
       navigate(`/inventory/transfers?tab=all&doc=${res.id}`);
     } catch {
       /* shown below */
