@@ -15,6 +15,7 @@ import { ConnectionBadge } from './ConnectionBadge';
 import { PrefControls } from './PrefControls';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
+import { BackLink } from './BackLink';
 
 function useVisibleNav(): NavItem[] {
   const user = useAuth((s) => s.user);
@@ -131,6 +132,7 @@ function PhoneShell() {
       </header>
 
       <main className="flex-1 px-4 py-4 pb-24">
+        <BackLink />
         <Outlet />
       </main>
 
@@ -254,6 +256,7 @@ function MainArea(): ReactNode {
   return (
     <main className="min-w-0 flex-1 overflow-x-clip p-5 lg:p-6">
       <div className="mx-auto max-w-7xl">
+        <BackLink />
         <Outlet />
       </div>
     </main>

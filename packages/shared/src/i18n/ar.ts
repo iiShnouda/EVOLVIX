@@ -2361,4 +2361,7 @@ export const ar: TranslationDictionary = {
   'parties.status.CREDIT': 'له رصيد',
   'parties.status.SETTLED': 'حساب متزن',
   'parties.status.CLOSED': 'حساب موقوف',
+  'print.setup': 'إعداد الطباعة',
+  'print.now': 'طباعة',
+  'nav.backTo': 'رجوع إلى',
 };

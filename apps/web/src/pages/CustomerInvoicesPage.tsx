@@ -21,6 +21,7 @@ import {
   approvalText,
   usePaperOptions,
   PAPER_SIZES,
+  PrintSetupSheet,
   type PaperOptions,
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
@@ -78,6 +79,8 @@ export function CustomerInvoicesPage() {
   const setDiscount = useSetInvoiceDiscount();
   const discountAll = useDiscountAll();
   const [all, setAll] = useState<DiscountDraft>({ mode: 'percent', value: '' });
+  // One invoice printed: the print setup first (paper and what shows).
+  const [printing, setPrinting] = useState<SalesDocument | null>(null);
   const posted = invoices.filter((d) => d.type === 'SALES_INVOICE');
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
@@ -187,15 +190,13 @@ export function CustomerInvoicesPage() {
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
-                onPrint={() => {
-                  const el = single.current[doc.id];
-                  if (el) printElement(el, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
-                }}
+                onPrint={() => setPrinting(doc)}
               />
             ))}
             {setDiscount.error && (
               <p className="text-sm text-destructive">{errorText(t, setDiscount.error)}</p>
             )}
+            {printing && <PrintSetupSheet doc={printing} onClose={() => setPrinting(null)} />}
             {/* The customer's returns: printed with the invoices and taken off the total. */}
             {returns.length > 0 && (
               <h2 className="pt-2 text-sm font-semibold text-destructive">
@@ -214,10 +215,7 @@ export function CustomerInvoicesPage() {
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
-                onPrint={() => {
-                  const el = single.current[doc.id];
-                  if (el) printElement(el, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
-                }}
+                onPrint={() => setPrinting(doc)}
               />
             ))}
           </div>

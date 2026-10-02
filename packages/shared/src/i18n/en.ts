@@ -2376,4 +2376,7 @@ export const en = {
   'parties.status.CREDIT': 'We owe them',
   'parties.status.SETTLED': 'Settled',
   'parties.status.CLOSED': 'Closed',
+  'print.setup': 'Print setup',
+  'print.now': 'Print',
+  'nav.backTo': 'Back to',
 } as const;

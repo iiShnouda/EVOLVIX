@@ -9,6 +9,7 @@ import {
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
+import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { statusOf } from '../lib/status';
@@ -114,11 +115,10 @@ export function DocumentPreview({
   const paper = useRef<HTMLDivElement>(null);
   const [options, setOptions] = usePaperOptions();
   const ready = !loading && !!doc;
+  // Printing opens the setup first (the paper and what shows), then prints from there.
+  const [setup, setSetup] = useState(false);
   useEffect(() => {
-    if (!autoPrint || !ready || !paper.current || !doc) return;
-    printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
-    onPrinted?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (autoPrint && ready) setSetup(true);
   }, [autoPrint, ready]);
 
   if (loading) {
@@ -165,10 +165,7 @@ export function DocumentPreview({
               icon="print"
               aria-label={t('common.printPdf')}
               title={t('common.printPdf')}
-              onClick={() =>
-                paper.current &&
-                printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`))
-              }
+              onClick={() => setSetup(true)}
             />
             {onClose && (
               <button
@@ -187,6 +184,15 @@ export function DocumentPreview({
       <div className="flex-1 overflow-y-auto">
         <InvoicePaper ref={paper} doc={doc} options={options} />
       </div>
+      {setup && (
+        <PrintSetupSheet
+          doc={doc}
+          onClose={() => {
+            setSetup(false);
+            if (autoPrint) onPrinted?.();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -569,47 +575,113 @@ export function PrintOptions({
       {open && (
         <div className="absolute end-0 z-30 mt-1 max-h-[70vh] w-60 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
           <p className="px-2 py-1 text-xs font-semibold text-muted">{t('print.options')}</p>
-          <PaperChoice />
-          <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
-            <span>{t('print.textSize')}</span>
-            <div className="flex overflow-hidden rounded-md border border-line">
-              {(Object.keys(PAPER_SIZES) as PaperTextSize[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => onChange.setSize(s)}
-                  aria-pressed={options.size === s}
-                  className={`px-2 py-1 text-xs font-semibold ${options.size === s ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
-            <input
-              type="checkbox"
-              checked={options.bold}
-              onChange={(e) => onChange.setBold(e.target.checked)}
-            />
-            <span className="font-bold">{t('print.bold')}</span>
-          </label>
-          <div className="my-1 border-t border-line" />
-          {[...PRINT_PARTS, ...PRINT_EXTRAS].map((part) => (
-            <label
-              key={part}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2"
-            >
-              <input
-                type="checkbox"
-                checked={options.shows(part)}
-                onChange={() => onChange.toggle(part)}
-              />
-              {t(`print.${part}`)}
-            </label>
-          ))}
+          <PrintOptionsPanel options={options} onChange={onChange} />
         </div>
       )}
     </div>
+  );
+}
+
+/** What the printout carries: the paper, type size, bold and each part (shared by the menu and the setup). */
+function PrintOptionsPanel({
+  options,
+  onChange,
+}: {
+  options: PaperOptions;
+  onChange: ReturnType<typeof usePaperOptions>[1];
+}) {
+  const { t } = useT();
+  return (
+    <>
+      <PaperChoice />
+      <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
+        <span>{t('print.textSize')}</span>
+        <div className="flex overflow-hidden rounded-md border border-line">
+          {(Object.keys(PAPER_SIZES) as PaperTextSize[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onChange.setSize(s)}
+              aria-pressed={options.size === s}
+              className={`px-2 py-1 text-xs font-semibold ${options.size === s ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
+        <input
+          type="checkbox"
+          checked={options.bold}
+          onChange={(e) => onChange.setBold(e.target.checked)}
+        />
+        <span className="font-bold">{t('print.bold')}</span>
+      </label>
+      <div className="my-1 border-t border-line" />
+      {[...PRINT_PARTS, ...PRINT_EXTRAS].map((part) => (
+        <label
+          key={part}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2"
+        >
+          <input
+            type="checkbox"
+            checked={options.shows(part)}
+            onChange={() => onChange.toggle(part)}
+          />
+          {t(`print.${part}`)}
+        </label>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Before printing (owner, 2026-10-02: "when I press print, show the invoice's layout and the
+ * paper"): the paper, type size and parts on one side, the document exactly as it will print on
+ * the other; then print.
+ */
+export function PrintSetupSheet({
+  doc,
+  onClose,
+  onPrinted,
+}: {
+  doc: SalesDocument;
+  onClose: () => void;
+  onPrinted?: () => void;
+}) {
+  const { t } = useT();
+  const [options, setOptions] = usePaperOptions();
+  const paper = useRef<HTMLDivElement>(null);
+  return (
+    <Sheet title={t('print.setup')} onClose={onClose} closeLabel={t('common.close')} wide="full">
+      <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <div className="space-y-3">
+          <div className="rounded-[var(--radius-app)] border border-line p-1">
+            <PrintOptionsPanel options={options} onChange={setOptions} />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              icon="print"
+              className="flex-1"
+              onClick={() => {
+                if (!paper.current) return;
+                printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
+                onPrinted?.();
+                onClose();
+              }}
+            >
+              {t('print.now')}
+            </Button>
+            <Button variant="ghost" onClick={onClose}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </div>
+        <div className="max-h-[75vh] overflow-auto rounded-[var(--radius-app)] border border-line bg-white">
+          <InvoicePaper ref={paper} doc={doc} options={options} />
+        </div>
+      </div>
+    </Sheet>
   );
 }

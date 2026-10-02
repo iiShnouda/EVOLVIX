@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatDate, type Locale, type TranslationKey } from '@skb/shared';
 import { Icon } from './Icon';
+import { Sheet } from './Sheet';
 import { useT } from '../lib/i18n';
+import { useDeviceInfo } from '../lib/device';
 import { periodOf, shiftPeriod, type Period, type PeriodMode } from '../lib/period';
 
 const MODES: { mode: PeriodMode; label: TranslationKey }[] = [
@@ -62,7 +64,7 @@ export function PeriodPicker({
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <button
           type="button"
           className="grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:text-fg"
@@ -73,7 +75,7 @@ export function PeriodPicker({
           <Icon name="chevronRight" size={16} className="rotate-180" />
         </button>
         {value.mode === 'custom' ? (
-          <span className="flex items-center gap-1 text-xs">
+          <span className="flex flex-wrap items-center gap-1 text-xs">
             <input
               type="date"
               className={dateInput}
@@ -133,16 +135,36 @@ export function CardPeriod({
   onChange: (p: Period | null) => void;
 }) {
   const { t, locale } = useT();
+  const { deviceClass } = useDeviceInfo();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
+    // On a phone the picker is a sheet of its own (closed by its own button).
+    if (deviceClass === 'phone') return;
     const close = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
-  }, [open]);
+  }, [open, deviceClass]);
+  const body = (
+    <>
+      <PeriodPicker value={value} onChange={(p) => onChange(p)} />
+      {own && (
+        <button
+          type="button"
+          className="text-xs text-brand hover:underline"
+          onClick={() => {
+            onChange(null);
+            setOpen(false);
+          }}
+        >
+          {t('period.sameAsTop')}
+        </button>
+      )}
+    </>
+  );
   return (
     <div ref={box} className="relative">
       <button
@@ -156,23 +178,20 @@ export function CardPeriod({
         <Icon name="calendar" size={13} />
         <span className="truncate tnum">{periodLabel(value, locale)}</span>
       </button>
-      {open && (
-        <div className="absolute end-0 top-9 z-30 w-max max-w-[calc(100vw-2rem)] space-y-2 rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-xl">
-          <PeriodPicker value={value} onChange={(p) => onChange(p)} />
-          {own && (
-            <button
-              type="button"
-              className="text-xs text-brand hover:underline"
-              onClick={() => {
-                onChange(null);
-                setOpen(false);
-              }}
-            >
-              {t('period.sameAsTop')}
-            </button>
-          )}
-        </div>
-      )}
+      {open &&
+        (deviceClass === 'phone' ? (
+          <Sheet
+            title={t('period.title')}
+            onClose={() => setOpen(false)}
+            closeLabel={t('common.close')}
+          >
+            <div className="space-y-3">{body}</div>
+          </Sheet>
+        ) : (
+          <div className="absolute end-0 top-9 z-30 w-max max-w-[min(32rem,calc(100vw-2rem))] space-y-2 rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-xl">
+            {body}
+          </div>
+        ))}
     </div>
   );
 }

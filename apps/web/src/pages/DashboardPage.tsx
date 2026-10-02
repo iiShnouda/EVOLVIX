@@ -196,7 +196,13 @@ export function DashboardPage() {
             <HistoryCard
               {...cardPeriod('recent')}
               className="xl:col-span-2"
-              onOpen={(id) => navigate(`/sales?doc=${id}`)}
+              onOpen={(doc) =>
+                navigate(
+                  `/${doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}?${
+                    doc.type.endsWith('RETURN') ? 'tab=returns&' : ''
+                  }doc=${doc.id}`,
+                )
+              }
             />
           )}
           <div className="space-y-4">
@@ -613,7 +619,7 @@ function HistoryCard({
   className,
   onOpen,
   ...p
-}: PeriodProps & { className?: string; onOpen: (id: string) => void }) {
+}: PeriodProps & { className?: string; onOpen: (doc: { id: string; type: string }) => void }) {
   const { t, locale } = useT();
   const { data } = useDashboard(p.period);
   const docs = data?.recentDocuments ?? [];
@@ -643,18 +649,31 @@ function HistoryCard({
                 <tr
                   key={doc.id}
                   className="cursor-pointer hover:bg-surface-2"
-                  onClick={() => onOpen(doc.id)}
+                  onClick={() => onOpen(doc)}
                 >
                   <td className="px-4 py-2.5 sm:px-5">
                     <span className="flex items-center gap-2">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
+                      <span
+                        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                          doc.type.endsWith('RETURN')
+                            ? 'bg-warning-soft text-warning'
+                            : doc.type.startsWith('PURCHASE')
+                              ? 'bg-info-soft text-info'
+                              : 'bg-brand-soft text-brand'
+                        }`}
+                      >
                         <Icon
                           name={doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}
                           size={16}
                         />
                       </span>
-                      <span className="tnum">
-                        <bdi>{doc.number}</bdi>
+                      <span className="min-w-0">
+                        <span className="block text-xs font-medium text-muted">
+                          {t(`statement.kind.${doc.type}` as TranslationKey)}
+                        </span>
+                        <span className="block tnum">
+                          <bdi>{doc.number}</bdi>
+                        </span>
                       </span>
                     </span>
                   </td>
