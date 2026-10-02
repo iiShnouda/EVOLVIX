@@ -228,7 +228,8 @@ public record CompanySettingsDto(
     int DefaultMarkupPercent, int MinMarkupPercent, int DefaultTaxPercent, bool TransfersRequireReceipt,
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
-    int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12);
+    int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
+    bool HideNewPlaces = true);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -252,7 +253,7 @@ public record UpdateSettingsRequest(
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
-    int? ReturnAfterHours = null);
+    int? ReturnAfterHours = null, bool? HideNewPlaces = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -302,6 +303,28 @@ public record ItemCardDto(
     InventoryItemDto Item, string From, string To, string? WarehouseId,
     int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
     StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency);
+
+/// <summary>
+/// One invoice line of an item, on its card (owner, 2026-10-02: the item's whole story). Quantities
+/// in base units; <c>UnitPrice</c>/<c>Net</c> for one base unit; cost and profit only for costs:view.
+/// </summary>
+public record ItemLifeLineDto(
+    string DocumentId, string Number, string Type, string Date, string? PartyName, int? PartyCode,
+    string? WarehouseName, string? BranchName, string? StaffName, int Quantity, int UnitQuantity, string? UnitName,
+    long? UnitPrice, long? Discount, long? Net, long? UnitCost, long? Profit, bool Bonus, bool Edited);
+
+/// <summary>An item's totals over its life: bought, sold and returned (base units), and what they came to.</summary>
+public record ItemLifeTotalsDto(
+    int Bought, int Sold, int ReturnedByCustomers, int ReturnedToSuppliers,
+    long? BoughtValue, long SoldValue, long? Profit, long? LastCost, long SalePrice, int? MarginPercent);
+
+/// <summary>
+/// The item card's story (كارت الصنف): each part only for the permission it needs (null = not allowed).
+/// </summary>
+public record ItemLifeDto(
+    string ProductId, string Name, string Sku, string? SupplierName, string? DepartmentName, string Currency,
+    ItemLifeTotalsDto Totals, ItemLifeLineDto[]? Purchases, ItemLifeLineDto[]? Sales, ItemLifeLineDto[]? Returns,
+    bool Prices, WarehouseStockDto[] Stock);
 
 public record ValuationRowDto(string Key, string Label, int Quantity, long Value);
 

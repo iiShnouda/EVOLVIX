@@ -40,6 +40,7 @@ import type {
   DashboardMore,
   InventoryList,
   ItemCard,
+  ItemLife,
   StocktakeInput,
   StocktakeResult,
   Valuation,
@@ -277,6 +278,10 @@ export interface RangeFilter {
 }
 
 export interface ItemFinderFilters {
+  /** A branch's warehouses (the stock counted is theirs). */
+  branchId: string;
+  /** Only the department's own items, not those of no department. */
+  onlyDepartment: boolean;
   departmentId: string;
   seasonId: string;
   warehouseId: string;
@@ -307,6 +312,8 @@ export function useItemFinder(filters: ItemFinderFilters, page = 1, size = 50) {
   const query = new URLSearchParams({ limit: String(size + 1), offset: String((page - 1) * size) });
   const set = (k: string, v: string | null) => v != null && v.trim() && query.set(k, v.trim());
   set('departmentId', filters.departmentId);
+  if (filters.onlyDepartment && filters.departmentId) query.set('onlyDepartment', 'true');
+  if (!filters.warehouseId) set('branchId', filters.branchId);
   set('seasonId', filters.seasonId);
   set('warehouseId', filters.warehouseId);
   set('supplierId', filters.supplierId);
@@ -609,6 +616,15 @@ export function useItemCard(id: string, from: string, to: string, warehouseId?: 
   return useQuery({
     queryKey: ['inventory', 'card', id, from, to, warehouseId ?? ''],
     queryFn: () => api.get<ItemCard>(`/inventory/items/${id}/card?${query}`),
+    enabled: !!id,
+  });
+}
+
+/** An item's whole story: purchases, sales, returns and prices (each part as permitted). */
+export function useItemLife(id: string | null) {
+  return useQuery({
+    queryKey: ['inventory', 'life', id],
+    queryFn: () => api.get<ItemLife>(`/inventory/items/${id}/life`),
     enabled: !!id,
   });
 }

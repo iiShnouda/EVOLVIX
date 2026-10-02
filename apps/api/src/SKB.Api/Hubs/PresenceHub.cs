@@ -15,6 +15,8 @@ namespace SKB.Api.Hubs;
 public sealed class PresenceHub : Hub
 {
     public const string Viewers = "presence-viewers";
+    /// <summary>Each person's own windows, told when their bell has something new.</summary>
+    public static string StaffGroup(Guid staffId) => $"staff:{staffId}";
     private const int MaxView = 40;
     private readonly PresenceTracker _tracker;
 
@@ -35,6 +37,8 @@ public sealed class PresenceHub : Hub
                 PresenceTracker.DeviceOf(http?.Request.Headers.UserAgent.ToString()),
                 http?.Connection.RemoteIpAddress?.ToString(),
                 DateTime.UtcNow, null, DateTime.UtcNow));
+            if (Guid.TryParse(userId, out var staffId))
+                await Groups.AddToGroupAsync(Context.ConnectionId, StaffGroup(staffId));
             if (user.HasClaim("permission", Permissions.PresenceView))
                 await Groups.AddToGroupAsync(Context.ConnectionId, Viewers);
             await Clients.Group(Viewers).SendAsync("presence:changed");

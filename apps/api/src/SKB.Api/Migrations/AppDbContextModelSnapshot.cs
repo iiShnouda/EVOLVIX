@@ -286,6 +286,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
+                    b.Property<bool>("HideNewPlaces")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LockDate")
                         .HasColumnType("timestamp with time zone");
 

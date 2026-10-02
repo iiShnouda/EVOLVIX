@@ -179,6 +179,86 @@ public sealed class InventoryController : ControllerBase
     }
 
     /// <summary>
+    /// The item's whole story (owner, 2026-10-02): every purchase (supplier, discount, cost), sale
+    /// (customer, price, discount, profit) and return, newest first, in the person's branches. Each
+    /// part needs its own permission; costs and profit need costs:view as everywhere.
+    /// </summary>
+    [HttpGet("items/{id:guid}/life")]
+    public async Task<ActionResult<ItemLifeDto>> Life(Guid id)
+    {
+        var product = await _db.Products.AsNoTracking().Include(p => p.Supplier)
+            .Include(p => p.Category).ThenInclude(c => c!.Department)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        if (product is null) return NotFound(new { message = "Item not found", code = "not_found" });
+        bool Has(string permission) => User.HasClaim("permission", permission);
+        var seeCosts = Costs.CanSee(User);
+        var canBuy = Has(Permissions.ProductsCardPurchases);
+        var canSell = Has(Permissions.ProductsCardSales);
+        var canReturn = Has(Permissions.ProductsCardReturns);
+
+        var types = new[] { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN, DocumentType.PURCHASE_INVOICE,
+            DocumentType.PURCHASE_RETURN };
+        var mine = _db.SalesDocuments.InBranches(User, d => d.BranchId).Select(d => d.Id);
+        var rows = await _db.DocumentLines.AsNoTracking()
+            .Where(l => l.ProductId == id && types.Contains(l.Document!.Type) && l.Document.Status != DocumentStatus.CANCELLED)
+            .Where(l => mine.Contains(l.DocumentId))
+            .OrderByDescending(l => l.Document!.IssueDate).ThenByDescending(l => l.LineNo)
+            .Select(l => new LifeRow(
+                l.DocumentId, l.Document!.Number, l.Document.Type, l.Document.IssueDate, l.Document.Party!.Name,
+                l.Document.Party.Code, l.Warehouse!.Name, l.Document.Branch!.Name, l.Document.Staff!.FullName,
+                l.Quantity, l.UnitQuantity, l.Unit!.Name, l.UnitPrice, l.UnitFactor, l.Discount, l.DocDiscount,
+                l.LineTotal, l.UnitCost, l.LineProfit, l.IsBonus,
+                _db.InvoiceRevisions.Any(r => r.DocumentId == l.DocumentId && r.Kind == "EDIT")))
+            .Take(MaxCardRows).ToListAsync();
+
+        ItemLifeLineDto ToLine(LifeRow r)
+        {
+            var net = r.LineTotal - r.DocDiscount;
+            var perUnit = r.Quantity > 0 ? (long)Math.Round((decimal)net / r.Quantity) : 0;
+            var factor = Math.Max(1, r.UnitFactor);
+            // What we paid a supplier is the supply price: only for costs:view, like every cost.
+            var hidden = !seeCosts && r.Type is DocumentType.PURCHASE_INVOICE or DocumentType.PURCHASE_RETURN;
+            return new ItemLifeLineDto(r.DocumentId.ToString(), r.Number, r.Type.ToString(),
+                DateTime.SpecifyKind(r.IssueDate, DateTimeKind.Utc).ToString("o"),
+                r.Party, r.PartyCode, r.Warehouse, r.Branch, r.Staff, r.Quantity, r.UnitQuantity, r.Unit,
+                hidden ? null : (long)Math.Round((decimal)r.UnitPrice / factor), hidden ? null : r.Discount + r.DocDiscount,
+                hidden ? null : perUnit,
+                seeCosts ? r.UnitCost : null, seeCosts ? r.LineProfit : null, r.IsBonus, r.Edited);
+        }
+
+        var buys = rows.Where(r => r.Type == DocumentType.PURCHASE_INVOICE).ToList();
+        var sells = rows.Where(r => r.Type == DocumentType.SALES_INVOICE).ToList();
+        var backIn = rows.Where(r => r.Type == DocumentType.SALES_RETURN).ToList();
+        var backOut = rows.Where(r => r.Type == DocumentType.PURCHASE_RETURN).ToList();
+        var lastCost = buys.FirstOrDefault() is { } last && last.Quantity > 0
+            ? (long)Math.Round((decimal)(last.LineTotal - last.DocDiscount) / last.Quantity) : (long?)null;
+        var cost = product.CostPrice > 0 ? product.CostPrice : lastCost ?? 0;
+        var totals = new ItemLifeTotalsDto(
+            buys.Sum(r => r.Quantity), sells.Sum(r => r.Quantity), backIn.Sum(r => r.Quantity), backOut.Sum(r => r.Quantity),
+            seeCosts ? buys.Sum(r => r.LineTotal - r.DocDiscount) : null,
+            sells.Sum(r => r.LineTotal - r.DocDiscount) - backIn.Sum(r => r.LineTotal - r.DocDiscount),
+            seeCosts ? sells.Sum(r => r.LineProfit) - backIn.Sum(r => r.LineProfit) : null,
+            seeCosts ? lastCost : null, product.SalePrice,
+            seeCosts && cost > 0 ? (int)Math.Round((product.SalePrice - cost) * 100m / cost) : null);
+
+        var limit = await _warehouses.LimitAsync(User);
+        var now = await _valuation.CurrentAsync(id);
+        var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch).ToDictionaryAsync(x => x.Id);
+        var stock = now.Quantity
+            .Where(kv => kv.Key.Product == id && kv.Value != 0 && (limit is null || limit.Contains(kv.Key.Warehouse)))
+            .Select(kv => Costs.Guard(User, new WarehouseStockDto(kv.Key.Warehouse.ToString(), Loc.Name(names[kv.Key.Warehouse]),
+                Loc.Name(names[kv.Key.Warehouse].Branch), kv.Value, now.ValueOf(id, kv.Key.Warehouse))))
+            .OrderBy(x => x.Name).ToArray();
+
+        return Ok(new ItemLifeDto(product.Id.ToString(), Loc.Name(product), product.Sku, product.Supplier?.Name,
+            product.Category?.Department is { } dep ? Loc.Name(dep) : null, await CurrencyAsync(), totals,
+            canBuy ? buys.Select(ToLine).ToArray() : null,
+            canSell ? sells.Select(ToLine).ToArray() : null,
+            canReturn ? backIn.Concat(backOut).OrderByDescending(r => r.IssueDate).Select(ToLine).ToArray() : null,
+            Has(Permissions.ProductsCardPrices), stock));
+    }
+
+    /// <summary>
     /// Stock valuation (تقييم المخزن) at the end of <paramref name="asOf"/> (default today):
     /// each warehouse's quantity × its branch's average cost, by category, item and warehouse. For a
     /// past date it replays the ledger (each warehouse's balance and each branch's average after
@@ -346,4 +426,10 @@ public sealed class InventoryController : ControllerBase
     private async Task<string> CurrencyAsync() =>
         await _db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
 
+
+    private sealed record LifeRow(
+        Guid DocumentId, string Number, DocumentType Type, DateTime IssueDate, string Party, int PartyCode,
+        string? Warehouse, string Branch, string Staff, int Quantity, int UnitQuantity, string? Unit, long UnitPrice,
+        int UnitFactor, long Discount, long DocDiscount, long LineTotal, long UnitCost, long LineProfit, bool IsBonus,
+        bool Edited);
 }

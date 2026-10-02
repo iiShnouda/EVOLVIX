@@ -89,6 +89,8 @@ public sealed class MoneyController : ControllerBase
             account.IsDefault = true;
         }
         _db.MoneyAccounts.Add(account);
+        await HttpContext.RequestServices.GetRequiredService<AccessService>()
+            .KeepNewHiddenAsync(NewKind.MoneyAccount, account.Id, CurrentUser.Id(User));
         await _db.SaveChangesAsync();
         if (req.OpeningBalance > 0)
         {

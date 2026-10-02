@@ -72,13 +72,22 @@ console.log('== admins can\'t escalate or touch owners');
 const adminEmail = `admin.${tag}@skb.local`;
 ok('owner adds an admin', await owner.post('/staff', { ...base, email: adminEmail, role: 'ADMIN', fullName: `Admin ${tag}` }));
 const admin = await login(adminEmail, 'Str0ngPass!');
-check('admin has no audit:view', !admin.user.permissions.includes('audit:view'));
+// The admin has every permission, new ones too (owner decision 2026-10-02).
+eq('admin has every permission', admin.user.permissions.length, perms.length);
+eq('admin role not editable', roles.find((r) => r.role === 'ADMIN').editable, false);
 eq('admin cannot add an owner', (await admin.post('/staff', { ...base, email: `o.${tag}@skb.local`, role: 'OWNER' })).data?.code, 'owner_only');
 eq('admin cannot edit the owner', (await admin.put(`/staff/${me.id}`, { phone: '1' })).data?.code, 'owner_only');
 eq('admin cannot promote to owner', (await admin.put(`/staff/${seller.id}`, { role: 'OWNER' })).data?.code, 'owner_only');
-eq('admin cannot grant what they lack', (await admin.put(`/staff/${seller.id}/permissions`, { granted: ['audit:view'] })).data?.code, 'not_your_permission');
-eq('admin cannot give a role what they lack', (await admin.put('/roles/SALES', { permissions: [...roles.find((r) => r.role === 'SALES').permissions, 'audit:view'] })).data?.code, 'not_your_permission');
-eq('admin cannot edit own role', (await admin.put('/roles/ADMIN', { permissions: [] })).data?.code, 'own_role');
+eq('nobody changes the admin role', (await admin.put('/roles/ADMIN', { permissions: [] })).data?.code, 'admin_fixed');
+// Someone who manages staff but lacks a permission can't hand it out.
+const mgrEmail = `mgr.${tag}@skb.local`;
+const mgrStaff = ok('owner adds a manager (accountant + staff)', await owner.post('/staff', { ...base, email: mgrEmail, role: 'ACCOUNTANT', fullName: `Mgr ${tag}` }));
+ok('…who may manage staff and roles', await owner.put(`/staff/${mgrStaff.id}/permissions`, { granted: ['staff:view', 'staff:manage', 'roles:manage'], revoked: [] }));
+const mgr = await login(mgrEmail, 'Str0ngPass!');
+eq('a manager cannot make an admin', (await mgr.put(`/staff/${seller.id}`, { role: 'ADMIN' })).data?.code, 'admin_only');
+eq('cannot grant what they lack', (await mgr.put(`/staff/${seller.id}/permissions`, { granted: ['audit:view'] })).data?.code, 'not_your_permission');
+eq('cannot give a role what they lack', (await mgr.put('/roles/SALES', { permissions: [...roles.find((r) => r.role === 'SALES').permissions, 'audit:view'] })).data?.code, 'not_your_permission');
+eq('cannot edit own role', (await mgr.put('/roles/ACCOUNTANT', { permissions: [] })).data?.code, 'own_role');
 ok('admin may grant what they hold', await admin.put(`/staff/${seller.id}/permissions`, { granted: ['sales:change_price', 'sales:return'], revoked: [] }));
 
 console.log('== self-lockout and deactivation');

@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
+using SKB.Api.Hubs;
 using SKB.Api.Domain;
 
 namespace SKB.Api.Services;
@@ -15,16 +17,40 @@ namespace SKB.Api.Services;
 public sealed class NotificationService
 {
     public const string InvoiceNew = "INVOICE_NEW", OrderPending = "ORDER_PENDING",
-        OrderApproved = "ORDER_APPROVED", OrderRejected = "ORDER_REJECTED";
+        OrderApproved = "ORDER_APPROVED", OrderRejected = "ORDER_REJECTED",
+        LimitWait = "LIMIT_WAIT", InvoiceEdited = "INVOICE_EDITED";
 
     private readonly AppDbContext _db;
     private readonly PermissionService _permissions;
+    private readonly IHubContext<PresenceHub> _hub;
+    private readonly HashSet<Guid> _toTell = new();
 
-    public NotificationService(AppDbContext db, PermissionService permissions)
+    public NotificationService(AppDbContext db, PermissionService permissions, IHubContext<PresenceHub> hub)
     {
         _db = db;
         _permissions = permissions;
+        _hub = hub;
+        // Once saved, each person told is told at once over the live connection (owner, 2026-10-02:
+        // "the notification doesn't come"); the app then reads its bell. Nothing but "look" is sent.
+        _db.SavedChanges += (_, _) =>
+        {
+            if (_toTell.Count == 0) return;
+            var groups = _toTell.Select(PresenceHub.StaffGroup).ToList();
+            _toTell.Clear();
+            _ = _hub.Clients.Groups(groups).SendAsync("notify");
+        };
     }
+
+    /// <summary>
+    /// A sale that waits over the customer's purchase limit (new or changed): tell whoever may accept
+    /// it (not its maker).
+    /// </summary>
+    public Task LimitWaitAsync(SalesDocument invoice, string partyName, string? departmentName, ClaimsPrincipal actor) =>
+        TellAsync(Permissions.SalesApprove, LimitWait, invoice, partyName, departmentName, actor);
+
+    /// <summary>A posted invoice was changed: tell whoever takes its payment (not who changed it).</summary>
+    public Task InvoiceEditedAsync(SalesDocument invoice, string partyName, string? departmentName, ClaimsPrincipal actor) =>
+        TellAsync(Permissions.SalesInvoiceAlerts, InvoiceEdited, invoice, partyName, departmentName, actor);
 
     /// <summary>A sales invoice was posted: tell whoever takes its payment (not its maker).</summary>
     public Task InvoiceNewAsync(SalesDocument invoice, string partyName, string? departmentName, ClaimsPrincipal actor) =>
@@ -65,11 +91,14 @@ public sealed class NotificationService
     }
 
     private void Add(Guid staffId, string kind, SalesDocument doc, string partyName, string? departmentName,
-        ClaimsPrincipal actor, string? message) =>
+        ClaimsPrincipal actor, string? message)
+    {
         _db.Notifications.Add(new Notification
         {
             StaffId = staffId, Kind = kind, DocumentId = doc.Id, DocumentNumber = doc.Number,
             PartyName = partyName, DepartmentName = departmentName, Amount = doc.GrandTotal,
             ActorName = CurrentUser.Name(actor), Message = message,
         });
+        _toTell.Add(staffId);
+    }
 }

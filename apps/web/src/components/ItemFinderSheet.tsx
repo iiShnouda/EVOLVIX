@@ -25,6 +25,8 @@ const cell =
 
 const NO_RANGE: RangeFilter = { op: 'eq', value: '' };
 const EMPTY: ItemFinderFilters = {
+  branchId: '',
+  onlyDepartment: false,
   departmentId: '',
   seasonId: '',
   warehouseId: '',
@@ -110,6 +112,8 @@ export function ItemFinderSheet({
   inStockFirst,
   checkStock,
   onInvoice,
+  branchId,
+  lockPlace,
 }: {
   /** `close`: the person is done (Add selected), else the sheet stays open for more. */
   onAdd: (items: FinderPick[], close: boolean) => void;
@@ -124,6 +128,10 @@ export function ItemFinderSheet({
   checkStock?: boolean;
   /** Base quantity of each item already on the invoice. */
   onInvoice?: Map<string, number>;
+  /** The invoice's branch: the search starts in it. */
+  branchId?: string;
+  /** A sale's branch, warehouse and department are the invoice's: shown, not changed. */
+  lockPlace?: boolean;
 }) {
   const { t, locale } = useT();
   const departments = useDepartments();
@@ -131,12 +139,16 @@ export function ItemFinderSheet({
   const warehouses = useWarehouses(true);
   const seeCosts = useCan()('costs:view');
   const [supplier, setSupplier] = useState<Party | null>(null);
+  // Only the invoice's department's own items (owner, 2026-10-02).
   const start: ItemFinderFilters = {
     ...EMPTY,
+    branchId: branchId ?? '',
     departmentId: departmentId ?? '',
+    onlyDepartment: !!departmentId,
     warehouseId: warehouseId ?? '',
     stock: inStockFirst ? 'in' : '',
   };
+  const [stop, setStop] = useState('');
   const [filters, setFilters] = useState<ItemFinderFilters>(start);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(50);
@@ -151,6 +163,21 @@ export function ItemFinderSheet({
   const [added, setAdded] = useState<Set<string>>(new Set());
   const table = useRef<HTMLDivElement>(null);
   const set = (patch: Partial<ItemFinderFilters>) => setFilters((d) => ({ ...d, ...patch }));
+  // Branches from the warehouses the person may see; warehouses of the chosen branch; departments
+  // of the chosen warehouse.
+  const stores = (warehouses.data ?? []).filter((w) => w.kind !== 'TRANSIT');
+  const branchList = [
+    ...new Map(stores.map((w) => [w.branchId, { id: w.branchId, name: w.branchName }])).values(),
+  ];
+  const storeList = stores.filter((w) => !filters.branchId || w.branchId === filters.branchId);
+  const departmentList = (departments.data ?? []).filter(
+    (d) =>
+      d.id === filters.departmentId ||
+      (d.isActive &&
+        (!filters.warehouseId ||
+          !d.warehouseIds?.length ||
+          d.warehouseIds.includes(filters.warehouseId))),
+  );
   const rows = useMemo(() => found.data?.items ?? [], [found.data]);
 
   const unitOf = (p: Product) => unit[p.id] ?? p.units[0]?.unitId ?? '';
@@ -177,6 +204,12 @@ export function ItemFinderSheet({
   /** Put one row on the invoice now, and go to the next row's quantity. */
   function addNow(p: Product, index: number) {
     const quantity = qtyOf(p) || 1;
+    // Never more than is in stock (owner, 2026-10-02); the server refuses it too.
+    if (checkStock && quantity * factorOf(p) + (onInvoice?.get(p.id) ?? 0) > p.stockOnHand) {
+      setStop(`${p.name}: ${t('finder.overStock')}`);
+      return;
+    }
+    setStop('');
     onAdd([{ product: p, unitId: unitOf(p), quantity }], false);
     setRowQty(p.id, '');
     setAdded((s) => new Set(s).add(p.id));
@@ -195,6 +228,12 @@ export function ItemFinderSheet({
   }
 
   function addPicked() {
+    const over = picked.find(overStock);
+    if (over) {
+      setStop(`${over.name}: ${t('finder.overStock')}`);
+      return;
+    }
+    setStop('');
     onAdd(
       picked.map((p) => ({ product: p, unitId: unitOf(p), quantity: qtyOf(p) })),
       true,
@@ -210,119 +249,145 @@ export function ItemFinderSheet({
       fill
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <div className="grid shrink-0 gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <label className="block lg:col-span-2">
-            <span className="mb-0.5 block text-xs text-muted">{t('finder.name')}</span>
-            <input
-              autoFocus
-              className={field}
-              value={filters.name}
-              onChange={(e) => set({ name: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('finder.code')}</span>
-            <input
-              className={field}
-              value={filters.code}
-              onChange={(e) => set({ code: e.target.value })}
-            />
-          </label>
-          {/* A sale's department is fixed by the invoice. */}
-          {!departmentId && (
+        {/* The filters in three even rows (owner, 2026-10-02): where, what, and the numbers. */}
+        <div className="shrink-0 space-y-2.5">
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+              <select
+                className={field}
+                disabled={lockPlace}
+                value={filters.branchId}
+                onChange={(e) =>
+                  set({ branchId: e.target.value, warehouseId: '', departmentId: '' })
+                }
+              >
+                <option value="">{t('finder.all')}</option>
+                {branchList.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+              <select
+                className={field}
+                disabled={lockPlace}
+                value={filters.warehouseId}
+                onChange={(e) => set({ warehouseId: e.target.value, departmentId: '' })}
+              >
+                <option value="">{t('finder.all')}</option>
+                {storeList.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('finder.department')}</span>
               <select
                 className={field}
+                disabled={!!departmentId}
                 value={filters.departmentId}
-                onChange={(e) => set({ departmentId: e.target.value })}
+                onChange={(e) =>
+                  set({ departmentId: e.target.value, onlyDepartment: !!e.target.value })
+                }
               >
                 <option value="">{t('finder.all')}</option>
-                {(departments.data ?? []).map((d) => (
+                {departmentList.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
                 ))}
               </select>
             </label>
-          )}
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
-            <select
-              className={field}
-              value={filters.seasonId}
-              onChange={(e) => set({ seasonId: e.target.value })}
-            >
-              <option value="">{t('finder.all')}</option>
-              {(seasons.data ?? []).map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
-            <select
-              className={field}
-              value={filters.warehouseId}
-              onChange={(e) => set({ warehouseId: e.target.value })}
-            >
-              <option value="">{t('finder.all')}</option>
-              {(warehouses.data ?? []).map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} · {w.branchName}
-                </option>
-              ))}
-            </select>
-          </label>
-          {/* The supplier by code or name, or items of none (بدون): then no supplier can be picked. */}
-          <div className="sm:col-span-2">
-            <PartyPicker
-              type="SUPPLIER"
-              withCode
-              value={supplier}
-              disabled={filters.supplierId === 'none'}
-              onChange={(p) => {
-                setSupplier(p);
-                set({ supplierId: p?.id ?? '' });
-              }}
-              label={t('finder.supplier')}
-              placeholder={t('finder.all')}
-            />
-            <label className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={filters.supplierId === 'none'}
-                onChange={(e) => {
-                  setSupplier(null);
-                  set({ supplierId: e.target.checked ? 'none' : '' });
-                }}
-              />
-              {t('finder.noSupplier')}
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
+              <select
+                className={field}
+                value={filters.seasonId}
+                onChange={(e) => set({ seasonId: e.target.value })}
+              >
+                <option value="">{t('finder.all')}</option>
+                {(seasons.data ?? []).map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
-          <Range
-            label={t('finder.salePrice')}
-            money
-            value={filters.sale}
-            onChange={(sale) => set({ sale })}
-          />
-          {seeCosts && (
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('finder.name')}</span>
+              <input
+                autoFocus
+                className={field}
+                value={filters.name}
+                onChange={(e) => set({ name: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('finder.code')}</span>
+              <input
+                className={field}
+                value={filters.code}
+                onChange={(e) => set({ code: e.target.value })}
+              />
+            </label>
+            {/* The supplier by code or name, or items of none (بدون): then no supplier can be picked. */}
+            <div className="col-span-2">
+              <PartyPicker
+                type="SUPPLIER"
+                withCode
+                value={supplier}
+                disabled={filters.supplierId === 'none'}
+                onChange={(p) => {
+                  setSupplier(p);
+                  set({ supplierId: p?.id ?? '' });
+                }}
+                label={t('finder.supplier')}
+                placeholder={t('finder.all')}
+              />
+              <label className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={filters.supplierId === 'none'}
+                  onChange={(e) => {
+                    setSupplier(null);
+                    set({ supplierId: e.target.checked ? 'none' : '' });
+                  }}
+                />
+                {t('finder.noSupplier')}
+              </label>
+            </div>
+          </div>
+          <div
+            className={`grid grid-cols-2 gap-2.5 ${seeCosts ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}
+          >
             <Range
-              label={t('finder.costPrice')}
+              label={t('finder.salePrice')}
               money
-              value={filters.cost}
-              onChange={(cost) => set({ cost })}
+              value={filters.sale}
+              onChange={(sale) => set({ sale })}
             />
-          )}
-          <Range
-            label={t('invoice.balance')}
-            value={filters.balance}
-            onChange={(balance) => set({ balance })}
-          />
-          <div className="flex items-end gap-2">
-            <label className="block flex-1">
+            {seeCosts && (
+              <Range
+                label={t('finder.costPrice')}
+                money
+                value={filters.cost}
+                onChange={(cost) => set({ cost })}
+              />
+            )}
+            <Range
+              label={t('invoice.balance')}
+              value={filters.balance}
+              onChange={(balance) => set({ balance })}
+            />
+            <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('finder.stock')}</span>
               <select
                 className={field}
@@ -335,19 +400,25 @@ export function ItemFinderSheet({
                 <option value="low">{t('finder.stockLow')}</option>
               </select>
             </label>
+            <div className="flex items-end">
+              <Button
+                variant="secondary"
+                className="w-full"
+                icon="close"
+                onClick={() => {
+                  setFilters(start);
+                  setSupplier(null);
+                }}
+              >
+                {t('finder.reset')}
+              </Button>
+            </div>
           </div>
-          <div className="flex items-end">
-            <Button
-              variant="secondary"
-              className="w-full"
-              onClick={() => {
-                setFilters(start);
-                setSupplier(null);
-              }}
-            >
-              {t('finder.reset')}
-            </Button>
-          </div>
+          {stop && (
+            <p className="rounded-[var(--radius-app)] bg-destructive-soft px-3 py-2 text-sm text-destructive">
+              {stop}
+            </p>
+          )}
         </div>
 
         {/* Only the list scrolls (owner, 2026-10-01). */}
@@ -364,6 +435,7 @@ export function ItemFinderSheet({
               className={`min-h-0 flex-1 overflow-auto transition-opacity ${found.isPlaceholderData ? 'opacity-60' : ''}`}
             >
               <TableColumns id="itemFinder">
+                {/* What to pick comes first, so the add button is never off the screen. */}
                 <table className="w-full whitespace-nowrap text-[13px]">
                   <thead className="sticky top-0 z-10 border-b border-line bg-surface-2 text-xs text-muted">
                     <tr>
@@ -383,18 +455,20 @@ export function ItemFinderSheet({
                           }
                         />
                       </th>
-                      <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('item.season')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('common.code')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
-                      <th className="px-2 py-2 text-end font-medium">{t('invoice.price')}</th>
-                      <th className="px-2 py-2 text-end font-medium">{t('inventory.reorder')}</th>
-                      <th className="px-2 py-2 text-end font-medium">{t('invoice.balance')}</th>
-                      <th className="px-2 py-2 text-end font-medium">{t('finder.onInvoice')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('finder.unit')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('finder.qty')}</th>
-                      <th className="w-10 px-2 py-2" />
+                      <th className="px-2 py-2 text-start font-medium">{t('finder.addOne')}</th>
+                      <th className="px-2 py-2 text-end font-medium">{t('invoice.price')}</th>
+                      {seeCosts && (
+                        <th className="px-2 py-2 text-end font-medium">{t('finder.costPrice')}</th>
+                      )}
+                      <th className="px-2 py-2 text-end font-medium">{t('invoice.balance')}</th>
+                      <th className="px-2 py-2 text-end font-medium">{t('finder.onInvoice')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
+                      <th className="px-2 py-2 text-start font-medium">{t('item.season')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--c-line)]">
@@ -402,6 +476,7 @@ export function ItemFinderSheet({
                       const on = qtyOf(p) > 0;
                       const over = overStock(p);
                       const already = onInvoice?.get(p.id) ?? 0;
+                      const empty = !!checkStock && p.stockOnHand - already <= 0;
                       return (
                         <tr
                           key={p.id}
@@ -412,30 +487,16 @@ export function ItemFinderSheet({
                               type="checkbox"
                               aria-label={p.name}
                               checked={on}
+                              disabled={empty}
                               onChange={() => toggle(p)}
                             />
                           </td>
-                          <td className="px-2 py-1 text-muted">{p.departmentName ?? ''}</td>
-                          <td className="px-2 py-1 text-muted">{p.seasonName ?? ''}</td>
                           <td className="px-2 py-1 tnum">{p.sku}</td>
                           <td
                             className="max-w-64 cursor-pointer truncate px-2 py-1 font-medium"
-                            onClick={() => toggle(p)}
+                            onClick={() => !empty && toggle(p)}
                           >
                             {p.name}
-                          </td>
-                          <td className="px-2 py-1 text-muted">{p.supplierName ?? ''}</td>
-                          <td className="px-2 py-1 text-end tnum">
-                            {formatMoney(p.salePrice, p.currency, locale)}
-                          </td>
-                          <td className="px-2 py-1 text-end tnum">{p.reorderLevel || ''}</td>
-                          <td
-                            className={`px-2 py-1 text-end tnum ${p.stockOnHand <= 0 ? 'text-destructive' : p.reorderLevel > 0 && p.stockOnHand <= p.reorderLevel ? 'text-warning' : ''}`}
-                          >
-                            {formatQuantity(p.stockOnHand, p.units, locale)}
-                          </td>
-                          <td className="px-2 py-1 text-end tnum text-brand">
-                            {already > 0 ? formatQuantity(already, p.units, locale) : ''}
                           </td>
                           <td className="px-2 py-1">
                             <select
@@ -462,6 +523,7 @@ export function ItemFinderSheet({
                               data-qty={i}
                               aria-label={t('finder.qty')}
                               title={over ? t('finder.overStock') : undefined}
+                              disabled={empty}
                               className={`${cell} w-20 tnum ${over ? 'border-destructive text-destructive' : ''}`}
                               value={qty[p.id] ?? ''}
                               onChange={(e) => setRowQty(p.id, e.target.value)}
@@ -479,12 +541,33 @@ export function ItemFinderSheet({
                               type="button"
                               title={t('finder.addOne')}
                               aria-label={`${t('finder.addOne')} ${p.name}`}
+                              disabled={empty || over}
                               onClick={() => addNow(p, i)}
-                              className={`grid h-8 w-8 place-items-center rounded-[var(--radius-app)] ${added.has(p.id) ? 'bg-positive text-white' : 'bg-brand text-brand-fg hover:opacity-90'}`}
+                              className={`flex h-8 items-center gap-1 rounded-[var(--radius-app)] px-2.5 text-xs font-semibold disabled:opacity-40 ${added.has(p.id) ? 'bg-positive text-white' : 'bg-brand text-brand-fg hover:opacity-90'}`}
                             >
-                              <Icon name={added.has(p.id) ? 'check' : 'plus'} size={16} />
+                              <Icon name={added.has(p.id) ? 'check' : 'plus'} size={15} />
+                              {t('finder.addShort')}
                             </button>
                           </td>
+                          <td className="px-2 py-1 text-end tnum">
+                            {formatMoney(p.salePrice, p.currency, locale)}
+                          </td>
+                          {seeCosts && (
+                            <td className="px-2 py-1 text-end tnum text-muted">
+                              {formatMoney(p.costPrice, p.currency, locale)}
+                            </td>
+                          )}
+                          <td
+                            className={`px-2 py-1 text-end tnum ${p.stockOnHand <= 0 ? 'text-destructive' : p.reorderLevel > 0 && p.stockOnHand <= p.reorderLevel ? 'text-warning' : ''}`}
+                          >
+                            {formatQuantity(p.stockOnHand, p.units, locale)}
+                          </td>
+                          <td className="px-2 py-1 text-end tnum text-brand">
+                            {already > 0 ? formatQuantity(already, p.units, locale) : ''}
+                          </td>
+                          <td className="px-2 py-1 text-muted">{p.supplierName ?? ''}</td>
+                          <td className="px-2 py-1 text-muted">{p.departmentName ?? ''}</td>
+                          <td className="px-2 py-1 text-muted">{p.seasonName ?? ''}</td>
                         </tr>
                       );
                     })}

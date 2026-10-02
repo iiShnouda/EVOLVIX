@@ -153,13 +153,15 @@ public sealed class CatalogController : ControllerBase
 
     [HttpPost("departments")]
     [Authorize(Policy = Permissions.CategoriesManage)]
-    public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req)
+    public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req,
+        [FromServices] AccessService access)
     {
         var department = new Department();
         var error = await NameAsync(department, req.Name, _db.Departments, "department")
                     ?? PrefixOf(department, req.Prefix);
         if (error is not null) return error;
         _db.Departments.Add(department);
+        await access.KeepNewHiddenAsync(NewKind.Department, department.Id, CurrentUser.Id(User));
         await SaveAsync("create", "department", department.Id);
         return Created($"/api/departments/{department.Id}", ToDto(department, 0));
     }

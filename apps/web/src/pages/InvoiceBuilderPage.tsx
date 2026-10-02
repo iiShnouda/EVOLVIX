@@ -30,6 +30,7 @@ import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { useDeviceInfo } from '../lib/device';
 import { useWorkPlace } from '../lib/workPlace';
+import { ItemLifeSheet } from '../components/ItemLifeSheet';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
@@ -69,6 +70,9 @@ interface Line {
    */
   discMode: LineDiscountMode;
   discValue: string;
+  /** A second discount on the same line, taken after the first (owner, 2026-10-02: "two discounts a piece"). */
+  disc2Mode: LineDiscountMode;
+  disc2Value: string;
   /** Sold at the selling price, the customer's last price or cost, chosen per item (owner, 2026-10-01). */
   basis: PriceBasis;
 }
@@ -88,6 +92,12 @@ function lineDiscount(mode: LineDiscountMode, value: string, gross: number, base
   return Math.min(gross, Math.max(0, d));
 }
 
+/** Both of a line's own discounts: the second on what is left after the first. */
+function lineDiscounts(l: Line, gross: number, basePieces: number) {
+  const first = lineDiscount(l.discMode, l.discValue, gross, basePieces);
+  return first + lineDiscount(l.disc2Mode, l.disc2Value, gross - first, basePieces);
+}
+
 /** A line as kept in a draft. */
 const keepLine = (l: Line) => ({
   productId: l.product.id,
@@ -99,6 +109,8 @@ const keepLine = (l: Line) => ({
   bonus: l.bonus,
   discMode: l.discMode,
   discValue: l.discValue,
+  disc2Mode: l.disc2Mode,
+  disc2Value: l.disc2Value,
   basis: l.basis,
 });
 
@@ -332,6 +344,10 @@ export function InvoiceBuilderPage({
   // Items being prepared before they go on the invoice (owner, 2026-10-01): quantity, unit, price,
   // discount and basis are set here, with the prices to compare, then "Add" puts them all on it.
   const [staged, setStaged] = useState<Line[]>([]);
+  // Lines whose second discount was asked for.
+  const [second, setSecond] = useState<Set<string>>(new Set());
+  // The item whose card is open (clicking its name while making the invoice).
+  const [cardOf, setCardOf] = useState<string | null>(null);
   // What each item already has on the invoice (base units), shown in the detailed search.
   const onInvoice = useMemo(() => {
     const m = new Map<string, number>();
@@ -451,6 +467,8 @@ export function InvoiceBuilderPage({
           bonus: false,
           discMode: 'percent',
           discValue: '',
+          disc2Mode: 'percent',
+          disc2Value: '',
           basis: 'LIST',
         },
       ];
@@ -504,8 +522,7 @@ export function InvoiceBuilderPage({
     const price = priceOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
     const gross = l.quantity * price;
-    const manual =
-      isSale && !l.bonus ? lineDiscount(l.discMode, l.discValue, gross, l.quantity * factor) : 0;
+    const manual = isSale && !l.bonus ? lineDiscounts(l, gross, l.quantity * factor) : 0;
     // A discount typed on the line replaces its quantity discount.
     const discount = manual > 0 ? manual : autoDiscountOf(l, i);
     const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
@@ -820,6 +837,10 @@ export function InvoiceBuilderPage({
               bonus: l.bonus === true,
               discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
               discValue: text(l.discValue),
+              disc2Mode: modes.includes(l.disc2Mode as LineDiscountMode)
+                ? (l.disc2Mode as LineDiscountMode)
+                : 'percent',
+              disc2Value: text(l.disc2Value),
               basis: bases.includes(l.basis as PriceBasis) ? (l.basis as PriceBasis) : 'LIST',
             },
           ];
@@ -905,6 +926,8 @@ export function InvoiceBuilderPage({
             bonus: false,
             discMode: 'amount' as LineDiscountMode,
             discValue: l.discount > 0 ? String(toMajor(l.discount)) : '',
+            disc2Mode: 'percent' as LineDiscountMode,
+            disc2Value: '',
             basis: 'LIST' as PriceBasis,
           },
         ];
@@ -921,6 +944,7 @@ export function InvoiceBuilderPage({
 
   /** Put every prepared item on the invoice. */
   function addStaged() {
+    if (staged.some(stagedTooMany)) return;
     setLines((prev) => [...prev, ...staged]);
     setStaged([]);
     searchBox.current?.focus();
@@ -928,10 +952,16 @@ export function InvoiceBuilderPage({
   /** Put one prepared item on the invoice; the others stay to be prepared. */
   function addOneStaged(key: string) {
     const one = staged.find((l) => l.key === key);
-    if (!one) return;
+    if (!one || stagedTooMany(one)) return;
     setLines((prev) => [...prev, one]);
     setStaged((prev) => prev.filter((l) => l.key !== key));
   }
+  /** A prepared item asking for more than is left in the warehouse (a sale never goes over). */
+  const stagedTooMany = (l: Line) =>
+    isSale &&
+    !isQuote &&
+    l.quantity * (unitOf(l)?.factor ?? 1) >
+      available(l.product) - (baseWanted.get(l.product.id) ?? 0);
   const updateStaged = (key: string, patch: Partial<Line>) =>
     setStaged((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -957,14 +987,14 @@ export function InvoiceBuilderPage({
             const ruled = info?.unitPrice ?? suggested(l);
             const price = priceEditable && l.touched ? l.price : ruled;
             const gross = l.quantity * price;
-            const manual = isSale
-              ? lineDiscount(l.discMode, l.discValue, gross, l.quantity * factor)
-              : 0;
+            const manual = isSale ? lineDiscounts(l, gross, l.quantity * factor) : 0;
             const discount =
               manual > 0 ? manual : priceEditable && l.touched ? 0 : (info?.discount ?? 0);
             const total = gross - discount;
             const changed = price !== list;
             const label = 'mb-0.5 block text-[11px] text-muted';
+            const left = available(l.product) - (baseWanted.get(l.product.id) ?? 0);
+            const tooMany = isSale && !isQuote && l.quantity * factor > left;
             return (
               <li
                 key={l.key}
@@ -973,8 +1003,22 @@ export function InvoiceBuilderPage({
                 {/* What it is, how many, and on which basis. */}
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-40 flex-1">
-                    <span className="block truncate text-sm font-medium">{l.product.name}</span>
+                    <button
+                      type="button"
+                      className="block max-w-full truncate text-start text-sm font-medium hover:text-brand hover:underline"
+                      title={t('itemCard.open')}
+                      onClick={() => setCardOf(l.product.id)}
+                    >
+                      {l.product.name}
+                    </button>
                     <span className="text-xs text-faint tnum">{l.product.sku}</span>
+                    {/* What is left in the warehouse after the lines already on the invoice. */}
+                    <span
+                      className={`ms-2 text-xs tnum ${isSale && !isQuote && l.quantity * factor > left ? 'font-semibold text-destructive' : 'text-muted'}`}
+                    >
+                      {t('invoice.balance')}:{' '}
+                      {formatQuantity(Math.max(0, left), l.product.units, locale)}
+                    </span>
                   </div>
                   <label className="block">
                     <span className={label}>{t('col.unit')}</span>
@@ -1039,10 +1083,10 @@ export function InvoiceBuilderPage({
                     </label>
                   )}
                   <Button
-                    size="sm"
-                    variant="secondary"
                     icon="plus"
                     className="ms-auto"
+                    disabled={tooMany}
+                    title={tooMany ? t('finder.overStock') : undefined}
                     onClick={() => addOneStaged(l.key)}
                   >
                     {t('stage.addOne')}
@@ -1121,6 +1165,45 @@ export function InvoiceBuilderPage({
                       </span>
                     </label>
                   )}
+                  {/* A second discount once the first has a value (owner, 2026-10-02). */}
+                  {canDiscount &&
+                    isSale &&
+                    l.discValue &&
+                    (l.disc2Value || second.has(l.key) ? (
+                      <label className="block">
+                        <span className={label}>{t('invoice.lineDiscount2')}</span>
+                        <span className="flex gap-1">
+                          <select
+                            className={`${cell} w-20`}
+                            value={l.disc2Mode}
+                            aria-label={t('invoice.lineDiscount2')}
+                            onChange={(e) =>
+                              updateStaged(l.key, { disc2Mode: e.target.value as LineDiscountMode })
+                            }
+                          >
+                            <option value="percent">%</option>
+                            <option value="piece">{t('invoice.perPiece')}</option>
+                            <option value="amount">{t('invoice.amountShort')}</option>
+                          </select>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            className={`${cell} w-20 tnum`}
+                            value={l.disc2Value}
+                            onChange={(e) => updateStaged(l.key, { disc2Value: e.target.value })}
+                          />
+                        </span>
+                      </label>
+                    ) : (
+                      <button
+                        type="button"
+                        className="h-8 whitespace-nowrap text-xs font-medium text-brand hover:underline"
+                        onClick={() => setSecond((x) => new Set(x).add(l.key))}
+                      >
+                        + {t('invoice.addDiscount2')}
+                      </button>
+                    ))}
                   <span>
                     <span className={label}>{t('col.afterDiscount')}</span>
                     <span className="tnum">
@@ -1140,7 +1223,7 @@ export function InvoiceBuilderPage({
           <Button size="sm" variant="ghost" onClick={() => setStaged([])}>
             {t('stage.clear')}
           </Button>
-          <Button size="sm" icon="plus" onClick={addStaged}>
+          <Button size="sm" icon="plus" disabled={staged.some(stagedTooMany)} onClick={addStaged}>
             {t('stage.addAll')}
           </Button>
         </div>
@@ -1259,6 +1342,45 @@ export function InvoiceBuilderPage({
             <option value="piece">{t('invoice.perPiece')}</option>
             <option value="amount">{t('invoice.onLine')}</option>
           </select>
+          {/* The second discount shows once the first has a value. */}
+          {canDiscount && r.line.discValue && !r.line.disc2Value && !second.has(r.line.key) && (
+            <button
+              type="button"
+              className="whitespace-nowrap text-xs font-medium text-brand hover:underline"
+              onClick={() => setSecond((s) => new Set(s).add(r.line.key))}
+            >
+              + {t('invoice.addDiscount2')}
+            </button>
+          )}
+          {(r.line.disc2Value || second.has(r.line.key)) && (
+            <>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
+                aria-label={t('invoice.lineDiscount2')}
+                title={t('invoice.lineDiscount2')}
+                disabled={!canDiscount}
+                value={r.line.disc2Value}
+                onChange={(e) => updateLine(r.line.key, { disc2Value: e.target.value })}
+              />
+              <select
+                className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
+                aria-label={t('invoice.lineDiscount2')}
+                disabled={!canDiscount}
+                value={r.line.disc2Mode}
+                onChange={(e) =>
+                  updateLine(r.line.key, { disc2Mode: e.target.value as LineDiscountMode })
+                }
+              >
+                <option value="percent">%</option>
+                <option value="piece">{t('invoice.perPiece')}</option>
+                <option value="amount">{t('invoice.onLine')}</option>
+              </select>
+            </>
+          )}
           {r.discount > 0 && (
             <span className="text-warning">−{formatMoney(r.discount, currency, locale)}</span>
           )}
@@ -1343,7 +1465,12 @@ export function InvoiceBuilderPage({
             aria-label={t('invoice.removeDiscount')}
             title={t('invoice.removeDiscount')}
             onClick={() => {
-              updateLine(r.line.key, { discValue: '' });
+              updateLine(r.line.key, { discValue: '', disc2Value: '' });
+              setSecond((s) => {
+                const next = new Set(s);
+                next.delete(r.line.key);
+                return next;
+              });
               setLineDiscountOpen((s) => {
                 const next = new Set(s);
                 next.delete(r.line.key);
@@ -1399,7 +1526,14 @@ export function InvoiceBuilderPage({
       className: 'min-w-40',
       cell: (r) => (
         <>
-          <span className="block font-medium">{r.line.product.name}</span>
+          <button
+            type="button"
+            className="block text-start font-medium hover:text-brand hover:underline"
+            title={t('itemCard.open')}
+            onClick={() => setCardOf(r.line.product.id)}
+          >
+            {r.line.product.name}
+          </button>
           <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">{lineNotes(r)}</span>
           {lineWarning(r, 'mt-1')}
         </>
@@ -1745,7 +1879,6 @@ export function InvoiceBuilderPage({
                       setSearch(e.target.value);
                       setListOpen(true);
                     }}
-                    onFocus={() => setListOpen(true)}
                     onClick={() => setListOpen(true)}
                     // Later than a click on a result, so the click still lands.
                     onBlur={() => setTimeout(() => setListOpen(false), 150)}
@@ -1835,6 +1968,8 @@ export function InvoiceBuilderPage({
               <ItemFinderSheet
                 departmentId={departmentId || undefined}
                 warehouseId={warehouseId || undefined}
+                branchId={pickedBranch || undefined}
+                lockPlace={isSale && !!warehouseId}
                 inStockFirst={isSale && !isQuote}
                 checkStock={isSale && !isQuote}
                 onInvoice={onInvoice}
@@ -1846,8 +1981,28 @@ export function InvoiceBuilderPage({
               />
             )}
 
+            {cardOf && <ItemLifeSheet productId={cardOf} onClose={() => setCardOf(null)} />}
+
             {/* Items being prepared (owner, 2026-10-01): set them up, compare prices, then add. */}
             {staged.length > 0 && renderStaging()}
+
+            {/* Clear every item at once (owner, 2026-10-02). */}
+            {rows.length > 0 && (
+              <div className="mt-3 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="close"
+                  onClick={() => {
+                    if (!window.confirm(t('invoice.clearLinesAsk'))) return;
+                    setLines([]);
+                    setSecond(new Set());
+                  }}
+                >
+                  {t('invoice.clearLines')}
+                </Button>
+              </div>
+            )}
 
             {/* Lines */}
             {rows.length === 0 ? (
@@ -2076,8 +2231,9 @@ export function InvoiceBuilderPage({
                       + {t('invoice.addDiscount')}
                     </button>
                   )}
-                  {/* Two discounts, each a percent or an amount (owner, 2026-10-02). */}
-                  {!showDiscount2 && !discount2.value && (
+                  {/* Two discounts, each a percent or an amount; the second once the first has
+                      a value (owner, 2026-10-02). */}
+                  {!showDiscount2 && !discount2.value && !!discount1.value && (
                     <button
                       type="button"
                       className="text-xs font-medium text-brand hover:underline"
@@ -2367,6 +2523,8 @@ interface InvoiceDraft {
     bonus: boolean;
     discMode: LineDiscountMode;
     discValue: string;
+    disc2Mode?: LineDiscountMode;
+    disc2Value?: string;
     basis?: PriceBasis;
   }[];
   /** Items being prepared, not on the invoice yet. */

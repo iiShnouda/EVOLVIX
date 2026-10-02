@@ -155,6 +155,15 @@ public static class Permissions
     public const string ProductsEdit = "products:edit";
     /// <summary>Stop an item (or reopen it).</summary>
     public const string ProductsClose = "products:close";
+    // The item's whole story on its card (owner, 2026-10-02): each part needs its own permission.
+    /// <summary>The item card's purchases: from which supplier, when, how many and the supplier's discount.</summary>
+    public const string ProductsCardPurchases = "products:card_purchases";
+    /// <summary>The item card's sales: to whom, when, how many, at what price and discount.</summary>
+    public const string ProductsCardSales = "products:card_sales";
+    /// <summary>The item card's returns, from customers and to suppliers.</summary>
+    public const string ProductsCardReturns = "products:card_returns";
+    /// <summary>The item card's price changes: its price on each invoice against the one before.</summary>
+    public const string ProductsCardPrices = "products:card_prices";
     /// <summary>Set item and model prices at each price level.</summary>
     public const string PricesEdit = "prices:edit";
     /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
@@ -209,7 +218,8 @@ public static class Permissions
         SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
-        ProductsClose, SalesReturnFree, PurchasesReturnFree, StaffView, StaffManage, RolesManage, StaffAccess,
+        ProductsClose, SalesReturnFree, PurchasesReturnFree,
+        ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
@@ -234,9 +244,8 @@ public static class RolePermissions
     public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
-        // Costs and profit stay with the owner by default; the owner can give them to anyone.
-        [Role.ADMIN] = All.Where(p => p != Permissions.AuditView && p != Permissions.BackupCreate
-            && p != Permissions.CostsView).ToArray(),
+        // The admin has every permission, and every one added later (owner decision 2026-10-02).
+        [Role.ADMIN] = All,
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,
@@ -251,6 +260,7 @@ public static class RolePermissions
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.InventoryStocktake,
             Permissions.InventoryTransfer, Permissions.ProductsClose, Permissions.PartiesClose,
             Permissions.SalesReturnFree, Permissions.PurchasesReturnFree,
+            Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
             Permissions.AnalyticsView, Permissions.SettingsView,
             Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.PricesEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,
@@ -289,7 +299,7 @@ public static class RolePermissions
         {
             Permissions.DashboardView, Permissions.InventoryView, Permissions.InventoryEdit,
             Permissions.InventoryStocktake, Permissions.InventoryTransfer, Permissions.ProductsClose,
-            Permissions.PurchasesReturnFree,
+            Permissions.PurchasesReturnFree, Permissions.ProductsCardPurchases, Permissions.ProductsCardReturns,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
             Permissions.ProductsCreate, Permissions.ProductsEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,

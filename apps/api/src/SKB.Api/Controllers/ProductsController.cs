@@ -54,14 +54,41 @@ public sealed class ProductsController : ControllerBase
         [FromQuery] long? costMin = null, [FromQuery] long? costMax = null,
         [FromQuery] int? reorderMin = null, [FromQuery] int? reorderMax = null,
         [FromQuery] int? stockMin = null, [FromQuery] int? stockMax = null,
-        [FromQuery] string? warehouseId = null, [FromQuery] int offset = 0)
+        [FromQuery] string? warehouseId = null, [FromQuery] int offset = 0,
+        // A branch's warehouses (owner, 2026-10-02: branch, warehouse and department in the finder),
+        // and only the department's own items, not those of no department.
+        [FromQuery] string? branchId = null, [FromQuery] bool onlyDepartment = false)
     {
         limit = Math.Clamp(limit, 1, 200);
         offset = Math.Max(0, offset);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
-        if (inStockOnly || stock == "in") q = q.Where(p => p.StockOnHand > 0);
-        else if (stock == "out") q = q.Where(p => p.StockOnHand <= 0);
-        else if (stock == "low") q = q.Where(p => p.ReorderLevel > 0 && p.StockOnHand <= p.ReorderLevel);
+
+        // A warehouse or a branch: the stock counted is what is there (and only what the person may see).
+        IQueryable<Guid>? stores = null;
+        if (Guid.TryParse(warehouseId, out var wh))
+            stores = _warehouses.Visible(User).Where(w => w.Id == wh).Select(w => w.Id);
+        else if (Guid.TryParse(branchId, out var br))
+            stores = _warehouses.Visible(User).Where(w => w.BranchId == br && w.Kind != WarehouseKind.TRANSIT)
+                .Select(w => w.Id);
+        if (stores is not null)
+        {
+            var held = _db.StockBalances.Where(b => stores.Contains(b.WarehouseId));
+            q = q.Where(p => held.Any(b => b.ProductId == p.Id));
+            if (inStockOnly || stock == "in") q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) > 0);
+            else if (stock == "out") q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= 0);
+            else if (stock == "low")
+                q = q.Where(p => p.ReorderLevel > 0 && held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= p.ReorderLevel);
+            if (stockMin is int wMin) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) >= wMin);
+            if (stockMax is int wMax) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= wMax);
+        }
+        else
+        {
+            if (inStockOnly || stock == "in") q = q.Where(p => p.StockOnHand > 0);
+            else if (stock == "out") q = q.Where(p => p.StockOnHand <= 0);
+            else if (stock == "low") q = q.Where(p => p.ReorderLevel > 0 && p.StockOnHand <= p.ReorderLevel);
+            if (stockMin is int sMin) q = q.Where(p => p.StockOnHand >= sMin);
+            if (stockMax is int sMax) q = q.Where(p => p.StockOnHand <= sMax);
+        }
         if (!string.IsNullOrWhiteSpace(code))
         {
             var c = code.Trim().ToLower();
@@ -80,19 +107,6 @@ public sealed class ProductsController : ControllerBase
         }
         if (reorderMin is int rMin) q = q.Where(p => p.ReorderLevel >= rMin);
         if (reorderMax is int rMax) q = q.Where(p => p.ReorderLevel <= rMax);
-        if (Guid.TryParse(warehouseId, out var wh))
-        {
-            // That warehouse's items, and their balance there.
-            var held = _db.StockBalances.Where(b => b.WarehouseId == wh);
-            q = q.Where(p => held.Any(b => b.ProductId == p.Id));
-            if (stockMin is int wMin) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) >= wMin);
-            if (stockMax is int wMax) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= wMax);
-        }
-        else
-        {
-            if (stockMin is int sMin) q = q.Where(p => p.StockOnHand >= sMin);
-            if (stockMax is int sMax) q = q.Where(p => p.StockOnHand <= sMax);
-        }
         if (minPrice is long min) q = q.Where(p => p.SalePrice >= min);
         if (maxPrice is long max) q = q.Where(p => p.SalePrice <= max);
         if (Guid.TryParse(categoryId, out var category)) q = q.Where(p => p.CategoryId == category);
@@ -102,7 +116,9 @@ public sealed class ProductsController : ControllerBase
         {
             if (!Guid.TryParse(departmentId, out var dept))
                 return BadRequest(new { message = "Department not found.", code = "department_not_found" });
-            q = q.Where(p => p.Category!.DepartmentId == null || p.Category.DepartmentId == dept);
+            q = onlyDepartment
+                ? q.Where(p => p.Category!.DepartmentId == dept)
+                : q.Where(p => p.Category!.DepartmentId == null || p.Category.DepartmentId == dept);
         }
         if (Access.Departments(User) is { } mine)
             q = q.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
@@ -151,8 +167,21 @@ public sealed class ProductsController : ControllerBase
 
         var book = await PriceBook.LoadAsync(_db, rows.Select(p => p.Id));
         var purchaseLevels = PurchaseLevelIds(book);
-        return Ok(rows.Select(p => Costs.Guard(User,
-            Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null), purchaseLevels)).ToArray());
+        Dictionary<Guid, int>? there = null;
+        if (stores is not null)
+        {
+            var ids = rows.Select(p => p.Id).ToList();
+            there = await _db.StockBalances.AsNoTracking()
+                .Where(b => ids.Contains(b.ProductId) && stores.Contains(b.WarehouseId))
+                .GroupBy(b => b.ProductId).Select(g => new { g.Key, Qty = g.Sum(b => b.Quantity) })
+                .ToDictionaryAsync(x => x.Key, x => x.Qty);
+        }
+        return Ok(rows.Select(p =>
+        {
+            var dto = Costs.Guard(User,
+                Mapper.ToProduct(p, book, p.Id == exact?.ProductId ? exact.UnitId : null), purchaseLevels);
+            return there is null ? dto : dto with { StockOnHand = there.GetValueOrDefault(p.Id) };
+        }).ToArray());
     }
 
     /// <summary>One item for the item editor: both names, units with barcodes, every unit × level price.</summary>

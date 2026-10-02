@@ -21,7 +21,7 @@ public sealed class PermissionService
     {
         var saved = await _db.RolePermissionSets.AsNoTracking().ToDictionaryAsync(r => r.Role);
         return Enum.GetValues<Role>().ToDictionary(role => role, role =>
-            role == Role.OWNER
+            role is Role.OWNER or Role.ADMIN
                 ? (Permissions.All, false)
                 : saved.TryGetValue(role, out var set)
                     ? (Known(set.Permissions), true)
@@ -32,7 +32,8 @@ public sealed class PermissionService
 
     public static string[] Effective(Staff staff, IReadOnlyDictionary<Role, (string[] Permissions, bool Custom)> sets)
     {
-        if (staff.Role == Role.OWNER) return Permissions.All;
+        // The owner and the admin have everything, including permissions added later.
+        if (staff.Role == Role.OWNER || (staff.Role == Role.ADMIN && staff.CustomRole is null)) return Permissions.All;
         var set = staff.CustomRole is { } custom ? custom.Permissions.ToArray()
             : sets.TryGetValue(staff.Role, out var s) ? s.Permissions : RolePermissions.For(staff.Role);
         return Known(set.Union(staff.GrantedPermissions).Except(staff.RevokedPermissions));

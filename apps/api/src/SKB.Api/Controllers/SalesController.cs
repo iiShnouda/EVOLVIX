@@ -1320,10 +1320,14 @@ public sealed class SalesController : ControllerBase
         }
         await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
         if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
+        var departmentLabel = department is null ? null : Loc.Name(department);
         if (fromQuote?.Type == DocumentType.SALES_ORDER) await _notifications.OrderDecidedAsync(fromQuote, approved: true, User);
         // Whoever takes the payment hears of it: the customer and the department.
         else if (edited is null)
-            await _notifications.InvoiceNewAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
+            await _notifications.InvoiceNewAsync(doc, party.Name, departmentLabel, User);
+        else await _notifications.InvoiceEditedAsync(doc, party.Name, departmentLabel, User);
+        // Over the customer's purchase limit (new or changed): whoever accepts it is told it waits.
+        if (doc.OverLimit) await _notifications.LimitWaitAsync(doc, party.Name, departmentLabel, User);
 
         if (edited is null) _db.SalesDocuments.Add(doc);
         else

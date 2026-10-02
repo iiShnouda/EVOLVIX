@@ -80,7 +80,8 @@ public sealed class WarehousesController : ControllerBase
     /// <summary>Add a branch; it gets a default store straight away so documents can post there.</summary>
     [HttpPost("branches")]
     [Authorize(Policy = Permissions.BranchesManage)]
-    public async Task<ActionResult<BranchDto>> CreateBranch([FromBody] CreateBranchRequest req)
+    public async Task<ActionResult<BranchDto>> CreateBranch([FromBody] CreateBranchRequest req,
+        [FromServices] AccessService access)
     {
         var branchName = Loc.Clean(req.Name);
         if (branchName is null) return BadRequest(new { message = "Branch name is required.", code = "bad_name" });
@@ -112,6 +113,10 @@ public sealed class WarehousesController : ControllerBase
         _db.Branches.Add(branch);
         _db.Warehouses.Add(store);
         _db.MoneyAccounts.Add(cashBox);
+        // The new branch, its store and its cash box are seen by whoever is given them.
+        await access.KeepNewHiddenAsync(NewKind.Branch, branch.Id, CurrentUser.Id(User));
+        await access.KeepNewHiddenAsync(NewKind.Warehouse, store.Id, CurrentUser.Id(User));
+        await access.KeepNewHiddenAsync(NewKind.MoneyAccount, cashBox.Id, CurrentUser.Id(User));
         await _db.SaveChangesAsync();
 
         await AuditAsync("create", "branch", branch.Id, branch.Id);
@@ -142,7 +147,8 @@ public sealed class WarehousesController : ControllerBase
 
     [HttpPost("warehouses")]
     [Authorize(Policy = Permissions.BranchesManage)]
-    public async Task<ActionResult<WarehouseDto>> Create([FromBody] CreateWarehouseRequest req)
+    public async Task<ActionResult<WarehouseDto>> Create([FromBody] CreateWarehouseRequest req,
+        [FromServices] AccessService access)
     {
         if (!Guid.TryParse(req.BranchId, out var branchId))
             return BadRequest(new { message = "Choose a branch.", code = "branch_not_found" });
@@ -170,6 +176,7 @@ public sealed class WarehousesController : ControllerBase
             w.BranchId == branchId && w.IsActive && w.IsDefault && w.Kind == WarehouseKind.STORE);
         _db.Warehouses.Add(warehouse);
         if (req.IsDefault || !hasDefault) await MakeDefaultAsync(warehouse);
+        await access.KeepNewHiddenAsync(NewKind.Warehouse, warehouse.Id, CurrentUser.Id(User));
 
         await _db.SaveChangesAsync();
         await AuditAsync("create", "warehouse", warehouse.Id, warehouse.BranchId);

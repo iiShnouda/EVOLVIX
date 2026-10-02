@@ -15,6 +15,16 @@ const RS = '\u001e';
 const HUB = `${import.meta.env.VITE_API_URL ?? ''}/hubs/presence`;
 const listeners = new Set<() => void>();
 
+const bell = new Set<() => void>();
+
+/** Run `fn` when the server says this person's bell has something new. */
+export function onNotify(fn: () => void): () => void {
+  bell.add(fn);
+  return () => {
+    bell.delete(fn);
+  };
+}
+
 /** Run `fn` when someone comes online, goes offline or changes screen. */
 export function onPresenceChanged(fn: () => void): () => void {
   listeners.add(fn);
@@ -91,6 +101,8 @@ export function usePresenceReporter(): void {
             report.current(viewOf(window.location.pathname));
           } else if (msg.type === 1 && msg.target === 'presence:changed') {
             listeners.forEach((fn) => fn());
+          } else if (msg.type === 1 && msg.target === 'notify') {
+            bell.forEach((fn) => fn());
           } else if (msg.type === 7) {
             socket.close();
           }

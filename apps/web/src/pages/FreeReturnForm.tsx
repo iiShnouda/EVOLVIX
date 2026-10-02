@@ -324,6 +324,8 @@ export function FreeReturnForm({
             <ItemFinderSheet
               departmentId={departmentId || undefined}
               warehouseId={warehouseId || undefined}
+              branchId={branch || undefined}
+              lockPlace={!!warehouseId}
               onClose={() => setFinding(false)}
               onAdd={(items, close) => {
                 items.forEach((i) => add(i.product, i.unitId, i.quantity));

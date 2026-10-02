@@ -1,12 +1,20 @@
 // Tiny API test helpers. BASE from env (default :5090).
 export const BASE = process.env.BASE ?? 'http://localhost:5090/api';
 let passed = 0, failed = 0;
+let shownNew = false;
 const failures = [];
 export async function login(email, password = email.startsWith('owner') ? 'ChangeMe!Owner123' : 'ChangeMe!Staff123') {
   const r = await fetch(`${BASE}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
   const j = await r.json();
   if (!r.ok) throw new Error(`login ${email}: ${r.status} ${JSON.stringify(j)}`);
-  return client(j.accessToken, j.user);
+  const c = client(j.accessToken, j.user);
+  // The checks add branches, warehouses and money accounts and use them with other people: new ones
+  // are seen by everyone here (the company default hides them until given; story.test checks that).
+  if (email.startsWith('owner') && !process.env.KEEP_NEW_HIDDEN && !shownNew) {
+    shownNew = true;
+    await c.put('/settings', { hideNewPlaces: false });
+  }
+  return c;
 }
 /** A signed-in client; `at(branchId)` gives one working in that branch (the X-Branch header). */
 export function client(token, user, lang = 'en', branch = null) {

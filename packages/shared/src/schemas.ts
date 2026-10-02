@@ -308,6 +308,7 @@ export const updateSettingsSchema = z.object({
   timeZone: z.string().trim().min(1).max(64).optional(),
   requireDepartment: z.boolean().optional(),
   returnAfterHours: z.number().int().min(0).max(720).optional(),
+  hideNewPlaces: z.boolean().optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

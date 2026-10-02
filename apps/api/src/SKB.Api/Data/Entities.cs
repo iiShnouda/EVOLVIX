@@ -1083,6 +1083,11 @@ public class CompanySettings
     /// 2026-10-02: until then the invoice itself is changed); 0 = at once.
     /// </summary>
     public int ReturnAfterHours { get; set; } = 12;
+    /// <summary>
+    /// A new branch, warehouse, money account or department is hidden from everyone (owners and
+    /// admins aside) until they are given it (owner decision 2026-10-02).
+    /// </summary>
+    public bool HideNewPlaces { get; set; } = true;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

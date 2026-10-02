@@ -61,6 +61,10 @@ const ALL: Permission[] = [
   'products:create',
   'products:edit',
   'products:close',
+  'products:card_purchases',
+  'products:card_sales',
+  'products:card_returns',
+  'products:card_prices',
   'prices:edit',
   'price_levels:manage',
   'price_lists:manage',
@@ -128,8 +132,8 @@ const ITEMS: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
-  // Costs and profit stay with the owner by default; the owner can give them to anyone.
-  ADMIN: ALL.filter((p) => p !== 'audit:view' && p !== 'backup:create' && p !== 'costs:view'),
+  // The admin has every permission, new ones too (owner decision 2026-10-02).
+  ADMIN: ALL,
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',
@@ -144,6 +148,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sales:return',
     'sales:return_free',
     'sales:quote',
+    'products:card_sales',
+    'products:card_returns',
+    'products:card_prices',
     // Invoices post at once and the accountant is told (owner decision 2026-09-30).
     'sales:approve',
     'sales:invoice_alerts',
@@ -235,6 +242,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'purchases:create',
     'purchases:return',
     'purchases:return_free',
+    'products:card_purchases',
+    'products:card_returns',
     ...ITEMS,
     'purchases:change_price',
     'purchases:choose_price_level',

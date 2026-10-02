@@ -861,7 +861,7 @@ function PersonPermissions({ person }: { person: StaffMember }) {
     setRevoked(new Set(person.revoked));
   }, [person.granted, person.revoked]);
 
-  const isOwner = person.role === 'OWNER';
+  const isOwner = person.role === 'OWNER' || (person.role === 'ADMIN' && !person.customRoleId);
   const editable = can('roles:manage') && !isOwner && person.id !== myId;
   const error = save.error as ApiError | null;
   const allowed = (p: string) => (roleSet.has(p) && !revoked.has(p)) || granted.has(p);
@@ -870,14 +870,20 @@ function PersonPermissions({ person }: { person: StaffMember }) {
     [...revoked].sort().join() !== [...person.revoked].sort().join();
 
   function toggle(p: string) {
+    setMany([p], !allowed(p));
+  }
+  /** Give (on) or take (off) several at once, e.g. the supply-price switch. */
+  function setMany(keys: string[], on: boolean) {
     const g = new Set(granted);
     const r = new Set(revoked);
-    if (allowed(p)) {
-      if (roleSet.has(p)) r.add(p);
-      g.delete(p);
-    } else {
-      if (roleSet.has(p)) r.delete(p);
-      else g.add(p);
+    for (const p of keys) {
+      if (on) {
+        if (roleSet.has(p)) r.delete(p);
+        else g.add(p);
+      } else {
+        if (roleSet.has(p)) r.add(p);
+        g.delete(p);
+      }
     }
     setGranted(g);
     setRevoked(r);
@@ -896,6 +902,7 @@ function PersonPermissions({ person }: { person: StaffMember }) {
             catalog={catalog.data ?? []}
             isChecked={allowed}
             onToggle={toggle}
+            onSetMany={setMany}
             disabled={!editable}
             mark={(p) => (granted.has(p) ? 'added' : revoked.has(p) ? 'removed' : null)}
           />
@@ -1061,12 +1068,14 @@ function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) =
       <PermissionChecklist
         catalog={catalog.data ?? []}
         isChecked={(p) => set.has(p)}
-        onToggle={(p) => {
-          const next = new Set(set);
-          if (next.has(p)) next.delete(p);
-          else next.add(p);
-          setSet(next);
-        }}
+        onToggle={(p) =>
+          setSet((cur) => {
+            const next = new Set(cur);
+            if (next.has(p)) next.delete(p);
+            else next.add(p);
+            return next;
+          })
+        }
         disabled={false}
       />
       <div className="flex gap-2">
@@ -1149,12 +1158,14 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
       <PermissionChecklist
         catalog={catalog.data ?? []}
         isChecked={(p) => set.has(p)}
-        onToggle={(p) => {
-          const next = new Set(set);
-          if (next.has(p)) next.delete(p);
-          else next.add(p);
-          setSet(next);
-        }}
+        onToggle={(p) =>
+          setSet((cur) => {
+            const next = new Set(cur);
+            if (next.has(p)) next.delete(p);
+            else next.add(p);
+            return next;
+          })
+        }
         disabled={!editable}
       />
       {editable && (
@@ -1212,6 +1223,14 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
 
 // ------------------------------------------------------------------ shared
 
+/** Supply prices, profit and what shows them: one switch in the permissions (owner, 2026-10-02). */
+const COST_BUNDLE: Permission[] = [
+  'costs:view',
+  'sales:price_basis',
+  'products:card_purchases',
+  'products:card_prices',
+];
+
 /**
  * Every permission, grouped by screen, as checkboxes. Permissions the signed-in user doesn't hold
  * can't be changed — the server refuses giving or taking what you don't have yourself.
@@ -1222,10 +1241,13 @@ function PermissionChecklist({
   onToggle,
   disabled,
   mark,
+  onSetMany,
 }: {
   catalog: PermissionInfo[];
   isChecked: (p: string) => boolean;
   onToggle: (p: string) => void;
+  /** Turn several on or off together (else each is toggled in turn). */
+  onSetMany?: (keys: string[], on: boolean) => void;
   disabled: boolean;
   mark?: (p: string) => 'added' | 'removed' | null;
 }) {
@@ -1236,8 +1258,40 @@ function PermissionChecklist({
     items: catalog.filter((p) => (SECTION_OF[p.group] ?? p.group) === section),
   })).filter((s) => s.items.length > 0);
 
+  // Supply prices, profit and everything near them, given or taken in one go (owner, 2026-10-02).
+  const bundle = COST_BUNDLE.filter((k) => catalog.some((p) => p.key === k));
+  const bundleOn = bundle.filter((k) => isChecked(k)).length;
+  const bundleLocked = disabled || bundle.some((k) => !mine.includes(k));
+
   return (
     <div className="grid gap-3 md:grid-cols-2">
+      {bundle.length > 0 && (
+        <label
+          className={`flex items-start gap-2.5 rounded-[var(--radius-app)] border border-brand/40 bg-brand-soft/40 p-3 text-sm md:col-span-2 ${bundleLocked ? 'opacity-70' : 'cursor-pointer'}`}
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={bundleOn === bundle.length}
+            ref={(el) => {
+              if (el) el.indeterminate = bundleOn > 0 && bundleOn < bundle.length;
+            }}
+            disabled={bundleLocked}
+            onChange={() => {
+              const on = bundleOn !== bundle.length;
+              const change = bundle.filter((k) => isChecked(k) !== on);
+              if (onSetMany) onSetMany(change, on);
+              else change.forEach((k) => onToggle(k));
+            }}
+          />
+          <span>
+            <span className="block font-semibold">{t('staff.costBundle')}</span>
+            <span className="block text-xs text-muted">
+              {bundle.map((k) => t(`perm.${k}` as TranslationKey)).join(' · ')}
+            </span>
+          </span>
+        </label>
+      )}
       {sections.map(({ section, items }) => (
         <fieldset key={section} className="rounded-[var(--radius-app)] border border-line p-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">

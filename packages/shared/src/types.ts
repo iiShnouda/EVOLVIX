@@ -98,6 +98,10 @@ export type Permission =
   | 'products:create'
   | 'products:edit'
   | 'products:close'
+  | 'products:card_purchases'
+  | 'products:card_sales'
+  | 'products:card_returns'
+  | 'products:card_prices'
   | 'prices:edit'
   | 'price_levels:manage'
   | 'price_lists:manage'
@@ -978,6 +982,8 @@ export interface CompanySettings {
   requireDepartment?: boolean;
   /** Goods on a sales invoice come back only this many hours after it was made (0 = at once). */
   returnAfterHours?: number;
+  /** New branches, warehouses, money accounts and departments are hidden until given (owner, 2026-10-02). */
+  hideNewPlaces?: boolean;
 }
 
 /**
@@ -1161,6 +1167,64 @@ export interface StockMovement {
 }
 
 /** Item card (كارت الصنف) for one item over a period. */
+/** One invoice line on an item's card (owner, 2026-10-02: the item's whole story). Per base unit. */
+export interface ItemLifeLine {
+  documentId: string;
+  number: string;
+  type: DocumentType;
+  /** ISO instant. */
+  date: string;
+  partyName?: string | null;
+  partyCode?: number | null;
+  warehouseName?: string | null;
+  branchName?: string | null;
+  staffName?: string | null;
+  /** Base units. */
+  quantity: number;
+  unitQuantity: number;
+  unitName?: string | null;
+  /**
+   * List price of one base unit on that invoice, the discounts given, and the net of one base unit
+   * (null on purchases for people who may not see supply prices).
+   */
+  unitPrice?: number | null;
+  discount?: number | null;
+  net?: number | null;
+  /** Only with costs:view. */
+  unitCost?: number | null;
+  profit?: number | null;
+  bonus: boolean;
+  edited: boolean;
+}
+
+export interface ItemLife {
+  productId: string;
+  name: string;
+  sku: string;
+  supplierName?: string | null;
+  departmentName?: string | null;
+  currency: string;
+  totals: {
+    bought: number;
+    sold: number;
+    returnedByCustomers: number;
+    returnedToSuppliers: number;
+    boughtValue?: number | null;
+    soldValue: number;
+    profit?: number | null;
+    lastCost?: number | null;
+    salePrice: number;
+    marginPercent?: number | null;
+  };
+  /** Each part is null when the person may not see it. */
+  purchases?: ItemLifeLine[] | null;
+  sales?: ItemLifeLine[] | null;
+  returns?: ItemLifeLine[] | null;
+  /** May see the price changes from invoice to invoice. */
+  prices: boolean;
+  stock: WarehouseStock[];
+}
+
 export interface ItemCard {
   item: InventoryItem;
   from: string;
@@ -2265,7 +2329,13 @@ export interface CustomerAccount {
 /** One notification (the bell). The app words it from `kind`. */
 export interface AppNotification {
   id: string;
-  kind: 'INVOICE_NEW' | 'ORDER_PENDING' | 'ORDER_APPROVED' | 'ORDER_REJECTED';
+  kind:
+    | 'INVOICE_NEW'
+    | 'ORDER_PENDING'
+    | 'ORDER_APPROVED'
+    | 'ORDER_REJECTED'
+    | 'LIMIT_WAIT'
+    | 'INVOICE_EDITED';
   documentId?: string | null;
   documentNumber?: string | null;
   partyName?: string | null;

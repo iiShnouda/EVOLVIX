@@ -108,6 +108,7 @@ export function SettingsPage() {
       returnAfterHours: form.returnAfterHours ?? 12,
       transfersRequireReceipt: form.transfersRequireReceipt,
       requireDepartment: form.requireDepartment !== false,
+      hideNewPlaces: form.hideNewPlaces !== false,
       address: form.address ?? '',
       phone: form.phone ?? '',
       email: form.email ?? '',
@@ -128,7 +129,12 @@ export function SettingsPage() {
       {/* Save stays in reach at the top while scrolling (owner, 2026-10-02). */}
       {canManage && (
         <div className="sticky top-16 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface/95 px-3 py-2 shadow-sm backdrop-blur">
-          <Button icon="check" loading={update.isPending} onClick={save} disabled={!dirty && !update.error}>
+          <Button
+            icon="check"
+            loading={update.isPending}
+            onClick={save}
+            disabled={!dirty && !update.error}
+          >
             {update.isPending ? t('settings.saving') : t('settings.save')}
           </Button>
           {dirty ? (
@@ -373,6 +379,16 @@ export function SettingsPage() {
             onChange={(e) => set({ requireDepartment: e.target.checked })}
           />
           <span className="block text-sm">{t('settings.requireDepartment')}</span>
+        </label>
+        <label className="mt-3 flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            disabled={disabled}
+            checked={form.hideNewPlaces !== false}
+            onChange={(e) => set({ hideNewPlaces: e.target.checked })}
+          />
+          <span className="block text-sm">{t('settings.hideNewPlaces')}</span>
         </label>
       </Card>
 

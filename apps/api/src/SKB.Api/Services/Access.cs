@@ -141,6 +141,9 @@ public sealed record StaffAccess(
     bool AllBranches, IReadOnlyList<Branch> Branches, Guid[]? Warehouses, Guid[]? MoneyAccounts,
     Guid[]? Departments = null, int? MaxDiscountPercent = null);
 
+/// <summary>What was just added, for <see cref="AccessService.KeepNewHiddenAsync"/>.</summary>
+public enum NewKind { Branch, Warehouse, MoneyAccount, Department }
+
 public sealed class AccessService
 {
     private readonly AppDbContext _db;
@@ -150,6 +153,55 @@ public sealed class AccessService
     public static bool RoleSeesAll(Role role) => role is Role.OWNER or Role.ADMIN or Role.ACCOUNTANT;
 
     public static bool SeesAll(Staff s) => s.Role == Role.OWNER || (s.AllBranches ?? RoleSeesAll(s.Role));
+
+    /// <summary>
+    /// Something new is hidden from everyone until they are given it (owner decision 2026-10-02):
+    /// before a branch, warehouse, money account or department is added, each person (owners and
+    /// admins aside) who sees "all" of that kind is given the list of what exists now, so the new one
+    /// is not on it. The person adding it keeps seeing it. Call after adding it, before saving.
+    /// </summary>
+    public async Task KeepNewHiddenAsync(NewKind kind, Guid newId, string? creatorId)
+    {
+        if (!await _db.CompanySettings.Select(x => x.HideNewPlaces).FirstOrDefaultAsync()) return;
+        Guid.TryParse(creatorId, out var creator);
+        var people = await _db.Staff.Where(s => s.IsActive && s.Role != Role.OWNER && s.Role != Role.ADMIN).ToListAsync();
+        if (people.Count == 0) return;
+        var branches = await _db.Branches.Where(b => b.Id != newId).Select(b => b.Id).ToListAsync();
+        foreach (var s in people)
+        {
+            var mine = s.Id == creator;
+            switch (kind)
+            {
+                case NewKind.Branch:
+                    if (SeesAll(s))
+                    {
+                        s.AllBranches = false;
+                        s.BranchIds = branches.Where(b => b != s.BranchId).ToList();
+                    }
+                    if (mine && !s.BranchIds.Contains(newId)) s.BranchIds.Add(newId);
+                    break;
+                case NewKind.Warehouse:
+                    if (s.WarehouseIds.Count == 0)
+                        s.WarehouseIds = await _db.Warehouses.Where(w => w.Id != newId && w.Kind == WarehouseKind.STORE
+                                && (SeesAll(s) || w.BranchId == s.BranchId || s.BranchIds.Contains(w.BranchId)))
+                            .Select(w => w.Id).ToListAsync();
+                    if (mine && !s.WarehouseIds.Contains(newId)) s.WarehouseIds.Add(newId);
+                    break;
+                case NewKind.MoneyAccount:
+                    if (s.MoneyAccountIds.Count == 0)
+                        s.MoneyAccountIds = await _db.MoneyAccounts.Where(a => a.Id != newId
+                                && (SeesAll(s) || a.BranchId == s.BranchId || s.BranchIds.Contains(a.BranchId)))
+                            .Select(a => a.Id).ToListAsync();
+                    if (mine && !s.MoneyAccountIds.Contains(newId)) s.MoneyAccountIds.Add(newId);
+                    break;
+                case NewKind.Department:
+                    if (s.DepartmentIds.Count == 0)
+                        s.DepartmentIds = await _db.Departments.Where(d => d.Id != newId).Select(d => d.Id).ToListAsync();
+                    if (mine && !s.DepartmentIds.Contains(newId)) s.DepartmentIds.Add(newId);
+                    break;
+            }
+        }
+    }
 
     public async Task<StaffAccess> ForAsync(Staff staff)
     {

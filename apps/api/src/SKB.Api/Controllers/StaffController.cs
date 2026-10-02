@@ -71,6 +71,9 @@ public sealed class StaffController : ControllerBase
             return Bad("bad_role", "Choose a role.");
         if (role == Role.OWNER && CurrentUser.Role(User) != Role.OWNER)
             return Forbidden("owner_only", "Only an owner can add another owner.");
+        // An admin has every permission: only someone who has them all may make one.
+        if (role == Role.ADMIN && CurrentUser.Role(User) is not (Role.OWNER or Role.ADMIN))
+            return Forbidden("admin_only", "Only an owner or an admin can make someone an admin.");
         if (!Guid.TryParse(req.BranchId, out var branchId) || !await _db.Branches.AnyAsync(b => b.Id == branchId))
             return Bad("branch_not_found", "Choose a branch.");
         var (custom, customError) = await CustomRoleAsync(req.CustomRoleId);
@@ -129,6 +132,8 @@ public sealed class StaffController : ControllerBase
                 if (id == me) return Bad("own_role", "You can't change your own role.");
                 if (role == Role.OWNER && !iAmOwner)
                     return Forbidden("owner_only", "Only an owner can make someone an owner.");
+                if (role == Role.ADMIN && CurrentUser.Role(User) is not (Role.OWNER or Role.ADMIN))
+                    return Forbidden("admin_only", "Only an owner or an admin can make someone an admin.");
                 if (staff.Role == Role.OWNER && await LastOwnerAsync(id))
                     return Bad("last_owner", "The company needs at least one active owner.");
                 staff.Role = role;
@@ -301,7 +306,7 @@ public sealed class StaffController : ControllerBase
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key!.Value, x => x.Count);
         var made = await _db.CustomRoles.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
         return Ok(Enum.GetValues<Role>().Select(role => new RoleDto(role.ToString(), sets[role].Permissions,
-                sets[role].Custom, role != Role.OWNER,
+                sets[role].Custom, role is not (Role.OWNER or Role.ADMIN),
                 // People in a made role count there, not under the role it is based on.
                 counts.GetValueOrDefault(role) - made.Where(m => m.BaseRole == role).Sum(m => customCounts.GetValueOrDefault(m.Id))))
             .Concat(made.Select(m => ToRoleDto(m, customCounts.GetValueOrDefault(m.Id)))).ToArray());
@@ -314,6 +319,7 @@ public sealed class StaffController : ControllerBase
     {
         if (!Enum.TryParse<Role>(role, true, out var r)) return NotFound(new { message = "Role not found.", code = "not_found" });
         if (r == Role.OWNER) return Bad("owner_fixed", "The owner role always has every permission.");
+        if (r == Role.ADMIN) return Bad("admin_fixed", "The admin role always has every permission, new ones too.");
         if (r == CurrentUser.Role(User)) return Bad("own_role", "You can't change your own role's permissions.");
         var wanted = req.Permissions ?? Array.Empty<string>();
         var unknown = wanted.FirstOrDefault(p => !Permissions.All.Contains(p));
@@ -430,6 +436,7 @@ public sealed class StaffController : ControllerBase
     {
         if (!Enum.TryParse<Role>(role, true, out var r)) return NotFound(new { message = "Role not found.", code = "not_found" });
         if (r == Role.OWNER) return Bad("owner_fixed", "The owner role always has every permission.");
+        if (r == Role.ADMIN) return Bad("admin_fixed", "The admin role always has every permission, new ones too.");
         if (r == CurrentUser.Role(User)) return Bad("own_role", "You can't change your own role's permissions.");
         var before = (await _permissions.RoleSetsAsync())[r].Permissions;
         var defaults = RolePermissions.For(r);
@@ -462,7 +469,7 @@ public sealed class StaffController : ControllerBase
     private async Task<RoleDto> RoleAsync(Role r)
     {
         var sets = await _permissions.RoleSetsAsync();
-        return new RoleDto(r.ToString(), sets[r].Permissions, sets[r].Custom, r != Role.OWNER,
+        return new RoleDto(r.ToString(), sets[r].Permissions, sets[r].Custom, r is not (Role.OWNER or Role.ADMIN),
             await _db.Staff.CountAsync(s => s.IsActive && s.Role == r));
     }
 

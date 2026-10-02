@@ -34,7 +34,7 @@ check('the owner', owner.user.permissions.includes('costs:view'));
 check('not an accountant', !acc.user.permissions.includes('costs:view'));
 check('not a sales person', !seller.user.permissions.includes('costs:view'));
 const roles = (await owner.get('/roles')).data;
-check('not the admin role', !roles.find((r) => r.role === 'ADMIN').permissions.includes('costs:view'));
+check('the admin role (every permission)', roles.find((r) => r.role === 'ADMIN').permissions.includes('costs:view'));
 
 // An item bought at 6.00 and sold at 10.00 (supplier price level 6.50).
 const units = (await owner.get('/units')).data;
