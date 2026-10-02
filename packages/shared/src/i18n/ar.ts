@@ -2225,4 +2225,10 @@ export const ar: TranslationDictionary = {
   'error.bad_main': 'الخزينة الرئيسية لا بد أن تكون خزينة نقدية مفتوحة.',
   'error.bad_warehouse': 'الخزينة النقدية فقط هي التي تتبع مخزنًا.',
   'error.account_closed': 'الخزينة المستلمة مغلقة.',
+  'dash.days7': 'آخر 7 أيام',
+  'dash.days30': 'آخر 30 يومًا',
+  'dash.ofLastMonth': 'من الشهر الماضي',
+  'dash.doc': 'المستند',
+  'dash.party': 'العميل / المورد',
+  'dash.date': 'التاريخ',
 };

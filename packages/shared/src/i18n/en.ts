@@ -2240,4 +2240,10 @@ export const en = {
   'error.bad_main': 'The main box must be an open cash box.',
   'error.bad_warehouse': 'Only a cash box belongs to a warehouse.',
   'error.account_closed': 'The receiving box is closed.',
+  'dash.days7': 'Last 7 days',
+  'dash.days30': 'Last 30 days',
+  'dash.ofLastMonth': 'of last month',
+  'dash.doc': 'Document',
+  'dash.party': 'Customer / supplier',
+  'dash.date': 'Date',
 } as const;
