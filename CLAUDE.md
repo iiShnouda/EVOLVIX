@@ -2,6 +2,10 @@
 
 Guidance for anyone (human or AI) working in this repo.
 
+**Start with [`PROJECT_MAP.md`](PROJECT_MAP.md)**: every page and what it does, which file holds
+what (web, server, shared), the endpoints, the dev setup and how to run the tests. Update it when
+you add a page, controller, entity or test suite.
+
 ## Product in one line
 
 **Evolvix** (owner decision 2026-10-01; the code keeps its old name SKB in folders, packages,
@@ -17,9 +21,9 @@ first‑class concern.
 
 ## Non‑negotiable rules
 
-1. **No business data persisted on the client.** Never cache API *data* in
+1. **No business data persisted on the client.** Never cache API _data_ in
    localStorage/IndexedDB/service worker. Only UI preferences (locale, theme) and the
-   app *shell assets* may be cached. Disconnected = show the offline gate, render no data.
+   app _shell assets_ may be cached. Disconnected = show the offline gate, render no data.
 2. **Server is the only source of truth.** All authorization (role + branch) is enforced
    server‑side. The client UI hides things for UX, but the server must independently deny.
 3. **Every mutation is audited.** Write through the audit layer; don't bypass it.
