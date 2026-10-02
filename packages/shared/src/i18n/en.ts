@@ -455,6 +455,7 @@ export const en = {
   'settings.maxDiscount': 'Staff discount limit %',
   'settings.save': 'Save settings',
   'settings.saved': 'Settings saved',
+  'settings.unsaved': 'Changes not saved yet',
   'settings.saving': 'Saving…',
   'settings.readonly': 'Only an owner or admin can change these settings.',
 
@@ -1939,6 +1940,8 @@ export const en = {
   'auth.oneDevice': 'An account works on one device at a time',
   'auth.apps': 'Device apps',
   'list.defaultOrder': 'Default column order',
+  'list.defaultWidths': 'Default column widths',
+  'list.dragHint': 'Drag a column title to move it; drag its edge to make it wider or narrower',
   'leave.title': 'Leave this page?',
   'leave.body':
     'You are about to leave this page. Everything you entered will be discarded and not saved.',

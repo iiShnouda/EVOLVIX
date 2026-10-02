@@ -55,11 +55,20 @@ export function SettingsPage() {
 
   const [form, setForm] = useState<CompanySettings | null>(null);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   // Load server settings into the editable form once.
   useEffect(() => {
     if (query.data && !form) setForm(query.data);
   }, [query.data, form]);
+
+  // Leaving with changes not saved asks first.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
   if (!form) {
     return (
@@ -72,6 +81,7 @@ export function SettingsPage() {
   const set = (patch: Partial<CompanySettings>) => {
     setForm((f) => (f ? { ...f, ...patch } : f));
     setSaved(false);
+    setDirty(true);
   };
 
   // Picking a country suggests its currency + typical VAT (owner can still override).
@@ -106,6 +116,7 @@ export function SettingsPage() {
       timeZone: form.timeZone,
     });
     setSaved(true);
+    setDirty(false);
   }
 
   const disabled = !canManage;
@@ -113,6 +124,23 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <PageHeader title={t('settings.title')} />
+
+      {/* Save stays in reach at the top while scrolling (owner, 2026-10-02). */}
+      {canManage && (
+        <div className="sticky top-16 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface/95 px-3 py-2 shadow-sm backdrop-blur">
+          <Button icon="check" loading={update.isPending} onClick={save} disabled={!dirty && !update.error}>
+            {update.isPending ? t('settings.saving') : t('settings.save')}
+          </Button>
+          {dirty ? (
+            <span className="text-sm text-warning">{t('settings.unsaved')}</span>
+          ) : saved ? (
+            <span className="text-sm text-positive">{t('settings.saved')}</span>
+          ) : null}
+          {update.error && (
+            <span className="text-sm text-destructive">{errorText(t, update.error)}</span>
+          )}
+        </div>
+      )}
 
       {!canManage && (
         <p className="rounded-[var(--radius-app)] bg-warning-soft p-3 text-sm text-warning">
@@ -356,18 +384,6 @@ export function SettingsPage() {
         </h2>
         <GetApps />
       </Card>
-
-      {canManage && (
-        <div className="flex items-center gap-3">
-          <Button icon="check" loading={update.isPending} onClick={save}>
-            {update.isPending ? t('settings.saving') : t('settings.save')}
-          </Button>
-          {saved && <span className="text-sm text-positive">{t('settings.saved')}</span>}
-          {update.error && (
-            <span className="text-sm text-destructive">{errorText(t, update.error)}</span>
-          )}
-        </div>
-      )}
 
       {canBackup && <BackupsCard />}
     </div>

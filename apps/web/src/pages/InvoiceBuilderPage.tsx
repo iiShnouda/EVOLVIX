@@ -1491,6 +1491,16 @@ export function InvoiceBuilderPage({
     [keys[at], keys[to]] = [keys[to]!, keys[at]!];
     setColumnOrder(keys);
   }
+  /** Put a dragged column where another one is (owner, 2026-10-02: move columns by the mouse). */
+  function dropColumn(label: string, target: string) {
+    const keys = columns.map((c) => c.key);
+    const from = columns.findIndex((c) => c.label === label);
+    const to = columns.findIndex((c) => c.label === target);
+    if (from < 0 || to < 0) return;
+    const [key] = keys.splice(from, 1);
+    keys.splice(to, 0, key!);
+    setColumnOrder(keys);
+  }
 
   if (loadingEdit)
     return (
@@ -1847,7 +1857,7 @@ export function InvoiceBuilderPage({
             ) : !isPhone ? (
               // Wide screens: the lines as a table, like the old program's grid.
               <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                <TableColumns id={`invoice.${mode}`} onMove={moveColumn}>
+                <TableColumns id={`invoice.${mode}`} onMove={moveColumn} onDrop={dropColumn}>
                   <table className="w-full text-[13px]">
                     <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                       <tr className="whitespace-nowrap">

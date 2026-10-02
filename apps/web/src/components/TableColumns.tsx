@@ -1,4 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { useHiddenColumns } from '../lib/queries';
@@ -23,6 +31,7 @@ export function TableColumns({
   className,
   toolbar,
   onMove,
+  onDrop,
 }: {
   /** Which table this is, e.g. "sales.invoices"; the same table everywhere shares its choice. */
   id: string;
@@ -35,6 +44,8 @@ export function TableColumns({
    * move a column earlier (-1) or later (+1) from the menu.
    */
   onMove?: (label: string, step: -1 | 1) => void;
+  /** Tables with their own order (see onMove) put a dragged column where it was dropped. */
+  onDrop?: (label: string, target: string) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const scope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -42,6 +53,11 @@ export function TableColumns({
   const [spans, setSpans] = useState(false);
   const [hidden, setHidden] = useHiddenColumns(id);
   const [savedOrder, setOrder] = useHiddenColumns(`order:${id}`);
+  const [savedWidths, setWidths] = useHiddenColumns(`width:${id}`);
+  // While a column's edge is being dragged, its width before it is saved.
+  const [live, setLive] = useState<{ key: string; px: number } | null>(null);
+  // The column being dragged to a new place, and the one it is over.
+  const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
 
   // Read the header after each render, and whenever the table changes underneath.
   const read = () => {
@@ -81,10 +97,56 @@ export function TableColumns({
   const choices =
     onMove || spans ? headers.filter((h, i) => h && headers.indexOf(h) === i) : ordered;
   const visible = headers.length - positions.length;
+
+  // Column widths (owner, 2026-10-02: "wider or narrower, by the mouse"), kept per person like the
+  // rest. A column is known by its header, or by its place when it has none (a check box column).
+  const keyOf = (i: number) => (headers[i] ? headers[i]! : `#${i}`);
+  const widths = new Map<string, number>();
+  for (const w of savedWidths) {
+    const [k, px] = w.split('\u0002');
+    if (k && Number(px) > 0) widths.set(k, Math.round(Number(px)));
+  }
+  if (live) widths.set(live.key, live.px);
+  const sized = widths.size > 0 && headers.length > 0 && !spans;
+  const shown = headers.map((_, i) => i).filter((i) => !positions.includes(i + 1));
+  const widthOf = (i: number) => widths.get(keyOf(i));
+  const total = shown.reduce((sum, i) => sum + (widthOf(i) ?? 80), 0);
+  const w = `[data-cols="${scope}"]`;
+  const widthCss = sized
+    ? [
+        `${w} table{table-layout:fixed;width:max(100%,${total}px)}`,
+        ...shown.map((i) => {
+          const px = widthOf(i);
+          return px
+            ? `${w} tr:not([data-span]) > :nth-child(${i + 1}){width:${px}px;overflow:hidden;text-overflow:ellipsis}`
+            : '';
+        }),
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
+  const dragCss = drag
+    ? [
+        `${w} tr > :nth-child(${drag.from + 1}){opacity:.55}`,
+        drag.over !== drag.from
+          ? `${w} tr > :nth-child(${drag.over + 1}){box-shadow:inset 0 0 0 2px var(--c-brand)}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
   const s = `[data-cols="${scope}"][data-reorder]`;
   const orderCss = reorder
     ? [
-        `@layer base{${s} table{display:grid;grid-template-columns:repeat(${visible},auto)}`,
+        `@layer base{${s} table{display:grid;grid-template-columns:${
+          sized
+            ? shown
+                .slice()
+                .sort((a, b) => place[a]! - place[b]!)
+                .map((i) => (widthOf(i) ? `${widthOf(i)}px` : 'auto'))
+                .join(' ')
+            : `repeat(${visible},auto)`
+        }}`,
         `${s} :is(thead,tbody,tfoot,tr){display:contents;background-color:inherit}`,
         `${s} :is(colgroup,caption){display:none}`,
         `${s} :is(th,td){background-color:inherit;border-bottom:1px solid var(--c-line)}}`,
@@ -105,6 +167,102 @@ export function TableColumns({
     watch.observe(box.current, { childList: true, subtree: true });
     return () => watch.disconnect();
   }, [reorder]);
+
+  /** Put a column where another one is, and keep that order for next time. */
+  function place_(label: string, target: string) {
+    if (onDrop) return onDrop(label, target);
+    const next = ordered.filter((h) => h !== label);
+    const at = next.indexOf(target);
+    if (at < 0) return;
+    // Moving towards the end lands after the target, towards the start before it.
+    next.splice(ordered.indexOf(label) < ordered.indexOf(target) ? at + 1 : at, 0, label);
+    setOrder(next.join('\u0001') === movable.join('\u0001') ? [] : next);
+  }
+
+  // The header row, by the mouse: its edge resizes a column, its title moves it (touch screens
+  // scroll as before; the menu still moves columns there).
+  const canDrag = !!onDrop || (!onMove && !spans);
+  const justDragged = useRef(false);
+  const headerCell = (target: EventTarget | null) => {
+    const th = (target as HTMLElement | null)?.closest?.('th');
+    if (!th || !box.current?.contains(th)) return null;
+    const row = box.current.querySelector('thead tr:first-child');
+    if (!row || th.parentElement !== row) return null;
+    return { th: th as HTMLTableCellElement, index: [...row.children].indexOf(th) };
+  };
+  const nearEdge = (th: HTMLElement, x: number) => {
+    const r = th.getBoundingClientRect();
+    const rtl = getComputedStyle(th).direction === 'rtl';
+    return rtl ? x - r.left < 7 : r.right - x < 7;
+  };
+  function onPointerMove(e: ReactPointerEvent) {
+    if (e.pointerType !== 'mouse' || e.buttons || !box.current) return;
+    const cell = headerCell(e.target);
+    box.current.style.cursor = cell && !spans && nearEdge(cell.th, e.clientX) ? 'col-resize' : '';
+  }
+  function onPointerDown(e: ReactPointerEvent) {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const cell = headerCell(e.target);
+    if (!cell) return;
+    const { th, index } = cell;
+    if (!spans && nearEdge(th, e.clientX)) {
+      // Resize: every column's width is fixed from what is on the screen now.
+      e.preventDefault();
+      const rtl = getComputedStyle(th).direction === 'rtl';
+      const startX = e.clientX;
+      const start = th.getBoundingClientRect().width;
+      const row = box.current!.querySelector('thead tr:first-child')!;
+      const now = new Map<string, number>();
+      [...row.children].forEach((c, i) => {
+        const px = (c as HTMLElement).getBoundingClientRect().width;
+        if (px > 0) now.set(keyOf(i), Math.round(px));
+      });
+      const key = keyOf(index);
+      let px = Math.round(start);
+      const move = (ev: PointerEvent) => {
+        px = Math.max(36, Math.round(start + (rtl ? startX - ev.clientX : ev.clientX - startX)));
+        setLive({ key, px });
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        now.set(key, px);
+        for (const [k, v] of widths) if (k !== key && !now.has(k)) now.set(k, v);
+        setWidths([...now].map(([k, v]) => `${k}\u0002${v}`));
+        setLive(null);
+        justDragged.current = true;
+        setTimeout(() => (justDragged.current = false), 0);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      return;
+    }
+    const label = headers[index];
+    if (!canDrag || !label || !movable.includes(label)) return;
+    if ((e.target as HTMLElement).closest('input,select,textarea')) return;
+    const startX = e.clientX;
+    let moving = false;
+    let over = index;
+    const move = (ev: PointerEvent) => {
+      if (!moving && Math.abs(ev.clientX - startX) < 8) return;
+      moving = true;
+      const hit = headerCell(document.elementFromPoint(ev.clientX, ev.clientY));
+      if (hit) over = hit.index;
+      setDrag({ from: index, over });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setDrag(null);
+      if (!moving) return;
+      justDragged.current = true;
+      setTimeout(() => (justDragged.current = false), 0);
+      const target = headers[over];
+      if (target && target !== label && movable.includes(target)) place_(label, target);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
 
   /** Move a column one place earlier or later, and keep that order for next time. */
   function move(label: string, step: -1 | 1) {
@@ -156,6 +314,8 @@ export function TableColumns({
               onMove={onMove ?? (spans ? undefined : move)}
               ordered={!onMove && known.length > 0}
               onResetOrder={() => setOrder([])}
+              sized={widths.size > 0}
+              onResetWidths={() => setWidths([])}
             />
           ) : (
             <span />
@@ -163,8 +323,25 @@ export function TableColumns({
           <span className="min-w-0 text-xs text-muted">{toolbar}</span>
         </div>
       )}
-      {(css || orderCss) && <style>{[css, orderCss].filter(Boolean).join('\n')}</style>}
-      <div ref={box} data-cols={scope} data-reorder={reorder ? '' : undefined}>
+      {(css || orderCss || widthCss || dragCss) && (
+        <style>{[css, orderCss, widthCss, dragCss].filter(Boolean).join('\n')}</style>
+      )}
+      <div
+        ref={box}
+        data-cols={scope}
+        data-reorder={reorder ? '' : undefined}
+        onPointerMove={onPointerMove}
+        onPointerDown={onPointerDown}
+        onPointerLeave={() => box.current && (box.current.style.cursor = '')}
+        onClickCapture={(e) => {
+          // A drag that ends on a sortable title is not a click on it.
+          if (justDragged.current) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        className={drag ? 'select-none' : undefined}
+      >
         {children}
       </div>
     </div>
@@ -179,6 +356,8 @@ function ColumnMenu({
   onMove,
   ordered,
   onResetOrder,
+  sized,
+  onResetWidths,
 }: {
   choices: string[];
   hidden: string[];
@@ -188,6 +367,9 @@ function ColumnMenu({
   /** The person has put the columns in their own order (offer to undo it). */
   ordered?: boolean;
   onResetOrder?: () => void;
+  /** The person has set their own column widths (offer to undo it). */
+  sized?: boolean;
+  onResetWidths?: () => void;
 }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -265,6 +447,18 @@ function ColumnMenu({
               {t('list.defaultOrder')}
             </button>
           )}
+          {sized && (
+            <button
+              type="button"
+              className="mt-1 w-full rounded-md px-2 py-1.5 text-start text-xs text-brand hover:bg-surface-2"
+              onClick={onResetWidths}
+            >
+              {t('list.defaultWidths')}
+            </button>
+          )}
+          <p className="mt-1 border-t border-line px-2 pt-1.5 text-[11px] text-muted">
+            {t('list.dragHint')}
+          </p>
         </div>
       )}
     </div>

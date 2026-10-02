@@ -456,6 +456,7 @@ export const ar: TranslationDictionary = {
   'settings.maxDiscount': 'أقصى خصم للموظفين ٪',
   'settings.save': 'حفظ الإعدادات',
   'settings.saved': 'تم حفظ الإعدادات',
+  'settings.unsaved': 'تغييرات لم تُحفظ بعد',
   'settings.saving': 'جارٍ الحفظ…',
   'settings.readonly': 'يمكن فقط للمالك أو المدير تغيير هذه الإعدادات.',
 
@@ -1929,6 +1930,8 @@ export const ar: TranslationDictionary = {
   'auth.oneDevice': 'الحساب يعمل على جهاز واحد في نفس الوقت',
   'auth.apps': 'تطبيقات الأجهزة',
   'list.defaultOrder': 'الترتيب الأصلي للأعمدة',
+  'list.defaultWidths': 'العرض الأصلي للأعمدة',
+  'list.dragHint': 'اسحب عنوان العمود لنقله، واسحب حافته لتكبيره أو تصغيره',
   'leave.title': 'مغادرة الصفحة',
   'leave.body': 'أنت على وشك مغادرة هذه الصفحة. سيتم تجاهل كل ما أدخلته ولن يُحفظ.',
   'leave.stay': 'البقاء في الصفحة',
