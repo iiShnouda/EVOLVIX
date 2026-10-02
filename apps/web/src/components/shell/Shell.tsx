@@ -21,7 +21,11 @@ function useVisibleNav(): NavItem[] {
   return useMemo(
     () =>
       NAV_ITEMS.filter(
-        (item) => !item.permission || (user && hasPermission(user.permissions, item.permission)),
+        (item) =>
+          !item.permission ||
+          (user &&
+            (hasPermission(user.permissions, item.permission) ||
+              (item.anyOf ?? []).some((p) => hasPermission(user.permissions, p)))),
       ),
     [user],
   );

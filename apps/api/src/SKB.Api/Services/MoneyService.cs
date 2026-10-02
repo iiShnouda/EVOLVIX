@@ -46,6 +46,27 @@ public sealed class MoneyService
         return q;
     }
 
+    /// <summary>
+    /// Where each box's cash is sent up to (owner, 2026-10-02): a warehouse's box, custody or any other
+    /// cash box goes to its branch's default box; a branch's default box goes to the main box; the
+    /// main box goes nowhere. Banks, wallets and the post account aren't handed over.
+    /// </summary>
+    public async Task<Func<MoneyAccount, (Guid Id, string Name)?>> UpTargetsAsync()
+    {
+        var defaults = await _db.MoneyAccounts.AsNoTracking().Where(a => a.IsDefault && a.IsActive)
+            .Select(a => new { a.Id, a.BranchId, a.Name }).ToListAsync();
+        var byBranch = defaults.ToDictionary(a => a.BranchId, a => (a.Id, a.Name));
+        var main = await _db.MoneyAccounts.AsNoTracking().Where(a => a.IsMain && a.IsActive)
+            .Select(a => new { a.Id, a.Name }).FirstOrDefaultAsync();
+        return a =>
+        {
+            if (a.IsMain || !a.IsActive || a.Kind is not (MoneyAccountKind.CASH_BOX or MoneyAccountKind.CUSTODY)) return null;
+            if (!a.IsDefault)
+                return byBranch.TryGetValue(a.BranchId, out var up) && up.Id != a.Id ? up : null;
+            return main is not null && main.Id != a.Id ? (main.Id, main.Name) : null;
+        };
+    }
+
     /// <summary>May the person use this account (it's one they see)?</summary>
     public static bool CanUse(ClaimsPrincipal user, MoneyAccount account) =>
         Access.CanUseBranch(user, account.BranchId)
@@ -79,6 +100,10 @@ public sealed class MoneyService
         if (account.Balance + amount < 0)
             return new("insufficient_funds",
                 $"{Loc.Name(account)} holds {account.Balance / 100m:0.00}; {-amount / 100m:0.00} can't be taken out.");
+        // Cash sent up and not yet confirmed stays in the box but can't be spent.
+        if (amount < 0 && account.Held > 0 && account.Balance + amount < account.Held)
+            return new("insufficient_funds",
+                $"{Loc.Name(account)} holds {account.Balance / 100m:0.00}, of which {account.Held / 100m:0.00} is on its way up; {-amount / 100m:0.00} can't be taken out.");
         account.Balance += amount;
         account.LastSeq += 1;
         _db.MoneyMovements.Add(new MoneyMovement

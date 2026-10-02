@@ -20,8 +20,9 @@ public sealed class DashboardController : ControllerBase
 
     public DashboardController(AppDbContext db) => _db = db;
 
+    /// <param name="days">How many days the sales / purchases trend covers (7 by default, up to 31).</param>
     [HttpGet]
-    public async Task<ActionResult<DashboardDto>> Get()
+    public async Task<ActionResult<DashboardDto>> Get([FromQuery] int days = TrendDays)
     {
         IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) => q.InBranches(User, d => d.BranchId);
 
@@ -71,7 +72,7 @@ public sealed class DashboardController : ControllerBase
 
         return Ok(new DashboardDto(
             kpis,
-            await BuildTrendAsync(),
+            await BuildTrendAsync(Math.Clamp(days, 1, 31)),
             lowStock.Select(p => Costs.Guard(User, Mapper.ToProduct(p, book),
                 ProductsController.PurchaseLevelIds(book))).ToArray(),
             recent.Select(Mapper.ToSummary).ToArray(),
@@ -202,9 +203,9 @@ public sealed class DashboardController : ControllerBase
             overLimit, overCount, stockValue));
     }
 
-    private async Task<TrendPointDto[]> BuildTrendAsync()
+    private async Task<TrendPointDto[]> BuildTrendAsync(int trendDays)
     {
-        var first = CompanyClock.Today.AddDays(-(TrendDays - 1));
+        var first = CompanyClock.Today.AddDays(-(trendDays - 1));
         var since = CompanyClock.StartOf(first);
         var q = _db.SalesDocuments.Where(d =>
             d.IssueDate >= since && d.Status != DocumentStatus.CANCELLED &&
@@ -215,7 +216,7 @@ public sealed class DashboardController : ControllerBase
         var rows = await q.Select(d => new { d.IssueDate, d.Type, d.GrandTotal }).ToListAsync();
 
         var buckets = new Dictionary<string, (long Sales, long Purchases)>();
-        for (var i = 0; i < TrendDays; i++)
+        for (var i = 0; i < trendDays; i++)
             buckets[first.AddDays(i).ToString("yyyy-MM-dd")] = (0, 0);
 
         foreach (var r in rows)

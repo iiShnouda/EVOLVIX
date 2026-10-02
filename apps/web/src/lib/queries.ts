@@ -88,6 +88,7 @@ import type {
   CreateShipmentInput,
   CreateSettlementInput,
   MoneyAccount,
+  CashHandover,
   AccountStatement,
   Voucher,
   OpenInvoice,
@@ -135,10 +136,12 @@ import { useEffect } from 'react';
 import { api } from './api';
 import { setPrintPaper } from './print';
 
-export function useDashboard() {
+/** The dashboard; `days` = how many days its sales / purchases trend covers (7 or 30). */
+export function useDashboard(days = 7) {
   return useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => api.get<DashboardData>('/dashboard'),
+    queryKey: ['dashboard', days],
+    queryFn: () => api.get<DashboardData>(`/dashboard?days=${days}`),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -1464,6 +1467,60 @@ export function useDeleteMoneyAccount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.del<void>(`/money-accounts/${id}`),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cash handovers (owner, 2026-10-02): a box's cash sent up, confirmed where it arrives
+// ---------------------------------------------------------------------------
+
+export function useCashHandovers(side: '' | 'in' | 'out', status: string) {
+  return useQuery({
+    queryKey: ['money', 'handovers', side, status],
+    queryFn: () => {
+      const q = new URLSearchParams();
+      if (side) q.set('side', side);
+      if (status) q.set('status', status);
+      return api.get<CashHandover[]>(`/cash-handovers?${q}`);
+    },
+  });
+}
+
+/** The boxes the person may send cash up from (with where each goes). */
+export function useHandoverBoxes(enabled = true) {
+  return useQuery({
+    queryKey: ['money', 'handover-boxes'],
+    queryFn: () => api.get<MoneyAccount[]>('/cash-handovers/boxes'),
+    enabled,
+  });
+}
+
+export function useSendCash() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { fromAccountId: string; amount: number; notes?: string }) =>
+      api.post<CashHandover>('/cash-handovers', body),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
+export function useHandoverStep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      step,
+      reason,
+    }: {
+      id: string;
+      step: 'receive' | 'cancel';
+      reason?: string;
+    }) =>
+      api.post<CashHandover>(
+        `/cash-handovers/${id}/${step}`,
+        step === 'cancel' ? { reason } : undefined,
+      ),
     onSuccess: () => invalidateAfterMoney(qc),
   });
 }

@@ -98,6 +98,9 @@ const ALL: Permission[] = [
   'vouchers:cancel',
   'money_accounts:manage',
   'expense_categories:manage',
+  'money_accounts:main',
+  'cash:handover_send',
+  'cash:handover_receive',
   'ledger:view',
   'ledger:post',
   'ledger:manage',
@@ -204,6 +207,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'vouchers:cancel',
     'money_accounts:manage',
     'expense_categories:manage',
+    'cash:handover_send',
+    'cash:handover_receive',
     'ledger:view',
     'ledger:post',
     'ledger:manage',
@@ -216,7 +221,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'notes:bounce',
     'notes:endorse',
     'notes:cancel',
-  'notes:lost',
+    'notes:lost',
   ],
   // Sales staff sell at the customer's price level and may only add to a price; lowering it or
   // changing the level needs a manager. The seller writes a customer's return. Their invoices post
@@ -255,6 +260,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     ...PURCHASE_CHARGES,
     'delivery:view',
     'delivery:manage',
+    'cash:handover_send',
   ],
   VIEWER: [
     'dashboard:view',

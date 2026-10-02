@@ -108,20 +108,24 @@ public sealed class WarehousesController : ControllerBase
             Branch = branch, Code = await NextWarehouseCodeAsync(code), IsDefault = true, Prefix = "1",
             Name = Loc.Lang == "ar" ? "المخزن الرئيسي" : "Main store",
         };
-        // …and its cash box, where paid-now amounts land (DOMAIN.md §2.6).
+        // …and its cash box, where paid-now amounts land (DOMAIN.md §2.6); it hands its cash up to the
+        // main box.
         var cashBox = new MoneyAccount
         {
             Branch = branch, Kind = MoneyAccountKind.CASH_BOX, IsDefault = true,
-            Name = Loc.Lang == "ar" ? "الخزينة الرئيسية" : "Main cash box",
-            Currency = await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP",
+            Name = Loc.Lang == "ar" ? "خزينة الفرع" : "Branch cash box",
+            Currency = await CurrencyAsync(),
         };
+        var storeBox = await StoreBoxAsync(store, branch, cashBox.Name);
         _db.Branches.Add(branch);
         _db.Warehouses.Add(store);
         _db.MoneyAccounts.Add(cashBox);
-        // The new branch, its store and its cash box are seen by whoever is given them.
+        _db.MoneyAccounts.Add(storeBox);
+        // The new branch, its store and its cash boxes are seen by whoever is given them.
         await access.KeepNewHiddenAsync(NewKind.Branch, branch.Id, CurrentUser.Id(User));
         await access.KeepNewHiddenAsync(NewKind.Warehouse, store.Id, CurrentUser.Id(User));
         await access.KeepNewHiddenAsync(NewKind.MoneyAccount, cashBox.Id, CurrentUser.Id(User));
+        await access.KeepNewHiddenAsync(NewKind.MoneyAccount, storeBox.Id, CurrentUser.Id(User));
         await _db.SaveChangesAsync();
 
         await AuditAsync("create", "branch", branch.Id, branch.Id);
@@ -182,6 +186,10 @@ public sealed class WarehousesController : ControllerBase
         _db.Warehouses.Add(warehouse);
         if (req.IsDefault || !hasDefault) await MakeDefaultAsync(warehouse);
         await access.KeepNewHiddenAsync(NewKind.Warehouse, warehouse.Id, CurrentUser.Id(User));
+        // Each warehouse has its own cash box, handed up to the branch's (owner, 2026-10-02).
+        var box = await StoreBoxAsync(warehouse, branch, null);
+        _db.MoneyAccounts.Add(box);
+        await access.KeepNewHiddenAsync(NewKind.MoneyAccount, box.Id, CurrentUser.Id(User));
 
         await _db.SaveChangesAsync();
         await AuditAsync("create", "warehouse", warehouse.Id, warehouse.BranchId);
@@ -337,4 +345,22 @@ public sealed class WarehousesController : ControllerBase
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), id.ToString());
+
+    /// <summary>A warehouse's own cash box, named after it (with its code if that name is taken).</summary>
+    private async Task<MoneyAccount> StoreBoxAsync(Warehouse store, Branch branch, string? alsoTaken)
+    {
+        var name = store.Name;
+        var lower = name.ToLower();
+        if (lower == alsoTaken?.ToLower()
+            || await _db.MoneyAccounts.AnyAsync(a => a.BranchId == branch.Id && a.IsActive && a.Name.ToLower() == lower))
+            name = $"{store.Name} ({store.Code})";
+        return new MoneyAccount
+        {
+            Branch = branch, BranchId = branch.Id, Kind = MoneyAccountKind.CASH_BOX, Name = name,
+            WarehouseId = store.Id, Currency = await CurrencyAsync(),
+        };
+    }
+
+    private async Task<string> CurrencyAsync() =>
+        await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP";
 }

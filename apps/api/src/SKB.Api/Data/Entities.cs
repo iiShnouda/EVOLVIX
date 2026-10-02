@@ -862,8 +862,53 @@ public class MoneyAccount : INamed
     public string Currency { get; set; } = "EGP";
     /// <summary>The branch's default cash box: paid-now amounts land here unless another is picked.</summary>
     public bool IsDefault { get; set; }
+    /// <summary>
+    /// The company's main cash box (owner, 2026-10-02): named by the owner, in the main branch; each
+    /// branch's box hands its cash up to it. At most one.
+    /// </summary>
+    public bool IsMain { get; set; }
+    /// <summary>A warehouse's own cash box: its cash goes up to the branch's box.</summary>
+    public Guid? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    /// <summary>
+    /// Sent up and not yet confirmed (minor units): still counted in <see cref="Balance"/> but can't
+    /// be spent until the receiver confirms or the handover is called off.
+    /// </summary>
+    public long Held { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Cash sent up from one box to the next (owner, 2026-10-02): a warehouse's box to its branch's box,
+/// a branch's box to the main box. Sent by whoever holds it; the money moves only when the receiver
+/// confirms it arrived (as a transfer voucher). Until then it is held in the sending box.
+/// </summary>
+public class CashHandover
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>e.g. HND-2026-000004.</summary>
+    public string Number { get; set; } = "";
+    public Guid FromAccountId { get; set; }
+    public MoneyAccount? FromAccount { get; set; }
+    public Guid ToAccountId { get; set; }
+    public MoneyAccount? ToAccount { get; set; }
+    /// <summary>Minor units.</summary>
+    public long Amount { get; set; }
+    public HandoverStatus Status { get; set; } = HandoverStatus.SENT;
+    public string? Notes { get; set; }
+    public Guid SentById { get; set; }
+    public Staff? SentBy { get; set; }
+    public DateTime SentAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Who confirmed it arrived or called it off, and when.</summary>
+    public Guid? DoneById { get; set; }
+    public Staff? DoneBy { get; set; }
+    public DateTime? DoneAt { get; set; }
+    /// <summary>Why it was called off.</summary>
+    public string? Reason { get; set; }
+    /// <summary>The transfer voucher that moved the money on arrival.</summary>
+    public Guid? VoucherId { get; set; }
+    public Voucher? Voucher { get; set; }
 }
 
 /// <summary>Money in (+) or out (−) of one account, with the balance it left behind.</summary>

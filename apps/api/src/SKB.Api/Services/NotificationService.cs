@@ -18,7 +18,8 @@ public sealed class NotificationService
 {
     public const string InvoiceNew = "INVOICE_NEW", OrderPending = "ORDER_PENDING",
         OrderApproved = "ORDER_APPROVED", OrderRejected = "ORDER_REJECTED",
-        LimitWait = "LIMIT_WAIT", InvoiceEdited = "INVOICE_EDITED";
+        LimitWait = "LIMIT_WAIT", InvoiceEdited = "INVOICE_EDITED",
+        CashSent = "CASH_SENT", CashReceived = "CASH_RECEIVED", CashCancelled = "CASH_CANCELLED";
 
     private readonly AppDbContext _db;
     private readonly PermissionService _permissions;
@@ -88,6 +89,42 @@ public sealed class NotificationService
             : null;
         Add(order.StaffId, approved ? OrderApproved : OrderRejected, order, partyName, departmentName, actor,
             approved ? null : order.RejectReason);
+    }
+
+    /// <summary>
+    /// Cash was sent up to a box: tell whoever may confirm it there (owner, 2026-10-02: "the manager
+    /// marks it done when it arrives"), not the sender.
+    /// </summary>
+    public async Task CashSentAsync(CashHandover h, MoneyAccount from, MoneyAccount to, ClaimsPrincipal actor)
+    {
+        var sets = await _permissions.RoleSetsAsync();
+        var staff = await _db.Staff.AsNoTracking().Where(s => s.IsActive).ToListAsync();
+        var me = CurrentUser.Id(actor);
+        foreach (var s in staff)
+        {
+            if (s.Id.ToString() == me) continue;
+            if (!PermissionService.Effective(s, sets).Contains(Permissions.CashHandoverReceive)) continue;
+            if (AccessService.CanUseAccount(s, to)) AddCash(s.Id, CashSent, h, from, to, actor, h.Notes);
+        }
+    }
+
+    /// <summary>Cash sent up arrived or was called off: tell the sender (unless they did it).</summary>
+    public void CashDone(CashHandover h, MoneyAccount from, MoneyAccount to, ClaimsPrincipal actor)
+    {
+        if (h.SentById.ToString() == CurrentUser.Id(actor)) return;
+        AddCash(h.SentById, h.Status == HandoverStatus.RECEIVED ? CashReceived : CashCancelled, h, from, to, actor, h.Reason);
+    }
+
+    private void AddCash(Guid staffId, string kind, CashHandover h, MoneyAccount from, MoneyAccount to,
+        ClaimsPrincipal actor, string? message)
+    {
+        _db.Notifications.Add(new Notification
+        {
+            StaffId = staffId, Kind = kind, DocumentId = h.Id, DocumentNumber = h.Number,
+            PartyName = from.Name, DepartmentName = to.Name, Amount = h.Amount,
+            ActorName = CurrentUser.Name(actor), Message = message,
+        });
+        _toTell.Add(staffId);
     }
 
     private void Add(Guid staffId, string kind, SalesDocument doc, string partyName, string? departmentName,

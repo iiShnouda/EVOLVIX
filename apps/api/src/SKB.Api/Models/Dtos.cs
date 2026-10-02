@@ -753,22 +753,40 @@ public record PresenceEntryDto(
 
 // ---- Money (DOMAIN.md §2.6): accounts, vouchers, allocations, expense categories ----
 
+/// <param name="IsMain">The company's main cash box.</param>
+/// <param name="Held">Sent up and not yet confirmed: in <c>Balance</c> but not to be spent.</param>
+/// <param name="UpToId">The box its cash is sent up to (warehouse → branch → main), if any.</param>
 public record MoneyAccountDto(
     string Id, string Name, string Kind, string BranchId, string BranchName, string? CustodianId,
     string? CustodianName, string? Number, string? BankName, long Balance, string Currency, bool IsDefault,
-    bool IsActive, bool HasMovements);
+    bool IsActive, bool HasMovements, bool IsMain = false, string? WarehouseId = null, string? WarehouseName = null,
+    long Held = 0, string? UpToId = null, string? UpToName = null);
 
 /// <param name="OpeningBalance">Money already in it (minor units), posted as its first movement.</param>
 public record CreateMoneyAccountRequest(
     string? Name, string? Kind, string? BranchId, string? CustodianId = null, string? Number = null,
-    string? BankName = null, long OpeningBalance = 0, bool IsDefault = false);
+    string? BankName = null, long OpeningBalance = 0, bool IsDefault = false, bool IsMain = false,
+    string? WarehouseId = null);
 
 /// <summary>A field left null is unchanged. Closing needs a zero balance.</summary>
 /// <param name="OpeningBalance">What is in it, for an account that has no movements yet (e.g. a new
 /// branch's cash box).</param>
 public record UpdateMoneyAccountRequest(
     string? Name = null, string? Number = null, string? BankName = null, string? CustodianId = null,
-    bool? IsDefault = null, bool? IsActive = null, long? OpeningBalance = null);
+    bool? IsDefault = null, bool? IsActive = null, long? OpeningBalance = null, bool? IsMain = null,
+    string? WarehouseId = null);
+
+/// <summary>Cash sent up from one box to the next, confirmed where it arrives.</summary>
+public record CashHandoverDto(
+    string Id, string Number, string FromAccountId, string FromAccountName, string FromBranchName,
+    string ToAccountId, string ToAccountName, string ToBranchName, long Amount, string Currency, string Status,
+    string? Notes, string SentByName, string SentAt, string? DoneByName, string? DoneAt, string? Reason,
+    string? VoucherId, string? VoucherNumber, bool CanReceive, bool CanCancel);
+
+/// <param name="Amount">Minor units; at most what the box holds (less what is already on its way).</param>
+public record SendCashRequest(string? FromAccountId, long Amount, string? Notes = null);
+
+public record CancelHandoverRequest(string? Reason = null);
 
 public record MoneyMovementDto(
     string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,

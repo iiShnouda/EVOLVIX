@@ -71,10 +71,13 @@ public static class DbSeeder
             return account;
         }
         db.MoneyAccounts.AddRange(
-            Opening(new MoneyAccount { Name = "Main cash box", Kind = MoneyAccountKind.CASH_BOX, Branch = main, IsDefault = true }, 25000),
+            Opening(new MoneyAccount { Name = "Main cash box", Kind = MoneyAccountKind.CASH_BOX, Branch = main, IsDefault = true, IsMain = true }, 25000),
             Opening(new MoneyAccount { Name = "October cash box", Kind = MoneyAccountKind.CASH_BOX, Branch = wh, IsDefault = true }, 8000),
             Opening(new MoneyAccount { Name = "Company bank account", Kind = MoneyAccountKind.BANK, Branch = main, BankName = "National Bank", Number = "1234-5678-90" }, 120000),
-            Opening(new MoneyAccount { Name = "Vodafone Cash", Kind = MoneyAccountKind.WALLET, Branch = main, Number = "010 0000 0009" }, 3500));
+            Opening(new MoneyAccount { Name = "Vodafone Cash", Kind = MoneyAccountKind.WALLET, Branch = main, Number = "010 0000 0009" }, 3500),
+            // Each store's own box, handed up to its branch's (owner, 2026-10-02).
+            new MoneyAccount { Name = "Downtown store", Kind = MoneyAccountKind.CASH_BOX, Branch = main, Warehouse = mainStore },
+            new MoneyAccount { Name = "October warehouse", Kind = MoneyAccountKind.CASH_BOX, Branch = wh, Warehouse = octoberStore });
 
         var beverages = new Category { Name = "Beverages" };
         var snacks = new Category { Name = "Snacks" };

@@ -107,6 +107,16 @@ public static class DocumentNumbers
         return Next(prefix, last);
     }
 
+    /// <summary>Next cash handover number, e.g. HND-2026-000004.</summary>
+    public static async Task<string> NextHandoverAsync(AppDbContext db)
+    {
+        var prefix = $"HND-{CompanyClock.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.CashHandovers.Where(h => h.Number.StartsWith(prefix))
+            .OrderByDescending(h => h.Number).Select(h => h.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
     /// <summary>Next carrier settlement number, e.g. CST-2026-000002.</summary>
     public static async Task<string> NextSettlementAsync(AppDbContext db)
     {

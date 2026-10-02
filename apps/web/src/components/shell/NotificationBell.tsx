@@ -86,7 +86,9 @@ export function NotificationBell() {
   function go(n: AppNotification) {
     if (!n.read) read.mutate(n.id);
     setOpen(false);
-    if (n.documentId)
+    if (n.kind.startsWith('CASH_'))
+      navigate(n.kind === 'CASH_SENT' ? '/handovers?side=in' : '/handovers?side=out');
+    else if (n.documentId)
       navigate(
         n.kind === 'ORDER_PENDING' || n.kind === 'ORDER_APPROVED' || n.kind === 'ORDER_REJECTED'
           ? `/sales?tab=orders&doc=${n.documentId}`

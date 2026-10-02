@@ -115,6 +115,14 @@ public enum MoneyAccountKind
     POST,     // البريد المصري
 }
 
+/// <summary>Where cash sent up between boxes is: on its way, arrived, or called off.</summary>
+public enum HandoverStatus
+{
+    SENT,
+    RECEIVED,
+    CANCELLED,
+}
+
 /// <summary>How money was paid or received; each method lands in one kind of account.</summary>
 public enum PaymentMethod
 {

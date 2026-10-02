@@ -558,6 +558,10 @@ export interface CreateMoneyAccountInput {
   /** Minor units already in it. */
   openingBalance?: number;
   isDefault?: boolean;
+  /** The company's main cash box (money_accounts:main). */
+  isMain?: boolean;
+  /** A cash box of this warehouse (same branch). */
+  warehouseId?: string;
 }
 
 export interface UpdateMoneyAccountInput {
@@ -569,6 +573,10 @@ export interface UpdateMoneyAccountInput {
   isActive?: boolean;
   /** Only for an account nothing has moved through yet. */
   openingBalance?: number;
+  /** Make it the company's main cash box (money_accounts:main). */
+  isMain?: boolean;
+  /** Its warehouse; "" = none. */
+  warehouseId?: string;
 }
 
 export interface VoucherLineInput {

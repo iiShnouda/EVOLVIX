@@ -31,6 +31,8 @@ export interface NavItem {
   path: string;
   /** Permission required to see the item, if any. */
   permission?: Permission;
+  /** …or any one of these instead. */
+  anyOf?: Permission[];
   /** Show in the phone bottom tab bar (max 4 + a "More" tab). */
   primaryOnPhone?: boolean;
 }
@@ -102,6 +104,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'receipts',
     path: '/receipts',
     permission: 'receipts:view',
+  },
+  {
+    key: 'handovers',
+    labelKey: 'nav.handovers',
+    icon: 'receipts',
+    path: '/handovers',
+    permission: 'cash:handover_send',
+    anyOf: ['cash:handover_receive'],
   },
   {
     key: 'notes',

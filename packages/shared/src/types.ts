@@ -136,6 +136,9 @@ export type Permission =
   | 'cash:transfer'
   | 'vouchers:cancel'
   | 'money_accounts:manage'
+  | 'money_accounts:main'
+  | 'cash:handover_send'
+  | 'cash:handover_receive'
   | 'expense_categories:manage'
   // Ledger (DOMAIN step 6)
   | 'ledger:view'
@@ -804,6 +807,42 @@ export interface MoneyAccount {
   isActive: boolean;
   /** Money has moved through it; an opening balance can be set only before that. */
   hasMovements: boolean;
+  /** The company's main cash box: each branch's box hands its cash up to it. */
+  isMain?: boolean;
+  /** A warehouse's own cash box: its cash goes up to the branch's box. */
+  warehouseId?: string | null;
+  warehouseName?: string | null;
+  /** Sent up and not yet confirmed (minor units): in `balance` but not to be spent. */
+  held?: number;
+  /** The box its cash is sent up to, if any. */
+  upToId?: string | null;
+  upToName?: string | null;
+}
+
+/** Cash sent up from one box to the next, confirmed where it arrives (owner, 2026-10-02). */
+export interface CashHandover {
+  id: string;
+  number: string;
+  fromAccountId: string;
+  fromAccountName: string;
+  fromBranchName: string;
+  toAccountId: string;
+  toAccountName: string;
+  toBranchName: string;
+  amount: number;
+  currency: string;
+  status: 'SENT' | 'RECEIVED' | 'CANCELLED';
+  notes?: string | null;
+  sentByName: string;
+  sentAt: string;
+  doneByName?: string | null;
+  doneAt?: string | null;
+  reason?: string | null;
+  voucherId?: string | null;
+  voucherNumber?: string | null;
+  /** The person may confirm it arrived / call it off. */
+  canReceive: boolean;
+  canCancel: boolean;
 }
 
 export interface MoneyMovement {
@@ -2361,7 +2400,10 @@ export interface AppNotification {
     | 'ORDER_APPROVED'
     | 'ORDER_REJECTED'
     | 'LIMIT_WAIT'
-    | 'INVOICE_EDITED';
+    | 'INVOICE_EDITED'
+    | 'CASH_SENT'
+    | 'CASH_RECEIVED'
+    | 'CASH_CANCELLED';
   documentId?: string | null;
   documentNumber?: string | null;
   partyName?: string | null;

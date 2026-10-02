@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
   formatMoney,
@@ -85,8 +85,19 @@ export function CashMovePage() {
   const list = (accounts.data ?? []).filter((a) => a.isActive);
   const mainBox = list.find((a) => a.isDefault && a.kind === 'CASH_BOX');
 
-  const [from, setFrom] = useState<Side>({ kind: 'CUSTOMER', party: null, accountId: '' });
-  const [to, setTo] = useState<Side>({ kind: 'MONEY', party: null, accountId: '' });
+  // Opened as "pull from this box" (a manager taking a box's cash without a handover): box → box.
+  const [params] = useSearchParams();
+  const pullFrom = params.get('from') ?? '';
+  const [from, setFrom] = useState<Side>(
+    pullFrom
+      ? { kind: 'MONEY', party: null, accountId: pullFrom }
+      : { kind: 'CUSTOMER', party: null, accountId: '' },
+  );
+  const [to, setTo] = useState<Side>({
+    kind: 'MONEY',
+    party: null,
+    accountId: pullFrom ? (params.get('to') ?? '') : '',
+  });
   // The deposit side starts at the main cash box.
   const toAccountId = to.accountId || (to.kind === 'MONEY' ? (mainBox?.id ?? '') : '');
   const [amount, setAmount] = useState('');

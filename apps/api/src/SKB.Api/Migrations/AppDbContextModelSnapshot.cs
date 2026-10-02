@@ -210,6 +210,70 @@ namespace SKB.Api.Migrations
                     b.ToTable("CarrierSettlements");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CashHandover", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("DoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DoneById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FromAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SentById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ToAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VoucherId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DoneById");
+
+                    b.HasIndex("FromAccountId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("SentById");
+
+                    b.HasIndex("ToAccountId");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("Status", "ToAccountId");
+
+                    b.ToTable("CashHandovers");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1006,10 +1070,16 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("CustodianId")
                         .HasColumnType("uuid");
 
+                    b.Property<long>("Held")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsMain")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Kind")
@@ -1026,6 +1096,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Number")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("WarehouseId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BranchId")
@@ -1033,6 +1106,12 @@ namespace SKB.Api.Migrations
                         .HasFilter("\"IsDefault\"");
 
                     b.HasIndex("CustodianId");
+
+                    b.HasIndex("IsMain")
+                        .IsUnique()
+                        .HasFilter("\"IsMain\"");
+
+                    b.HasIndex("WarehouseId");
 
                     b.ToTable("MoneyAccounts");
                 });
@@ -3006,6 +3085,47 @@ namespace SKB.Api.Migrations
                     b.Navigation("CreatedBy");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CashHandover", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "DoneBy")
+                        .WithMany()
+                        .HasForeignKey("DoneById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "FromAccount")
+                        .WithMany()
+                        .HasForeignKey("FromAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "SentBy")
+                        .WithMany()
+                        .HasForeignKey("SentById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.MoneyAccount", "ToAccount")
+                        .WithMany()
+                        .HasForeignKey("ToAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Voucher", "Voucher")
+                        .WithMany()
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DoneBy");
+
+                    b.Navigation("FromAccount");
+
+                    b.Navigation("SentBy");
+
+                    b.Navigation("ToAccount");
+
+                    b.Navigation("Voucher");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Category", b =>
                 {
                     b.HasOne("SKB.Api.Data.Department", "Department")
@@ -3281,9 +3401,16 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("CustodianId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Branch");
 
                     b.Navigation("Custodian");
+
+                    b.Navigation("Warehouse");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.MoneyMovement", b =>

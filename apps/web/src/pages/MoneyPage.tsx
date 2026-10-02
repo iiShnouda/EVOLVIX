@@ -40,6 +40,7 @@ import {
   useSaveExpenseCategory,
   useUpdateMoneyAccount,
   useVouchers,
+  useWarehouses,
   type VoucherKind,
 } from '../lib/queries';
 
@@ -294,6 +295,8 @@ function AccountCard({
   onEdit?: () => void;
 }) {
   const { t, locale } = useT();
+  const can = useCan();
+  const navigate = useNavigate();
   const detail = [a.bankName, a.number, a.custodianName].filter(Boolean).join(' · ');
   return (
     <Card className={a.isActive ? '' : 'opacity-70'}>
@@ -302,7 +305,9 @@ function AccountCard({
           <p className="truncate font-medium">{a.name}</p>
           <div className="mt-0.5 flex flex-wrap gap-1">
             <Badge tone="brand">{t(`money.kind.${a.kind}`)}</Badge>
+            {a.isMain && <Badge tone="info">{t('money.main')}</Badge>}
             {a.isDefault && <Badge tone="positive">{t('money.default')}</Badge>}
+            {a.warehouseName && <Badge tone="neutral">{a.warehouseName}</Badge>}
             {!a.isActive && <Badge tone="warning">{t('money.closed')}</Badge>}
           </div>
           {detail && (
@@ -318,10 +323,34 @@ function AccountCard({
       <p className="mt-3 text-xl font-semibold tnum">
         {formatMoney(a.balance, a.currency, locale)}
       </p>
+      {!!a.held && (
+        <p className="text-xs text-warning tnum">
+          {t('money.held')}: {formatMoney(a.held, a.currency, locale)}
+        </p>
+      )}
+      {a.upToName && (
+        <p className="mt-1 truncate text-xs text-muted">
+          {t('money.upTo')}: {a.upToName}
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" onClick={onStatement}>
           {t('money.statement')}
         </Button>
+        {a.upToId && a.isActive && can('cash:handover_send') && (
+          <Button size="sm" variant="ghost" onClick={() => navigate(`/handovers?from=${a.id}`)}>
+            {t('hand.send')}
+          </Button>
+        )}
+        {a.upToId && a.isActive && a.balance > 0 && can('cash:transfer') && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => navigate(`/receipts/move?from=${a.id}&to=${a.upToId}`)}
+          >
+            {t('hand.pull')}
+          </Button>
+        )}
         {onEdit && (
           <Button size="sm" variant="ghost" onClick={onEdit}>
             {t('common.edit')}
@@ -351,6 +380,11 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
   const [bankName, setBankName] = useState('');
   const [opening, setOpening] = useState('');
   const [isDefault, setIsDefault] = useState(false);
+  const [isMain, setIsMain] = useState(false);
+  const [warehouseId, setWarehouseId] = useState('');
+  const can = useCan();
+  const warehouses = useWarehouses(true);
+  const branchStores = (warehouses.data ?? []).filter((w) => w.branchId === branchId);
 
   async function save() {
     try {
@@ -363,6 +397,8 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
         bankName: kind === 'BANK' ? bankName.trim() || undefined : undefined,
         openingBalance: minor(opening),
         isDefault: kind === 'CASH_BOX' ? isDefault : undefined,
+        isMain: kind === 'CASH_BOX' && isMain ? true : undefined,
+        warehouseId: kind === 'CASH_BOX' && warehouseId ? warehouseId : undefined,
       });
       onClose();
     } catch {
@@ -454,6 +490,22 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
           />
         </Field>
         {kind === 'CASH_BOX' && (
+          <Field label={t('money.ofWarehouse')}>
+            <select
+              className={input}
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              <option value="">{t('money.noWarehouse')}</option>
+              {branchStores.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {kind === 'CASH_BOX' && (
           <label className="flex items-center gap-2 self-end pb-2 text-sm">
             <input
               type="checkbox"
@@ -461,6 +513,12 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
               onChange={(e) => setIsDefault(e.target.checked)}
             />
             {t('money.makeDefault')}
+          </label>
+        )}
+        {kind === 'CASH_BOX' && can('money_accounts:main') && (
+          <label className="flex items-center gap-2 self-end pb-2 text-sm">
+            <input type="checkbox" checked={isMain} onChange={(e) => setIsMain(e.target.checked)} />
+            {t('money.makeMain')}
           </label>
         )}
       </div>
@@ -491,6 +549,10 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
   const [number, setNumber] = useState(a.number ?? '');
   const [bankName, setBankName] = useState(a.bankName ?? '');
   const [opening, setOpening] = useState('');
+  const [warehouseId, setWarehouseId] = useState(a.warehouseId ?? '');
+  const can = useCan();
+  const warehouses = useWarehouses(true);
+  const branchStores = (warehouses.data ?? []).filter((w) => w.branchId === a.branchId);
 
   async function run(input: Parameters<typeof update.mutateAsync>[0]['input']) {
     try {
@@ -535,6 +597,22 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
             />
           </Field>
         )}
+        {a.kind === 'CASH_BOX' && !a.isDefault && !a.isMain && (
+          <Field label={t('money.ofWarehouse')}>
+            <select
+              className={input}
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              <option value="">{t('money.noWarehouse')}</option>
+              {branchStores.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
       </div>
       {!a.hasMovements && a.isActive && (
         <div className="mt-3">
@@ -565,11 +643,21 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
               {t('money.makeDefault')}
             </Button>
           )}
+          {a.kind === 'CASH_BOX' && a.isActive && !a.isMain && can('money_accounts:main') && (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={update.isPending}
+              onClick={() => void run({ isMain: true })}
+            >
+              {t('money.makeMain')}
+            </Button>
+          )}
           {a.isActive ? (
             <Button
               size="sm"
               variant="ghost"
-              disabled={update.isPending || a.balance !== 0 || a.isDefault}
+              disabled={update.isPending || a.balance !== 0 || a.isDefault || !!a.isMain}
               title={t('money.closeHint')}
               onClick={() => void run({ isActive: false })}
             >
@@ -600,6 +688,10 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
                 number: a.kind !== 'CASH_BOX' && a.kind !== 'CUSTODY' ? number : undefined,
                 bankName: a.kind === 'BANK' ? bankName : undefined,
                 openingBalance: !a.hasMovements && minor(opening) > 0 ? minor(opening) : undefined,
+                warehouseId:
+                  a.kind === 'CASH_BOX' && warehouseId !== (a.warehouseId ?? '')
+                    ? warehouseId
+                    : undefined,
               })
             }
           >

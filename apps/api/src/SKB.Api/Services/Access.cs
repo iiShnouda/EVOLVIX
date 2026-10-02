@@ -154,6 +154,11 @@ public sealed class AccessService
 
     public static bool SeesAll(Staff s) => s.Role == Role.OWNER || (s.AllBranches ?? RoleSeesAll(s.Role));
 
+    /// <summary>May this person use the money account (its branch is theirs, and it's on their list if they have one)?</summary>
+    public static bool CanUseAccount(Staff s, MoneyAccount a) =>
+        (SeesAll(s) || s.BranchId == a.BranchId || s.BranchIds.Contains(a.BranchId))
+        && (s.Role == Role.OWNER || s.MoneyAccountIds.Count == 0 || s.MoneyAccountIds.Contains(a.Id));
+
     /// <summary>
     /// Something new is hidden from everyone until they are given it (owner decision 2026-10-02):
     /// before a branch, warehouse, money account or department is added, each person (owners and

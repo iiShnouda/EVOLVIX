@@ -59,6 +59,12 @@ public static class Permissions
     public const string VouchersCancel = "vouchers:cancel";
     /// <summary>Add and edit cash boxes, custody, bank accounts and wallets (with an opening balance).</summary>
     public const string MoneyAccountsManage = "money_accounts:manage";
+    /// <summary>Choose and name the company's main cash box (owner, 2026-10-02).</summary>
+    public const string MoneyAccountsMain = "money_accounts:main";
+    /// <summary>Send a box's cash up to the next box (warehouse → branch → main), to be confirmed there.</summary>
+    public const string CashHandoverSend = "cash:handover_send";
+    /// <summary>Confirm cash sent up to a box one holds has arrived (or send it back).</summary>
+    public const string CashHandoverReceive = "cash:handover_receive";
     /// <summary>Add and rename expense categories.</summary>
     public const string ExpenseCategoriesManage = "expense_categories:manage";
 
@@ -239,7 +245,7 @@ public static class Permissions
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
         PartiesCreate, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
-        MoneyAccountsManage, ExpenseCategoriesManage,
+        MoneyAccountsManage, ExpenseCategoriesManage, MoneyAccountsMain, CashHandoverSend, CashHandoverReceive,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel, NotesLost,
@@ -285,7 +291,7 @@ public static class RolePermissions
             Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
             Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
-            Permissions.ExpenseCategoriesManage,
+            Permissions.ExpenseCategoriesManage, Permissions.CashHandoverSend, Permissions.CashHandoverReceive,
             Permissions.LedgerView, Permissions.LedgerPost, Permissions.LedgerManage,
             Permissions.NotesView, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
@@ -318,6 +324,8 @@ public static class RolePermissions
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
             Permissions.DeliveryView, Permissions.DeliveryManage,
+            // A store keeper hands the store's cash up to the branch.
+            Permissions.CashHandoverSend,
         },
         [Role.VIEWER] = new[]
         {

@@ -46,12 +46,13 @@ public sealed class MoneyController : ControllerBase
     [HttpGet("money-accounts")]
     public async Task<ActionResult<MoneyAccountDto[]>> Accounts([FromQuery] string? kind = null, [FromQuery] bool? active = null)
     {
-        var q = _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian).AsQueryable();
+        var q = _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian).Include(a => a.Warehouse).AsQueryable();
         if (Enum.TryParse<MoneyAccountKind>(kind, true, out var k)) q = q.Where(a => a.Kind == k);
         if (active is bool isActive) q = q.Where(a => a.IsActive == isActive);
-        var rows = await q.OrderBy(a => a.Branch!.CreatedAt).ThenByDescending(a => a.IsDefault)
-            .ThenBy(a => a.Kind).ThenBy(a => a.Name).ToListAsync();
-        return Ok(rows.Select(ToDto).ToArray());
+        var rows = await q.OrderBy(a => a.Branch!.CreatedAt).ThenByDescending(a => a.IsMain).ThenByDescending(a => a.IsDefault)
+            .ThenBy(a => a.Kind).ThenBy(a => a.WarehouseId != null).ThenBy(a => a.Name).ToListAsync();
+        var up = await _money.UpTargetsAsync();
+        return Ok(rows.Select(a => ToDto(a, up(a))).ToArray());
     }
 
     /// <summary>Add a money account; money already in it is posted as its opening balance.</summary>
@@ -68,11 +69,16 @@ public sealed class MoneyController : ControllerBase
         if (req.OpeningBalance < 0 || req.OpeningBalance > InvoiceLines.MaxPrice) return Bad("bad_amount", "The opening balance can't be negative.");
         if (req.IsDefault && kind != MoneyAccountKind.CASH_BOX) return Bad("bad_default", "Only a cash box can be the branch's default.");
         if (await NameTakenAsync(branchId, name, null)) return Bad("duplicate_name", $"There is already an account called {name} in this branch.");
+        if (req.IsMain && kind != MoneyAccountKind.CASH_BOX) return Bad("bad_main", "Only a cash box can be the main cash box.");
+        if (req.IsMain && !User.HasClaim("permission", Permissions.MoneyAccountsMain))
+            return StatusCode(403, new { message = "Only the owner chooses the main cash box.", code = "forbidden" });
+        var (warehouseId, warehouseError) = await WarehouseOfAsync(req.WarehouseId, branchId, kind, null);
+        if (warehouseError is not null) return warehouseError;
 
         var account = new MoneyAccount
         {
             Name = name, Kind = kind, BranchId = branchId, Number = Text(req.Number, 40), BankName = Text(req.BankName, 100),
-            Currency = await CurrencyAsync(),
+            Currency = await CurrencyAsync(), WarehouseId = warehouseId,
         };
         if (kind == MoneyAccountKind.CUSTODY)
         {
@@ -88,6 +94,11 @@ public sealed class MoneyController : ControllerBase
             await ClearDefaultAsync(branchId);
             account.IsDefault = true;
         }
+        if (req.IsMain)
+        {
+            await _db.MoneyAccounts.Where(a => a.IsMain).ExecuteUpdateAsync(x => x.SetProperty(a => a.IsMain, false));
+            account.IsMain = true;
+        }
         _db.MoneyAccounts.Add(account);
         await HttpContext.RequestServices.GetRequiredService<AccessService>()
             .KeepNewHiddenAsync(NewKind.MoneyAccount, account.Id, CurrentUser.Id(User));
@@ -101,7 +112,7 @@ public sealed class MoneyController : ControllerBase
         }
         await tx.CommitAsync();
         await AuditAsync("create", "money_account", account.Id, branchId);
-        return Created($"/api/money-accounts/{account.Id}", ToDto(await ReloadAccountAsync(account.Id)));
+        return Created($"/api/money-accounts/{account.Id}", await AccountDtoAsync(account.Id));
     }
 
     /// <summary>Rename, change details, make the branch's default cash box, close or reopen.</summary>
@@ -130,10 +141,27 @@ public sealed class MoneyController : ControllerBase
                 return Bad("custodian_not_found", "Choose who holds the custody.");
             account.CustodianId = custodian;
         }
+        if (req.WarehouseId is not null)
+        {
+            var (warehouseId, warehouseError) = await WarehouseOfAsync(req.WarehouseId, account.BranchId, account.Kind, account.Id);
+            if (warehouseError is not null) return warehouseError;
+            account.WarehouseId = warehouseId;
+        }
+        if (req.IsMain is bool makeMain && makeMain != account.IsMain)
+        {
+            if (!User.HasClaim("permission", Permissions.MoneyAccountsMain))
+                return StatusCode(403, new { message = "Only the owner chooses the main cash box.", code = "forbidden" });
+            if (!makeMain) return Bad("is_main", "Make another cash box the main one instead.");
+            if (account.Kind != MoneyAccountKind.CASH_BOX || !account.IsActive)
+                return Bad("bad_main", "Only an open cash box can be the main cash box.");
+            await _db.MoneyAccounts.Where(a => a.IsMain).ExecuteUpdateAsync(x => x.SetProperty(a => a.IsMain, false));
+            account.IsMain = true;
+        }
         if (req.IsActive == false && account.IsActive)
         {
             if (account.Balance != 0) return Bad("has_balance", "Move the money out before closing this account.");
             if (account.IsDefault) return Bad("is_default", "Make another cash box the default first.");
+            if (account.IsMain) return Bad("is_main", "Make another cash box the main one first.");
             account.IsActive = false;
         }
         else if (req.IsActive == true) account.IsActive = true;
@@ -157,7 +185,7 @@ public sealed class MoneyController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("update", "money_account", account.Id, account.BranchId);
-        return Ok(ToDto(await ReloadAccountAsync(account.Id)));
+        return Ok(await AccountDtoAsync(account.Id));
     }
 
     /// <summary>
@@ -167,7 +195,7 @@ public sealed class MoneyController : ControllerBase
     [HttpGet("money-accounts/{id:guid}/movements")]
     public async Task<ActionResult<AccountStatementDto>> Statement(Guid id, [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
-        var account = await _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian)
+        var account = await _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian).Include(a => a.Warehouse)
             .FirstOrDefaultAsync(a => a.Id == id);
         if (account is null) return NotFound(new { message = "Money account not found.", code = "not_found" });
         var fromDay = CompanyClock.ParseDay(from) ?? CompanyClock.Today;
@@ -183,7 +211,8 @@ public sealed class MoneyController : ControllerBase
             .OrderBy(m => m.Seq).Take(5000).ToListAsync();
         var totalIn = rows.Where(m => m.Amount > 0).Sum(m => m.Amount);
         var totalOut = rows.Where(m => m.Amount < 0).Sum(m => -m.Amount);
-        return Ok(new AccountStatementDto(ToDto(account), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
+        var up = await _money.UpTargetsAsync();
+        return Ok(new AccountStatementDto(ToDto(account, up(account)), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             opening, totalIn, totalOut, opening + totalIn - totalOut,
             rows.Select(m => new MoneyMovementDto(m.Id.ToString(), m.Seq, m.CreatedAt.ToString("o"), m.Kind.ToString(),
                 m.Amount, m.BalanceAfter, m.Method?.ToString(), m.Reference, m.MethodReference, m.Party?.Name, m.Notes,
@@ -588,6 +617,9 @@ public sealed class MoneyController : ControllerBase
         var account = await _money.Visible(User).FirstOrDefaultAsync(a => a.Id == id);
         if (account is null) return NotFound(new { message = "Account not found.", code = "not_found" });
         if (account.IsDefault) return Bad("is_default", "The branch's main cash box stays; make another one the main first.");
+        if (account.IsMain) return Bad("is_main", "The main cash box stays; make another one the main first.");
+        if (await _db.CashHandovers.AnyAsync(h => h.FromAccountId == id || h.ToAccountId == id))
+            return Bad("in_use", "Cash has been sent through this account: close it instead.");
         if (account.Balance != 0 || await _db.MoneyMovements.AnyAsync(m => m.AccountId == id)
             || await _db.LedgerAccounts.AnyAsync(a => a.MoneyAccountId == id && _db.JournalLines.Any(l => l.AccountId == a.Id)))
             return Bad("in_use", "Money has gone through this account: close it instead.");
@@ -629,7 +661,7 @@ public sealed class MoneyController : ControllerBase
     private Task<Voucher> ReloadVoucherAsync(Guid id) => WithDetails(_db.Vouchers).FirstAsync(v => v.Id == id);
 
     private Task<MoneyAccount> ReloadAccountAsync(Guid id) => _db.MoneyAccounts.AsNoTracking()
-        .Include(a => a.Branch).Include(a => a.Custodian).FirstAsync(a => a.Id == id);
+        .Include(a => a.Branch).Include(a => a.Custodian).Include(a => a.Warehouse).FirstAsync(a => a.Id == id);
 
     /// <summary>Invoices in a cash-on-delivery parcel still on its way: the carrier collects those.</summary>
     private async Task<HashSet<Guid>> CodParcelDocsAsync(List<Guid> docIds) =>
@@ -656,10 +688,34 @@ public sealed class MoneyController : ControllerBase
         return _db.ExpenseCategories.AnyAsync(c => c.ParentId == parentId && c.Id != except && c.Name.ToLower() == lower);
     }
 
-    private static MoneyAccountDto ToDto(MoneyAccount a) => new(
+    internal static MoneyAccountDto ToDto(MoneyAccount a, (Guid Id, string Name)? up = null) => new(
         a.Id.ToString(), Loc.Name(a), a.Kind.ToString(), a.BranchId.ToString(), Loc.Name(a.Branch),
         a.CustodianId?.ToString(), a.Custodian?.FullName, a.Number, a.BankName, a.Balance, a.Currency, a.IsDefault,
-        a.IsActive, a.LastSeq > 0);
+        a.IsActive, a.LastSeq > 0, a.IsMain, a.WarehouseId?.ToString(), a.Warehouse is null ? null : Loc.Name(a.Warehouse),
+        a.Held, up?.Id.ToString(), up?.Name);
+
+    private async Task<MoneyAccountDto> AccountDtoAsync(Guid id)
+    {
+        var account = await ReloadAccountAsync(id);
+        return ToDto(account, (await _money.UpTargetsAsync())(account));
+    }
+
+    /// <summary>
+    /// The warehouse a cash box belongs to ("" = none): a store of the same branch, at most one box
+    /// each. Only cash boxes belong to a warehouse.
+    /// </summary>
+    private async Task<(Guid? Id, BadRequestObjectResult? Error)> WarehouseOfAsync(string? raw, Guid branchId,
+        MoneyAccountKind kind, Guid? except)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return (null, null);
+        if (kind != MoneyAccountKind.CASH_BOX) return (null, Bad("bad_warehouse", "Only a cash box belongs to a warehouse."));
+        if (!Guid.TryParse(raw, out var id)
+            || !await _db.Warehouses.AnyAsync(w => w.Id == id && w.BranchId == branchId && w.Kind == WarehouseKind.STORE))
+            return (null, Bad("warehouse_not_found", "Choose a warehouse of the same branch."));
+        if (await _db.MoneyAccounts.AnyAsync(a => a.WarehouseId == id && a.IsActive && a.Id != except))
+            return (null, Bad("warehouse_has_box", "That warehouse already has its cash box."));
+        return (id, null);
+    }
 
     private static ExpenseCategoryDto ToDto(ExpenseCategory c) => new(
         c.Id.ToString(), Loc.Name(c), c.ParentId?.ToString(), c.Parent is null ? null : Loc.Name(c.Parent), c.IsActive);

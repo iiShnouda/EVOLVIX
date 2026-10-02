@@ -51,6 +51,7 @@ import { MoneyPage } from './pages/MoneyPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { NotesPage } from './pages/NotesPage';
 import { NoteFormPage } from './pages/NoteFormPage';
+import { HandoversPage } from './pages/HandoversPage';
 import { CustomerAccountPage } from './pages/CustomerAccountPage';
 import { CustomerInvoicesPage } from './pages/CustomerInvoicesPage';
 import { StatementPage } from './pages/StatementPage';
@@ -255,6 +256,7 @@ const router = createBrowserRouter(
         />
         <Route path="/receipts" element={<MoneyPage />} />
         <Route path="/receipts/move" element={<CashMovePage />} />
+        <Route path="/handovers" element={<HandoversPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/notes" element={<NotesPage />} />
         <Route path="/notes/receive" element={<NoteFormPage key="in" direction="RECEIVABLE" />} />
