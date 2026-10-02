@@ -182,4 +182,70 @@ eq(
 eq('not twice', (await mona.post(`/notes/${made[2].id}/lost`, {})).data?.code, 'bad_transition');
 eq("sales staff can't", (await karim.post(`/notes/${made[1].id}/lost`, {})).status, 403);
 
+console.log('== expense items and accounts: added and removed from the withdraw / deposit page');
+const item1 = ok(
+  'an expense item',
+  await owner.post('/expense-categories', { name: `Tea ${tag}` }),
+);
+ok('deleted while unused', await owner.del(`/expense-categories/${item1.id}`), 204);
+const item2 = ok('another item', await owner.post('/expense-categories', { name: `Fuel ${tag}` }));
+const boxes = (await owner.get('/money-accounts')).data;
+const mainBox = boxes.find(
+  (a) => a.isDefault && a.kind === 'CASH_BOX' && a.branchId === owner.user.branchId,
+);
+ok(
+  'money in the box',
+  await owner.post('/receipts', {
+    partyId: cust.id,
+    lines: [{ method: 'CASH', accountId: mainBox.id, amount: 5000 }],
+  }),
+);
+ok(
+  'an expense on it',
+  await owner.post('/expenses', {
+    categoryId: item2.id,
+    lines: [{ method: 'CASH', accountId: mainBox.id, amount: 1000 }],
+  }),
+);
+eq('a used item stays', (await owner.del(`/expense-categories/${item2.id}`)).data?.code, 'in_use');
+eq(
+  "sales staff can't delete items",
+  (await karim.del(`/expense-categories/${item2.id}`)).status,
+  403,
+);
+const spare = ok(
+  'a new cash box',
+  await owner.post('/money-accounts', {
+    name: `Spare ${tag}`,
+    kind: 'CASH_BOX',
+    branchId: owner.user.branchId,
+  }),
+);
+ok('deleted while nothing went through it', await owner.del(`/money-accounts/${spare.id}`), 204);
+check(
+  'gone from the list',
+  !(await owner.get('/money-accounts')).data.some((a) => a.id === spare.id),
+);
+eq(
+  'the main box stays',
+  (await owner.del(`/money-accounts/${mainBox.id}`)).data?.code,
+  'is_default',
+);
+const used = ok(
+  'another box',
+  await owner.post('/money-accounts', {
+    name: `Used ${tag}`,
+    kind: 'CASH_BOX',
+    branchId: owner.user.branchId,
+  }),
+);
+ok(
+  'money into it',
+  await owner.post('/receipts', {
+    partyId: cust.id,
+    lines: [{ method: 'CASH', accountId: used.id, amount: 100 }],
+  }),
+);
+eq('one with money stays', (await owner.del(`/money-accounts/${used.id}`)).data?.code, 'in_use');
+
 summary('cheques');

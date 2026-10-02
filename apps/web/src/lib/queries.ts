@@ -1441,6 +1441,24 @@ export function useSaveExpenseCategory() {
   });
 }
 
+/** Remove an expense item nothing used yet (else the server says to close it). */
+export function useDeleteExpenseCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/expense-categories/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['money', 'categories'] }),
+  });
+}
+
+/** Remove a money account no money has gone through yet (else the server says to close it). */
+export function useDeleteMoneyAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/money-accounts/${id}`),
+    onSuccess: () => invalidateAfterMoney(qc),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Ledger (DOMAIN.md §2.8): chart of accounts, statements, trial balance, journal
 // ---------------------------------------------------------------------------

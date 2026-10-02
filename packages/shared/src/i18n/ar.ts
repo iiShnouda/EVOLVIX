@@ -2147,4 +2147,13 @@ export const ar: TranslationDictionary = {
   'notes.lost': 'مفقود',
   'notes.status.LOST': 'مفقود',
   'perm.notes:lost': 'تسجيل ورقة مالية مفقودة',
+  'move.expense': 'مصروف (بند مصروفات)',
+  'move.expenseItem': 'بند المصروف',
+  'move.newItem': 'بند جديد',
+  'move.deleteItem': 'حذف البند',
+  'move.deleteItemAsk': 'حذف بند المصروف هذا؟ لا يُحذف إن كان مستخدمًا.',
+  'move.newAccount': 'حساب جديد',
+  'move.deleteAccount': 'حذف هذا الحساب',
+  'move.deleteAccountAsk': 'حذف هذا الحساب؟ لا يُحذف إن مرّت عليه فلوس.',
+  'move.accountName': 'اسم الحساب',
 };

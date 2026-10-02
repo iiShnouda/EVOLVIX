@@ -2159,4 +2159,13 @@ export const en = {
   'notes.lost': 'Lost',
   'notes.status.LOST': 'Lost',
   'perm.notes:lost': 'Record a note as lost',
+  'move.expense': 'Expense (expense item)',
+  'move.expenseItem': 'Expense item',
+  'move.newItem': 'New item',
+  'move.deleteItem': 'Delete the item',
+  'move.deleteItemAsk': 'Delete this expense item? It stays if it has been used.',
+  'move.newAccount': 'New account',
+  'move.deleteAccount': 'Delete this account',
+  'move.deleteAccountAsk': 'Delete this account? It stays if money has gone through it.',
+  'move.accountName': 'Account name',
 } as const;

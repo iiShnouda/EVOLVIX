@@ -546,6 +546,60 @@ public sealed class MoneyController : ControllerBase
         return Ok(ToDto(category));
     }
 
+    /// <summary>
+    /// Remove an expense item (owner, 2026-10-02: add or delete expense items). One already used
+    /// stays (its expenses keep their item): close it instead.
+    /// </summary>
+    [HttpDelete("expense-categories/{id:guid}")]
+    [Authorize(Policy = Permissions.ExpenseCategoriesManage)]
+    public async Task<IActionResult> DeleteCategory(Guid id)
+    {
+        var category = await _db.ExpenseCategories.FirstOrDefaultAsync(c => c.Id == id);
+        if (category is null) return NotFound(new { message = "Category not found.", code = "not_found" });
+        if (await _db.ExpenseCategories.AnyAsync(c => c.ParentId == id)
+            || await _db.Vouchers.AnyAsync(v => v.ExpenseCategoryId == id)
+            || await _db.LedgerAccounts.AnyAsync(a => a.ExpenseCategoryId == id
+                && _db.JournalLines.Any(l => l.AccountId == a.Id)))
+            return Bad("in_use", "This item is already used: close it instead.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.LedgerAccounts.Where(a => a.ExpenseCategoryId == id).ExecuteDeleteAsync();
+        _db.ExpenseCategories.Remove(category);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("delete", "expense_category", id, null);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Remove a money account nothing has gone through yet (owner, 2026-10-02). One with movements
+    /// or a balance stays in the books: close it instead.
+    /// </summary>
+    [HttpDelete("money-accounts/{id:guid}")]
+    [Authorize(Policy = Permissions.MoneyAccountsManage)]
+    public async Task<IActionResult> DeleteAccount(Guid id)
+    {
+        var account = await _money.Visible(User).FirstOrDefaultAsync(a => a.Id == id);
+        if (account is null) return NotFound(new { message = "Account not found.", code = "not_found" });
+        if (account.IsDefault) return Bad("is_default", "The branch's main cash box stays; make another one the main first.");
+        if (account.Balance != 0 || await _db.MoneyMovements.AnyAsync(m => m.AccountId == id)
+            || await _db.LedgerAccounts.AnyAsync(a => a.MoneyAccountId == id && _db.JournalLines.Any(l => l.AccountId == a.Id)))
+            return Bad("in_use", "Money has gone through this account: close it instead.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            await _db.LedgerAccounts.Where(a => a.MoneyAccountId == id).ExecuteDeleteAsync();
+            _db.MoneyAccounts.Remove(account);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return Bad("in_use", "This account is used elsewhere: close it instead.");
+        }
+        await AuditAsync("delete", "money_account", id, account.BranchId);
+        return NoContent();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private IQueryable<SalesDocument> ScopedDocs()

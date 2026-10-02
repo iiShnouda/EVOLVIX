@@ -24,20 +24,29 @@ import { api } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
 import {
   useCreateCashTransfer,
+  useCreateMoneyAccount,
   useCreateVoucher,
+  useDeleteExpenseCategory,
+  useDeleteMoneyAccount,
+  useExpenseCategories,
   useMoneyAccounts,
   useOpenInvoices,
+  useSaveExpenseCategory,
 } from '../lib/queries';
+import { useWorkBranch } from '../stores/workBranch';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-type SideKind = 'CUSTOMER' | 'SUPPLIER' | 'MONEY';
+/** EXPENSE: money paid out for an expense item (owner, 2026-10-02), only as the deposit side. */
+type SideKind = 'CUSTOMER' | 'SUPPLIER' | 'MONEY' | 'EXPENSE';
 
 interface Side {
   kind: SideKind;
   party: Party | null;
   accountId: string;
+  /** The expense item, on an EXPENSE side. */
+  categoryId?: string;
 }
 
 /** What is kept of a withdraw / deposit being written (parties by id; read again). */
@@ -115,23 +124,27 @@ export function CashMovePage() {
   const pending = voucher.isPending || transfer.isPending;
   const error = voucher.error ?? transfer.error;
 
-  // What this is: a receipt, a payment or a transfer (party → party isn't done here).
+  // What this is: a receipt, a payment, an expense or a transfer (party → party isn't done here).
   const what =
-    from.kind !== 'MONEY' && to.kind === 'MONEY'
-      ? 'RECEIPT'
-      : from.kind === 'MONEY' && to.kind !== 'MONEY'
-        ? 'PAYMENT'
-        : from.kind === 'MONEY' && to.kind === 'MONEY'
-          ? 'TRANSFER'
-          : null;
+    from.kind === 'MONEY' && to.kind === 'EXPENSE'
+      ? 'EXPENSE'
+      : from.kind !== 'MONEY' && from.kind !== 'EXPENSE' && to.kind === 'MONEY'
+        ? 'RECEIPT'
+        : from.kind === 'MONEY' && to.kind !== 'MONEY'
+          ? 'PAYMENT'
+          : from.kind === 'MONEY' && to.kind === 'MONEY'
+            ? 'TRANSFER'
+            : null;
   const allowed =
     what === 'RECEIPT'
       ? can('receipts:create')
       : what === 'PAYMENT'
         ? can('payments:create')
-        : what === 'TRANSFER'
-          ? can('cash:transfer')
-          : false;
+        : what === 'EXPENSE'
+          ? can('expenses:create')
+          : what === 'TRANSFER'
+            ? can('cash:transfer')
+            : false;
 
   // The invoices this settles: a customer's sales it is received for, a supplier's purchases it pays.
   const party = what === 'RECEIPT' ? from.party : what === 'PAYMENT' ? to.party : null;
@@ -148,7 +161,12 @@ export function CashMovePage() {
   const total = minor(amount);
   const allocated = Object.values(alloc).reduce((s, v) => s + minor(v), 0);
   const overInvoice = invoices.some((o) => minor(alloc[o.documentId] ?? '') > o.outstanding);
-  const moneyId = what === 'RECEIPT' ? toAccountId : what === 'PAYMENT' ? from.accountId : '';
+  const moneyId =
+    what === 'RECEIPT'
+      ? toAccountId
+      : what === 'PAYMENT' || what === 'EXPENSE'
+        ? from.accountId
+        : '';
   const moneyAccount = list.find((a) => a.id === moneyId);
   const ready =
     !!what &&
@@ -158,7 +176,9 @@ export function CashMovePage() {
     !overInvoice &&
     (what === 'TRANSFER'
       ? !!from.accountId && !!toAccountId && from.accountId !== toAccountId
-      : !!party && !!moneyAccount);
+      : what === 'EXPENSE'
+        ? !!to.categoryId && !!moneyAccount
+        : !!party && !!moneyAccount);
 
   function spread() {
     let left = total;
@@ -183,23 +203,38 @@ export function CashMovePage() {
               amount: total,
               notes: notes.trim() || undefined,
             })
-          : await voucher.mutateAsync({
-              kind: what === 'RECEIPT' ? 'receipts' : 'payments',
-              input: {
-                partyId: party!.id,
-                lines: [
-                  {
-                    method: METHOD_OF[moneyAccount!.kind],
-                    accountId: moneyAccount!.id,
-                    amount: total,
-                  },
-                ],
-                allocations: Object.entries(alloc)
-                  .map(([documentId, v]) => ({ documentId, amount: minor(v) }))
-                  .filter((a) => a.amount > 0),
-                notes: notes.trim() || undefined,
-              },
-            });
+          : what === 'EXPENSE'
+            ? await voucher.mutateAsync({
+                kind: 'expenses',
+                input: {
+                  categoryId: to.categoryId,
+                  lines: [
+                    {
+                      method: METHOD_OF[moneyAccount!.kind],
+                      accountId: moneyAccount!.id,
+                      amount: total,
+                    },
+                  ],
+                  notes: notes.trim() || undefined,
+                },
+              })
+            : await voucher.mutateAsync({
+                kind: what === 'RECEIPT' ? 'receipts' : 'payments',
+                input: {
+                  partyId: party!.id,
+                  lines: [
+                    {
+                      method: METHOD_OF[moneyAccount!.kind],
+                      accountId: moneyAccount!.id,
+                      amount: total,
+                    },
+                  ],
+                  allocations: Object.entries(alloc)
+                    .map(([documentId, v]) => ({ documentId, amount: minor(v) }))
+                    .filter((a) => a.amount > 0),
+                  notes: notes.trim() || undefined,
+                },
+              });
       setDone(saved.number);
       setAmount('');
       setAlloc({});
@@ -277,6 +312,7 @@ export function CashMovePage() {
           accounts={list}
           accountId={toAccountId}
           invoices={what === 'PAYMENT' && docSide ? invoices : null}
+          canExpense
           loading={open.isLoading}
           alloc={alloc}
           setAlloc={setAlloc}
@@ -337,7 +373,10 @@ function SideCard({
   alloc,
   setAlloc,
   onSpread,
+  canExpense,
 }: {
+  /** The deposit side may be an expense item. */
+  canExpense?: boolean;
   title: string;
   side: Side;
   onChange: (s: Side) => void;
@@ -372,9 +411,15 @@ function SideCard({
           <option value="CUSTOMER">{t('move.customer')}</option>
           <option value="SUPPLIER">{t('move.supplier')}</option>
           <option value="MONEY">{t('move.money')}</option>
+          {canExpense && <option value="EXPENSE">{t('move.expense')}</option>}
         </select>
       </label>
-      {side.kind === 'MONEY' ? (
+      {side.kind === 'EXPENSE' ? (
+        <ExpenseItemPicker
+          value={side.categoryId ?? ''}
+          onChange={(id) => onChange({ ...side, categoryId: id })}
+        />
+      ) : side.kind === 'MONEY' ? (
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('move.account')}</span>
           <select
@@ -389,6 +434,11 @@ function SideCard({
               </option>
             ))}
           </select>
+          <AccountManager
+            selected={accounts.find((a) => a.id === accountId) ?? null}
+            onAdded={(id) => onChange({ ...side, accountId: id })}
+            onDeleted={() => onChange({ ...side, accountId: '' })}
+          />
         </label>
       ) : (
         <PartyPicker
@@ -402,18 +452,20 @@ function SideCard({
           )}
         />
       )}
-      <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
-        <span className="text-muted">{t('move.balance')}</span>
-        {side.kind === 'MONEY' ? (
-          <span className="font-semibold tnum">
-            {account ? formatMoney(account.balance, currency, locale) : '—'}
-          </span>
-        ) : side.party ? (
-          <SidedMoney value={side.party.balance} currency={currency} />
-        ) : (
-          <span>—</span>
-        )}
-      </div>
+      {side.kind !== 'EXPENSE' && (
+        <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
+          <span className="text-muted">{t('move.balance')}</span>
+          {side.kind === 'MONEY' ? (
+            <span className="font-semibold tnum">
+              {account ? formatMoney(account.balance, currency, locale) : '—'}
+            </span>
+          ) : side.party ? (
+            <SidedMoney value={side.party.balance} currency={currency} />
+          ) : (
+            <span>—</span>
+          )}
+        </div>
+      )}
 
       {invoices && (
         <div>
@@ -481,5 +533,188 @@ function SideCard({
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * The expense item an expense goes to, with adding a new item or deleting one nothing used yet
+ * (owner, 2026-10-02), for whoever may manage expense items.
+ */
+function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const { t } = useT();
+  const can = useCan();
+  const items = useExpenseCategories();
+  const save = useSaveExpenseCategory();
+  const remove = useDeleteExpenseCategory();
+  const [name, setName] = useState('');
+  const manage = can('expense_categories:manage');
+  const list = (items.data ?? []).filter((c) => c.isActive);
+  return (
+    <div className="space-y-2">
+      <label className="block">
+        <span className="mb-0.5 block text-xs text-muted">{t('move.expenseItem')}</span>
+        <span className="flex gap-1.5">
+          <select className={field} value={value} onChange={(e) => onChange(e.target.value)}>
+            <option value="">—</option>
+            {list.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.parentName ? `${c.parentName} › ` : ''}
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {manage && value && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="close"
+              loading={remove.isPending}
+              title={t('move.deleteItem')}
+              aria-label={t('move.deleteItem')}
+              onClick={async () => {
+                if (!window.confirm(t('move.deleteItemAsk'))) return;
+                try {
+                  await remove.mutateAsync(value);
+                  onChange('');
+                } catch {
+                  /* shown below */
+                }
+              }}
+            />
+          )}
+        </span>
+      </label>
+      {manage && (
+        <span className="flex gap-1.5">
+          <input
+            className={field}
+            placeholder={t('move.newItem')}
+            maxLength={100}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="plus"
+            disabled={!name.trim()}
+            loading={save.isPending}
+            onClick={async () => {
+              try {
+                const made = await save.mutateAsync({ input: { name: name.trim() } });
+                setName('');
+                onChange(made.id);
+              } catch {
+                /* shown below */
+              }
+            }}
+          >
+            {t('common.add')}
+          </Button>
+        </span>
+      )}
+      {(save.error || remove.error) && (
+        <p className="text-xs text-destructive">{errorText(t, save.error ?? remove.error)}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Add a cash box (or bank, wallet) on the spot, or delete the picked one if no money has gone
+ * through it yet (owner, 2026-10-02), for whoever may manage money accounts.
+ */
+function AccountManager({
+  selected,
+  onAdded,
+  onDeleted,
+}: {
+  selected: MoneyAccount | null;
+  onAdded: (id: string) => void;
+  onDeleted: () => void;
+}) {
+  const { t } = useT();
+  const can = useCan();
+  const branchId = useWorkBranch();
+  const create = useCreateMoneyAccount();
+  const remove = useDeleteMoneyAccount();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<MoneyAccountKind>('CASH_BOX');
+  if (!can('money_accounts:manage')) return null;
+  return (
+    <span className="mt-1.5 block space-y-1.5">
+      <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+        <button
+          type="button"
+          className="font-medium text-brand hover:underline"
+          onClick={() => setOpen((o) => !o)}
+        >
+          + {t('move.newAccount')}
+        </button>
+        {selected && !selected.isDefault && (
+          <button
+            type="button"
+            className="font-medium text-destructive hover:underline"
+            onClick={async () => {
+              if (!window.confirm(t('move.deleteAccountAsk'))) return;
+              try {
+                await remove.mutateAsync(selected.id);
+                onDeleted();
+              } catch {
+                /* shown below */
+              }
+            }}
+          >
+            {t('move.deleteAccount')}
+          </button>
+        )}
+      </span>
+      {open && (
+        <span className="flex flex-wrap gap-1.5">
+          <input
+            className={`${field} min-w-40 flex-1`}
+            placeholder={t('move.accountName')}
+            maxLength={100}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <select
+            className={`${field} w-36`}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as MoneyAccountKind)}
+          >
+            {(['CASH_BOX', 'BANK', 'WALLET', 'CUSTODY'] as const).map((k) => (
+              <option key={k} value={k}>
+                {t(`money.kind.${k}` as TranslationKey)}
+              </option>
+            ))}
+          </select>
+          <Button
+            size="sm"
+            icon="check"
+            disabled={!name.trim()}
+            loading={create.isPending}
+            onClick={async () => {
+              try {
+                const made = await create.mutateAsync({ name: name.trim(), kind, branchId });
+                setName('');
+                setOpen(false);
+                onAdded(made.id);
+              } catch {
+                /* shown below */
+              }
+            }}
+          >
+            {t('common.add')}
+          </Button>
+        </span>
+      )}
+      {(create.error || remove.error) && (
+        <span className="block text-xs text-destructive">
+          {errorText(t, create.error ?? remove.error)}
+        </span>
+      )}
+    </span>
   );
 }
