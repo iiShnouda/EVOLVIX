@@ -133,6 +133,14 @@ public class Staff
     public Guid? CustomRoleId { get; set; }
     public CustomRole? CustomRole { get; set; }
     public string? Phone { get; set; }
+    /// <summary>More phone numbers, each with what it is (WhatsApp, home…), by position (owner, 2026-10-02).</summary>
+    public List<string> OtherPhones { get; set; } = new();
+    public List<string> OtherPhoneLabels { get; set; } = new();
+    /// <summary>
+    /// The person's password, kept encrypted only when the owner asks to be reminded of it (owner,
+    /// 2026-10-02); read back only with staff:password_note, and every read is in the activity log.
+    /// </summary>
+    public byte[]? PasswordNote { get; set; }
     public bool IsActive { get; set; } = true;
 
     public Guid BranchId { get; set; }
@@ -242,6 +250,8 @@ public class Party
     public string Name { get; set; } = "";
     public List<string> Types { get; set; } = new();
     public string? Phone { get; set; }
+    /// <summary>The national ID, checked against the company's country (owner, 2026-10-02).</summary>
+    public string? NationalId { get; set; }
     public string? Email { get; set; }
     public string? TaxNumber { get; set; }
     /// <summary>The main address. For a supplier this is the factory's address (عنوان المصنع).</summary>
@@ -1325,6 +1335,9 @@ public class Employee
     public Branch? Branch { get; set; }
     public string? JobTitle { get; set; }
     public string? Phone { get; set; }
+    /// <summary>More phone numbers, each with what it is (WhatsApp, home…), by position (owner, 2026-10-02).</summary>
+    public List<string> OtherPhones { get; set; } = new();
+    public List<string> OtherPhoneLabels { get; set; } = new();
     public string? NationalId { get; set; }
     /// <summary>First day of work (a date; the month they start in is paid from it).</summary>
     public DateTime HireDate { get; set; }

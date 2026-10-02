@@ -103,6 +103,7 @@ export type Permission =
   | 'products:card_returns'
   | 'products:card_prices'
   | 'documents:backdate'
+  | 'staff:password_note'
   | 'prices:edit'
   | 'price_levels:manage'
   | 'price_lists:manage'
@@ -248,6 +249,8 @@ export interface Party {
   isCashCustomer?: boolean;
   /** Whose each of `otherPhones` is, by position ("" = no name). */
   otherPhoneLabels?: string[];
+  /** The national ID, checked against the company's country (owner, 2026-10-02). */
+  nationalId?: string | null;
   /** A second address and what it is called, both optional. */
   extraAddress?: string | null;
   extraAddressLabel?: string | null;
@@ -1531,6 +1534,10 @@ export interface StaffMember {
   branchId: string;
   branchName: string;
   phone?: string | null;
+  otherPhones?: string[];
+  otherPhoneLabels?: string[];
+  /** A password is kept for the owner's reminder (GET /staff/{id}/password-note). */
+  hasPasswordNote?: boolean;
   isActive: boolean;
   createdAt: string;
   /** Permissions given to this person on top of their role's. */
@@ -2139,6 +2146,8 @@ export interface Employee {
   branchName: string;
   jobTitle: string | null;
   phone: string | null;
+  otherPhones?: string[];
+  otherPhoneLabels?: string[];
   nationalId: string | null;
   hireDate: string;
   /** Minor units. */

@@ -81,6 +81,25 @@ public sealed class PayrollController : ControllerBase
         return Ok(await EmployeeDtoAsync(e.Id));
     }
 
+    /// <summary>
+    /// Remove an employee with no attendance, payroll, bonus, deduction or advance yet (owner,
+    /// 2026-10-02); one with any stays in the books: deactivate them instead.
+    /// </summary>
+    [HttpDelete("employees/{id:guid}")]
+    [Authorize(Policy = Permissions.EmployeesManage)]
+    public async Task<IActionResult> DeleteEmployee(Guid id)
+    {
+        var e = await ScopedEmployees().FirstOrDefaultAsync(x => x.Id == id);
+        if (e is null) return NotFound(new { message = "Employee not found.", code = "not_found" });
+        if (await _db.AttendanceDays.AnyAsync(a => a.EmployeeId == id) || await _db.PayrollLines.AnyAsync(l => l.EmployeeId == id)
+            || await _db.PayrollAdjustments.AnyAsync(a => a.EmployeeId == id) || await _db.EmployeeAdvances.AnyAsync(a => a.EmployeeId == id))
+            return Bad("in_use", "This employee has attendance or pay in the books: deactivate them instead.");
+        _db.Employees.Remove(e);
+        await _db.SaveChangesAsync();
+        await AuditAsync("delete", "employee", id);
+        return NoContent();
+    }
+
     private async Task<ActionResult?> ApplyAsync(Employee e, SaveEmployeeRequest req)
     {
         if (req.Name is not null)
@@ -99,8 +118,25 @@ public sealed class PayrollController : ControllerBase
         if (!Access.CanUseBranch(User, e.BranchId) || !await _db.Branches.AnyAsync(x => x.Id == e.BranchId))
             return Bad("branch_not_found", "Branch not found.");
         if (req.JobTitle is not null) e.JobTitle = Text(req.JobTitle, 100);
-        if (req.Phone is not null) e.Phone = Text(req.Phone, 40);
-        if (req.NationalId is not null) e.NationalId = Text(req.NationalId, 30);
+        // Phones and the national ID as the company's country has them (owner, 2026-10-02).
+        var country = await _db.CompanySettings.Select(x => x.Country).FirstOrDefaultAsync();
+        if (req.Phone is not null)
+        {
+            if (IdRules.PhoneProblem(country, req.Phone) is { } bad) return Bad(bad, IdRules.Message(bad));
+            e.Phone = Text(req.Phone, 40);
+        }
+        if (req.OtherPhones is not null)
+        {
+            var (phones, labels, problem) = IdRules.PhoneList(country, e.Phone, req.OtherPhones, req.OtherPhoneLabels);
+            if (problem is not null) return Bad(problem, IdRules.Message(problem));
+            e.OtherPhones = phones;
+            e.OtherPhoneLabels = labels;
+        }
+        if (req.NationalId is not null)
+        {
+            if (IdRules.NationalIdProblem(country, req.NationalId) is { } bad) return Bad(bad, IdRules.Message(bad));
+            e.NationalId = Text(req.NationalId, 30);
+        }
         if (req.HireDate is not null)
         {
             if (!DateOnly.TryParse(req.HireDate, CultureInfo.InvariantCulture, out var hire) || hire.Year < 1950
@@ -124,8 +160,8 @@ public sealed class PayrollController : ControllerBase
         {
             var device = req.DeviceUserId.Trim();
             if (device.Length == 0) e.DeviceUserId = null;
-            else if (device.Length > 40 || !device.All(char.IsLetterOrDigit))
-                return Bad("bad_device_id", "The device user number is letters and digits only.");
+            else if (!IdRules.DeviceIdOk(device))
+                return Bad("bad_device_id", "The fingerprint device's number is digits only.");
             else if (await _db.Employees.AnyAsync(x => x.DeviceUserId == device && x.Id != e.Id))
                 return Bad("device_id_taken", "Another employee has that device user number.");
             else e.DeviceUserId = device;
@@ -564,7 +600,8 @@ public sealed class PayrollController : ControllerBase
     private static EmployeeDto ToDto(Employee e) => new(
         e.Id.ToString(), e.Code, e.Name, e.BranchId.ToString(), Loc.Name(e.Branch), e.JobTitle, e.Phone, e.NationalId,
         e.HireDate.ToString("yyyy-MM-dd"), e.MonthlySalary, e.ShiftId?.ToString(), e.Shift is null ? null : Loc.Name(e.Shift),
-        e.DeviceUserId, e.StaffId?.ToString(), e.Staff?.FullName, e.AdvanceBalance, e.IsActive);
+        e.DeviceUserId, e.StaffId?.ToString(), e.Staff?.FullName, e.AdvanceBalance, e.IsActive, e.OtherPhones.ToArray(),
+        e.OtherPhones.Select((_, i) => i < e.OtherPhoneLabels.Count ? e.OtherPhoneLabels[i] : "").ToArray());
 
     private static ShiftDto ToDto(Shift s) => new(
         s.Id.ToString(), Loc.Name(s), PayrollService.Clock(s.StartMinute)!, PayrollService.Clock(s.EndMinute)!, s.GraceMinutes,

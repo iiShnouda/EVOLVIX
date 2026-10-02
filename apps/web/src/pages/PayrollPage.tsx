@@ -13,10 +13,20 @@ import {
   type WorkShift,
   addMonths,
   companyToday,
+  deviceIdOk,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
+import {
+  NationalIdInput,
+  PhoneInput,
+  PhoneList,
+  anyIdProblem,
+  useCompanyCountry,
+  type NamedPhone,
+} from '../components/PhoneFields';
+import { useWorkBranch } from '../stores/workBranch';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { ReportActions } from '../components/ReportActions';
 import { useT } from '../lib/i18n';
@@ -43,6 +53,7 @@ import {
   useReps,
   useSaveAttendance,
   useSaveEmployee,
+  useDeleteEmployee,
   useSavePayrollRules,
   useSaveShift,
   useShifts,
@@ -1024,12 +1035,21 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
   const { t } = useT();
   const can = useCan();
   const save = useSaveEmployee();
+  const remove = useDeleteEmployee();
   const branches = useBranches();
+  const workBranch = useWorkBranch();
+  const country = useCompanyCountry();
+  const [others, setOthers] = useState<NamedPhone[]>(
+    (employee?.otherPhones ?? []).map((phone, i) => ({
+      phone,
+      label: employee?.otherPhoneLabels?.[i] ?? '',
+    })),
+  );
   const shifts = useShifts();
   const staff = useReps(can('sales:view'));
   const [f, setF] = useState({
     name: employee?.name ?? '',
-    branchId: employee?.branchId ?? '',
+    branchId: employee?.branchId ?? workBranch,
     jobTitle: employee?.jobTitle ?? '',
     phone: employee?.phone ?? '',
     nationalId: employee?.nationalId ?? '',
@@ -1051,7 +1071,13 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
     shiftId: f.shiftId,
     deviceUserId: f.deviceUserId,
     staffId: f.staffId,
+    otherPhones: others.filter((x) => x.phone.trim()).map((x) => x.phone.trim()),
+    otherPhoneLabels: others.filter((x) => x.phone.trim()).map((x) => x.label.trim()),
   };
+  // Phones and the national ID as the company's country has them; the device number digits only.
+  const idBad =
+    anyIdProblem(country, [f.phone, ...input.otherPhones], f.nationalId) ||
+    !deviceIdOk(f.deviceUserId);
   async function run(extra: Record<string, unknown> = {}) {
     try {
       await save.mutateAsync({ id: employee?.id, input: { ...input, ...extra } });
@@ -1084,7 +1110,6 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
             value={f.branchId}
             onChange={(e) => set({ branchId: e.target.value })}
           >
-            <option value="">{t('payroll.myBranch')}</option>
             {(branches.data ?? []).map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -1139,29 +1164,23 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
           <input
             className={`${field} tnum`}
             dir="ltr"
-            maxLength={40}
+            inputMode="numeric"
+            maxLength={10}
             value={f.deviceUserId}
-            onChange={(e) => set({ deviceUserId: e.target.value })}
+            onChange={(e) => set({ deviceUserId: e.target.value.replace(/\D/g, '') })}
           />
         </Field>
-        <Field label={t('payroll.phone')}>
-          <input
-            className={field}
-            dir="ltr"
-            maxLength={40}
-            value={f.phone}
-            onChange={(e) => set({ phone: e.target.value })}
-          />
-        </Field>
-        <Field label={t('payroll.nationalId')}>
-          <input
-            className={`${field} tnum`}
-            dir="ltr"
-            maxLength={30}
-            value={f.nationalId}
-            onChange={(e) => set({ nationalId: e.target.value })}
-          />
-        </Field>
+        <PhoneInput
+          value={f.phone}
+          onChange={(phone) => set({ phone })}
+          label={t('payroll.phone')}
+        />
+        <NationalIdInput
+          value={f.nationalId}
+          onChange={(nationalId) => set({ nationalId })}
+          label={t('payroll.nationalId')}
+        />
+        <PhoneList value={others} onChange={setOthers} listId="employee-phone-kinds" />
         {staff.data && (
           <div className="sm:col-span-2">
             <Field label={t('payroll.signIn')}>
@@ -1181,17 +1200,38 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
           </div>
         )}
       </div>
-      {save.error && <p className="mt-3 text-sm text-destructive">{errorText(t, save.error)}</p>}
+      {(save.error || remove.error) && (
+        <p className="mt-3 text-sm text-destructive">{errorText(t, save.error ?? remove.error)}</p>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         {employee ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={save.isPending}
-            onClick={() => void run({ isActive: !employee.isActive })}
-          >
-            {employee.isActive ? t('payroll.deactivate') : t('payroll.reactivate')}
-          </Button>
+          <span className="flex flex-wrap gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => void run({ isActive: !employee.isActive })}
+            >
+              {employee.isActive ? t('payroll.deactivate') : t('payroll.reactivate')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="close"
+              loading={remove.isPending}
+              onClick={async () => {
+                if (!window.confirm(t('payroll.deleteAsk'))) return;
+                try {
+                  await remove.mutateAsync(employee.id);
+                  onClose();
+                } catch {
+                  /* shown below */
+                }
+              }}
+            >
+              {t('payroll.delete')}
+            </Button>
+          </span>
         ) : (
           <span />
         )}
@@ -1202,7 +1242,7 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
           <Button
             icon="check"
             loading={save.isPending}
-            disabled={!f.name.trim()}
+            disabled={!f.name.trim() || idBad}
             onClick={() => void run()}
           >
             {t('common.save')}

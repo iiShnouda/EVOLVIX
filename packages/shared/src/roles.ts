@@ -66,6 +66,7 @@ const ALL: Permission[] = [
   'products:card_returns',
   'products:card_prices',
   'documents:backdate',
+  'staff:password_note',
   'prices:edit',
   'price_levels:manage',
   'price_lists:manage',

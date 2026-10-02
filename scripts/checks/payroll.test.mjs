@@ -71,7 +71,7 @@ const shift = ok(
 eq('eight hours', shift.minutes, 480);
 
 console.log('== employees');
-const device = `d${tag}`;
+const device = String(Date.now()).slice(-8); // the fingerprint device numbers people: digits only
 eq(
   'a name is needed',
   (await owner.post('/payroll/employees', { branchId: branch.id })).data?.code,

@@ -470,6 +470,11 @@ export const createStaffSchema = z.object({
   phone: z.string().trim().max(40).optional(),
   /** A role the company made ("" = none); the person then works like its base role. */
   customRoleId: z.string().optional(),
+  /** More numbers, each with what it is (owner, 2026-10-02). */
+  otherPhones: z.array(z.string().trim().max(40)).max(5).optional(),
+  otherPhoneLabels: z.array(z.string().trim().max(60)).max(5).optional(),
+  /** Keep the password, encrypted, for the owner's reminder (needs staff:password_note). */
+  rememberPassword: z.boolean().optional(),
 });
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
 
@@ -504,6 +509,8 @@ export const partySchema = z.object({
   isCashCustomer: z.boolean().optional(),
   /** Whose each extra phone is, by position ("" = no name). */
   otherPhoneLabels: z.array(z.string().trim().max(60)).max(5).optional(),
+  /** Checked against the company's country (owner, 2026-10-02). */
+  nationalId: z.string().trim().max(30).optional(),
   extraAddress: z.string().max(300).optional(),
   extraAddressLabel: z.string().max(60).optional(),
   /** A shipping company without a file of its own, by name ("" clears it). */

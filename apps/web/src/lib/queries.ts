@@ -1119,6 +1119,15 @@ export function useCreateStaff() {
   });
 }
 
+/** Remove a person nothing was done under yet (else the server says to deactivate them). */
+export function useDeleteStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/staff/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
 export function useUpdateStaff() {
   const qc = useQueryClient();
   return useMutation({
@@ -1850,6 +1859,15 @@ export function useSaveEmployee() {
       id
         ? api.put<Employee>(`/payroll/employees/${id}`, input)
         : api.post<Employee>('/payroll/employees', input),
+    onSuccess: () => invalidatePayroll(qc),
+  });
+}
+
+/** Remove an employee with no attendance or pay yet (else the server says to deactivate them). */
+export function useDeleteEmployee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/payroll/employees/${id}`),
     onSuccess: () => invalidatePayroll(qc),
   });
 }

@@ -97,7 +97,8 @@ public static class Mapper
         p.SalesPriceListId?.ToString(), p.PurchasePriceListId?.ToString(),
         p.DefaultCarrierId?.ToString(), p.IsCashCustomer,
         p.OtherPhones.Select((_, i) => i < p.OtherPhoneLabels.Count ? p.OtherPhoneLabels[i] : "").ToArray(),
-        p.ExtraAddress, p.ExtraAddressLabel, p.TempCarrierName, p.HasIdFront, p.HasIdBack, p.IsSystem);
+        p.ExtraAddress, p.ExtraAddressLabel, p.TempCarrierName, p.HasIdFront, p.HasIdBack, p.IsSystem,
+        p.NationalId);
 
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);

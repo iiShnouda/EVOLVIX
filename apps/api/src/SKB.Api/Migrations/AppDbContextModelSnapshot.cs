@@ -574,6 +574,14 @@ namespace SKB.Api.Migrations
                     b.Property<string>("NationalId")
                         .HasColumnType("text");
 
+                    b.PrimitiveCollection<List<string>>("OtherPhoneLabels")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<List<string>>("OtherPhones")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
@@ -1385,6 +1393,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NationalId")
                         .HasColumnType("text");
 
                     b.Property<string>("Notes")
@@ -2416,9 +2427,20 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
+                    b.PrimitiveCollection<List<string>>("OtherPhoneLabels")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<List<string>>("OtherPhones")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<byte[]>("PasswordNote")
+                        .HasColumnType("bytea");
 
                     b.Property<string>("Phone")
                         .HasColumnType("text");

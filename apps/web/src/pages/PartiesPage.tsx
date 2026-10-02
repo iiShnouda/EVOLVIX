@@ -13,6 +13,13 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
+import {
+  NationalIdInput,
+  PhoneInput,
+  PhoneList,
+  anyIdProblem,
+  useCompanyCountry,
+} from '../components/PhoneFields';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { IdCardFields, IdCardView, type IdSide } from '../components/IdCards';
 import { api } from '../lib/api';
@@ -310,6 +317,8 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const [name, setName] = useState(party?.name ?? '');
   const [types, setTypes] = useState<PartyType[]>(party?.types ?? ['CUSTOMER']);
   const [phone, setPhone] = useState(party?.phone ?? '');
+  const [nationalId, setNationalId] = useState(party?.nationalId ?? '');
+  const country = useCompanyCountry();
   const [email, setEmail] = useState(party?.email ?? '');
   const [taxNumber, setTaxNumber] = useState(party?.taxNumber ?? '');
   const [address, setAddress] = useState(party?.address ?? '');
@@ -348,6 +357,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
     address: address.trim(),
     otherPhones: phones.map((x) => x.phone.trim()),
     otherPhoneLabels: phones.map((x) => x.label.trim()),
+    nationalId: nationalId.trim(),
     extraAddress: extraAddress.trim(),
     extraAddressLabel: extraAddress.trim() ? extraAddressLabel.trim() : '',
     contactName: contactName.trim(),
@@ -372,6 +382,8 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   async function save() {
     setTouched(true);
     if (!parsed.success || addressMissing) return;
+    // Phones and the national ID as the company's country has them (owner, 2026-10-02).
+    if (anyIdProblem(country, [phone, ...phones.map((x) => x.phone)], nationalId)) return;
     try {
       if (isNew) {
         const created = await create.mutateAsync(values);
@@ -476,17 +488,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('parties.phone')}</span>
-            <input
-              className={input}
-              dir="ltr"
-              inputMode="tel"
-              value={phone}
-              maxLength={40}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
+          <PhoneInput value={phone} onChange={setPhone} label={t('parties.phone')} />
           {!carrierOnly && (
             <label className="block">
               <span className="mb-1 block text-xs text-muted">{t('parties.email')}</span>
@@ -501,59 +503,19 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
               />
             </label>
           )}
-          <fieldset className="sm:col-span-2">
-            <legend className="mb-1 block text-xs text-muted">{t('parties.otherPhones')}</legend>
-            <div className="space-y-2">
-              {otherPhones.map((p, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    className={input}
-                    dir="ltr"
-                    inputMode="tel"
-                    value={p.phone}
-                    maxLength={40}
-                    aria-label={`${t('parties.otherPhones')} ${i + 1}`}
-                    onChange={(e) =>
-                      setOtherPhones((cur) =>
-                        cur.map((x, j) => (j === i ? { ...x, phone: e.target.value } : x)),
-                      )
-                    }
-                  />
-                  <input
-                    className={input}
-                    value={p.label}
-                    maxLength={60}
-                    placeholder={t('parties.phoneLabel')}
-                    aria-label={t('parties.phoneLabel')}
-                    onChange={(e) =>
-                      setOtherPhones((cur) =>
-                        cur.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)),
-                      )
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    icon="close"
-                    aria-label={t('parties.removePhone')}
-                    onClick={() => setOtherPhones((cur) => cur.filter((_, j) => j !== i))}
-                  />
-                </div>
-              ))}
-              {otherPhones.length < MAX_OTHER_PHONES && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  icon="plus"
-                  onClick={() => setOtherPhones((cur) => [...cur, { phone: '', label: '' }])}
-                >
-                  {t('parties.addPhone')}
-                </Button>
-              )}
-            </div>
-          </fieldset>
+          <PhoneList
+            value={otherPhones}
+            onChange={setOtherPhones}
+            max={MAX_OTHER_PHONES}
+            listId="party-phone-kinds"
+          />
+          {(customer || types.includes('CARRIER')) && (
+            <NationalIdInput
+              value={nationalId}
+              onChange={setNationalId}
+              label={t('parties.nationalId')}
+            />
+          )}
           {!carrierOnly && (
             <label className="block sm:col-span-2">
               <span className="mb-1 block text-xs text-muted">

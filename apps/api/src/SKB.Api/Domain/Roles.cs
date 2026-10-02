@@ -131,6 +131,8 @@ public static class Permissions
     public const string StaffManage = "staff:manage";
     /// <summary>Change what each role may do, and give or take permissions from one person.</summary>
     public const string RolesManage = "roles:manage";
+    /// <summary>Keep a person's password for the owner's reminder and read it back (owner, 2026-10-02).</summary>
+    public const string StaffPasswordNote = "staff:password_note";
     /// <summary>Choose the branches, warehouses and money accounts one person may use.</summary>
     public const string StaffAccess = "staff:access";
     public const string BranchesView = "branches:view";
@@ -226,7 +228,8 @@ public static class Permissions
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
-        ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate, StaffView, StaffManage, RolesManage, StaffAccess,
+        ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
+        StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,

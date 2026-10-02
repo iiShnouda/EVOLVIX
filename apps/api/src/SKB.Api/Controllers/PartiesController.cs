@@ -79,7 +79,7 @@ public sealed class PartiesController : ControllerBase
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
-            req.ExtraAddressLabel, req.TempCarrierName), isNew: true);
+            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId), isNew: true);
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
@@ -100,7 +100,7 @@ public sealed class PartiesController : ControllerBase
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
-            req.ExtraAddressLabel, req.TempCarrierName), isNew: false);
+            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId), isNew: false);
         if (error is not null) return error;
         // The walk-in cash customer stays a cash customer, and stays open.
         if (party.IsSystem && (req.IsActive == false || !party.IsCashCustomer
@@ -133,7 +133,8 @@ public sealed class PartiesController : ControllerBase
         string? Name, string[]? Types, string? Phone, string? Email, string? TaxNumber, string? Address,
         string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes,
         string? DefaultCarrierId = null, bool? IsCashCustomer = null, string[]? OtherPhoneLabels = null,
-        string? ExtraAddress = null, string? ExtraAddressLabel = null, string? TempCarrierName = null);
+        string? ExtraAddress = null, string? ExtraAddressLabel = null, string? TempCarrierName = null,
+        string? NationalId = null);
 
     private const int MaxOtherPhones = 5;
 
@@ -165,23 +166,30 @@ public sealed class PartiesController : ControllerBase
                 return BadRequest(new { message = "Choose customer, supplier or shipping company.", code = "bad_type" });
             party.Types = parsed;
         }
-        if (f.Phone is not null) party.Phone = Text(f.Phone, 40);
+        // Phones and the national ID as the company's country has them (owner, 2026-10-02).
+        var country = await _db.CompanySettings.Select(x => x.Country).FirstOrDefaultAsync();
+        if (f.Phone is not null)
+        {
+            if (IdRules.PhoneProblem(country, f.Phone) is { } bad)
+                return BadRequest(new { message = IdRules.Message(bad), code = bad });
+            party.Phone = Text(f.Phone, 40);
+        }
         if (f.OtherPhones is not null)
         {
             // Each extra phone may name whose it is (by position); a number is kept once.
-            var phones = new List<string>();
-            var labels = new List<string>();
-            for (var i = 0; i < f.OtherPhones.Length; i++)
-            {
-                var phone = Text(f.OtherPhones[i] ?? "", 40);
-                if (phone is null || phone == party.Phone || phones.Contains(phone)) continue;
-                phones.Add(phone);
-                labels.Add(Text(f.OtherPhoneLabels is { } l && i < l.Length ? l[i] ?? "" : "", 60) ?? "");
-            }
-            if (phones.Count > MaxOtherPhones)
+            var (phones, labels, problem) = IdRules.PhoneList(country, party.Phone, f.OtherPhones, f.OtherPhoneLabels,
+                MaxOtherPhones);
+            if (problem == "too_many_phones")
                 return BadRequest(new { message = $"Up to {MaxOtherPhones} more phone numbers.", code = "too_many_phones" });
+            if (problem is not null) return BadRequest(new { message = IdRules.Message(problem), code = problem });
             party.OtherPhones = phones;
             party.OtherPhoneLabels = labels;
+        }
+        if (f.NationalId is not null)
+        {
+            if (IdRules.NationalIdProblem(country, f.NationalId) is { } bad)
+                return BadRequest(new { message = IdRules.Message(bad), code = bad });
+            party.NationalId = Text(f.NationalId, 30);
         }
         if (f.ExtraAddress is not null) party.ExtraAddress = Text(f.ExtraAddress, 300);
         if (f.ExtraAddressLabel is not null) party.ExtraAddressLabel = Text(f.ExtraAddressLabel, 60);

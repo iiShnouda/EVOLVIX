@@ -13,8 +13,15 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { useT } from '../lib/i18n';
+import {
+  PhoneInput,
+  PhoneList,
+  anyIdProblem,
+  useCompanyCountry,
+  type NamedPhone,
+} from '../components/PhoneFields';
 import { useCan } from '../lib/can';
-import { ApiError } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import {
@@ -33,6 +40,7 @@ import {
   useUpdateCustomRole,
   useUpdateRole,
   useUpdateStaff,
+  useDeleteStaff,
 } from '../lib/queries';
 
 const field =
@@ -282,8 +290,14 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
     role: 'SALES' as string,
     branchId: '',
   });
+  const [others, setOthers] = useState<NamedPhone[]>([]);
+  const [remember, setRemember] = useState(false);
+  const country = useCompanyCountry();
+  const canKeep = useCan()('staff:password_note');
   const error = create.error as ApiError | null;
   const branchId = form.branchId || branches.data?.[0]?.id || '';
+  const filled = others.filter((x) => x.phone.trim());
+  const idBad = anyIdProblem(country, [form.phone, ...filled.map((x) => x.phone)]);
 
   async function save() {
     try {
@@ -292,6 +306,9 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
         ...keys.resolve(form.role),
         branchId,
         phone: form.phone.trim() || undefined,
+        otherPhones: filled.map((x) => x.phone.trim()),
+        otherPhoneLabels: filled.map((x) => x.label.trim()),
+        rememberPassword: remember || undefined,
       });
       onDone(created.id);
     } catch {
@@ -341,14 +358,11 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
             ))}
           </select>
         </Field>
-        <Field label={t('staff.phone')}>
-          <input
-            className={field}
-            dir="ltr"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-        </Field>
+        <PhoneInput
+          value={form.phone}
+          onChange={(phone) => setForm({ ...form, phone })}
+          label={t('staff.phone')}
+        />
         <Field label={t('staff.password')} hint={t('staff.passwordHint')}>
           <input
             className={field}
@@ -358,6 +372,17 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
         </Field>
+        <PhoneList value={others} onChange={setOthers} listId="staff-new-phone-kinds" />
+        {canKeep && (
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            {t('staff.rememberPassword')}
+          </label>
+        )}
       </div>
       {error && <p className="text-xs text-destructive">{error.message}</p>}
       <div className="flex gap-2">
@@ -365,7 +390,11 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
           icon="check"
           loading={create.isPending}
           disabled={
-            !form.fullName.trim() || !form.email.trim() || form.password.length < 8 || !branchId
+            !form.fullName.trim() ||
+            !form.email.trim() ||
+            form.password.length < 8 ||
+            !branchId ||
+            idBad
           }
           onClick={save}
         >
@@ -398,7 +427,20 @@ function PersonPanel({ person }: { person: StaffMember }) {
     branchId: person.branchId,
   });
   const [password, setPassword] = useState('');
-  const error = update.error as ApiError | null;
+  const [others, setOthers] = useState<NamedPhone[]>(
+    (person.otherPhones ?? []).map((phone, i) => ({
+      phone,
+      label: person.otherPhoneLabels?.[i] ?? '',
+    })),
+  );
+  const [remember, setRemember] = useState(!!person.hasPasswordNote);
+  const [shown, setShown] = useState<string | null>(null);
+  const country = useCompanyCountry();
+  const canKeep = can('staff:password_note');
+  const remove = useDeleteStaff();
+  const error = (update.error ?? remove.error) as ApiError | null;
+  const filled = others.filter((x) => x.phone.trim());
+  const idBad = anyIdProblem(country, [form.phone, ...filled.map((x) => x.phone)]);
 
   async function run(input: Parameters<typeof update.mutateAsync>[0]['input']) {
     try {
@@ -415,6 +457,14 @@ function PersonPanel({ person }: { person: StaffMember }) {
   if (form.phone.trim() !== (person.phone ?? '')) changed.phone = form.phone.trim();
   if (form.role !== roleKeyOf(person)) Object.assign(changed, keys.resolve(form.role));
   if (form.branchId !== person.branchId) changed.branchId = form.branchId;
+  const othersNow = filled.map((x) => `${x.phone.trim()}|${x.label.trim()}`).join();
+  const othersBefore = (person.otherPhones ?? [])
+    .map((p, i) => `${p}|${person.otherPhoneLabels?.[i] ?? ''}`)
+    .join();
+  if (othersNow !== othersBefore) {
+    changed.otherPhones = filled.map((x) => x.phone.trim());
+    changed.otherPhoneLabels = filled.map((x) => x.label.trim());
+  }
 
   return (
     <div className="space-y-4">
@@ -469,14 +519,16 @@ function PersonPanel({ person }: { person: StaffMember }) {
               ))}
             </select>
           </Field>
-          <Field label={t('staff.phone')}>
-            <input
-              className={field}
-              dir="ltr"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            />
-          </Field>
+          <PhoneInput
+            value={form.phone}
+            onChange={(phone) => setForm({ ...form, phone })}
+            label={t('staff.phone')}
+          />
+          <PhoneList
+            value={others}
+            onChange={setOthers}
+            listId={`staff-${person.id}-phone-kinds`}
+          />
         </fieldset>
         {canManage && (
           <div className="flex flex-wrap gap-2">
@@ -484,7 +536,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
               size="sm"
               icon="check"
               loading={update.isPending}
-              disabled={Object.keys(changed).length === 0}
+              disabled={Object.keys(changed).length === 0 || idBad}
               onClick={() => run(changed)}
             >
               {t('common.save')}
@@ -497,6 +549,24 @@ function PersonPanel({ person }: { person: StaffMember }) {
                 onClick={() => run({ isActive: !person.isActive })}
               >
                 {person.isActive ? t('staff.deactivate') : t('staff.reactivate')}
+              </Button>
+            )}
+            {!isMe && person.role !== 'OWNER' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="close"
+                loading={remove.isPending}
+                onClick={async () => {
+                  if (!window.confirm(t('staff.deleteAsk'))) return;
+                  try {
+                    await remove.mutateAsync(person.id);
+                  } catch {
+                    /* shown below */
+                  }
+                }}
+              >
+                {t('staff.delete')}
               </Button>
             )}
           </div>
@@ -517,10 +587,48 @@ function PersonPanel({ person }: { person: StaffMember }) {
               variant="secondary"
               loading={update.isPending}
               disabled={password.length < 8}
-              onClick={() => run({ password })}
+              onClick={() => run({ password, ...(canKeep ? { rememberPassword: remember } : {}) })}
             >
               {t('staff.setPassword')}
             </Button>
+            {canKeep && (
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                {t('staff.rememberPassword')}
+              </label>
+            )}
+          </div>
+        )}
+        {/* The kept password, read on demand (and logged), shown until hidden (owner, 2026-10-02). */}
+        {canKeep && person.hasPasswordNote && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={shown ? 'eyeOff' : 'eye'}
+              onClick={async () => {
+                if (shown) return setShown(null);
+                try {
+                  setShown(
+                    (await api.get<{ password: string }>(`/staff/${person.id}/password-note`))
+                      .password,
+                  );
+                } catch {
+                  setShown(null);
+                }
+              }}
+            >
+              {shown ? t('staff.hidePassword') : t('staff.showPassword')}
+            </Button>
+            {shown && (
+              <code dir="ltr" className="rounded bg-surface-2 px-2 py-1 font-mono">
+                {shown}
+              </code>
+            )}
           </div>
         )}
         {!canManage && <p className="text-xs text-muted">{t('staff.readonly')}</p>}

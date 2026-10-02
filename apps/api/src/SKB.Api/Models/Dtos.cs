@@ -485,7 +485,8 @@ public record PartyDto(
     int Code = 0, string? SalesPriceListId = null, string? PurchasePriceListId = null,
     string? DefaultCarrierId = null, bool IsCashCustomer = false,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false, bool IsSystem = false);
+    string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false, bool IsSystem = false,
+    string? NationalId = null);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -498,7 +499,7 @@ public record CreatePartyRequest(
     string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
     string? ShippingAddress = null, string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null);
+    string? TempCarrierName = null, string? NationalId = null);
 
 /// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
@@ -507,7 +508,7 @@ public record UpdatePartyRequest(
     string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
     string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null);
+    string? TempCarrierName = null, string? NationalId = null);
 
 /// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
 public record SetPartyPriceLevelsRequest(
@@ -699,7 +700,8 @@ public record StaffDto(
     bool IsActive, string CreatedAt, string[] Granted, string[] Revoked, string[] Permissions,
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
     string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0,
-    string? CustomRoleId = null, string? CustomRoleName = null);
+    string? CustomRoleId = null, string? CustomRoleName = null, string[]? OtherPhones = null,
+    string[]? OtherPhoneLabels = null, bool HasPasswordNote = false);
 
 /// <summary>
 /// What one person may work with; every field replaces what was there. No departments = every
@@ -712,12 +714,17 @@ public record StaffAccessRequest(
 /// <param name="CustomRoleId">A role the company made; the person then works like its base role.</param>
 public record CreateStaffRequest(
     string? FullName, string? Email, string? Password, string? Role, string? BranchId, string? Phone = null,
-    string? CustomRoleId = null);
+    string? CustomRoleId = null, string[]? OtherPhones = null, string[]? OtherPhoneLabels = null,
+    bool RememberPassword = false);
 
 /// <summary>Any field left null is unchanged. A password here replaces the person's password.</summary>
 public record UpdateStaffRequest(
     string? FullName = null, string? Email = null, string? Role = null, string? BranchId = null,
-    string? Phone = null, bool? IsActive = null, string? Password = null, string? CustomRoleId = null);
+    string? Phone = null, bool? IsActive = null, string? Password = null, string? CustomRoleId = null,
+    string[]? OtherPhones = null, string[]? OtherPhoneLabels = null, bool? RememberPassword = null);
+
+/// <summary>The password the owner asked to be reminded of.</summary>
+public record PasswordNoteDto(string Password);
 
 /// <summary>A person's own changes to their role's permissions.</summary>
 public record StaffPermissionsRequest(string[]? Granted, string[]? Revoked);
@@ -989,13 +996,15 @@ public record SaveShiftRequest(string? Name, string? Start, string? End, int? Gr
 public record EmployeeDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string? JobTitle, string? Phone,
     string? NationalId, string HireDate, long MonthlySalary, string? ShiftId, string? ShiftName, string? DeviceUserId,
-    string? StaffId, string? StaffName, long AdvanceBalance, bool IsActive);
+    string? StaffId, string? StaffName, long AdvanceBalance, bool IsActive, string[]? OtherPhones = null,
+    string[]? OtherPhoneLabels = null);
 
 /// <summary>Any field left null is unchanged (on create: the defaults). "" clears an optional text.</summary>
 public record SaveEmployeeRequest(
     string? Name = null, string? BranchId = null, string? JobTitle = null, string? Phone = null,
     string? NationalId = null, string? HireDate = null, long? MonthlySalary = null, string? ShiftId = null,
-    string? DeviceUserId = null, string? StaffId = null, bool? IsActive = null);
+    string? DeviceUserId = null, string? StaffId = null, bool? IsActive = null, string[]? OtherPhones = null,
+    string[]? OtherPhoneLabels = null);
 
 public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent);
 

@@ -29,7 +29,7 @@ const shop = ok(
   await P({
     name: `  Shop ${tag} `,
     types: ['customer'],
-    phone: '0100',
+    phone: '01000000100',
     address: '5 Nile St.',
     email: `Shop.${tag}@Example.com`,
   }),
@@ -64,7 +64,7 @@ eq(
 );
 const K = ok(
   'add a shipping company',
-  await P({ name: `Courier ${tag}`, types: ['CARRIER'], phone: '0111' }),
+  await P({ name: `Courier ${tag}`, types: ['CARRIER'], phone: '01110000111' }),
 );
 const K2 = ok(
   'add another shipping company',

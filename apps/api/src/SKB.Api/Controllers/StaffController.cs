@@ -57,7 +57,8 @@ public sealed class StaffController : ControllerBase
 
     [HttpPost("staff")]
     [Authorize(Policy = Permissions.StaffManage)]
-    public async Task<ActionResult<StaffDto>> Create([FromBody] CreateStaffRequest req)
+    public async Task<ActionResult<StaffDto>> Create([FromBody] CreateStaffRequest req,
+        [FromServices] CryptoService crypto)
     {
         var name = Clean(req.FullName, 100);
         if (name is null) return Bad("bad_name", "Enter the person's name.");
@@ -79,10 +80,19 @@ public sealed class StaffController : ControllerBase
         var (custom, customError) = await CustomRoleAsync(req.CustomRoleId);
         if (customError is not null) return customError;
 
+        // Phones as the company's country has them, more numbers named (owner, 2026-10-02).
+        var country = await _db.CompanySettings.Select(x => x.Country).FirstOrDefaultAsync();
+        if (IdRules.PhoneProblem(country, req.Phone) is { } badPhone) return Bad(badPhone, IdRules.Message(badPhone));
+        var (phones, labels, phoneProblem) = IdRules.PhoneList(country, req.Phone, req.OtherPhones, req.OtherPhoneLabels);
+        if (phoneProblem is not null) return Bad(phoneProblem, IdRules.Message(phoneProblem));
+        if (req.RememberPassword && !User.HasClaim("permission", Permissions.StaffPasswordNote))
+            return Forbidden("not_your_permission", "Only someone allowed to read passwords may keep one.");
         var staff = new Staff
         {
             FullName = name, Email = email, Role = custom?.BaseRole ?? role, BranchId = branchId, Phone = Clean(req.Phone, 40),
             PasswordHash = _auth.HashPassword(req.Password), CustomRoleId = custom?.Id,
+            OtherPhones = phones, OtherPhoneLabels = labels,
+            PasswordNote = req.RememberPassword ? crypto.Encrypt(req.Password) : null,
         };
         _db.Staff.Add(staff);
         await _db.SaveChangesAsync();
@@ -94,7 +104,8 @@ public sealed class StaffController : ControllerBase
 
     [HttpPut("staff/{id:guid}")]
     [Authorize(Policy = Permissions.StaffManage)]
-    public async Task<ActionResult<StaffDto>> Update(Guid id, [FromBody] UpdateStaffRequest req)
+    public async Task<ActionResult<StaffDto>> Update(Guid id, [FromBody] UpdateStaffRequest req,
+        [FromServices] CryptoService crypto)
     {
         var staff = await _db.Staff.Include(s => s.Branch).FirstOrDefaultAsync(s => s.Id == id);
         if (staff is null) return NotFound(new { message = "Person not found.", code = "not_found" });
@@ -117,7 +128,22 @@ public sealed class StaffController : ControllerBase
                 return Bad("duplicate_email", $"{email} already has an account.");
             staff.Email = email;
         }
-        if (req.Phone is not null) staff.Phone = Clean(req.Phone, 40);
+        var country = await _db.CompanySettings.Select(x => x.Country).FirstOrDefaultAsync();
+        if (req.Phone is not null)
+        {
+            if (IdRules.PhoneProblem(country, req.Phone) is { } badPhone) return Bad(badPhone, IdRules.Message(badPhone));
+            staff.Phone = Clean(req.Phone, 40);
+        }
+        if (req.OtherPhones is not null)
+        {
+            var (phones, labels, problem) = IdRules.PhoneList(country, staff.Phone, req.OtherPhones, req.OtherPhoneLabels);
+            if (problem is not null) return Bad(problem, IdRules.Message(problem));
+            staff.OtherPhones = phones;
+            staff.OtherPhoneLabels = labels;
+        }
+        if (req.RememberPassword is not null && !User.HasClaim("permission", Permissions.StaffPasswordNote))
+            return Forbidden("not_your_permission", "Only someone allowed to read passwords may keep one.");
+        if (req.RememberPassword == false) staff.PasswordNote = null;
         if (req.BranchId is not null)
         {
             if (!Guid.TryParse(req.BranchId, out var branchId) || !await _db.Branches.AnyAsync(b => b.Id == branchId))
@@ -169,6 +195,8 @@ public sealed class StaffController : ControllerBase
             if (req.Password.Length < MinPassword || req.Password.Length > 200)
                 return Bad("weak_password", $"The password needs at least {MinPassword} characters.");
             staff.PasswordHash = _auth.HashPassword(req.Password);
+            // Kept for the owner's reminder only when asked; a new password replaces the kept one.
+            staff.PasswordNote = req.RememberPassword == true ? crypto.Encrypt(req.Password) : null;
             // A new password signs the person out everywhere else.
             if (id != me) await EndSessionsAsync(id);
         }
@@ -177,6 +205,52 @@ public sealed class StaffController : ControllerBase
         await AuditAsync(req.Password is null ? "update" : "update_password", "staff", id);
         await _db.Entry(staff).Reference(s => s.Branch).LoadAsync();
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
+    }
+
+    /// <summary>
+    /// The password the owner asked to be reminded of (owner, 2026-10-02): only with
+    /// staff:password_note, never cached, and every read goes in the activity log.
+    /// </summary>
+    [HttpGet("staff/{id:guid}/password-note")]
+    [Authorize(Policy = Permissions.StaffPasswordNote)]
+    public async Task<ActionResult<PasswordNoteDto>> PasswordNote(Guid id, [FromServices] CryptoService crypto)
+    {
+        var note = await _db.Staff.Where(s => s.Id == id).Select(s => s.PasswordNote).FirstOrDefaultAsync();
+        if (note is null) return NotFound(new { message = "No password is kept for this person.", code = "not_found" });
+        Response.Headers.CacheControl = "no-store";
+        await AuditAsync("read_password", "staff", id);
+        return Ok(new PasswordNoteDto(crypto.Decrypt(note)));
+    }
+
+    /// <summary>
+    /// Remove a person nothing was done under yet (owner, 2026-10-02: a button to remove anyone).
+    /// Someone who made documents, money moves or entries stays in the books: deactivate them.
+    /// </summary>
+    [HttpDelete("staff/{id:guid}")]
+    [Authorize(Policy = Permissions.StaffManage)]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var staff = await _db.Staff.FirstOrDefaultAsync(s => s.Id == id);
+        if (staff is null) return NotFound(new { message = "Person not found.", code = "not_found" });
+        if (Guid.TryParse(CurrentUser.Id(User), out var me) && me == id) return Bad("own_account", "You can't remove yourself.");
+        if (staff.Role == Role.OWNER) return Forbidden("owner_only", "An owner can't be removed.");
+        if (staff.Role == Role.ADMIN && CurrentUser.Role(User) is not (Role.OWNER or Role.ADMIN))
+            return Forbidden("admin_only", "Only an owner or an admin can remove an admin.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            await _db.Sessions.Where(s => s.StaffId == id).ExecuteDeleteAsync();
+            await _db.Notifications.Where(n => n.StaffId == id).ExecuteDeleteAsync();
+            _db.Staff.Remove(staff);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return Bad("in_use", "This person has work in the books: deactivate them instead.");
+        }
+        await AuditAsync("delete", "staff", id, staff.FullName);
+        return NoContent();
     }
 
     /// <summary>Give one person permissions beyond their role, or take some of their role's away.</summary>
@@ -489,7 +563,9 @@ public sealed class StaffController : ControllerBase
         s.BranchIds.Select(x => x.ToString()).ToArray(), s.WarehouseIds.Select(x => x.ToString()).ToArray(),
         s.MoneyAccountIds.Select(x => x.ToString()).ToArray(),
         s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent, s.Code,
-        s.CustomRoleId?.ToString(), s.CustomRole?.Name);
+        s.CustomRoleId?.ToString(), s.CustomRole?.Name, s.OtherPhones.ToArray(),
+        s.OtherPhones.Select((_, i) => i < s.OtherPhoneLabels.Count ? s.OtherPhoneLabels[i] : "").ToArray(),
+        s.PasswordNote is not null);
 
     private static string? Clean(string? s, int max)
     {
