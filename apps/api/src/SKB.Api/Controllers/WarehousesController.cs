@@ -71,8 +71,13 @@ public sealed class WarehousesController : ControllerBase
     [Authorize(Policy = Permissions.BranchesView)]
     public async Task<ActionResult<BranchDto[]>> Branches()
     {
-        var branches = await _db.Branches.AsNoTracking().Include(b => b.Warehouses)
-            .OrderBy(b => b.CreatedAt).ToListAsync();
+        // Only the person's own branches and the warehouses they see in them (owner, 2026-10-02:
+        // "all branches" never means more than the branches one may open).
+        var q = _db.Branches.AsNoTracking().Include(b => b.Warehouses).AsQueryable();
+        if (Access.Branches(User) is { } mine) q = q.Where(b => mine.Contains(b.Id));
+        var branches = await q.OrderBy(b => b.CreatedAt).ToListAsync();
+        var visible = (await _warehouses.Visible(User).Select(w => w.Id).ToListAsync()).ToHashSet();
+        foreach (var b in branches) b.Warehouses = b.Warehouses.Where(w => visible.Contains(w.Id)).ToList();
         var stats = await StatsAsync();
         return Ok(branches.Select(b => ToDto(b, stats)).ToArray());
     }
