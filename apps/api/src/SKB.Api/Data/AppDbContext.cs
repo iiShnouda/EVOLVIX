@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyIdCard> PartyIdCards => Set<PartyIdCard>();
+    public DbSet<NotePhoto> NotePhotos => Set<NotePhoto>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -94,6 +95,9 @@ public class AppDbContext : DbContext
         b.Entity<Note>().Property(n => n.Direction).HasConversion<string>();
         b.Entity<Note>().Property(n => n.Status).HasConversion<string>();
         b.Entity<Note>().HasIndex(n => n.Ref).IsUnique();
+        b.Entity<Note>().HasIndex(n => n.SerialNumber);
+        b.Entity<NotePhoto>().HasKey(x => x.NoteId);
+        b.Entity<NotePhoto>().HasOne<Note>().WithOne().HasForeignKey<NotePhoto>(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Note>().HasIndex(n => new { n.Direction, n.Status, n.DueDate });
         b.Entity<Note>().HasOne(n => n.Party).WithMany()
             .HasForeignKey(n => n.PartyId).OnDelete(DeleteBehavior.Restrict);

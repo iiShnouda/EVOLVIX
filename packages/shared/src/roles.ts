@@ -109,6 +109,7 @@ const ALL: Permission[] = [
   'notes:bounce',
   'notes:endorse',
   'notes:cancel',
+  'notes:lost',
 ];
 
 const PURCHASE_CHARGES: Permission[] = [
@@ -212,6 +213,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'notes:bounce',
     'notes:endorse',
     'notes:cancel',
+  'notes:lost',
   ],
   // Sales staff sell at the customer's price level and may only add to a price; lowering it or
   // changing the level needs a manager. The seller writes a customer's return. Their invoices post

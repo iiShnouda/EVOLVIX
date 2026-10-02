@@ -164,7 +164,8 @@ public enum NoteDirection { RECEIVABLE, PAYABLE }
 /// BOUNCED; IN_HAND → ENDORSED (to a supplier) or CANCELLED (given back) or COLLECTED (cashed).
 /// Payable: ISSUED → PAID, BOUNCED or CANCELLED.
 /// </summary>
-public enum NoteStatus { IN_HAND, UNDER_COLLECTION, COLLECTED, BOUNCED, ENDORSED, CANCELLED, ISSUED, PAID }
+/// <summary>LOST: the paper was lost or stolen (owner, 2026-10-02); the party owes again, as on a bounce.</summary>
+public enum NoteStatus { IN_HAND, UNDER_COLLECTION, COLLECTED, BOUNCED, ENDORSED, CANCELLED, ISSUED, PAID, LOST }
 
 /// <summary>
 /// Transfer permit (إذن تحويل) lifecycle. SENT: goods left the source and are in transit.

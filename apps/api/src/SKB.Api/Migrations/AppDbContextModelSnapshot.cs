@@ -1117,6 +1117,9 @@ namespace SKB.Api.Migrations
                     b.Property<Guid>("BranchId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BroughtBy")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1139,6 +1142,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Guarantor")
                         .HasColumnType("text");
 
+                    b.Property<bool>("HasPhoto")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1148,6 +1154,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid?>("PortfolioId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReceivedOn")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Ref")
                         .IsRequired()
@@ -1180,6 +1189,8 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("Ref")
                         .IsUnique();
+
+                    b.HasIndex("SerialNumber");
 
                     b.HasIndex("Direction", "Status", "DueDate");
 
@@ -1242,6 +1253,30 @@ namespace SKB.Api.Migrations
                     b.HasIndex("StaffId");
 
                     b.ToTable("NoteEvents");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NotePhoto", b =>
+                {
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("NoteId");
+
+                    b.ToTable("NotePhotos");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Notification", b =>
@@ -3340,6 +3375,15 @@ namespace SKB.Api.Migrations
                     b.Navigation("Note");
 
                     b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.NotePhoto", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Note", null)
+                        .WithOne()
+                        .HasForeignKey("SKB.Api.Data.NotePhoto", "NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Notification", b =>

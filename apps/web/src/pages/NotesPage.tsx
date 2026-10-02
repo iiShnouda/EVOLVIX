@@ -1,32 +1,29 @@
-import { useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useDeferredValue, useEffect, useState, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
   formatDateTime,
   formatMoney,
-  toMajor,
-  toMinor,
   type Note,
   type NoteDirection,
-  type NoteKind,
   type NoteStatus,
+  type Party,
   type TranslationKey,
-  companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
+import { Icon } from '../components/Icon';
+import { PartyPicker } from '../components/PartyPicker';
+import { useNotePhoto } from '../components/NotePhoto';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
-  useCreateNote,
   useDepositNotes,
   useMoneyAccounts,
   useNotes,
   useNotesSummary,
   useNoteStep,
-  useOpenInvoices,
-  useParties,
   usePortfolios,
   type NoteStep,
 } from '../lib/queries';
@@ -43,9 +40,10 @@ const RECEIVABLE_STATUSES: NoteStatus[] = [
   'COLLECTED',
   'BOUNCED',
   'ENDORSED',
+  'LOST',
   'CANCELLED',
 ];
-const PAYABLE_STATUSES: NoteStatus[] = ['ISSUED', 'PAID', 'BOUNCED', 'CANCELLED'];
+const PAYABLE_STATUSES: NoteStatus[] = ['ISSUED', 'PAID', 'BOUNCED', 'LOST', 'CANCELLED'];
 const TONE: Record<NoteStatus, Tone> = {
   IN_HAND: 'brand',
   UNDER_COLLECTION: 'info',
@@ -55,14 +53,13 @@ const TONE: Record<NoteStatus, Tone> = {
   CANCELLED: 'neutral',
   ISSUED: 'warning',
   PAID: 'positive',
+  LOST: 'destructive',
 };
 
 const input =
   'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
-const minor = (v: string) => (v.trim() === '' ? 0 : toMinor(Number(v) || 0));
-const today = companyToday;
 
 /**
  * Cheques & promissory notes (الأوراق المالية): what we hold (receivable) and what we issued
@@ -71,21 +68,20 @@ const today = companyToday;
 export function NotesPage() {
   const { t } = useT();
   const can = useCan();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'receivable') as Tab;
-  // `?receiveFor=<party>&invoice=<id>&amount=<minor>` (e.g. after approving an invoice) opens the
-  // receive form for that customer, settling that invoice.
+  // `?receiveFor=<party>&amount=<minor>` (e.g. after approving an invoice) opens the receive page
+  // for that customer.
   const receiveFor = params.get('receiveFor');
-  const [creating, setCreating] = useState<NoteDirection | null>(
-    receiveFor && can('notes:receive') ? 'RECEIVABLE' : null,
-  );
-  const initial = receiveFor
-    ? {
-        partyId: receiveFor,
-        documentId: params.get('invoice') ?? undefined,
-        amount: Number(params.get('amount')) || undefined,
-      }
-    : undefined;
+  useEffect(() => {
+    if (receiveFor && can('notes:receive'))
+      navigate(
+        `/notes/receive?party=${receiveFor}${params.get('amount') ? `&amount=${params.get('amount')}` : ''}`,
+        { replace: true },
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receiveFor]);
 
   return (
     <div className="space-y-5">
@@ -95,7 +91,7 @@ export function NotesPage() {
         action={
           <div className="flex flex-wrap gap-2">
             {can('notes:receive') && (
-              <Button size="sm" icon="plus" onClick={() => setCreating('RECEIVABLE')}>
+              <Button size="sm" icon="plus" onClick={() => navigate('/notes/receive')}>
                 {t('notes.receive')}
               </Button>
             )}
@@ -104,7 +100,7 @@ export function NotesPage() {
                 size="sm"
                 variant="secondary"
                 icon="plus"
-                onClick={() => setCreating('PAYABLE')}
+                onClick={() => navigate('/notes/issue')}
               >
                 {t('notes.issue')}
               </Button>
@@ -113,6 +109,7 @@ export function NotesPage() {
         }
       />
       <Summary />
+      <FindCheque />
       <div
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
@@ -134,17 +131,73 @@ export function NotesPage() {
       {tab === 'receivable' && <NotesTab direction="RECEIVABLE" />}
       {tab === 'payable' && <NotesTab direction="PAYABLE" />}
       {tab === 'portfolios' && <PortfoliosTab />}
-      {creating && (
-        <CreateSheet
-          direction={creating}
-          initial={creating === 'RECEIVABLE' ? initial : undefined}
-          onClose={() => {
-            setCreating(null);
-            if (receiveFor) setParams({ tab }, { replace: true });
-          }}
-        />
-      )}
     </div>
+  );
+}
+
+/**
+ * Find a cheque in hand (owner, 2026-10-02: "I'm at the factory with a cheque — what do I do?"):
+ * by its number, bank, drawer or the party, across both sides; each one found opens with what it
+ * is now and the steps it can take.
+ */
+function FindCheque() {
+  const { t, locale } = useT();
+  const [text, setText] = useState('');
+  const term = useDeferredValue(text.trim());
+  const found = useNotes({ search: term });
+  const [open, setOpen] = useState<Note | null>(null);
+  const rows = term.length >= 2 ? (found.data?.items ?? []) : [];
+  return (
+    <Card className="space-y-2">
+      <label className="block">
+        <span className="mb-0.5 block text-xs text-muted">{t('cheque.find')}</span>
+        <span className="relative block">
+          <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            className={`${input} ps-8`}
+            placeholder={t('cheque.findHint')}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </span>
+      </label>
+      {term.length >= 2 &&
+        (found.isLoading ? (
+          <Loading />
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted">{t('cheque.notFound')}</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-[var(--radius-app)] border border-line">
+            {rows.slice(0, 8).map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(n)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-start hover:bg-surface-2"
+                >
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={TONE[n.status]}>{t(`notes.status.${n.status}`)}</Badge>
+                      {n.overdue && <Badge tone="destructive">{t('notes.overdue')}</Badge>}
+                      <span className="text-xs text-muted tnum">
+                        {t(n.direction === 'RECEIVABLE' ? 'cheque.received' : 'cheque.issued')} ·{' '}
+                        {n.serialNumber}
+                      </span>
+                    </span>
+                    <span className="block truncate text-sm">{n.partyName}</span>
+                  </span>
+                  <span className="shrink-0 font-semibold tnum">
+                    {formatMoney(n.amount, n.currency, locale)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ))}
+      {open && <NoteSheet n={open} onClose={() => setOpen(null)} />}
+    </Card>
   );
 }
 
@@ -194,7 +247,9 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
   const { t, locale } = useT();
   const can = useCan();
   const [status, setStatus] = useState<NoteStatus | ''>('');
-  const { data, isLoading } = useNotes({ direction, status: status || undefined });
+  const [search, setSearch] = useState('');
+  const term = useDeferredValue(search);
+  const { data, isLoading } = useNotes({ direction, status: status || undefined, search: term });
   const [open, setOpen] = useState<Note | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [depositing, setDepositing] = useState(false);
@@ -221,6 +276,13 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
             </button>
           ))}
         </div>
+        <input
+          className={`${small} w-56`}
+          placeholder={t('cheque.findHint')}
+          aria-label={t('cheque.find')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         {canDeposit && picked.length > 0 && (
           <Button size="sm" onClick={() => setDepositing(true)}>
             {t('notes.depositSelected')} ({picked.length})
@@ -264,10 +326,22 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
                         {n.ref} · {t(`notes.kind.${n.kind}`)} {n.serialNumber}
                       </span>
                     </div>
-                    <p className="mt-0.5 truncate text-sm font-medium">{n.partyName}</p>
+                    <p className="mt-0.5 truncate text-sm font-medium">
+                      {n.partyName}
+                      {n.partyCode != null && (
+                        <span className="ms-1 text-xs text-muted tnum">({n.partyCode})</span>
+                      )}
+                      {n.hasPhoto && (
+                        <Icon name="camera" size={13} className="ms-1.5 inline text-muted" />
+                      )}
+                    </p>
                     <p className="text-xs text-faint">
                       {t('notes.due')}: {formatDate(n.dueDate, locale)}
                       {n.bankName ? ` · ${n.bankName}` : ''}
+                      {n.receivedOn
+                        ? ` · ${t(n.direction === 'RECEIVABLE' ? 'cheque.receivedOn' : 'cheque.handedOn')} ${formatDate(n.receivedOn, locale)}`
+                        : ''}
+                      {n.broughtBy ? ` · ${n.broughtBy}` : ''}
                     </p>
                   </div>
                   <span className="shrink-0 font-semibold tnum">
@@ -308,10 +382,10 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
   const can = useCan();
   const step = useNoteStep();
   const accounts = useMoneyAccounts();
-  const parties = useParties({ page: 1, pageSize: 100, active: true });
   const [action, setAction] = useState<NoteStep | null>(null);
   const [accountId, setAccountId] = useState('');
-  const [partyId, setPartyId] = useState('');
+  const [endorseTo, setEndorseTo] = useState<Party | null>(null);
+  const photo = useNotePhoto(n.hasPhoto ? n.id : null);
   const [remark, setRemark] = useState('');
   const receivable = n.direction === 'RECEIVABLE';
   const money = (v: number) => formatMoney(v, n.currency, locale);
@@ -340,12 +414,26 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
       tone: 'danger',
     },
     {
+      key: 'lost',
+      label: 'notes.lost',
+      show: ['IN_HAND', 'UNDER_COLLECTION', 'ISSUED'].includes(n.status) && can('notes:lost'),
+      tone: 'danger',
+    },
+    {
       key: 'cancel',
       label: 'notes.cancel',
       show: ['IN_HAND', 'ISSUED'].includes(n.status) && can('notes:cancel'),
       tone: 'danger',
     },
   ];
+  // What to do with it now (owner, 2026-10-02): said plainly, from its state and its date.
+  const advice: TranslationKey = n.overdue
+    ? receivable
+      ? n.status === 'UNDER_COLLECTION'
+        ? 'cheque.adviceOverdueBank'
+        : 'cheque.adviceOverdueHand'
+      : 'cheque.adviceOverdueIssued'
+    : (`cheque.advice.${n.status}` as TranslationKey);
 
   async function run() {
     if (!action) return;
@@ -355,7 +443,7 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
         step: action,
         input: {
           accountId: accountId || undefined,
-          partyId: action === 'endorse' ? partyId : undefined,
+          partyId: action === 'endorse' ? endorseTo?.id : undefined,
           remark: remark.trim() || undefined,
         },
       });
@@ -366,7 +454,7 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
   }
 
   const needsAccount = action === 'pay' || (action === 'collect' && n.status === 'IN_HAND');
-  const ready = action && (!needsAccount || accountId) && (action !== 'endorse' || partyId);
+  const ready = action && (!needsAccount || accountId) && (action !== 'endorse' || endorseTo);
 
   return (
     <Sheet
@@ -382,8 +470,31 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
           <span className="text-xs text-muted tnum">{n.ref}</span>
         </div>
         <p className="text-2xl font-semibold tnum">{money(n.amount)}</p>
+        <p className="rounded-[var(--radius-app)] border border-brand/40 bg-brand-soft/40 p-2.5 text-sm">
+          <b>{t('cheque.whatNow')}</b> {t(advice)}
+        </p>
+        {photo && (
+          <a href={photo} target="_blank" rel="noreferrer">
+            <img
+              src={photo}
+              alt={t('cheque.photo')}
+              className="max-h-56 w-full rounded-[var(--radius-app)] border border-line object-contain"
+            />
+          </a>
+        )}
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Fact label={t('notes.party')}>{n.partyName}</Fact>
+          <Fact label={t('notes.party')}>
+            {n.partyName}
+            {n.partyCode != null && <span className="ms-1 text-muted tnum">({n.partyCode})</span>}
+          </Fact>
+          {n.receivedOn && (
+            <Fact label={t(receivable ? 'cheque.receivedOn' : 'cheque.handedOn')}>
+              {formatDate(n.receivedOn, locale)}
+            </Fact>
+          )}
+          {n.broughtBy && (
+            <Fact label={t(receivable ? 'cheque.broughtBy' : 'cheque.takenBy')}>{n.broughtBy}</Fact>
+          )}
           <Fact label={t('notes.due')}>{formatDate(n.dueDate, locale)}</Fact>
           <Fact label={t('notes.bank')}>{n.bankName ?? '—'}</Fact>
           {n.drawer && <Fact label={t('notes.drawer')}>{n.drawer}</Fact>}
@@ -469,23 +580,16 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
                   </label>
                 )}
                 {action === 'endorse' && (
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-muted">{t('notes.endorseTo')}</span>
-                    <select
-                      className={input}
-                      value={partyId}
-                      onChange={(e) => setPartyId(e.target.value)}
-                    >
-                      <option value="">{t('money.pickParty')}</option>
-                      {(parties.data?.items ?? [])
-                        .filter((p) => p.id !== n.partyId)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
+                  <div className="sm:col-span-2">
+                    <PartyPicker
+                      type="SUPPLIER"
+                      withCode
+                      value={endorseTo}
+                      onChange={setEndorseTo}
+                      label={t('notes.endorseTo')}
+                      placeholder={t('money.pickParty')}
+                    />
+                  </div>
                 )}
                 <label className="block">
                   <span className="mb-1 block text-xs text-muted">{t('notes.remark')}</span>
@@ -496,15 +600,19 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
                     onChange={(e) => setRemark(e.target.value)}
                   />
                 </label>
-                {(action === 'bounce' || action === 'cancel') && (
+                {(action === 'bounce' || action === 'cancel' || action === 'lost') && (
                   <p className="text-xs text-muted sm:col-span-2">
-                    {action === 'bounce' ? t('notes.bounceHint') : t('notes.cancelHint')}
+                    {action === 'cancel' ? t('notes.cancelHint') : t('notes.bounceHint')}
                   </p>
                 )}
                 <div className="sm:col-span-2">
                   <Button
                     icon="check"
-                    variant={action === 'bounce' || action === 'cancel' ? 'danger' : 'primary'}
+                    variant={
+                      action === 'bounce' || action === 'cancel' || action === 'lost'
+                        ? 'danger'
+                        : 'primary'
+                    }
                     loading={step.isPending}
                     disabled={!ready}
                     onClick={() => void run()}
@@ -609,252 +717,3 @@ function PortfoliosTab() {
 }
 
 /* ----------------------------------------------------------- create */
-
-function CreateSheet({
-  direction,
-  onClose,
-  initial,
-}: {
-  direction: NoteDirection;
-  onClose: () => void;
-  /** Start with this party, amount (minor units) and the invoice it settles. */
-  initial?: { partyId: string; documentId?: string; amount?: number };
-}) {
-  const { t, locale } = useT();
-  const receivable = direction === 'RECEIVABLE';
-  const parties = useParties({ page: 1, pageSize: 100, active: true });
-  const create = useCreateNote();
-  const [partyId, setPartyId] = useState(initial?.partyId ?? '');
-  const [kind, setKind] = useState<NoteKind>('CHEQUE');
-  const [serial, setSerial] = useState('');
-  const [bank, setBank] = useState('');
-  const [amount, setAmount] = useState(initial?.amount ? String(toMajor(initial.amount)) : '');
-  const [due, setDue] = useState(today());
-  const [drawer, setDrawer] = useState('');
-  const [guarantor, setGuarantor] = useState('');
-  const [remark, setRemark] = useState('');
-  const [alloc, setAlloc] = useState<Record<string, string>>(
-    initial?.documentId && initial.amount
-      ? { [initial.documentId]: String(toMajor(initial.amount)) }
-      : {},
-  );
-  const open = useOpenInvoices(partyId, receivable ? 'sales' : 'purchases');
-  const invoices = (open.data ?? []).filter((o) => !receivable || !o.onCodParcel);
-  const total = minor(amount);
-  const allocated = Object.values(alloc).reduce((s, v) => s + minor(v), 0);
-  const over =
-    allocated > total || invoices.some((o) => minor(alloc[o.documentId] ?? '') > o.outstanding);
-  const valid = partyId && serial.trim() && total > 0 && due && !over;
-
-  function autoAllocate() {
-    let left = total;
-    const next: Record<string, string> = {};
-    for (const o of invoices) {
-      if (left <= 0) break;
-      const take = Math.min(left, o.outstanding);
-      next[o.documentId] = String(toMajor(take));
-      left -= take;
-    }
-    setAlloc(next);
-  }
-
-  async function save() {
-    try {
-      await create.mutateAsync({
-        direction,
-        input: {
-          partyId,
-          kind,
-          serialNumber: serial.trim(),
-          amount: total,
-          dueDate: due,
-          bankName: bank.trim() || undefined,
-          drawer: drawer.trim() || undefined,
-          guarantor: guarantor.trim() || undefined,
-          remark: remark.trim() || undefined,
-          allocations: Object.entries(alloc)
-            .map(([documentId, v]) => ({ documentId, amount: minor(v) }))
-            .filter((a) => a.amount > 0),
-        },
-      });
-      onClose();
-    } catch {
-      /* shown below */
-    }
-  }
-
-  return (
-    <Sheet
-      title={receivable ? t('notes.receive') : t('notes.issue')}
-      onClose={onClose}
-      closeLabel={t('common.close')}
-      wide
-    >
-      <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">{t('notes.party')}</span>
-            <select
-              className={input}
-              value={partyId}
-              onChange={(e) => {
-                setPartyId(e.target.value);
-                setAlloc({});
-              }}
-            >
-              <option value="">{t('money.pickParty')}</option>
-              {(parties.data?.items ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('notes.kind')}</span>
-            <select
-              className={input}
-              value={kind}
-              onChange={(e) => setKind(e.target.value as NoteKind)}
-            >
-              <option value="CHEQUE">{t('notes.kind.CHEQUE')}</option>
-              <option value="PROMISSORY_NOTE">{t('notes.kind.PROMISSORY_NOTE')}</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('notes.serial')}</span>
-            <input
-              className={input}
-              dir="ltr"
-              value={serial}
-              maxLength={40}
-              onChange={(e) => setSerial(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('notes.amount')}</span>
-            <input
-              className={`${input} tnum`}
-              type="number"
-              min={0}
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('notes.due')}</span>
-            <input
-              className={input}
-              type="date"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('notes.bank')}</span>
-            <input
-              className={input}
-              value={bank}
-              maxLength={100}
-              onChange={(e) => setBank(e.target.value)}
-            />
-          </label>
-          {receivable && (
-            <>
-              <label className="block">
-                <span className="mb-1 block text-xs text-muted">{t('notes.drawer')}</span>
-                <input
-                  className={input}
-                  value={drawer}
-                  maxLength={100}
-                  onChange={(e) => setDrawer(e.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs text-muted">{t('notes.guarantor')}</span>
-                <input
-                  className={input}
-                  value={guarantor}
-                  maxLength={100}
-                  onChange={(e) => setGuarantor(e.target.value)}
-                />
-              </label>
-            </>
-          )}
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">{t('notes.remark')}</span>
-            <input
-              className={input}
-              value={remark}
-              maxLength={500}
-              onChange={(e) => setRemark(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {partyId && (
-          <div>
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <p className="text-xs text-muted">{t('money.invoices')}</p>
-              {invoices.length > 0 && total > 0 && (
-                <Button variant="ghost" size="sm" onClick={autoAllocate}>
-                  {t('money.autoAllocate')}
-                </Button>
-              )}
-            </div>
-            {invoices.length === 0 ? (
-              <p className="rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm text-muted">
-                {t('money.noOpenInvoices')}
-              </p>
-            ) : (
-              <ul className="max-h-52 space-y-1 overflow-auto rounded-[var(--radius-app)] border border-line p-2">
-                {invoices.map((o) => (
-                  <li
-                    key={o.documentId}
-                    className="grid grid-cols-[1fr_7rem] items-center gap-2 text-sm"
-                  >
-                    <span className="min-w-0 truncate">
-                      <span className="tnum">{o.number}</span>
-                      <span className="text-xs text-muted">
-                        {' '}
-                        · {t('money.outstanding')} {formatMoney(o.outstanding, 'EGP', locale)}
-                      </span>
-                    </span>
-                    <input
-                      className={`${small} tnum`}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      aria-label={o.number}
-                      value={alloc[o.documentId] ?? ''}
-                      onChange={(e) =>
-                        setAlloc((cur) => ({ ...cur, [o.documentId]: e.target.value }))
-                      }
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {over && <p className="mt-1 text-xs text-destructive">{t('money.overAllocated')}</p>}
-          </div>
-        )}
-
-        {create.error && <p className="text-sm text-destructive">{errorText(t, create.error)}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            icon="check"
-            loading={create.isPending}
-            disabled={!valid}
-            onClick={() => void save()}
-          >
-            {t('common.save')}
-          </Button>
-        </div>
-      </div>
-    </Sheet>
-  );
-}

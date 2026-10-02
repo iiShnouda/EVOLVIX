@@ -149,7 +149,8 @@ export type Permission =
   | 'notes:pay'
   | 'notes:bounce'
   | 'notes:endorse'
-  | 'notes:cancel';
+  | 'notes:cancel'
+  | 'notes:lost';
 
 export interface Staff {
   id: string;
@@ -1863,7 +1864,9 @@ export type NoteStatus =
   | 'ENDORSED'
   | 'CANCELLED'
   | 'ISSUED'
-  | 'PAID';
+  | 'PAID'
+  /** Lost or stolen (owner, 2026-10-02): the party owes again, as on a bounce. */
+  | 'LOST';
 
 export interface NoteEvent {
   fromStatus: NoteStatus | null;
@@ -1905,6 +1908,12 @@ export interface Note {
   allocations: { documentId: string; number: string; amount: number }[];
   events: NoteEvent[];
   currency: string;
+  /** The day it came (or was handed over), yyyy-mm-dd, and who brought (or took) it. */
+  receivedOn?: string | null;
+  broughtBy?: string | null;
+  /** A photo of the paper is kept (GET /notes/{id}/photo). */
+  hasPhoto?: boolean;
+  partyCode?: number | null;
 }
 
 /** A batch of notes lodged at a bank (حافظة). */

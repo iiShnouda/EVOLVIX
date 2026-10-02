@@ -868,12 +868,18 @@ public record NoteDto(
     long Amount, string DueDate, bool Overdue, string? Drawer, string? Guarantor, string PartyId, string PartyName,
     string? EndorsedToName, string BranchName, string? PortfolioNumber, string? AccountId, string? AccountName,
     string? Remark, string CreatedAt, string CreatedByName, NoteAllocationDto[] Allocations, NoteEventDto[] Events,
-    string Currency);
+    string Currency, string? ReceivedOn = null, string? BroughtBy = null, bool HasPhoto = false, int? PartyCode = null);
 
 /// <param name="DueDate">yyyy-mm-dd.</param>
+/// <param name="ReceivedOn">The day it came (or was handed over), yyyy-mm-dd; today if not given.</param>
+/// <param name="BroughtBy">Who brought it (or took it).</param>
 public record CreateNoteRequest(
     string? PartyId, string? Kind, string? SerialNumber, long Amount, string? DueDate, string? BankName = null,
-    string? Drawer = null, string? Guarantor = null, string? Remark = null, AllocationRequest[]? Allocations = null);
+    string? Drawer = null, string? Guarantor = null, string? Remark = null, AllocationRequest[]? Allocations = null,
+    string? ReceivedOn = null, string? BroughtBy = null);
+
+/// <summary>Several cheques at once (owner, 2026-10-02), e.g. a series every 30 days: all or none.</summary>
+public record CreateNotesRequest(CreateNoteRequest[]? Notes);
 
 public record DepositNotesRequest(string[]? NoteIds, string? AccountId);
 

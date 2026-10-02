@@ -1156,11 +1156,27 @@ public class Note
     public Guid? AccountId { get; set; }
     public MoneyAccount? Account { get; set; }
     public string? Remark { get; set; }
+    /// <summary>The day it came to us (receivable) or was handed over (payable), as typed (owner, 2026-10-02).</summary>
+    public DateTime? ReceivedOn { get; set; }
+    /// <summary>Who brought it (receivable) or took it (payable).</summary>
+    public string? BroughtBy { get; set; }
+    /// <summary>A photo of the paper is kept (<see cref="NotePhoto"/>).</summary>
+    public bool HasPhoto { get; set; }
     public Guid CreatedById { get; set; }
     public Staff? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<NoteAllocation> Allocations { get; set; } = new();
     public List<NoteEvent> Events { get; set; } = new();
+}
+
+/// <summary>The photo of a cheque or note, kept in the database (never on disk), one per paper.</summary>
+public class NotePhoto
+{
+    public Guid NoteId { get; set; }
+    public string ContentType { get; set; } = "image/jpeg";
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public Guid? UploadedBy { get; set; }
 }
 
 /// <summary>The part of a note that settles one invoice (undone if the note bounces or is cancelled).</summary>

@@ -951,6 +951,9 @@ function VoucherFormSheet({
     { method: 'CASH', accountId: '', amount: '', reference: '' },
   ]);
   const [alloc, setAlloc] = useState<Record<string, string>>({});
+  // The oldest invoices are settled first by themselves (owner, 2026-10-02: no button needed);
+  // typing an amount on an invoice takes over until "back to oldest first".
+  const [allocTouched, setAllocTouched] = useState(false);
   const [notes, setNotes] = useState('');
   const side = kind === 'payment' ? 'purchases' : 'sales';
   const open = useOpenInvoices(partyId, side, kind !== 'expense');
@@ -995,6 +998,12 @@ function VoucherFormSheet({
     }
     setAlloc(next);
   }
+
+  const openKey = invoices.map((o) => `${o.documentId}:${o.outstanding}`).join();
+  useEffect(() => {
+    if (!allocTouched) autoAllocate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, openKey, allocTouched]);
 
   async function save() {
     try {
@@ -1060,6 +1069,7 @@ function VoucherFormSheet({
               onChange={(e) => {
                 setPartyId(e.target.value);
                 setAlloc({});
+                setAllocTouched(false);
               }}
             >
               <option value="">{t('money.pickParty')}</option>
@@ -1159,10 +1169,14 @@ function VoucherFormSheet({
           <div>
             <div className="mb-1 flex items-center justify-between gap-2">
               <p className="text-xs text-muted">{t('money.invoices')}</p>
-              {invoices.length > 0 && total > 0 && (
-                <Button variant="ghost" size="sm" onClick={autoAllocate}>
-                  {t('money.autoAllocate')}
+              {allocTouched ? (
+                <Button variant="ghost" size="sm" onClick={() => setAllocTouched(false)}>
+                  {t('cheque.backToOldest')}
                 </Button>
+              ) : (
+                invoices.length > 0 && (
+                  <span className="text-xs text-muted">{t('cheque.oldestFirst')}</span>
+                )
               )}
             </div>
             {open.isLoading ? (
@@ -1194,9 +1208,10 @@ function VoucherFormSheet({
                       aria-label={o.number}
                       aria-invalid={minor(alloc[o.documentId] ?? '') > o.outstanding}
                       value={alloc[o.documentId] ?? ''}
-                      onChange={(e) =>
-                        setAlloc((cur) => ({ ...cur, [o.documentId]: e.target.value }))
-                      }
+                      onChange={(e) => {
+                        setAllocTouched(true);
+                        setAlloc((cur) => ({ ...cur, [o.documentId]: e.target.value }));
+                      }}
                     />
                   </li>
                 ))}

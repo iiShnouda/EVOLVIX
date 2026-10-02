@@ -626,6 +626,9 @@ export interface CreateNoteInput {
   guarantor?: string;
   remark?: string;
   allocations?: { documentId: string; amount: number }[];
+  /** yyyy-mm-dd; today if not given. */
+  receivedOn?: string;
+  broughtBy?: string;
 }
 
 export interface NoteStepInput {

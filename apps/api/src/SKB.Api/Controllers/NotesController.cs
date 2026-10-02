@@ -44,14 +44,26 @@ public sealed class NotesController : ControllerBase
 
     // ------------------------------------------------------------------ lists
 
+    /// <param name="search">Finds a paper by its number, our reference, its bank, its drawer or the
+    /// party's name or code (owner, 2026-10-02: "find the cheque in my hand and tell me what to do").</param>
     [HttpGet("notes")]
     public async Task<ActionResult<PaginatedDto<NoteDto>>> List(
         [FromQuery] string? direction = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
-        [FromQuery] bool? open = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        [FromQuery] bool? open = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+        [FromQuery] string? search = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var q = Scoped();
+        if (Text(search, 60) is { } term)
+        {
+            var low = term.ToLower();
+            var code = int.TryParse(term, out var c) ? c : (int?)null;
+            q = q.Where(n => n.SerialNumber.ToLower().Contains(low) || n.Ref.ToLower().Contains(low)
+                             || (n.BankName != null && n.BankName.ToLower().Contains(low))
+                             || (n.Drawer != null && n.Drawer.ToLower().Contains(low))
+                             || n.Party!.Name.ToLower().Contains(low) || (code != null && n.Party.Code == code));
+        }
         if (Enum.TryParse<NoteDirection>(direction, true, out var d)) q = q.Where(n => n.Direction == d);
         if (Enum.TryParse<NoteStatus>(status, true, out var st)) q = q.Where(n => n.Status == st);
         if (Guid.TryParse(partyId, out var p)) q = q.Where(n => n.PartyId == p || n.EndorsedToId == p);
@@ -106,6 +118,16 @@ public sealed class NotesController : ControllerBase
     [Authorize(Policy = Permissions.NotesReceive)]
     public Task<ActionResult<NoteDto>> Receive([FromBody] CreateNoteRequest req) => CreateAsync(NoteDirection.RECEIVABLE, req);
 
+    /// <summary>Take several cheques at once (a series): all are saved, or none.</summary>
+    [HttpPost("notes/receive-many")]
+    [Authorize(Policy = Permissions.NotesReceive)]
+    public Task<ActionResult<NoteDto[]>> ReceiveMany([FromBody] CreateNotesRequest req) => CreateManyAsync(NoteDirection.RECEIVABLE, req);
+
+    /// <summary>Issue several cheques at once (a series): all are saved, or none.</summary>
+    [HttpPost("notes/issue-many")]
+    [Authorize(Policy = Permissions.NotesIssue)]
+    public Task<ActionResult<NoteDto[]>> IssueMany([FromBody] CreateNotesRequest req) => CreateManyAsync(NoteDirection.PAYABLE, req);
+
     /// <summary>Issue our cheque / promissory note to a party: what we owe drops; it may settle purchase invoices.</summary>
     [HttpPost("notes/issue")]
     [Authorize(Policy = Permissions.NotesIssue)]
@@ -113,28 +135,65 @@ public sealed class NotesController : ControllerBase
 
     private async Task<ActionResult<NoteDto>> CreateAsync(NoteDirection direction, CreateNoteRequest req)
     {
-        if (!Guid.TryParse(req.PartyId, out var partyId)) return Bad("party_not_found", "Choose the customer or supplier.");
-        if (!Enum.TryParse<NoteKind>(req.Kind, true, out var kind)) return Bad("bad_kind", "Choose cheque or promissory note.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var (note, error) = await CreateOneAsync(direction, req);
+        if (error is not null) return error;
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync(direction == NoteDirection.RECEIVABLE ? "receive" : "issue", note!.Id, note.BranchId);
+        return Created($"/api/notes/{note.Id}", ToDto(await ReloadAsync(note.Id), await CurrencyAsync()));
+    }
+
+    private async Task<ActionResult<NoteDto[]>> CreateManyAsync(NoteDirection direction, CreateNotesRequest req)
+    {
+        var list = req.Notes ?? Array.Empty<CreateNoteRequest>();
+        if (list.Length == 0 || list.Length > 60) return Bad("no_notes", "Add between 1 and 60 cheques.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var made = new List<Note>();
+        for (var i = 0; i < list.Length; i++)
+        {
+            var (note, error) = await CreateOneAsync(direction, list[i]);
+            if (error is not null)
+                return error is BadRequestObjectResult bad && bad.Value is not null
+                    ? BadRequest(new { message = $"#{i + 1}: {bad.Value.GetType().GetProperty("message")?.GetValue(bad.Value)}",
+                        code = bad.Value.GetType().GetProperty("code")?.GetValue(bad.Value), index = i })
+                    : error;
+            made.Add(note!);
+            // Each one settles what the ones before it left owed.
+            await _db.SaveChangesAsync();
+        }
+        await tx.CommitAsync();
+        foreach (var n in made) await AuditAsync(direction == NoteDirection.RECEIVABLE ? "receive" : "issue", n.Id, n.BranchId);
+        var currency = await CurrencyAsync();
+        var result = new List<NoteDto>();
+        foreach (var n in made) result.Add(ToDto(await ReloadAsync(n.Id), currency));
+        return Created("/api/notes", result.ToArray());
+    }
+
+    /// <summary>One note checked and added (not saved): the caller holds the transaction.</summary>
+    private async Task<(Note? Note, ActionResult? Error)> CreateOneAsync(NoteDirection direction, CreateNoteRequest req)
+    {
+        if (!Guid.TryParse(req.PartyId, out var partyId)) return (null, Bad("party_not_found", "Choose the customer or supplier."));
+        if (!Enum.TryParse<NoteKind>(req.Kind, true, out var kind)) return (null, Bad("bad_kind", "Choose cheque or promissory note."));
         var serial = Text(req.SerialNumber, 40);
-        if (serial is null) return Bad("bad_serial", "Enter the cheque / note number.");
-        if (req.Amount <= 0 || req.Amount > InvoiceLines.MaxPrice) return Bad("bad_amount", "Enter an amount above zero.");
-        if (!DateOnly.TryParse(req.DueDate, out var due)) return Bad("bad_date", "Enter the due date.");
+        if (serial is null) return (null, Bad("bad_serial", "Enter the cheque / note number."));
+        if (req.Amount <= 0 || req.Amount > InvoiceLines.MaxPrice) return (null, Bad("bad_amount", "Enter an amount above zero."));
+        if (!DateOnly.TryParse(req.DueDate, out var due)) return (null, Bad("bad_date", "Enter the due date."));
 
         var allocations = new List<(Guid DocumentId, long Amount)>();
         foreach (var a in req.Allocations ?? Array.Empty<AllocationRequest>())
         {
             if (!Guid.TryParse(a.DocumentId, out var docId) || allocations.Any(x => x.DocumentId == docId))
-                return Bad("invoice_not_found", "An invoice was not found.");
-            if (a.Amount <= 0) return Bad("bad_allocation", "Each invoice needs an amount above zero.");
+                return (null, Bad("invoice_not_found", "An invoice was not found."));
+            if (a.Amount <= 0) return (null, Bad("bad_allocation", "Each invoice needs an amount above zero."));
             allocations.Add((docId, a.Amount));
         }
-        if (allocations.Count > 100) return Bad("bad_allocation", "At most 100 invoices on one note.");
+        if (allocations.Count > 100) return (null, Bad("bad_allocation", "At most 100 invoices on one note."));
         if (allocations.Sum(a => a.Amount) > req.Amount)
-            return Bad("over_allocated", "The invoices settled add up to more than the note.");
+            return (null, Bad("over_allocated", "The invoices settled add up to more than the note."));
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == partyId && p.IsActive);
-        if (party is null) return Bad("party_not_found", "Choose the customer or supplier.");
+        if (party is null) return (null, Bad("party_not_found", "Choose the customer or supplier."));
 
         // Lock order: invoices, then the party.
         var docs = new Dictionary<Guid, SalesDocument>();
@@ -148,14 +207,14 @@ public sealed class NotesController : ControllerBase
                                                  && d.Status != DocumentStatus.CANCELLED).InBranches(User, d => d.BranchId);
             docs = await q.ToDictionaryAsync(d => d.Id);
             foreach (var d in docs.Values) await _db.Entry(d).ReloadAsync();
-            if (docs.Count != docIds.Length) return Bad("invoice_not_found", "An invoice was not found for this party.");
+            if (docs.Count != docIds.Length) return (null, Bad("invoice_not_found", "An invoice was not found for this party."));
             var owed = await MoneyService.OutstandingAsync(_db, docs.Values.ToList());
             foreach (var (docId, amount) in allocations)
                 if (amount > owed[docId])
-                    return Bad("over_outstanding", $"{docs[docId].Number}: only {owed[docId] / 100m:0.00} is still owed.");
+                    return (null, Bad("over_outstanding", $"{docs[docId].Number}: only {owed[docId] / 100m:0.00} is still owed."));
             if (direction == NoteDirection.RECEIVABLE && await _db.ShipmentInvoices.AnyAsync(x =>
                     docIds.Contains(x.DocumentId) && x.CodShare > 0 && OnTheWay.Contains(x.Shipment!.Status)))
-                return Bad("on_cod_parcel", "An invoice is in a cash-on-delivery parcel: the shipping company collects it.");
+                return (null, Bad("on_cod_parcel", "An invoice is in a cash-on-delivery parcel: the shipping company collects it."));
         }
         await MoneyService.LockPartiesAsync(_db, partyId);
 
@@ -167,6 +226,9 @@ public sealed class NotesController : ControllerBase
             DueDate = due.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), Drawer = Text(req.Drawer, 100),
             Guarantor = Text(req.Guarantor, 100), PartyId = partyId, BranchId = Access.Work(User),
             Remark = Text(req.Remark, 500), CreatedById = Me(),
+            ReceivedOn = (DateOnly.TryParse(req.ReceivedOn, out var came) ? came : CompanyClock.Today)
+                .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            BroughtBy = Text(req.BroughtBy, 100),
         };
         note.Events.Add(new NoteEvent { ToStatus = note.Status, PartyId = partyId, Remark = note.Remark, StaffId = Me() });
         foreach (var (docId, amount) in allocations)
@@ -189,10 +251,7 @@ public sealed class NotesController : ControllerBase
                 await _ledger.SystemAsync(LedgerKeys.NotesPayable), Me());
         }
         _db.Notes.Add(note);
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
-        await AuditAsync(direction == NoteDirection.RECEIVABLE ? "receive" : "issue", note.Id, note.BranchId);
-        return Created($"/api/notes/{note.Id}", ToDto(await ReloadAsync(note.Id), await CurrencyAsync()));
+        return (note, null);
     }
 
     // ------------------------------------------------------------------ steps
@@ -300,6 +359,79 @@ public sealed class NotesController : ControllerBase
         StepAsync(id, "cancel", n => UndoAsync(n, NoteStatus.CANCELLED, "Note cancelled",
             n.Status is NoteStatus.IN_HAND or NoteStatus.ISSUED, "Only a note in hand or issued can be cancelled."),
             req?.Remark);
+
+    /// <summary>
+    /// A paper lost or stolen (owner, 2026-10-02): as on a bounce, the party owes again (or is owed
+    /// again) and its invoices are open again; the paper is kept on the list as lost.
+    /// </summary>
+    [HttpPost("notes/{id:guid}/lost")]
+    [Authorize(Policy = Permissions.NotesLost)]
+    public Task<ActionResult<NoteDto>> Lost(Guid id, [FromBody] NoteStepRequest? req) =>
+        StepAsync(id, "lost", n => UndoAsync(n, NoteStatus.LOST, "Note lost",
+            n.Status is NoteStatus.IN_HAND or NoteStatus.UNDER_COLLECTION or NoteStatus.ISSUED,
+            "Only an open note can be marked lost."), req?.Remark);
+
+    // ------------------------------------------------------------------ photo
+
+    private const int MaxPhotoBytes = 3 * 1024 * 1024;
+
+    /// <summary>
+    /// Keep the photo of a cheque or note (owner, 2026-10-02), replacing the one before: only JPEG,
+    /// PNG or WebP up to 3 MB, read from its bytes; stored in the database, never on disk.
+    /// </summary>
+    [HttpPut("notes/{id:guid}/photo")]
+    [RequestSizeLimit(MaxPhotoBytes + 64 * 1024)]
+    public async Task<ActionResult<NoteDto>> PutPhoto(Guid id, IFormFile? file)
+    {
+        var note = await Scoped().FirstOrDefaultAsync(n => n.Id == id);
+        if (note is null) return NotFound(new { message = "Note not found.", code = "not_found" });
+        // Whoever may take (or issue) such papers keeps their photos.
+        var may = note.Direction == NoteDirection.RECEIVABLE ? Permissions.NotesReceive : Permissions.NotesIssue;
+        if (!User.HasClaim("permission", may)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        if (file is null || file.Length == 0 || file.Length > MaxPhotoBytes)
+            return Bad("bad_photo", "Choose a photo of up to 3 MB.");
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var data = buffer.ToArray();
+        var type = Pictures.TypeOf(data);
+        if (type is null) return Bad("bad_photo", "Only JPEG, PNG or WebP photos.");
+        var photo = await _db.NotePhotos.FirstOrDefaultAsync(x => x.NoteId == id);
+        if (photo is null) _db.NotePhotos.Add(photo = new NotePhoto { NoteId = id });
+        photo.ContentType = type;
+        photo.Data = data;
+        photo.UploadedAt = DateTime.UtcNow;
+        photo.UploadedBy = Me();
+        note.HasPhoto = true;
+        await _db.SaveChangesAsync();
+        await AuditAsync("photo", note.Id, note.BranchId);
+        return Ok(ToDto(await ReloadAsync(note.Id), await CurrencyAsync()));
+    }
+
+    /// <summary>The paper's photo, never cached anywhere.</summary>
+    [HttpGet("notes/{id:guid}/photo")]
+    public async Task<IActionResult> GetPhoto(Guid id)
+    {
+        if (!await Scoped().AnyAsync(n => n.Id == id)) return NotFound(new { message = "Not found.", code = "not_found" });
+        var photo = await _db.NotePhotos.AsNoTracking().FirstOrDefaultAsync(x => x.NoteId == id);
+        if (photo is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(photo.Data, photo.ContentType);
+    }
+
+    [HttpDelete("notes/{id:guid}/photo")]
+    public async Task<ActionResult<NoteDto>> DeletePhoto(Guid id)
+    {
+        var note = await Scoped().FirstOrDefaultAsync(n => n.Id == id);
+        if (note is null) return NotFound(new { message = "Note not found.", code = "not_found" });
+        var may = note.Direction == NoteDirection.RECEIVABLE ? Permissions.NotesReceive : Permissions.NotesIssue;
+        if (!User.HasClaim("permission", may)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        await _db.NotePhotos.Where(x => x.NoteId == id).ExecuteDeleteAsync();
+        note.HasPhoto = false;
+        await _db.SaveChangesAsync();
+        await AuditAsync("photo_removed", note.Id, note.BranchId);
+        return Ok(ToDto(await ReloadAsync(note.Id), await CurrencyAsync()));
+    }
 
     /// <summary>Hand a note we hold to a supplier (تظهير): it pays what we owe them.</summary>
     [HttpPost("notes/{id:guid}/endorse")]
@@ -424,7 +556,7 @@ public sealed class NotesController : ControllerBase
                 e.AccountId == n.AccountId && n.Account is not null ? Loc.Name(n.Account) : null,
                 e.PartyId == n.EndorsedToId ? n.EndorsedTo?.Name : e.PartyId == n.PartyId ? n.Party?.Name : null,
                 e.Remark, e.Staff?.FullName ?? "", e.CreatedAt.ToString("o"))).ToArray(),
-            currency);
+            currency, n.ReceivedOn?.ToString("yyyy-MM-dd"), n.BroughtBy, n.HasPhoto, n.Party?.Code);
     }
 
     private async Task<string> CurrencyAsync() =>

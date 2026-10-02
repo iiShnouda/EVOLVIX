@@ -287,12 +287,7 @@ public sealed class PartiesController : ControllerBase
     private const int MaxIdCardBytes = 3 * 1024 * 1024;
 
     /// <summary>The image type of <paramref name="data"/> from its first bytes (JPEG, PNG or WebP); null = not a photo.</summary>
-    private static string? ImageType(byte[] data) =>
-        data.Length > 12 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF ? "image/jpeg"
-        : data.Length > 12 && data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 ? "image/png"
-        : data.Length > 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
-          && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P' ? "image/webp"
-        : null;
+    private static string? ImageType(byte[] data) => Pictures.TypeOf(data);
 
     private static string? Side(string side) => side.ToUpperInvariant() switch
     {

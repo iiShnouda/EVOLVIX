@@ -91,6 +91,8 @@ public static class Permissions
     public const string NotesEndorse = "notes:endorse";
     /// <summary>Cancel a note (give it back / withdraw it).</summary>
     public const string NotesCancel = "notes:cancel";
+    /// <summary>Record a note as lost or stolen (owner, 2026-10-02): the party owes again.</summary>
+    public const string NotesLost = "notes:lost";
 
     // Payroll & attendance (DOMAIN.md §2.9). Salaries are private: nobody sees them by default
     // except the owner, admin and accountant.
@@ -232,7 +234,7 @@ public static class Permissions
         MoneyAccountsManage, ExpenseCategoriesManage,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
-        NotesCancel,
+        NotesCancel, NotesLost,
         PayrollView, EmployeesManage, AttendanceEdit, PayrollAdjust, PayrollAdvance, PayrollPost, PayrollPay,
     };
 }
@@ -278,7 +280,7 @@ public static class RolePermissions
             Permissions.LedgerView, Permissions.LedgerPost, Permissions.LedgerManage,
             Permissions.NotesView, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
-            Permissions.NotesCancel,
+            Permissions.NotesCancel, Permissions.NotesLost,
             Permissions.PayrollView, Permissions.AttendanceEdit, Permissions.PayrollAdjust, Permissions.PayrollAdvance,
             Permissions.PayrollPost, Permissions.PayrollPay,
         },

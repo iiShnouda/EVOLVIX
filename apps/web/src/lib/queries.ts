@@ -1551,9 +1551,16 @@ export function useReverseJournalEntry() {
 // Cheques & promissory notes (DOMAIN.md §2.7)
 // ---------------------------------------------------------------------------
 
-export function useNotes(params: { direction: 'RECEIVABLE' | 'PAYABLE'; status?: string }) {
-  const query = new URLSearchParams({ direction: params.direction, pageSize: '100' });
+export function useNotes(params: {
+  direction?: 'RECEIVABLE' | 'PAYABLE';
+  status?: string;
+  /** A paper's number, our reference, bank, drawer or the party's name or code. */
+  search?: string;
+}) {
+  const query = new URLSearchParams({ pageSize: '100' });
+  if (params.direction) query.set('direction', params.direction);
   if (params.status) query.set('status', params.status);
+  if (params.search?.trim()) query.set('search', params.search.trim());
   return useQuery({
     queryKey: ['notes', 'list', params],
     queryFn: () => api.get<Paginated<Note>>(`/notes?${query}`),
@@ -1597,7 +1604,25 @@ export function useCreateNote() {
   });
 }
 
-export type NoteStep = 'collect' | 'pay' | 'bounce' | 'endorse' | 'cancel';
+/** Several cheques at once (a series): all saved, or none. */
+export function useCreateNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      direction,
+      notes,
+    }: {
+      direction: 'RECEIVABLE' | 'PAYABLE';
+      notes: CreateNoteInput[];
+    }) =>
+      api.post<Note[]>(direction === 'RECEIVABLE' ? '/notes/receive-many' : '/notes/issue-many', {
+        notes,
+      }),
+    onSuccess: () => invalidateAfterNote(qc),
+  });
+}
+
+export type NoteStep = 'collect' | 'pay' | 'bounce' | 'endorse' | 'cancel' | 'lost';
 
 export function useNoteStep() {
   const qc = useQueryClient();
