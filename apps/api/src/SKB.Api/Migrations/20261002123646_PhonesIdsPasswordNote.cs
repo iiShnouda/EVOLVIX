@@ -15,13 +15,15 @@ namespace SKB.Api.Migrations
                 name: "OtherPhoneLabels",
                 table: "Staff",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'::text[]");
 
             migrationBuilder.AddColumn<List<string>>(
                 name: "OtherPhones",
                 table: "Staff",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'::text[]");
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "PasswordNote",
@@ -39,13 +41,15 @@ namespace SKB.Api.Migrations
                 name: "OtherPhoneLabels",
                 table: "Employees",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'::text[]");
 
             migrationBuilder.AddColumn<List<string>>(
                 name: "OtherPhones",
                 table: "Employees",
                 type: "text[]",
-                nullable: false);
+                nullable: false,
+                defaultValueSql: "'{}'::text[]");
         }
 
         /// <inheritdoc />
