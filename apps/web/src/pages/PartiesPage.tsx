@@ -20,7 +20,6 @@ import {
   anyIdProblem,
   useCompanyCountry,
 } from '../components/PhoneFields';
-import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { IdCardFields, IdCardView, type IdSide } from '../components/IdCards';
 import { api } from '../lib/api';
 import { useT } from '../lib/i18n';
@@ -164,7 +163,6 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
   const bal = balanceView(party.balance, party.currency);
   const money = (kind: 'receipt' | 'payment') =>
     navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
-  const [statement, setStatement] = useState(false);
   const [idCard, setIdCard] = useState(false);
   // What they owe against their purchase limit (owner, 2026-10-01: a warning on the customer).
   const limit =
@@ -247,18 +245,13 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         can('ledger:view') ||
         (party.types.includes('CUSTOMER') && can('sales:view'))) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {party.types.includes('CUSTOMER') && can('sales:view') && (
+          {(can('ledger:view') || (party.types.includes('CUSTOMER') && can('sales:view'))) && (
             <Button
               size="sm"
               variant="secondary"
               onClick={() => navigate(`/parties/${party.id}/account`)}
             >
-              {t('account.open')}
-            </Button>
-          )}
-          {can('ledger:view') && (
-            <Button size="sm" variant="ghost" onClick={() => setStatement(true)}>
-              {t('ledger.partyStatement')}
+              {t('account.statement')}
             </Button>
           )}
           {party.isActive && can('receipts:create') && (
@@ -284,14 +277,6 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         <Sheet title={party.name} onClose={() => setIdCard(false)} closeLabel={t('common.close')}>
           <IdCardView party={party} />
         </Sheet>
-      )}
-      {statement && (
-        <LedgerStatementSheet
-          kind="parties"
-          id={party.id}
-          title={party.name}
-          onClose={() => setStatement(false)}
-        />
       )}
     </Card>
   );

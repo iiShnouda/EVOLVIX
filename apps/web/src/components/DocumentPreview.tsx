@@ -211,7 +211,12 @@ export function InvoicePaper({
   const isQuote = doc.type === 'QUOTATION';
   const isInvoice = doc.type === 'SALES_INVOICE' || doc.type === 'PURCHASE_INVOICE';
   const isPurchaseSide = doc.type === 'PURCHASE_INVOICE' || doc.type === 'PURCHASE_RETURN';
-  const outstanding = doc.grandTotal - doc.paidAmount;
+  // An invoice's account is settled oldest first (owner, 2026-10-02): what is left on it is the
+  // server's figure when it sends one; paid is the rest.
+  const outstanding =
+    doc.owed != null && !doc.type.endsWith('RETURN') ? doc.owed : doc.grandTotal - doc.paidAmount;
+  const paidSoFar =
+    doc.owed != null && !doc.type.endsWith('RETURN') ? doc.grandTotal - doc.owed : doc.paidAmount;
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
   // The discount column only when a line has one (owner, 2026-10-02).
   const anyLineDiscount = doc.lines.some((l) => l.discount > 0);
@@ -465,7 +470,7 @@ export function InvoicePaper({
             <>
               <Row
                 label={isReturn ? t('return.refunded') : t('sales.paid')}
-                value={money(doc.paidAmount)}
+                value={money(paidSoFar)}
               />
               <Row
                 label={isReturn ? t('return.onAccount') : t('sales.outstanding')}

@@ -162,8 +162,11 @@ public sealed class LedgerController : ControllerBase
     /// <paramref name="branchId"/> keeps one branch's lines; <paramref name="items"/> adds every
     /// invoice's and return's items (كشف أصناف).
     /// </remarks>
+    /// <param name="departmentId">Only invoices and returns of one sales department (owner, 2026-10-02).</param>
+    /// <param name="warehouseId">Only invoices and returns with goods in one warehouse.</param>
     public async Task<ActionResult<LedgerStatementDto>> PartyStatement(Guid partyId, [FromQuery] string? from = null,
-        [FromQuery] string? to = null, [FromQuery] string? branchId = null, [FromQuery] bool items = false)
+        [FromQuery] string? to = null, [FromQuery] string? branchId = null, [FromQuery] bool items = false,
+        [FromQuery] string? departmentId = null, [FromQuery] string? warehouseId = null)
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
         if (party is null) return NotFound(new { message = "Party not found.", code = "not_found" });
@@ -183,6 +186,16 @@ public sealed class LedgerController : ControllerBase
         {
             if (!Guid.TryParse(branchId, out var branch)) return Bad("branch_not_found", "Branch not found.");
             lines = lines.Where(l => l.Entry!.BranchId == branch);
+        }
+        if (!string.IsNullOrWhiteSpace(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var dept)) return Bad("department_not_found", "Department not found.");
+            lines = lines.Where(l => _db.SalesDocuments.Any(d => d.Id == l.Entry!.SourceId && d.DepartmentId == dept));
+        }
+        if (!string.IsNullOrWhiteSpace(warehouseId))
+        {
+            if (!Guid.TryParse(warehouseId, out var wh)) return Bad("warehouse_not_found", "Warehouse not found.");
+            lines = lines.Where(l => _db.DocumentLines.Any(dl => dl.DocumentId == l.Entry!.SourceId && dl.WarehouseId == wh));
         }
         return await StatementAsync(party.Name, lines, from, to, (rows, dto) => DetailAsync(rows, dto, items));
     }
@@ -204,6 +217,16 @@ public sealed class LedgerController : ControllerBase
         var notes = await _db.Notes.AsNoTracking().Where(n => noteIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id);
         var branchIds = rows.Where(r => r.Entry!.BranchId != null).Select(r => r.Entry!.BranchId!.Value).Distinct().ToList();
         var branches = await _db.Branches.AsNoTracking().Where(b => branchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id, b => Loc.Name(b));
+        // Where each document's goods went or came from (one or more warehouses).
+        var stores = (await _db.DocumentLines.AsNoTracking().Where(l => docIds.Contains(l.DocumentId) && l.WarehouseId != null)
+                .Select(l => new { l.DocumentId, l.WarehouseId }).Distinct().ToListAsync())
+            .GroupBy(x => x.DocumentId).ToDictionary(g => g.Key, g => g.Select(x => x.WarehouseId!.Value).ToList());
+        var storeIds = stores.Values.SelectMany(x => x).Distinct().ToList();
+        var storeNames = await _db.Warehouses.AsNoTracking().Where(w => storeIds.Contains(w.Id))
+            .ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
+        string? StoresOf(Guid docId) => stores.TryGetValue(docId, out var ws)
+            ? string.Join("، ", ws.Select(w => storeNames.GetValueOrDefault(w, "")).Where(n => n != ""))
+            : null;
         var itemLines = new Dictionary<Guid, StatementItemDto[]>();
         if (items && docIds.Length > 0)
             itemLines = (await _db.DocumentLines.AsNoTracking().Include(l => l.Unit)
@@ -230,6 +253,8 @@ public sealed class LedgerController : ControllerBase
                         : d.Department is null ? null : Loc.Name(d.Department),
                     Note = d.Notes, BranchName = branch,
                     Items = listed.Add(d.Id) ? itemLines.GetValueOrDefault(d.Id) : null,
+                    DepartmentName = d.Department is null ? null : Loc.Name(d.Department),
+                    WarehouseName = StoresOf(d.Id), DocumentId = d.Id.ToString(), DocumentKind = d.Type.ToString(),
                 };
             if (vouchers.TryGetValue(source, out var v))
             {
@@ -237,13 +262,14 @@ public sealed class LedgerController : ControllerBase
                 return line with
                 {
                     DocumentNumber = v.Number, Book = account is null ? null : Loc.Name(account), Note = v.Notes,
-                    BranchName = branch,
+                    BranchName = branch, DocumentId = v.Id.ToString(), DocumentKind = v.Type.ToString(),
                 };
             }
             if (notes.TryGetValue(source, out var n))
                 return line with
                 {
                     DocumentNumber = n.SerialNumber, Book = n.BankName, Note = n.Remark, BranchName = branch,
+                    DocumentId = n.Id.ToString(), DocumentKind = "NOTE",
                 };
             return line with { BranchName = branch };
         }).ToArray();

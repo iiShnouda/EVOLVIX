@@ -565,12 +565,21 @@ export function useCancelOrder() {
 }
 
 /** A customer's account for the accountant: per department, every invoice, pending ones. */
-export function useCustomerAccount(partyId: string | null, departmentId = '') {
+export function useCustomerAccount(partyId: string | null, departmentId = '', enabled = true) {
   const query = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : '';
   return useQuery({
     queryKey: ['account', partyId, departmentId],
     queryFn: () => api.get<CustomerAccount>(`/sales/customers/${partyId}/account${query}`),
-    enabled: !!partyId,
+    enabled: !!partyId && enabled,
+  });
+}
+
+/** One customer / supplier / carrier. */
+export function useParty(id: string | null) {
+  return useQuery({
+    queryKey: ['parties', 'one', id],
+    queryFn: () => api.get<Party>(`/parties/${id}`),
+    enabled: !!id,
   });
 }
 
@@ -1562,14 +1571,27 @@ export function useLedgerStatement(
   id: string,
   from: string,
   to: string,
-  /** Party statements: one branch's lines ('' = all), and each invoice's items. */
-  options: { branchId?: string; items?: boolean } = {},
+  /** Party statements: one branch's, department's or warehouse's lines ('' = all), and items. */
+  options: { branchId?: string; departmentId?: string; warehouseId?: string; items?: boolean } = {},
 ) {
   const query = new URLSearchParams({ from, to });
   if (options.branchId) query.set('branchId', options.branchId);
+  if (options.departmentId) query.set('departmentId', options.departmentId);
+  if (options.warehouseId) query.set('warehouseId', options.warehouseId);
   if (options.items) query.set('items', 'true');
   return useQuery({
-    queryKey: ['ledger', 'statement', kind, id, from, to, options.branchId ?? '', !!options.items],
+    queryKey: [
+      'ledger',
+      'statement',
+      kind,
+      id,
+      from,
+      to,
+      options.branchId ?? '',
+      options.departmentId ?? '',
+      options.warehouseId ?? '',
+      !!options.items,
+    ],
     queryFn: () => api.get<LedgerStatement>(`/ledger/${kind}/${id}/statement?${query}`),
     enabled: !!id,
   });

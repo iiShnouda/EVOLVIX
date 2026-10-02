@@ -1846,6 +1846,12 @@ export interface LedgerLine {
   items?: StatementItem[] | null;
   /** The entry's own running number (رقم القيد). */
   entrySerial: number;
+  /** Party statements: the document's sales department and warehouse(s). */
+  departmentName?: string | null;
+  warehouseName?: string | null;
+  /** The document behind the line, to open it, and what it is (SALES_INVOICE, RECEIPT, NOTE…). */
+  documentId?: string | null;
+  documentKind?: string | null;
 }
 
 /** One item line of an invoice or return on a statement (no cost). */

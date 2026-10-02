@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import {
   formatDate,
   formatMoney,
@@ -11,7 +11,15 @@ import { Sheet } from './Sheet';
 import { Spinner } from './ui';
 import { useT } from '../lib/i18n';
 import { errorText } from '../lib/errors';
-import { useLedgerStatement } from '../lib/queries';
+import {
+  useDepartments,
+  useDocument,
+  useHiddenColumns,
+  useLedgerStatement,
+  useWarehouses,
+} from '../lib/queries';
+import { useDeviceInfo } from '../lib/device';
+import { DocumentPreview } from './DocumentPreview';
 import { useAuth } from '../stores/auth';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from './ReportActions';
@@ -92,10 +100,18 @@ export function StatementBody({
   const [to, setTo] = useState(companyToday);
   const isParty = kind === 'parties';
   const [branchId, setBranchId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
   const [withItems, setWithItems] = useState(false);
   const branches = useAuth((s) => s.user?.branches ?? []);
+  const departments = useDepartments().data ?? [];
+  const warehouses = (useWarehouses(true).data ?? []).filter(
+    (w) => !branchId || w.branchId === branchId,
+  );
   const { data, isLoading, error } = useLedgerStatement(kind, id, from, to, {
     branchId: isParty ? branchId : undefined,
+    departmentId: isParty ? departmentId : undefined,
+    warehouseId: isParty ? warehouseId : undefined,
     items: isParty && withItems,
   });
   const money = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
@@ -108,83 +124,71 @@ export function StatementBody({
   function excel() {
     if (!data) return;
     if (isParty) {
+      const cols: [string, (l: LedgerLine, i: number) => unknown][] = [
+        [t('ledger.entryNumber'), (_l, i) => i + 1],
+        [t('ledger.date'), (l) => formatDate(l.date, locale)],
+        [t('ledger.kindCol'), (l) => [lineKind(t, l), l.memo].filter(Boolean).join(' — ')],
+        [t('ledger.docNumber'), (l) => l.documentNumber ?? l.number],
+        [t('ledger.branchCol'), (l) => l.branchName ?? ''],
+        [t('invoice.department'), (l) => l.departmentName ?? ''],
+        [t('warehouse.label'), (l) => l.warehouseName ?? ''],
+        [t('ledger.noteCol'), (l) => l.note ?? ''],
+        [t('ledger.debit'), (l) => (l.debit ? { money: l.debit } : null)],
+        [t('ledger.credit'), (l) => (l.credit ? { money: l.credit } : null)],
+        [t('ledger.balance'), (l) => ({ money: Math.abs(l.balance) })],
+        ['', (l) => side(l.balance)],
+      ];
+      const blank = cols.map(() => '' as unknown);
       report.excel(
         heading,
         period,
+        cols.map((c) => c[0]),
         [
-          t('ledger.branchCol'),
-          t('ledger.kindCol'),
-          t('ledger.entryCol'),
-          t('ledger.noteCol'),
-          t('ledger.date'),
-          t('ledger.book'),
-          t('ledger.debit'),
-          t('ledger.credit'),
-          t('ledger.balance'),
-          '',
-          t('ledger.entryNumber'),
-          t('ledger.docNumber'),
-        ],
-        [
-          [
-            '',
-            t('ledger.previousBalance'),
-            '',
-            '',
-            formatDate(from, locale),
-            '',
-            null,
-            null,
-            { money: Math.abs(data.opening) },
-            side(data.opening),
-            '',
-            '',
-          ],
-          ...data.lines.flatMap((l) => [
-            [
-              l.branchName ?? '',
-              t(`ledger.source.${l.sourceType}` as TranslationKey),
-              [entryTitle(t, l.sourceType, l.description), l.memo].filter(Boolean).join(' — '),
-              l.note ?? '',
-              formatDate(l.date, locale),
-              l.book ?? '',
-              l.debit ? { money: l.debit } : null,
-              l.credit ? { money: l.credit } : null,
-              { money: Math.abs(l.balance) },
-              side(l.balance),
-              l.entrySerial || '',
-              l.documentNumber ?? l.number,
-            ],
-            ...(l.items ?? []).map((it) => [
-              '',
-              '',
-              `   ${it.productName}`,
-              `${it.quantity} ${it.unitName ?? ''}`,
-              '',
-              '',
-              { money: it.unitPrice },
-              it.discount ? { money: it.discount } : null,
-              { money: it.lineTotal },
-              '',
-              '',
-              '',
-            ]),
+          blank.map((_, j) =>
+            j === 1
+              ? formatDate(from, locale)
+              : j === 2
+                ? t('ledger.previousBalance')
+                : j === 10
+                  ? { money: Math.abs(data.opening) }
+                  : j === 11
+                    ? side(data.opening)
+                    : '',
+          ),
+          ...data.lines.flatMap((l, i) => [
+            cols.map((c) => c[1](l, i)),
+            ...(l.items ?? []).map((it) =>
+              blank.map((_, j) =>
+                j === 2
+                  ? `   ${it.productName}`
+                  : j === 7
+                    ? `${it.quantity} ${it.unitName ?? ''}`
+                    : j === 8
+                      ? { money: it.unitPrice }
+                      : j === 9
+                        ? it.discount
+                          ? { money: it.discount }
+                          : null
+                        : j === 10
+                          ? { money: it.lineTotal }
+                          : '',
+              ),
+            ),
           ]),
-        ],
-        [
-          '',
-          t('ledger.total'),
-          '',
-          '',
-          '',
-          '',
-          { money: data.totalDebit },
-          { money: data.totalCredit },
-          { money: Math.abs(data.closing) },
-          side(data.closing),
-          '',
-          '',
-        ],
+        ] as never,
+        blank.map((_, j) =>
+          j === 0
+            ? t('ledger.total')
+            : j === 8
+              ? { money: data.totalDebit }
+              : j === 9
+                ? { money: data.totalCredit }
+                : j === 10
+                  ? { money: Math.abs(data.closing) }
+                  : j === 11
+                    ? side(data.closing)
+                    : '',
+        ) as never,
       );
       return;
     }
@@ -273,12 +277,49 @@ export function StatementBody({
             <select
               className={small}
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+                setWarehouseId('');
+              }}
             >
               <option value="">{t('ledger.allBranches')}</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {isParty && departments.length > 0 && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('invoice.department')}</span>
+            <select
+              className={small}
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+            >
+              <option value="">{t('account.allDepartments')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {isParty && warehouses.length > 1 && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-muted">{t('warehouse.label')}</span>
+            <select
+              className={small}
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+            >
+              <option value="">{t('warehouse.all')}</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
                 </option>
               ))}
             </select>
@@ -389,147 +430,340 @@ export function StatementBody({
   );
 }
 
+/** What a party statement line is, as the person reads it (owner, 2026-10-02): a sales invoice /
+ * return for customers, a purchase invoice / return for suppliers, a receipt, a payment… */
+export function lineKind(t: (k: TranslationKey) => string, l: LedgerLine): string {
+  if (l.sourceType === 'MANUAL') return l.description;
+  if (l.documentKind && l.sourceType !== 'VOUCHER_CANCEL') {
+    const key = `statement.kind.${l.documentKind}` as TranslationKey;
+    const label = t(key);
+    if (label !== key) return label;
+  }
+  return t(`ledger.source.${l.sourceType}` as TranslationKey);
+}
+
+type ColKey =
+  | 'seq'
+  | 'date'
+  | 'kind'
+  | 'doc'
+  | 'branch'
+  | 'department'
+  | 'warehouse'
+  | 'note'
+  | 'debit'
+  | 'credit'
+  | 'balance';
+const DEFAULT_ORDER: ColKey[] = [
+  'seq',
+  'date',
+  'kind',
+  'doc',
+  'branch',
+  'department',
+  'warehouse',
+  'note',
+  'debit',
+  'credit',
+  'balance',
+];
+const COL_LABEL: Record<ColKey, TranslationKey> = {
+  seq: 'ledger.entryNumber',
+  date: 'ledger.date',
+  kind: 'ledger.kindCol',
+  doc: 'ledger.docNumber',
+  branch: 'ledger.branchCol',
+  department: 'invoice.department',
+  warehouse: 'warehouse.label',
+  note: 'ledger.noteCol',
+  debit: 'ledger.debit',
+  credit: 'ledger.credit',
+  balance: 'ledger.balance',
+};
+const NUMERIC = new Set<ColKey>(['debit', 'credit', 'balance']);
+/** Documents that open from the statement (invoices and returns). */
+const OPENS = new Set(['SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_INVOICE', 'PURCHASE_RETURN']);
+
 /**
- * A party statement laid out like the old program's كشف حساب: kind, entry, note, date, book (the
- * invoice's department, the receipt's cash box), debit, credit, running balance and document number,
- * starting from the previous balance; with items, each invoice's lines under it.
+ * A party statement (كشف حساب), the owner's way (2026-10-02): a running entry number, the date, what
+ * it is (البيان: sales invoice, return, receipt…), the document (opens it), the branch, sales
+ * department and warehouse, the note, debit, credit and the running balance, from the previous
+ * balance. The columns can be moved, widened and hidden; on a phone each line is a card.
  */
 function PartyStatementTable({ data, from }: { data: LedgerStatement; from: string }) {
   const { t, locale } = useT();
+  const { deviceClass } = useDeviceInfo();
   const money = (v: number) => formatMoney(v, data.currency, locale);
+  const [saved, setSaved] = useHiddenColumns('statement.order');
+  const order: ColKey[] = [
+    ...saved.filter((k): k is ColKey => (DEFAULT_ORDER as string[]).includes(k)),
+    ...DEFAULT_ORDER.filter((k) => !saved.includes(k)),
+  ];
+  const keyOf = (label: string) => order.find((k) => t(COL_LABEL[k]) === label);
+  const move = (label: string, step: -1 | 1) => {
+    const k = keyOf(label);
+    if (!k) return;
+    const i = order.indexOf(k);
+    const j = i + step;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    setSaved(next);
+  };
+  const drop = (label: string, target: string) => {
+    const k = keyOf(label);
+    const to = keyOf(target);
+    if (!k || !to || k === to) return;
+    const next = order.filter((x) => x !== k);
+    next.splice(next.indexOf(to) + (order.indexOf(k) < order.indexOf(to) ? 1 : 0), 0, k);
+    setSaved(next);
+  };
+  const [open, setOpen] = useState<{ id: string; scope: 'sales' | 'purchases' } | null>(null);
+  const doc = useDocument(open?.scope ?? 'sales', open?.id ?? null);
   const cell = 'p-2 align-top';
+
+  const docLink = (l: LedgerLine) => {
+    const number = l.documentNumber ?? l.number;
+    if (!l.documentId || !l.documentKind || !OPENS.has(l.documentKind))
+      return <bdi className="whitespace-nowrap">{number}</bdi>;
+    return (
+      <button
+        type="button"
+        className="whitespace-nowrap text-brand hover:underline"
+        onClick={() =>
+          setOpen({
+            id: l.documentId!,
+            scope: l.documentKind!.startsWith('PURCHASE') ? 'purchases' : 'sales',
+          })
+        }
+      >
+        <bdi>{number}</bdi>
+      </button>
+    );
+  };
+  const value = (k: ColKey, l: LedgerLine, i: number): ReactNode => {
+    switch (k) {
+      case 'seq':
+        return i + 1;
+      case 'date':
+        return formatDate(l.date, locale);
+      case 'kind':
+        return (
+          <span className="line-clamp-2">
+            {lineKind(t, l)}
+            {l.memo && <span className="text-muted"> — {l.memo}</span>}
+          </span>
+        );
+      case 'doc':
+        return docLink(l);
+      case 'branch':
+        return l.branchName ?? '';
+      case 'department':
+        return l.departmentName ?? '';
+      case 'warehouse':
+        return l.warehouseName ?? '';
+      case 'note':
+        return <span className="line-clamp-2">{l.note ?? ''}</span>;
+      case 'debit':
+        return l.debit ? money(l.debit) : '';
+      case 'credit':
+        return l.credit ? money(l.credit) : '';
+      case 'balance':
+        return <SidedMoney value={l.balance} currency={data.currency} />;
+    }
+  };
+  const preview = open && (
+    <Sheet
+      title={doc.data?.number ?? ''}
+      onClose={() => setOpen(null)}
+      closeLabel={t('common.close')}
+      wide
+    >
+      <div className="h-[75vh]">
+        <DocumentPreview doc={doc.data} loading={doc.isFetching} />
+      </div>
+    </Sheet>
+  );
+
+  // A phone or tablet: one card per line, easy to read without scrolling sideways.
+  if (deviceClass !== 'desktop')
+    return (
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
+          <span>
+            {t('ledger.previousBalance')} · <span className="tnum">{formatDate(from, locale)}</span>
+          </span>
+          <SidedMoney value={data.opening} currency={data.currency} />
+        </div>
+        {data.lines.length === 0 && <p className="p-3 text-sm text-muted">{t('ledger.noLines')}</p>}
+        {data.lines.map((l, i) => (
+          <div
+            key={`${l.entryId}-${i}`}
+            className="rounded-[var(--radius-app)] border border-line p-3 text-sm"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium">
+                  <span className="me-1 text-xs text-faint tnum">{i + 1}</span>
+                  {lineKind(t, l)}
+                </p>
+                <p className="text-xs text-muted tnum">
+                  {formatDate(l.date, locale)} · {docLink(l)}
+                </p>
+              </div>
+              <div className="shrink-0 text-end">
+                {l.debit > 0 ? (
+                  <p className="tnum text-positive">
+                    {t('ledger.drSide')} <bdi>{money(l.debit)}</bdi>
+                  </p>
+                ) : (
+                  <p className="tnum text-destructive">
+                    {t('ledger.crSide')} <bdi>{money(l.credit)}</bdi>
+                  </p>
+                )}
+                <p className="text-xs">
+                  <SidedMoney value={l.balance} currency={data.currency} />
+                </p>
+              </div>
+            </div>
+            {(l.branchName || l.departmentName || l.warehouseName || l.note) && (
+              <p className="mt-1 text-xs text-muted">
+                {[l.branchName, l.departmentName, l.warehouseName, l.note]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+            {(l.items ?? []).length > 0 && (
+              <ul className="mt-2 space-y-0.5 border-t border-line pt-2 text-xs text-muted">
+                {(l.items ?? []).map((it, j) => (
+                  <li key={j} className="flex justify-between gap-2">
+                    <span className="min-w-0 truncate">
+                      {it.productName} · {it.quantity} {it.unitName ?? ''}
+                    </span>
+                    <span className="shrink-0 tnum">{money(it.lineTotal)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm font-semibold">
+          <span>{t('ledger.total')}</span>
+          <SidedMoney value={data.closing} currency={data.currency} />
+        </div>
+        {preview}
+      </div>
+    );
+
   return (
-    <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
+    <div className="mt-3 rounded-[var(--radius-app)] border border-line">
       <TableColumns
-        id="statement"
+        id="statement.v2"
         className="pt-2"
+        onMove={move}
+        onDrop={drop}
         toolbar={
           <span className="ps-2 tnum">
             {data.lines.length} {t('ledger.movements')}
           </span>
         }
       >
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className="bg-surface-2 text-xs text-muted">
-            <tr>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.branchCol')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.kindCol')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.entryCol')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.noteCol')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.date')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.book')}</th>
-              <th className={`${cell} text-end font-medium`}>{t('ledger.debit')}</th>
-              <th className={`${cell} text-end font-medium`}>{t('ledger.credit')}</th>
-              <th className={`${cell} text-end font-medium`}>{t('ledger.balance')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.entryNumber')}</th>
-              <th className={`${cell} text-start font-medium`}>{t('ledger.docNumber')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            <tr className="bg-surface-2/50 font-medium">
-              <td className={cell} />
-              <td className={cell}>{t('ledger.previousBalance')}</td>
-              <td className={cell} />
-              <td className={cell} />
-              <td className={`${cell} tnum`}>{formatDate(from, locale)}</td>
-              <td className={cell} />
-              <td className={cell} />
-              <td className={cell} />
-              <td className={`${cell} text-end`}>
-                <SidedMoney value={data.opening} currency={data.currency} />
-              </td>
-              <td className={cell} />
-              <td className={cell} />
-            </tr>
-            {data.lines.map((l, i) => (
-              <PartyStatementRow
-                key={`${l.entryId}-${i}`}
-                line={l}
-                money={money}
-                currency={data.currency}
-              />
-            ))}
-            {data.lines.length === 0 && (
-              <tr data-span>
-                <td colSpan={11} className="p-3 text-muted">
-                  {t('ledger.noLines')}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                {order.map((k) => (
+                  <th
+                    key={k}
+                    className={`${cell} font-medium ${NUMERIC.has(k) ? 'text-end' : 'text-start'}`}
+                  >
+                    {t(COL_LABEL[k])}
+                  </th>
+                ))}
               </tr>
-            )}
-          </tbody>
-          <tfoot className="bg-surface-2 font-semibold">
-            <tr data-span>
-              <td className={cell} colSpan={6}>
-                {t('ledger.total')}
-              </td>
-              <td className={`${cell} text-end tnum`}>{money(data.totalDebit)}</td>
-              <td className={`${cell} text-end tnum`}>{money(data.totalCredit)}</td>
-              <td className={`${cell} text-end`}>
-                <SidedMoney value={data.closing} currency={data.currency} />
-              </td>
-              <td className={cell} />
-              <td className={cell} />
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              <tr className="bg-surface-2/50 font-medium">
+                {order.map((k) => (
+                  <td key={k} className={`${cell} ${NUMERIC.has(k) ? 'text-end' : ''}`}>
+                    {k === 'kind' ? (
+                      t('ledger.previousBalance')
+                    ) : k === 'date' ? (
+                      <span className="tnum">{formatDate(from, locale)}</span>
+                    ) : k === 'balance' ? (
+                      <SidedMoney value={data.opening} currency={data.currency} />
+                    ) : null}
+                  </td>
+                ))}
+              </tr>
+              {data.lines.map((l, i) => (
+                <Fragment key={`${l.entryId}-${i}`}>
+                  <tr className="hover:bg-surface-2/60">
+                    {order.map((k) => (
+                      <td
+                        key={k}
+                        className={`${cell} ${NUMERIC.has(k) ? 'whitespace-nowrap text-end tnum' : ''} ${
+                          k === 'date' || k === 'seq' || k === 'doc' ? 'whitespace-nowrap tnum' : ''
+                        } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'note' ? 'text-muted' : ''}`}
+                      >
+                        {value(k, l, i)}
+                      </td>
+                    ))}
+                  </tr>
+                  {(l.items ?? []).length > 0 && (
+                    <tr data-span className="text-xs text-muted">
+                      <td colSpan={order.length} className="px-2 py-1">
+                        <ul className="space-y-0.5 ps-8">
+                          {(l.items ?? []).map((it, j) => (
+                            <li key={j} className="flex flex-wrap gap-x-4">
+                              <span className="min-w-[12rem]">
+                                {it.productName}
+                                {it.isBonus && ` (${t('invoice.bonus')})`}
+                              </span>
+                              <span className="tnum">
+                                {it.quantity} {it.unitName ?? ''} × {money(it.unitPrice)}
+                              </span>
+                              {it.discount > 0 && (
+                                <span className="tnum">−{money(it.discount)}</span>
+                              )}
+                              <span className="tnum font-medium">{money(it.lineTotal)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+              {data.lines.length === 0 && (
+                <tr data-span>
+                  <td colSpan={order.length} className="p-3 text-muted">
+                    {t('ledger.noLines')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot className="bg-surface-2 font-semibold">
+              <tr>
+                {order.map((k, i) => (
+                  <td key={k} className={`${cell} ${NUMERIC.has(k) ? 'text-end tnum' : ''}`}>
+                    {i === 0 ? (
+                      t('ledger.total')
+                    ) : k === 'debit' ? (
+                      money(data.totalDebit)
+                    ) : k === 'credit' ? (
+                      money(data.totalCredit)
+                    ) : k === 'balance' ? (
+                      <SidedMoney value={data.closing} currency={data.currency} />
+                    ) : null}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </TableColumns>
+      {preview}
     </div>
-  );
-}
-
-function PartyStatementRow({
-  line: l,
-  money,
-  currency,
-}: {
-  line: LedgerLine;
-  money: (v: number) => string;
-  currency: string;
-}) {
-  const { t, locale } = useT();
-  const cell = 'p-2 align-top';
-  return (
-    <>
-      <tr>
-        <td className={`${cell} whitespace-nowrap text-muted`}>{l.branchName ?? ''}</td>
-        <td className={cell}>{t(`ledger.source.${l.sourceType}` as TranslationKey)}</td>
-        <td className={`${cell} max-w-72`}>
-          <span className="line-clamp-2">
-            {entryTitle(t, l.sourceType, l.description)}
-            {l.memo && <span className="text-muted"> — {l.memo}</span>}
-          </span>
-        </td>
-        <td className={`${cell} max-w-48 text-muted`}>
-          <span className="line-clamp-2">{l.note ?? ''}</span>
-        </td>
-        <td className={`${cell} whitespace-nowrap tnum`}>{formatDate(l.date, locale)}</td>
-        <td className={cell}>{l.book ?? ''}</td>
-        <td className={`${cell} text-end tnum`}>{l.debit ? money(l.debit) : ''}</td>
-        <td className={`${cell} text-end tnum`}>{l.credit ? money(l.credit) : ''}</td>
-        <td className={`${cell} whitespace-nowrap text-end`}>
-          <SidedMoney value={l.balance} currency={currency} />
-        </td>
-        <td className={`${cell} tnum`}>{l.entrySerial || ''}</td>
-        <td className={`${cell} tnum`}>{l.documentNumber ?? l.number}</td>
-      </tr>
-      {(l.items ?? []).map((it, j) => (
-        <tr data-span key={j} className="text-xs text-muted">
-          <td className="px-2 py-1" />
-          <td className="px-2 py-1" />
-          <td className="px-2 py-1 ps-6" colSpan={2}>
-            {it.productName}
-            {it.isBonus && ` (${t('invoice.bonus')})`}
-          </td>
-          <td className="px-2 py-1 tnum" colSpan={2}>
-            {it.quantity} {it.unitName ?? ''} × {money(it.unitPrice)}
-          </td>
-          <td className="px-2 py-1 text-end tnum">{it.discount ? `−${money(it.discount)}` : ''}</td>
-          <td className="px-2 py-1" />
-          <td className="px-2 py-1 text-end tnum">{money(it.lineTotal)}</td>
-          <td className="px-2 py-1" />
-          <td className="px-2 py-1" />
-        </tr>
-      ))}
-    </>
   );
 }

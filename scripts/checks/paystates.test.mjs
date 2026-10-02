@@ -169,4 +169,32 @@ console.log('== paid in full at the counter');
 const cash = ok('a cash sale', await sell(1, { paidAmount: 10000, paidAccountId: box.id }));
 eq('paid, whatever is still on the account', await state(cash.id), ['PAID', 0]);
 
+console.log('== the statement: what each line is, where, and its document');
+const span = `from=${addDays(companyToday(), -3)}&to=${companyToday()}`;
+const st = ok('the statement', await owner.get(`/ledger/parties/${cust.id}/statement?${span}`));
+const inv = st.lines.find((l) => l.documentId === a.id);
+check(
+  'an invoice line says what it is and where its goods went',
+  inv?.documentKind === 'SALES_INVOICE' && inv?.warehouseName === wh.name,
+  inv,
+);
+check(
+  'a receipt line is a receipt',
+  st.lines.some((l) => l.documentKind === 'RECEIPT'),
+);
+const onlyStore = ok(
+  'one warehouse',
+  await owner.get(`/ledger/parties/${cust.id}/statement?${span}&warehouseId=${wh.id}`),
+);
+check(
+  'only documents with goods there',
+  onlyStore.lines.length > 0 && onlyStore.lines.every((l) => l.warehouseName === wh.name),
+  onlyStore.lines.map((l) => l.documentKind),
+);
+eq(
+  'a bad department',
+  (await owner.get(`/ledger/parties/${cust.id}/statement?${span}&departmentId=x`)).data?.code,
+  'department_not_found',
+);
+
 summary('paystates');
