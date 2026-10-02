@@ -135,6 +135,8 @@ public static class DocumentNumbers
             VoucherType.RECEIPT => "RCV",
             VoucherType.PAYMENT => "PAY",
             VoucherType.EXPENSE => "EXP",
+            VoucherType.DISCOUNT => "DSC",
+            VoucherType.DISCOUNT_RECEIVED => "DSR",
             _ => "CTR",
         };
         var prefix = $"{code}-{CompanyClock.Year}-";

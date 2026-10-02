@@ -14,6 +14,30 @@ namespace SKB.Api.Services;
 public static class DocumentLists
 {
     /// <summary>One document's amounts, as the database works them out.</summary>
+    private sealed class Raw
+    {
+        public Guid Id { get; set; }
+        public DateTime IssueDate { get; set; }
+        public DocumentStatus Status { get; set; }
+        public long GrandTotal { get; set; }
+        public long PaidAmount { get; set; }
+        public bool IsInvoice { get; set; }
+        public bool IsPending { get; set; }
+        public bool Edited { get; set; }
+        public bool OverLimit { get; set; }
+        public bool Collecting { get; set; }
+        /// <summary>What of the invoice went on the party's account (not paid at the counter or on delivery).</summary>
+        public long Unit { get; set; }
+        /// <summary>What the party's newer invoices of the same kind put on the account.</summary>
+        public long Newer { get; set; }
+        /// <summary>What the party owes now on this side (customer: they owe us; supplier: we owe them).</summary>
+        public long Owing { get; set; }
+        /// <summary>Cheques and notes taken against it and not collected yet (paid, but not in cash yet).</summary>
+        public long Deferred { get; set; }
+        /// <summary>Written less than a day ago.</summary>
+        public bool Fresh { get; set; }
+    }
+
     private sealed class Row
     {
         public Guid Id { get; set; }
@@ -21,8 +45,10 @@ public static class DocumentLists
         public DocumentStatus Status { get; set; }
         public long GrandTotal { get; set; }
         public long PaidAmount { get; set; }
-        /// <summary>Still owed on an invoice: total − paid − what its returns put on the account (≤ 0 = nothing).</summary>
+        /// <summary>Still owed on the invoice, the account settled oldest-first (0 = nothing).</summary>
         public long Owed { get; set; }
+        /// <summary>Cheques and notes taken against it and not collected yet.</summary>
+        public long Deferred { get; set; }
         public bool IsInvoice { get; set; }
         /// <summary>A pending invoice: waiting for the accountant (or turned down).</summary>
         public bool IsPending { get; set; }
@@ -32,20 +58,25 @@ public static class DocumentLists
         public bool OverLimit { get; set; }
         /// <summary>A shipping company still has to pay us cash on delivery for it.</summary>
         public bool Collecting { get; set; }
-        /// <summary>
-        /// What counts as unpaid for the state: what is owed plus cheques or notes not collected yet
-        /// (a cheque is credit until it is collected, owner 2026-10-01).
-        /// </summary>
-        public long Unpaid { get; set; }
+        public bool Fresh { get; set; }
     }
 
     /// <summary>
-    /// The payment state of an invoice (owner, 2026-10-01), one list instead of status + payment, as
-    /// the accountant settles it: CREDIT (آجل: nothing paid; a cheque or note not yet collected counts
-    /// as not paid), COLLECTING (جاري الدفع: cash on delivery not yet handed to us by the shipping
-    /// company), PARTIAL (مدفوعة جزئيًا), PAID (مدفوعة) or CANCELLED (ملغاة). Other documents keep their status.
+    /// The payment state of an invoice (owner, 2026-10-02). The party's account is settled oldest
+    /// first: what they still owe sits on their newest invoices, so money received, returns and
+    /// discounts settle the old ones before the new ("he paid 100 of 1,000, bought 1,000 more,
+    /// returned 100 and paid 1,000: the old invoices are paid, the new one is part paid").
+    /// <list type="bullet">
+    /// <item>DUE (في انتظار الدفع): nothing paid on it yet, written less than a day ago.</item>
+    /// <item>UNPAID (لم يتم الدفع): nothing paid a day later; it stays on the account.</item>
+    /// <item>PARTIAL (مدفوعة جزئيًا): part of it paid.</item>
+    /// <item>CREDIT (آجل): nothing owed, but a cheque or promissory note taken against it is not collected yet.</item>
+    /// <item>PAID (مدفوعة), COLLECTING (with the shipping company, cash on delivery), CANCELLED.</item>
+    /// </list>
+    /// Other documents keep their status.
     /// </summary>
-    public static readonly string[] States = { "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED", "AWAITING", "EDITED" };
+    public static readonly string[] States =
+        { "DUE", "UNPAID", "CREDIT", "COLLECTING", "PARTIAL", "PAID", "CANCELLED", "AWAITING", "EDITED" };
 
     private static string StateOf(Row r) =>
         r.Status == DocumentStatus.CANCELLED ? "CANCELLED"
@@ -53,9 +84,72 @@ public static class DocumentLists
         : !r.IsInvoice ? r.Status.ToString()
         // Cash on delivery not yet handed to us by the shipping company.
         : r.Collecting ? "COLLECTING"
-        : r.Unpaid <= 0 ? "PAID"
-        : r.Unpaid < r.GrandTotal ? "PARTIAL"
-        : "CREDIT";
+        : r.Owed <= 0 ? (r.Deferred > 0 ? "CREDIT" : "PAID")
+        : r.Owed < r.GrandTotal ? "PARTIAL"
+        : r.Fresh ? "DUE"
+        : "UNPAID";
+
+    /// <summary>Each document with what is owed on it and how it stands, worked out by the database.</summary>
+    private static IQueryable<Row> Rows(AppDbContext db, IQueryable<SalesDocument> q)
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var raw = q.Select(d => new Raw
+        {
+            Id = d.Id, IssueDate = d.IssueDate, Status = d.Status, GrandTotal = d.GrandTotal, PaidAmount = d.PaidAmount,
+            IsInvoice = (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE)
+                        && d.Status != DocumentStatus.CANCELLED,
+            IsPending = d.Type == DocumentType.SALES_ORDER,
+            Edited = db.InvoiceRevisions.Any(x => x.DocumentId == d.Id && x.Kind == "EDIT"),
+            OverLimit = d.OverLimit,
+            Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
+                && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
+                    || x.Shipment.Status == ShipmentStatus.DELIVERED)),
+            Unit = d.GrandTotal - d.PaidDirect,
+            Newer = db.SalesDocuments
+                .Where(o => o.PartyId == d.PartyId && o.Type == d.Type && o.Status != DocumentStatus.CANCELLED
+                            && (o.IssueDate > d.IssueDate
+                                || (o.IssueDate == d.IssueDate && string.Compare(o.Number, d.Number) > 0)))
+                .Sum(o => (long?)(o.GrandTotal - o.PaidDirect)) ?? 0,
+            Owing = d.Type == DocumentType.PURCHASE_INVOICE ? -d.Party!.Balance : d.Party!.Balance,
+            Deferred = db.NoteAllocations.Where(a => a.DocumentId == d.Id
+                    && (a.Note!.Status == NoteStatus.IN_HAND || a.Note.Status == NoteStatus.UNDER_COLLECTION
+                        || a.Note.Status == NoteStatus.ISSUED))
+                .Sum(a => (long?)a.Amount) ?? 0,
+            Fresh = d.IssueDate > cutoff,
+        });
+        return raw.Select(r => new Row
+        {
+            Id = r.Id, IssueDate = r.IssueDate, Status = r.Status, GrandTotal = r.GrandTotal, PaidAmount = r.PaidAmount,
+            IsInvoice = r.IsInvoice, IsPending = r.IsPending, Edited = r.Edited, OverLimit = r.OverLimit,
+            Collecting = r.Collecting, Fresh = r.Fresh,
+            Owed = r.IsInvoice ? Math.Max(0, Math.Min(r.Unit, r.Owing - r.Newer)) : 0,
+            Deferred = r.IsInvoice ? r.Deferred : 0,
+        });
+    }
+
+    /// <summary>
+    /// Several invoices taken together, as on the combined invoice of a customer's day (owner,
+    /// 2026-10-02): paid, by cheque, part paid, or nothing paid yet (new, or a day old).
+    /// </summary>
+    public static string? Together(IEnumerable<(long Owed, string State)> invoices, long total)
+    {
+        var all = invoices.Where(x => x.State is not ("CANCELLED" or "AWAITING" or "REJECTED")).ToList();
+        if (all.Count == 0) return null;
+        var owed = all.Sum(x => x.Owed);
+        if (all.Any(x => x.State == "COLLECTING")) return "COLLECTING";
+        if (owed <= 0) return all.Any(x => x.State == "CREDIT") ? "CREDIT" : "PAID";
+        if (owed < total) return "PARTIAL";
+        return all.Any(x => x.State == "DUE") ? "DUE" : "UNPAID";
+    }
+
+    /// <summary>How each of these documents stands and what is owed on it (for screens that list a few).</summary>
+    public static async Task<Dictionary<Guid, (long Owed, string State)>> StatesAsync(AppDbContext db,
+        IReadOnlyCollection<Guid> ids)
+    {
+        if (ids.Count == 0) return new();
+        var rows = await Rows(db, db.SalesDocuments.Where(d => ids.Contains(d.Id))).ToListAsync();
+        return rows.ToDictionary(r => r.Id, r => (r.Owed, StateOf(r)));
+    }
 
     /// <summary>Only one branch (of those the person may see) and documents with goods in one warehouse.</summary>
     public static IQueryable<SalesDocument> Narrow(IQueryable<SalesDocument> q, string? branchId, string? warehouseId)
@@ -91,36 +185,7 @@ public static class DocumentLists
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
 
-        var rows = q.Select(d => new Row
-        {
-            Id = d.Id, IssueDate = d.IssueDate, Status = d.Status, GrandTotal = d.GrandTotal, PaidAmount = d.PaidAmount,
-            Owed = d.Status == DocumentStatus.CANCELLED
-                   || !(d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE)
-                ? 0
-                : d.GrandTotal - d.PaidAmount - (db.SalesDocuments
-                    .Where(r => r.SourceDocumentId == d.Id
-                                && (r.Type == DocumentType.SALES_RETURN || r.Type == DocumentType.PURCHASE_RETURN)
-                                && r.Status != DocumentStatus.CANCELLED)
-                    .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0),
-            IsInvoice = d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE,
-            IsPending = d.Type == DocumentType.SALES_ORDER,
-            Edited = db.InvoiceRevisions.Any(x => x.DocumentId == d.Id && x.Kind == "EDIT"),
-            OverLimit = d.OverLimit,
-            Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
-                && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
-                    || x.Shipment.Status == ShipmentStatus.DELIVERED)),
-            Unpaid = (d.Status == DocumentStatus.CANCELLED
-                      || !(d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.PURCHASE_INVOICE)
-                    ? 0
-                    : d.GrandTotal - d.PaidAmount - (db.SalesDocuments
-                        .Where(r => r.SourceDocumentId == d.Id
-                                    && (r.Type == DocumentType.SALES_RETURN || r.Type == DocumentType.PURCHASE_RETURN)
-                                    && r.Status != DocumentStatus.CANCELLED)
-                        .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0))
-                + (db.NoteAllocations.Where(a => a.DocumentId == d.Id
-                        && (a.Note!.Status == NoteStatus.IN_HAND || a.Note.Status == NoteStatus.UNDER_COLLECTION))
-                    .Sum(a => (long?)a.Amount) ?? 0),
-        });
+        var rows = Rows(db, q);
         switch (state?.ToUpperInvariant())
         {
             case "CANCELLED": rows = rows.Where(r => r.Status == DocumentStatus.CANCELLED); break;
@@ -129,16 +194,17 @@ public static class DocumentLists
                                        || (r.IsInvoice && r.OverLimit && r.Status != DocumentStatus.CANCELLED)); break;
             case "EDITED": rows = rows.Where(r => r.Edited && r.Status != DocumentStatus.CANCELLED); break;
             case "PAID":
-                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Unpaid <= 0
-                                       && !r.Collecting); break;
-            case "COLLECTING":
-                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Collecting); break;
-            case "PARTIAL":
-                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && r.Unpaid > 0
-                                       && !r.Collecting && r.Unpaid < r.GrandTotal); break;
+                rows = rows.Where(r => r.IsInvoice && !r.Collecting && r.Owed <= 0 && r.Deferred <= 0); break;
             case "CREDIT":
-                rows = rows.Where(r => r.Status != DocumentStatus.CANCELLED && r.IsInvoice && !r.Collecting
-                                       && r.Unpaid >= r.GrandTotal); break;
+                rows = rows.Where(r => r.IsInvoice && !r.Collecting && r.Owed <= 0 && r.Deferred > 0); break;
+            case "COLLECTING":
+                rows = rows.Where(r => r.IsInvoice && r.Collecting); break;
+            case "PARTIAL":
+                rows = rows.Where(r => r.IsInvoice && !r.Collecting && r.Owed > 0 && r.Owed < r.GrandTotal); break;
+            case "DUE":
+                rows = rows.Where(r => r.IsInvoice && !r.Collecting && r.Owed > 0 && r.Owed >= r.GrandTotal && r.Fresh); break;
+            case "UNPAID":
+                rows = rows.Where(r => r.IsInvoice && !r.Collecting && r.Owed > 0 && r.Owed >= r.GrandTotal && !r.Fresh); break;
         }
         if (payment == "credit") rows = rows.Where(r => r.Owed > 0);
         else if (payment == "paid") rows = rows.Where(r => r.Owed <= 0 && r.Status != DocumentStatus.CANCELLED);

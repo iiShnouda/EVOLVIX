@@ -17,7 +17,8 @@ public static class LedgerKeys
         PurchaseExpenses = "PURCHASE_EXPENSES", StockLoss = "STOCK_LOSS", Rounding = "ROUNDING",
         NotesReceivable = "NOTES_RECEIVABLE", NotesUnderCollection = "NOTES_UNDER_COLLECTION",
         NotesPayable = "NOTES_PAYABLE", EmployeeAdvances = "EMPLOYEE_ADVANCES",
-        SalariesPayable = "SALARIES_PAYABLE", Salaries = "SALARIES";
+        SalariesPayable = "SALARIES_PAYABLE", Salaries = "SALARIES",
+        DiscountAllowed = "DISCOUNT_ALLOWED", DiscountReceived = "DISCOUNT_RECEIVED";
 
     /// <summary>Accounts that only documents post to (their own sub-ledgers keep them in step).</summary>
     public static readonly string[] DocumentOnly =
@@ -71,6 +72,7 @@ public sealed class LedgerService
         new("4102", LedgerKeys.SalesReturns, "مردودات المبيعات", LedgerAccountType.REVENUE, LedgerKeys.Revenue, false),
         new("4103", LedgerKeys.OtherIncome, "إيرادات أخرى", LedgerAccountType.REVENUE, LedgerKeys.Revenue, false),
         new("4104", LedgerKeys.StockGain, "أرباح فروق الجرد", LedgerAccountType.REVENUE, LedgerKeys.Revenue, false),
+        new("4105", LedgerKeys.DiscountReceived, "خصم مكتسب", LedgerAccountType.REVENUE, LedgerKeys.Revenue, false),
         new("5", LedgerKeys.Expenses, "المصروفات", LedgerAccountType.EXPENSE, null, true),
         new("5101", LedgerKeys.Cogs, "تكلفة البضاعة المباعة", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5102", LedgerKeys.Operating, "المصروفات التشغيلية", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, true),
@@ -79,6 +81,7 @@ public sealed class LedgerService
         new("5105", LedgerKeys.StockLoss, "خسائر فروق الجرد", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5106", LedgerKeys.Rounding, "فروق التقريب", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5107", LedgerKeys.Salaries, "الرواتب والأجور", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
+        new("5108", LedgerKeys.DiscountAllowed, "خصم مسموح به", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
     };
 
     // ------------------------------------------------------------------ accounts
@@ -348,6 +351,8 @@ public sealed class LedgerService
             VoucherType.RECEIPT => "Receipt",
             VoucherType.PAYMENT => "Payment",
             VoucherType.EXPENSE => "Expense",
+            VoucherType.DISCOUNT => "Discount allowed",
+            VoucherType.DISCOUNT_RECEIVED => "Discount received",
             _ => "Cash transfer",
         };
         var draft = Begin("VOUCHER", v.Id, v.Number, $"{label} {v.Number}", v.BranchId, staffId);
@@ -366,6 +371,15 @@ public sealed class LedgerService
                 draft.Debit(category is null ? await SystemAsync(LedgerKeys.Shipping) : await ForExpenseAsync(category),
                     v.Amount, v.Notes);
                 foreach (var l in v.Lines) draft.Credit(await ForMoneyAsync(accounts[l.AccountId]), l.Amount, l.Reference);
+                break;
+            // A small amount left on the account taken off (owner, 2026-10-02): no money moves.
+            case VoucherType.DISCOUNT:
+                draft.Debit(await SystemAsync(LedgerKeys.DiscountAllowed), v.Amount, v.Notes)
+                    .Credit(await ForPartyAsync(party!, ReceivableRole(party!)), v.Amount);
+                break;
+            case VoucherType.DISCOUNT_RECEIVED:
+                draft.Debit(await ForPartyAsync(party!, PayableRole(party!)), v.Amount)
+                    .Credit(await SystemAsync(LedgerKeys.DiscountReceived), v.Amount, v.Notes);
                 break;
             default:
                 draft.Debit(await ForMoneyAsync(accounts[v.ToAccountId!.Value]), v.Amount)

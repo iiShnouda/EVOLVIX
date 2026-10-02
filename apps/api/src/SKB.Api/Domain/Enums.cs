@@ -134,7 +134,11 @@ public enum PaymentMethod
 }
 
 /// <summary>A money voucher (سند): receipt, payment, expense, or a transfer between accounts.</summary>
-public enum VoucherType { RECEIPT, PAYMENT, EXPENSE, TRANSFER }
+/// <summary>
+/// DISCOUNT: a small amount left on a customer's account taken off (خصم تسوية); DISCOUNT_RECEIVED:
+/// the same from a supplier (owner, 2026-10-02). No money moves.
+/// </summary>
+public enum VoucherType { RECEIPT, PAYMENT, EXPENSE, TRANSFER, DISCOUNT, DISCOUNT_RECEIVED }
 
 /// <summary>A posted voucher can be cancelled; its money movements are then reversed.</summary>
 public enum VoucherStatus { POSTED, CANCELLED }

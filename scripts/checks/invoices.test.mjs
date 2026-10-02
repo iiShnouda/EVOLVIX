@@ -125,9 +125,13 @@ const credit = ok('one on credit', await accountant.post('/sales/invoices', sale
 const partial = ok('one partly paid', await accountant.post('/sales/invoices', sale(2, { paidAmount: 500, paidAccountId: cash.id })));
 const stateOf = async (doc) =>
   (await accountant.get(`/sales/invoices?search=${doc.number}`)).data.items.find((d) => d.id === doc.id)?.state;
-eq('credit', await stateOf(credit), 'CREDIT');
+// The account is settled oldest first (owner, 2026-10-02): a new one with nothing paid waits.
+eq('nothing paid yet: waiting', await stateOf(credit), 'DUE');
 eq('partly paid', await stateOf(partial), 'PARTIAL');
-eq('paid', await stateOf(paidLater), 'PAID');
+const custInvoices = (await accountant.get(`/sales/invoices?search=InvCust ${tag}&pageSize=100`)).data.items
+  .filter((d) => d.status !== 'CANCELLED');
+const owes = (await accountant.get(`/parties/${customer.id}`)).data.balance;
+eq('what is owed on the invoices is what the account owes', custInvoices.reduce((s, d) => s + d.owed, 0), Math.max(0, owes));
 const onlyPartial = (await accountant.get(`/sales/invoices?search=InvCust ${tag}&state=PARTIAL&pageSize=100`)).data.items;
 check('the PARTIAL filter', onlyPartial.length > 0 && onlyPartial.every((d) => d.state === 'PARTIAL'), onlyPartial.map((d) => d.state));
 eq(
@@ -224,12 +228,13 @@ const back = ok('built-in again', await owner.put('/settings/numbering', { type:
 check('INV- style again', back.find((n) => n.type === 'SALES_INVOICE').next.startsWith('INV-'));
 
 console.log('== a cheque not collected yet: still on credit (آجل)');
-const byCheque = ok('sold 2 on credit', await accountant.post('/sales/invoices', sale(2)));
-eq('on credit', await stateOf(byCheque), 'CREDIT');
+const chCust = ok('a customer paying by cheque', await owner.post('/parties', { name: `ChCust ${tag}`, types: ['CUSTOMER'] }));
+const byCheque = ok('sold 2 on credit', await accountant.post('/sales/invoices', sale(2, { partyId: chCust.id })));
+eq('nothing paid yet: waiting', await stateOf(byCheque), 'DUE');
 const cheque = ok(
   'a cheque against it',
   await owner.post('/notes/receive', {
-    partyId: customer.id, kind: 'CHEQUE', serialNumber: `CH${tag}`, amount: 2000,
+    partyId: chCust.id, kind: 'CHEQUE', serialNumber: `CH${tag}`, amount: 2000,
     dueDate: new Date().toISOString().slice(0, 10), bankName: 'CIB',
     allocations: [{ documentId: byCheque.id, amount: 2000 }],
   }),

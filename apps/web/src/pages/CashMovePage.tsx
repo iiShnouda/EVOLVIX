@@ -33,6 +33,7 @@ import {
   useMoneyAccounts,
   useOpenInvoices,
   useSaveExpenseCategory,
+  useSettleDiscount,
 } from '../lib/queries';
 import { useWorkBranch } from '../stores/workBranch';
 
@@ -381,6 +382,87 @@ export function CashMovePage() {
   );
 }
 
+/**
+ * Take what is left on the account off (owner, 2026-10-02: "if 5 or 10 pounds are left, the
+ * accountant may give the customer that as a discount"): a settlement discount, no money moves.
+ */
+function SettleRest({
+  party,
+  currency,
+  onDone,
+}: {
+  party: Party;
+  currency: string;
+  onDone: (p: Party) => void;
+}) {
+  const { t, locale } = useT();
+  const can = useCan();
+  const settle = useSettleDiscount();
+  const left = Math.abs(party.balance);
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(String(toMajor(left)));
+  const [notes, setNotes] = useState('');
+  if (!can('vouchers:discount')) return null;
+  const minor = toMinor(Number(amount) || 0);
+  if (!open)
+    return (
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        {t('settle.button')}
+      </Button>
+    );
+  return (
+    <div className="space-y-2 rounded-[var(--radius-app)] border border-line p-3">
+      <p className="flex justify-between text-xs text-muted">
+        <span>{t('settle.left')}</span>
+        <span className="tnum">{formatMoney(left, currency, locale)}</span>
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block min-w-[7rem] flex-1">
+          <span className="mb-0.5 block text-xs text-muted">{t('settle.amount')}</span>
+          <input
+            className={`${field} tnum`}
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        <label className="block min-w-[7rem] flex-[2]">
+          <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
+          <input
+            className={field}
+            value={notes}
+            maxLength={500}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </label>
+        <Button
+          size="sm"
+          icon="check"
+          loading={settle.isPending}
+          disabled={minor <= 0 || minor > left}
+          onClick={async () => {
+            try {
+              await settle.mutateAsync({
+                partyId: party.id,
+                amount: minor,
+                notes: notes || undefined,
+              });
+              onDone(await api.get<Party>(`/parties/${party.id}`));
+            } catch {
+              /* shown below */
+            }
+          }}
+        >
+          {t('settle.title')}
+        </Button>
+      </div>
+      {settle.error && <p className="text-xs text-destructive">{errorText(t, settle.error)}</p>}
+    </div>
+  );
+}
+
 /** One side: a customer, a supplier or a cash box / bank, its balance and its open invoices. */
 function SideCard({
   title,
@@ -485,6 +567,14 @@ function SideCard({
             <span>—</span>
           )}
         </div>
+      )}
+      {side.party && side.party.balance !== 0 && (
+        <SettleRest
+          key={`${side.party.id}:${side.party.balance}`}
+          party={side.party}
+          currency={currency}
+          onDone={(p) => onChange({ ...side, party: p })}
+        />
       )}
 
       {invoices && (

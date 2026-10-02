@@ -129,6 +129,9 @@ public sealed class SalesController : ControllerBase
         if (doc.Type == DocumentType.SALES_INVOICE
             && await _db.InvoiceRevisions.AnyAsync(x => x.DocumentId == doc.Id && x.Kind == "EDIT"))
             dto = dto with { Edited = true };
+        if (doc.Type == DocumentType.SALES_INVOICE
+            && (await DocumentLists.StatesAsync(_db, new[] { doc.Id })).TryGetValue(doc.Id, out var st))
+            dto = dto with { State = st.State, Owed = st.Owed };
         return Ok(Costs.Guard(User, dto));
     }
 
@@ -219,11 +222,16 @@ public sealed class SalesController : ControllerBase
         var ids = docs.Select(d => d.Id).ToList();
         var edited = await _db.InvoiceRevisions.Where(x => ids.Contains(x.DocumentId) && x.Kind == "EDIT")
             .Select(x => x.DocumentId).Distinct().ToListAsync();
+        var states = await DocumentLists.StatesAsync(_db,
+            docs.Where(d => d.Type == DocumentType.SALES_INVOICE).Select(d => d.Id).ToList());
         var invoices = new List<SalesDetailDto>();
         var returns = new List<SalesDetailDto>();
         foreach (var d in docs)
-            (d.Type == DocumentType.SALES_RETURN ? returns : invoices).Add(Costs.Guard(User,
-                Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d)) with { Edited = edited.Contains(d.Id) }));
+        {
+            var dto = Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d)) with { Edited = edited.Contains(d.Id) };
+            if (states.TryGetValue(d.Id, out var st)) dto = dto with { State = st.State, Owed = st.Owed };
+            (d.Type == DocumentType.SALES_RETURN ? returns : invoices).Add(Costs.Guard(User, dto));
+        }
         // What they owed before these: the balance less what the posted ones still put on it, plus
         // what their returns took off it (less what was paid back in cash).
         var posted = docs.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
@@ -238,7 +246,7 @@ public sealed class SalesController : ControllerBase
         var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
         return Ok(new CustomerInvoicesDto(Mapper.ToParty(party), party.Balance, party.Balance - onThese + offBalance, onThese,
             currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray(),
-            returns.ToArray(), returnsTotal));
+            returns.ToArray(), returnsTotal, DocumentLists.Together(states.Values, posted.Sum(d => d.GrandTotal))));
     }
 
     /// <summary>
@@ -1288,6 +1296,7 @@ public sealed class SalesController : ControllerBase
                 Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
         }
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
+        doc.PaidDirect = doc.PaidAmount;
         // A cash customer (عميل نقدي) pays the whole invoice now.
         if (party.IsCashCustomer && doc.PaidAmount < grand)
             return BadRequest(new

@@ -323,6 +323,7 @@ public class AppDbContext : DbContext
         b.Entity<SalesDocument>().HasIndex(x => x.Number).IsUnique();
         b.Entity<SalesDocument>().HasIndex(x => new { x.Type, x.Status });
         b.Entity<SalesDocument>().HasIndex(x => x.IssueDate);
+        b.Entity<SalesDocument>().HasIndex(x => new { x.PartyId, x.Type, x.IssueDate });
         b.Entity<SalesDocument>().HasIndex(x => x.BranchId);
 
         // An item's / model's main supplier (a party). Restrict: a supplier with items can't vanish.

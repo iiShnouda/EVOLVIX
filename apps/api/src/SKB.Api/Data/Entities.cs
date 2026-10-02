@@ -637,6 +637,12 @@ public class SalesDocument
     public long TaxTotal { get; set; }
     public long GrandTotal { get; set; }
     public long PaidAmount { get; set; }
+    /// <summary>
+    /// Paid outside the party's account: on the spot when the invoice was written (paid now), or to
+    /// the shipping company on delivery (cash on delivery). The rest went on the account, and its
+    /// payment state follows the account oldest-first (owner, 2026-10-02).
+    /// </summary>
+    public long PaidDirect { get; set; }
     // Cost of goods on this document (sum of line costs) and the profit it earned.
     // ProfitTotal = (Subtotal - DiscountTotal) - CostTotal. Tax is pass-through, not profit.
     public long CostTotal { get; set; }

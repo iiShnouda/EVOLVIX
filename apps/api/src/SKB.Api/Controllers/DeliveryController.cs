@@ -270,6 +270,7 @@ public sealed class DeliveryController : ControllerBase
                 {
                     var doc = si.Document!;
                     doc.PaidAmount = Math.Min(doc.GrandTotal, doc.PaidAmount + si.CodShare);
+                    doc.PaidDirect = Math.Min(doc.GrandTotal, doc.PaidDirect + si.CodShare);
                     if (doc.Status != DocumentStatus.RETURNED)
                         doc.Status = doc.PaidAmount >= doc.GrandTotal ? DocumentStatus.PAID
                             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID : doc.Status;

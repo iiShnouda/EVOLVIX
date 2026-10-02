@@ -89,14 +89,16 @@ public record SalesDetailDto(
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
-    string? EnteredAt = null);
+    string? EnteredAt = null, string? State = null, long? Owed = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
 /// <param name="OnThese">What the posted ones still put on their account.</param>
 /// <param name="Returns">The customer's returns in the period, taken off <c>ReturnsTotal</c> from what they took.</param>
+/// <param name="State">The invoices taken together (owner, 2026-10-02): PAID, CREDIT (by cheque), PARTIAL, DUE or UNPAID.</param>
 public record CustomerInvoicesDto(PartyDto Party, long Balance, long PreviousBalance, long OnThese, string Currency,
-    string From, string To, SalesDetailDto[] Invoices, SalesDetailDto[]? Returns = null, long ReturnsTotal = 0);
+    string From, string To, SalesDetailDto[] Invoices, SalesDetailDto[]? Returns = null, long ReturnsTotal = 0,
+    string? State = null);
 
 /// <summary>One invoice's discount: a percent or an amount (neither = none).</summary>
 public record SetInvoiceDiscountRequest(decimal? Percent = null, long? Amount = null, string? Kind = null);
@@ -803,6 +805,12 @@ public record VoucherLineRequest(string? Method, string? AccountId, long Amount,
 public record AllocationRequest(string? DocumentId, long Amount);
 
 /// <summary>A receipt, payment or expense. Allocations are for receipts and payments only.</summary>
+/// <summary>
+/// A small amount left on a party's account taken off (خصم تسوية, owner 2026-10-02): at most what is
+/// left. On a customer it is a discount we give; on a supplier one we get.
+/// </summary>
+public record SettleDiscountRequest(string? PartyId, long Amount, string? Notes = null, string? DocumentDate = null);
+
 public record CreateVoucherRequest(
     string? PartyId, VoucherLineRequest[]? Lines, AllocationRequest[]? Allocations = null, string? Notes = null,
     string? CategoryId = null, string? DocumentDate = null);

@@ -57,6 +57,8 @@ public static class Permissions
     public const string CashTransfer = "cash:transfer";
     /// <summary>Cancel a receipt, payment, expense or transfer (its money moves back).</summary>
     public const string VouchersCancel = "vouchers:cancel";
+    /// <summary>Take a small amount left on a customer's or supplier's account off (خصم تسوية).</summary>
+    public const string VouchersDiscount = "vouchers:discount";
     /// <summary>Add and edit cash boxes, custody, bank accounts and wallets (with an opening balance).</summary>
     public const string MoneyAccountsManage = "money_accounts:manage";
     /// <summary>Choose and name the company's main cash box (owner, 2026-10-02).</summary>
@@ -245,7 +247,7 @@ public static class Permissions
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
         PartiesCreate, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
-        MoneyAccountsManage, ExpenseCategoriesManage, MoneyAccountsMain, CashHandoverSend, CashHandoverReceive,
+        MoneyAccountsManage, ExpenseCategoriesManage, MoneyAccountsMain, VouchersDiscount, CashHandoverSend, CashHandoverReceive,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel, NotesLost,
@@ -292,6 +294,7 @@ public static class RolePermissions
             Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
             Permissions.ExpenseCategoriesManage, Permissions.CashHandoverSend, Permissions.CashHandoverReceive,
+            Permissions.VouchersDiscount,
             Permissions.LedgerView, Permissions.LedgerPost, Permissions.LedgerManage,
             Permissions.NotesView, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,

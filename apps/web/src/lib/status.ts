@@ -37,17 +37,30 @@ export function quoteState(doc: { status: DocumentStatus; dueDate?: string | nul
   return doc.dueDate && doc.dueDate.slice(0, 10) < companyToday() ? 'EXPIRED' : 'OPEN';
 }
 
-/** An invoice's payment state (owner, 2026-10-01): credit, being collected, partly paid, paid, cancelled. */
+/**
+ * An invoice's payment state (owner, 2026-10-02): waiting for payment (its first day), not paid,
+ * part paid, deferred by a cheque, with the shipping company, paid, cancelled.
+ */
 export const STATE_TONE: Record<PayState, Tone> = {
-  CREDIT: 'warning',
-  COLLECTING: 'info',
+  DUE: 'info',
+  UNPAID: 'destructive',
   PARTIAL: 'warning',
+  CREDIT: 'brand',
+  COLLECTING: 'info',
   PAID: 'positive',
   CANCELLED: 'neutral',
 };
-export const PAY_STATES: PayState[] = ['CREDIT', 'COLLECTING', 'PARTIAL', 'PAID', 'CANCELLED'];
+export const PAY_STATES: PayState[] = [
+  'DUE',
+  'UNPAID',
+  'PARTIAL',
+  'CREDIT',
+  'COLLECTING',
+  'PAID',
+  'CANCELLED',
+];
 
-/** An invoice's payment state from what it holds (lists carry it from the server). */
+/** An invoice's payment state from what it holds (lists and details carry it from the server). */
 function payStateOf(doc: {
   status: DocumentStatus;
   state?: string | null;
@@ -57,7 +70,7 @@ function payStateOf(doc: {
   if (doc.state && (PAY_STATES as string[]).includes(doc.state)) return doc.state as PayState;
   if (doc.status === 'CANCELLED') return 'CANCELLED';
   if (doc.status === 'PAID') return 'PAID';
-  return (doc.paidAmount ?? 0) > 0 ? 'PARTIAL' : 'CREDIT';
+  return (doc.paidAmount ?? 0) > 0 ? 'PARTIAL' : 'UNPAID';
 }
 
 /** A document's status label key and tone (a quotation has its own states). */

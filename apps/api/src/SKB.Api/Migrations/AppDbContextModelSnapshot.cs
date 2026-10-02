@@ -2166,6 +2166,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("PaidAmount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("PaidDirect")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("PartyId")
                         .HasColumnType("uuid");
 
@@ -2218,8 +2221,6 @@ namespace SKB.Api.Migrations
 
                     b.HasIndex("PaidAccountId");
 
-                    b.HasIndex("PartyId");
-
                     b.HasIndex("PriceLevelId");
 
                     b.HasIndex("RepId");
@@ -2231,6 +2232,8 @@ namespace SKB.Api.Migrations
                     b.HasIndex("DeliveryMethod", "DeliveryStatus");
 
                     b.HasIndex("Type", "Status");
+
+                    b.HasIndex("PartyId", "Type", "IssueDate");
 
                     b.ToTable("SalesDocuments");
                 });

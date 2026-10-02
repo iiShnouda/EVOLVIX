@@ -135,6 +135,7 @@ export type Permission =
   | 'expenses:create'
   | 'cash:transfer'
   | 'vouchers:cancel'
+  | 'vouchers:discount'
   | 'money_accounts:manage'
   | 'money_accounts:main'
   | 'cash:handover_send'
@@ -656,6 +657,9 @@ export interface SalesDocument {
   approvalNote?: string | null;
   /** When it was really typed, if it is dated on an earlier day (ISO instant). */
   enteredAt?: string | null;
+  /** How an invoice stands (the account settled oldest first) and what is still owed on it. */
+  state?: string | null;
+  owed?: number | null;
   /** Changed after it was saved. */
   edited?: boolean;
   /** The customer's / supplier's and the rep's codes (كود). */
@@ -758,7 +762,15 @@ export interface CarrierSettlement {
 
 export type MoneyAccountKind = 'CASH_BOX' | 'CUSTODY' | 'BANK' | 'WALLET' | 'POST';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'INSTAPAY' | 'MOBILE_WALLET' | 'POST';
-export type VoucherType = 'RECEIPT' | 'PAYMENT' | 'EXPENSE' | 'TRANSFER';
+export type VoucherType =
+  | 'RECEIPT'
+  | 'PAYMENT'
+  | 'EXPENSE'
+  | 'TRANSFER'
+  /** A small amount left on a customer's account taken off (خصم تسوية). */
+  | 'DISCOUNT'
+  /** The same, on a supplier's account. */
+  | 'DISCOUNT_RECEIVED';
 export type VoucherStatus = 'POSTED' | 'CANCELLED';
 export type MoneyMovementKind =
   | 'OPENING'
@@ -1043,10 +1055,12 @@ export interface Branding {
 
 /** Lightweight row for list views (no line items). */
 /**
- * An invoice's payment state (owner, 2026-10-01): on credit (آجل), being collected by a shipping
- * company (جاري الدفع), partly paid, paid, or cancelled.
+ * An invoice's payment state (owner, 2026-10-02), the account settled oldest first: waiting for
+ * payment (its first day), unpaid (after that), part paid, deferred (a cheque or note taken against
+ * it not collected yet), with the shipping company (cash on delivery), paid, or cancelled.
  */
-export type PayState = 'CREDIT' | 'COLLECTING' | 'PARTIAL' | 'PAID' | 'CANCELLED';
+export type PayState =
+  'DUE' | 'UNPAID' | 'PARTIAL' | 'CREDIT' | 'COLLECTING' | 'PAID' | 'CANCELLED';
 
 /** One change to a posted sales invoice: edited (with the totals before and after) or cancelled. */
 export interface InvoiceRevision {
@@ -1138,6 +1152,8 @@ export interface CustomerInvoices {
   /** Their returns in the period: printed with the invoices and taken off the total. */
   returns?: SalesDocument[];
   returnsTotal?: number;
+  /** The invoices taken together: PAID, CREDIT, PARTIAL, DUE, UNPAID or COLLECTING. */
+  state?: string | null;
 }
 
 /** A page of documents and the totals of everything the filter found (cancelled ones left out). */

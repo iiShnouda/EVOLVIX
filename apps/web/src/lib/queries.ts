@@ -1469,6 +1469,19 @@ export function useDeleteExpenseCategory() {
 }
 
 /** Remove a money account no money has gone through yet (else the server says to close it). */
+/** Take a small amount left on a customer's or supplier's account off (خصم تسوية). */
+export function useSettleDiscount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { partyId: string; amount: number; notes?: string }) =>
+      api.post<Voucher>('/settle-discount', body),
+    onSuccess: () => {
+      invalidateAfterMoney(qc);
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
+  });
+}
+
 export function useDeleteMoneyAccount() {
   const qc = useQueryClient();
   return useMutation({

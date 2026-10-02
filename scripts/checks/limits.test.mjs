@@ -187,7 +187,7 @@ const row = (
 eq(
   'listed as awaiting, edited and on credit',
   [row?.overLimit, row?.edited, row?.state],
-  [true, true, 'CREDIT'],
+  [true, true, 'DUE'],
 );
 const karim = await login('karim@skb.local');
 eq(

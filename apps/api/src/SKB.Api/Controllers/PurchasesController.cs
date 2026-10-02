@@ -77,7 +77,11 @@ public sealed class PurchasesController : ControllerBase
         if (doc is null) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.PURCHASE_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
-        return Ok(Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));
+        var dto = Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc));
+        if (doc.Type == DocumentType.PURCHASE_INVOICE
+            && (await DocumentLists.StatesAsync(_db, new[] { doc.Id })).TryGetValue(doc.Id, out var st))
+            dto = dto with { State = st.State, Owed = st.Owed };
+        return Ok(dto);
     }
 
     /// <summary>
@@ -242,6 +246,7 @@ public sealed class PurchasesController : ControllerBase
         doc.CostTotal = net;
         doc.ProfitTotal = 0;
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
+        doc.PaidDirect = doc.PaidAmount;
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
             : DocumentStatus.CONFIRMED;

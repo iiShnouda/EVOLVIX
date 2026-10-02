@@ -58,6 +58,8 @@ const TYPE_TONE: Record<VoucherType, Tone> = {
   PAYMENT: 'warning',
   EXPENSE: 'destructive',
   TRANSFER: 'info',
+  DISCOUNT: 'neutral',
+  DISCOUNT_RECEIVED: 'neutral',
 };
 type NewForm = 'receipt' | 'payment' | 'expense' | 'transfer';
 const FORM_KIND: Record<'receipt' | 'payment' | 'expense', VoucherKind> = {

@@ -321,6 +321,63 @@ public sealed class MoneyController : ControllerBase
     }
 
     /// <summary>
+    /// Take off what is left on a party's account (owner, 2026-10-02: "if 5 or 10 pounds are left,
+    /// the accountant may give the customer that as a discount"). No money moves: a customer's
+    /// account goes down against "discount allowed", a supplier's against "discount received", and
+    /// the oldest open invoices are settled by it. At most what is left on the account.
+    /// </summary>
+    [HttpPost("settle-discount")]
+    [Authorize(Policy = Permissions.VouchersDiscount)]
+    public async Task<ActionResult<VoucherDto>> SettleDiscount([FromBody] SettleDiscountRequest req)
+    {
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return Bad(dateCode, dateMessage!);
+        using var dated = Backdate.To(when);
+        if (!Guid.TryParse(req.PartyId, out var partyId)) return Bad("party_not_found", "Choose the customer or supplier.");
+        if (req.Amount <= 0 || req.Amount > InvoiceLines.MaxPrice) return Bad("bad_amount", "Enter an amount above zero.");
+        var branchId = Access.Work(User);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await MoneyService.LockPartiesAsync(_db, partyId);
+        var party = await _db.Parties.FirstOrDefaultAsync(x => x.Id == partyId && x.IsActive);
+        if (party is null) return Bad("party_not_found", "Choose the customer or supplier.");
+        var type = party.Balance > 0 ? VoucherType.DISCOUNT : party.Balance < 0 ? VoucherType.DISCOUNT_RECEIVED : (VoucherType?)null;
+        if (type is null) return Bad("nothing_owed", "Nothing is left on this account.");
+        if (req.Amount > Math.Abs(party.Balance)) return Bad("over_balance", "That is more than is left on the account.");
+
+        var voucher = new Voucher
+        {
+            Number = await DocumentNumbers.NextVoucherAsync(_db, type.Value), Type = type.Value, BranchId = branchId,
+            PartyId = party.Id, Amount = req.Amount, Notes = Text(req.Notes, 500), CreatedById = Me(),
+        };
+        party.Balance += type == VoucherType.DISCOUNT ? -req.Amount : req.Amount;
+
+        // The oldest open invoices are settled first, as with money received.
+        var docType = type == VoucherType.DISCOUNT ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
+        var open = await _db.SalesDocuments.Where(d => d.PartyId == party.Id && d.Type == docType
+                && d.Status != DocumentStatus.CANCELLED && d.PaidAmount < d.GrandTotal)
+            .OrderBy(d => d.IssueDate).ThenBy(d => d.Number).Take(200).ToListAsync();
+        var owed = await MoneyService.OutstandingAsync(_db, open);
+        var left = req.Amount;
+        foreach (var d in open)
+        {
+            if (left <= 0) break;
+            var part = Math.Min(left, owed[d.Id]);
+            if (part <= 0) continue;
+            d.PaidAmount += part;
+            MoneyService.RefreshPaidStatus(d);
+            voucher.Allocations.Add(new VoucherAllocation { DocumentId = d.Id, Amount = part });
+            left -= part;
+        }
+        await _ledger.PostVoucherAsync(voucher, party, new Dictionary<Guid, MoneyAccount>(), null, Me());
+        _db.Vouchers.Add(voucher);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("create", type.Value.ToString().ToLowerInvariant(), voucher.Id, voucher.BranchId);
+        return Created($"/api/vouchers/{voucher.Id}", ToDto(await ReloadVoucherAsync(voucher.Id), await CurrencyAsync()));
+    }
+
+    /// <summary>
     /// Cancel a voucher: its money moves back (the account must still hold it), the party's balance
     /// and the invoices it settled go back to how they were.
     /// </summary>
@@ -359,8 +416,8 @@ public sealed class MoneyController : ControllerBase
         }
         if (voucher.Party is not null)
         {
-            if (voucher.Type == VoucherType.RECEIPT) voucher.Party.Balance += voucher.Amount;
-            else if (voucher.Type == VoucherType.PAYMENT) voucher.Party.Balance -= voucher.Amount;
+            if (voucher.Type is VoucherType.RECEIPT or VoucherType.DISCOUNT) voucher.Party.Balance += voucher.Amount;
+            else if (voucher.Type is VoucherType.PAYMENT or VoucherType.DISCOUNT_RECEIVED) voucher.Party.Balance -= voucher.Amount;
         }
         foreach (var a in voucher.Allocations)
         {

@@ -10,6 +10,7 @@ import {
   type Party,
   type SalesDocument,
   type TranslationKey,
+  type PayState,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { PartyPicker } from '../components/PartyPicker';
@@ -27,7 +28,7 @@ import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
-import { statusOf } from '../lib/status';
+import { STATE_TONE, statusOf } from '../lib/status';
 import { useCustomerInvoices, useDiscountAll, useSetInvoiceDiscount } from '../lib/queries';
 
 const field =
@@ -223,9 +224,16 @@ export function CustomerInvoicesPage() {
 
           <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
             <Card>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-                {t('together.summary')}
-              </h2>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                  {t('together.summary')}
+                </h2>
+                {data.data!.state && (
+                  <Badge tone={STATE_TONE[(data.data!.state as PayState) ?? 'UNPAID'] ?? 'neutral'}>
+                    {t(`state.${data.data!.state}` as TranslationKey)}
+                  </Badge>
+                )}
+              </div>
               <dl className="space-y-1.5 text-sm">
                 <Line label={t('together.count')} value={formatNumber(invoices.length, locale)} />
                 <Line label={t('together.previous')} value={money(data.data!.previousBalance)} />
