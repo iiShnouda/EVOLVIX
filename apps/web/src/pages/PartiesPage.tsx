@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   balanceView,
   formatMoney,
@@ -55,11 +55,24 @@ const field =
 const input =
   'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
 
+/** How an account stands (owner, 2026-10-02), to filter the list by. */
+const STATUSES = ['OVER_LIMIT', 'NEAR_LIMIT', 'OWES', 'CREDIT', 'SETTLED', 'CLOSED'] as const;
+
 export function PartiesPage() {
   const { t } = useT();
   const can = useCan();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [type, setType] = useState<PartyType | ''>('');
+  const [type, setType] = useState<PartyType | ''>(() =>
+    (TYPES as string[]).includes(params.get('type') ?? '') ? (params.get('type') as PartyType) : '',
+  );
+  const status = params.get('status') ?? '';
+  const setStatus = (s: string) => {
+    const next = new URLSearchParams(params);
+    if (s) next.set('status', s);
+    else next.delete('status');
+    setParams(next, { replace: true });
+  };
   const [showClosed, setShowClosed] = useState(false);
   const [editing, setEditing] = useState<Party | 'new' | null>(null);
   const query = useDeferredValue(search.trim());
@@ -68,7 +81,8 @@ export function PartiesPage() {
     pageSize: 100,
     type: type || undefined,
     search: query || undefined,
-    active: showClosed ? undefined : true,
+    status: status || undefined,
+    active: showClosed || status === 'CLOSED' ? undefined : true,
   });
   return (
     <div className="space-y-5">
@@ -85,36 +99,46 @@ export function PartiesPage() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="relative min-w-0 flex-1 basis-56">
-          <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-faint">
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            className={`${input} ps-9`}
-            value={search}
-            placeholder={t('parties.search')}
-            aria-label={t('parties.search')}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-        <div
-          role="tablist"
-          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-        >
-          {(['', ...TYPES] as const).map((x) => (
-            <button
-              key={x || 'all'}
-              role="tab"
-              aria-selected={type === x}
-              onClick={() => setType(x)}
-              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-                type === x ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-              }`}
-            >
-              {x ? t(TYPE_LABEL[x]) : t('parties.all')}
-            </button>
-          ))}
+        <div className="flex min-w-0 flex-1 basis-72 items-stretch overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface focus-within:border-brand">
+          <select
+            aria-label={t('parties.type')}
+            className="h-10 shrink-0 border-e border-line bg-surface-2 px-2 text-sm outline-none"
+            value={type}
+            onChange={(e) => setType(e.target.value as PartyType | '')}
+          >
+            <option value="">{t('parties.all')}</option>
+            {TYPES.map((x) => (
+              <option key={x} value={x}>
+                {t(TYPE_LABEL[x])}
+              </option>
+            ))}
+          </select>
+          <label className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-faint">
+              <Icon name="search" size={16} />
+            </span>
+            <input
+              className="h-10 w-full bg-transparent ps-9 pe-3 text-sm outline-none"
+              value={search}
+              placeholder={t('parties.search')}
+              aria-label={t('parties.search')}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
         </div>
+        <select
+          aria-label={t('parties.status')}
+          className="h-10 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">{t('parties.anyStatus')}</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {t(`parties.status.${s}` as TranslationKey)}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
@@ -200,11 +224,14 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
             <Icon name={party.types.includes('CARRIER') ? 'delivery' : 'parties'} size={20} />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-medium">
-              {party.name}
-              <span className="ms-1.5 text-xs font-normal text-muted tnum">
-                {t('common.code')} {party.code}
+            <p className="flex min-w-0 items-center gap-1.5 font-medium">
+              <span
+                className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-semibold text-muted tnum"
+                title={t('common.code')}
+              >
+                {party.code}
               </span>
+              <span className="truncate">{party.name}</span>
             </p>
             <div className="mt-0.5 flex flex-wrap gap-1">
               {party.types.map((type) => (

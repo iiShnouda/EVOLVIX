@@ -226,6 +226,8 @@ export function useParties(params: {
   search?: string;
   /** true = open accounts only, false = closed only, none = all. */
   active?: boolean;
+  /** How the account stands: OVER_LIMIT, NEAR_LIMIT, OWES, CREDIT, SETTLED or CLOSED. */
+  status?: string;
   pageSize?: number;
   enabled?: boolean;
 }) {
@@ -234,6 +236,7 @@ export function useParties(params: {
     pageSize: String(params.pageSize ?? 20),
   });
   if (params.type) query.set('type', params.type);
+  if (params.status) query.set('status', params.status);
   if (params.search) query.set('search', params.search);
   if (params.active !== undefined) query.set('active', String(params.active));
   const { enabled = true, ...key } = params;

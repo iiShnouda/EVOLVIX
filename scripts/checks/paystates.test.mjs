@@ -197,4 +197,15 @@ eq(
   'department_not_found',
 );
 
+console.log('== the account status filter');
+const found = async (status) =>
+  (
+    (await owner.get(`/parties?status=${status}&search=${encodeURIComponent(cust.name)}`)).data
+      .items ?? []
+  ).map((x) => x.id);
+const bal = (await owner.get(`/parties/${cust.id}`)).data.balance;
+eq('owes us, as its balance says', (await found('OWES')).includes(cust.id), bal > 0);
+eq('settled, as its balance says', (await found('SETTLED')).includes(cust.id), bal === 0);
+eq('not closed', (await found('CLOSED')).includes(cust.id), false);
+
 summary('paystates');

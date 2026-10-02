@@ -2352,4 +2352,13 @@ export const ar: TranslationDictionary = {
   'statement.kind.DISCOUNT': 'خصم تسوية',
   'statement.kind.DISCOUNT_RECEIVED': 'خصم تسوية من مورد',
   'statement.kind.NOTE': 'ورقة مالية',
+  'parties.type': 'النوع',
+  'parties.status': 'حالة الحساب',
+  'parties.anyStatus': 'كل الحالات',
+  'parties.status.OVER_LIMIT': 'تجاوز حد الشراء',
+  'parties.status.NEAR_LIMIT': 'قريب من حد الشراء',
+  'parties.status.OWES': 'عليه رصيد',
+  'parties.status.CREDIT': 'له رصيد',
+  'parties.status.SETTLED': 'حساب متزن',
+  'parties.status.CLOSED': 'حساب موقوف',
 };

@@ -26,7 +26,7 @@ public sealed class PartiesController : ControllerBase
     public async Task<ActionResult<PaginatedDto<PartyDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? type = null, [FromQuery] string? search = null, [FromQuery] bool? active = null,
-        [FromQuery] int? code = null)
+        [FromQuery] int? code = null, [FromQuery] string? status = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -39,6 +39,19 @@ public sealed class PartiesController : ControllerBase
             q = q.Where(p => p.Types.Contains(wanted));
         }
         if (active is bool isActive) q = q.Where(p => p.IsActive == isActive);
+        // How the account stands (owner, 2026-10-02): over or near the purchase limit (80%), they
+        // owe us, we owe them, settled, or closed.
+        switch (status?.Trim().ToUpperInvariant())
+        {
+            case "OVER_LIMIT": q = q.Where(p => p.IsActive && p.CreditLimit != null && p.Balance >= p.CreditLimit); break;
+            case "NEAR_LIMIT":
+                q = q.Where(p => p.IsActive && p.CreditLimit != null && p.Balance < p.CreditLimit
+                                 && p.Balance * 5 >= p.CreditLimit * 4); break;
+            case "OWES": q = q.Where(p => p.Balance > 0); break;
+            case "CREDIT": q = q.Where(p => p.Balance < 0); break;
+            case "SETTLED": q = q.Where(p => p.Balance == 0); break;
+            case "CLOSED": q = q.Where(p => !p.IsActive); break;
+        }
         // Exactly this code (كود), e.g. typed in an invoice's code box.
         if (code is int wantedCode) q = q.Where(p => p.Code == wantedCode);
         if (!string.IsNullOrWhiteSpace(search))

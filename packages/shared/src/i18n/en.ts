@@ -2367,4 +2367,13 @@ export const en = {
   'statement.kind.DISCOUNT': 'Settlement discount',
   'statement.kind.DISCOUNT_RECEIVED': 'Settlement discount from supplier',
   'statement.kind.NOTE': 'Cheque / note',
+  'parties.type': 'Type',
+  'parties.status': 'Account status',
+  'parties.anyStatus': 'Any status',
+  'parties.status.OVER_LIMIT': 'Over the purchase limit',
+  'parties.status.NEAR_LIMIT': 'Near the purchase limit',
+  'parties.status.OWES': 'Owes us',
+  'parties.status.CREDIT': 'We owe them',
+  'parties.status.SETTLED': 'Settled',
+  'parties.status.CLOSED': 'Closed',
 } as const;

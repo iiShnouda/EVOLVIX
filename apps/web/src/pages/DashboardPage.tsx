@@ -693,7 +693,7 @@ function AlertsCard() {
       ? { label: t('dash.awaiting'), value: more.awaitingApproval, to: '/sales?state=AWAITING' }
       : null,
     more.overLimitCount
-      ? { label: t('dash.overLimit'), value: more.overLimitCount, to: '/parties' }
+      ? { label: t('dash.overLimit'), value: more.overLimitCount, to: '/parties?status=OVER_LIMIT' }
       : null,
   ].filter((x) => !!x);
   if (alerts.length === 0 && (more.overLimit?.length ?? 0) === 0) return null;
