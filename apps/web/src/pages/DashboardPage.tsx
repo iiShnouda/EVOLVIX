@@ -8,15 +8,7 @@ import {
   type KpiValue,
   type TranslationKey,
 } from '@skb/shared';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  Spinner,
-  type Tone,
-} from '../components/ui';
+import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { AreaTrend, Donut, Ring, SHARE_COLORS, Sparkline } from '../components/charts/DashCharts';
 import { CardPeriod, NowTag, PeriodPicker } from '../components/PeriodPicker';
