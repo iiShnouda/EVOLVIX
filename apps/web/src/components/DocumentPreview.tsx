@@ -9,11 +9,11 @@ import {
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
-import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { statusOf } from '../lib/status';
-import { printElement, safeName } from '../lib/print';
+import { safeName } from '../lib/print';
+import { PrintEditor } from './PrintEditor';
 import { useReportTools } from '../lib/report';
 import { TableColumns } from './TableColumns';
 import { useHiddenColumns, usePrintPaper } from '../lib/queries';
@@ -586,14 +586,17 @@ export function PrintOptions({
 function PrintOptionsPanel({
   options,
   onChange,
+  withPaper = true,
 }: {
   options: PaperOptions;
   onChange: ReturnType<typeof usePaperOptions>[1];
+  /** The paper size here too (the print editor has its own). */
+  withPaper?: boolean;
 }) {
   const { t } = useT();
   return (
     <>
-      <PaperChoice />
+      {withPaper && <PaperChoice />}
       <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
         <span>{t('print.textSize')}</span>
         <div className="flex overflow-hidden rounded-md border border-line">
@@ -638,8 +641,8 @@ function PrintOptionsPanel({
 
 /**
  * Before printing (owner, 2026-10-02: "when I press print, show the invoice's layout and the
- * paper"): the paper, type size and parts on one side, the document exactly as it will print on
- * the other; then print.
+ * paper", then "let me take things off and change them, then print"): the document's own options
+ * beside the print editor, which follows them until the copy is changed by hand.
  */
 export function PrintSetupSheet({
   doc,
@@ -652,36 +655,22 @@ export function PrintSetupSheet({
 }) {
   const { t } = useT();
   const [options, setOptions] = usePaperOptions();
-  const paper = useRef<HTMLDivElement>(null);
+  const [paper, setPaper] = useState<HTMLDivElement | null>(null);
   return (
-    <Sheet title={t('print.setup')} onClose={onClose} closeLabel={t('common.close')} wide="full">
-      <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <div className="space-y-3">
-          <div className="rounded-[var(--radius-app)] border border-line p-1">
-            <PrintOptionsPanel options={options} onChange={setOptions} />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              icon="print"
-              className="flex-1"
-              onClick={() => {
-                if (!paper.current) return;
-                printElement(paper.current, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
-                onPrinted?.();
-                onClose();
-              }}
-            >
-              {t('print.now')}
-            </Button>
-            <Button variant="ghost" onClick={onClose}>
-              {t('common.cancel')}
-            </Button>
-          </div>
-        </div>
-        <div className="max-h-[75vh] overflow-auto rounded-[var(--radius-app)] border border-line bg-white">
-          <InvoicePaper ref={paper} doc={doc} options={options} />
-        </div>
+    <>
+      {/* The document as the options make it; the editor copies it. */}
+      <div className="hidden">
+        <InvoicePaper ref={setPaper} doc={doc} options={options} />
       </div>
-    </Sheet>
+      <PrintEditor
+        source={paper}
+        live
+        zoomable={false}
+        fileTitle={safeName(`${t(`doc.${doc.type}`)} ${doc.number}`)}
+        onClose={onClose}
+        onPrinted={onPrinted}
+        side={<PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />}
+      />
+    </>
   );
 }

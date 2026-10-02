@@ -304,7 +304,7 @@ export function TableColumns({
   return (
     <div className={className}>
       {(choices.length > 1 || toolbar) && (
-        <div className="flex items-center justify-between gap-2 px-1 pb-1">
+        <div data-noprint className="flex items-center justify-between gap-2 px-1 pb-1">
           {choices.length > 1 ? (
             <ColumnMenu
               choices={choices}

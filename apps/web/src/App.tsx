@@ -22,6 +22,7 @@ import { Shell } from './components/shell/Shell';
 import { OfflineGate } from './components/OfflineGate';
 import { UpdateNotice } from './components/UpdateNotice';
 import { LeavePrompt } from './components/LeavePrompt';
+import { PrintEditorHost } from './components/PrintEditor';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
@@ -147,6 +148,7 @@ function ProtectedApp() {
       <RememberPage />
       <PrintPaper />
       <LeavePrompt />
+      <PrintEditorHost />
       <Shell />
     </>
   );

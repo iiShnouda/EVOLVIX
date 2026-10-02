@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { Party } from '@skb/shared';
 import { Card, PageHeader } from '../components/ui';
 import { PartyPicker } from '../components/PartyPicker';
-import { StatementBody } from '../components/LedgerStatementSheet';
+import { PartyAccount } from '../components/PartyAccount';
 import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 
@@ -13,7 +13,7 @@ const field =
 /**
  * Account statement (كشف الحساب) as its own page, like the old program (owner, 2026-10-01): pick
  * customers or suppliers, then the account by code or name; the period, branch and items are set
- * on the statement itself. `?party=<id>` opens one straight away.
+ * on the statement itself, with the whole account (PartyAccount). `?party=<id>` opens one.
  */
 export function StatementPage() {
   const { t } = useT();
@@ -65,9 +65,7 @@ export function StatementPage() {
         />
       </Card>
       {party ? (
-        <Card>
-          <StatementBody key={party.id} kind="parties" id={party.id} title={party.name} />
-        </Card>
+        <PartyAccount key={party.id} party={party} />
       ) : (
         <Card>
           <p className="py-6 text-center text-sm text-muted">{t('statement.pick')}</p>

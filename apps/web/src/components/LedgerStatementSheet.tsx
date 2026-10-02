@@ -90,17 +90,29 @@ export function StatementBody({
   kind,
   id,
   title,
+  department,
+  onDepartment,
+  before,
+  after,
 }: {
   kind: 'accounts' | 'parties';
   id: string;
   title: string;
+  /** The sales department shown, when the page around shares it (the party's account). */
+  department?: string;
+  onDepartment?: (id: string) => void;
+  /** More of the account above and below the statement; printed with it. */
+  before?: ReactNode;
+  after?: ReactNode;
 }) {
   const { t, locale } = useT();
   const [from, setFrom] = useState(() => `${companyToday().slice(0, 4)}-01-01`);
   const [to, setTo] = useState(companyToday);
   const isParty = kind === 'parties';
   const [branchId, setBranchId] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
+  const [ownDepartment, setOwnDepartment] = useState('');
+  const departmentId = department ?? ownDepartment;
+  const setDepartmentId = onDepartment ?? setOwnDepartment;
   const [warehouseId, setWarehouseId] = useState('');
   const [withItems, setWithItems] = useState(false);
   const branches = useAuth((s) => s.user?.branches ?? []);
@@ -350,6 +362,7 @@ export function StatementBody({
         </div>
       ) : (
         <div ref={paper}>
+          {before}
           <dl
             className={`mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm ${isParty ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}
           >
@@ -424,6 +437,7 @@ export function StatementBody({
               ))}
             </ul>
           )}
+          {after}
         </div>
       )}
     </>

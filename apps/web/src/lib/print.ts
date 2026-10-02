@@ -51,7 +51,101 @@ function pageRule() {
       : '@media print { @page { size: A4; margin: 12mm; } }';
 }
 
+/** A printout waiting in the print editor: the copy to print and the PDF's name. */
+export interface PrintJob {
+  node: HTMLElement;
+  fileTitle: string;
+}
+
+/** Opens the print editor (components/PrintEditor.tsx registers it); none = print at once. */
+let openEditor: ((job: PrintJob) => void) | null = null;
+export function setPrintEditor(open: ((job: PrintJob) => void) | null) {
+  openEditor = open;
+}
+
+/**
+ * A copy of a part of the screen as it prints, without its buttons and filters (`data-noprint`).
+ * Tables whose columns the person hid or moved (TableColumns, done with style rules) are copied as
+ * they look: hidden columns left out, the others in their places, so the copy stands on its own
+ * and a column taken off in the print editor takes nothing else with it.
+ */
+export function printClone(el: HTMLElement): HTMLElement {
+  const copy = el.cloneNode(true) as HTMLElement;
+  const from = Array.from(el.querySelectorAll<HTMLElement>('[data-cols]'));
+  const to = Array.from(copy.querySelectorAll<HTMLElement>('[data-cols]'));
+  from.forEach((src, i) => {
+    const dst = to[i];
+    if (!dst) return;
+    const srcTables = Array.from(src.querySelectorAll('table'));
+    Array.from(dst.querySelectorAll('table')).forEach((table, j) => {
+      const original = srcTables[j];
+      if (original) settleColumns(original, table, dst.hasAttribute('data-reorder'));
+    });
+    dst.removeAttribute('data-cols');
+    dst.removeAttribute('data-reorder');
+  });
+  copy.querySelectorAll('style, [data-noprint]').forEach((n) => n.remove());
+  return copy;
+}
+
+/** Copy a table's look into its copy: drop the hidden columns, put moved ones in their places. */
+function settleColumns(src: HTMLTableElement, dst: HTMLTableElement, reordered: boolean) {
+  const head = src.tHead?.rows[0] ?? src.rows[0];
+  if (!head) return;
+  const hidden = new Set<number>();
+  let col = 0;
+  for (const cell of Array.from(head.cells)) {
+    if (getComputedStyle(cell).display === 'none')
+      for (let k = 0; k < cell.colSpan; k++) hidden.add(col + k);
+    col += cell.colSpan;
+  }
+  const srcRows = Array.from(src.rows);
+  Array.from(dst.rows).forEach((row, r) => {
+    const cells = Array.from(row.cells);
+    const order = new Map<HTMLTableCellElement, number>();
+    if (reordered && cells.every((c) => c.colSpan === 1)) {
+      const srcCells = srcRows[r] ? Array.from(srcRows[r]!.cells) : [];
+      cells.forEach((c, k) => order.set(c, Number(getComputedStyle(srcCells[k] ?? c).order) || 0));
+    }
+    let at = 0;
+    for (const cell of cells) {
+      const span = cell.colSpan;
+      let off = 0;
+      for (let k = 0; k < span; k++) if (hidden.has(at + k)) off++;
+      at += span;
+      if (off >= span) cell.remove();
+      else if (off) cell.colSpan = span - off;
+      cell.style.removeProperty('display');
+      cell.style.removeProperty('width');
+    }
+    if (order.size)
+      Array.from(row.cells)
+        .sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0))
+        .forEach((c) => row.appendChild(c));
+  });
+}
+
+/** A copy of a part of the screen as it prints: the letterhead, the part and the footer. */
+export function printCopy(el: HTMLElement, frame?: PrintFrame): HTMLElement {
+  const box = document.createElement('div');
+  if (frame) box.appendChild(letterhead(frame));
+  box.appendChild(printClone(el));
+  if (frame) box.appendChild(div('print-foot', frame.footer));
+  return box;
+}
+
+/**
+ * Every print button (owner, 2026-10-02: "show me what the paper carries, let me take things off
+ * and change them, then print"): the copy opens in the print editor first; it prints from there.
+ */
 export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFrame) {
+  const node = printCopy(el, frame);
+  if (openEditor) openEditor({ node, fileTitle });
+  else printNow(node, fileTitle);
+}
+
+/** Print (or save as PDF) this copy now, as it is. */
+export function printNow(node: HTMLElement, fileTitle: string) {
   pageRule();
   let root = document.getElementById('print-root');
   if (!root) {
@@ -62,11 +156,7 @@ export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFr
   root.replaceChildren();
   root.dir = document.documentElement.dir || 'ltr';
   root.lang = document.documentElement.lang;
-  if (frame) root.appendChild(letterhead(frame));
-  const copy = el.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll('[data-noprint]').forEach((n) => n.remove());
-  root.appendChild(copy);
-  if (frame) root.appendChild(div('print-foot', frame.footer));
+  root.appendChild(node.cloneNode(true));
   document.body.classList.add('printing');
 
   const android = bridge();

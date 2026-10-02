@@ -185,6 +185,108 @@ input[type='number'] {
   break-before: auto;
 }
 
+/* The letterhead and footer of a printout, on paper and in the print editor's page. */
+.print-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--c-fg);
+}
+.print-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+.print-who {
+  flex: 1;
+}
+.print-company {
+  font-size: 16px;
+  font-weight: 700;
+}
+.print-what {
+  text-align: end;
+}
+.print-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.print-detail {
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.print-foot {
+  margin-top: 16px;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-line);
+  font-size: 10px;
+  color: var(--c-muted);
+}
+
+/*
+ * The print editor's page (components/PrintEditor.tsx): the printout on white in the light theme,
+ * whatever the screen theme is, laid out as it prints.
+ */
+.print-sheet {
+  --c-canvas: #ffffff;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f2f5;
+  --c-line: #d5d9e0;
+  --c-fg: #10151c;
+  --c-muted: #55607a;
+  --c-faint: #8a93a6;
+  --c-brand: #4f46e5;
+  --c-brand-fg: #ffffff;
+  --c-brand-soft: #eceafe;
+  --c-positive: #0f7a45;
+  --c-positive-soft: #e4f5ec;
+  --c-warning: #9a6417;
+  --c-warning-soft: #fbf1de;
+  --c-destructive: #b92e23;
+  --c-destructive-soft: #fbe6e4;
+  --c-info: #2563eb;
+  --c-info-soft: #e4edfd;
+  --shadow-card: none;
+  --shadow-pop: none;
+  color-scheme: light;
+  background: #ffffff;
+  color: var(--c-fg);
+  font-size: 12px;
+}
+.print-sheet * {
+  overflow: visible !important;
+  max-height: none !important;
+  box-shadow: none !important;
+}
+.print-sheet .h-full,
+.print-sheet .flex-1 {
+  height: auto !important;
+  flex: none !important;
+}
+.print-sheet .sticky {
+  position: static !important;
+}
+/* A wide screen table fits the paper (on screen it may scroll sideways). */
+.print-sheet [class*='min-w-'] {
+  min-width: 0 !important;
+}
+.print-sheet:focus {
+  outline: none;
+}
+/* What is picked to be taken off. */
+.print-sheet [data-pick] {
+  outline: 2px dashed #b92e23 !important;
+  outline-offset: -1px;
+  background-color: #fbe6e4 !important;
+}
+.print-sheet[data-mode='part'] *,
+.print-sheet[data-mode='column'] * {
+  cursor: pointer;
+}
+
 @media print {
   :root,
   :root[data-theme='dark'],
@@ -245,50 +347,14 @@ input[type='number'] {
   #print-root .sticky {
     position: static !important;
   }
+  #print-root [class*='min-w-'] {
+    min-width: 0 !important;
+  }
   #print-root tr,
   #print-root .print-avoid {
     break-inside: avoid;
   }
   #print-root thead {
     display: table-header-group;
-  }
-  .print-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
-    padding-bottom: 8px;
-    margin-bottom: 12px;
-    border-bottom: 2px solid var(--c-fg);
-  }
-  .print-logo {
-    width: 56px;
-    height: 56px;
-    object-fit: contain;
-  }
-  .print-who {
-    flex: 1;
-  }
-  .print-company {
-    font-size: 16px;
-    font-weight: 700;
-  }
-  .print-what {
-    text-align: end;
-  }
-  .print-title {
-    font-size: 14px;
-    font-weight: 600;
-  }
-  .print-detail {
-    font-size: 11px;
-    color: var(--c-muted);
-  }
-  .print-foot {
-    margin-top: 16px;
-    padding-top: 6px;
-    border-top: 1px solid var(--c-line);
-    font-size: 10px;
-    color: var(--c-muted);
   }
 }
