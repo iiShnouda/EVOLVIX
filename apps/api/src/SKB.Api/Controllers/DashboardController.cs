@@ -21,14 +21,21 @@ public sealed class DashboardController : ControllerBase
     public DashboardController(AppDbContext db) => _db = db;
 
     /// <param name="days">How many days the sales / purchases trend covers (7 by default, up to 31).</param>
+    /// <param name="from">With <paramref name="to"/>: a period of company days (owner, 2026-10-02: "by
+    /// day, week, month, year or the dates I want"). Revenue, purchases, the trend and the latest
+    /// documents are for that period; balances, cash and low stock are as they are now.</param>
     [HttpGet]
-    public async Task<ActionResult<DashboardDto>> Get([FromQuery] int days = TrendDays)
+    public async Task<ActionResult<DashboardDto>> Get([FromQuery] int days = TrendDays,
+        [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) => q.InBranches(User, d => d.BranchId);
+        var period = Period(from, to);
+        if (period is { Error: true }) return BadRequest(new { message = "Choose up to ten years, the start before the end.", code = "bad_range" });
+        var (pStart, pEnd) = period is { } pr ? CompanyClock.Days(pr.From, pr.To) : (DateTime.MinValue, DateTime.MaxValue);
 
         // Net of returns: sales returns reduce revenue, purchase returns reduce purchases.
         var totals = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Status != DocumentStatus.CANCELLED)
+            .Where(d => d.Status != DocumentStatus.CANCELLED && d.IssueDate >= pStart && d.IssueDate < pEnd)
             .GroupBy(d => d.Type)
             .Select(g => new { Type = g.Key, Total = g.Sum(d => d.GrandTotal) })
             .ToListAsync();
@@ -56,7 +63,8 @@ public sealed class DashboardController : ControllerBase
 
         // Posted documents only: quotations and pending invoices move nothing.
         var recent = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Type != DocumentType.QUOTATION && d.Type != DocumentType.SALES_ORDER)
+            .Where(d => d.Type != DocumentType.QUOTATION && d.Type != DocumentType.SALES_ORDER
+                        && d.IssueDate >= pStart && d.IssueDate < pEnd)
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .OrderByDescending(d => d.IssueDate).Take(6).ToListAsync();
 
@@ -72,7 +80,9 @@ public sealed class DashboardController : ControllerBase
 
         return Ok(new DashboardDto(
             kpis,
-            await BuildTrendAsync(Math.Clamp(days, 1, 31)),
+            period is { } tp
+                ? await BuildTrendAsync(tp.From, tp.To)
+                : await BuildTrendAsync(CompanyClock.Today.AddDays(-(Math.Clamp(days, 1, 31) - 1)), CompanyClock.Today),
             lowStock.Select(p => Costs.Guard(User, Mapper.ToProduct(p, book),
                 ProductsController.PurchaseLevelIds(book))).ToArray(),
             recent.Select(Mapper.ToSummary).ToArray(),
@@ -84,14 +94,30 @@ public sealed class DashboardController : ControllerBase
     /// items, sales per branch, money, cheques due this week, invoices waiting for approval and
     /// customers over their limit. Each part only for those who may see it, in their branches.
     /// </summary>
+    /// <param name="from">With <paramref name="to"/>: a period of company days. "Today" and "this
+    /// month" become that period (against the same number of days before it), the rankings are for
+    /// it and the cheques are those due by its end. Money, approvals and limits are as they are now.</param>
     [HttpGet("more")]
-    public async Task<ActionResult<DashboardMoreDto>> More()
+    public async Task<ActionResult<DashboardMoreDto>> More([FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         bool Can(string p) => User.HasClaim("permission", p);
+        var period = Period(from, to);
+        if (period is { Error: true }) return BadRequest(new { message = "Choose up to ten years, the start before the end.", code = "bad_range" });
         var today = CompanyClock.Today;
         var dayStart = CompanyClock.StartOf(today);
+        var dayEnd = DateTime.MaxValue;
         var monthStart = CompanyClock.StartOf(new DateOnly(today.Year, today.Month, 1));
+        var monthEnd = DateTime.MaxValue;
         var lastMonthStart = CompanyClock.StartOf(new DateOnly(today.Year, today.Month, 1).AddMonths(-1));
+        var notesUntil = today.AddDays(7);
+        if (period is { } pr)
+        {
+            // The period, and as many days just before it to compare with.
+            (monthStart, monthEnd) = CompanyClock.Days(pr.From, pr.To);
+            lastMonthStart = CompanyClock.StartOf(pr.From.AddDays(-(pr.To.DayNumber - pr.From.DayNumber + 1)));
+            (dayStart, dayEnd) = (monthStart, monthEnd);
+            notesUntil = pr.To;
+        }
         var sales = _db.SalesDocuments.InBranches(User, d => d.BranchId).Where(d =>
             d.Status != DocumentStatus.CANCELLED
             && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN));
@@ -101,13 +127,13 @@ public sealed class DashboardController : ControllerBase
         DashRankDto[]? topCustomers = null, topItems = null, byBranch = null;
         if (Can(Permissions.SalesView))
         {
-            var t = await sales.Where(d => d.IssueDate >= dayStart).GroupBy(d => d.Type)
+            var t = await sales.Where(d => d.IssueDate >= dayStart && d.IssueDate < dayEnd).GroupBy(d => d.Type)
                 .Select(g => new { g.Key, Total = g.Sum(d => d.GrandTotal), Count = g.Count() }).ToListAsync();
             var inv = t.FirstOrDefault(x => x.Key == DocumentType.SALES_INVOICE);
             var ret = t.FirstOrDefault(x => x.Key == DocumentType.SALES_RETURN);
             todayDto = new DashTodayDto((inv?.Total ?? 0) - (ret?.Total ?? 0), inv?.Count ?? 0, ret?.Total ?? 0);
 
-            var m = await sales.Where(d => d.IssueDate >= lastMonthStart)
+            var m = await sales.Where(d => d.IssueDate >= lastMonthStart && d.IssueDate < monthEnd)
                 .GroupBy(d => new { This = d.IssueDate >= monthStart, d.Type })
                 .Select(g => new { g.Key.This, g.Key.Type, Total = g.Sum(d => d.GrandTotal), Profit = g.Sum(d => d.ProfitTotal) })
                 .ToListAsync();
@@ -117,12 +143,13 @@ public sealed class DashboardController : ControllerBase
             long? expenses = null;
             if (Can(Permissions.ReceiptsView))
                 expenses = await _db.Vouchers.InBranches(User, v => v.BranchId)
-                    .Where(v => v.Type == VoucherType.EXPENSE && v.Status == VoucherStatus.POSTED && v.CreatedAt >= monthStart)
+                    .Where(v => v.Type == VoucherType.EXPENSE && v.Status == VoucherStatus.POSTED
+                                && v.CreatedAt >= monthStart && v.CreatedAt < monthEnd)
                     .SumAsync(v => (long?)v.Amount) ?? 0;
             month = new DashMonthDto(Net(true), Net(false),
                 Can(Permissions.CostsView) ? Net(true, profit: true) : null, expenses);
 
-            var monthSales = sales.Where(d => d.IssueDate >= monthStart);
+            var monthSales = sales.Where(d => d.IssueDate >= monthStart && d.IssueDate < monthEnd);
             var customers = await monthSales.GroupBy(d => d.PartyId)
                 .Select(g => new
                 {
@@ -169,7 +196,7 @@ public sealed class DashboardController : ControllerBase
         DashNotesDueDto? notes = null;
         if (Can(Permissions.NotesView))
         {
-            var weekEnd = CompanyClock.StartOf(today.AddDays(8));
+            var weekEnd = CompanyClock.StartOf(notesUntil.AddDays(1));
             var due = await _db.Notes.InBranches(User, n => n.BranchId)
                 .Where(n => n.DueDate < weekEnd
                     && (n.Status == NoteStatus.IN_HAND || n.Status == NoteStatus.UNDER_COLLECTION || n.Status == NoteStatus.ISSUED))
@@ -203,36 +230,60 @@ public sealed class DashboardController : ControllerBase
             overLimit, overCount, stockValue));
     }
 
-    private async Task<TrendPointDto[]> BuildTrendAsync(int trendDays)
+    /// <summary>
+    /// A period asked for (yyyy-MM-dd company days, both or neither): null when not asked, Error
+    /// when it is wrong (the end before the start, or more than ten years).
+    /// </summary>
+    private static (DateOnly From, DateOnly To, bool Error)? Period(string? from, string? to)
     {
-        var first = CompanyClock.Today.AddDays(-(trendDays - 1));
-        var since = CompanyClock.StartOf(first);
-        var q = _db.SalesDocuments.Where(d =>
-            d.IssueDate >= since && d.Status != DocumentStatus.CANCELLED &&
-            (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN ||
-             d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN));
-        q = q.InBranches(User, d => d.BranchId);
+        if (string.IsNullOrWhiteSpace(from) && string.IsNullOrWhiteSpace(to)) return null;
+        var f = CompanyClock.ParseDay(from);
+        var t = CompanyClock.ParseDay(to) ?? f;
+        if (f is null || t is null || t < f || t.Value.DayNumber - f.Value.DayNumber > 3660)
+            return (default, default, true);
+        return (f.Value, t.Value, false);
+    }
 
-        var rows = await q.Select(d => new { d.IssueDate, d.Type, d.GrandTotal }).ToListAsync();
+    /// <summary>
+    /// Net sales and purchases between two company days: one point a day for up to 62 days, else
+    /// one a month (dated its first day). Summed by the database by company day.
+    /// </summary>
+    private async Task<TrendPointDto[]> BuildTrendAsync(DateOnly first, DateOnly last)
+    {
+        var monthly = last.DayNumber - first.DayNumber + 1 > 62;
+        // Days still to come have nothing yet: the line stops at today.
+        if (first <= CompanyClock.Today && last > CompanyClock.Today) last = CompanyClock.Today;
+        var (since, until) = CompanyClock.Days(first, last);
+        var zone = CompanyClock.ZoneId;
+        var rows = await _db.SalesDocuments.InBranches(User, d => d.BranchId)
+            .Where(d => d.IssueDate >= since && d.IssueDate < until && d.Status != DocumentStatus.CANCELLED &&
+                        (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN ||
+                         d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN))
+            .Select(d => new { At = AppDbContext.LocalTime(zone, d.IssueDate), d.Type, d.GrandTotal })
+            .GroupBy(d => new { d.At.Year, d.At.Month, Day = monthly ? 1 : d.At.Day, d.Type })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Type, Total = g.Sum(d => d.GrandTotal) })
+            .ToListAsync();
 
-        var buckets = new Dictionary<string, (long Sales, long Purchases)>();
-        for (var i = 0; i < trendDays; i++)
-            buckets[first.AddDays(i).ToString("yyyy-MM-dd")] = (0, 0);
+        var buckets = new SortedDictionary<string, (long Sales, long Purchases)>(StringComparer.Ordinal);
+        if (monthly)
+            for (var m = new DateOnly(first.Year, first.Month, 1); m <= last; m = m.AddMonths(1))
+                buckets[m.ToString("yyyy-MM-dd")] = (0, 0);
+        else
+            for (var d = first; d <= last; d = d.AddDays(1))
+                buckets[d.ToString("yyyy-MM-dd")] = (0, 0);
 
         foreach (var r in rows)
         {
-            var key = CompanyClock.DayOf(r.IssueDate).ToString("yyyy-MM-dd");
+            var key = new DateOnly(r.Year, r.Month, r.Day).ToString("yyyy-MM-dd");
             if (!buckets.TryGetValue(key, out var b)) continue;
             buckets[key] = r.Type switch
             {
-                DocumentType.SALES_INVOICE => (b.Sales + r.GrandTotal, b.Purchases),
-                DocumentType.SALES_RETURN => (b.Sales - r.GrandTotal, b.Purchases),
-                DocumentType.PURCHASE_INVOICE => (b.Sales, b.Purchases + r.GrandTotal),
-                _ => (b.Sales, b.Purchases - r.GrandTotal),
+                DocumentType.SALES_INVOICE => (b.Sales + r.Total, b.Purchases),
+                DocumentType.SALES_RETURN => (b.Sales - r.Total, b.Purchases),
+                DocumentType.PURCHASE_INVOICE => (b.Sales, b.Purchases + r.Total),
+                _ => (b.Sales, b.Purchases - r.Total),
             };
         }
-
-        return buckets.OrderBy(kv => kv.Key)
-            .Select(kv => new TrendPointDto(kv.Key, kv.Value.Sales, kv.Value.Purchases)).ToArray();
+        return buckets.Select(kv => new TrendPointDto(kv.Key, kv.Value.Sales, kv.Value.Purchases)).ToArray();
     }
 }

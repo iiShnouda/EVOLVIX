@@ -1,5 +1,5 @@
 // The dashboard's other widgets (owner, 2026-10-01): each part only for those who may see it.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, addDays } from './lib.mjs';
 
 const owner = await login('owner@skb.local');
 const karim = await login('karim@skb.local'); // SALES
@@ -15,6 +15,22 @@ const sales = ok('sales staff', await karim.get('/dashboard/more'));
 eq('no profit or stock value for them', [sales.month?.profit ?? null, sales.stockValue], [null, null]);
 eq('no money accounts or cheques', [sales.accounts, sales.notesDue], [null, null]);
 eq('no approvals count', sales.awaitingApproval, null);
+
+console.log('== any period: a day, a month, a year, any dates (owner, 2026-10-02)');
+const today = companyToday();
+const day = ok('one day', await owner.get(`/dashboard?from=${today}&to=${today}`));
+eq('one point for one day', day.trend.length, 1);
+const dayMore = ok('one day, the rest', await owner.get(`/dashboard/more?from=${today}&to=${today}`));
+eq("the day's sales are the same either way", dayMore.month.sales, dayMore.today.sales);
+const year = ok('a year', await owner.get(`/dashboard?from=${today.slice(0, 4)}-01-01&to=${today.slice(0, 4)}-12-31`));
+check('a point a month, up to this month', year.trend.length === Number(today.slice(5, 7)), year.trend.length);
+eq('the year holds the day', year.kpis[0].value >= day.kpis[0].value, true);
+const sum = year.trend.reduce((a, d) => a + d.sales, 0);
+eq("the months add up to the year's revenue", sum, year.kpis[0].value);
+eq('end before start', (await owner.get(`/dashboard?from=${today}&to=${addDays(today, -1)}`)).data?.code, 'bad_range');
+eq('more than ten years', (await owner.get('/dashboard/more?from=2000-01-01&to=2026-01-01')).data?.code, 'bad_range');
+const far = ok('days with nothing', await owner.get('/dashboard/more?from=2001-01-01&to=2001-01-31'));
+eq('nothing sold then', [far.month.sales, far.topItems.length], [0, 0]);
 
 console.log('== branch, warehouse and department in the searches');
 const branches = (await owner.get('/branches')).data;

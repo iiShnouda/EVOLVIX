@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { periodQuery, type Period } from './period';
 import { toMinor } from '@skb/shared';
 import type {
   Season,
@@ -136,20 +137,25 @@ import { useEffect } from 'react';
 import { api } from './api';
 import { setPrintPaper } from './print';
 
-/** The dashboard; `days` = how many days its sales / purchases trend covers (7 or 30). */
-export function useDashboard(days = 7) {
+/**
+ * The dashboard for a period (owner, 2026-10-02: day, week, month, year or any dates): revenue,
+ * purchases, the trend and the latest documents of that period; balances as they are now.
+ */
+export function useDashboard(period?: Period) {
   return useQuery({
-    queryKey: ['dashboard', days],
-    queryFn: () => api.get<DashboardData>(`/dashboard?days=${days}`),
+    queryKey: ['dashboard', period?.from ?? '', period?.to ?? ''],
+    queryFn: () => api.get<DashboardData>(`/dashboard${period ? `?${periodQuery(period)}` : ''}`),
     placeholderData: (prev) => prev,
   });
 }
 
-/** The dashboard's other widgets (today, the month, rankings, money, cheques, limits). */
-export function useDashboardMore() {
+/** The dashboard's other widgets for a period (the period's sales, rankings, cheques due by its end). */
+export function useDashboardMore(period?: Period) {
   return useQuery({
-    queryKey: ['dashboard', 'more'],
-    queryFn: () => api.get<DashboardMore>('/dashboard/more'),
+    queryKey: ['dashboard', 'more', period?.from ?? '', period?.to ?? ''],
+    queryFn: () =>
+      api.get<DashboardMore>(`/dashboard/more${period ? `?${periodQuery(period)}` : ''}`),
+    placeholderData: (prev) => prev,
   });
 }
 

@@ -71,11 +71,14 @@ export function AreaTrend({
   locale,
   currency,
   labels,
+  monthly = false,
 }: {
   data: TrendPoint[];
   locale: Locale;
   currency: string;
   labels: { sales: string; purchases: string };
+  /** One point a month (a long period): label by month. */
+  monthly?: boolean;
 }) {
   const id = useId();
   const [hover, setHover] = useState<number | null>(null);
@@ -176,7 +179,13 @@ export function AreaTrend({
               fill="var(--c-faint)"
             >
               {new Date(d.date).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-                ...(data.length > 8 ? { day: 'numeric', month: 'short' } : { weekday: 'short' }),
+                ...(monthly
+                  ? { month: 'short', ...(data.length > 12 ? { year: '2-digit' } : {}) }
+                  : data.length > 8
+                    ? { day: 'numeric', month: 'short' }
+                    : data.length > 1
+                      ? { weekday: 'short' }
+                      : { day: 'numeric', month: 'short' }),
                 timeZone: 'UTC',
               })}
             </text>
@@ -203,7 +212,14 @@ export function AreaTrend({
           className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-[var(--radius-app)] border border-line bg-surface px-3 py-2 text-xs shadow-lg"
           style={{ left: `${Math.min(85, Math.max(15, (x(hover!) / W) * 100))}%` }}
         >
-          <p className="mb-1 font-semibold">{formatDate(shown.date, locale)}</p>
+          <p className="mb-1 font-semibold">
+            {monthly
+              ? new Date(`${shown.date}T12:00:00Z`).toLocaleDateString(
+                  locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
+                  { month: 'long', year: 'numeric', timeZone: 'UTC' },
+                )
+              : formatDate(shown.date, locale)}
+          </p>
           <p className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-brand" /> {labels.sales}:{' '}
             <span className="font-medium tnum">{money(shown.sales)}</span>

@@ -1,11 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   formatDate,
   formatMoney,
   formatNumber,
   type DashRank,
   type DashboardData,
-  type DashboardMore,
   type KpiValue,
   type TranslationKey,
 } from '@skb/shared';
@@ -15,15 +14,16 @@ import {
   Card,
   EmptyState,
   PageHeader,
-  SectionTitle,
   Spinner,
   type Tone,
 } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { AreaTrend, Donut, Ring, SHARE_COLORS, Sparkline } from '../components/charts/DashCharts';
+import { CardPeriod, NowTag, PeriodPicker } from '../components/PeriodPicker';
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
+import { periodOf, type Period } from '../lib/period';
 import { useDashboard, useDashboardMore, useHiddenColumns } from '../lib/queries';
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
@@ -36,6 +36,9 @@ const KPI_ICON: Record<string, string> = {
   'kpi.lowStock': 'inventory',
   'kpi.cashPosition': 'analytics',
 };
+
+/** The stat cards that count a period; the others are balances as they are now. */
+const PERIOD_KPIS = new Set(['kpi.revenue', 'kpi.purchases']);
 
 /** Each tone's soft tile and its colour (the icon tiles and sparklines of the stat cards). */
 const TONE_TILE: Record<Tone, { tile: string; text: string; color: string }> = {
@@ -68,20 +71,42 @@ const WIDGETS = [
 ] as const satisfies readonly (readonly [string, TranslationKey])[];
 type Widget = (typeof WIDGETS)[number][0];
 
+/** The main period and the company's currency, for every card. */
+const Main = createContext<{ period?: Period; currency: string }>({ currency: 'EGP' });
+
+/** A card's period, whether it is its own, and how to change it (null = back to the main one). */
+interface PeriodProps {
+  period: Period;
+  own: boolean;
+  onPeriod: (p: Period | null) => void;
+}
+
 /**
- * The dashboard, laid out like the owner's reference pictures (2026-10-02): stat cards with
- * icon tiles and small trend lines, the sales / purchases area chart, the month against the last
- * one as a ring, best-selling items, top customers, sales by branch as a donut, the latest
- * documents as a history table, and what needs attention. Each part shows only what the server
- * sent for the person, and each person picks the parts they see.
+ * The dashboard, laid out like the owner's reference pictures (2026-10-02). One period at the top
+ * (a day, week, month, year or any dates) drives every card, and each card that counts a period
+ * can be given its own (owner, 2026-10-02: "every part, by day, week, month, year or the dates I
+ * want"). Balances, cash, limits and low stock are as they are now and say so. Each part shows only
+ * what the server sent for the person, and each person picks the parts they see.
  */
 export function DashboardPage() {
   const { t } = useT();
   const can = useCan();
   const navigate = useNavigate();
-  const [days, setDays] = useState(7);
-  const { data, isLoading, isError, refetch } = useDashboard(days);
-  const more = useDashboardMore().data;
+  const [period, setPeriod] = useState<Period>(() => periodOf('month'));
+  const [own, setOwn] = useState<Partial<Record<Widget, Period>>>({});
+  const cardPeriod = (w: Widget): PeriodProps => ({
+    period: own[w] ?? period,
+    own: !!own[w],
+    onPeriod: (p) =>
+      setOwn((o) => {
+        const next = { ...o };
+        if (p) next[w] = p;
+        else delete next[w];
+        return next;
+      }),
+  });
+  const { data, isLoading, isError, refetch } = useDashboard(period);
+  const more = useDashboardMore(period).data;
   // Kept on the server for the person, like hidden columns.
   const [hidden, setHidden] = useHiddenColumns('dashboard.widgets');
   const shows = (w: Widget) => !hidden.includes(w);
@@ -108,106 +133,148 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="min-w-0 space-y-5">
-      <PageHeader
-        title={t('nav.dashboard')}
-        action={
-          <div className="flex gap-2">
-            <Button icon="settings" size="sm" variant="ghost" onClick={() => setChoosing(true)}>
-              {t('dash.customize')}
-            </Button>
-            {can('sales:create') && (
-              <Button
-                icon="plus"
-                size="sm"
-                className="hidden sm:inline-flex"
-                onClick={() => navigate('/sales/new')}
-              >
-                {t('dashboard.newInvoice')}
+    <Main.Provider value={{ period, currency: data.currency }}>
+      <div className="min-w-0 space-y-5">
+        <PageHeader
+          title={t('nav.dashboard')}
+          action={
+            <div className="flex gap-2">
+              <Button icon="settings" size="sm" variant="ghost" onClick={() => setChoosing(true)}>
+                {t('dash.customize')}
               </Button>
-            )}
-            {can('receipts:create') && (
-              <Button
-                icon="plus"
-                size="sm"
-                variant="secondary"
-                className="hidden sm:inline-flex"
-                onClick={() => navigate('/receipts?tab=vouchers&new=receipt')}
-              >
-                {t('dashboard.newReceipt')}
-              </Button>
-            )}
+              {can('sales:create') && (
+                <Button
+                  icon="plus"
+                  size="sm"
+                  className="hidden sm:inline-flex"
+                  onClick={() => navigate('/sales/new')}
+                >
+                  {t('dashboard.newInvoice')}
+                </Button>
+              )}
+              {can('receipts:create') && (
+                <Button
+                  icon="plus"
+                  size="sm"
+                  variant="secondary"
+                  className="hidden sm:inline-flex"
+                  onClick={() => navigate('/receipts?tab=vouchers&new=receipt')}
+                >
+                  {t('dashboard.newReceipt')}
+                </Button>
+              )}
+            </div>
+          }
+        />
+
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface px-4 py-3">
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <Icon name="calendar" size={16} className="text-brand" />
+            {t('period.title')}
+          </span>
+          <PeriodPicker value={period} onChange={setPeriod} />
+        </div>
+
+        {shows('kpis') && <KpiRow {...cardPeriod('kpis')} />}
+
+        <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
+          {shows('trend') && (
+            <TrendCard
+              {...cardPeriod('trend')}
+              className={more?.month && shows('month') ? 'xl:col-span-2' : 'xl:col-span-3'}
+            />
+          )}
+          {more?.month && shows('month') && (
+            <MonthCard {...cardPeriod('month')} withCounts={shows('today')} />
+          )}
+        </div>
+
+        {more && (
+          <RankCards
+            items={shows('topItems') && !!more.topItems ? cardPeriod('topItems') : null}
+            customers={
+              shows('topCustomers') && !!more.topCustomers ? cardPeriod('topCustomers') : null
+            }
+            branches={shows('branches') && !!more.branches ? cardPeriod('branches') : null}
+          />
+        )}
+
+        <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
+          {shows('recent') && (
+            <HistoryCard
+              {...cardPeriod('recent')}
+              className="xl:col-span-2"
+              onOpen={(id) => navigate(`/sales?doc=${id}`)}
+            />
+          )}
+          <div className="space-y-4">
+            {more && shows('alerts') && <AlertsCard />}
+            {more?.notesDue && shows('notesDue') && <NotesDueCard {...cardPeriod('notesDue')} />}
+            {more?.accounts && shows('accounts') && <AccountsCard />}
+            {shows('lowStock') && <LowStockCard data={data} />}
           </div>
-        }
-      />
-
-      {shows('kpis') && (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6 [&>*]:min-w-0">
-          {data.kpis.map((kpi) => (
-            <KpiCard key={kpi.key} kpi={kpi} data={data} />
-          ))}
         </div>
-      )}
 
-      <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
-        {shows('trend') && (
-          <TrendCard
-            data={data}
-            days={days}
-            onDays={setDays}
-            className={more?.month && shows('month') ? 'xl:col-span-2' : 'xl:col-span-3'}
-          />
-        )}
-        {more?.month && shows('month') && (
-          <MonthCard more={more} currency={data.currency} withToday={shows('today')} />
+        {choosing && (
+          <Sheet
+            title={t('dash.shown')}
+            onClose={() => setChoosing(false)}
+            closeLabel={t('common.close')}
+          >
+            <ul className="space-y-1">
+              {WIDGETS.map(([id, label]) => (
+                <li key={id}>
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-app)] px-2 py-2 text-sm hover:bg-surface-2">
+                    <input
+                      type="checkbox"
+                      checked={shows(id)}
+                      onChange={() =>
+                        setHidden(shows(id) ? [...hidden, id] : hidden.filter((x) => x !== id))
+                      }
+                    />
+                    {t(label)}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </Sheet>
         )}
       </div>
+    </Main.Provider>
+  );
+}
 
-      {more && <Rankings more={more} shows={shows} currency={data.currency} />}
-
-      <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
-        {shows('recent') && (
-          <HistoryCard
-            data={data}
-            className={'xl:col-span-2'}
-            onOpen={(id) => navigate(`/sales?doc=${id}`)}
-          />
-        )}
-        <div className="space-y-4">
-          {more && <SideCards more={more} shows={shows} currency={data.currency} />}
-          {shows('lowStock') && <LowStockCard data={data} />}
-        </div>
+/** A card's title with its period button (or a "now" tag) beside it. */
+function CardHead({ title, p, extra }: { title: ReactNode; p?: PeriodProps; extra?: ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{title}</h2>
+      <div className="flex items-center gap-2">
+        {extra}
+        {p ? <CardPeriod value={p.period} own={p.own} onChange={p.onPeriod} /> : <NowTag />}
       </div>
-
-      {choosing && (
-        <Sheet
-          title={t('dash.shown')}
-          onClose={() => setChoosing(false)}
-          closeLabel={t('common.close')}
-        >
-          <ul className="space-y-1">
-            {WIDGETS.map(([id, label]) => (
-              <li key={id}>
-                <label className="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-app)] px-2 py-2 text-sm hover:bg-surface-2">
-                  <input
-                    type="checkbox"
-                    checked={shows(id)}
-                    onChange={() =>
-                      setHidden(shows(id) ? [...hidden, id] : hidden.filter((x) => x !== id))
-                    }
-                  />
-                  {t(label)}
-                </label>
-              </li>
-            ))}
-          </ul>
-        </Sheet>
-      )}
     </div>
   );
 }
 
-/** A stat card: coloured icon tile, the value, and the recent trend where there is one. */
+/** The stat cards: revenue and purchases for the period, the rest as they are now. */
+function KpiRow(p: PeriodProps) {
+  const { t } = useT();
+  const { data } = useDashboard(p.period);
+  if (!data) return null;
+  return (
+    <section>
+      <CardHead title={t('dash.w.kpis')} p={p} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6 [&>*]:min-w-0">
+        {data.kpis.map((kpi) => (
+          <KpiCard key={kpi.key} kpi={kpi} data={data} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** A stat card: coloured icon tile, the value, and the period's trend where there is one. */
 function KpiCard({ kpi, data }: { kpi: KpiValue; data: DashboardData }) {
   const { t, locale } = useT();
   const tone = (KPI_TONE_MAP[kpi.tone] ?? 'neutral') as Tone;
@@ -229,11 +296,12 @@ function KpiCard({ kpi, data }: { kpi: KpiValue; data: DashboardData }) {
         >
           <Icon name={KPI_ICON[kpi.key] ?? 'analytics'} size={20} />
         </span>
-        <span className="text-end text-xs font-medium text-muted">
+        <span className="flex flex-col items-end gap-1 text-end text-xs font-medium text-muted">
           {t(kpi.key as TranslationKey)}
+          {!PERIOD_KPIS.has(kpi.key) && <NowTag />}
         </span>
       </div>
-      <p className="mt-3 text-base font-bold break-words tnum sm:text-xl">{value}</p>
+      <p className="mt-3 text-[15px] font-bold whitespace-nowrap tnum sm:text-xl">{value}</p>
       {series && series.some((v) => v !== 0) ? (
         <div className="mt-auto pt-2">
           <Sparkline values={series} color={style.color} />
@@ -245,89 +313,58 @@ function KpiCard({ kpi, data }: { kpi: KpiValue; data: DashboardData }) {
   );
 }
 
-/** Sales against purchases over the last 7 or 30 days, with the totals for that time. */
-function TrendCard({
-  data,
-  days,
-  onDays,
-  className,
-}: {
-  data: DashboardData;
-  days: number;
-  onDays: (d: number) => void;
-  className?: string;
-}) {
+/** Sales against purchases over the period (a point a day, or a month for long periods). */
+function TrendCard({ className, ...p }: PeriodProps & { className?: string }) {
   const { t, locale } = useT();
+  const { data } = useDashboard(p.period);
+  if (!data) return null;
   const money = (v: number) => formatMoney(v, data.currency, locale);
   const sales = data.trend.reduce((a, d) => a + d.sales, 0);
   const purchases = data.trend.reduce((a, d) => a + d.purchases, 0);
+  const days = (Date.parse(p.period.to) - Date.parse(p.period.from)) / 86_400_000 + 1;
   return (
     <Card className={className}>
-      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">{t('dashboard.trend')}</h2>
-          <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            <span className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-brand" />
-              <span className="text-muted">{t('nav.sales')}</span>
-              <span className="font-semibold tnum">{money(sales)}</span>
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-info" />
-              <span className="text-muted">{t('nav.purchases')}</span>
-              <span className="font-semibold tnum">{money(purchases)}</span>
-            </span>
-          </div>
-        </div>
-        <div
-          role="tablist"
-          className="flex gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-        >
-          {[7, 30].map((d) => (
-            <button
-              key={d}
-              role="tab"
-              aria-selected={days === d}
-              onClick={() => onDays(d)}
-              className={`h-7 rounded-lg px-3 text-xs font-medium transition-colors ${
-                days === d ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-              }`}
-            >
-              {t(d === 7 ? 'dash.days7' : 'dash.days30')}
-            </button>
-          ))}
-        </div>
+      <CardHead title={t('dashboard.trend')} p={p} />
+      <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-brand" />
+          <span className="text-muted">{t('nav.sales')}</span>
+          <span className="font-semibold tnum">{money(sales)}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-info" />
+          <span className="text-muted">{t('nav.purchases')}</span>
+          <span className="font-semibold tnum">{money(purchases)}</span>
+        </span>
       </div>
       <AreaTrend
         data={data.trend}
         locale={locale}
         currency={data.currency}
+        monthly={days > 62}
         labels={{ sales: t('nav.sales'), purchases: t('nav.purchases') }}
       />
     </Card>
   );
 }
 
-/** This month against the last as a ring, with today's figures under it. */
-function MonthCard({
-  more,
-  currency,
-  withToday,
-}: {
-  more: DashboardMore;
-  currency: string;
-  withToday: boolean;
-}) {
+/** The period's sales against the same number of days before it, as a ring. */
+function MonthCard({ withCounts, ...p }: PeriodProps & { withCounts: boolean }) {
   const { t, locale } = useT();
   const seeCosts = useCan()('costs:view');
+  const { data: more } = useDashboardMore(p.period);
+  const currency = useContext(Main).currency;
+  if (!more?.month) return null;
   const money = (v: number) => formatMoney(v, currency, locale);
-  const month = more.month!;
+  const month = more.month;
   const percent = month.lastMonth > 0 ? Math.round((month.sales * 100) / month.lastMonth) : null;
   const change = percent != null ? percent - 100 : null;
   return (
     <Card className="flex flex-col">
-      <SectionTitle
-        action={
+      <CardHead
+        title={t('dash.w.month')}
+        p={p}
+        extra={
           change != null ? (
             <Badge tone={change >= 0 ? 'positive' : 'destructive'}>
               <span className="tnum" dir="ltr">
@@ -337,9 +374,7 @@ function MonthCard({
             </Badge>
           ) : undefined
         }
-      >
-        {t('dash.w.month')}
-      </SectionTitle>
+      />
       <div className="flex flex-wrap items-center justify-center gap-4">
         <Ring percent={percent ?? (month.sales > 0 ? 100 : 0)} color="var(--c-brand)">
           <span>
@@ -367,10 +402,17 @@ function MonthCard({
           )}
         </dl>
       </div>
-      {withToday && more.today && (
+      {withCounts && more.today && (
         <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
-          <Mini label={t('dash.w.today')} value={money(more.today.sales)} />
           <Mini label={t('dash.invoices')} value={formatNumber(more.today.invoices, locale)} />
+          <Mini
+            label={t('dash.avgInvoice')}
+            value={
+              more.today.invoices > 0
+                ? money(Math.round((more.today.sales + more.today.returns) / more.today.invoices))
+                : '—'
+            }
+          />
           <Mini label={t('dash.returns')} value={money(more.today.returns)} />
         </div>
       )}
@@ -403,62 +445,71 @@ function Mini({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="truncate text-[11px] text-muted">{label}</p>
-      <p className="text-xs font-semibold break-words tnum sm:text-sm">{value}</p>
+      <p className="text-xs font-semibold whitespace-nowrap tnum">{value}</p>
     </div>
   );
 }
 
-/** Best-selling items, top customers and sales by branch (this month). */
-function Rankings({
-  more,
-  shows,
-  currency,
+/** Best-selling items, top customers and sales by branch, each over its period. */
+function RankCards({
+  items,
+  customers,
+  branches,
 }: {
-  more: DashboardMore;
-  shows: (w: Widget) => boolean;
-  currency: string;
+  items: PeriodProps | null;
+  customers: PeriodProps | null;
+  branches: PeriodProps | null;
 }) {
-  const { t, locale } = useT();
-  const money = (v: number) => formatMoney(v, currency, locale);
-  const parts = [
-    shows('topItems') && more.topItems,
-    shows('topCustomers') && more.topCustomers,
-    shows('branches') && more.branches,
-  ].filter(Boolean).length;
+  const parts = [items, customers, branches].filter(Boolean).length;
   if (parts === 0) return null;
   return (
     <div
       className={`grid gap-4 [&>*]:min-w-0 ${parts >= 3 ? 'lg:grid-cols-3' : parts === 2 ? 'lg:grid-cols-2' : ''}`}
     >
-      {shows('topItems') && more.topItems && (
-        <Card>
-          <SectionTitle>{t('dash.w.topItems')}</SectionTitle>
-          <BarList
-            rows={more.topItems}
-            money={money}
-            note={(r) =>
-              r.quantity != null ? `${formatNumber(r.quantity, locale)} ${t('dash.pieces')}` : null
-            }
-          />
-        </Card>
-      )}
-      {shows('topCustomers') && more.topCustomers && (
-        <Card>
-          <SectionTitle>{t('dash.w.topCustomers')}</SectionTitle>
-          <PeopleList rows={more.topCustomers} money={money} />
-        </Card>
-      )}
-      {shows('branches') && more.branches && (
-        <Card>
-          <SectionTitle>{t('dash.w.branches')}</SectionTitle>
-          <Shares rows={more.branches} money={money} />
-        </Card>
-      )}
+      {items && <RankCard kind="items" {...items} />}
+      {customers && <RankCard kind="customers" {...customers} />}
+      {branches && <RankCard kind="branches" {...branches} />}
     </div>
   );
 }
 
-/** Ranked rows, each with a bar against the biggest (best-selling items). */
+function RankCard({ kind, ...p }: PeriodProps & { kind: 'items' | 'customers' | 'branches' }) {
+  const { t, locale } = useT();
+  const { data: more } = useDashboardMore(p.period);
+  const currency = useContext(Main).currency;
+  const money = (v: number) => formatMoney(v, currency, locale);
+  const rows =
+    (kind === 'items'
+      ? more?.topItems
+      : kind === 'customers'
+        ? more?.topCustomers
+        : more?.branches) ?? [];
+  const title =
+    kind === 'items'
+      ? t('dash.w.topItems')
+      : kind === 'customers'
+        ? t('dash.w.topCustomers')
+        : t('dash.w.branches');
+  return (
+    <Card>
+      <CardHead title={title} p={p} />
+      {kind === 'items' ? (
+        <BarList
+          rows={rows}
+          money={money}
+          note={(r) =>
+            r.quantity != null ? `${formatNumber(r.quantity, locale)} ${t('dash.pieces')}` : null
+          }
+        />
+      ) : kind === 'customers' ? (
+        <PeopleList rows={rows} money={money} />
+      ) : (
+        <Shares rows={rows} money={money} />
+      )}
+    </Card>
+  );
+}
+
 function BarList({
   rows,
   money,
@@ -565,23 +616,21 @@ function Shares({ rows, money }: { rows: DashRank[]; money: (v: number) => strin
   );
 }
 
-/** The latest documents as a history table. */
+/** The latest documents of the period as a history table. */
 function HistoryCard({
-  data,
   className,
   onOpen,
-}: {
-  data: DashboardData;
-  className?: string;
-  onOpen: (id: string) => void;
-}) {
+  ...p
+}: PeriodProps & { className?: string; onOpen: (id: string) => void }) {
   const { t, locale } = useT();
+  const { data } = useDashboard(p.period);
+  const docs = data?.recentDocuments ?? [];
   return (
     <Card padded={false} className={className}>
-      <div className="p-4 pb-2 sm:p-5 sm:pb-2">
-        <SectionTitle>{t('dashboard.recent')}</SectionTitle>
+      <div className="p-4 pb-0 sm:p-5 sm:pb-0">
+        <CardHead title={t('dashboard.recent')} p={p} />
       </div>
-      {data.recentDocuments.length === 0 ? (
+      {docs.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-muted">{t('dash.none')}</p>
       ) : (
         <div className="overflow-x-auto">
@@ -598,7 +647,7 @@ function HistoryCard({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-line)]">
-              {data.recentDocuments.map((doc) => (
+              {docs.map((doc) => (
                 <tr
                   key={doc.id}
                   className="cursor-pointer hover:bg-surface-2"
@@ -639,18 +688,13 @@ function HistoryCard({
   );
 }
 
-/** What needs attention, cheques due and money held: each only when the server sent it. */
-function SideCards({
-  more,
-  shows,
-  currency,
-}: {
-  more: DashboardMore;
-  shows: (w: Widget) => boolean;
-  currency: string;
-}) {
+/** What needs attention now: invoices waiting for approval, customers over their limit. */
+function AlertsCard() {
   const { t, locale } = useT();
   const navigate = useNavigate();
+  const more = useDashboardMore(useContext(Main).period).data;
+  const currency = useContext(Main).currency;
+  if (!more) return null;
   const money = (v: number) => formatMoney(v, currency, locale);
   const alerts = [
     more.awaitingApproval
@@ -660,72 +704,89 @@ function SideCards({
       ? { label: t('dash.overLimit'), value: more.overLimitCount, to: '/parties' }
       : null,
   ].filter((x) => !!x);
+  if (alerts.length === 0 && (more.overLimit?.length ?? 0) === 0) return null;
   return (
-    <>
-      {shows('alerts') && (alerts.length > 0 || (more.overLimit?.length ?? 0) > 0) && (
-        <Card>
-          <SectionTitle>{t('dash.w.alerts')}</SectionTitle>
-          <ul className="space-y-2 text-sm">
-            {alerts.map((a) => (
-              <li key={a.label}>
-                <button
-                  className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-app)] bg-warning-soft px-3 py-2 text-start text-warning"
-                  onClick={() => navigate(a.to)}
-                >
-                  <span>{a.label}</span>
-                  <span className="font-semibold tnum">{formatNumber(a.value, locale)}</span>
-                </button>
-              </li>
-            ))}
-            {(more.overLimit ?? []).map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 px-1">
-                <span className="min-w-0 truncate">{p.name}</span>
-                <span className="text-xs text-destructive tnum">
-                  {money(p.value)} / {money(p.extra ?? 0)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+    <Card>
+      <CardHead title={t('dash.w.alerts')} />
+      <ul className="space-y-2 text-sm">
+        {alerts.map((a) => (
+          <li key={a.label}>
+            <button
+              className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-app)] bg-warning-soft px-3 py-2 text-start text-warning"
+              onClick={() => navigate(a.to)}
+            >
+              <span>{a.label}</span>
+              <span className="font-semibold tnum">{formatNumber(a.value, locale)}</span>
+            </button>
+          </li>
+        ))}
+        {(more.overLimit ?? []).map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-2 px-1">
+            <span className="min-w-0 truncate">{r.name}</span>
+            <span className="text-xs text-destructive tnum">
+              {money(r.value)} / {money(r.extra ?? 0)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/** Cheques still open and due by the end of the period (overdue ones included). */
+function NotesDueCard(p: PeriodProps) {
+  const { t, locale } = useT();
+  const due = useDashboardMore(p.period).data?.notesDue;
+  const currency = useContext(Main).currency;
+  const money = (v: number) => formatMoney(v, currency, locale);
+  return (
+    <Card>
+      <CardHead title={t('dash.w.notesDue')} p={p} />
+      {due && (
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <Tile
+            tone="positive"
+            label={`${t('dash.toCollect')} (${formatNumber(due.receivable, locale)})`}
+            value={money(due.receivableAmount)}
+          />
+          <Tile
+            tone="warning"
+            label={`${t('dash.toPay')} (${formatNumber(due.payable, locale)})`}
+            value={money(due.payableAmount)}
+          />
+        </div>
       )}
-      {shows('notesDue') && more.notesDue && (
-        <Card>
-          <SectionTitle>{t('dash.w.notesDue')}</SectionTitle>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <Tile
-              tone="positive"
-              label={`${t('dash.toCollect')} (${formatNumber(more.notesDue.receivable, locale)})`}
-              value={money(more.notesDue.receivableAmount)}
-            />
-            <Tile
-              tone="warning"
-              label={`${t('dash.toPay')} (${formatNumber(more.notesDue.payable, locale)})`}
-              value={money(more.notesDue.payableAmount)}
-            />
-          </div>
-        </Card>
+      <p className="mt-2 text-[11px] text-muted">{t('dash.dueBy')}</p>
+    </Card>
+  );
+}
+
+/** What the money accounts hold now. */
+function AccountsCard() {
+  const { t, locale } = useT();
+  const accounts = useDashboardMore(useContext(Main).period).data?.accounts;
+  const currency = useContext(Main).currency;
+  if (!accounts) return null;
+  const money = (v: number) => formatMoney(v, currency, locale);
+  return (
+    <Card>
+      <CardHead title={t('dash.w.accounts')} />
+      {accounts.length === 0 ? (
+        <p className="text-sm text-muted">{t('dash.none')}</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {accounts.map((a) => (
+            <li key={a.id} className="flex items-center gap-2">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted">
+                <Icon name="receipts" size={14} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{a.name}</span>
+              <span className="shrink-0 font-medium tnum">{money(a.balance)}</span>
+            </li>
+          ))}
+        </ul>
       )}
-      {shows('accounts') && more.accounts && (
-        <Card>
-          <SectionTitle>{t('dash.w.accounts')}</SectionTitle>
-          {more.accounts.length === 0 ? (
-            <p className="text-sm text-muted">{t('dash.none')}</p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {more.accounts.map((a) => (
-                <li key={a.id} className="flex items-center gap-2">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted">
-                    <Icon name="receipts" size={14} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                  <span className="shrink-0 font-medium tnum">{money(a.balance)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
-    </>
+    </Card>
   );
 }
 
@@ -743,7 +804,7 @@ function LowStockCard({ data }: { data: DashboardData }) {
   const { t, locale } = useT();
   return (
     <Card>
-      <SectionTitle>{t('dashboard.lowStock')}</SectionTitle>
+      <CardHead title={t('dashboard.lowStock')} />
       {data.lowStock.length === 0 ? (
         <p className="text-sm text-muted">{t('common.empty')}</p>
       ) : (
