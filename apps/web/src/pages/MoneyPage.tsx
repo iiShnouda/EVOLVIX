@@ -18,6 +18,7 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
+import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -955,6 +956,7 @@ function VoucherFormSheet({
   // typing an amount on an invoice takes over until "back to oldest first".
   const [allocTouched, setAllocTouched] = useState(false);
   const [notes, setNotes] = useState('');
+  const [docDate, setDocDate] = useState(companyToday);
   const side = kind === 'payment' ? 'purchases' : 'sales';
   const open = useOpenInvoices(partyId, side, kind !== 'expense');
 
@@ -1025,6 +1027,7 @@ function VoucherFormSheet({
                   .map(([documentId, v]) => ({ documentId, amount: minor(v) }))
                   .filter((a) => a.amount > 0),
           notes: notes.trim() || undefined,
+          documentDate: dayToSend(docDate),
         },
       });
       onClose();
@@ -1225,6 +1228,7 @@ function VoucherFormSheet({
           </div>
         )}
 
+        <DocumentDateField value={docDate} onChange={setDocDate} />
         <Field label={t('invoice.notes')}>
           <input
             className={input}
@@ -1260,6 +1264,7 @@ function TransferSheet({ onClose }: { onClose: () => void }) {
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [docDate, setDocDate] = useState(companyToday);
   const list = accounts.data ?? [];
 
   async function save() {
@@ -1269,6 +1274,7 @@ function TransferSheet({ onClose }: { onClose: () => void }) {
         toAccountId: to,
         amount: minor(amount),
         notes: notes.trim() || undefined,
+        documentDate: dayToSend(docDate),
       });
       onClose();
     } catch {
@@ -1305,6 +1311,7 @@ function TransferSheet({ onClose }: { onClose: () => void }) {
             onChange={(e) => setAmount(e.target.value)}
           />
         </Field>
+        <DocumentDateField value={docDate} onChange={setDocDate} />
         <Field label={t('invoice.notes')}>
           <input
             className={input}

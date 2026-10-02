@@ -2051,6 +2051,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("EnteredAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long>("GrandTotal")
                         .HasColumnType("bigint");
 
@@ -2749,6 +2752,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EnteredAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ExpenseCategoryId")
                         .HasColumnType("uuid");

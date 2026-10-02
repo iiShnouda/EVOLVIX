@@ -16,6 +16,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
+import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { ReportActions } from '../components/ReportActions';
 import { useT } from '../lib/i18n';
@@ -144,6 +145,8 @@ function RunsTab() {
   const create = useCreatePayrollRun();
   const action = usePayrollAction();
   const [confirmPost, setConfirmPost] = useState(false);
+  // The day its entry carries (owner, 2026-10-02: the date of the payroll is the owner's to set).
+  const [postDate, setPostDate] = useState(todayIso);
   const [paying, setPaying] = useState(false);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
@@ -288,18 +291,25 @@ function RunsTab() {
                       {t('payroll.recalculate')}
                     </Button>
                     {confirmPost ? (
-                      <Button
-                        size="sm"
-                        loading={action.isPending}
-                        onClick={() =>
-                          action.mutate(
-                            { id: r.id, action: 'post' },
-                            { onSettled: () => setConfirmPost(false) },
-                          )
-                        }
-                      >
-                        {t('payroll.postConfirm')}
-                      </Button>
+                      <>
+                        <DocumentDateField
+                          value={postDate}
+                          onChange={setPostDate}
+                          className="w-40"
+                        />
+                        <Button
+                          size="sm"
+                          loading={action.isPending}
+                          onClick={() =>
+                            action.mutate(
+                              { id: r.id, action: 'post', date: dayToSend(postDate) },
+                              { onSettled: () => setConfirmPost(false) },
+                            )
+                          }
+                        >
+                          {t('payroll.postConfirm')}
+                        </Button>
+                      </>
                     ) : (
                       <Button size="sm" icon="check" onClick={() => setConfirmPost(true)}>
                         {t('payroll.post')}
@@ -410,6 +420,7 @@ function PaySheet({ run, onClose }: { run: PayrollRun; onClose: () => void }) {
   const unpaid = run.lines.filter((l) => l.paidAmount < l.net);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(unpaid.map((l) => l.employeeId)));
   const [account, setAccount] = useState('');
+  const [payDate, setPayDate] = useState(todayIso);
   const total = unpaid
     .filter((l) => picked.has(l.employeeId))
     .reduce((s, l) => s + l.net - l.paidAmount, 0);
@@ -453,6 +464,7 @@ function PaySheet({ run, onClose }: { run: PayrollRun; onClose: () => void }) {
         <p className="font-semibold tnum">
           {t('ledger.total')}: {formatMoney(total, run.currency, locale)}
         </p>
+        <DocumentDateField value={payDate} onChange={setPayDate} />
         {action.error && <p className="text-destructive">{errorText(t, action.error)}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
@@ -470,6 +482,7 @@ function PaySheet({ run, onClose }: { run: PayrollRun; onClose: () => void }) {
                   body: {
                     accountId: account || undefined,
                     employeeIds: picked.size === unpaid.length ? undefined : [...picked],
+                    documentDate: dayToSend(payDate),
                   },
                 },
                 { onSuccess: onClose },
@@ -1211,6 +1224,7 @@ function AdvancesTab() {
   const give = useGiveAdvance();
   const cancel = useCancelAdvance();
   const [open, setOpen] = useState(false);
+  const [advanceDate, setAdvanceDate] = useState(todayIso);
   const [f, setF] = useState({
     employeeId: '',
     amount: '',
@@ -1349,6 +1363,7 @@ function AdvancesTab() {
                 onChange={(e) => setF({ ...f, notes: e.target.value })}
               />
             </Field>
+            <DocumentDateField value={advanceDate} onChange={setAdvanceDate} />
             {give.error && <p className="text-sm text-destructive">{errorText(t, give.error)}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -1367,6 +1382,7 @@ function AdvancesTab() {
                         Number(f.installment) > 0 ? toMinor(Number(f.installment)) : undefined,
                       accountId: f.accountId || undefined,
                       notes: f.notes.trim() || undefined,
+                      documentDate: dayToSend(advanceDate),
                     },
                     {
                       onSuccess: () => {
@@ -1536,10 +1552,13 @@ function useDayNames() {
   return useMemo(
     () =>
       [...Array(7).keys()].map((d) =>
-        new Date(Date.UTC(2023, 0, 1 + d)).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-          weekday: 'short',
-          timeZone: 'UTC',
-        }),
+        new Date(Date.UTC(2023, 0, 1 + d)).toLocaleDateString(
+          locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
+          {
+            weekday: 'short',
+            timeZone: 'UTC',
+          },
+        ),
       ),
     [locale],
   );

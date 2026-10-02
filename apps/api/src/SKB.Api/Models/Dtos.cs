@@ -88,7 +88,8 @@ public record SalesDetailDto(
     string? InvoiceId = null, string? InvoiceNumber = null,
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
-    string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false);
+    string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
+    string? EnteredAt = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
@@ -142,7 +143,8 @@ public record CreateSalesInvoiceRequest(
     long PaidAmount = 0, bool OverrideFloor = false, string? WarehouseId = null, string? PriceLevelId = null,
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
-    string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null, string? BranchId = null);
+    string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null, string? BranchId = null,
+    string? DocumentDate = null);
 
 /// <summary>
 /// Approving a pending invoice: what the customer pays now and into which account; optionally new
@@ -195,7 +197,8 @@ public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
     string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
-    string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null);
+    string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null,
+    string? DocumentDate = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
 /// <param name="Code">The person's number (كود), shown beside the name.</param>
@@ -777,9 +780,11 @@ public record AllocationRequest(string? DocumentId, long Amount);
 /// <summary>A receipt, payment or expense. Allocations are for receipts and payments only.</summary>
 public record CreateVoucherRequest(
     string? PartyId, VoucherLineRequest[]? Lines, AllocationRequest[]? Allocations = null, string? Notes = null,
-    string? CategoryId = null);
+    string? CategoryId = null, string? DocumentDate = null);
 
-public record CreateCashTransferRequest(string? FromAccountId, string? ToAccountId, long Amount, string? Notes = null);
+/// <param name="DocumentDate">The day it happened, if not today (needs documents:backdate).</param>
+public record CreateCashTransferRequest(string? FromAccountId, string? ToAccountId, long Amount, string? Notes = null,
+    string? DocumentDate = null);
 
 public record VoucherLineDto(string Method, string AccountId, string AccountName, long Amount, string? Reference);
 
@@ -790,7 +795,8 @@ public record VoucherDto(
     string Id, string Number, string Type, string Status, string BranchName, string? PartyId, string? PartyName,
     string? CategoryId, string? CategoryName, string? FromAccountName, string? ToAccountName, long Amount,
     long Unallocated, string? Notes, string CreatedAt, string CreatedByName, string? CancelledAt,
-    string? CancelledByName, VoucherLineDto[] Lines, VoucherAllocationDto[] Allocations, string Currency);
+    string? CancelledByName, VoucherLineDto[] Lines, VoucherAllocationDto[] Allocations, string Currency,
+    string? EnteredAt = null);
 
 /// <summary>An invoice a receipt or payment can settle.</summary>
 /// <param name="OnCodParcel">In a cash-on-delivery parcel not delivered yet: the carrier collects it.</param>
@@ -1023,7 +1029,7 @@ public record AdvanceDto(
 /// <param name="Installment">Recovered at most this much a month; none = all of it next payroll.</param>
 /// <param name="AccountId">Paid from this money account; none = the branch's cash box.</param>
 public record CreateAdvanceRequest(string EmployeeId, long Amount, long? Installment = null, string? AccountId = null,
-    string? Notes = null);
+    string? Notes = null, string? DocumentDate = null);
 
 public record PayrollLineDto(
     string Id, string EmployeeId, string EmployeeCode, string EmployeeName, long MonthlySalary, int EmployedDays,
@@ -1040,7 +1046,7 @@ public record PayrollRunDto(
 public record CreatePayrollRunRequest(int Year, int Month, string? BranchId = null);
 
 /// <param name="EmployeeIds">Pay only these; none = everyone still unpaid.</param>
-public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds = null);
+public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds = null, string? DocumentDate = null);
 
 public record NotificationDto(
     string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,

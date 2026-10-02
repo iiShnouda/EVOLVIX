@@ -1968,6 +1968,7 @@ export function useGiveAdvance() {
       installment?: number;
       accountId?: string;
       notes?: string;
+      documentDate?: string;
     }) => api.post<EmployeeAdvance>('/payroll/advances', input),
     onSuccess: () => {
       invalidatePayroll(qc);
@@ -2019,11 +2020,18 @@ export function usePayrollAction() {
       id,
       action,
       body,
+      date,
     }: {
       id: string;
       action: 'recalculate' | 'post' | 'cancel' | 'pay';
       body?: unknown;
-    }) => api.post<PayrollRun>(`/payroll/runs/${id}/${action}`, body ?? {}),
+      /** The day its entry carries, if not today (post only; pay sends it in the body). */
+      date?: string;
+    }) =>
+      api.post<PayrollRun>(
+        `/payroll/runs/${id}/${action}${date ? `?date=${date}` : ''}`,
+        body ?? {},
+      ),
     onSuccess: () => {
       invalidatePayroll(qc);
       void qc.invalidateQueries({ queryKey: ['money'] });

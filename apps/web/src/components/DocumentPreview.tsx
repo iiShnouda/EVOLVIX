@@ -246,6 +246,12 @@ export function InvoicePaper({
           <p className="tnum font-medium text-fg">{doc.number}</p>
           {/* The day and the hour and minute it was made (owner, 2026-10-02). */}
           <p className="tnum">{formatDateHM(doc.issueDate, locale)}</p>
+          {doc.enteredAt && (
+            <p className="text-warning">
+              {t('doc.enteredAt')}{' '}
+              <span className="tnum">{formatDateHM(doc.enteredAt, locale)}</span>
+            </p>
+          )}
           {doc.type === 'SALES_INVOICE' && doc.dueDate && (
             <p>
               {t('invoice.dueDate')}:{' '}

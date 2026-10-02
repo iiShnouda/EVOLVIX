@@ -15,6 +15,7 @@ import {
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { PartyPicker } from '../components/PartyPicker';
+import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { TableColumns } from '../components/TableColumns';
 import { SidedMoney } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
@@ -91,6 +92,7 @@ export function CashMovePage() {
   const [amount, setAmount] = useState('');
   const [alloc, setAlloc] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
+  const [docDate, setDocDate] = useState(companyToday);
   const [done, setDone] = useState<string | null>(null);
 
   // Kept on the server while it is written, brought back after a crash or on another device.
@@ -202,6 +204,7 @@ export function CashMovePage() {
               toAccountId,
               amount: total,
               notes: notes.trim() || undefined,
+              documentDate: dayToSend(docDate),
             })
           : what === 'EXPENSE'
             ? await voucher.mutateAsync({
@@ -216,6 +219,7 @@ export function CashMovePage() {
                     },
                   ],
                   notes: notes.trim() || undefined,
+                  documentDate: dayToSend(docDate),
                 },
               })
             : await voucher.mutateAsync({
@@ -233,6 +237,7 @@ export function CashMovePage() {
                     .map(([documentId, v]) => ({ documentId, amount: minor(v) }))
                     .filter((a) => a.amount > 0),
                   notes: notes.trim() || undefined,
+                  documentDate: dayToSend(docDate),
                 },
               });
       setDone(saved.number);
@@ -263,10 +268,14 @@ export function CashMovePage() {
       />
 
       <Card className="flex flex-wrap items-end gap-4 text-sm">
-        <div>
-          <span className="block text-xs text-muted">{t('common.date')}</span>
-          <span className="tnum">{formatDate(companyToday(), locale)}</span>
-        </div>
+        {can('documents:backdate') ? (
+          <DocumentDateField value={docDate} onChange={setDocDate} className="w-44" />
+        ) : (
+          <div>
+            <span className="block text-xs text-muted">{t('common.date')}</span>
+            <span className="tnum">{formatDate(companyToday(), locale)}</span>
+          </div>
+        )}
         <div>
           <span className="block text-xs text-muted">{t('move.as')}</span>
           <span className="font-medium">

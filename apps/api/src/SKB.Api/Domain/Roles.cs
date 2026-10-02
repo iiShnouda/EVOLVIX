@@ -166,6 +166,11 @@ public static class Permissions
     public const string ProductsCardReturns = "products:card_returns";
     /// <summary>The item card's price changes: its price on each invoice against the one before.</summary>
     public const string ProductsCardPrices = "products:card_prices";
+    /// <summary>
+    /// Date an invoice, receipt, payment, expense or transfer on an earlier day than today (owner,
+    /// 2026-10-02); when it was really entered is kept on it.
+    /// </summary>
+    public const string DocumentsBackdate = "documents:backdate";
     /// <summary>Set item and model prices at each price level.</summary>
     public const string PricesEdit = "prices:edit";
     /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
@@ -221,7 +226,7 @@ public static class Permissions
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
-        ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, StaffView, StaffManage, RolesManage, StaffAccess,
+        ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
@@ -263,6 +268,7 @@ public static class RolePermissions
             Permissions.InventoryTransfer, Permissions.ProductsClose, Permissions.PartiesClose,
             Permissions.SalesReturnFree, Permissions.PurchasesReturnFree,
             Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
+            Permissions.DocumentsBackdate,
             Permissions.AnalyticsView, Permissions.SettingsView,
             Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.PricesEdit,
             Permissions.CategoriesManage, Permissions.UnitsManage, Permissions.VariantOptionsManage,

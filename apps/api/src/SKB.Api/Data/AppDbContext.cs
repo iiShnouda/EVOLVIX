@@ -6,6 +6,38 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        ApplyBackdate();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        ApplyBackdate();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    /// <summary>
+    /// A request dated on an earlier day (<see cref="SKB.Api.Services.Backdate"/>): what it adds —
+    /// documents, vouchers, stock and money movements, journal entries — is put on that day; the
+    /// documents keep when they were really typed.
+    /// </summary>
+    private void ApplyBackdate()
+    {
+        if (SKB.Api.Services.Backdate.Instant is not DateTime when) return;
+        var now = DateTime.UtcNow;
+        foreach (var e in ChangeTracker.Entries().Where(x => x.State == EntityState.Added))
+            switch (e.Entity)
+            {
+                case SalesDocument d: d.IssueDate = when; d.EnteredAt = now; break;
+                case Voucher v: v.CreatedAt = when; v.EnteredAt = now; break;
+                case StockMovement m: m.CreatedAt = when; break;
+                case MoneyMovement m: m.CreatedAt = when; break;
+                case JournalEntry j: j.Date = when; break;
+            }
+    }
+
     public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<Staff> Staff => Set<Staff>();
     public DbSet<Session> Sessions => Set<Session>();

@@ -311,6 +311,9 @@ public sealed class PayrollController : ControllerBase
     [Authorize(Policy = Permissions.PayrollAdvance)]
     public async Task<ActionResult<AdvanceDto>> CreateAdvance([FromBody] CreateAdvanceRequest req)
     {
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return Bad(dateCode, dateMessage!);
+        using var dated = Backdate.To(when);
         if (req.Amount is <= 0 or > MaxAmount) return Bad("bad_amount", "Enter an amount above zero.");
         var installment = req.Installment ?? req.Amount;
         if (installment <= 0 || installment > req.Amount)
@@ -432,7 +435,14 @@ public sealed class PayrollController : ControllerBase
     /// <summary>Post the draft: it goes into the ledger, advances are recovered, and it's final.</summary>
     [HttpPost("runs/{id:guid}/post")]
     [Authorize(Policy = Permissions.PayrollPost)]
-    public Task<ActionResult<PayrollRunDto>> Post(Guid id) => WithDraftAsync(id, "post", run => _payroll.PostAsync(run, Me()));
+    public async Task<ActionResult<PayrollRunDto>> Post(Guid id, [FromQuery] string? date = null)
+    {
+        // Its entry may carry another day than today (owner, 2026-10-02).
+        var (when, code, message) = await Backdate.CheckAsync(_db, User, date);
+        if (code is not null) return Bad(code, message!);
+        using var dated = Backdate.To(when);
+        return await WithDraftAsync(id, "post", run => _payroll.PostAsync(run, Me()));
+    }
 
     [HttpPost("runs/{id:guid}/cancel")]
     [Authorize(Policy = Permissions.PayrollPost)]
@@ -447,6 +457,9 @@ public sealed class PayrollController : ControllerBase
     [Authorize(Policy = Permissions.PayrollPay)]
     public async Task<ActionResult<PayrollRunDto>> Pay(Guid id, [FromBody] PayPayrollRequest req)
     {
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return Bad(dateCode, dateMessage!);
+        using var dated = Backdate.To(when);
         if (!await ScopedRuns().AnyAsync(r => r.Id == id)) return NotFound(new { message = "Payroll not found.", code = "not_found" });
         HashSet<Guid>? only = null;
         if (req.EmployeeIds is { Length: > 0 })

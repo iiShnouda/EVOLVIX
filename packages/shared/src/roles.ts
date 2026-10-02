@@ -65,6 +65,7 @@ const ALL: Permission[] = [
   'products:card_sales',
   'products:card_returns',
   'products:card_prices',
+  'documents:backdate',
   'prices:edit',
   'price_levels:manage',
   'price_lists:manage',
@@ -152,6 +153,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'products:card_sales',
     'products:card_returns',
     'products:card_prices',
+    'documents:backdate',
     // Invoices post at once and the accountant is told (owner decision 2026-09-30).
     'sales:approve',
     'sales:invoice_alerts',

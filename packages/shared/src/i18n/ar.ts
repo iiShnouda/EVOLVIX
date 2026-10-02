@@ -2156,4 +2156,8 @@ export const ar: TranslationDictionary = {
   'move.deleteAccount': 'حذف هذا الحساب',
   'move.deleteAccountAsk': 'حذف هذا الحساب؟ لا يُحذف إن مرّت عليه فلوس.',
   'move.accountName': 'اسم الحساب',
+  'doc.date': 'تاريخ المستند',
+  'doc.dateEarlier': 'يُسجَّل بهذا التاريخ، ويُحفظ وقت إدخاله الفعلي',
+  'doc.enteredAt': 'أُدخل فعليًا في',
+  'perm.documents:backdate': 'تسجيل فاتورة أو سند بتاريخ سابق',
 };

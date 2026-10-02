@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatMoney, toMinor, type Party } from '@skb/shared';
+import { companyToday, formatMoney, toMinor, type Party } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
+import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -113,6 +114,8 @@ export function AddItemsPage() {
   const [warehouse, setWarehouse] = useState('');
   const [department, setDepartment] = useState('');
   const [season, setSeason] = useState('');
+  // A supplier's invoice entered late carries its own day (owner, 2026-10-02).
+  const [docDate, setDocDate] = useState(companyToday);
   const allWarehouses = useWarehouses(true);
   const branchWarehouses = (allWarehouses.data ?? []).filter(
     (w) => w.kind === 'STORE' && w.isActive && w.branchId === branch,
@@ -265,6 +268,7 @@ export function AddItemsPage() {
         partyId: supplier.id,
         warehouseId,
         paidAmount: 0,
+        documentDate: dayToSend(docDate),
         lines: rows.map((r, i) => {
           const big = r.perUnit > 1 && r.l.unitId !== pieceUnit.id;
           return {
@@ -342,6 +346,7 @@ export function AddItemsPage() {
             placeholder={t('invoice.selectSupplier')}
           />
         </div>
+        <DocumentDateField value={docDate} onChange={setDocDate} />
         {label(
           t('list.branch'),
           <select

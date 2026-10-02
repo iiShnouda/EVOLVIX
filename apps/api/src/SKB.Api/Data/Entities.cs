@@ -619,6 +619,8 @@ public class SalesDocument
     public DocumentType Type { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.CONFIRMED;
     public DateTime IssueDate { get; set; } = DateTime.UtcNow;
+    /// <summary>When it was really typed, if it is dated on another day (<see cref="Services.Backdate"/>).</summary>
+    public DateTime? EnteredAt { get; set; }
     public DateTime? DueDate { get; set; }
     public long Subtotal { get; set; }
     public long DiscountTotal { get; set; }
@@ -914,6 +916,8 @@ public class Voucher
     public Guid CreatedById { get; set; }
     public Staff? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>When it was really typed, if it is dated on another day (<see cref="Services.Backdate"/>).</summary>
+    public DateTime? EnteredAt { get; set; }
     public Guid? CancelledById { get; set; }
     public Staff? CancelledBy { get; set; }
     public DateTime? CancelledAt { get; set; }

@@ -102,6 +102,7 @@ export type Permission =
   | 'products:card_sales'
   | 'products:card_returns'
   | 'products:card_prices'
+  | 'documents:backdate'
   | 'prices:edit'
   | 'price_levels:manage'
   | 'price_lists:manage'
@@ -647,6 +648,8 @@ export interface SalesDocument {
    * system accepted it after that payment) or `WITHIN_LIMIT` (a change brought it back within).
    */
   approvalNote?: string | null;
+  /** When it was really typed, if it is dated on an earlier day (ISO instant). */
+  enteredAt?: string | null;
   /** Changed after it was saved. */
   edited?: boolean;
   /** The customer's / supplier's and the rep's codes (كود). */
@@ -1074,6 +1077,8 @@ export interface SalesDocumentSummary {
    * system accepted it after that payment) or `WITHIN_LIMIT` (a change brought it back within).
    */
   approvalNote?: string | null;
+  /** When it was really typed, if it is dated on an earlier day (ISO instant). */
+  enteredAt?: string | null;
 }
 
 /** A customer's invoices of a period together, for the accountant (owner, 2026-10-02). */

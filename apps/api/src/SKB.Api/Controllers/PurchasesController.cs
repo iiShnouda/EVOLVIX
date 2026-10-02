@@ -91,6 +91,10 @@ public sealed class PurchasesController : ControllerBase
     [Authorize(Policy = Permissions.PurchasesCreate)]
     public async Task<ActionResult<SalesDetailDto>> Create([FromBody] CreatePurchaseInvoiceRequest req)
     {
+        // A supplier's invoice entered late carries its own day (owner, 2026-10-02).
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return BadRequest(new { message = dateMessage, code = dateCode });
+        using var dated = Backdate.To(when);
         if (req.Lines is null || req.Lines.Length == 0)
             return BadRequest(new { message = "Add at least one line item.", code = "no_lines" });
         if (req.Lines.Length > InvoiceLines.MaxLines)

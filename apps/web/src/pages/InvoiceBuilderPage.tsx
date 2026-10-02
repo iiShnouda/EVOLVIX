@@ -31,6 +31,7 @@ import { useWorkDraft } from '../lib/workDraft';
 import { useDeviceInfo } from '../lib/device';
 import { useWorkPlace } from '../lib/workPlace';
 import { ItemLifeSheet } from '../components/ItemLifeSheet';
+import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
@@ -185,6 +186,8 @@ export function InvoiceBuilderPage({
   /** The rep's code while it is being typed (null = show the chosen rep's). */
   const [repCode, setRepCode] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState(companyToday);
+  // The day it happened, if it is written later (owner, 2026-10-02).
+  const [docDate, setDocDate] = useState(companyToday);
   const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
   const repCodeMissing = !!repCode && !(reps.data ?? []).some((r) => String(r.code) === repCode);
   /** Their discount limit (%); null = none. */
@@ -693,6 +696,7 @@ export function InvoiceBuilderPage({
           repId: repId || undefined,
           departmentId: departmentId || undefined,
           dueDate: dueDate || undefined,
+          documentDate: editId || asOrder ? undefined : dayToSend(docDate),
           deliveryMethod: delivery.method,
           deliveryAddress:
             delivery.method !== 'PICKUP' && delivery.address.trim()
@@ -735,6 +739,7 @@ export function InvoiceBuilderPage({
           shippingCost: Number(shippingCost) > 0 ? toMinor(Number(shippingCost)) : undefined,
           shippingAccountId:
             Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
+          documentDate: dayToSend(docDate),
         });
         work.finished();
         navigate('/purchases');
@@ -1804,6 +1809,7 @@ export function InvoiceBuilderPage({
                 </label>
               </div>
             )}
+            {!isQuote && !editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
             {isSale && !isQuote && (
               // When a sale on account should be paid (تاريخ الاستحقاق); empty = no date.
               <label className="block">

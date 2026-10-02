@@ -261,6 +261,9 @@ public sealed class MoneyController : ControllerBase
     [Authorize(Policy = Permissions.CashTransfer)]
     public async Task<ActionResult<VoucherDto>> Transfer([FromBody] CreateCashTransferRequest req)
     {
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return Bad(dateCode, dateMessage!);
+        using var dated = Backdate.To(when);
         if (!Guid.TryParse(req.FromAccountId, out var fromId) || !Guid.TryParse(req.ToAccountId, out var toId))
             return Bad("account_not_found", "Choose both accounts.");
         if (fromId == toId) return Bad("same_account", "Choose two different accounts.");
@@ -348,6 +351,10 @@ public sealed class MoneyController : ControllerBase
 
     private async Task<ActionResult<VoucherDto>> CreateAsync(VoucherType type, CreateVoucherRequest req)
     {
+        // Money moved on an earlier day and written today (owner, 2026-10-02).
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return Bad(dateCode, dateMessage!);
+        using var dated = Backdate.To(when);
         var lines = new List<(PaymentMethod Method, Guid AccountId, long Amount, string? Reference)>();
         foreach (var l in req.Lines ?? Array.Empty<VoucherLineRequest>())
         {
@@ -671,7 +678,7 @@ public sealed class MoneyController : ControllerBase
                 l.Account is null ? "" : Loc.Name(l.Account), l.Amount, l.Reference)).ToArray(),
             v.Allocations.OrderBy(a => a.Document?.Number).Select(a => new VoucherAllocationDto(
                 a.DocumentId.ToString(), a.Document?.Number ?? "", a.Amount)).ToArray(),
-            currency);
+            currency, v.EnteredAt?.ToString("o"));
     }
 
     private async Task<string> CurrencyAsync() =>

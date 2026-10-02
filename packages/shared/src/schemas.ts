@@ -76,6 +76,8 @@ export const createSalesInvoiceSchema = z.object({
   taxPercent: z.number().int().min(0).max(100).optional(),
   notes: z.string().max(1000).optional(),
   dueDate: z.string().optional(),
+  /** The day it happened, if not today (needs documents:backdate; owner, 2026-10-02). */
+  documentDate: z.string().optional(),
   paidAmount: z.number().int().min(0).default(0),
   /** Request to sell below the configured floor (still never below cost). */
   overrideFloor: z.boolean().optional().default(false),
@@ -145,6 +147,8 @@ export const createPurchaseInvoiceSchema = z.object({
   taxPercent: z.number().int().min(0).max(100).optional(),
   notes: z.string().max(1000).optional(),
   dueDate: z.string().optional(),
+  /** The day it happened, if not today (needs documents:backdate; owner, 2026-10-02). */
+  documentDate: z.string().optional(),
   paidAmount: z.number().int().min(0).default(0),
   /** Default warehouse for every line; none = the user's branch default. */
   warehouseId: z.string().uuid().optional(),
@@ -575,6 +579,8 @@ export interface CreateVoucherInput {
   lines: VoucherLineInput[];
   allocations?: { documentId: string; amount: number }[];
   notes?: string;
+  /** The day it happened, if not today (needs documents:backdate). */
+  documentDate?: string;
 }
 
 export interface CreateCashTransferInput {
@@ -582,6 +588,7 @@ export interface CreateCashTransferInput {
   toAccountId: string;
   amount: number;
   notes?: string;
+  documentDate?: string;
 }
 
 export interface ExpenseCategoryInput {

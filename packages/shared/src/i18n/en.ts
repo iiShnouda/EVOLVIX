@@ -2168,4 +2168,8 @@ export const en = {
   'move.deleteAccount': 'Delete this account',
   'move.deleteAccountAsk': 'Delete this account? It stays if money has gone through it.',
   'move.accountName': 'Account name',
+  'doc.date': 'Document date',
+  'doc.dateEarlier': 'Recorded on this day; when it was really entered is kept',
+  'doc.enteredAt': 'Really entered on',
+  'perm.documents:backdate': 'Date an invoice or voucher on an earlier day',
 } as const;

@@ -395,6 +395,10 @@ public sealed class SalesController : ControllerBase
     [Authorize(Policy = Permissions.SalesCreate)]
     public async Task<ActionResult<SalesDetailDto>> Create([FromBody] CreateSalesInvoiceRequest req)
     {
+        // Dated on an earlier day (owner, 2026-10-02): everything it posts lands on that day.
+        var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
+        if (dateCode is not null) return BadRequest(new { message = dateMessage, code = dateCode });
+        using var dated = Backdate.To(when);
         var result = await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null);
         // Over the customer's purchase limit (owner decision 2026-10-01): it is not refused; it waits
         // in the sales list for the accountant to accept or turn it down. Nothing was posted.
