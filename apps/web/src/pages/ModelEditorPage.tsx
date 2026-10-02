@@ -28,6 +28,7 @@ import {
   useVariantOptions,
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { errorText } from '../lib/errors';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
@@ -444,7 +445,7 @@ export function ModelEditorPage() {
             )}
             {error && (
               <p className="rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-                {error.message}
+                {errorText(t, error)}
               </p>
             )}
             <Button

@@ -15,6 +15,7 @@ import {
   useUpdateBranch,
   useUpdateWarehouse,
 } from '../lib/queries';
+import { errorText } from '../lib/errors';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -107,7 +108,7 @@ function NewBranch({ onDone }: { onDone: () => void }) {
           />
         </label>
       </div>
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
       <div className="flex gap-2">
         <Button icon="check" loading={create.isPending} disabled={!typed.name} onClick={save}>
           {t('common.save')}
@@ -198,7 +199,7 @@ function BranchCard({
                 onChange={(e) => setPrefix(e.target.value)}
               />
             </label>
-            {editError && <p className="text-xs text-destructive">{editError.message}</p>}
+            {editError && <p className="text-xs text-destructive">{errorText(t, editError)}</p>}
             <div className="flex gap-2">
               <Button size="sm" icon="check" loading={update.isPending} onClick={saveBranch}>
                 {t('common.save')}
@@ -280,7 +281,7 @@ function BranchCard({
               {t('warehouse.add')}
             </Button>
           </div>
-          {error && <p className="text-xs text-destructive">{error.message}</p>}
+          {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
         </div>
       )}
     </Card>
@@ -453,7 +454,7 @@ function WarehouseRow({
           )}
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-destructive">{error.message}</p>}
+      {error && <p className="mt-2 text-xs text-destructive">{errorText(t, error)}</p>}
     </li>
   );
 }

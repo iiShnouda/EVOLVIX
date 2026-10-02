@@ -17,6 +17,7 @@ import { FreeReturnForm, ReturnBar } from './FreeReturnForm';
 import { TableColumns } from '../components/TableColumns';
 import { PartyPicker } from '../components/PartyPicker';
 import { useDeviceInfo } from '../lib/device';
+import { errorText } from '../lib/errors';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -451,7 +452,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
       <ReturnBar
         total={formatMoney(total, currency, locale)}
         note={t(isSale ? 'return.onAccountNote' : 'return.supplierOnAccountNote')}
-        error={serverError?.message ?? null}
+        error={errorText(t, serverError)}
         saving={create.isPending}
         disabled={!canSave}
         onSave={save}

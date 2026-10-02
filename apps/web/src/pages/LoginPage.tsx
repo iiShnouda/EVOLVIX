@@ -10,6 +10,7 @@ import { api, ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { GetApps } from '../components/GetApps';
 import { useConnection } from '../stores/connection';
+import { errorText } from '../lib/errors';
 
 /** A labelled box with an icon at its start. */
 function Field({
@@ -35,7 +36,8 @@ function Field({
   );
 }
 
-const input = 'h-full min-w-0 flex-1 bg-transparent text-sm outline-none focus-visible:outline-none';
+const input =
+  'h-full min-w-0 flex-1 bg-transparent text-sm outline-none focus-visible:outline-none';
 
 /**
  * Sign-in (owner, 2026-10-01): the company's own name and logo first, Evolvix underneath. An account
@@ -59,7 +61,7 @@ export function LoginPage() {
     setError(null);
     const parsed = loginSchema.safeParse({ email, password, rememberDevice: remember });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Invalid input');
+      setError(t('auth.invalidCredentials'));
       return;
     }
     setLoading(true);
@@ -71,7 +73,7 @@ export function LoginPage() {
       if (err instanceof ApiError && err.code === 'INVALID_CREDENTIALS') {
         setError(t('auth.invalidCredentials'));
       } else if (err instanceof ApiError) {
-        setError(err.message);
+        setError(errorText(t, err));
       } else {
         setError(t('common.errorBody'));
       }

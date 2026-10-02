@@ -384,7 +384,7 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
           </label>
         )}
       </div>
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
       <div className="flex gap-2">
         <Button
           icon="check"
@@ -632,7 +632,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
           </div>
         )}
         {!canManage && <p className="text-xs text-muted">{t('staff.readonly')}</p>}
-        {error && <p className="text-xs text-destructive">{error.message}</p>}
+        {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
       </Card>
       <PersonAccess person={person} />
       <PersonPermissions person={person} />
@@ -1035,7 +1035,7 @@ function PersonPermissions({ person }: { person: StaffMember }) {
               )}
             </div>
           )}
-          {error && <p className="text-xs text-destructive">{error.message}</p>}
+          {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
         </>
       )}
     </Card>
@@ -1211,7 +1211,7 @@ function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) =
           {t('common.cancel')}
         </Button>
       </div>
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
     </Card>
   );
 }
@@ -1324,7 +1324,7 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
           )}
         </div>
       )}
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
     </Card>
   );
 }

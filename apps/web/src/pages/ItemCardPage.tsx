@@ -23,6 +23,7 @@ import { useDeviceInfo } from '../lib/device';
 import { ApiError } from '../lib/api';
 import { useItemCard, useStocktake } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { errorText } from '../lib/errors';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -459,7 +460,7 @@ function AdjustCard({
       </div>
       {error && (
         <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-          {error.message}
+          {errorText(t, error)}
         </p>
       )}
       {stocktake.isSuccess && !counted && (

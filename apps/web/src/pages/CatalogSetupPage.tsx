@@ -17,6 +17,7 @@ import {
   useWarehouses,
   type CatalogList,
 } from '../lib/queries';
+import { errorText } from '../lib/errors';
 
 type Tab = 'departments' | 'units' | 'sizes' | 'colors' | 'seasons';
 
@@ -233,7 +234,7 @@ function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons'>; list: CatalogLi
           {t('common.add')}
         </Button>
       </div>
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
     </Card>
   );
 }
@@ -265,7 +266,7 @@ function AddSeason() {
           {t('common.add')}
         </Button>
       </div>
-      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
     </Card>
   );
 }
@@ -434,7 +435,7 @@ function EntryRow({
           )}
         </div>
       )}
-      {error && <p className="mt-2 text-xs text-destructive">{error.message}</p>}
+      {error && <p className="mt-2 text-xs text-destructive">{errorText(t, error)}</p>}
     </li>
   );
 }

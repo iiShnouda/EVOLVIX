@@ -15,6 +15,7 @@ import { useDeviceInfo } from '../lib/device';
 import { useAuth } from '../stores/auth';
 import { useCompanySettings, useFinishTransfer, useTransfer, useTransfers } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { errorText } from '../lib/errors';
 
 type Tab = 'open' | 'all';
 
@@ -304,7 +305,7 @@ function TransferDetail({
       )}
       {error && (
         <p className="mx-4 mb-4 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-          {error.message}
+          {errorText(t, error)}
         </p>
       )}
     </div>
