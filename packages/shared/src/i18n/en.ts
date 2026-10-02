@@ -2088,4 +2088,12 @@ export const en = {
   'settings.hideNewPlaces':
     'A new branch, warehouse, cash box or department is seen only by owners and admins until someone is given it',
   'staff.costBundle': 'Supply prices, profit and everything that shows them (all at once)',
+  'together.returns': "The customer's returns in the same period",
+  'together.returnsTotal': 'Returns',
+  'together.net': 'Net after returns',
+  'together.discountsGiven': 'Of which discounts',
+  'together.department': 'Department',
+  'together.invoiceNo': 'Invoice no.',
+  'together.deptSales': "Department's sales",
+  'together.deptNet': "Department's net",
 } as const;

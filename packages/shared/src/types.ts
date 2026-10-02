@@ -1087,6 +1087,9 @@ export interface CustomerInvoices {
   from: string;
   to: string;
   invoices: SalesDocument[];
+  /** Their returns in the period: printed with the invoices and taken off the total. */
+  returns?: SalesDocument[];
+  returnsTotal?: number;
 }
 
 /** A page of documents and the totals of everything the filter found (cancelled ones left out). */

@@ -111,6 +111,14 @@ check(
   k.purchases == null && k.sales == null && k.returns == null && k.prices === false,
 );
 
+console.log("== the accountant's checkout counts the returns");
+const day = ok("the customer's day", await acc.get(`/sales/customers/${customer.id}/invoices`));
+eq('two invoices', day.invoices.length, 2);
+eq('one return with them', day.returns.length, 1);
+eq('returns total', day.returnsTotal, 1000);
+eq('owed before today (none)', day.previousBalance, 0);
+eq('owed now: 53.00 less the 10.00 back', day.balance, 4300);
+
 console.log('== the detailed search by place');
 const inWh = ok(
   'search one warehouse',

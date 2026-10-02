@@ -69,6 +69,8 @@ export function CustomerInvoicesPage() {
   const [party, setParty] = useState<Party | null>(null);
   const shownParty = party?.id === partyId ? party : (data.data?.party ?? null);
   const invoices = data.data?.invoices ?? [];
+  const returns = data.data?.returns ?? [];
+  const returnsTotal = data.data?.returnsTotal ?? 0;
   const currency = data.data?.currency ?? 'EGP';
   const money = (v: number) => formatMoney(v, currency, locale);
 
@@ -155,7 +157,7 @@ export function CustomerInvoicesPage() {
         <div className="grid place-items-center py-16 text-muted">
           <Spinner size={26} />
         </div>
-      ) : invoices.length === 0 ? (
+      ) : invoices.length === 0 && returns.length === 0 ? (
         <Card>
           <EmptyState title={t('common.empty')} icon="sales" />
         </Card>
@@ -193,6 +195,30 @@ export function CustomerInvoicesPage() {
             {setDiscount.error && (
               <p className="text-sm text-destructive">{errorText(t, setDiscount.error)}</p>
             )}
+            {/* The customer's returns: printed with the invoices and taken off the total. */}
+            {returns.length > 0 && (
+              <h2 className="pt-2 text-sm font-semibold text-destructive">
+                {t('together.returns')} ({formatNumber(returns.length, locale)})
+              </h2>
+            )}
+            {returns.map((doc) => (
+              <InvoiceCard
+                key={doc.id}
+                doc={doc}
+                options={options}
+                canDiscount={false}
+                busy={false}
+                isReturn
+                onDiscount={() => undefined}
+                paperRef={(el) => {
+                  single.current[doc.id] = el;
+                }}
+                onPrint={() => {
+                  const el = single.current[doc.id];
+                  if (el) printElement(el, safeName(`${t(`doc.${doc.type}`)} ${doc.number}`));
+                }}
+              />
+            ))}
           </div>
 
           <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
@@ -205,7 +231,13 @@ export function CustomerInvoicesPage() {
                 <Line label={t('together.previous')} value={money(data.data!.previousBalance)} />
                 <Line label={t('together.total')} value={money(total)} strong />
                 {discounts > 0 && (
-                  <Line label={t('together.discounts')} value={money(-discounts)} />
+                  <Line label={t('together.discountsGiven')} value={money(discounts)} />
+                )}
+                {returnsTotal > 0 && (
+                  <Line label={t('together.returnsTotal')} value={money(-returnsTotal)} />
+                )}
+                {returnsTotal > 0 && (
+                  <Line label={t('together.net')} value={money(total - returnsTotal)} strong />
                 )}
                 {paid > 0 && <Line label={t('sales.paid')} value={money(paid)} />}
                 <div className="my-1 border-t border-line" />
@@ -259,6 +291,7 @@ export function CustomerInvoicesPage() {
                 <CombinedPaper
                   ref={combined}
                   invoices={invoices}
+                  returns={returns}
                   party={shownParty}
                   previousBalance={data.data!.previousBalance}
                   balance={data.data!.balance}
@@ -274,14 +307,14 @@ export function CustomerInvoicesPage() {
       )}
 
       {/* Every invoice on its own page, then the combined one: kept off screen for printing. */}
-      {invoices.length > 0 && (
+      {invoices.length + returns.length > 0 && (
         <div
           aria-hidden
           className="pointer-events-none fixed start-0 top-0 h-0 w-0 overflow-hidden"
         >
           <div className="w-[760px]">
             <div ref={everything}>
-              {invoices.map((doc) => (
+              {[...invoices, ...returns].map((doc) => (
                 <div key={doc.id} className="print-page">
                   <InvoicePaper doc={doc} options={options} />
                 </div>
@@ -289,6 +322,7 @@ export function CustomerInvoicesPage() {
               <div className="print-page">
                 <CombinedPaper
                   invoices={invoices}
+                  returns={returns}
                   party={shownParty}
                   previousBalance={data.data!.previousBalance}
                   balance={data.data!.balance}
@@ -314,8 +348,10 @@ function InvoiceCard({
   onDiscount,
   onPrint,
   paperRef,
+  isReturn,
 }: {
   doc: SalesDocument;
+  isReturn?: boolean;
   options: PaperOptions;
   canDiscount: boolean;
   busy: boolean;
@@ -331,10 +367,11 @@ function InvoiceCard({
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
   return (
-    <Card padded={false} className="overflow-hidden">
+    <Card padded={false} className={`overflow-hidden ${isReturn ? 'border-destructive/40' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+            {isReturn && <Badge tone="destructive">{t('doc.SALES_RETURN')}</Badge>}
             <span className="tnum">{doc.number}</span>
             {doc.departmentName && <span className="text-muted">· {doc.departmentName}</span>}
           </p>
@@ -346,7 +383,9 @@ function InvoiceCard({
           </p>
         </div>
         <div className="text-end">
-          <p className="text-sm font-semibold tnum">{money(doc.grandTotal)}</p>
+          <p className={`text-sm font-semibold tnum ${isReturn ? 'text-destructive' : ''}`}>
+            {money(isReturn ? -doc.grandTotal : doc.grandTotal)}
+          </p>
           {doc.discountTotal > 0 && (
             <p className="text-xs text-warning tnum">
               {t('together.discounts')} −{money(doc.discountTotal)}
@@ -441,6 +480,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
  */
 function CombinedPaper({
   invoices,
+  returns = [],
   party,
   previousBalance,
   balance,
@@ -451,6 +491,7 @@ function CombinedPaper({
   ref,
 }: {
   invoices: SalesDocument[];
+  returns?: SalesDocument[];
   party: Party | null;
   previousBalance: number;
   balance: number;
@@ -465,8 +506,86 @@ function CombinedPaper({
   const shows = options.shows;
   const money = (v: number) => formatMoney(v, currency, locale);
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
+  const back = returns.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
-  const anyLineDiscount = invoices.some((d) => d.lines.some((l) => l.discount > 0));
+  const anyLineDiscount = [...invoices, ...returns].some((d) =>
+    d.lines.some((l) => l.discount > 0),
+  );
+  // Department by department (owner, 2026-10-02): its invoices, then its returns, then what it
+  // comes to; then all of them together.
+  const noDept = t('invoice.noDepartment');
+  const groups = [...invoices, ...returns].reduce<
+    Map<string, { sales: SalesDocument[]; back: SalesDocument[] }>
+  >((m, d) => {
+    const key = d.departmentName ?? noDept;
+    const g = m.get(key) ?? { sales: [], back: [] };
+    (d.type === 'SALES_RETURN' ? g.back : g.sales).push(d);
+    return m.set(key, g);
+  }, new Map());
+  const block = (doc: SalesDocument, isReturn: boolean) => (
+    <div
+      key={doc.id}
+      className={`print-avoid mb-2 rounded-[var(--radius-app)] border ${isReturn ? 'border-destructive/50' : 'border-line'}`}
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 px-2.5 py-1.5 text-xs">
+        <span className="font-semibold">
+          {isReturn ? t('doc.SALES_RETURN') : t('together.invoiceNo')}{' '}
+          <span className="tnum">{doc.number}</span>
+          {isReturn && doc.sourceNumber && (
+            <span className="ms-1 font-normal text-muted">
+              ({t('return.against')} <span className="tnum">{doc.sourceNumber}</span>)
+            </span>
+          )}
+        </span>
+        <span className={`font-semibold tnum ${isReturn ? 'text-destructive' : ''}`}>
+          {money(isReturn ? -doc.grandTotal : doc.grandTotal)}
+        </span>
+      </div>
+      {shows('lines') && (
+        <table className="w-full text-xs">
+          <thead className="text-muted">
+            <tr>
+              <th className="px-2 py-1 text-start font-medium">{t('inventory.products')}</th>
+              <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
+              <th className="px-2 py-1 text-end font-medium">{t('sales.unitPrice')}</th>
+              {anyLineDiscount && (
+                <th className="px-2 py-1 text-end font-medium">{t('col.discount')}</th>
+              )}
+              <th className="px-2 py-1 text-end font-medium">{t('common.total')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {doc.lines.map((l) => (
+              <tr key={l.id}>
+                <td className="px-2 py-1">{l.productName}</td>
+                <td className="px-2 py-1 text-end tnum">
+                  {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
+                </td>
+                <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
+                {anyLineDiscount && (
+                  <td className="px-2 py-1 text-end tnum">
+                    {l.discount > 0 ? money(l.discount) : ''}
+                  </td>
+                )}
+                <td className="px-2 py-1 text-end tnum">{money(l.lineTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {doc.charges
+        .filter((c) => c.amount !== 0 && (c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT'))
+        .map((c, i) => (
+          <div key={i} className="flex justify-between border-t border-line px-2.5 py-1 text-xs">
+            <span className="text-muted">
+              {t(`charge.${c.kind}`)}
+              {c.rate != null && ` (${formatNumber(c.rate, locale)}%)`}
+            </span>
+            <span className="tnum">−{money(c.amount)}</span>
+          </div>
+        ))}
+    </div>
+  );
   return (
     <div
       ref={ref}
@@ -504,70 +623,32 @@ function CombinedPaper({
           )}
         </p>
       )}
-      {invoices.map((doc) => (
-        <div
-          key={doc.id}
-          className="print-avoid mb-3 rounded-[var(--radius-app)] border border-line"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-line bg-surface-2 px-2.5 py-1.5 text-xs">
-            <span className="font-semibold">
-              {doc.departmentName ?? t('invoice.noDepartment')} ·{' '}
-              <span className="tnum">{doc.number}</span>
-            </span>
-            <span className="font-semibold tnum">{money(doc.grandTotal)}</span>
-          </div>
-          {shows('lines') && (
-            <table className="w-full text-xs">
-              <thead className="text-muted">
-                <tr>
-                  <th className="px-2 py-1 text-start font-medium">{t('inventory.products')}</th>
-                  <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
-                  <th className="px-2 py-1 text-end font-medium">{t('sales.unitPrice')}</th>
-                  {anyLineDiscount && (
-                    <th className="px-2 py-1 text-end font-medium">{t('col.discount')}</th>
-                  )}
-                  <th className="px-2 py-1 text-end font-medium">{t('common.total')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {doc.lines.map((l) => (
-                  <tr key={l.id}>
-                    <td className="px-2 py-1">{l.productName}</td>
-                    <td className="px-2 py-1 text-end tnum">
-                      {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
-                    </td>
-                    <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
-                    {anyLineDiscount && (
-                      <td className="px-2 py-1 text-end tnum">
-                        {l.discount > 0 ? money(l.discount) : ''}
-                      </td>
-                    )}
-                    <td className="px-2 py-1 text-end tnum">{money(l.lineTotal)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {doc.charges
-            .filter((c) => c.amount !== 0 && (c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT'))
-            .map((c, i) => (
-              <div
-                key={i}
-                className="flex justify-between border-t border-line px-2.5 py-1 text-xs"
-              >
-                <span className="text-muted">
-                  {t(`charge.${c.kind}`)}
-                  {c.rate != null && ` (${formatNumber(c.rate, locale)}%)`}
-                </span>
-                <span className="tnum">−{money(c.amount)}</span>
-              </div>
-            ))}
-        </div>
-      ))}
+      {[...groups].map(([name, g]) => {
+        const sold = g.sales.reduce((n, d) => n + d.grandTotal, 0);
+        const returned = g.back.reduce((n, d) => n + d.grandTotal, 0);
+        return (
+          <section key={name} className="mb-4">
+            <h3 className="mb-1.5 border-b-2 border-fg/70 pb-0.5 text-sm font-bold">
+              {t('together.department')}: {name}
+            </h3>
+            {g.sales.map((d) => block(d, false))}
+            {g.back.map((d) => block(d, true))}
+            {g.back.length > 0 && (
+              <dl className="space-y-0.5 px-1 text-xs">
+                <Line label={t('together.deptSales')} value={money(sold)} />
+                <Line label={t('together.returnsTotal')} value={money(-returned)} />
+                <Line label={t('together.deptNet')} value={money(sold - returned)} strong />
+              </dl>
+            )}
+          </section>
+        );
+      })}
       {shows('totals') && (
-        <dl className="mt-3 space-y-1">
+        <dl className="mt-3 space-y-1 border-t-2 border-fg/70 pt-2">
           <Line label={t('together.total')} value={money(total)} strong />
-          {discounts > 0 && <Line label={t('together.discounts')} value={money(-discounts)} />}
+          {discounts > 0 && <Line label={t('together.discountsGiven')} value={money(discounts)} />}
+          {back > 0 && <Line label={t('together.returnsTotal')} value={money(-back)} />}
+          {back > 0 && <Line label={t('together.net')} value={money(total - back)} strong />}
           <Line label={t('together.previous')} value={money(previousBalance)} />
           <div className="border-t border-line pt-1">
             <Line label={t('together.balance')} value={money(balance)} strong />

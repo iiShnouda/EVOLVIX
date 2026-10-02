@@ -202,9 +202,11 @@ public sealed class SalesController : ControllerBase
             return BadRequest(new { message = "Choose up to three months.", code = "bad_period" });
         var start = CompanyClock.StartOf(fromDay);
         var end = CompanyClock.StartOf(toDay.AddDays(1));
+        // …and their returns in the period (owner, 2026-10-02): printed with them and taken off the total.
         var docs = await _db.SalesDocuments.AsNoTracking()
             .Where(d => d.PartyId == partyId && d.IssueDate >= start && d.IssueDate < end
                         && ((d.Type == DocumentType.SALES_INVOICE && d.Status != DocumentStatus.CANCELLED)
+                            || (d.Type == DocumentType.SALES_RETURN && d.Status != DocumentStatus.CANCELLED)
                             || (d.Type == DocumentType.SALES_ORDER && d.Status == DocumentStatus.PENDING)))
             .InBranches(User, d => d.BranchId).InDepartments(User)
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff)
@@ -218,16 +220,25 @@ public sealed class SalesController : ControllerBase
         var edited = await _db.InvoiceRevisions.Where(x => ids.Contains(x.DocumentId) && x.Kind == "EDIT")
             .Select(x => x.DocumentId).Distinct().ToListAsync();
         var invoices = new List<SalesDetailDto>();
+        var returns = new List<SalesDetailDto>();
         foreach (var d in docs)
-            invoices.Add(Costs.Guard(User, Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d))
-                with { Edited = edited.Contains(d.Id) }));
-        // What they owed before these: the balance less what the posted ones still put on it.
+            (d.Type == DocumentType.SALES_RETURN ? returns : invoices).Add(Costs.Guard(User,
+                Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d)) with { Edited = edited.Contains(d.Id) }));
+        // What they owed before these: the balance less what the posted ones still put on it, plus
+        // what their returns took off it (less what was paid back in cash).
         var posted = docs.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
         var owed = await MoneyService.OutstandingAsync(_db, posted);
         var onThese = posted.Sum(d => owed.GetValueOrDefault(d.Id));
+        var back = docs.Where(d => d.Type == DocumentType.SALES_RETURN).ToList();
+        var returnsTotal = back.Sum(d => d.GrandTotal);
+        // A return against one of these invoices is already off what that invoice still owes.
+        var postedIds = posted.Select(d => d.Id).ToHashSet();
+        var offBalance = back.Where(d => d.SourceDocumentId is not Guid src || !postedIds.Contains(src))
+            .Sum(d => d.GrandTotal - d.PaidAmount);
         var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
-        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party), party.Balance, party.Balance - onThese, onThese,
-            currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray()));
+        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party), party.Balance, party.Balance - onThese + offBalance, onThese,
+            currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray(),
+            returns.ToArray(), returnsTotal));
     }
 
     /// <summary>

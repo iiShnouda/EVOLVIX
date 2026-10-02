@@ -93,8 +93,9 @@ public record SalesDetailDto(
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
 /// <param name="OnThese">What the posted ones still put on their account.</param>
+/// <param name="Returns">The customer's returns in the period, taken off <c>ReturnsTotal</c> from what they took.</param>
 public record CustomerInvoicesDto(PartyDto Party, long Balance, long PreviousBalance, long OnThese, string Currency,
-    string From, string To, SalesDetailDto[] Invoices);
+    string From, string To, SalesDetailDto[] Invoices, SalesDetailDto[]? Returns = null, long ReturnsTotal = 0);
 
 /// <summary>One invoice's discount: a percent or an amount (neither = none).</summary>
 public record SetInvoiceDiscountRequest(decimal? Percent = null, long? Amount = null, string? Kind = null);

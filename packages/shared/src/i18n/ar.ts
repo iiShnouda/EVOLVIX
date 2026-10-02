@@ -2076,4 +2076,12 @@ export const ar: TranslationDictionary = {
   'settings.hideNewPlaces':
     'أي فرع أو مخزن أو خزينة أو قسم جديد لا يراه أحد غير المالك والأدمن حتى يُعطى صلاحيته',
   'staff.costBundle': 'سعر التوريد والمكسب وكل ما يُظهرهما (مرة واحدة)',
+  'together.returns': 'مرتجعات العميل في نفس الفترة',
+  'together.returnsTotal': 'المرتجعات',
+  'together.net': 'الصافي بعد المرتجعات',
+  'together.discountsGiven': 'منها خصومات',
+  'together.department': 'القسم',
+  'together.invoiceNo': 'فاتورة رقم',
+  'together.deptSales': 'مبيعات القسم',
+  'together.deptNet': 'صافي القسم',
 };
