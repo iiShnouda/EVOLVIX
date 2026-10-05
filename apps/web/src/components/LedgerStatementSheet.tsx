@@ -262,7 +262,7 @@ export function StatementBody({
 
   return (
     <>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-app)] border border-line bg-surface-2/50 p-3">
         <label className="block">
           <span className="mb-1 block text-xs text-muted">{t('ledger.from')}</span>
           <input
@@ -363,38 +363,37 @@ export function StatementBody({
       ) : (
         <div ref={paper}>
           {before}
-          <dl
-            className={`mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm ${isParty ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}
-          >
-            <div>
-              <dt className="text-xs text-muted">{t('ledger.opening')}</dt>
-              <dd>
-                <SidedMoney value={data.opening} currency={data.currency} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">{t('ledger.debit')}</dt>
-              <dd className="tnum">{money(data.totalDebit)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">{t('ledger.credit')}</dt>
-              <dd className="tnum">{money(data.totalCredit)}</dd>
-            </div>
-            {isParty && (
-              <div>
-                <dt className="text-xs text-muted">{t('ledger.periodBalance')}</dt>
-                <dd>
-                  <SidedMoney value={data.totalDebit - data.totalCredit} currency={data.currency} />
+          {/* The four figures of a statement, the way an accountant reads them. */}
+          <SectionHeading>{t('statement.summary')}</SectionHeading>
+          <dl className="grid grid-cols-2 overflow-hidden rounded-[var(--radius-app)] border border-line text-sm sm:grid-cols-4">
+            {(
+              [
+                ['ledger.opening', <SidedMoney value={data.opening} currency={data.currency} />],
+                ['statement.totalDebit', <span className="tnum">{money(data.totalDebit)}</span>],
+                ['statement.totalCredit', <span className="tnum">{money(data.totalCredit)}</span>],
+                ['ledger.closing', <SidedMoney value={data.closing} currency={data.currency} />],
+              ] as [TranslationKey, ReactNode][]
+            ).map(([k, v], i) => (
+              <div
+                key={k}
+                className={`border-line p-3 ${i < 3 ? 'border-e' : ''} ${i < 2 ? 'border-b sm:border-b-0' : ''} ${i === 1 ? 'border-e-0 sm:border-e' : ''} ${i === 3 ? 'bg-brand-soft/60' : ''}`}
+              >
+                <dt className="text-xs text-muted">{t(k)}</dt>
+                <dd className={`mt-0.5 ${i === 3 ? 'text-base font-bold' : 'font-semibold'}`}>
+                  {v}
                 </dd>
               </div>
-            )}
-            <div>
-              <dt className="text-xs text-muted">{t('ledger.closing')}</dt>
-              <dd className="font-semibold">
-                <SidedMoney value={data.closing} currency={data.currency} />
-              </dd>
-            </div>
+            ))}
           </dl>
+          <SectionHeading
+            extra={
+              <span className="text-xs font-normal text-muted tnum">
+                {t('ledger.movements')}: {data.lines.length}
+              </span>
+            }
+          >
+            {t('statement.lines')}
+          </SectionHeading>
           {isParty ? (
             <PartyStatementTable data={data} from={from} />
           ) : data.lines.length === 0 ? (
@@ -441,6 +440,16 @@ export function StatementBody({
         </div>
       )}
     </>
+  );
+}
+
+/** A titled part of a statement or account (a clear line under its name; it prints too). */
+export function SectionHeading({ children, extra }: { children: ReactNode; extra?: ReactNode }) {
+  return (
+    <div className="mt-6 mb-2 flex items-end justify-between gap-2 border-b-2 border-[var(--c-fg)] pb-1 first:mt-4">
+      <h3 className="text-sm font-bold">{children}</h3>
+      {extra}
+    </div>
   );
 }
 
@@ -509,10 +518,18 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   const { deviceClass } = useDeviceInfo();
   const money = (v: number) => formatMoney(v, data.currency, locale);
   const [saved, setSaved] = useHiddenColumns('statement.order');
+  // Branch, department, warehouse and notes show only when a line has one (a clear statement).
+  const OPTIONAL: Partial<Record<ColKey, (l: LedgerLine) => unknown>> = {
+    branch: (l) => l.branchName,
+    department: (l) => l.departmentName,
+    warehouse: (l) => l.warehouseName,
+    note: (l) => l.note,
+  };
+  const used = (k: ColKey) => !OPTIONAL[k] || data.lines.some((l) => !!OPTIONAL[k]!(l));
   const order: ColKey[] = [
     ...saved.filter((k): k is ColKey => (DEFAULT_ORDER as string[]).includes(k)),
     ...DEFAULT_ORDER.filter((k) => !saved.includes(k)),
-  ];
+  ].filter(used);
   const keyOf = (label: string) => order.find((k) => t(COL_LABEL[k]) === label);
   const move = (label: string, step: -1 | 1) => {
     const k = keyOf(label);
@@ -537,7 +554,8 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   const cell = 'p-2 align-top';
 
   const docLink = (l: LedgerLine) => {
-    const number = l.documentNumber ?? l.number;
+    // An opening balance has no document of its own.
+    const number = l.documentNumber ?? (l.sourceType === 'OPENING' ? '' : l.number);
     if (!l.documentId || !l.documentKind || !OPENS.has(l.documentKind))
       return <bdi className="whitespace-nowrap">{number}</bdi>;
     return (
@@ -670,18 +688,8 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
     );
 
   return (
-    <div className="mt-3 rounded-[var(--radius-app)] border border-line">
-      <TableColumns
-        id="statement.v2"
-        className="pt-2"
-        onMove={move}
-        onDrop={drop}
-        toolbar={
-          <span className="ps-2 tnum">
-            {data.lines.length} {t('ledger.movements')}
-          </span>
-        }
-      >
+    <div className="rounded-[var(--radius-app)] border border-line">
+      <TableColumns id="statement.v2" className="pt-2" onMove={move} onDrop={drop}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   formatDate,
@@ -9,7 +9,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, Spinner } from './ui';
 import { DocumentPreview } from './DocumentPreview';
-import { SidedMoney, StatementBody } from './LedgerStatementSheet';
+import { SectionHeading, SidedMoney, StatementBody } from './LedgerStatementSheet';
 import { Sheet } from './Sheet';
 import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
@@ -41,10 +41,12 @@ export function PartyAccount({ party }: { party: Party }) {
   const doc = useDocument('sales', openId);
   const a = account.data;
 
-  const top = canInvoices && a && (
-    <AccountSummary a={a} department={department} onDepartment={setDepartment} />
+  const sections = canInvoices && a && (
+    <>
+      <AccountSummary a={a} department={department} onDepartment={setDepartment} />
+      <AccountDocuments a={a} onOpen={setOpenId} />
+    </>
   );
-  const bottom = canInvoices && a && <AccountDocuments a={a} onOpen={setOpenId} />;
   const preview = openId && (
     <Sheet
       title={doc.data?.number ?? ''}
@@ -67,8 +69,7 @@ export function PartyAccount({ party }: { party: Party }) {
           title={codeName(party.code, party.name)}
           department={department}
           onDepartment={setDepartment}
-          before={top}
-          after={bottom}
+          after={sections}
         />
         {preview}
       </Card>
@@ -97,10 +98,7 @@ export function PartyAccount({ party }: { party: Party }) {
           <Spinner size={24} />
         </div>
       ) : (
-        <>
-          {top}
-          {bottom}
-        </>
+        sections
       )}
       {preview}
     </Card>
@@ -137,38 +135,26 @@ function AccountSummary({
       : []),
   ];
   return (
-    <div className="mt-4 space-y-3">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-2">
-        <div className="rounded-[var(--radius-app)] border border-line p-2.5">
-          <p className="text-xs text-muted">{t('account.balance')}</p>
-          <p className="mt-0.5 font-semibold">
-            <SidedMoney value={a.balance} currency={a.currency} />
-          </p>
-        </div>
+    <>
+      <SectionHeading>{t('statement.customerSummary')}</SectionHeading>
+      <dl className="grid overflow-hidden rounded-[var(--radius-app)] border border-line text-sm sm:grid-cols-2">
+        <SummaryRow label={t('account.balance')}>
+          <SidedMoney value={a.balance} currency={a.currency} />
+        </SummaryRow>
         {kpis.map((k) => (
-          <div key={k.label} className="rounded-[var(--radius-app)] border border-line p-2.5">
-            <p className="text-xs text-muted">{k.label}</p>
-            <p className={`mt-0.5 font-semibold tnum ${k.tone ?? ''}`}>{money(k.value)}</p>
-          </div>
+          <SummaryRow key={k.label} label={k.label}>
+            <span className={`tnum ${k.tone ?? ''}`}>{money(k.value)}</span>
+          </SummaryRow>
         ))}
-      </div>
-      {(a.shippingAddress || a.notes) && (
-        <p className="text-sm text-muted">
-          {a.shippingAddress && (
-            <>
-              {t('parties.shippingAddress')}: <span className="text-fg">{a.shippingAddress}</span>
-            </>
-          )}
-          {a.shippingAddress && a.notes && ' · '}
-          {a.notes}
-        </p>
-      )}
+        {a.shippingAddress && (
+          <SummaryRow label={t('parties.shippingAddress')}>{a.shippingAddress}</SummaryRow>
+        )}
+        {a.notes && <SummaryRow label={t('parties.notes')}>{a.notes}</SummaryRow>}
+      </dl>
       {a.departments.length > 0 && (
-        <div className="rounded-[var(--radius-app)] border border-line">
-          <h3 className="border-b border-line px-3 py-2 text-sm font-semibold">
-            {t('account.byDepartment')}
-          </h3>
-          <div className="overflow-x-auto">
+        <>
+          <SectionHeading>{t('account.byDepartment')}</SectionHeading>
+          <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
             <TableColumns id="account.departments">
               <table className="w-full text-sm">
                 <thead className="bg-surface-2 text-xs text-muted">
@@ -204,8 +190,18 @@ function AccountSummary({
               </table>
             </TableColumns>
           </div>
-        </div>
+        </>
       )}
+    </>
+  );
+}
+
+/** One line of a summary: its name and its figure, side by side. */
+function SummaryRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-line px-3 py-2 sm:odd:border-e">
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-end font-semibold">{children}</dd>
     </div>
   );
 }
@@ -245,110 +241,110 @@ function AccountDocuments({ a, onOpen }: { a: CustomerAccount; onOpen: (id: stri
     );
 
   return (
-    <div className="mt-4 rounded-[var(--radius-app)] border border-line">
-      <h3 className="border-b border-line px-3 py-2 text-sm font-semibold">
-        {t('account.documents')}
-      </h3>
-      {a.documents.length === 0 ? (
-        <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-      ) : deviceClass !== 'desktop' ? (
-        <div className="space-y-2 p-2">
-          {a.documents.map((d) => {
-            const isReturn = d.type === 'SALES_RETURN';
-            return (
-              <div
-                key={d.id}
-                onClick={() => onOpen(d.id)}
-                className="cursor-pointer rounded-[var(--radius-app)] border border-line p-3 text-sm"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-1.5 font-medium">
-                      <bdi className="tnum">{d.number}</bdi> {badge(d)}
-                    </p>
-                    <p className="text-xs text-muted">
-                      <span className="tnum">{formatDate(d.issueDate, locale)}</span>
-                      {d.departmentName && ` · ${d.departmentName}`}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-end tnum">
-                    <p className="font-semibold">
-                      {isReturn ? '−' : ''}
-                      {money(d.grandTotal)}
-                    </p>
-                    {d.type === 'SALES_INVOICE' && (
-                      <p className="text-xs text-muted">
-                        {t('account.left')} {money(d.outstanding)}
+    <>
+      <SectionHeading>{t('account.documents')}</SectionHeading>
+      <div className="rounded-[var(--radius-app)] border border-line">
+        {a.documents.length === 0 ? (
+          <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+        ) : deviceClass !== 'desktop' ? (
+          <div className="space-y-2 p-2">
+            {a.documents.map((d) => {
+              const isReturn = d.type === 'SALES_RETURN';
+              return (
+                <div
+                  key={d.id}
+                  onClick={() => onOpen(d.id)}
+                  className="cursor-pointer rounded-[var(--radius-app)] border border-line p-3 text-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                        <bdi className="tnum">{d.number}</bdi> {badge(d)}
                       </p>
-                    )}
-                  </div>
-                </div>
-                {(d.notes || noteButton(d)) && (
-                  <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
-                    <span className="min-w-0 truncate">{d.notes ?? ''}</span>
-                    {noteButton(d)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <TableColumns id="account.documents">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="p-2 text-start font-medium">{t('common.date')}</th>
-                  <th className="p-2 text-start font-medium">#</th>
-                  <th className="p-2 text-start font-medium">{t('invoice.department')}</th>
-                  <th className="p-2 text-end font-medium">{t('common.total')}</th>
-                  <th className="p-2 text-end font-medium">{t('account.discounts')}</th>
-                  <th className="p-2 text-end font-medium">{t('account.paid')}</th>
-                  <th className="p-2 text-end font-medium">{t('account.left')}</th>
-                  <th className="p-2 text-start font-medium">{t('invoice.notes')}</th>
-                  <th className="p-2" data-noprint />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {a.documents.map((d) => {
-                  const isReturn = d.type === 'SALES_RETURN';
-                  const invoice = d.type === 'SALES_INVOICE';
-                  return (
-                    <tr
-                      key={d.id}
-                      onClick={() => onOpen(d.id)}
-                      className="cursor-pointer hover:bg-surface-2"
-                    >
-                      <td className="p-2 tnum">{formatDate(d.issueDate, locale)}</td>
-                      <td className="p-2">
-                        <span className="font-medium tnum">{d.number}</span>
-                        <span className="ms-2">{badge(d)}</span>
-                      </td>
-                      <td className="p-2 text-muted">{d.departmentName ?? '—'}</td>
-                      <td className="p-2 text-end tnum">
+                      <p className="text-xs text-muted">
+                        <span className="tnum">{formatDate(d.issueDate, locale)}</span>
+                        {d.departmentName && ` · ${d.departmentName}`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-end tnum">
+                      <p className="font-semibold">
                         {isReturn ? '−' : ''}
                         {money(d.grandTotal)}
-                      </td>
-                      <td className="p-2 text-end tnum text-muted">
-                        {d.discountTotal ? money(d.discountTotal) : '—'}
-                      </td>
-                      <td className="p-2 text-end tnum">{invoice ? money(d.paidAmount) : '—'}</td>
-                      <td className="p-2 text-end font-semibold tnum">
-                        {invoice ? money(d.outstanding) : '—'}
-                      </td>
-                      <td className="max-w-48 truncate p-2 text-muted">{d.notes ?? ''}</td>
-                      <td className="p-2 text-end" data-noprint>
-                        {noteButton(d)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableColumns>
-        </div>
-      )}
-    </div>
+                      </p>
+                      {d.type === 'SALES_INVOICE' && (
+                        <p className="text-xs text-muted">
+                          {t('account.left')} {money(d.outstanding)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {(d.notes || noteButton(d)) && (
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
+                      <span className="min-w-0 truncate">{d.notes ?? ''}</span>
+                      {noteButton(d)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <TableColumns id="account.documents">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('common.date')}</th>
+                    <th className="p-2 text-start font-medium">{t('ledger.docNumber')}</th>
+                    <th className="p-2 text-start font-medium">{t('invoice.department')}</th>
+                    <th className="p-2 text-end font-medium">{t('common.total')}</th>
+                    <th className="p-2 text-end font-medium">{t('account.discounts')}</th>
+                    <th className="p-2 text-end font-medium">{t('account.paid')}</th>
+                    <th className="p-2 text-end font-medium">{t('account.left')}</th>
+                    <th className="p-2 text-start font-medium">{t('invoice.notes')}</th>
+                    <th className="p-2" data-noprint />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {a.documents.map((d) => {
+                    const isReturn = d.type === 'SALES_RETURN';
+                    const invoice = d.type === 'SALES_INVOICE';
+                    return (
+                      <tr
+                        key={d.id}
+                        onClick={() => onOpen(d.id)}
+                        className="cursor-pointer hover:bg-surface-2"
+                      >
+                        <td className="p-2 tnum">{formatDate(d.issueDate, locale)}</td>
+                        <td className="p-2">
+                          <span className="font-medium tnum">{d.number}</span>
+                          <span className="ms-2">{badge(d)}</span>
+                        </td>
+                        <td className="p-2 text-muted">{d.departmentName ?? '—'}</td>
+                        <td className="p-2 text-end tnum">
+                          {isReturn ? '−' : ''}
+                          {money(d.grandTotal)}
+                        </td>
+                        <td className="p-2 text-end tnum text-muted">
+                          {d.discountTotal ? money(d.discountTotal) : '—'}
+                        </td>
+                        <td className="p-2 text-end tnum">{invoice ? money(d.paidAmount) : '—'}</td>
+                        <td className="p-2 text-end font-semibold tnum">
+                          {invoice ? money(d.outstanding) : '—'}
+                        </td>
+                        <td className="max-w-48 truncate p-2 text-muted">{d.notes ?? ''}</td>
+                        <td className="p-2 text-end" data-noprint>
+                          {noteButton(d)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableColumns>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
