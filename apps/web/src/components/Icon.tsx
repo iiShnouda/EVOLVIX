@@ -3,6 +3,9 @@ import type { CSSProperties } from 'react';
 /** Local stroke-based icon set. Directional icons carry `flip-rtl` where used. */
 const PATHS: Record<string, string> = {
   dashboard: 'M4 13h7V4H4zM13 20h7v-9h-7zM13 4v5h7V4zM4 20h7v-5H4z',
+  bolt: 'M13 2 4.5 13.5H11L10 22l8.5-11.5H12z',
+  arrowUp: 'M12 19V5M5 12l7-7 7 7',
+  arrowDown: 'M12 5v14M19 12l-7 7-7-7',
   sales: 'M4 7h16M4 7l1.5 12h13L20 7M9 11v4M15 11v4M8 7a4 4 0 0 1 8 0',
   purchases: 'M4 5h2l2.5 11h9L20 8H7M9 20a1 1 0 1 0 0 .01M17 20a1 1 0 1 0 0 .01',
   receipts: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',

@@ -76,6 +76,15 @@ export function PartiesPage() {
   };
   const [showClosed, setShowClosed] = useState(false);
   const [editing, setEditing] = useState<Party | 'new' | null>(null);
+  // `?new=1` (the quick-action button): the add form opens at once.
+  useEffect(() => {
+    if (params.get('new') !== '1') return;
+    if (can('parties:create')) setEditing('new');
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
   const query = useDeferredValue(search.trim());
   const { data, isLoading } = useParties({
     page: 1,

@@ -16,6 +16,7 @@ import { PrefControls } from './PrefControls';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
 import { TabsView, useTabActions } from './Tabs';
+import { QuickActions } from '../QuickActions';
 import { FROM_MENU } from '../../lib/tabs';
 
 function useVisibleNav(): NavItem[] {
@@ -38,9 +39,18 @@ export function Shell() {
   const { deviceClass } = useDeviceInfo();
   usePresenceReporter();
 
-  if (deviceClass === 'phone') return <PhoneShell />;
-  if (deviceClass === 'tablet') return <RailShell />;
-  return <SidebarShell />;
+  return (
+    <>
+      {deviceClass === 'phone' ? (
+        <PhoneShell />
+      ) : deviceClass === 'tablet' ? (
+        <RailShell />
+      ) : (
+        <SidebarShell />
+      )}
+      <QuickActions />
+    </>
+  );
 }
 
 /* ------------------------------ Desktop / iPad -------------------------- */
