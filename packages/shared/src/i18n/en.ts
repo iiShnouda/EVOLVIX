@@ -2399,4 +2399,9 @@ export const en = {
     'Print options changed; applying them discards the edits to the document.',
   'print.apply': 'Apply',
   'nav.backTo': 'Back to',
+  'tabs.title': 'Open pages',
+  'tabs.new': 'Open a new page',
+  'tabs.close': 'Close page',
+  'tabs.split': 'Split screen',
+  'tabs.beta': 'Beta',
 } as const;

@@ -23,6 +23,7 @@ import { OfflineGate } from './components/OfflineGate';
 import { UpdateNotice } from './components/UpdateNotice';
 import { LeavePrompt } from './components/LeavePrompt';
 import { PrintEditorHost } from './components/PrintEditor';
+import { setTabRoutes } from './components/shell/Tabs';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
@@ -213,69 +214,74 @@ function EditSalesInvoiceRoute() {
 }
 
 // A data router, so a screen with work on it can ask before it is left (useBlocker).
-const router = createBrowserRouter(
-  createRoutesFromElements(
-    <>
-      <Route path="/login" element={<LoginRoute />} />
-      <Route element={<ProtectedApp />}>
-        <Route index element={<Landing />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
-        <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
-        <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
-        <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
-        <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />
-        <Route path="/sales/together" element={<CustomerInvoicesPage />} />
-        <Route path="/sales/together/:partyId" element={<CustomerInvoicesPage />} />
-        <Route path="/parties" element={<PartiesPage />} />
-        <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
-        <Route path="/statement" element={<StatementPage />} />
-        <Route path="/deliveries" element={<DeliveriesPage />} />
-        <Route path="/inventory" element={<InventoryPage />} />
-        <Route path="/inventory/items/:id" element={<ItemCardPage />} />
-        <Route path="/inventory/stocktake" element={<StocktakePage />} />
-        <Route path="/inventory/transfers" element={<TransfersPage />} />
-        <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
-        <Route path="/inventory/setup" element={<CatalogSetupPage />} />
-        <Route path="/inventory/price-lists" element={<PriceListsPage />} />
-        <Route path="/inventory/products/new" element={<NewItemsRoute />} />
-        <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
-        <Route path="/inventory/models" element={<ModelsPage />} />
-        <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
-        <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
-        <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
-        <Route
-          path="/purchases/new"
-          element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
-        />
-        <Route
-          path="/purchases/invoices/:id/return"
-          element={<ReturnBuilderPage scope="purchases" />}
-        />
-        <Route
-          path="/purchases/returns/new"
-          element={<ReturnBuilderPage key="new" scope="purchases" />}
-        />
-        <Route path="/receipts" element={<MoneyPage />} />
-        <Route path="/receipts/move" element={<CashMovePage />} />
-        <Route path="/handovers" element={<HandoversPage />} />
-        <Route path="/ledger" element={<LedgerPage />} />
-        <Route path="/notes" element={<NotesPage />} />
-        <Route path="/notes/receive" element={<NoteFormPage key="in" direction="RECEIVABLE" />} />
-        <Route path="/notes/issue" element={<NoteFormPage key="out" direction="PAYABLE" />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/audit" element={<ActivityPage />} />
-        <Route path="/presence" element={<PresencePage />} />
-        <Route path="/payroll" element={<PayrollPage />} />
-        <Route path="/staff" element={<StaffPage />} />
-        <Route path="/branches" element={<BranchesPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/themes" element={<ThemesPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </>,
-  ),
+const routes = createRoutesFromElements(
+  <>
+    <Route path="/login" element={<LoginRoute />} />
+    <Route element={<ProtectedApp />}>
+      <Route index element={<Landing />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
+      <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
+      <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
+      <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
+      <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />
+      <Route path="/sales/together" element={<CustomerInvoicesPage />} />
+      <Route path="/sales/together/:partyId" element={<CustomerInvoicesPage />} />
+      <Route path="/parties" element={<PartiesPage />} />
+      <Route path="/parties/:id/account" element={<CustomerAccountPage />} />
+      <Route path="/statement" element={<StatementPage />} />
+      <Route path="/deliveries" element={<DeliveriesPage />} />
+      <Route path="/inventory" element={<InventoryPage />} />
+      <Route path="/inventory/items/:id" element={<ItemCardPage />} />
+      <Route path="/inventory/stocktake" element={<StocktakePage />} />
+      <Route path="/inventory/transfers" element={<TransfersPage />} />
+      <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
+      <Route path="/inventory/setup" element={<CatalogSetupPage />} />
+      <Route path="/inventory/price-lists" element={<PriceListsPage />} />
+      <Route path="/inventory/products/new" element={<NewItemsRoute />} />
+      <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
+      <Route path="/inventory/models" element={<ModelsPage />} />
+      <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
+      <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
+      <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
+      <Route
+        path="/purchases/new"
+        element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
+      />
+      <Route
+        path="/purchases/invoices/:id/return"
+        element={<ReturnBuilderPage scope="purchases" />}
+      />
+      <Route
+        path="/purchases/returns/new"
+        element={<ReturnBuilderPage key="new" scope="purchases" />}
+      />
+      <Route path="/receipts" element={<MoneyPage />} />
+      <Route path="/receipts/move" element={<CashMovePage />} />
+      <Route path="/handovers" element={<HandoversPage />} />
+      <Route path="/ledger" element={<LedgerPage />} />
+      <Route path="/notes" element={<NotesPage />} />
+      <Route path="/notes/receive" element={<NoteFormPage key="in" direction="RECEIVABLE" />} />
+      <Route path="/notes/issue" element={<NoteFormPage key="out" direction="PAYABLE" />} />
+      <Route path="/analytics" element={<AnalyticsPage />} />
+      <Route path="/audit" element={<ActivityPage />} />
+      <Route path="/presence" element={<PresencePage />} />
+      <Route path="/payroll" element={<PayrollPage />} />
+      <Route path="/staff" element={<StaffPage />} />
+      <Route path="/branches" element={<BranchesPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/themes" element={<ThemesPage />} />
+    </Route>
+    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+  </>,
 );
+// Each open tab shows one of the signed-in pages (shell/Tabs.tsx), with an unknown address
+// going to the dashboard there too.
+setTabRoutes([
+  ...(routes.find((r) => !r.path && r.children)?.children ?? []),
+  { path: '*', element: <Navigate to="/dashboard" replace /> },
+]);
+const router = createBrowserRouter(routes);
 
 export default function App() {
   useApplyPrefs();

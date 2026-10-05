@@ -127,7 +127,8 @@ database (e.g. `skb_t6`) for a full run; `ids` and `admin` want one.
 
 - `Shell.tsx` — adaptive shell: desktop sidebar (collapsible), tablet rail, phone bottom tabs +
   More. Filters nav items by permission (`permission` / `anyOf`). Renders `BackLink` above pages.
-- `BackLink.tsx` — "رجوع إلى <page>": keeps a trail of visited paths; names come from
+- `BackLink.tsx` — "العودة إلى <page>" per tab: only when a button on a page led here (menu links pass `FROM_MENU` state and reset the trail); `pageName()` names a path.
+- `Tabs.tsx` — **open pages (tabs)**: `TabsView` replaces `<Outlet/>`; every tab's page stays mounted via `useRoutes(tabRoutes, tab.loc)` (routes handed over by `setTabRoutes` in `App.tsx`); the shown tab follows the address bar, switching navigates with `TAB_SWITCH` state. `+` opens a tab, Ctrl/middle-click on a menu item too; split screen (beta, desktop) shows two tabs side by side. The app's ONE `useBlocker` lives here (`guards` from `workDraft.ts`); tab addresses are kept in the `session:tabs` preference. State in `lib/tabs.ts` (`useTabs`, `useTab`, `TabContext`).
   `NAV_ITEMS` or `EXTRA_PAGES` (add new non-menu pages there).
 - `AccountMenu.tsx`, `NotificationBell.tsx` (bell + chime, live via presence hub),
   `ConnectionBadge.tsx`, `PrefControls.tsx` (language + light/dark).

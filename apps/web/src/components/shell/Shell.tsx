@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, type NavLinkProps } from 'react-router-dom';
 import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
 import { Icon } from '../Icon';
 import { Logo, Wordmark } from '../Logo';
@@ -15,7 +15,8 @@ import { ConnectionBadge } from './ConnectionBadge';
 import { PrefControls } from './PrefControls';
 import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
-import { BackLink } from './BackLink';
+import { TabsView, useTabActions } from './Tabs';
+import { FROM_MENU } from '../../lib/tabs';
 
 function useVisibleNav(): NavItem[] {
   const user = useAuth((s) => s.user);
@@ -131,9 +132,8 @@ function PhoneShell() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-4 pb-24">
-        <BackLink />
-        <Outlet />
+      <main className="min-w-0 flex-1 px-4 py-4 pb-24">
+        <TabsView />
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 backdrop-blur pb-safe">
@@ -161,7 +161,7 @@ function PhoneShell() {
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" />
             <div className="grid grid-cols-3 gap-2">
               {rest.map((item) => (
-                <NavLink
+                <MenuLink
                   key={item.key}
                   to={item.path}
                   onClick={() => setMoreOpen(false)}
@@ -169,7 +169,7 @@ function PhoneShell() {
                 >
                   <Icon name={item.icon} size={22} className="text-brand" />
                   <span className="text-xs">{t(item.labelKey)}</span>
-                </NavLink>
+                </MenuLink>
               ))}
             </div>
           </div>
@@ -198,6 +198,33 @@ function NavSizeToggle({ collapsed }: { collapsed: boolean }) {
 }
 
 /* --------------------------------- Parts -------------------------------- */
+
+/**
+ * A menu item: opens its page in the shown tab, with nothing to go back to; Ctrl+click or the
+ * middle button opens it in a new tab instead (owner, 2026-10-05).
+ */
+function MenuLink(props: NavLinkProps & { to: string }) {
+  const { open } = useTabActions();
+  return (
+    <NavLink
+      {...props}
+      state={FROM_MENU}
+      onClick={(e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          e.preventDefault();
+          open(props.to);
+        }
+        props.onClick?.(e);
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          open(props.to);
+        }
+      }}
+    />
+  );
+}
 
 /** The program's mark and name, then the company's own (owner, 2026-10-01). */
 function Brand() {
@@ -253,19 +280,17 @@ function TopBar() {
  * itself, or they would slide down inside it as the page grows (owner report 2026-09-30).
  */
 function MainArea(): ReactNode {
+  // The whole width of the screen (owner, 2026-10-05: "full screen on the computer").
   return (
     <main className="min-w-0 flex-1 overflow-x-clip p-5 lg:p-6">
-      <div className="mx-auto max-w-7xl">
-        <BackLink />
-        <Outlet />
-      </div>
+      <TabsView />
     </main>
   );
 }
 
 function SidebarLink({ item, label }: { item: NavItem; label: string }) {
   return (
-    <NavLink
+    <MenuLink
       to={item.path}
       data-ui="nav"
       className={({ isActive }) =>
@@ -276,13 +301,13 @@ function SidebarLink({ item, label }: { item: NavItem; label: string }) {
     >
       <Icon name={item.icon} size={20} />
       {label}
-    </NavLink>
+    </MenuLink>
   );
 }
 
 function RailLink({ item, label }: { item: NavItem; label: string }) {
   return (
-    <NavLink
+    <MenuLink
       to={item.path}
       title={label}
       className={({ isActive }) =>
@@ -293,7 +318,7 @@ function RailLink({ item, label }: { item: NavItem; label: string }) {
     >
       <Icon name={item.icon} size={22} />
       <span className="line-clamp-1 px-1">{label}</span>
-    </NavLink>
+    </MenuLink>
   );
 }
 
@@ -301,12 +326,12 @@ function PhoneTab({ item, label }: { item: NavItem; label: string }) {
   const location = useLocation();
   const active = location.pathname.startsWith(item.path);
   return (
-    <NavLink
+    <MenuLink
       to={item.path}
       className={`flex flex-col items-center justify-center gap-0.5 py-2 ${active ? 'text-brand' : 'text-faint'}`}
     >
       <Icon name={item.icon} size={22} />
       <span className="text-[11px] font-medium">{label}</span>
-    </NavLink>
+    </MenuLink>
   );
 }

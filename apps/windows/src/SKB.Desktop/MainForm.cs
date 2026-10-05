@@ -32,17 +32,17 @@ internal sealed class MainForm : Form
     {
         Text = Installer.Name;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        MinimumSize = new Size(800, 560);
+        MinimumSize = new Size(1024, 700);
         StartPosition = FormStartPosition.Manual;
+        // The screen it was last on (owner, 2026-10-05: "full screen on the computer, never small"):
+        // it always opens filling that screen; F11 hides the title bar and the taskbar too.
         var bounds = AppSettings.WindowBounds;
-        if (bounds is Rectangle r && Screen.AllScreens is var screens && Array.Exists(screens, s => s.WorkingArea.IntersectsWith(r)))
-            Bounds = r;
-        else
-        {
-            Size = new Size(1280, 820);
-            StartPosition = FormStartPosition.CenterScreen;
-        }
-        if (AppSettings.Maximized) WindowState = FormWindowState.Maximized;
+        var screen = bounds is Rectangle r && Array.Find(Screen.AllScreens, s => s.WorkingArea.IntersectsWith(r)) is Screen hit
+            ? hit
+            : Screen.PrimaryScreen;
+        Bounds = screen.WorkingArea;
+        WindowState = FormWindowState.Maximized;
+        KeyPreview = true;
         Controls.Add(_web);
     }
 
@@ -162,6 +162,36 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
             return;
         }
         base.WndProc(ref m);
+    }
+
+    /// <summary>F11: the whole screen, no title bar or taskbar; F11 again brings them back.</summary>
+    private bool _fullScreen;
+
+    private void ToggleFullScreen(bool on)
+    {
+        if (on == _fullScreen) return;
+        _fullScreen = on;
+        if (on)
+        {
+            WindowState = FormWindowState.Normal;
+            FormBorderStyle = FormBorderStyle.None;
+            Bounds = Screen.FromControl(this).Bounds;
+        }
+        else
+        {
+            FormBorderStyle = FormBorderStyle.Sizable;
+            WindowState = FormWindowState.Maximized;
+        }
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.F11)
+        {
+            ToggleFullScreen(!_fullScreen);
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

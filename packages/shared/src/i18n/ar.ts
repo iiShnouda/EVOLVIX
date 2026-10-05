@@ -2385,4 +2385,9 @@ export const ar: TranslationDictionary = {
   'print.optionsChanged': 'تم تغيير خيارات الطباعة، وتطبيقها يلغي التعديلات على المستند.',
   'print.apply': 'تطبيق',
   'nav.backTo': 'العودة إلى',
+  'tabs.title': 'الصفحات المفتوحة',
+  'tabs.new': 'فتح صفحة جديدة',
+  'tabs.close': 'إغلاق الصفحة',
+  'tabs.split': 'تقسيم الشاشة',
+  'tabs.beta': 'تجريبي',
 };

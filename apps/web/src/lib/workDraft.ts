@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useBlocker, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { MAIN_TAB, useTab } from './tabs';
 import { create } from 'zustand';
 import type { WorkDraft } from '@skb/shared';
 import { api } from './api';
@@ -49,7 +50,19 @@ interface LeaveState {
 }
 export const useLeavePrompt = create<LeaveState>(() => ({ ask: null }));
 
-const signedIn = () => useAuth.getState().status === 'authenticated';
+export const signedIn = () => useAuth.getState().status === 'authenticated';
+
+/**
+ * Every open screen that keeps work, by its draft key, with its tab (see tabs.ts): one guard for
+ * the whole app asks before the shown tab's page is left (a router keeps only one blocker).
+ */
+export const guards = new Map<string, { tab: string; pending: () => boolean; drop: () => void }>();
+/** Whether a tab has work typed on it. */
+export const tabHasWork = (tab: string) =>
+  [...guards.values()].some((g) => g.tab === tab && g.pending());
+/** Leave a tab's work: nothing is asked and its drafts go. */
+export const dropTabWork = (tab: string) =>
+  [...guards.values()].filter((g) => g.tab === tab).forEach((g) => g.drop());
 const AUTOSAVE_MS = 3000;
 
 /** One take per screen, shared by a screen opened twice at once (React's strict mode does that). */
@@ -78,7 +91,9 @@ export function useWorkDraft<T>(
   restore: (data: T) => void | Promise<void>,
 ): { finished: () => void } {
   const { pathname, search } = useLocation();
-  const key = pathname + search;
+  const tab = useTab().id;
+  // A page open in two tabs keeps two drafts; the first tab keeps the keys it always had.
+  const key = pathname + search + (tab === MAIN_TAB ? '' : `#${tab}`);
   const latest = useRef({ snapshot, restore });
   latest.current = { snapshot, restore };
   const done = useRef(false);
@@ -148,30 +163,19 @@ export function useWorkDraft<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  // Leaving the screen with work on it asks first.
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      !done.current &&
-      signedIn() &&
-      currentLocation.pathname !== nextLocation.pathname &&
-      latest.current.snapshot() != null,
-  );
+  // Leaving the screen with work on it asks first (the app's one guard, in shell/Tabs.tsx).
   useEffect(() => {
-    if (blocker.state !== 'blocked') return;
-    useLeavePrompt.setState({
-      ask: {
-        stay: () => {
-          useLeavePrompt.setState({ ask: null });
-          blocker.reset();
-        },
-        leave: () => {
-          useLeavePrompt.setState({ ask: null });
-          done.current = true;
-          blocker.proceed();
-        },
+    guards.set(key, {
+      tab,
+      pending: () => !done.current && signedIn() && latest.current.snapshot() != null,
+      drop: () => {
+        done.current = true;
       },
     });
-  }, [blocker]);
+    return () => {
+      guards.delete(key);
+    };
+  }, [key, tab]);
 
   return {
     finished: () => {
