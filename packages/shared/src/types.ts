@@ -685,6 +685,7 @@ export interface DeliveryRow {
   issueDate: string;
   partyId: string;
   partyName: string;
+  partyCode?: number | null;
   branchName: string;
   method: DeliveryMethod;
   status: DeliveryStatus | null;
@@ -720,6 +721,7 @@ export interface Shipment {
   carrierName: string;
   partyId: string;
   partyName: string;
+  partyCode?: number | null;
   branchName: string;
   /** Cash the carrier collects on delivery, minor units (0 = prepaid). */
   codAmount: number;
@@ -909,6 +911,7 @@ export interface Voucher {
   branchName: string;
   partyId: string | null;
   partyName: string | null;
+  partyCode?: number | null;
   categoryId: string | null;
   categoryName: string | null;
   fromAccountName: string | null;
@@ -1112,6 +1115,8 @@ export interface SalesDocumentSummary {
   departmentName?: string | null;
   /** The customer's / supplier's code (كود). */
   partyCode?: number | null;
+  partyId?: string | null;
+  repCode?: number | null;
   repName?: string | null;
   /** Before discounts (الإجمالي); `grandTotal` is the net (الصافي). */
   subtotal: number;

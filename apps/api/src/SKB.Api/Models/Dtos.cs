@@ -48,7 +48,7 @@ public record SalesSummaryDto(
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
     string? Notes = null, string? State = null, bool Edited = false, bool OverLimit = false,
-    string? ApprovalNote = null);
+    string? ApprovalNote = null, string? PartyId = null, int? RepCode = null);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
@@ -437,7 +437,7 @@ public record DeliveryDto(
     string DocumentId, string Number, string IssueDate, string PartyId, string PartyName, string BranchName,
     string Method, string? Status, string? Address, string? DriverName, string? CarrierId, string? CarrierName,
     long GrandTotal, long Outstanding, string Currency,
-    string? ShipmentId, string? ShipmentNumber, string? ShipmentStatus);
+    string? ShipmentId, string? ShipmentNumber, string? ShipmentStatus, int? PartyCode = null);
 
 /// <param name="Status">OUT_FOR_DELIVERY, DELIVERED or RETURNED.</param>
 /// <param name="CreateReturn">When RETURNED: also post a full sales return of what is left on it.</param>
@@ -450,7 +450,7 @@ public record ShipmentDto(
     string PartyId, string PartyName, string BranchName, long CodAmount, string? Notes,
     string CreatedAt, string CreatedByName, string? PickedUpAt, string? DeliveredAt, string? ReturnedAt,
     string? CancelledAt, string? SettlementId, string? SettlementNumber, ShipmentInvoiceDto[] Invoices,
-    string Currency);
+    string Currency, int? PartyCode = null);
 
 /// <param name="CodAmount">Cash the carrier collects; null = everything still owed on the invoices, 0 = prepaid.</param>
 public record CreateShipmentRequest(
@@ -829,7 +829,7 @@ public record VoucherDto(
     string? CategoryId, string? CategoryName, string? FromAccountName, string? ToAccountName, long Amount,
     long Unallocated, string? Notes, string CreatedAt, string CreatedByName, string? CancelledAt,
     string? CancelledByName, VoucherLineDto[] Lines, VoucherAllocationDto[] Allocations, string Currency,
-    string? EnteredAt = null);
+    string? EnteredAt = null, int? PartyCode = null);
 
 /// <summary>An invoice a receipt or payment can settle.</summary>
 /// <param name="OnCodParcel">In a cash-on-delivery parcel not delivered yet: the carrier collects it.</param>

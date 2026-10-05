@@ -14,6 +14,7 @@ import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useItemLife } from '../lib/queries';
+import { CodeName } from './CodeName';
 
 type Tab = 'summary' | 'purchases' | 'sales' | 'returns' | 'prices';
 
@@ -225,10 +226,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
                   </td>
                 )}
                 <td className="px-2 py-1.5">
-                  {r.partyName}
-                  {r.partyCode != null && (
-                    <span className="ms-1 text-xs text-muted tnum">({r.partyCode})</span>
-                  )}
+                  <CodeName code={r.partyCode} name={r.partyName ?? ''} />
                 </td>
                 <td className="px-2 py-1.5 text-end tnum">
                   {formatNumber(r.quantity, locale)}
@@ -299,7 +297,9 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
                         {formatDateTime(r.date, locale)}
                       </span>
                       <span className="w-32 shrink-0 tnum">{r.number}</span>
-                      <span className="min-w-0 flex-1 truncate">{r.partyName}</span>
+                      <span className="min-w-0 flex-1">
+                        <CodeName code={r.partyCode} name={r.partyName ?? ''} truncate />
+                      </span>
                       <span className="font-semibold tnum">{money(r.net)}</span>
                       <span
                         className={`flex w-28 items-center justify-end gap-1 text-xs tnum ${up ? 'text-positive' : down ? 'text-destructive' : 'text-muted'}`}

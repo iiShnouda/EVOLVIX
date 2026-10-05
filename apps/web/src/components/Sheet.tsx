@@ -12,6 +12,7 @@ export function Sheet({
   children,
   wide = false,
   fill = false,
+  top = false,
 }: {
   title: string;
   onClose: () => void;
@@ -24,6 +25,8 @@ export function Sheet({
    * search only the list moves): the children get a column that fills the panel.
    */
   fill?: boolean;
+  /** Over every other sheet (the print editor, opened from inside one). */
+  top?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -33,7 +36,7 @@ export function Sheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+      className={`fixed inset-0 ${top ? 'z-[60]' : 'z-50'} flex items-end justify-center bg-black/40 sm:items-center sm:p-4`}
       onClick={onClose}
     >
       <div

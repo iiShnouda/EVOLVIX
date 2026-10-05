@@ -234,7 +234,13 @@ export function PrintEditor({
     `px-2.5 py-1 text-xs font-semibold ${on ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`;
 
   return (
-    <Sheet title={t('print.setup')} onClose={onClose} closeLabel={t('common.close')} wide="full">
+    <Sheet
+      title={t('print.setup')}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      wide="full"
+      top
+    >
       <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <div className="space-y-3">
           <div className="space-y-1 rounded-[var(--radius-app)] border border-line p-1">
@@ -318,7 +324,6 @@ export function PrintEditor({
               {t('print.restore')}
             </Button>
           </div>
-          <p className="text-xs text-muted">{t(`print.hint.${mode}`)}</p>
           {picked.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-app)] bg-destructive-soft px-2 py-1.5">
               <Button size="sm" variant="danger" icon="close" onClick={remove}>

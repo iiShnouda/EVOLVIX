@@ -11,7 +11,7 @@ public static class Mapper
         d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"), d.GrandTotal, d.PaidAmount, d.Currency,
         d.SourceDocument?.Number, d.DepartmentId?.ToString(), d.Department is null ? null : Loc.Name(d.Department),
         d.Party?.Code, d.Rep?.FullName, d.Subtotal, d.DiscountTotal, 0, d.Notes,
-        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote);
+        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote, PartyId: d.PartyId.ToString(), RepCode: d.Rep?.Code);
 
     /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
     /// <param name="baseUnits">Base unit name per product (<see cref="InvoiceLines.BaseUnitNamesAsync"/>).</param>

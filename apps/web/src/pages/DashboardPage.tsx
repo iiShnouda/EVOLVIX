@@ -19,6 +19,7 @@ import { periodOf, type Period } from '../lib/period';
 import { useDashboard, useDashboardMore, useHiddenColumns } from '../lib/queries';
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
+import { CodeName } from '../components/CodeName';
 
 const KPI_ICON: Record<string, string> = {
   'kpi.revenue': 'sales',
@@ -677,8 +678,8 @@ function HistoryCard({
                       </span>
                     </span>
                   </td>
-                  <td className="max-w-[12rem] truncate px-3 py-2.5 font-medium">
-                    {doc.partyName}
+                  <td className="max-w-[12rem] px-3 py-2.5 font-medium">
+                    <CodeName code={doc.partyCode} name={doc.partyName} truncate />
                   </td>
                   <td className="hidden px-3 py-2.5 text-muted tnum md:table-cell">
                     {formatDate(doc.issueDate, locale)}

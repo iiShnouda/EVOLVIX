@@ -26,6 +26,7 @@ import { useReportTools } from '../lib/report';
 import { ReportActions } from '../components/ReportActions';
 import { useAuth } from '../stores/auth';
 import { useWorkBranch } from '../stores/workBranch';
+import { codeName } from '../components/CodeName';
 import {
   useAccountStatement,
   useCancelVoucher,
@@ -711,6 +712,8 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
   const [to, setTo] = useState(today());
   const { data, isLoading, error } = useAccountStatement(a.id, from, to);
   const money = (v: number) => formatMoney(v, a.currency, locale);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
 
   return (
     <Sheet
@@ -720,6 +723,18 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
       wide
     >
       <div className="flex flex-wrap items-end gap-3">
+        <div className="order-last ms-auto">
+          <ReportActions
+            disabled={!data}
+            onPrint={() =>
+              report.print(
+                paper.current,
+                `${t('money.statement')} — ${a.name}`,
+                `${formatDate(from, locale)} – ${formatDate(to, locale)}`,
+              )
+            }
+          />
+        </div>
         <Field label={t('money.from')}>
           <input
             className={small}
@@ -743,7 +758,7 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
       {isLoading || !data ? (
         <Loading />
       ) : (
-        <>
+        <div ref={paper}>
           <dl className="mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm sm:grid-cols-4">
             {(
               [
@@ -795,7 +810,7 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
               ))}
             </ul>
           )}
-        </>
+        </div>
       )}
     </Sheet>
   );
@@ -901,7 +916,7 @@ function voucherTitle(v: Voucher, rtl: boolean): string {
   if (v.type === 'TRANSFER')
     return `${iso(v.fromAccountName)} ${rtl ? '←' : '→'} ${iso(v.toAccountName)}`;
   if (v.type === 'EXPENSE') return v.categoryName ?? '';
-  return v.partyName ?? '';
+  return v.partyName ? codeName(v.partyCode, v.partyName) : '';
 }
 
 function VoucherSheet({ v, onClose }: { v: Voucher; onClose: () => void }) {

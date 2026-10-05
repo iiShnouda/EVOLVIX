@@ -485,7 +485,7 @@ public sealed class DeliveryController : ControllerBase
         Loc.Name(d.Branch), d.DeliveryMethod.ToString(), d.DeliveryStatus?.ToString(), d.DeliveryAddress,
         d.Driver?.FullName, d.CarrierId?.ToString(), d.Carrier?.Name,
         d.GrandTotal, owed, d.Currency,
-        s?.Id.ToString(), s?.Number, s?.Status.ToString());
+        s?.Id.ToString(), s?.Number, s?.Status.ToString(), d.Party?.Code);
 
     private static ShipmentDto ToDto(Shipment s, string currency) => new(
         s.Id.ToString(), s.Number, s.WaybillNo, s.Status.ToString(), s.CarrierId.ToString(), s.Carrier?.Name ?? "",
@@ -495,7 +495,7 @@ public sealed class DeliveryController : ControllerBase
         s.SettlementId?.ToString(), s.Settlement?.Number,
         s.Invoices.OrderBy(i => i.Document?.Number).Select(i => new ShipmentInvoiceDto(
             i.DocumentId.ToString(), i.Document?.Number ?? "", i.Document?.GrandTotal ?? 0, i.CodShare)).ToArray(),
-        currency);
+        currency, s.Party?.Code);
 
     private static CarrierSettlementDto ToDto(CarrierSettlement x, string currency) => new(
         x.Id.ToString(), x.Number, x.CarrierId.ToString(), x.Carrier?.Name ?? "", x.CodTotal, x.Fees, x.Received,

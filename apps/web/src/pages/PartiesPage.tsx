@@ -34,6 +34,7 @@ import {
   useUpdateParty,
 } from '../lib/queries';
 import type { Tone } from '../components/ui';
+import { PartyLink } from '../components/PartyContact';
 
 // A factory is a supplier, so there is no separate factory type.
 const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'CARRIER'];
@@ -224,14 +225,8 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
             <Icon name={party.types.includes('CARRIER') ? 'delivery' : 'parties'} size={20} />
           </span>
           <div className="min-w-0">
-            <p className="flex min-w-0 items-center gap-1.5 font-medium">
-              <span
-                className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-xs font-semibold text-muted tnum"
-                title={t('common.code')}
-              >
-                {party.code}
-              </span>
-              <span className="truncate">{party.name}</span>
+            <p className="min-w-0 font-medium">
+              <PartyLink id={party.id} code={party.code} name={party.name} truncate />
             </p>
             <div className="mt-0.5 flex flex-wrap gap-1">
               {party.types.map((type) => (

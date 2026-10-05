@@ -24,6 +24,7 @@ import { useCan } from '../lib/can';
 import { ApiError, api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
+import { CodeName } from '../components/CodeName';
 import {
   useBranches,
   useCreateStaff,
@@ -193,11 +194,8 @@ function PeopleTab() {
                       <Icon name="staff" size={18} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">
-                        {s.fullName}
-                        <span className="ms-1.5 text-xs font-normal text-muted tnum">
-                          ({s.code})
-                        </span>
+                      <span className="block font-medium">
+                        <CodeName code={s.code} name={s.fullName} truncate />
                       </span>
                       <span className="block truncate text-xs text-muted" dir="ltr">
                         {s.email}
@@ -470,10 +468,9 @@ function PersonPanel({ person }: { person: StaffMember }) {
     <div className="space-y-4">
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold">{person.fullName}</h2>
-          <span className="text-sm text-muted tnum">
-            {t('common.code')} {person.code}
-          </span>
+          <h2 className="text-base font-semibold">
+            <CodeName code={person.code} name={person.fullName} />
+          </h2>
           {isMe && <Badge tone="info">{t('staff.you')}</Badge>}
           {!person.isActive && <Badge>{t('staff.inactive')}</Badge>}
         </div>

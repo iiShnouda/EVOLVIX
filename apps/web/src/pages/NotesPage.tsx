@@ -18,6 +18,8 @@ import { useNotePhoto } from '../components/NotePhoto';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { CodeName } from '../components/CodeName';
+import { PartyLink } from '../components/PartyContact';
 import {
   useDepositNotes,
   useMoneyAccounts,
@@ -186,7 +188,9 @@ function FindCheque() {
                         {n.serialNumber}
                       </span>
                     </span>
-                    <span className="block truncate text-sm">{n.partyName}</span>
+                    <span className="block text-sm">
+                      <CodeName code={n.partyCode} name={n.partyName} truncate />
+                    </span>
                   </span>
                   <span className="shrink-0 font-semibold tnum">
                     {formatMoney(n.amount, n.currency, locale)}
@@ -326,11 +330,8 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
                         {n.ref} · {t(`notes.kind.${n.kind}`)} {n.serialNumber}
                       </span>
                     </div>
-                    <p className="mt-0.5 truncate text-sm font-medium">
-                      {n.partyName}
-                      {n.partyCode != null && (
-                        <span className="ms-1 text-xs text-muted tnum">({n.partyCode})</span>
-                      )}
+                    <p className="mt-0.5 text-sm font-medium">
+                      <CodeName code={n.partyCode} name={n.partyName} truncate />
                       {n.hasPhoto && (
                         <Icon name="camera" size={13} className="ms-1.5 inline text-muted" />
                       )}
@@ -484,8 +485,7 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
         )}
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Fact label={t('notes.party')}>
-            {n.partyName}
-            {n.partyCode != null && <span className="ms-1 text-muted tnum">({n.partyCode})</span>}
+            <PartyLink id={n.partyId} code={n.partyCode} name={n.partyName} />
           </Fact>
           {n.receivedOn && (
             <Fact label={t(receivable ? 'cheque.receivedOn' : 'cheque.handedOn')}>

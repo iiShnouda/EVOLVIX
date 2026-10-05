@@ -14,9 +14,12 @@ import { useT } from '../lib/i18n';
 import { statusOf } from '../lib/status';
 import { safeName } from '../lib/print';
 import { PrintEditor } from './PrintEditor';
+import { CodeName } from './CodeName';
+import { PartyLink } from './PartyContact';
 import { useReportTools } from '../lib/report';
 import { TableColumns } from './TableColumns';
 import { useHiddenColumns, usePrintPaper } from '../lib/queries';
+import { StateBadge } from './StateBadge';
 
 /** The parts of a printed document a person may leave out (owner, 2026-10-01). */
 const PRINT_PARTS = [
@@ -226,7 +229,6 @@ export function InvoicePaper({
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
   // The discount column only when a line has one (owner, 2026-10-02).
   const anyLineDiscount = doc.lines.some((l) => l.discount > 0);
-  const status = statusOf(doc);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
 
@@ -308,10 +310,10 @@ export function InvoicePaper({
               )}
               {doc.repName && (
                 <p>
-                  {t('invoice.rep')}: <span className="font-medium text-fg">{doc.repName}</span>
-                  {shows('repCode') && doc.repCode != null && (
-                    <span className="tnum"> ({doc.repCode})</span>
-                  )}
+                  {t('invoice.rep')}:{' '}
+                  <span className="font-medium text-fg">
+                    <CodeName code={shows('repCode') ? doc.repCode : null} name={doc.repName} />
+                  </span>
                 </p>
               )}
               {doc.paidAccountName && doc.paidAmount > 0 && (
@@ -335,7 +337,7 @@ export function InvoicePaper({
       {/* Where it stands: paid or not, changed, waiting for the accountant — all of them. */}
       {shows('states') && (isInvoice || doc.type === 'SALES_ORDER') && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
-          <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
+          <StateBadge doc={doc} />
           {doc.edited && doc.status !== 'CANCELLED' && (
             <Badge tone="info">{t('state.EDITED')}</Badge>
           )}
@@ -352,12 +354,11 @@ export function InvoicePaper({
             {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
           </p>
           <p className="font-medium">
-            {doc.partyName}
-            {shows('partyCode') && doc.partyCode != null && (
-              <span className="ms-1.5 text-xs font-normal text-muted tnum">
-                {t('common.code')} {doc.partyCode}
-              </span>
-            )}
+            <PartyLink
+              id={doc.partyId}
+              code={shows('partyCode') ? doc.partyCode : null}
+              name={doc.partyName}
+            />
           </p>
           {doc.deliveryMethod && doc.deliveryMethod !== 'PICKUP' && (
             <div className="mt-2 border-t border-line pt-2 text-xs text-muted">

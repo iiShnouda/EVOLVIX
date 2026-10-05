@@ -31,6 +31,7 @@ import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 import { STATE_TONE, statusOf } from '../lib/status';
 import { useCustomerInvoices, useDiscountAll, useSetInvoiceDiscount } from '../lib/queries';
+import { PartyLink } from '../components/PartyContact';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -623,10 +624,12 @@ function CombinedPaper({
       </div>
       {shows('party') && party && (
         <p className="mb-3 rounded-[var(--radius-app)] bg-surface-2 p-2.5 font-medium">
-          {t('sales.customer')}: {party.name}
-          {shows('partyCode') && (
-            <span className="ms-1.5 text-xs text-muted tnum">({party.code})</span>
-          )}
+          {t('sales.customer')}:{' '}
+          <PartyLink
+            id={party.id}
+            code={shows('partyCode') ? party.code : null}
+            name={party.name}
+          />
         </p>
       )}
       {[...groups].map(([name, g]) => {

@@ -10,6 +10,7 @@ import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
 import { TableColumns } from './TableColumns';
+import { CodeName } from './CodeName';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -162,7 +163,7 @@ export function ApproveOrderSheet({
     >
       <div className="space-y-3">
         <p className="text-sm text-muted">
-          {order.partyName}
+          <CodeName code={order.partyCode} name={order.partyName} />
           {order.departmentName && <> · {order.departmentName}</>} · {order.staffName}
         </p>
 

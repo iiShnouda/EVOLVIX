@@ -6,7 +6,6 @@ import {
   type AccountDocument,
   type CustomerAccount,
   type Party,
-  type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, Spinner } from './ui';
 import { DocumentPreview } from './DocumentPreview';
@@ -17,7 +16,8 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useDeviceInfo } from '../lib/device';
 import { useCustomerAccount, useDepartments, useDocument } from '../lib/queries';
-import { statusOf } from '../lib/status';
+import { codeName } from './CodeName';
+import { StateBadge } from './StateBadge';
 
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -64,7 +64,7 @@ export function PartyAccount({ party }: { party: Party }) {
         <StatementBody
           kind="parties"
           id={party.id}
-          title={party.name}
+          title={codeName(party.code, party.name)}
           department={department}
           onDepartment={setDepartment}
           before={top}
@@ -221,8 +221,7 @@ function AccountDocuments({ a, onOpen }: { a: CustomerAccount; onOpen: (id: stri
     navigate(`/notes?receiveFor=${a.partyId}&invoice=${d.id}&amount=${d.outstanding}`);
   const badge = (d: AccountDocument) => {
     if (d.type === 'SALES_INVOICE') {
-      const status = statusOf(d);
-      return <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>;
+      return <StateBadge doc={d} />;
     }
     return (
       <Badge tone={d.type === 'SALES_RETURN' ? 'warning' : 'info'}>{t(`doc.${d.type}`)}</Badge>

@@ -36,6 +36,7 @@ import { errorText } from '../lib/errors';
 import { ApproveOrderSheet } from '../components/ApproveOrderSheet';
 import { EditOrderSheet } from '../components/EditOrderSheet';
 import { Sheet } from '../components/Sheet';
+import { CodeName, codeName } from '../components/CodeName';
 
 /** Documents per page of the list. */
 
@@ -498,19 +499,14 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {doc.partyName}
-                      {doc.partyCode != null && (
-                        <span className="ms-1 text-xs font-normal text-muted tnum">
-                          ({doc.partyCode})
-                        </span>
-                      )}
+                    <span className="block font-medium">
+                      <CodeName code={doc.partyCode} name={doc.partyName} truncate />
                     </span>
                     <span className="text-xs text-muted tnum">
                       {doc.number} · {formatDate(doc.issueDate, locale)}
                       {doc.sourceNumber && <> · {doc.sourceNumber}</>}
                       {doc.departmentName && <> · {doc.departmentName}</>}
-                      {doc.repName && <> · {doc.repName}</>}
+                      {doc.repName && <> · {codeName(doc.repCode, doc.repName)}</>}
                     </span>
                     {(doc.edited || (doc.overLimit && doc.type === 'SALES_INVOICE')) &&
                       doc.status !== 'CANCELLED' && (

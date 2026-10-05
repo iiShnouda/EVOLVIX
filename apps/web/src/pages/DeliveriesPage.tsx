@@ -18,6 +18,8 @@ import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { CodeName, codeName } from '../components/CodeName';
+import { PartyLink } from '../components/PartyContact';
 import {
   useCreateSettlement,
   useCreateShipment,
@@ -348,7 +350,9 @@ function DeliveryCard({ row, actions }: { row: DeliveryRow; actions: ReactNode }
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-medium">{row.partyName}</p>
+          <p className="font-medium">
+            <PartyLink id={row.partyId} code={row.partyCode} name={row.partyName} truncate />
+          </p>
           <p className="text-xs text-muted tnum">
             {row.number} · {formatDate(row.issueDate, locale)} · {row.branchName}
           </p>
@@ -519,7 +523,9 @@ function ShipmentCard({ s, actions }: { s: Shipment; actions: ReactNode }) {
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate font-medium">{s.partyName}</p>
+          <p className="font-medium">
+            <PartyLink id={s.partyId} code={s.partyCode} name={s.partyName} truncate />
+          </p>
           <p className="text-xs text-muted tnum">
             {s.number}
             {s.waybillNo ? ` · ${s.waybillNo}` : ''} · {formatDate(s.createdAt, locale)}
@@ -646,7 +652,9 @@ function NewShipmentSheet({ onClose }: { onClose: () => void }) {
                     key={g[0]!.partyId}
                     className="rounded-[var(--radius-app)] border border-line p-2"
                   >
-                    <p className="mb-1 text-sm font-medium">{g[0]!.partyName}</p>
+                    <p className="mb-1 text-sm font-medium">
+                      <CodeName code={g[0]!.partyCode} name={g[0]!.partyName} />
+                    </p>
                     {g.map((r) => {
                       const other = !!customer && customer !== r.partyId;
                       return (
@@ -894,7 +902,8 @@ function NewSettlementSheet({ onClose }: { onClose: () => void }) {
                         }
                       />
                       <span className="truncate">
-                        <span className="tnum">{s.number}</span> · {s.partyName}
+                        <span className="tnum">{s.number}</span> ·{' '}
+                        {codeName(s.partyCode, s.partyName)}
                       </span>
                     </span>
                     <span className="shrink-0 tnum">

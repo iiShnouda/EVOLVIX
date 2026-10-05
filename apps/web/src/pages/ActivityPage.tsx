@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { companyToday, en, formatDateTime, formatNumber, type TranslationKey } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { ReportActions } from '../components/ReportActions';
@@ -29,6 +29,7 @@ export function ActivityPage() {
   const { data, isLoading, isFetching } = useAuditLog(filter);
   const facets = useAuditFacets();
   const report = useReportTools();
+  const paper = useRef<HTMLUListElement>(null);
   const set = (patch: Partial<AuditFilter>) => setFilter((f) => ({ ...f, ...patch, page: 1 }));
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const what = (action: string, resource: string) =>
@@ -42,6 +43,7 @@ export function ActivityPage() {
         action={
           <ReportActions
             disabled={!data || data.items.length === 0}
+            onPrint={() => report.print(paper.current, t('audit.title'))}
             onExcel={() =>
               data &&
               report.excel(
@@ -152,7 +154,7 @@ export function ActivityPage() {
         </Card>
       ) : (
         <Card padded={false} className={`overflow-hidden ${isFetching ? 'opacity-70' : ''}`}>
-          <ul className="divide-y divide-line">
+          <ul ref={paper} className="divide-y divide-line">
             {data.items.map((e) => (
               <li
                 key={e.id}

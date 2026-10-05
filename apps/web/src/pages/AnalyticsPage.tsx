@@ -27,6 +27,7 @@ import {
   useTopParties,
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { CodeName, codeName } from '../components/CodeName';
 
 type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
 const TABS: { key: Tab; label: TranslationKey }[] = [
@@ -612,13 +613,21 @@ function AgingTab() {
 }
 
 function PartiesTab() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [from, setFrom] = useState(daysAgo(89));
   const [to, setTo] = useState(companyToday);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   return (
     <div className="space-y-3">
-      <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
+        <ReportActions
+          onPrint={() => report.print(paper.current, t('analytics.tabParties'), period)}
+        />
+      </div>
+      <div ref={paper} className="grid gap-3 lg:grid-cols-2">
         <TopList title={t('analytics.customers')} from={from} to={to} side="customers" />
         <TopList title={t('analytics.suppliers')} from={from} to={to} side="suppliers" />
       </div>
@@ -679,13 +688,22 @@ function ItemsTab() {
   const [to, setTo] = useState(companyToday);
   const { data, isLoading } = useItemMovement(from, to);
   const m = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   return (
     <div className="space-y-3">
-      <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
+        <ReportActions
+          disabled={!data}
+          onPrint={() => report.print(paper.current, t('analytics.tabItems'), period)}
+        />
+      </div>
       {isLoading || !data ? (
         <Loading />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div ref={paper} className="grid gap-3 lg:grid-cols-2">
           <Card padded={false} className="overflow-x-auto">
             <div className="px-4 pt-4">
               <SectionTitle>{t('analytics.topMovers')}</SectionTitle>
@@ -827,7 +845,7 @@ function ChangesTab() {
                 formatDateTime(r.at, locale),
                 t(`changes.${r.kind}`),
                 r.number,
-                r.partyCode ? `${r.partyCode} — ${r.partyName}` : r.partyName,
+                codeName(r.partyCode || null, r.partyName),
                 r.branchName,
                 r.staffName,
                 { money: r.totalBefore },
@@ -882,10 +900,7 @@ function ChangesTab() {
                         </Link>
                       </td>
                       <td className="px-3 py-1.5">
-                        {r.partyName}
-                        {r.partyCode ? (
-                          <span className="ms-1 text-xs text-faint tnum">{r.partyCode}</span>
-                        ) : null}
+                        <CodeName code={r.partyCode || null} name={r.partyName} />
                       </td>
                       <td className="px-3 py-1.5">{r.branchName}</td>
                       <td className="px-3 py-1.5">{r.staffName}</td>

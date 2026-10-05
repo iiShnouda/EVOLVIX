@@ -51,6 +51,7 @@ import {
   useReps,
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { codeName } from '../components/CodeName';
 
 interface Line {
   /** Local id: the same item may be on two lines (e.g. cartons and pieces). */
@@ -1802,7 +1803,7 @@ export function InvoiceBuilderPage({
                     {!repId && <option value="">{t('invoice.chooseRep')}</option>}
                     {(reps.data ?? []).map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.name} ({r.code})
+                        {codeName(r.code, r.name)}
                       </option>
                     ))}
                   </select>
@@ -1854,7 +1855,7 @@ export function InvoiceBuilderPage({
                 <option value="">{t('invoice.filterSupplier')}</option>
                 {(suppliers.data?.items ?? []).map((sp) => (
                   <option key={sp.id} value={sp.id}>
-                    {sp.name} ({sp.code})
+                    {codeName(sp.code, sp.name)}
                   </option>
                 ))}
               </select>

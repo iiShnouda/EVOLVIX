@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  formatDate,
   formatMoney,
   formatNumber,
   formatQuantity,
@@ -17,6 +18,8 @@ import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
 import { useDepartments, useInventory, useValuation } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { ReportActions } from '../components/ReportActions';
+import { useReportTools } from '../lib/report';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -268,6 +271,8 @@ function ItemsTab({
   const { t, locale } = useT();
   const { deviceClass } = useDeviceInfo();
   const isPhone = deviceClass === 'phone';
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
 
   return (
     <Card padded={false} className="overflow-hidden">
@@ -287,106 +292,112 @@ function ItemsTab({
           <input type="checkbox" checked={lowOnly} onChange={(e) => onLowOnly(e.target.checked)} />
           {t('inventory.lowOnly')}
         </label>
+        <ReportActions
+          disabled={loading || items.length === 0}
+          onPrint={() => report.print(paper.current, t('nav.inventory'))}
+        />
       </div>
 
-      {loading ? (
-        <div className="grid place-items-center py-16 text-muted">
-          <Spinner size={26} />
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyState title={t('common.empty')} icon="inventory" />
-      ) : isPhone ? (
-        <ul className="divide-y divide-[var(--c-line)]">
-          {items.map((p) => (
-            <li key={p.id}>
-              <button
-                onClick={() => onOpen(p.id)}
-                className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{p.name}</span>
-                  <span className="text-xs text-muted tnum">
-                    {p.sku}
-                    {seeCosts &&
-                      ` · ${t('inventory.avgCost')} ${formatMoney(p.avgCost, currency, locale)}`}
-                  </span>
-                </span>
-                <span className="text-end">
-                  <span className="block text-sm font-semibold tnum">
-                    {formatQuantity(p.stockOnHand, p.units, locale)}
-                  </span>
-                  <StockBadge item={p} />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <TableColumns id="inventory.items">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
-                <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
-                <th className="hidden p-3 text-start font-medium xl:table-cell">
-                  {t('inventory.category')}
-                </th>
-                <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
-                <th className="hidden p-3 text-end font-medium md:table-cell">
-                  {t('inventory.reorder')}
-                </th>
-                {seeCosts && (
-                  <>
-                    <th className="hidden p-3 text-end font-medium md:table-cell">
-                      {t('inventory.avgCost')}
-                    </th>
-                    <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
-                  </>
-                )}
-                <th className="p-3 text-start font-medium">{t('common.status')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {items.map((p) => (
-                <tr
-                  key={p.id}
+      <div ref={paper}>
+        {loading ? (
+          <div className="grid place-items-center py-16 text-muted">
+            <Spinner size={26} />
+          </div>
+        ) : items.length === 0 ? (
+          <EmptyState title={t('common.empty')} icon="inventory" />
+        ) : isPhone ? (
+          <ul className="divide-y divide-[var(--c-line)]">
+            {items.map((p) => (
+              <li key={p.id}>
+                <button
                   onClick={() => onOpen(p.id)}
-                  className="cursor-pointer transition-colors hover:bg-surface-2"
+                  className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
                 >
-                  <td className="p-3 text-muted tnum">{p.sku}</td>
-                  <td className="p-3 font-medium">{p.name}</td>
-                  <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
-                  <td className="p-3 text-end font-semibold tnum">
-                    {formatNumber(p.stockOnHand, locale)}{' '}
-                    <span className="text-xs font-normal text-muted">{p.unit}</span>
-                    {p.units.length > 1 && p.stockOnHand > 0 && (
-                      <span className="block text-xs font-normal text-muted">
-                        {formatQuantity(p.stockOnHand, p.units, locale)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="hidden p-3 text-end text-muted tnum md:table-cell">
-                    {formatNumber(p.reorderLevel, locale)}
-                  </td>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{p.name}</span>
+                    <span className="text-xs text-muted tnum">
+                      {p.sku}
+                      {seeCosts &&
+                        ` · ${t('inventory.avgCost')} ${formatMoney(p.avgCost, currency, locale)}`}
+                    </span>
+                  </span>
+                  <span className="text-end">
+                    <span className="block text-sm font-semibold tnum">
+                      {formatQuantity(p.stockOnHand, p.units, locale)}
+                    </span>
+                    <StockBadge item={p} />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <TableColumns id="inventory.items">
+            <table className="w-full text-sm">
+              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
+                  <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
+                  <th className="hidden p-3 text-start font-medium xl:table-cell">
+                    {t('inventory.category')}
+                  </th>
+                  <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
+                  <th className="hidden p-3 text-end font-medium md:table-cell">
+                    {t('inventory.reorder')}
+                  </th>
                   {seeCosts && (
                     <>
-                      <td className="hidden p-3 text-end tnum md:table-cell">
-                        {formatMoney(p.avgCost, currency, locale)}
-                      </td>
-                      <td className="p-3 text-end tnum">
-                        {formatMoney(p.stockValue, currency, locale)}
-                      </td>
+                      <th className="hidden p-3 text-end font-medium md:table-cell">
+                        {t('inventory.avgCost')}
+                      </th>
+                      <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
                     </>
                   )}
-                  <td className="p-3">
-                    <StockBadge item={p} />
-                  </td>
+                  <th className="p-3 text-start font-medium">{t('common.status')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableColumns>
-      )}
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {items.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => onOpen(p.id)}
+                    className="cursor-pointer transition-colors hover:bg-surface-2"
+                  >
+                    <td className="p-3 text-muted tnum">{p.sku}</td>
+                    <td className="p-3 font-medium">{p.name}</td>
+                    <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
+                    <td className="p-3 text-end font-semibold tnum">
+                      {formatNumber(p.stockOnHand, locale)}{' '}
+                      <span className="text-xs font-normal text-muted">{p.unit}</span>
+                      {p.units.length > 1 && p.stockOnHand > 0 && (
+                        <span className="block text-xs font-normal text-muted">
+                          {formatQuantity(p.stockOnHand, p.units, locale)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="hidden p-3 text-end text-muted tnum md:table-cell">
+                      {formatNumber(p.reorderLevel, locale)}
+                    </td>
+                    {seeCosts && (
+                      <>
+                        <td className="hidden p-3 text-end tnum md:table-cell">
+                          {formatMoney(p.avgCost, currency, locale)}
+                        </td>
+                        <td className="p-3 text-end tnum">
+                          {formatMoney(p.stockValue, currency, locale)}
+                        </td>
+                      </>
+                    )}
+                    <td className="p-3">
+                      <StockBadge item={p} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableColumns>
+        )}
+      </div>
     </Card>
   );
 }
@@ -397,9 +408,11 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
   const valuation = useValuation(asOf, warehouseId || undefined);
   const data = valuation.data;
   const currency = data?.currency ?? 'EGP';
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="space-y-4">
+    <div ref={paper} className="space-y-4">
       <Card>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="block">
@@ -412,6 +425,12 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
               onChange={(e) => setAsOf(e.target.value || today())}
             />
           </label>
+          <ReportActions
+            disabled={!data}
+            onPrint={() =>
+              report.print(paper.current, t('inventory.valuation'), formatDate(asOf, locale))
+            }
+          />
           <div className="text-end">
             <p className="text-xs text-muted">{t('inventory.stockValue')}</p>
             <p className="text-lg font-semibold tnum">

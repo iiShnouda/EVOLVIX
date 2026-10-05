@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   formatDateTime,
@@ -16,6 +16,8 @@ import { useAuth } from '../stores/auth';
 import { useCompanySettings, useFinishTransfer, useTransfer, useTransfers } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
 import { errorText } from '../lib/errors';
+import { ReportActions } from '../components/ReportActions';
+import { useReportTools } from '../lib/report';
 
 type Tab = 'open' | 'all';
 
@@ -192,6 +194,8 @@ function TransferDetail({
   const finish = useFinishTransfer();
   const error = finish.error as ApiError | null;
   const tr = detail.data;
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
 
   if (!id) return <EmptyState title={t('transfer.pick')} icon="inventory" />;
   if (detail.isLoading || !tr) {
@@ -212,18 +216,29 @@ function TransferDetail({
   }
 
   return (
-    <div>
+    <div ref={paper}>
       <div className="flex items-start justify-between gap-3 border-b border-line p-4">
         <div className="min-w-0">
           <p className="text-xs text-muted">{t('transfer.permit')}</p>
           <p className="text-lg font-semibold tnum">{tr.number}</p>
           <Badge tone={STATUS_TONE[tr.status]}>{t(`transfer.status.${tr.status}`)}</Badge>
         </div>
-        {onClose && (
-          <Button size="sm" variant="ghost" icon="close" onClick={onClose}>
-            {t('common.close')}
-          </Button>
-        )}
+        <div data-noprint className="flex items-center gap-1">
+          <ReportActions
+            onPrint={() =>
+              report.print(
+                paper.current,
+                `${t('transfer.permit')} ${tr.number}`,
+                formatDateTime(tr.createdAt, locale),
+              )
+            }
+          />
+          {onClose && (
+            <Button size="sm" variant="ghost" icon="close" onClick={onClose}>
+              {t('common.close')}
+            </Button>
+          )}
+        </div>
       </div>
 
       <dl className="grid grid-cols-2 gap-3 border-b border-line p-4 text-sm">
@@ -290,7 +305,7 @@ function TransferDetail({
       </TableColumns>
 
       {(tr.canReceive || tr.canCancel) && (
-        <div className="flex flex-wrap gap-2 border-t border-line p-4">
+        <div data-noprint className="flex flex-wrap gap-2 border-t border-line p-4">
           {tr.canReceive && (
             <Button icon="check" loading={finish.isPending} onClick={() => act('receive')}>
               {t('transfer.receive')}

@@ -18,6 +18,7 @@ import { TableColumns } from '../components/TableColumns';
 import { PartyPicker } from '../components/PartyPicker';
 import { useDeviceInfo } from '../lib/device';
 import { errorText } from '../lib/errors';
+import { codeName } from '../components/CodeName';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -247,10 +248,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
               </Button>
             </div>
             {doc.repName && (
-              <Info
-                label={t('invoice.rep')}
-                value={`${doc.repName}${doc.repCode != null ? ` (${doc.repCode})` : ''}`}
-              />
+              <Info label={t('invoice.rep')} value={codeName(doc.repCode, doc.repName)} />
             )}
             {doc.departmentName && (
               <Info label={t('invoice.department')} value={doc.departmentName} />

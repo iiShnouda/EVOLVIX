@@ -11,7 +11,9 @@ import { Badge } from './ui';
 import { Icon } from './Icon';
 import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
-import { statusOf } from '../lib/status';
+import { CodeName } from './CodeName';
+import { PartyLink } from './PartyContact';
+import { StateBadge } from './StateBadge';
 
 type ColumnKey =
   | 'number'
@@ -85,10 +87,23 @@ export function DocumentTable({
     {
       key: 'name',
       label: scope === 'sales' ? 'sales.customer' : 'invoice.supplier',
-      cell: (d) => <span className="block max-w-44 truncate font-medium">{d.partyName}</span>,
+      cell: (d) => (
+        <PartyLink
+          id={d.partyId}
+          name={d.partyName}
+          truncate
+          className="block max-w-44 font-medium"
+        />
+      ),
     },
     ...(scope === 'sales'
-      ? [{ key: 'rep', label: 'invoice.rep', cell: (d) => d.repName ?? '' } satisfies Column]
+      ? [
+          {
+            key: 'rep',
+            label: 'invoice.rep',
+            cell: (d) => (d.repName ? <CodeName code={d.repCode} name={d.repName} truncate /> : ''),
+          } satisfies Column,
+        ]
       : []),
     ...(showDepartment
       ? [
@@ -143,7 +158,7 @@ export function DocumentTable({
       label: 'common.status',
       cell: (d) => (
         <span className="inline-flex items-center gap-1">
-          <Badge tone={statusOf(d).tone}>{t(statusOf(d).key as TranslationKey)}</Badge>
+          <StateBadge doc={d} />
           {/* A changed invoice over the limit shows all three: paid state, changed, waiting. */}
           {d.edited && d.status !== 'CANCELLED' && <Badge tone="info">{t('state.EDITED')}</Badge>}
           {d.overLimit && d.type === 'SALES_INVOICE' && d.status !== 'CANCELLED' && (

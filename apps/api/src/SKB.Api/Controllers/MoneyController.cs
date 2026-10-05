@@ -791,7 +791,7 @@ public sealed class MoneyController : ControllerBase
                 l.Account is null ? "" : Loc.Name(l.Account), l.Amount, l.Reference)).ToArray(),
             v.Allocations.OrderBy(a => a.Document?.Number).Select(a => new VoucherAllocationDto(
                 a.DocumentId.ToString(), a.Document?.Number ?? "", a.Amount)).ToArray(),
-            currency, v.EnteredAt?.ToString("o"));
+            currency, v.EnteredAt?.ToString("o"), v.Party?.Code);
     }
 
     private async Task<string> CurrencyAsync() =>
