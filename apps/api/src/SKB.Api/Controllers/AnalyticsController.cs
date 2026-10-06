@@ -52,6 +52,31 @@ public sealed class AnalyticsController : ControllerBase
         return Ok(result.ToArray());
     }
 
+    /// <summary>
+    /// Gains, losses and net profit for a period: the company, each branch and each warehouse, and the
+    /// general expenses paid from the main cash box (see <see cref="ProfitLoss"/>). Profit is for
+    /// people who may see costs.
+    /// </summary>
+    [HttpGet("profit-loss")]
+    public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
+        [FromQuery] string? branchId = null)
+    {
+        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
+        var today = CompanyClock.Today;
+        var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);
+        var toDay = CompanyClock.ParseDay(to) ?? today;
+        if (toDay < fromDay || toDay.DayNumber - fromDay.DayNumber > 5 * 366)
+            return BadRequest(new { message = "Choose up to five years, the start before the end.", code = "bad_range" });
+        Guid? branch = null;
+        if (!string.IsNullOrEmpty(branchId))
+        {
+            if (!Guid.TryParse(branchId, out var b) || !Access.CanUseBranch(User, b))
+                return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
+            branch = b;
+        }
+        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch));
+    }
+
     /// <summary>The customers (or suppliers) with the most net business in a period.</summary>
     [HttpGet("top-parties")]
     public async Task<ActionResult<TopPartyDto[]>> TopParties(

@@ -2549,3 +2549,46 @@ export interface ChequeScan {
   bank: string | null;
   drawer: string | null;
 }
+
+// ---------------------------------------------------------------- profit and loss (owner, 2026-10-06)
+
+/** One place's result (minor units): net sales after returns and discounts, before tax. */
+export interface PlFigures {
+  netSales: number;
+  cogs: number;
+  grossProfit: number;
+  /** Stocktake surplus, discounts received, charges on invoices. */
+  otherIncome: number;
+  /** Expenses and losses: expenses, stocktake shortages, discounts allowed, shipping, salaries… */
+  expenses: number;
+  netProfit: number;
+}
+
+export interface PlUnit {
+  id: string;
+  name: string;
+  /** BRANCH, WAREHOUSE, or BRANCH_REST (what the branch has that no warehouse does). */
+  kind: 'BRANCH' | 'WAREHOUSE' | 'BRANCH_REST';
+  figures: PlFigures;
+  children: PlUnit[] | null;
+  /** A branch's share of the general expenses, by its share of net sales. */
+  generalShare: number;
+}
+
+export interface PlLine {
+  code: string;
+  name: string;
+  section: 'SALES' | 'COGS' | 'GAIN' | 'LOSS';
+  amount: number;
+}
+
+export interface ProfitLoss {
+  from: string;
+  to: string;
+  currency: string;
+  total: PlFigures;
+  branches: PlUnit[];
+  /** Expenses paid from the main cash box and entries of no branch (people who see every branch). */
+  general: PlFigures | null;
+  lines: PlLine[];
+}

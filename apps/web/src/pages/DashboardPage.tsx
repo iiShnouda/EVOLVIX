@@ -1,3 +1,4 @@
+import { ProfitLossCard } from '../components/ProfitLossView';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   formatDate,
@@ -50,6 +51,7 @@ const TONE_TILE: Record<Tone, { tile: string; text: string; color: string }> = {
 /** Every widget the dashboard can show, in order; each person picks theirs (owner, 2026-10-01). */
 const WIDGETS = [
   ['kpis', 'dash.w.kpis'],
+  ['profit', 'pnl.title'],
   ['trend', 'dashboard.trend'],
   ['month', 'dash.w.month'],
   ['today', 'dash.w.today'],
@@ -169,6 +171,14 @@ export function DashboardPage() {
         </div>
 
         {shows('kpis') && <KpiRow {...cardPeriod('kpis')} />}
+        {/* Gains, losses and net profit by branch (owner, 2026-10-06), for people who may see costs. */}
+        {shows('profit') && can('costs:view') && (
+          <ProfitLossCard
+            from={cardPeriod('profit').period.from}
+            to={cardPeriod('profit').period.to}
+            head={<CardHead title={t('pnl.title')} p={cardPeriod('profit')} />}
+          />
+        )}
 
         <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
           {shows('trend') && (

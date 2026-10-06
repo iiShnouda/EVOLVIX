@@ -6,6 +6,7 @@ live company server.
 
 | Script | What it checks |
 |---|---|
+| `profit.test.mjs` | Profit and loss: equals the ledger, branches + general = total, warehouses add up to their branch, an expense from a warehouse's box lands on it and one from the main box on general, moving money between boxes changes no profit, sales staff refused. |
 | `tree.test.mjs` | Department sub-groups (prefixes, keywords, no two siblings with one name, no loops), item codes following the path, the in-store EAN-13 barcode, search by folded spellings, outlines and a slipped letter, the group filter, label barcodes. |
 | `reader.test.mjs` | The item-name reader alone (no server): department, group, size and color read from typed names. |
 | `chat.test.mjs` | Staff chat: one-to-one and groups, unread, non-members kept out, the supervisor reading all, muting, audit; and the assistant's plumbing (tools by permission, history, reading invoice and cheque photos) against `fake-ollama.mjs` (start it first). |

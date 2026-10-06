@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   AssistantStatus,
   AssistantTurn,
+  ProfitLoss,
   CompanySettings,
   CustomerInvoices,
   CreatePurchaseInvoiceInput,
@@ -2362,4 +2363,14 @@ export function useAssistantHistory() {
 /** Send a photo to be read by the assistant (purchase invoice or cheques). */
 export async function scanPhoto<T>(kind: 'purchase' | 'cheques', file: File): Promise<T> {
   return api.upload<T>(`/assistant/scan/${kind}`, file, false, 'POST');
+}
+
+// ---------------------------------------------------------------- profit and loss
+
+export function useProfitLoss(from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: ['analytics', 'profit-loss', from, to],
+    queryFn: () => api.get<ProfitLoss>(`/analytics/profit-loss?from=${from}&to=${to}`),
+    enabled,
+  });
 }

@@ -12,6 +12,7 @@ import {
 import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { TrendChart } from '../components/charts/TrendChart';
 import { ProfitabilityPage } from './ProfitabilityPage';
+import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
 import { useT } from '../lib/i18n';
@@ -29,8 +30,9 @@ import {
 import { TableColumns } from '../components/TableColumns';
 import { CodeName, codeName } from '../components/CodeName';
 
-type Tab = 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
+type Tab = 'pl' | 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
 const TABS: { key: Tab; label: TranslationKey }[] = [
+  { key: 'pl', label: 'pnl.title' },
   { key: 'profit', label: 'analytics.tabProfit' },
   { key: 'monthly', label: 'analytics.tabMonthly' },
   { key: 'performance', label: 'analytics.tabPerformance' },
@@ -54,7 +56,9 @@ export function AnalyticsPage() {
   const can = useCan();
   const seeCosts = can('costs:view');
   const tabs = TABS.filter(
-    (x) => (x.key !== 'profit' || seeCosts) && (x.key !== 'changes' || can('sales:changes_report')),
+    (x) =>
+      ((x.key !== 'profit' && x.key !== 'pl') || seeCosts) &&
+      (x.key !== 'changes' || can('sales:changes_report')),
   );
   const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]!.key) as Tab;
   return (
@@ -78,6 +82,7 @@ export function AnalyticsPage() {
           </button>
         ))}
       </div>
+      {tab === 'pl' && <ProfitLossTab />}
       {tab === 'profit' && <ProfitabilityPage embedded />}
       {tab === 'monthly' && <MonthlyTab />}
       {tab === 'performance' && <PerformanceTab />}

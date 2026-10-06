@@ -1142,3 +1142,23 @@ public record ChatSendRequest(string? Text);
 public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
 public record AssistantTurnDto(string Role, string Content, DateTime At);
 public record AssistantAskRequest(string? Text);
+
+// ---------------------------------------------------------------- profit and loss (owner, 2026-10-06)
+
+/// <summary>
+/// One place's result: net sales (after returns and discounts, before tax), their cost, gross profit,
+/// other gains (stocktake surplus, discounts received, charges on invoices), expenses and losses
+/// (expenses, stocktake shortages, discounts allowed, shipping, salaries…), and the net profit.
+/// </summary>
+public record PlFiguresDto(long NetSales, long Cogs, long GrossProfit, long OtherIncome, long Expenses, long NetProfit);
+
+/// <param name="Kind">BRANCH, WAREHOUSE, or BRANCH_REST (what the branch has that no warehouse does).</param>
+/// <param name="GeneralShare">For a branch: its share of the general expenses, by its share of net sales.</param>
+public record PlUnitDto(string Id, string Name, string Kind, PlFiguresDto Figures, PlUnitDto[]? Children, long GeneralShare);
+
+/// <param name="Section">SALES, COGS, GAIN or LOSS.</param>
+public record PlLineDto(string Code, string Name, string Section, long Amount);
+
+/// <param name="General">Expenses paid from the main cash box and entries of no branch; null when the person doesn't see every branch.</param>
+public record ProfitLossDto(string From, string To, string Currency, PlFiguresDto Total, PlUnitDto[] Branches,
+    PlFiguresDto? General, PlLineDto[] Lines);
