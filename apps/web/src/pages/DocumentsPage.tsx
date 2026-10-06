@@ -370,17 +370,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             onChange={(e) => setNumber(e.target.value)}
           />
         </label>
-        <label className="block min-w-48 flex-1">
-          <span className="mb-0.5 block text-xs text-muted">
-            {t(isSales ? 'list.customerName' : 'list.supplierName')}
-          </span>
-          <input
-            type="search"
-            className={filterField}
-            value={partyName}
-            onChange={(e) => setPartyName(e.target.value)}
-          />
-        </label>
+        {/* The code before the name, as everywhere (owner, 2026-10-06). */}
         <label className="block w-28">
           <span className="mb-0.5 block text-xs text-muted">
             {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
@@ -390,6 +380,17 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             className={`${filterField} tnum`}
             value={partyCode}
             onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
+          />
+        </label>
+        <label className="block min-w-48 flex-1">
+          <span className="mb-0.5 block text-xs text-muted">
+            {t(isSales ? 'list.customerName' : 'list.supplierName')}
+          </span>
+          <input
+            type="search"
+            className={filterField}
+            value={partyName}
+            onChange={(e) => setPartyName(e.target.value)}
           />
         </label>
         {myBranches.length > 0 && (

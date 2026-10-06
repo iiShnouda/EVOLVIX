@@ -455,7 +455,7 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
               <option value="">{t('money.pickParty')}</option>
               {(reps.data ?? []).map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name}
+                  {codeName(r.code, r.name)}
                 </option>
               ))}
             </select>
@@ -1187,7 +1187,7 @@ function VoucherFormSheet({
               <option value="">{t('money.pickParty')}</option>
               {(parties.data?.items ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {codeName(p.code, p.name)}
                 </option>
               ))}
             </select>
