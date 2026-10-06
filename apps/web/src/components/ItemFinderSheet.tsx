@@ -5,8 +5,10 @@ import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { Button, Spinner } from './ui';
 import { useT } from '../lib/i18n';
+import { GroupPicker } from './GroupTree';
 import {
   useDepartments,
+  useGroups,
   useItemFinder,
   usePageSize,
   useSeasons,
@@ -28,6 +30,7 @@ const EMPTY: ItemFinderFilters = {
   branchId: '',
   onlyDepartment: false,
   departmentId: '',
+  groupId: '',
   seasonId: '',
   warehouseId: '',
   supplierId: '',
@@ -178,6 +181,9 @@ export function ItemFinderSheet({
           !d.warehouseIds?.length ||
           d.warehouseIds.includes(filters.warehouseId))),
   );
+  const groups = (useGroups().data ?? []).filter(
+    (g) => g.isActive && g.departmentId === filters.departmentId,
+  );
   const rows = useMemo(() => found.data?.items ?? [], [found.data]);
 
   const unitOf = (p: Product) => unit[p.id] ?? p.units[0]?.unitId ?? '';
@@ -259,7 +265,7 @@ export function ItemFinderSheet({
                 disabled={lockPlace}
                 value={filters.branchId}
                 onChange={(e) =>
-                  set({ branchId: e.target.value, warehouseId: '', departmentId: '' })
+                  set({ branchId: e.target.value, warehouseId: '', departmentId: '', groupId: '' })
                 }
               >
                 <option value="">{t('finder.all')}</option>
@@ -276,7 +282,9 @@ export function ItemFinderSheet({
                 className={field}
                 disabled={lockPlace}
                 value={filters.warehouseId}
-                onChange={(e) => set({ warehouseId: e.target.value, departmentId: '' })}
+                onChange={(e) =>
+                  set({ warehouseId: e.target.value, departmentId: '', groupId: '' })
+                }
               >
                 <option value="">{t('finder.all')}</option>
                 {storeList.map((w) => (
@@ -293,7 +301,11 @@ export function ItemFinderSheet({
                 disabled={!!departmentId}
                 value={filters.departmentId}
                 onChange={(e) =>
-                  set({ departmentId: e.target.value, onlyDepartment: !!e.target.value })
+                  set({
+                    departmentId: e.target.value,
+                    groupId: '',
+                    onlyDepartment: !!e.target.value,
+                  })
                 }
               >
                 <option value="">{t('finder.all')}</option>
@@ -320,6 +332,21 @@ export function ItemFinderSheet({
               </select>
             </label>
           </div>
+          {/* The department's tree, level by level (owner, 2026-10-06). */}
+          {filters.departmentId && groups.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-app)] bg-surface-2 px-2 py-1.5">
+              <span className="text-xs text-muted">{t('groups.tab')}</span>
+              <GroupPicker
+                departments={departments.data ?? []}
+                groups={groups}
+                departmentId={filters.departmentId}
+                groupId={filters.groupId ?? ''}
+                showDepartment={false}
+                anyLabel={t('finder.all')}
+                onChange={(_, g) => set({ groupId: g })}
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('finder.name')}</span>

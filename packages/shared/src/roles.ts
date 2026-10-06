@@ -116,6 +116,12 @@ const ALL: Permission[] = [
   'notes:endorse',
   'notes:cancel',
   'notes:lost',
+  'labels:print',
+  'chat:use',
+  'chat:monitor',
+  'chat:manage',
+  'ai:chat',
+  'ai:scan',
 ];
 
 const PURCHASE_CHARGES: Permission[] = [
@@ -224,6 +230,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'notes:endorse',
     'notes:cancel',
     'notes:lost',
+    'labels:print',
+    'chat:use',
   ],
   // Sales staff sell at the customer's price level and may only add to a price; lowering it or
   // changing the level needs a manager. The seller writes a customer's return. Their invoices post
@@ -243,6 +251,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'parties:id_cards',
     'delivery:view',
     'delivery:manage',
+    'chat:use',
   ],
   INVENTORY: [
     'dashboard:view',
@@ -263,6 +272,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'delivery:view',
     'delivery:manage',
     'cash:handover_send',
+    'labels:print',
+    'chat:use',
   ],
   VIEWER: [
     'dashboard:view',

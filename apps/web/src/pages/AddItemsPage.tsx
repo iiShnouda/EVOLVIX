@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { companyToday, formatMoney, toMinor, type Party } from '@skb/shared';
+import { companyToday, formatMoney, readItemName, toMinor, type Party } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
@@ -11,11 +11,14 @@ import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { ItemFinderSheet, type FinderPick } from '../components/ItemFinderSheet';
+import { GroupPicker, groupLabel } from '../components/GroupTree';
 import {
   useCompanySettings,
   useCreateProduct,
   useCreatePurchaseInvoice,
   useDepartments,
+  useGroups,
+  useNextCode,
   usePriceLevels,
   useSeasons,
   useUnits,
@@ -45,6 +48,14 @@ interface NewLine {
   salePrice: string;
   barcode: string;
   reorder: string;
+  /**
+   * Its department and group of the department's tree (owner, 2026-10-06): read from the name as
+   * it is typed, unless chosen by hand (`picked`). '' department = the invoice's.
+   */
+  departmentId?: string;
+  groupId?: string;
+  /** Fields the person chose themselves, which the name no longer changes. */
+  picked?: ('place' | 'size' | 'color')[];
   /** Set once the item exists, so saving again doesn't make it twice. */
   productId?: string;
   /**
@@ -136,6 +147,8 @@ export function AddItemsPage() {
     (d) => d.isActive && (!onWarehouse?.length || onWarehouse.includes(d.id)),
   );
   const departmentId = departments.some((d) => d.id === department) ? department : '';
+  const allGroups = useGroups().data ?? [];
+  const groups = allGroups.filter((g) => departments.some((d) => d.id === g.departmentId));
   const activeSeasons = (seasons.data ?? []).filter((s) => s.isActive);
   const currentSeason = activeSeasons.find((s) => s.isCurrent)?.id ?? '';
   useEffect(() => {
@@ -249,7 +262,12 @@ export function AddItemsPage() {
     !!supplier &&
     !!warehouseId &&
     rows.length > 0 &&
-    (!hasNew || (!!departmentId && !!season && !!pieceUnit && !!saleLevel && !!purchaseLevel));
+    (!hasNew ||
+      (rows.every((r) => r.l.existing || !!(r.l.departmentId || departmentId)) &&
+        !!season &&
+        !!pieceUnit &&
+        !!saleLevel &&
+        !!purchaseLevel));
 
   async function saveAll() {
     if (!ready || !supplier) return;
@@ -268,7 +286,8 @@ export function AddItemsPage() {
         const big = r.perUnit > 1 && r.l.unitId !== pieceUnit.id;
         const created = await createProduct.mutateAsync({
           name: r.l.name.trim(),
-          departmentId,
+          departmentId: r.l.departmentId || departmentId,
+          groupId: r.l.departmentId ? r.l.groupId || undefined : undefined,
           seasonId: season,
           sizeId: r.l.sizeId || undefined,
           colorId: r.l.colorId || undefined,
@@ -355,6 +374,30 @@ export function AddItemsPage() {
     </label>
   );
   const set = (patch: Partial<NewLine>) => setEntry((e) => ({ ...e, ...patch }));
+  /** A typed name fills the department, group, size and color it names (unless chosen by hand). */
+  const setName = (name: string) =>
+    setEntry((e) => {
+      const read = readItemName(name, { departments, groups, sizes, colors });
+      const picked = e.picked ?? [];
+      return {
+        ...e,
+        name,
+        ...(picked.includes('place')
+          ? {}
+          : { departmentId: read.departmentId ?? '', groupId: read.groupId ?? '' }),
+        ...(picked.includes('size') || !read.sizeId ? {} : { sizeId: read.sizeId }),
+        ...(picked.includes('color') || !read.colorId ? {} : { colorId: read.colorId }),
+      };
+    });
+  const pick = (field: 'place' | 'size' | 'color', patch: Partial<NewLine>) =>
+    setEntry((e) => ({ ...e, ...patch, picked: [...new Set([...(e.picked ?? []), field])] }));
+  const entryDepartment = entry.departmentId || departmentId;
+  const nextCode = useNextCode(
+    entryDepartment,
+    entry.departmentId ? (entry.groupId ?? '') : '',
+    warehouseId,
+    !entry.existing && !!entry.name.trim() && canNewItems,
+  );
 
   return (
     <div className="space-y-4 pb-4">
@@ -436,7 +479,11 @@ export function AddItemsPage() {
         {label(
           t('invoice.department'),
           <select
-            className={`${field} ${warehouseId && !departmentId ? 'border-warning' : ''}`}
+            className={`${field} ${
+              warehouseId && !departmentId && rows.some((r) => !r.l.existing && !r.l.departmentId)
+                ? 'border-warning'
+                : ''
+            }`}
             value={departmentId}
             disabled={!warehouseId || someSaved}
             onChange={(e) => setDepartment(e.target.value)}
@@ -506,6 +553,37 @@ export function AddItemsPage() {
           ) : (
             <p className="text-sm font-semibold">{t('additems.newItem')}</p>
           )}
+          {!entry.existing && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-app)] bg-surface-2 p-2">
+              <span className="text-xs text-muted">{t('groups.path')}</span>
+              <GroupPicker
+                departments={departments}
+                groups={groups}
+                departmentId={entryDepartment}
+                groupId={entry.departmentId ? (entry.groupId ?? '') : ''}
+                onChange={(d, g) => pick('place', { departmentId: d, groupId: g })}
+              />
+              {entry.name.trim() &&
+                !(entry.picked ?? []).includes('place') &&
+                entry.departmentId && (
+                  <span className="inline-flex items-center gap-1 text-xs text-brand">
+                    <Icon name="bolt" size={12} />
+                    {t('groups.read')}
+                  </span>
+                )}
+              {nextCode.data && (
+                <span className="ms-auto flex items-center gap-1.5 text-xs">
+                  <span className="text-muted">{t('groups.code')}</span>
+                  <span
+                    className="rounded bg-surface px-1.5 py-0.5 font-mono font-semibold"
+                    dir="ltr"
+                  >
+                    {nextCode.data.code}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             {!entry.existing &&
               label(
@@ -513,7 +591,7 @@ export function AddItemsPage() {
                 <input
                   className={field}
                   value={entry.name}
-                  onChange={(e) => set({ name: e.target.value })}
+                  onChange={(e) => setName(e.target.value)}
                 />,
                 'sm:col-span-2',
               )}
@@ -539,7 +617,7 @@ export function AddItemsPage() {
                 <select
                   className={field}
                   value={entry.sizeId}
-                  onChange={(e) => set({ sizeId: e.target.value })}
+                  onChange={(e) => pick('size', { sizeId: e.target.value })}
                 >
                   <option value="">—</option>
                   {sizes.map((o) => (
@@ -562,7 +640,7 @@ export function AddItemsPage() {
                   <select
                     className={field}
                     value={entry.colorId}
-                    onChange={(e) => set({ colorId: e.target.value })}
+                    onChange={(e) => pick('color', { colorId: e.target.value })}
                   >
                     <option value="">—</option>
                     {colors.map((o) => (
@@ -745,9 +823,21 @@ export function AddItemsPage() {
                             {r.l.detail ? ` · ${r.l.detail}` : ''}
                           </span>
                         )}
-                        {(size || color) && (
+                        {(size || color || r.l.groupId) && (
                           <span className="block text-xs text-muted">
-                            {[size, color?.name].filter(Boolean).join(' · ')}
+                            {[
+                              r.l.departmentId &&
+                                [
+                                  departments.find((d) => d.id === r.l.departmentId)?.name,
+                                  groupLabel(groups, r.l.groupId),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' / '),
+                              size,
+                              color?.name,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </span>
                         )}
                       </td>

@@ -191,21 +191,119 @@ public static class Catalog
     public const int MaxSupplierCode = 64;
 
     /// <summary>
-    /// The group an item of a department goes in (owner decision 2026-10-01: the department is what
-    /// people pick; groups are kept behind it): its first one, made with the department's name if none.
+    /// A department's own node in the tree (owner decision 2026-10-01: the department is what people
+    /// pick; groups sit under it, 2026-10-06), made with the department's name if it has none yet.
     /// </summary>
     public static async Task<(Guid? CategoryId, Department? Department)> CategoryForDepartmentAsync(AppDbContext db, string? raw)
     {
         if (!Guid.TryParse(raw, out var id)) return (null, null);
         var department = await db.Departments.FirstOrDefaultAsync(d => d.Id == id && d.IsActive);
         if (department is null) return (null, null);
-        var category = await db.Categories.Where(c => c.DepartmentId == id).OrderBy(c => c.Name).FirstOrDefaultAsync();
-        if (category is null)
+        return (await RootOfAsync(db, department), department);
+    }
+
+    public static async Task<Guid> RootOfAsync(AppDbContext db, Department department)
+    {
+        var root = db.Categories.Local.FirstOrDefault(c => c.DepartmentId == department.Id && c.IsRoot)
+            ?? await db.Categories.Where(c => c.DepartmentId == department.Id && c.IsRoot).OrderBy(c => c.Name).FirstOrDefaultAsync();
+        if (root is null)
         {
-            category = new Category { Name = department.Name, DepartmentId = id };
-            db.Categories.Add(category);
+            root = new Category { Name = department.Name, DepartmentId = department.Id, IsRoot = true };
+            db.Categories.Add(root);
         }
-        return (category.Id, department);
+        return root.Id;
+    }
+
+    /// <summary>
+    /// Where a new or moved item goes: a department, and optionally one of its groups at any depth.
+    /// Returns the category id to store, the department, and the groups from the top down (for its code).
+    /// </summary>
+    public static async Task<(Guid? CategoryId, Department? Department, List<Category> Path, CatalogError? Error)> PlaceAsync(
+        AppDbContext db, string? departmentId, string? groupId)
+    {
+        var (root, department) = await CategoryForDepartmentAsync(db, departmentId);
+        if (root is null) return (null, null, new(), new("department_not_found", "Choose a department."));
+        if (string.IsNullOrEmpty(groupId)) return (root, department, new(), null);
+        var all = await db.Categories.AsNoTracking().ToListAsync();
+        var group = Guid.TryParse(groupId, out var gid) ? all.FirstOrDefault(c => c.Id == gid && !c.IsRoot) : null;
+        if (group is null || !group.IsActive || group.DepartmentId != department!.Id)
+            return (null, null, new(), new("group_not_found", "Choose a group of this department."));
+        return (group.Id, department, PathOf(group.Id, all), null);
+    }
+
+    /// <summary>A group and the groups above it, from the top down (the department's root left out).</summary>
+    public static List<Category> PathOf(Guid id, IReadOnlyCollection<Category> all)
+    {
+        var byId = all.ToDictionary(c => c.Id);
+        var path = new List<Category>();
+        var seen = new HashSet<Guid>();
+        for (var at = byId.GetValueOrDefault(id); at is not null && !at.IsRoot && seen.Add(at.Id);
+             at = at.ParentId is Guid up ? byId.GetValueOrDefault(up) : null)
+            path.Insert(0, at);
+        return path;
+    }
+
+    /// <summary>A category and every group under it, at any depth.</summary>
+    public static HashSet<Guid> Subtree(Guid id, IReadOnlyCollection<Category> all)
+    {
+        var found = new HashSet<Guid> { id };
+        var root = all.FirstOrDefault(c => c.Id == id);
+        // A department's root holds every node of the department.
+        if (root is { IsRoot: true, DepartmentId: Guid dept })
+            foreach (var c in all.Where(c => c.DepartmentId == dept)) found.Add(c.Id);
+        bool grew;
+        do
+        {
+            grew = false;
+            foreach (var c in all)
+                if (c.ParentId is Guid up && found.Contains(up) && found.Add(c.Id)) grew = true;
+        } while (grew);
+        return found;
+    }
+
+    /// <summary>
+    /// The next item code from where it is stored and what it is (owner decisions 2026-10-01 and
+    /// 2026-10-06): branch, warehouse, department, then each group's prefix on the way down, e.g.
+    /// EL-H-UND-M-V-HS-00012.
+    /// </summary>
+    public static async Task<string> NextCodeForAsync(AppDbContext db, Guid? branchId, Warehouse? into,
+        Department? department, IEnumerable<Category> path)
+    {
+        var groupPrefixes = path.Select(g => g.Prefix).ToList();
+        if (string.IsNullOrWhiteSpace(department?.Prefix) && groupPrefixes.All(string.IsNullOrWhiteSpace))
+            return await NextItemSkuAsync(db);
+        var branchPrefix = await db.Branches.Where(b => b.Id == branchId).Select(b => b.Prefix).FirstOrDefaultAsync();
+        var whPrefix = into is not null ? into.Prefix
+            : await db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
+                .Select(w => w.Prefix).FirstOrDefaultAsync();
+        return await NextItemCodeAsync(db, new[] { branchPrefix, whPrefix, department?.Prefix }.Concat(groupPrefixes).ToArray());
+    }
+
+    /// <summary>
+    /// The next in-store barcode (owner, 2026-10-06: every item gets one by itself): EAN-13 starting
+    /// 20 — the range kept for a shop's own codes, so it never clashes with a maker's — then ten digits
+    /// counting up and the check digit. Any scanner reads it.
+    /// </summary>
+    public static async Task<string> NextBarcodeAsync(AppDbContext db, ISet<string>? reserved = null)
+    {
+        var top = await db.ItemUnits.AsNoTracking()
+            .Where(u => u.Barcode != null && u.Barcode.Length == 13 && u.Barcode.StartsWith("20"))
+            .MaxAsync(u => (string?)u.Barcode);
+        var n = top is not null && long.TryParse(top[2..12], out var last) ? last + 1 : 1;
+        while (true)
+        {
+            var body = "20" + n.ToString("D10");
+            var code = body + Ean13Check(body);
+            if (reserved is null || reserved.Add(code)) return code;
+            n++;
+        }
+    }
+
+    public static int Ean13Check(string twelve)
+    {
+        var sum = 0;
+        for (var i = 0; i < 12; i++) sum += (twelve[i] - '0') * (i % 2 == 0 ? 1 : 3);
+        return (10 - sum % 10) % 10;
     }
 
     /// <summary>An item's name with its season at the end (none for "no season", or when it's there already).</summary>

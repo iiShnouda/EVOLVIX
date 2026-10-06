@@ -128,6 +128,115 @@ public sealed class CatalogController : ControllerBase
     private static CategoryDto ToDto(Category c, int count) => new(c.Id.ToString(), Loc.Name(c), count,
         c.DepartmentId?.ToString(), c.Department is null ? null : Loc.Name(c.Department));
 
+    // ------------------------------------------------------------------ department tree
+
+    /// <summary>
+    /// Every group of every department's tree (owner, 2026-10-06), for the setup screen, the filters
+    /// and the item-name reader. Anyone signed in may read them, like departments.
+    /// </summary>
+    [HttpGet("groups")]
+    [Authorize]
+    public async Task<ActionResult<GroupDto[]>> Groups()
+    {
+        var all = await _db.Categories.AsNoTracking().ToListAsync();
+        var counts = await _db.Products.Where(p => p.IsActive).GroupBy(p => p.CategoryId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
+        return Ok(all.Where(c => !c.IsRoot && c.DepartmentId != null)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .Select(c => ToGroupDto(c, Catalog.Subtree(c.Id, all).Sum(id => counts.GetValueOrDefault(id))))
+            .ToArray());
+    }
+
+    [HttpPost("groups")]
+    [Authorize(Policy = Permissions.CategoriesManage)]
+    public async Task<ActionResult<GroupDto>> CreateGroup([FromBody] CreateGroupRequest req)
+    {
+        var department = Guid.TryParse(req.DepartmentId, out var did)
+            ? await _db.Departments.FirstOrDefaultAsync(d => d.Id == did) : null;
+        if (department is null) return BadRequest(new { message = "Department not found.", code = "department_not_found" });
+        var group = new Category { DepartmentId = department.Id };
+        var error = await ParentAsync(group, req.ParentId ?? "") ?? GroupFields(group, req.Name, req.Prefix, req.Keywords)
+                    ?? await SiblingClashAsync(group);
+        if (error is not null) return error;
+        group.SortOrder = await _db.Categories.CountAsync(c => c.DepartmentId == department.Id && c.ParentId == group.ParentId && !c.IsRoot);
+        _db.Categories.Add(group);
+        await SaveAsync("create", "group", group.Id);
+        return Created($"/api/groups/{group.Id}", ToGroupDto(group, 0));
+    }
+
+    [HttpPut("groups/{id:guid}")]
+    [Authorize(Policy = Permissions.CategoriesManage)]
+    public async Task<ActionResult<GroupDto>> UpdateGroup(Guid id, [FromBody] UpdateGroupRequest req)
+    {
+        var group = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsRoot && c.DepartmentId != null);
+        if (group is null) return NotFound(new { message = "Group not found.", code = "group_not_found" });
+        var error = (req.ParentId is null ? null : await ParentAsync(group, req.ParentId))
+                    ?? GroupFields(group, req.Name, req.Prefix, req.Keywords)
+                    ?? await SiblingClashAsync(group);
+        if (error is not null) return error;
+        if (req.IsActive is bool active) group.IsActive = active;
+        if (req.SortOrder is int order) group.SortOrder = Math.Clamp(order, 0, 10000);
+        await SaveAsync("update", "group", group.Id);
+        var all = await _db.Categories.AsNoTracking().ToListAsync();
+        var under = Catalog.Subtree(id, all);
+        return Ok(ToGroupDto(group, await _db.Products.CountAsync(p => p.IsActive && under.Contains(p.CategoryId))));
+    }
+
+    /// <summary>Put a group under another of the same department ("" = straight under the department), never under itself.</summary>
+    private async Task<ActionResult?> ParentAsync(Category group, string raw)
+    {
+        if (raw.Length == 0)
+        {
+            group.ParentId = null;
+            return null;
+        }
+        var all = await _db.Categories.AsNoTracking().ToListAsync();
+        var parent = Guid.TryParse(raw, out var pid) ? all.FirstOrDefault(c => c.Id == pid && !c.IsRoot) : null;
+        if (parent is null || parent.DepartmentId != group.DepartmentId)
+            return BadRequest(new { message = "Choose a group of the same department.", code = "group_not_found" });
+        if (Catalog.Subtree(group.Id, all).Contains(parent.Id))
+            return BadRequest(new { message = "A group can't go under itself.", code = "group_loop" });
+        group.ParentId = parent.Id;
+        return null;
+    }
+
+    /// <summary>Name, code prefix and keywords of a group (null = leave as is).</summary>
+    private ActionResult? GroupFields(Category group, string? name, string? prefix, string[]? keywords)
+    {
+        if (name is not null || group.Name.Length == 0)
+        {
+            var clean = Loc.Clean(name);
+            if (clean is null) return BadRequest(new { message = "The group needs a name.", code = "bad_name" });
+            group.Name = clean;
+        }
+        var (given, value, bad) = Catalog.Prefix(prefix);
+        if (bad) return BadRequest(new { message = "A prefix is up to 10 letters or digits.", code = "bad_prefix" });
+        if (given) group.Prefix = value;
+        if (keywords is not null)
+        {
+            var words = keywords.Select(k => Loc.Clean(k)).Where(k => k is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(40).ToArray();
+            var joined = string.Join('\n', words);
+            group.Keywords = joined.Length == 0 ? null : joined[..Math.Min(2000, joined.Length)];
+        }
+        return null;
+    }
+
+    /// <summary>Two groups side by side (same department and parent) can't share a name.</summary>
+    private async Task<ActionResult?> SiblingClashAsync(Category group)
+    {
+        var name = group.Name.ToLower();
+        var clash = await _db.Categories.AsNoTracking().AnyAsync(c => c.Id != group.Id && !c.IsRoot
+            && c.DepartmentId == group.DepartmentId && c.ParentId == group.ParentId && c.Name.ToLower() == name);
+        return clash
+            ? BadRequest(new { message = $"There is already a group called {group.Name} here.", code = "duplicate_name" })
+            : null;
+    }
+
+    private static GroupDto ToGroupDto(Category c, int count) => new(c.Id.ToString(), Loc.Name(c),
+        c.DepartmentId!.Value.ToString(), c.ParentId?.ToString(), c.Prefix,
+        (c.Keywords ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries), c.IsActive, c.SortOrder, count);
+
     // ------------------------------------------------------------------ sales departments
 
     /// <summary>The sales departments (أقسام), open ones first. Anyone signed in may read them.</summary>

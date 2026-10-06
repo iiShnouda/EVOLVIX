@@ -9,3 +9,5 @@ export * from './roles';
 export * from './navigation';
 export * from './schemas';
 export * from './i18n';
+export * from './textKey';
+export * from './nameReader';

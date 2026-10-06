@@ -334,6 +334,14 @@ input[type='number'] {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  #print-root .label-cell,
+  #print-root .label-cell *,
+  #print-root .label-page {
+    overflow: hidden !important;
+  }
+  #print-root .label-page:last-child {
+    break-after: auto !important;
+  }
   #print-root * {
     overflow: visible !important;
     max-height: none !important;

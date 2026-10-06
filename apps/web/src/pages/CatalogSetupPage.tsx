@@ -10,6 +10,7 @@ import {
   useCreateCatalogEntry,
   useCreateSeason,
   useDepartments,
+  useGroups,
   useSeasons,
   useUnits,
   useUpdateCatalogEntry,
@@ -18,8 +19,9 @@ import {
   type CatalogList,
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
+import { GroupsSetup } from '../components/GroupTree';
 
-type Tab = 'departments' | 'units' | 'sizes' | 'colors' | 'seasons';
+type Tab = 'departments' | 'groups' | 'units' | 'sizes' | 'colors' | 'seasons';
 
 /**
  * The lists items are built from (owner decision 2026-10-01): departments (no separate groups),
@@ -28,6 +30,7 @@ type Tab = 'departments' | 'units' | 'sizes' | 'colors' | 'seasons';
  */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'departments', label: 'setup.departments', permission: 'categories:manage' },
+  { key: 'groups', label: 'groups.tab', permission: 'categories:manage' },
   { key: 'units', label: 'setup.units', permission: 'units:manage' },
   { key: 'sizes', label: 'setup.sizes', permission: 'variant_options:manage' },
   { key: 'colors', label: 'setup.colors', permission: 'variant_options:manage' },
@@ -59,6 +62,7 @@ export function CatalogSetupPage() {
 
   const units = useUnits();
   const departments = useDepartments();
+  const groups = useGroups();
   const options = useVariantOptions();
   const seasons = useSeasons();
   const warehouses = useWarehouses(true);
@@ -112,37 +116,53 @@ export function CatalogSetupPage() {
         ))}
       </div>
 
-      {canManage &&
-        (tab === 'seasons' ? <AddSeason /> : <AddEntry key={tab} tab={tab} list={list} />)}
-
-      <Card padded={false} className="overflow-hidden">
-        {loading ? (
+      {tab === 'groups' ? (
+        departments.isLoading || groups.isLoading ? (
           <div className="grid place-items-center py-16 text-muted">
             <Spinner size={26} />
           </div>
-        ) : entries.length === 0 ? (
-          <EmptyState title={t('common.empty')} icon="inventory" />
         ) : (
-          <ul className="divide-y divide-[var(--c-line)]">
-            {entries.map((e) => (
-              <EntryRow
-                key={e.id}
-                entry={e}
-                tab={tab}
-                list={list}
-                canManage={canManage && tab !== 'seasons'}
-                warehouseName={warehouseName}
-              />
-            ))}
-          </ul>
-        )}
-      </Card>
+          <GroupsSetup
+            departments={departments.data ?? []}
+            groups={groups.data ?? []}
+            canManage={canManage}
+          />
+        )
+      ) : (
+        <>
+          {canManage &&
+            (tab === 'seasons' ? <AddSeason /> : <AddEntry key={tab} tab={tab} list={list} />)}
+
+          <Card padded={false} className="overflow-hidden">
+            {loading ? (
+              <div className="grid place-items-center py-16 text-muted">
+                <Spinner size={26} />
+              </div>
+            ) : entries.length === 0 ? (
+              <EmptyState title={t('common.empty')} icon="inventory" />
+            ) : (
+              <ul className="divide-y divide-[var(--c-line)]">
+                {entries.map((e) => (
+                  <EntryRow
+                    key={e.id}
+                    entry={e}
+                    tab={tab}
+                    list={list}
+                    canManage={canManage && tab !== 'seasons'}
+                    warehouseName={warehouseName}
+                  />
+                ))}
+              </ul>
+            )}
+          </Card>
+        </>
+      )}
     </div>
   );
 }
 
 const LABELS: Record<
-  Exclude<Tab, 'seasons'>,
+  Exclude<Tab, 'seasons' | 'groups'>,
   { name: TranslationKey; placeholder: TranslationKey }
 > = {
   units: { name: 'setup.unitName', placeholder: 'setup.unitPlaceholder' },
@@ -151,7 +171,7 @@ const LABELS: Record<
   colors: { name: 'setup.colorName', placeholder: 'setup.colorPlaceholder' },
 };
 
-function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons'>; list: CatalogList }) {
+function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons' | 'groups'>; list: CatalogList }) {
   const { t } = useT();
   const create = useCreateCatalogEntry(list);
   const [names, setNames] = useState<NameValues>('');

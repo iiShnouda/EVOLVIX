@@ -10,7 +10,9 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
 import { Icon } from './Icon';
+import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { statusOf } from '../lib/status';
 import { safeName } from '../lib/print';
 import { PrintEditor } from './PrintEditor';
@@ -115,6 +117,8 @@ export function DocumentPreview({
   onPrinted?: () => void;
 }) {
   const { t } = useT();
+  const can = useCan();
+  const navigate = useNavigate();
   const paper = useRef<HTMLDivElement>(null);
   const [options, setOptions] = usePaperOptions();
   const ready = !loading && !!doc;
@@ -162,6 +166,16 @@ export function DocumentPreview({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <PrintOptions options={options} onChange={setOptions} />
+            {doc.type === 'PURCHASE_INVOICE' && can('labels:print') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="scan"
+                aria-label={t('labels.fromInvoice')}
+                title={t('labels.fromInvoice')}
+                onClick={() => navigate(`/inventory/labels?doc=${doc.id}`)}
+              />
+            )}
             <Button
               size="sm"
               variant="ghost"

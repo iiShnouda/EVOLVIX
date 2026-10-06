@@ -577,6 +577,28 @@ public record UnitDto(string Id, string Name, bool IsActive, int ItemCount, int 
 
 public record CategoryDto(string Id, string Name, int ItemCount, string? DepartmentId = null, string? DepartmentName = null);
 
+/// <summary>
+/// A group in a department's tree (owner, 2026-10-06). <paramref name="ParentId"/> null = straight under
+/// the department. <paramref name="ItemCount"/> counts its items and those of the groups under it.
+/// </summary>
+public record GroupDto(string Id, string Name, string DepartmentId, string? ParentId, string? Prefix,
+    string[] Keywords, bool IsActive, int SortOrder, int ItemCount);
+
+public record CreateGroupRequest(string? Name, string? DepartmentId, string? ParentId = null, string? Prefix = null,
+    string[]? Keywords = null);
+
+/// <summary>Null fields stay; ParentId "" moves it straight under its department.</summary>
+public record UpdateGroupRequest(string? Name = null, string? ParentId = null, string? Prefix = null,
+    string[]? Keywords = null, bool? IsActive = null, int? SortOrder = null);
+
+/// <summary>The code a new item would get here (it may still change if another is saved first).</summary>
+public record NextCodeDto(string Code);
+
+/// <summary>What one item's barcode label carries (sale price of its base unit at the default level).</summary>
+/// <param name="Count">How many labels: the pieces on the purchase invoice, else 1.</param>
+public record LabelItemDto(string Id, string Name, string Sku, string? Barcode, long Price, string Currency,
+    string? SizeName, string? ColorName, int Count);
+
 /// <summary>A category: its name and the sales department it belongs to (none = every department).</summary>
 public record CreateCategoryRequest(string? Name = null, string? DepartmentId = null);
 
@@ -630,7 +652,8 @@ public record CreateProductRequest(
     string? Name = null, string? Sku = null,
     int ReorderLevel = 0, PriceRequest[]? Prices = null,
     string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
-    string? SizeId = null, string? ColorId = null, string? WarehouseId = null);
+    string? SizeId = null, string? ColorId = null, string? WarehouseId = null, string? GroupId = null,
+    bool AutoBarcode = true);
 
 /// <summary>
 /// Any field left null is unchanged. For a variant only SKU, reorder level, active and the units'
@@ -639,7 +662,8 @@ public record CreateProductRequest(
 public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
     string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
-    string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null);
+    string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
+    string? GroupId = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 

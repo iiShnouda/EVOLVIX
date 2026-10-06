@@ -16,7 +16,8 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
-import { useDepartments, useInventory, useValuation } from '../lib/queries';
+import { useDepartments, useGroups, useInventory, useValuation } from '../lib/queries';
+import { GroupPicker } from '../components/GroupTree';
 import { TableColumns } from '../components/TableColumns';
 import { ReportActions } from '../components/ReportActions';
 import { useReportTools } from '../lib/report';
@@ -47,6 +48,10 @@ export function InventoryPage() {
   // Branch, warehouse and department in every search (owner, 2026-10-01).
   const branchId = params.get('br') ?? '';
   const departmentId = params.get('dept') ?? '';
+  const groupId = params.get('grp') ?? '';
+  const groups = (useGroups().data ?? []).filter(
+    (g) => g.isActive && g.departmentId === departmentId,
+  );
   const myBranches = useAuth((s) => s.user?.branches ?? []);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   // The filters start where the person works (owner, 2026-10-02).
@@ -60,6 +65,7 @@ export function InventoryPage() {
     warehouseId: warehouseId || undefined,
     branchId: (!warehouseId && branchId) || undefined,
     departmentId: departmentId || undefined,
+    groupId: groupId || undefined,
   });
   const currency = list.data?.currency ?? 'EGP';
 
@@ -108,6 +114,16 @@ export function InventoryPage() {
             >
               {t('catalog.setup')}
             </Button>
+            {can('labels:print') && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="scan"
+                onClick={() => navigate('/inventory/labels')}
+              >
+                {t('labels.title')}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="secondary"
@@ -210,7 +226,7 @@ export function InventoryPage() {
             aria-label={t('invoice.department')}
             value={departmentId}
             onChange={(e) => {
-              update({ dept: e.target.value || null });
+              update({ dept: e.target.value || null, grp: null });
               if (e.target.value) setPlace({ departmentId: e.target.value });
             }}
           >
@@ -223,6 +239,17 @@ export function InventoryPage() {
               </option>
             ))}
           </select>
+        )}
+        {tab === 'items' && departmentId && groups.length > 0 && (
+          <GroupPicker
+            departments={departments}
+            groups={groups}
+            departmentId={departmentId}
+            groupId={groupId}
+            showDepartment={false}
+            anyLabel={t('common.all')}
+            onChange={(_, g) => update({ grp: g || null })}
+          />
         )}
       </div>
 

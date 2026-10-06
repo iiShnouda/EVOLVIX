@@ -17,6 +17,7 @@ import type {
   SavePriceListInput,
   SetQuantityBreaksInput,
   Department,
+  Group,
   CompanySettings,
   CustomerInvoices,
   CreatePurchaseInvoiceInput,
@@ -302,6 +303,8 @@ export interface ItemFinderFilters {
   /** Only the department's own items, not those of no department. */
   onlyDepartment: boolean;
   departmentId: string;
+  /** A group of the department's tree and everything under it (owner, 2026-10-06). */
+  groupId?: string;
   seasonId: string;
   warehouseId: string;
   /** A supplier, 'none' (items with no supplier) or '' (any). */
@@ -332,6 +335,7 @@ export function useItemFinder(filters: ItemFinderFilters, page = 1, size = 50) {
   const set = (k: string, v: string | null) => v != null && v.trim() && query.set(k, v.trim());
   set('departmentId', filters.departmentId);
   if (filters.onlyDepartment && filters.departmentId) query.set('onlyDepartment', 'true');
+  if (filters.departmentId) set('groupId', filters.groupId ?? '');
   if (!filters.warehouseId) set('branchId', filters.branchId);
   set('seasonId', filters.seasonId);
   set('warehouseId', filters.warehouseId);
@@ -623,11 +627,13 @@ export function useInventory(params: {
   modelId?: string;
   branchId?: string;
   departmentId?: string;
+  groupId?: string;
 }) {
   const query = new URLSearchParams();
   if (params.search) query.set('search', params.search);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.departmentId) query.set('departmentId', params.departmentId);
+  if (params.departmentId && params.groupId) query.set('groupId', params.groupId);
   if (params.lowOnly) query.set('lowOnly', 'true');
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   if (params.modelId) query.set('modelId', params.modelId);
@@ -856,6 +862,53 @@ export function useDepartments() {
   return useQuery({
     queryKey: ['catalog', 'departments'],
     queryFn: () => api.get<Department[]>('/departments'),
+  });
+}
+
+/** Every group of every department's tree (owner, 2026-10-06). */
+export function useGroups() {
+  return useQuery({
+    queryKey: ['catalog', 'groups'],
+    queryFn: () => api.get<Group[]>('/groups'),
+    staleTime: 60_000,
+  });
+}
+
+export interface GroupInput {
+  name?: string;
+  departmentId?: string;
+  parentId?: string | null;
+  prefix?: string;
+  keywords?: string[];
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export function useSaveGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: GroupInput }) =>
+      id ? api.put<Group>(`/groups/${id}`, input) : api.post<Group>('/groups', input),
+    onSuccess: () => invalidateCatalog(qc),
+  });
+}
+
+/** The code a new item of this department and group would get (shown live while typing). */
+export function useNextCode(
+  departmentId: string,
+  groupId: string,
+  warehouseId: string,
+  enabled: boolean,
+) {
+  const params = new URLSearchParams();
+  if (departmentId) params.set('departmentId', departmentId);
+  if (groupId) params.set('groupId', groupId);
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  return useQuery({
+    queryKey: ['catalog', 'next-code', departmentId, groupId, warehouseId],
+    queryFn: () => api.get<{ code: string }>(`/products/next-code?${params}`),
+    enabled,
+    staleTime: 10_000,
   });
 }
 

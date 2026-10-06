@@ -41,6 +41,7 @@ import { BranchesPage } from './pages/BranchesPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { TransferBuilderPage } from './pages/TransferBuilderPage';
 import { CatalogSetupPage } from './pages/CatalogSetupPage';
+import { LabelsPage } from './pages/LabelsPage';
 import { PriceListsPage } from './pages/PriceListsPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
 import { AddItemsPage } from './pages/AddItemsPage';
@@ -237,6 +238,7 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/transfers" element={<TransfersPage />} />
       <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
       <Route path="/inventory/setup" element={<CatalogSetupPage />} />
+      <Route path="/inventory/labels" element={<LabelsPage />} />
       <Route path="/inventory/price-lists" element={<PriceListsPage />} />
       <Route path="/inventory/products/new" element={<NewItemsRoute />} />
       <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />

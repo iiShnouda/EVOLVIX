@@ -343,6 +343,22 @@ public class Category : INamed
     public Guid? DepartmentId { get; set; }
     public Department? Department { get; set; }
     public List<Product> Products { get; set; } = new();
+
+    // ---- Department tree (owner, 2026-10-06): underwear → men's → vests → half sleeve ----
+    /// <summary>The department's own node: items put straight in the department point here.</summary>
+    public bool IsRoot { get; set; }
+    /// <summary>The group this one sits under; null = straight under its department.</summary>
+    public Guid? ParentId { get; set; }
+    public Category? Parent { get; set; }
+    /// <summary>Its part of an item code, after the department's (e.g. M for men's, V for vests).</summary>
+    public string? Prefix { get; set; }
+    /// <summary>
+    /// Words that point to this group when they appear in an item's name, one per line (its own name
+    /// counts too), e.g. "فنيله" for vests. A deeper group implies the groups above it.
+    /// </summary>
+    public string? Keywords { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
 }
 
 /// <summary>
@@ -618,6 +634,13 @@ public class Product : INamed
     public Season? Season { get; set; }
 
     public List<ItemUnit> Units { get; set; } = new();
+
+    /// <summary>
+    /// The name, code and supplier code folded for searching (<see cref="Services.TextKey"/>): Arabic
+    /// letter forms made one, and each word's consonant outline, so a slip of a letter still finds it.
+    /// Kept in step on every save.
+    /// </summary>
+    public string SearchKey { get; set; } = "";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -1598,4 +1621,67 @@ public class InvoiceRevision
     public string? Reason { get; set; }
     public long TotalBefore { get; set; }
     public long TotalAfter { get; set; }
+}
+
+
+// ---------------------------------------------------------------- staff chat (owner, 2026-10-06)
+
+public enum ChatKind { DIRECT, GROUP }
+
+/// <summary>
+/// A conversation between staff: two people, or a group someone with <c>chat:manage</c> made. People
+/// with <c>chat:monitor</c> can read every conversation; nothing is ever deleted.
+/// </summary>
+public class ChatConversation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public ChatKind Kind { get; set; }
+    public string? Title { get; set; }
+    public Guid CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastMessageAt { get; set; } = DateTime.UtcNow;
+    public List<ChatMember> Members { get; set; } = new();
+}
+
+public class ChatMember
+{
+    public Guid ConversationId { get; set; }
+    public ChatConversation? Conversation { get; set; }
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    /// <summary>Up to when they have read (for the unread count).</summary>
+    public DateTime LastReadAt { get; set; } = DateTime.UtcNow;
+}
+
+public class ChatMessage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ConversationId { get; set; }
+    public ChatConversation? Conversation { get; set; }
+    public Guid SenderId { get; set; }
+    public Staff? Sender { get; set; }
+    public string Text { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Someone a supervisor stopped from writing in the chat (they still read). Removing the row lets them write again.</summary>
+public class ChatMute
+{
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    public Guid ById { get; set; }
+    public DateTime At { get; set; } = DateTime.UtcNow;
+}
+
+// ---------------------------------------------------------------- assistant (owner, 2026-10-06)
+
+/// <summary>One turn of a person's conversation with the company's offline assistant, kept on the server.</summary>
+public class AssistantTurn
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    /// <summary>"user" or "assistant".</summary>
+    public string Role { get; set; } = "user";
+    public string Content { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

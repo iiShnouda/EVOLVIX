@@ -18,6 +18,7 @@ import { api, ApiError } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
 import {
   useDepartments,
+  useGroups,
   useSeasons,
   useVariantOptions,
   useCompanySettings,
@@ -29,6 +30,7 @@ import {
   useUpdateProduct,
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
+import { GroupPicker } from '../components/GroupTree';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
@@ -82,6 +84,9 @@ export function ProductEditorPage() {
   const [names, setNames] = useState<NameValues>('');
   const [sku, setSku] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  // The group of the department's tree it sits in (owner, 2026-10-06); '' = the department itself.
+  const [groupId, setGroupId] = useState('');
+  const groups = useGroups().data ?? [];
   const [seasonId, setSeasonId] = useState('');
   const [sizeId, setSizeId] = useState('');
   const [colorId, setColorId] = useState('');
@@ -99,6 +104,7 @@ export function ProductEditorPage() {
     setNames(namesFrom(d.name));
     setSku(d.sku);
     setDepartmentId(d.departmentId ?? '');
+    setGroupId(groups.some((g) => g.id === d.categoryId) ? d.categoryId : '');
     setSeasonId(d.seasonId ?? '');
     setReorder(String(d.reorderLevel));
     setSupplierId(d.supplierId ?? '');
@@ -106,7 +112,8 @@ export function ProductEditorPage() {
     setRows(rowsFrom(d));
     setPricesInput(inputsFrom(d.prices));
     setLoadedId(loadKey(d));
-  }, [d, loadedId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d, loadedId, groups.length]);
 
   // A new item starts in the season it is now (owner decision 2026-10-01).
   const currentSeason = seasons.data?.find((x) => x.isCurrent)?.id;
@@ -162,6 +169,7 @@ export function ProductEditorPage() {
       (!!typedNames.name ||
         (!!sku.trim() && sku.trim() !== d.sku) ||
         departmentId !== (d.departmentId ?? '') ||
+        groupId !== (groups.some((g) => g.id === d.categoryId) ? d.categoryId : '') ||
         seasonId !== (d.seasonId ?? '') ||
         nextReorder !== d.reorderLevel ||
         supplierId !== (d.supplierId ?? '') ||
@@ -208,6 +216,7 @@ export function ProductEditorPage() {
         const created = await create.mutateAsync({
           ...typedNames,
           departmentId,
+          groupId: groupId || undefined,
           seasonId: seasonId || undefined,
           sizeId: sizeId || undefined,
           colorId: colorId || undefined,
@@ -227,8 +236,15 @@ export function ProductEditorPage() {
         const input: Parameters<typeof update.mutateAsync>[0]['input'] = {};
         if (!isVariant) Object.assign(input, typedNames);
         if (sku.trim() && sku.trim() !== d.sku) input.sku = sku.trim();
-        if (!isVariant && departmentId && departmentId !== (d.departmentId ?? ''))
+        const wasGroup = groups.some((g) => g.id === d.categoryId) ? d.categoryId : '';
+        if (
+          !isVariant &&
+          departmentId &&
+          (departmentId !== (d.departmentId ?? '') || groupId !== wasGroup)
+        ) {
           input.departmentId = departmentId;
+          if (groupId) input.groupId = groupId;
+        }
         if (seasonId !== (d.seasonId ?? '')) input.seasonId = seasonId;
         if (nextReorder !== d.reorderLevel) input.reorderLevel = nextReorder;
         if (!isVariant && supplierId !== (d.supplierId ?? '')) input.supplierId = supplierId;
@@ -331,7 +347,10 @@ export function ProductEditorPage() {
                   className={field}
                   value={departmentId}
                   disabled={!canFields || isVariant}
-                  onChange={(e) => setDepartmentId(e.target.value)}
+                  onChange={(e) => {
+                    setDepartmentId(e.target.value);
+                    setGroupId('');
+                  }}
                 >
                   <option value="">{t('item.pickDepartment')}</option>
                   {d?.departmentId && !departments.some((x) => x.id === d.departmentId) && (
@@ -344,6 +363,19 @@ export function ProductEditorPage() {
                   ))}
                 </select>
               </label>
+              {departmentId && groups.some((g) => g.departmentId === departmentId) && (
+                <div className="block sm:col-span-2">
+                  <span className="mb-0.5 block text-xs text-muted">{t('groups.path')}</span>
+                  <GroupPicker
+                    departments={departments}
+                    groups={groups}
+                    departmentId={departmentId}
+                    groupId={groupId}
+                    showDepartment={false}
+                    onChange={(_, g) => canFields && !isVariant && setGroupId(g)}
+                  />
+                </div>
+              )}
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('item.reorder')}</span>
                 <input

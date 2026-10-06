@@ -396,12 +396,18 @@ export const createProductSchema = z.object({
   supplierCode: z.string().trim().max(64).optional(),
   /** The warehouse it is bought into: its code takes that branch's and warehouse's prefixes. */
   warehouseId: z.string().uuid().optional(),
+  /** A group of the department's tree (owner, 2026-10-06): its prefixes join the item's code. */
+  groupId: z.string().uuid().optional(),
+  /** Give the base unit an in-store barcode when none is typed (default on). */
+  autoBarcode: z.boolean().optional(),
 });
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 
 export const updateProductSchema = z.object({
   ...nameFields,
   departmentId: z.string().uuid().optional(),
+  /** With departmentId: a group of that department ("" or missing = straight in the department). */
+  groupId: z.string().uuid().optional(),
   /** "" clears it. */
   seasonId: z.union([z.literal(''), z.string().uuid()]).optional(),
   categoryId: z.string().uuid().optional(),

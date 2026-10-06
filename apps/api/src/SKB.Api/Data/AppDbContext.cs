@@ -9,12 +9,14 @@ public class AppDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ApplyBackdate();
+        KeepSearchKeys();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         ApplyBackdate();
+        KeepSearchKeys();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
@@ -23,6 +25,13 @@ public class AppDbContext : DbContext
     /// documents, vouchers, stock and money movements, journal entries — is put on that day; the
     /// documents keep when they were really typed.
     /// </summary>
+    /// <summary>Items' search keys follow their name, code and supplier code.</summary>
+    private void KeepSearchKeys()
+    {
+        foreach (var e in ChangeTracker.Entries<Product>().Where(x => x.State is EntityState.Added or EntityState.Modified))
+            e.Entity.SearchKey = SKB.Api.Services.TextKey.ForItem(e.Entity.Name, e.Entity.Sku, e.Entity.SupplierCode);
+    }
+
     private void ApplyBackdate()
     {
         if (SKB.Api.Services.Backdate.Instant is not DateTime when) return;
@@ -54,6 +63,11 @@ public class AppDbContext : DbContext
     public DbSet<NotePhoto> NotePhotos => Set<NotePhoto>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+    public DbSet<ChatMember> ChatMembers => Set<ChatMember>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatMute> ChatMutes => Set<ChatMute>();
+    public DbSet<AssistantTurn> AssistantTurns => Set<AssistantTurn>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<CashHandover> CashHandovers => Set<CashHandover>();
     public DbSet<WorkDraft> WorkDrafts => Set<WorkDraft>();
@@ -377,6 +391,32 @@ public class AppDbContext : DbContext
         // Sales departments (أقسام): groups of categories; each sale belongs to one.
         b.Entity<Category>().HasOne(c => c.Department).WithMany()
             .HasForeignKey(c => c.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Category>().HasOne(c => c.Parent).WithMany()
+            .HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Category>().HasIndex(c => c.ParentId);
+        b.Entity<Category>().Property(c => c.Prefix).HasMaxLength(10);
+        b.Entity<Category>().Property(c => c.Keywords).HasMaxLength(2000);
+        b.Entity<Product>().Property(p => p.SearchKey).HasMaxLength(1200);
+
+        b.Entity<ChatMember>().HasKey(m => new { m.ConversationId, m.StaffId });
+        b.Entity<ChatMember>().HasOne(m => m.Conversation).WithMany(c => c.Members)
+            .HasForeignKey(m => m.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ChatMember>().HasOne(m => m.Staff).WithMany()
+            .HasForeignKey(m => m.StaffId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ChatMember>().HasIndex(m => m.StaffId);
+        b.Entity<ChatMessage>().HasOne(m => m.Conversation).WithMany()
+            .HasForeignKey(m => m.ConversationId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ChatMessage>().HasOne(m => m.Sender).WithMany()
+            .HasForeignKey(m => m.SenderId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ChatMessage>().HasIndex(m => new { m.ConversationId, m.CreatedAt });
+        b.Entity<ChatMessage>().Property(m => m.Text).HasMaxLength(4000);
+        b.Entity<ChatConversation>().Property(c => c.Kind).HasConversion<string>().HasMaxLength(10);
+        b.Entity<ChatConversation>().Property(c => c.Title).HasMaxLength(120);
+        b.Entity<ChatMute>().HasKey(m => m.StaffId);
+        b.Entity<ChatMute>().HasOne(m => m.Staff).WithMany()
+            .HasForeignKey(m => m.StaffId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<AssistantTurn>().HasIndex(t => new { t.StaffId, t.CreatedAt });
+        b.Entity<AssistantTurn>().Property(t => t.Role).HasMaxLength(10);
         b.Entity<SalesDocument>().HasIndex(d => d.DepartmentId);
         b.Entity<SalesDocument>().HasOne(d => d.Department).WithMany()
             .HasForeignKey(d => d.DepartmentId).OnDelete(DeleteBehavior.Restrict);

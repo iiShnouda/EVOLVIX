@@ -188,6 +188,22 @@ public static class Permissions
     /// <summary>Make and change price lists (special prices) and quantity discounts.</summary>
     public const string PriceListsManage = "price_lists:manage";
     public const string CategoriesManage = "categories:manage";
+    /// <summary>Print barcode labels for items (label printer or sticker sheets).</summary>
+    public const string LabelsPrint = "labels:print";
+
+    // ---- Staff chat (owner, 2026-10-06) ----
+    /// <summary>Talk with colleagues in the app's chat (a supervisor can stop someone writing).</summary>
+    public const string ChatUse = "chat:use";
+    /// <summary>Read every conversation, not only one's own.</summary>
+    public const string ChatMonitor = "chat:monitor";
+    /// <summary>Make group conversations and stop or allow people writing.</summary>
+    public const string ChatManage = "chat:manage";
+
+    // ---- Offline assistant on the company server (owner, 2026-10-06) ----
+    /// <summary>Ask the company's assistant; it only reads what the person may see.</summary>
+    public const string AiChat = "ai:chat";
+    /// <summary>Read a photo of a supplier invoice or cheques into a draft to check and save.</summary>
+    public const string AiScan = "ai:scan";
     public const string UnitsManage = "units:manage";
     /// <summary>Add and rename the company's sizes and colors.</summary>
     public const string VariantOptionsManage = "variant_options:manage";
@@ -252,6 +268,7 @@ public static class Permissions
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel, NotesLost,
         PayrollView, EmployeesManage, AttendanceEdit, PayrollAdjust, PayrollAdvance, PayrollPost, PayrollPay,
+        LabelsPrint, ChatUse, ChatMonitor, ChatManage, AiChat, AiScan,
     };
 }
 
@@ -301,6 +318,7 @@ public static class RolePermissions
             Permissions.NotesCancel, Permissions.NotesLost,
             Permissions.PayrollView, Permissions.AttendanceEdit, Permissions.PayrollAdjust, Permissions.PayrollAdvance,
             Permissions.PayrollPost, Permissions.PayrollPay,
+            Permissions.LabelsPrint, Permissions.ChatUse,
         },
         // Sales staff sell at the customer's price level and may only add to a price; lowering it or
         // changing the level needs a manager (owner decisions 2026-09-29, 2026-09-30). Their
@@ -313,6 +331,7 @@ public static class RolePermissions
             Permissions.SalesReturn, Permissions.SalesReturnFree,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreate, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
+            Permissions.ChatUse,
         },
         // Store staff add items and enter supplier invoices as printed; they don't set selling prices.
         [Role.INVENTORY] = new[]
@@ -329,6 +348,7 @@ public static class RolePermissions
             Permissions.DeliveryView, Permissions.DeliveryManage,
             // A store keeper hands the store's cash up to the branch.
             Permissions.CashHandoverSend,
+            Permissions.LabelsPrint, Permissions.ChatUse,
         },
         [Role.VIEWER] = new[]
         {

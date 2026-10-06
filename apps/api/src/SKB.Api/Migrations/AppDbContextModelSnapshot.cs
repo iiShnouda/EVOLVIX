@@ -29,6 +29,34 @@ namespace SKB.Api.Migrations
 
             modelBuilder.HasSequence<int>("StaffCodes");
 
+            modelBuilder.Entity("SKB.Api.Data.AssistantTurn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StaffId", "CreatedAt");
+
+                    b.ToTable("AssistantTurns");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
                 {
                     b.Property<Guid>("Id")
@@ -283,15 +311,129 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("DepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsRoot")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Keywords")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Prefix")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
 
+                    b.HasIndex("ParentId");
+
                     b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ChatConversations");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMember", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LastReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ConversationId", "StaffId");
+
+                    b.HasIndex("StaffId");
+
+                    b.ToTable("ChatMembers");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("ConversationId", "CreatedAt");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMute", b =>
+                {
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ById")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("StaffId");
+
+                    b.ToTable("ChatMutes");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.CompanyLogo", b =>
@@ -1946,6 +2088,11 @@ namespace SKB.Api.Migrations
                     b.Property<long>("SalePrice")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("SearchKey")
+                        .IsRequired()
+                        .HasMaxLength(1200)
+                        .HasColumnType("character varying(1200)");
+
                     b.Property<Guid?>("SeasonId")
                         .HasColumnType("uuid");
 
@@ -3136,7 +3283,63 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Category", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Department");
+
+                    b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMember", b =>
+                {
+                    b.HasOne("SKB.Api.Data.ChatConversation", "Conversation")
+                        .WithMany("Members")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMessage", b =>
+                {
+                    b.HasOne("SKB.Api.Data.ChatConversation", "Conversation")
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatMute", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Staff");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
@@ -4234,6 +4437,11 @@ namespace SKB.Api.Migrations
             modelBuilder.Entity("SKB.Api.Data.Category", b =>
                 {
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ChatConversation", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.JournalEntry", b =>

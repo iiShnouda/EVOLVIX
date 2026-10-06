@@ -53,6 +53,7 @@ const SECTION_OF: Record<string, string> = {
   prices: 'catalog',
   price_levels: 'catalog',
   categories: 'catalog',
+  labels: 'catalog',
   units: 'catalog',
   variant_options: 'catalog',
   roles: 'staff',
@@ -85,6 +86,8 @@ const SECTIONS = [
   'staff',
   'analytics',
   'payroll',
+  'chat',
+  'ai',
   'settings',
   'system',
 ];

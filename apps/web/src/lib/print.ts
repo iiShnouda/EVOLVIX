@@ -38,15 +38,16 @@ export function setPrintPaper(size: PaperSize) {
 }
 
 /** Tell the print dialog the paper size; A5 gets narrower margins and slightly smaller type. */
-function pageRule() {
+function pageRule(custom?: string) {
   let style = document.getElementById('print-page') as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement('style');
     style.id = 'print-page';
     document.head.appendChild(style);
   }
-  style.textContent =
-    paper === 'A5'
+  style.textContent = custom
+    ? `@media print { ${custom} }`
+    : paper === 'A5'
       ? '@media print { @page { size: A5; margin: 7mm; } #print-root { font-size: 11px; } }'
       : '@media print { @page { size: A4; margin: 12mm; } }';
 }
@@ -145,8 +146,8 @@ export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFr
 }
 
 /** Print (or save as PDF) this copy now, as it is. */
-export function printNow(node: HTMLElement, fileTitle: string) {
-  pageRule();
+export function printNow(node: HTMLElement, fileTitle: string, pageCss?: string) {
+  pageRule(pageCss);
   let root = document.getElementById('print-root');
   if (!root) {
     root = document.createElement('div');

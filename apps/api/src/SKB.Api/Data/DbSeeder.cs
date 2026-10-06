@@ -25,10 +25,23 @@ public static class DbSeeder
         ("bundle", "ربطة"), ("roll", "رول"), ("carton", "كرتونة"), ("dozen", "دستة"),
     };
 
+    /// <summary>Items saved before search keys existed get theirs (a save keeps them in step after that).</summary>
+    private static async Task FillSearchKeysAsync(AppDbContext db)
+    {
+        while (true)
+        {
+            var batch = await db.Products.Where(p => p.SearchKey == "").Take(500).ToListAsync();
+            if (batch.Count == 0) return;
+            foreach (var p in batch) db.Entry(p).Property(x => x.SearchKey).IsModified = true;
+            await db.SaveChangesAsync();
+        }
+    }
+
     public static async Task SeedAsync(AppDbContext db, AuthService auth, IConfiguration config)
     {
         await db.Database.MigrateAsync();
         await Seasons.EnsureAsync(db);
+        await FillSearchKeysAsync(db);
         if (await db.Staff.AnyAsync()) return;
 
         var main = new Branch { Name = "Main Branch", Code = "MAIN", Location = "Cairo — Downtown" };

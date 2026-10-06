@@ -108,6 +108,13 @@ export type Permission =
   | 'price_levels:manage'
   | 'price_lists:manage'
   | 'categories:manage'
+  | 'labels:print'
+  // Staff chat and the offline assistant (owner, 2026-10-06)
+  | 'chat:use'
+  | 'chat:monitor'
+  | 'chat:manage'
+  | 'ai:chat'
+  | 'ai:scan'
   | 'units:manage'
   | 'variant_options:manage'
   | 'seasons:manage'
@@ -310,6 +317,24 @@ export interface Category {
   /** The sales department it belongs to (none = sold by every department). */
   departmentId?: string | null;
   departmentName?: string | null;
+}
+
+/**
+ * A group in a department's tree (owner, 2026-10-06), e.g. underwear → men's → vests → half sleeve.
+ * `parentId` null = straight under the department. Its prefix adds to item codes; its keywords (and
+ * its name) are how an item's typed name points to it.
+ */
+export interface Group {
+  id: string;
+  name: string;
+  departmentId: string;
+  parentId: string | null;
+  prefix: string | null;
+  keywords: string[];
+  isActive: boolean;
+  sortOrder: number;
+  /** Active items in it and in the groups under it. */
+  itemCount: number;
 }
 
 /** A sales department (قسم): a group of categories; each sale belongs to one. */

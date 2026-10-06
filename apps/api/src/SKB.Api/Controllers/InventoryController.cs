@@ -52,15 +52,22 @@ public sealed class InventoryController : ControllerBase
     public async Task<ActionResult<InventoryListDto>> Items(
         [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
         [FromQuery] string? modelId = null, [FromQuery] string? branchId = null,
-        [FromQuery] string? departmentId = null)
+        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
 
-        // One department's items (owner, 2026-10-01: branch, warehouse and department in every search).
+        // One department's items (owner, 2026-10-01: branch, warehouse and department in every search),
+        // or one group of its tree and everything under it (2026-10-06).
         var productQuery = _db.Products.AsNoTracking().Where(p => p.IsActive);
+        var tree = await _db.Categories.AsNoTracking().ToListAsync();
         if (Guid.TryParse(departmentId, out var dept))
             productQuery = productQuery.Where(p => p.Category!.DepartmentId == dept);
+        if (Guid.TryParse(groupId, out var gid))
+        {
+            var under = Catalog.Subtree(gid, tree).ToList();
+            productQuery = productQuery.Where(p => under.Contains(p.CategoryId));
+        }
         var products = await productQuery
             .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
@@ -100,11 +107,19 @@ public sealed class InventoryController : ControllerBase
             rows = rows.Where(i => i.ModelId == model.ToString());
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // Match the name, the SKU or the barcode of any of its units.
+            // Every typed word in the name, code or supplier code — letter forms made one and a
+            // slipped letter allowed (owner, 2026-10-06) — or in its group's name; or a unit's barcode.
             var s = search.Trim().ToLowerInvariant();
-            bool Has(string? v) => v is not null && v.ToLowerInvariant().Contains(s);
-            var hits = products.Where(p => Has(p.Name) || Has(p.Sku)
-                                           || p.Units.Any(u => Has(u.Barcode)))
+            var typed = TextKey.Words(search);
+            var groupWords = tree.ToDictionary(c => c.Id, c => Catalog.PathOf(c.Id, tree)
+                .SelectMany(g => TextKey.Words(g.Name + " " + (g.Keywords ?? "").Replace('\n', ' '))).ToArray());
+            bool Words(Product p)
+            {
+                var have = p.SearchKey.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Concat(groupWords.GetValueOrDefault(p.CategoryId, Array.Empty<string>())).ToArray();
+                return typed.Length > 0 && typed.All(w => TextKey.Match(w, have) >= 0);
+            }
+            var hits = products.Where(p => Words(p) || p.Units.Any(u => u.Barcode?.ToLowerInvariant().Contains(s) == true))
                 .Select(p => p.Id.ToString()).ToHashSet();
             rows = rows.Where(i => hits.Contains(i.Id));
         }

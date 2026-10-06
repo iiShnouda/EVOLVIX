@@ -124,6 +124,13 @@ const ACTIONS: QuickAction[] = [
     permission: 'inventory:stocktake',
   },
   {
+    id: 'labels',
+    label: 'labels.title',
+    icon: 'scan',
+    path: '/inventory/labels',
+    permission: 'labels:print',
+  },
+  {
     id: 'transfer',
     label: 'transfer.new',
     icon: 'delivery',

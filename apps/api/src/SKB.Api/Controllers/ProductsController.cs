@@ -57,7 +57,9 @@ public sealed class ProductsController : ControllerBase
         [FromQuery] string? warehouseId = null, [FromQuery] int offset = 0,
         // A branch's warehouses (owner, 2026-10-02: branch, warehouse and department in the finder),
         // and only the department's own items, not those of no department.
-        [FromQuery] string? branchId = null, [FromQuery] bool onlyDepartment = false)
+        [FromQuery] string? branchId = null, [FromQuery] bool onlyDepartment = false,
+        // A group of a department's tree and everything under it (owner, 2026-10-06).
+        [FromQuery] string? groupId = null)
     {
         limit = Math.Clamp(limit, 1, 200);
         offset = Math.Max(0, offset);
@@ -95,10 +97,14 @@ public sealed class ProductsController : ControllerBase
             q = q.Where(p => p.Sku.ToLower().Contains(c) || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(c))
                              || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(c)));
         }
-        if (!string.IsNullOrWhiteSpace(name))
+        List<Category>? tree = null;
+        async Task<List<Category>> Tree() => tree ??= await _db.Categories.AsNoTracking().ToListAsync();
+        if (!string.IsNullOrWhiteSpace(groupId))
         {
-            var n = name.Trim().ToLower();
-            q = q.Where(p => p.Name.ToLower().Contains(n));
+            if (!Guid.TryParse(groupId, out var gid))
+                return BadRequest(new { message = "Group not found.", code = "group_not_found" });
+            var under = Catalog.Subtree(gid, await Tree()).ToList();
+            q = q.Where(p => under.Contains(p.CategoryId));
         }
         if (Costs.CanSee(User))
         {
@@ -131,6 +137,18 @@ public sealed class ProductsController : ControllerBase
             q = q.Where(p => p.SupplierId == sup);
         }
 
+        // What a slipped letter is tried against: every filter but the typed words.
+        var fuzzyBase = q;
+        string[] searchWords = Array.Empty<string>();
+        // The name: every typed word, folded (letter forms made one) and by its outline (owner,
+        // 2026-10-06), so "فنيله" finds "فانلة"; a word naming a group finds that group's items.
+        string[] nameWords = Array.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            nameWords = TextKey.Words(name);
+            q = await ByWordsAsync(q, nameWords, await Tree());
+        }
+
         ItemUnit? exact = null;
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -154,14 +172,28 @@ public sealed class ProductsController : ControllerBase
             }
             else
             {
-                q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
-                    || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(s))
-                    || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
+                searchWords = TextKey.Words(term);
+                var byBarcode = await _db.ItemUnits.AsNoTracking()
+                    .Where(u => u.Barcode != null && u.Barcode.ToLower().Contains(s))
+                    .Select(u => u.ProductId).Distinct().Take(500).ToListAsync();
+                q = await ByWordsAsync(q, searchWords, await Tree(), byBarcode);
             }
         }
+        var filtered = q;
         var rows = await q.Include(p => p.Size).Include(p => p.Color).Include(p => p.Supplier)
             .Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Season)
             .OrderBy(p => p.Name).ThenBy(p => p.Id).Skip(offset).Take(limit).ToListAsync();
+        // Nothing (or too little) found word for word: try again allowing a slipped letter or two.
+        var typed = searchWords.Length > 0 ? searchWords : nameWords;
+        if (typed.Length > 0 && offset == 0 && rows.Count < limit)
+        {
+            var near = await NearAsync(fuzzyBase, typed, limit - rows.Count, rows.Select(r => r.Id).ToHashSet());
+            if (near.Count > 0)
+                rows.AddRange(await fuzzyBase.Where(p => near.Contains(p.Id))
+                    .Include(p => p.Size).Include(p => p.Color).Include(p => p.Supplier)
+                    .Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Season)
+                    .ToListAsync().ContinueWith(t => t.Result.OrderBy(p => near.IndexOf(p.Id)).ToList()));
+        }
         if (exact is not null)
             rows = rows.OrderByDescending(p => p.Id == exact.ProductId).ToList();
 
@@ -192,6 +224,79 @@ public sealed class ProductsController : ControllerBase
         return detail is null ? NotFound(new { message = "Item not found.", code = "not_found" }) : Ok(detail);
     }
 
+    /// <summary>The code a new item of this department and group would get, shown while it is typed.</summary>
+    [HttpGet("next-code")]
+    [Authorize(Policy = Permissions.ProductsCreate)]
+    public async Task<ActionResult<NextCodeDto>> NextCode([FromQuery] string? departmentId = null,
+        [FromQuery] string? groupId = null, [FromQuery] string? warehouseId = null)
+    {
+        Department? department = null;
+        var path = new List<Category>();
+        if (!string.IsNullOrEmpty(departmentId))
+        {
+            var (_, dept, groups, error) = await Catalog.PlaceAsync(_db, departmentId, groupId);
+            if (error is not null) return BadRequest(new { message = error.Message, code = error.Code });
+            department = dept;
+            path = groups;
+        }
+        Warehouse? into = Guid.TryParse(warehouseId, out var wid)
+            ? await _warehouses.Visible(User).AsNoTracking().FirstOrDefaultAsync(w => w.Id == wid) : null;
+        return Ok(new NextCodeDto(await Catalog.NextCodeForAsync(_db, into?.BranchId ?? Access.Work(User), into, department, path)));
+    }
+
+    /// <summary>
+    /// The labels to print (owner, 2026-10-06): for the items asked, or for every item of a purchase
+    /// invoice with one label per piece bought.
+    /// </summary>
+    [HttpGet("labels")]
+    [Authorize(Policy = Permissions.LabelsPrint)]
+    public async Task<ActionResult<LabelItemDto[]>> Labels([FromQuery] string? ids = null, [FromQuery] string? documentId = null)
+    {
+        var counts = new Dictionary<Guid, int>();
+        if (Guid.TryParse(documentId, out var did))
+        {
+            var doc = await _db.SalesDocuments.AsNoTracking().InBranches(User, d => d.BranchId)
+                .Where(d => d.Id == did && d.Type == DocumentType.PURCHASE_INVOICE)
+                .Select(d => new { Lines = d.Lines.Select(l => new { l.ProductId, l.Quantity }).ToList() })
+                .FirstOrDefaultAsync();
+            if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+            foreach (var l in doc.Lines) counts[l.ProductId] = counts.GetValueOrDefault(l.ProductId) + Math.Max(0, l.Quantity);
+        }
+        foreach (var raw in (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Take(500))
+            if (Guid.TryParse(raw, out var pid)) counts.TryAdd(pid, 1);
+        var keys = counts.Keys.ToList();
+        var items = await _db.Products.AsNoTracking().Where(p => keys.Contains(p.Id))
+            .Include(p => p.Size).Include(p => p.Color).Include(p => p.Units).ToListAsync();
+        var order = keys.Select((k, i) => (k, i)).ToDictionary(x => x.k, x => x.i);
+        return Ok(items.OrderBy(p => order[p.Id]).Select(p => new LabelItemDto(
+            p.Id.ToString(), Loc.Name(p), p.Sku, p.Units.Where(u => u.Factor == 1).Select(u => u.Barcode).FirstOrDefault(),
+            p.SalePrice, p.Currency, p.Size is null ? null : Loc.Name(p.Size), p.Color is null ? null : Loc.Name(p.Color),
+            Math.Min(1000, counts[p.Id]))).ToArray());
+    }
+
+    /// <summary>
+    /// Give the base unit of these items an in-store barcode where they have none (before printing
+    /// their labels). Returns the items' barcodes.
+    /// </summary>
+    [HttpPost("barcodes")]
+    [Authorize(Policy = Permissions.ProductsEdit)]
+    public async Task<ActionResult<Dictionary<string, string>>> AssignBarcodes([FromBody] string[] ids)
+    {
+        var wanted = (ids ?? Array.Empty<string>()).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty).Distinct().Take(500).ToList();
+        var bases = await _db.ItemUnits.Where(u => wanted.Contains(u.ProductId) && u.Factor == 1).ToListAsync();
+        var reserved = new HashSet<string>();
+        var changed = new List<Guid>();
+        foreach (var u in bases.Where(u => string.IsNullOrEmpty(u.Barcode)))
+        {
+            u.Barcode = await Catalog.NextBarcodeAsync(_db, reserved);
+            changed.Add(u.ProductId);
+        }
+        await _db.SaveChangesAsync();
+        foreach (var id in changed) await AuditAsync("barcode", "product", id);
+        return Ok(bases.ToDictionary(u => u.ProductId.ToString(), u => u.Barcode!));
+    }
+
     [HttpPost]
     [Authorize(Policy = Permissions.ProductsCreate)]
     public async Task<ActionResult<ProductDetailDto>> Create([FromBody] CreateProductRequest req)
@@ -200,14 +305,17 @@ public sealed class ProductsController : ControllerBase
         if (name is null) return BadRequest(new { message = "The item needs a name.", code = "bad_name" });
         var product = new Product { Name = name };
 
-        // The department (owner decision 2026-10-01), or, as before, a group.
+        // The department (owner decision 2026-10-01) and the group of its tree (2026-10-06), or, as
+        // before, a category.
         Department? department = null;
+        var path = new List<Category>();
         if (req.DepartmentId is not null)
         {
-            var (fromDepartment, dept) = await Catalog.CategoryForDepartmentAsync(_db, req.DepartmentId);
-            if (fromDepartment is null) return BadRequest(new { message = "Choose a department.", code = "department_not_found" });
-            product.CategoryId = fromDepartment.Value;
+            var (placed, dept, groups, placeError) = await Catalog.PlaceAsync(_db, req.DepartmentId, req.GroupId);
+            if (placeError is not null) return BadRequest(new { message = placeError.Message, code = placeError.Code });
+            product.CategoryId = placed!.Value;
             department = dept;
+            path = groups;
         }
         else if (!Guid.TryParse(req.CategoryId, out var categoryId) || !await _db.Categories.AnyAsync(c => c.Id == categoryId))
             return BadRequest(new { message = "Choose a department.", code = "category_not_found" });
@@ -252,21 +360,14 @@ public sealed class ProductsController : ControllerBase
                 ? await _warehouses.Visible(User).FirstOrDefaultAsync(w => w.Id == wid && w.IsActive) : null;
             if (into is null) return BadRequest(new { message = "Warehouse not found.", code = "warehouse_not_found" });
         }
-        if (sku is null)
-        {
-            var branchId = into?.BranchId ?? Access.Work(User);
-            var branchPrefix = await _db.Branches.Where(b => b.Id == branchId).Select(b => b.Prefix).FirstOrDefaultAsync();
-            var whPrefix = into is not null ? into.Prefix
-                : await _db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
-                    .Select(w => w.Prefix).FirstOrDefaultAsync();
-            sku = department?.Prefix is { Length: > 0 }
-                ? await Catalog.NextItemCodeAsync(_db, branchPrefix, whPrefix, department.Prefix)
-                : await Catalog.NextItemSkuAsync(_db);
-        }
+        sku ??= await Catalog.NextCodeForAsync(_db, into?.BranchId ?? Access.Work(User), into, department, path);
         product.Sku = sku;
 
         var (units, unitError) = await Catalog.ParseUnitsAsync(_db, req.Units, withBarcodes: true);
         if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
+        // A barcode of its own for the base unit when none was typed (owner, 2026-10-06).
+        if (req.AutoBarcode && units!.FirstOrDefault(u => u.Factor == 1) is { Barcode: null } baseUnit)
+            units[units.IndexOf(baseUnit)] = baseUnit with { Barcode = await Catalog.NextBarcodeAsync(_db) };
 
         var prices = req.Prices?.Where(p => p.Price is not null).ToArray() ?? Array.Empty<PriceRequest>();
         if (prices.Length > 0 && !User.HasClaim("permission", Permissions.PricesEdit))
@@ -314,9 +415,9 @@ public sealed class ProductsController : ControllerBase
         if (req.DepartmentId is not null)
         {
             if (isVariant) return variantRule;
-            var (fromDepartment, _) = await Catalog.CategoryForDepartmentAsync(_db, req.DepartmentId);
-            if (fromDepartment is null) return BadRequest(new { message = "Choose a department.", code = "department_not_found" });
-            product.CategoryId = fromDepartment.Value;
+            var (placed, _, _, placeError) = await Catalog.PlaceAsync(_db, req.DepartmentId, req.GroupId);
+            if (placeError is not null) return BadRequest(new { message = placeError.Message, code = placeError.Code });
+            product.CategoryId = placed!.Value;
         }
         if (req.SeasonId is not null)
         {
@@ -534,6 +635,55 @@ public sealed class ProductsController : ControllerBase
             result.Add((unit, level, price));
         }
         return (result, null);
+    }
+
+    /// <summary>
+    /// Items whose search key has every typed word (folded, or by its outline), or that sit in a group
+    /// whose name or keywords the word is.
+    /// </summary>
+    private static Task<IQueryable<Product>> ByWordsAsync(IQueryable<Product> q, string[] words, List<Category> tree,
+        List<Guid>? also = null)
+    {
+        also ??= new List<Guid>();
+        foreach (var word in words)
+        {
+            var w = word;
+            var outline = TextKey.Outline(w);
+            var groups = tree.Where(c => GroupWords(c).Any(k => k == w || (outline.Length > 2 && TextKey.Outline(k) == outline)))
+                .SelectMany(c => Catalog.Subtree(c.Id, tree)).Distinct().ToList();
+            q = outline.Length > 2 && outline != w
+                ? q.Where(p => p.SearchKey.Contains(w) || p.SearchKey.Contains(outline) || groups.Contains(p.CategoryId) || also.Contains(p.Id))
+                : q.Where(p => p.SearchKey.Contains(w) || groups.Contains(p.CategoryId) || also.Contains(p.Id));
+        }
+        return Task.FromResult(q);
+    }
+
+    /// <summary>A group's own name and keywords, folded word by word.</summary>
+    private static IEnumerable<string> GroupWords(Category c) =>
+        TextKey.Words(c.Name).Concat(TextKey.Words((c.Keywords ?? "").Replace('\n', ' ')));
+
+    /// <summary>
+    /// Items close to the typed words (each word within a slipped letter or two of one of the item's),
+    /// best first. Reads only the keys of the filtered items.
+    /// </summary>
+    private static async Task<List<Guid>> NearAsync(IQueryable<Product> q, string[] words, int take, HashSet<Guid> skip)
+    {
+        if (words.All(w => TextKey.Slack(w.Length) == 0)) return new();
+        var keys = await q.Select(p => new { p.Id, p.SearchKey }).Take(20000).ToListAsync();
+        return keys.Where(k => !skip.Contains(k.Id))
+            .Select(k =>
+            {
+                var have = k.SearchKey.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var total = 0;
+                foreach (var w in words)
+                {
+                    var m = TextKey.Match(w, have);
+                    if (m < 0) return (k.Id, Score: -1);
+                    total += m;
+                }
+                return (k.Id, Score: total);
+            })
+            .Where(x => x.Score >= 0).OrderBy(x => x.Score).Take(take).Select(x => x.Id).ToList();
     }
 
     private Task AuditAsync(string action, string resource, Guid id) =>
