@@ -2480,3 +2480,72 @@ export interface WorkDraft {
   data: string;
   updatedAt: string;
 }
+
+// ---------------------------------------------------------------- staff chat (owner, 2026-10-06)
+
+export interface ChatStatus {
+  /** A supervisor has stopped this person writing (they still read). */
+  muted: boolean;
+  unread: number;
+}
+
+export interface ChatPerson {
+  id: string;
+  code: number;
+  name: string;
+  role: string;
+  muted: boolean;
+}
+
+export interface ChatConversation {
+  id: string;
+  kind: 'DIRECT' | 'GROUP';
+  title: string | null;
+  members: { id: string; name: string }[];
+  /** The person is in it (else they read it as a supervisor). */
+  mine: boolean;
+  lastText: string | null;
+  lastSenderId: string | null;
+  lastAt: string;
+  unread: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  at: string;
+}
+
+// ---------------------------------------------------------------- offline assistant (owner, 2026-10-06)
+
+export interface AssistantStatus {
+  enabled: boolean;
+  reachable: boolean;
+  chatReady: boolean;
+  visionReady: boolean;
+}
+
+export interface AssistantTurn {
+  role: 'user' | 'assistant';
+  content: string;
+  at: string;
+}
+
+/** A supplier invoice read from a photo: a draft for the purchase screen (amounts in major units). */
+export interface PurchaseScan {
+  supplierName: string | null;
+  number: string | null;
+  date: string | null;
+  lines: { name: string; quantity: number; unitPrice: number; discount: number }[];
+}
+
+/** One cheque read from a photo (amount in major units). */
+export interface ChequeScan {
+  serial: string | null;
+  amount: number;
+  dueDate: string | null;
+  bank: string | null;
+  drawer: string | null;
+}

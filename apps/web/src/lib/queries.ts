@@ -18,6 +18,12 @@ import type {
   SetQuantityBreaksInput,
   Department,
   Group,
+  ChatStatus,
+  ChatPerson,
+  ChatConversation,
+  ChatMessage,
+  AssistantStatus,
+  AssistantTurn,
   CompanySettings,
   CustomerInvoices,
   CreatePurchaseInvoiceInput,
@@ -2278,4 +2284,82 @@ export function useHiddenColumns(id: string): [string[], (hidden: string[]) => v
     void api.put('/preferences', { key, value }).catch(() => undefined);
   };
   return [hidden, set];
+}
+
+// ---------------------------------------------------------------- staff chat
+
+export function useChatStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['chat', 'status'],
+    queryFn: () => api.get<ChatStatus>('/chat/status'),
+    enabled,
+  });
+}
+
+export function useChatPeople(enabled = true) {
+  return useQuery({
+    queryKey: ['chat', 'people'],
+    queryFn: () => api.get<ChatPerson[]>('/chat/people'),
+    enabled,
+  });
+}
+
+export function useConversations(all: boolean) {
+  return useQuery({
+    queryKey: ['chat', 'conversations', all],
+    queryFn: () => api.get<ChatConversation[]>(`/chat/conversations${all ? '?all=true' : ''}`),
+  });
+}
+
+export function useChatMessages(id: string | null) {
+  return useQuery({
+    queryKey: ['chat', 'messages', id],
+    queryFn: () => api.get<ChatMessage[]>(`/chat/conversations/${id}/messages`),
+    enabled: !!id,
+  });
+}
+
+export function useChatActions() {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ['chat'] });
+  return {
+    direct: (staffId: string) => api.post<{ id: string }>('/chat/direct', { staffId }),
+    group: (title: string, memberIds: string[], id?: string) =>
+      (id
+        ? api.put<{ id: string }>(`/chat/groups/${id}`, { title, memberIds })
+        : api.post<{ id: string }>('/chat/groups', { title, memberIds })
+      ).then((r) => (void refresh(), r)),
+    send: (id: string, text: string) =>
+      api
+        .post<ChatMessage>(`/chat/conversations/${id}/messages`, { text })
+        .then((r) => (void refresh(), r)),
+    mute: (staffId: string, on: boolean) =>
+      (on ? api.post(`/chat/mutes/${staffId}`, {}) : api.del(`/chat/mutes/${staffId}`)).then(
+        () => void refresh(),
+      ),
+    refresh,
+  };
+}
+
+// ---------------------------------------------------------------- offline assistant
+
+export function useAssistantStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['assistant', 'status'],
+    queryFn: () => api.get<AssistantStatus>('/assistant/status'),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useAssistantHistory() {
+  return useQuery({
+    queryKey: ['assistant', 'history'],
+    queryFn: () => api.get<AssistantTurn[]>('/assistant/history'),
+  });
+}
+
+/** Send a photo to be read by the assistant (purchase invoice or cheques). */
+export async function scanPhoto<T>(kind: 'purchase' | 'cheques', file: File): Promise<T> {
+  return api.upload<T>(`/assistant/scan/${kind}`, file, false, 'POST');
 }

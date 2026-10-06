@@ -51,12 +51,48 @@ services:
       Backup__Hour: "${BACKUP_HOUR:-2}"
       Backup__Keep: "${BACKUP_KEEP:-14}"
       Backup__Passphrase: "${BACKUP_PASSPHRASE:-}"
+      # The offline assistant (owner, 2026-10-06): the model server below, on the private network only.
+      Assistant__Enabled: "${ASSISTANT_ENABLED:-true}"
+      Assistant__Endpoint: http://assistant:11434
+      Assistant__Model: "${ASSISTANT_MODEL:-qwen2.5:7b-instruct}"
+      Assistant__VisionModel: "${ASSISTANT_VISION_MODEL:-qwen2.5vl:7b}"
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
     ports:
       # Staff on the LAN reach the app at http://<this-server-ip>:8080
       - "${APP_PORT:-8080}:8080"
 
+  # The company's own AI models (Ollama), run on this machine with no internet needed after the
+  # first download. No port is published: only the app reaches it, over the private Docker network,
+  # so nobody on the office network or outside can talk to it or see the server through it.
+  assistant:
+    profiles: ["full"]
+    image: ollama/ollama:latest
+    container_name: skb-assistant
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+    volumes:
+      - skb-assistant-models:/root/.ollama
+
+  # Downloads the two models once (a few GB), then stops. Run again to update them.
+  assistant-models:
+    profiles: ["full"]
+    image: ollama/ollama:latest
+    restart: "no"
+    depends_on:
+      - assistant
+    environment:
+      OLLAMA_HOST: assistant:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sleep 5 &&
+        ollama pull ${ASSISTANT_MODEL:-qwen2.5:7b-instruct} &&
+        ollama pull ${ASSISTANT_VISION_MODEL:-qwen2.5vl:7b}
+
 volumes:
   skb-db-data:
     name: skb-db-data
+  skb-assistant-models:
+    name: skb-assistant-models

@@ -40,6 +40,7 @@ dotnet ef database update                   # (the app also migrates on startup)
 | `Security:SessionEncryptionKey` | 64 hex chars (32 bytes) — AES‑256‑GCM key for sessions at rest |
 | `Cookie:Secure` | `true` when served over HTTPS |
 | `Cors:Origins` | exact client URLs allowed (no wildcards) |
+| `Assistant:Enabled` / `Assistant:Endpoint` / `Assistant:Model` / `Assistant:VisionModel` | the offline assistant: an Ollama server on this machine (default `http://127.0.0.1:11434`, `qwen2.5:7b-instruct`, `qwen2.5vl:7b`). Without Docker: install Ollama, then `ollama pull` both models. Keep Ollama bound to 127.0.0.1. |
 
 Never commit real production secrets. Use environment variables or a non‑committed
 `appsettings.Production.json`. Example env override:

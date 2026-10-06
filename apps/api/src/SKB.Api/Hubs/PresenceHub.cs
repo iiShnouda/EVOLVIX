@@ -15,6 +15,8 @@ namespace SKB.Api.Hubs;
 public sealed class PresenceHub : Hub
 {
     public const string Viewers = "presence-viewers";
+    /// <summary>Supervisors who read every conversation of the chat (chat:monitor).</summary>
+    public const string ChatMonitors = "chat-monitors";
     /// <summary>Each person's own windows, told when their bell has something new.</summary>
     public static string StaffGroup(Guid staffId) => $"staff:{staffId}";
     private const int MaxView = 40;
@@ -41,6 +43,8 @@ public sealed class PresenceHub : Hub
                 await Groups.AddToGroupAsync(Context.ConnectionId, StaffGroup(staffId));
             if (user.HasClaim("permission", Permissions.PresenceView))
                 await Groups.AddToGroupAsync(Context.ConnectionId, Viewers);
+            if (user.HasClaim("permission", Permissions.ChatMonitor))
+                await Groups.AddToGroupAsync(Context.ConnectionId, ChatMonitors);
             await Clients.Group(Viewers).SendAsync("presence:changed");
         }
         await base.OnConnectedAsync();

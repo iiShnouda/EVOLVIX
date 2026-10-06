@@ -17,6 +17,7 @@ import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
 import { TabsView, useTabActions } from './Tabs';
 import { QuickActions } from '../QuickActions';
+import { ChatBadge } from './ChatBadge';
 import { GlobalSearch, PhoneSearch } from './GlobalSearch';
 import { FROM_MENU } from '../../lib/tabs';
 
@@ -182,7 +183,10 @@ function PhoneShell() {
                   onClick={() => setMoreOpen(false)}
                   className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-3 text-center text-sm text-fg"
                 >
-                  <Icon name={item.icon} size={22} className="text-brand" />
+                  <span className="relative">
+                    <Icon name={item.icon} size={22} className="text-brand" />
+                    {item.key === 'chat' && <ChatBadge className="absolute -end-2.5 -top-1.5" />}
+                  </span>
                   <span className="text-xs">{t(item.labelKey)}</span>
                 </MenuLink>
               ))}
@@ -306,6 +310,7 @@ function SidebarLink({ item, label }: { item: NavItem; label: string }) {
     >
       <Icon name={item.icon} size={20} />
       {label}
+      {item.key === 'chat' && <ChatBadge className="ms-auto" />}
     </MenuLink>
   );
 }
@@ -321,7 +326,10 @@ function RailLink({ item, label }: { item: NavItem; label: string }) {
         }`
       }
     >
-      <Icon name={item.icon} size={22} />
+      <span className="relative">
+        <Icon name={item.icon} size={22} />
+        {item.key === 'chat' && <ChatBadge className="absolute -end-2.5 -top-1.5" />}
+      </span>
       <span className="line-clamp-1 px-1">{label}</span>
     </MenuLink>
   );

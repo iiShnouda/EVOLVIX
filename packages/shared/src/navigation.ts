@@ -20,7 +20,9 @@ export type IconName =
   | 'ledger'
   | 'notes'
   | 'payroll'
-  | 'themes';
+  | 'themes'
+  | 'chat'
+  | 'assistant';
 
 export interface NavItem {
   /** Stable route key, also used as the presence "currentView" identifier. */
@@ -133,6 +135,20 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'payroll',
     path: '/payroll',
     permission: 'payroll:view',
+  },
+  {
+    key: 'chat',
+    labelKey: 'nav.chat',
+    icon: 'chat',
+    path: '/chat',
+    anyOf: ['chat:use', 'chat:monitor'],
+  },
+  {
+    key: 'assistant',
+    labelKey: 'nav.assistant',
+    icon: 'assistant',
+    path: '/assistant',
+    permission: 'ai:chat',
   },
   {
     key: 'analytics',

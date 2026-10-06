@@ -16,6 +16,15 @@ const HUB = `${import.meta.env.VITE_API_URL ?? ''}/hubs/presence`;
 const listeners = new Set<() => void>();
 
 const bell = new Set<() => void>();
+const chat = new Set<(conversationId: string) => void>();
+
+/** Run `fn` when a conversation of the staff chat changes ('' = the person's own chat state). */
+export function onChat(fn: (conversationId: string) => void): () => void {
+  chat.add(fn);
+  return () => {
+    chat.delete(fn);
+  };
+}
 
 /** Run `fn` when the server says this person's bell has something new. */
 export function onNotify(fn: () => void): () => void {
@@ -90,7 +99,12 @@ export function usePresenceReporter(): void {
       socket.onmessage = (e) => {
         for (const part of String(e.data).split(RS)) {
           if (!part) continue;
-          const msg = JSON.parse(part) as { type?: number; target?: string; error?: string };
+          const msg = JSON.parse(part) as {
+            type?: number;
+            target?: string;
+            error?: string;
+            arguments?: unknown[];
+          };
           if (!ready) {
             ready = true;
             if (msg.error) {
@@ -103,6 +117,9 @@ export function usePresenceReporter(): void {
             listeners.forEach((fn) => fn());
           } else if (msg.type === 1 && msg.target === 'notify') {
             bell.forEach((fn) => fn());
+          } else if (msg.type === 1 && msg.target === 'chat') {
+            const id = String(msg.arguments?.[0] ?? '');
+            chat.forEach((fn) => fn(id));
           } else if (msg.type === 7) {
             socket.close();
           }

@@ -1,6 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { companyToday, formatMoney, readItemName, toMinor, type Party } from '@skb/shared';
+import {
+  companyToday,
+  formatMoney,
+  readItemName,
+  toMinor,
+  type Paginated,
+  type Party,
+  type Product,
+  type PurchaseScan,
+} from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
@@ -12,6 +21,8 @@ import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { ItemFinderSheet, type FinderPick } from '../components/ItemFinderSheet';
 import { GroupPicker, groupLabel } from '../components/GroupTree';
+import { ScanButton } from '../components/ScanButton';
+import { api } from '../lib/api';
 import {
   useCompanySettings,
   useCreateProduct,
@@ -236,6 +247,56 @@ export function AddItemsPage() {
         } satisfies NewLine;
       }),
     ]);
+  }
+
+  /**
+   * A supplier invoice read from a photo (owner, 2026-10-06): the supplier when found, each line as
+   * the item it names when the search finds one, else as a new item read like a typed name. The
+   * person checks every line before saving.
+   */
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  async function fromScan(scan: PurchaseScan) {
+    if (!supplier && scan.supplierName) {
+      const found = await api.get<Paginated<Party>>(
+        `/parties?page=1&pageSize=5&search=${encodeURIComponent(scan.supplierName)}`,
+      );
+      const match = found.items.find((p) => p.types.includes('SUPPLIER'));
+      if (match) setSupplier(match);
+    }
+    const picks: FinderPick[] = [];
+    const fresh: NewLine[] = [];
+    for (const [n, l] of scan.lines.entries()) {
+      const hits = await api.get<Product[]>(
+        `/products?limit=1&search=${encodeURIComponent(l.name)}`,
+      );
+      const hit = hits[0];
+      const qty = Math.max(1, Math.round(l.quantity));
+      if (hit) {
+        picks.push({
+          product: { ...hit, costPrice: toMinor(l.unitPrice) },
+          unitId: hit.units[0]?.unitId ?? '',
+          quantity: qty,
+        });
+      } else if (canNewItems && pieceUnit) {
+        const read = readItemName(l.name, { departments, groups, sizes, colors });
+        fresh.push({
+          ...blank(pieceUnit.id),
+          key: `${Date.now()}-scan-${n}`,
+          name: l.name,
+          qty: String(qty),
+          costBefore: l.unitPrice ? String(l.unitPrice) : '',
+          discount: l.discount ? String(l.discount) : '',
+          discountMode: 'amt',
+          departmentId: read.departmentId ?? '',
+          groupId: read.groupId ?? '',
+          sizeId: read.sizeId ?? '',
+          colorId: read.colorId ?? '',
+        });
+      }
+    }
+    if (picks.length) addExisting(picks);
+    if (fresh.length) setLines((prev) => [...prev, ...fresh]);
+    setScanNote(t('assistant.scanned').replace('{n}', String(picks.length + fresh.length)));
   }
 
   function addEntry() {
@@ -521,14 +582,18 @@ export function AddItemsPage() {
       {/* Items already in the catalog, bought again. */}
       <Card className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold">{t('additems.existing')}</span>
-        <Button
-          variant="secondary"
-          icon="search"
-          disabled={!warehouseId}
-          onClick={() => setFinding(true)}
-        >
-          {t('additems.findExisting')}
-        </Button>
+        <span className="flex flex-wrap items-start gap-2">
+          <ScanButton<PurchaseScan> kind="purchase" disabled={!warehouseId} onResult={fromScan} />
+          <Button
+            variant="secondary"
+            icon="search"
+            disabled={!warehouseId}
+            onClick={() => setFinding(true)}
+          >
+            {t('additems.findExisting')}
+          </Button>
+        </span>
+        {scanNote && <p className="w-full text-xs text-brand">{scanNote}</p>}
       </Card>
       {finding && (
         <ItemFinderSheet

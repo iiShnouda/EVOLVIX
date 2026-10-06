@@ -8,6 +8,7 @@ import {
   formatMoney,
   toMajor,
   toMinor,
+  type ChequeScan,
   type NoteDirection,
   type NoteKind,
   type Party,
@@ -15,6 +16,7 @@ import {
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
+import { ScanButton } from '../components/ScanButton';
 import { CameraSheet, CropSheet } from '../components/ChequeCamera';
 import { shrinkPhoto } from '../components/IdCards';
 import { useT } from '../lib/i18n';
@@ -360,6 +362,23 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           <Button size="sm" icon="camera" onClick={() => setCamera('all')}>
             {t('cheque.photographAll')}
           </Button>
+          {/* The assistant reads the cheques from one photo into rows to check (owner, 2026-10-06). */}
+          <ScanButton<ChequeScan[]>
+            kind="cheques"
+            onResult={(found) => {
+              if (found.length === 0) return;
+              setRows((cur) => [
+                ...cur.filter((r) => r.serial || r.amount),
+                ...found.map((c) => ({
+                  ...blank(c.dueDate ?? cur.at(-1)?.due ?? companyToday()),
+                  serial: c.serial ?? '',
+                  bank: c.bank ?? '',
+                  drawer: c.drawer ?? '',
+                  amount: c.amount ? String(c.amount) : '',
+                })),
+              ]);
+            }}
+          />
         </div>
 
         {series && (

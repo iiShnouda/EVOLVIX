@@ -1121,3 +1121,24 @@ public record TakeWorkDraftRequest(string Key);
 
 /// <summary>A person's screen preference (e.g. a table's hidden columns).</summary>
 public record SavePreferenceRequest(string Key, string Value);
+
+
+// ---------------------------------------------------------------- staff chat
+
+public record ChatStatusDto(bool Muted, int Unread);
+public record ChatPersonDto(string Id, int Code, string Name, string Role, bool Muted);
+public record ChatMemberDto(string Id, string Name);
+/// <param name="Mine">The person is in it (else they read it as a supervisor).</param>
+public record ChatConversationDto(string Id, string Kind, string? Title, ChatMemberDto[] Members, bool Mine,
+    string? LastText, string? LastSenderId, DateTime LastAt, int Unread);
+public record ChatConversationRefDto(string Id);
+public record ChatMessageDto(string Id, string SenderId, string SenderName, string Text, DateTime At);
+public record ChatDirectRequest(string? StaffId);
+public record ChatGroupRequest(string? Title = null, string[]? MemberIds = null);
+public record ChatSendRequest(string? Text);
+
+// ---------------------------------------------------------------- assistant
+
+public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
+public record AssistantTurnDto(string Role, string Content, DateTime At);
+public record AssistantAskRequest(string? Text);

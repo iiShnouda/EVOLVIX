@@ -48,6 +48,22 @@ That one command:
 Open **http://localhost:8080** on the server, or **http://<server-ip>:8080** from any other
 PC/phone on the same office network. Sign in with `owner@skb.local` + your `SEED_OWNER_PASSWORD`.
 
+## The offline assistant (AI on this server)
+The same command also starts the company's own AI models (**Ollama**) in the `skb-assistant`
+container and downloads two models once (`assistant-models`, a few GB): one to answer questions
+and one to read photos of supplier invoices and cheques. After that it works with **no internet**,
+and nothing is sent outside the building.
+
+- Only the app can reach it (no port is opened on the server or the office network).
+- People need the **ai:chat** permission to ask it and **ai:scan** to read photos; it only looks up
+  what that person may see, and never changes anything by itself.
+- Extra machine needed for it: **8 GB more memory** and ~12 GB of disk for the default models
+  (`qwen2.5:7b-instruct`, `qwen2.5vl:7b`). A graphics card makes answers much faster but is not
+  required. On a smaller machine set `ASSISTANT_MODEL=qwen2.5:3b-instruct` and
+  `ASSISTANT_VISION_MODEL=qwen2.5vl:3b` in `.env`; set `ASSISTANT_ENABLED=false` to turn it off.
+- Check it in the app: **Assistant** page (it says when the models aren't ready yet).
+- Update the models later: `docker compose --profile full run --rm assistant-models`.
+
 ## Where the data lives
 Everything is in the Docker volume **`skb-db-data`** on this server's disk — in your building,
 under your control. Nothing is sent to any cloud.

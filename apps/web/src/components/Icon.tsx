@@ -59,6 +59,10 @@ const PATHS: Record<string, string> = {
     'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M8 7h.01M12 7h.01M8 11h.01M12 11h.01M16 21V9h2a2 2 0 0 1 2 2v10',
   // A cheque: a slip with a signature line.
   notes: 'M3 6h18v12H3zM6 10h6M6 14h3M14 15c1-1 2 1 3 0s1-1 2 0',
+  chat: 'M4 5h16v11H9l-5 4V5ZM8 9h8M8 12h5',
+  assistant:
+    'M12 3l1.6 3.9L17.5 8.5l-3.9 1.6L12 14l-1.6-3.9L6.5 8.5l3.9-1.6L12 3ZM18.5 14l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8.8-1.7ZM6 15l.6 1.4L8 17l-1.4.6L6 19l-.6-1.4L4 17l1.4-.6L6 15Z',
+  send: 'M4 12l16-8-6 16-2.5-6.5L4 12Z',
   // An open ledger book.
   ledger: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5ZM4 19V5M19 17H6M9 7h6M9 11h6',
   // A delivery truck: box, cab and two wheels.

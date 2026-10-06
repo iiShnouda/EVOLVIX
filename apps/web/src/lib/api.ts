@@ -154,20 +154,25 @@ async function download(
   };
 }
 
-/** Send one file (multipart, field "file") with PUT; the reply is JSON. */
-async function upload<T>(path: string, file: Blob, retried = false): Promise<T> {
+/** Send one file (multipart, field "file") with PUT (or POST); the reply is JSON. */
+async function upload<T>(
+  path: string,
+  file: Blob,
+  retried = false,
+  method: 'PUT' | 'POST' = 'PUT',
+): Promise<T> {
   const token = getAccessToken();
   const form = new FormData();
   form.append('file', file, 'photo');
   const res = await fetch(`${API_BASE}${path}`, {
-    method: 'PUT',
+    method,
     credentials: 'include',
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...branchHeader() },
     body: form,
   });
   if (res.status === 401 && !retried) {
     if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
-    else if (await tryRefresh()) return upload(path, file, true);
+    else if (await tryRefresh()) return upload(path, file, true, method);
     else if (useAuth.getState().status !== 'anonymous') endSession();
   }
   if (!res.ok) {

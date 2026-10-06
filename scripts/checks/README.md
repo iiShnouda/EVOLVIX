@@ -6,6 +6,9 @@ live company server.
 
 | Script | What it checks |
 |---|---|
+| `tree.test.mjs` | Department sub-groups (prefixes, keywords, no two siblings with one name, no loops), item codes following the path, the in-store EAN-13 barcode, search by folded spellings, outlines and a slipped letter, the group filter, label barcodes. |
+| `reader.test.mjs` | The item-name reader alone (no server): department, group, size and color read from typed names. |
+| `chat.test.mjs` | Staff chat: one-to-one and groups, unread, non-members kept out, the supervisor reading all, muting, audit; and the assistant's plumbing (tools by permission, history, reading invoice and cheque photos) against `fake-ollama.mjs` (start it first). |
 | `catalog.test.mjs` | Units, price levels, prices and their permissions, size × color models, invoices and returns in cartons, reports by model, and a concurrency race (DOMAIN.md step 3). |
 | `charges.test.mjs` | Invoice charges (discount chain, VAT, additions), bonus lines, sales reps, their permissions, exact returns, supplier discounts in the average cost. |
 | `parties.test.mjs` | A factory is a supplier (old FACTORY input and filter still work), party details (other phones, owner / person in charge, factory and shipping addresses, notes), search by phone and owner, delivered sales starting at the shipping address; items' main supplier and the supplier's code (search by supplier, supplier code and price, with supplier prices hidden from sales staff), the first supplier bought from becoming the main one, and a model's variants following its supplier. |
