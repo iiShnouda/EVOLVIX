@@ -10,6 +10,7 @@ import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
+import { ItemFinderSheet, type FinderPick } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
   useCreateProduct,
@@ -46,6 +47,15 @@ interface NewLine {
   reorder: string;
   /** Set once the item exists, so saving again doesn't make it twice. */
   productId?: string;
+  /**
+   * An item already in the catalog, bought again (owner, 2026-10-06: one purchase screen): only
+   * its quantity, cost and discount are typed; its unit holds `perUnit` pieces and it keeps its
+   * own sale price (`existingSale`, per piece).
+   */
+  existing?: boolean;
+  perUnit?: number;
+  existingSale?: number;
+  detail?: string;
 }
 
 interface AddItemsDraft {
@@ -175,13 +185,45 @@ export function AddItemsPage() {
       l.marginMode === 'pct'
         ? Math.round(before * (1 + (Number(l.margin) || 0) / 100))
         : before + minor(l.margin);
-    const sale = l.salePrice !== '' ? minor(l.salePrice) : marginSale;
-    const perUnit = activeUnits.find((u) => u.id === l.unitId)?.pieces ?? 1;
+    const sale = l.existing
+      ? (l.existingSale ?? 0)
+      : l.salePrice !== ''
+        ? minor(l.salePrice)
+        : marginSale;
+    const perUnit = l.existing
+      ? (l.perUnit ?? 1)
+      : (activeUnits.find((u) => u.id === l.unitId)?.pieces ?? 1);
     const qty = Math.max(0, Math.floor(Number(l.qty) || 0));
     return { before, discount, after, sale, perUnit, qty, pieces: qty * perUnit };
   }
   const f = figures(entry);
   const entryOk = !!entry.name.trim() && f.qty > 0 && f.before > 0 && !!entry.unitId;
+  // New items need their own permissions; buying items already in the catalog does not.
+  const canNewItems = can('products:create') && can('prices:edit');
+  const [finding, setFinding] = useState(false);
+  function addExisting(items: FinderPick[]) {
+    setLines((prev) => [
+      ...prev,
+      ...items.map((i, n) => {
+        const unit = i.product.units.find((u) => u.unitId === i.unitId) ?? i.product.units[0];
+        const perUnit = unit?.factor ?? 1;
+        return {
+          ...blank(i.unitId),
+          key: `${Date.now()}-${prev.length + n}`,
+          name: i.product.name,
+          qty: String(i.quantity || 1),
+          costBefore: i.product.costPrice > 0 ? String(i.product.costPrice / 100) : '',
+          productId: i.product.id,
+          existing: true,
+          perUnit,
+          existingSale: i.product.salePrice,
+          detail: [i.product.sku, i.product.sizeName, i.product.colorName, unit?.name]
+            .filter(Boolean)
+            .join(' · '),
+        } satisfies NewLine;
+      }),
+    ]);
+  }
 
   function addEntry() {
     if (!entryOk) return;
@@ -201,18 +243,16 @@ export function AddItemsPage() {
   const rows = lines.map((l) => ({ l, ...figures(l) }));
   const owed = rows.reduce((s, r) => s + r.pieces * r.after, 0);
   const pieces = rows.reduce((s, r) => s + r.pieces, 0);
+  // Department, season and the price lists matter only for items made here.
+  const hasNew = rows.some((r) => !r.l.existing);
   const ready =
     !!supplier &&
     !!warehouseId &&
-    !!departmentId &&
-    !!season &&
     rows.length > 0 &&
-    !!pieceUnit &&
-    !!saleLevel &&
-    !!purchaseLevel;
+    (!hasNew || (!!departmentId && !!season && !!pieceUnit && !!saleLevel && !!purchaseLevel));
 
   async function saveAll() {
-    if (!ready || !supplier || !pieceUnit || !saleLevel || !purchaseLevel) return;
+    if (!ready || !supplier) return;
     setSaving(true);
     setError(null);
     try {
@@ -223,6 +263,8 @@ export function AddItemsPage() {
           ids.push(r.l.productId);
           continue;
         }
+        if (r.l.existing || !pieceUnit || !saleLevel || !purchaseLevel)
+          throw new Error('item without id');
         const big = r.perUnit > 1 && r.l.unitId !== pieceUnit.id;
         const created = await createProduct.mutateAsync({
           name: r.l.name.trim(),
@@ -270,10 +312,10 @@ export function AddItemsPage() {
         paidAmount: 0,
         documentDate: dayToSend(docDate),
         lines: rows.map((r, i) => {
-          const big = r.perUnit > 1 && r.l.unitId !== pieceUnit.id;
+          const big = r.l.existing || !pieceUnit || (r.perUnit > 1 && r.l.unitId !== pieceUnit.id);
           return {
             productId: ids[i]!,
-            unitId: big ? r.l.unitId : pieceUnit.id,
+            unitId: big || !pieceUnit ? r.l.unitId : pieceUnit.id,
             quantity: r.qty,
             unitCost: r.before * (big ? r.perUnit : 1),
             discount: r.discount > 0 ? r.discount * r.pieces : undefined,
@@ -289,7 +331,8 @@ export function AddItemsPage() {
     }
   }
 
-  const someSaved = lines.some((l) => l.productId);
+  // New items already made by a save that failed half way: the place and supplier stay.
+  const someSaved = lines.some((l) => l.productId && !l.existing);
   const toggle = (value: Mode, set: (m: Mode) => void, unit: string) => (
     <div className="flex shrink-0 overflow-hidden rounded-[var(--radius-app)] border border-line text-xs">
       {(['pct', 'amt'] as const).map((m) => (
@@ -316,7 +359,7 @@ export function AddItemsPage() {
   return (
     <div className="space-y-4 pb-4">
       <PageHeader
-        title={t('additems.title')}
+        title={t('qa.purchaseInvoice')}
         action={
           <div className="flex gap-2">
             <Button
@@ -326,7 +369,7 @@ export function AddItemsPage() {
             >
               {t('additems.plain')}
             </Button>
-            <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/inventory')}>
+            <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/purchases')}>
               {t('invoice.back')}
             </Button>
           </div>
@@ -428,178 +471,226 @@ export function AddItemsPage() {
         )}
       </Card>
 
-      {/* The item being typed. */}
-      <Card className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          {label(
-            t('item.name'),
-            <input
-              className={field}
-              value={entry.name}
-              onChange={(e) => set({ name: e.target.value })}
-            />,
-            'sm:col-span-2',
+      {/* Items already in the catalog, bought again. */}
+      <Card className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-semibold">{t('additems.existing')}</span>
+        <Button
+          variant="secondary"
+          icon="search"
+          disabled={!warehouseId}
+          onClick={() => setFinding(true)}
+        >
+          {t('additems.findExisting')}
+        </Button>
+      </Card>
+      {finding && (
+        <ItemFinderSheet
+          departmentId={departmentId || undefined}
+          warehouseId={warehouseId || undefined}
+          branchId={branch || undefined}
+          onClose={() => setFinding(false)}
+          onAdd={(items, close) => {
+            addExisting(items);
+            if (close) setFinding(false);
+          }}
+        />
+      )}
+
+      {/* The item being typed (a new one, or a bought-again one being changed). */}
+      {(canNewItems || entry.existing) && (
+        <Card className="space-y-3">
+          {entry.existing ? (
+            <p className="text-sm font-semibold">
+              {entry.name} <span className="text-xs font-normal text-muted">{entry.detail}</span>
+            </p>
+          ) : (
+            <p className="text-sm font-semibold">{t('additems.newItem')}</p>
           )}
-          {label(
-            t('invoice.unit'),
-            <select
-              className={field}
-              value={entry.unitId}
-              onChange={(e) => set({ unitId: e.target.value })}
-            >
-              {activeUnits.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                  {(u.pieces ?? 1) > 1 ? ` (${u.pieces})` : ''}
-                </option>
-              ))}
-            </select>,
-          )}
-          {label(
-            t('setup.sizeName'),
-            <select
-              className={field}
-              value={entry.sizeId}
-              onChange={(e) => set({ sizeId: e.target.value })}
-            >
-              <option value="">—</option>
-              {sizes.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>,
-          )}
-          {label(
-            t('setup.colorName'),
-            <span className="flex items-center gap-1.5">
-              <span
-                className="h-6 w-6 shrink-0 rounded-full border border-line"
-                style={{
-                  background: colors.find((c) => c.id === entry.colorId)?.hex ?? 'transparent',
-                }}
-              />
-              <select
-                className={field}
-                value={entry.colorId}
-                onChange={(e) => set({ colorId: e.target.value })}
-              >
-                <option value="">—</option>
-                {colors.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </span>,
-          )}
-          {label(
-            t('invoice.qty'),
-            <input
-              type="number"
-              min={1}
-              className={`${field} tnum`}
-              value={entry.qty}
-              onChange={(e) => set({ qty: e.target.value })}
-            />,
-          )}
-          {label(
-            t('additems.costBefore'),
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className={`${field} tnum`}
-              value={entry.costBefore}
-              onChange={(e) => set({ costBefore: e.target.value })}
-            />,
-          )}
-          {canDiscount &&
-            label(
-              t('additems.supplierDiscount'),
-              <span className="flex gap-1">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            {!entry.existing &&
+              label(
+                t('item.name'),
+                <input
+                  className={field}
+                  value={entry.name}
+                  onChange={(e) => set({ name: e.target.value })}
+                />,
+                'sm:col-span-2',
+              )}
+            {!entry.existing &&
+              label(
+                t('invoice.unit'),
+                <select
+                  className={field}
+                  value={entry.unitId}
+                  onChange={(e) => set({ unitId: e.target.value })}
+                >
+                  {activeUnits.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                      {(u.pieces ?? 1) > 1 ? ` (${u.pieces})` : ''}
+                    </option>
+                  ))}
+                </select>,
+              )}
+            {!entry.existing &&
+              label(
+                t('setup.sizeName'),
+                <select
+                  className={field}
+                  value={entry.sizeId}
+                  onChange={(e) => set({ sizeId: e.target.value })}
+                >
+                  <option value="">—</option>
+                  {sizes.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>,
+              )}
+            {!entry.existing &&
+              label(
+                t('setup.colorName'),
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-6 w-6 shrink-0 rounded-full border border-line"
+                    style={{
+                      background: colors.find((c) => c.id === entry.colorId)?.hex ?? 'transparent',
+                    }}
+                  />
+                  <select
+                    className={field}
+                    value={entry.colorId}
+                    onChange={(e) => set({ colorId: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {colors.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </span>,
+              )}
+            {label(
+              t('invoice.qty'),
+              <input
+                type="number"
+                min={1}
+                className={`${field} tnum`}
+                value={entry.qty}
+                onChange={(e) => set({ qty: e.target.value })}
+              />,
+            )}
+            {label(
+              t('additems.costBefore'),
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={`${field} tnum`}
+                value={entry.costBefore}
+                onChange={(e) => set({ costBefore: e.target.value })}
+              />,
+            )}
+            {canDiscount &&
+              label(
+                t('additems.supplierDiscount'),
+                <span className="flex gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={entry.discount}
+                    onChange={(e) => set({ discount: e.target.value })}
+                  />
+                  {toggle(
+                    entry.discountMode,
+                    (m) => set({ discountMode: m }),
+                    t('additems.amount'),
+                  )}
+                </span>,
+              )}
+            {label(
+              t('additems.costAfter'),
+              <div className={`${field} grid items-center bg-surface-2 tnum`}>
+                {money(f.after)}
+              </div>,
+            )}
+            {!entry.existing &&
+              label(
+                t('additems.margin'),
+                <span className="flex gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={entry.margin}
+                    onChange={(e) => set({ margin: e.target.value, salePrice: '' })}
+                  />
+                  {toggle(
+                    entry.marginMode,
+                    (m) => set({ marginMode: m, salePrice: '' }),
+                    t('additems.amount'),
+                  )}
+                </span>,
+              )}
+            {!entry.existing &&
+              label(
+                t('item.salePrice'),
                 <input
                   type="number"
                   min={0}
                   step="0.01"
                   className={`${field} tnum`}
-                  value={entry.discount}
-                  onChange={(e) => set({ discount: e.target.value })}
-                />
-                {toggle(entry.discountMode, (m) => set({ discountMode: m }), t('additems.amount'))}
-              </span>,
-            )}
-          {label(
-            t('additems.costAfter'),
-            <div className={`${field} grid items-center bg-surface-2 tnum`}>{money(f.after)}</div>,
-          )}
-          {label(
-            t('additems.margin'),
-            <span className="flex gap-1">
-              <input
-                type="number"
-                step="0.01"
-                className={`${field} tnum`}
-                value={entry.margin}
-                onChange={(e) => set({ margin: e.target.value, salePrice: '' })}
-              />
-              {toggle(
-                entry.marginMode,
-                (m) => set({ marginMode: m, salePrice: '' }),
-                t('additems.amount'),
+                  placeholder={String(f.sale / 100)}
+                  value={entry.salePrice}
+                  onChange={(e) => set({ salePrice: e.target.value })}
+                />,
               )}
-            </span>,
-          )}
-          {label(
-            t('item.salePrice'),
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className={`${field} tnum`}
-              placeholder={String(f.sale / 100)}
-              value={entry.salePrice}
-              onChange={(e) => set({ salePrice: e.target.value })}
-            />,
-          )}
-          {label(
-            t('item.barcode'),
-            <input
-              className={`${field} tnum`}
-              dir="ltr"
-              value={entry.barcode}
-              onChange={(e) => set({ barcode: e.target.value })}
-            />,
-          )}
-          {label(
-            t('item.reorder'),
-            <input
-              type="number"
-              min={0}
-              className={`${field} tnum`}
-              value={entry.reorder}
-              onChange={(e) => set({ reorder: e.target.value })}
-            />,
-          )}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {editing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setEditing(null);
-                setEntry(blank(entry.unitId));
-              }}
-            >
-              {t('common.cancel')}
+            {!entry.existing &&
+              label(
+                t('item.barcode'),
+                <input
+                  className={`${field} tnum`}
+                  dir="ltr"
+                  value={entry.barcode}
+                  onChange={(e) => set({ barcode: e.target.value })}
+                />,
+              )}
+            {!entry.existing &&
+              label(
+                t('item.reorder'),
+                <input
+                  type="number"
+                  min={0}
+                  className={`${field} tnum`}
+                  value={entry.reorder}
+                  onChange={(e) => set({ reorder: e.target.value })}
+                />,
+              )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {editing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(null);
+                  setEntry(blank(entry.unitId));
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            )}
+            <Button icon={editing ? 'check' : 'plus'} disabled={!entryOk} onClick={addEntry}>
+              {editing ? t('additems.update') : t('additems.add')}
             </Button>
-          )}
-          <Button icon={editing ? 'check' : 'plus'} disabled={!entryOk} onClick={addEntry}>
-            {editing ? t('additems.update') : t('additems.add')}
-          </Button>
-        </div>
-      </Card>
+          </div>
+        </Card>
+      )}
 
       {/* What is on the invoice so far. */}
       <Card>
@@ -644,10 +735,16 @@ export function AddItemsPage() {
                             />
                           )}
                           {r.l.name}
-                          {r.l.productId && (
+                          {r.l.productId && !r.l.existing && (
                             <Icon name="check" size={14} className="text-positive" />
                           )}
                         </span>
+                        {r.l.existing && (
+                          <span className="block text-xs text-muted">
+                            {t('additems.existingTag')}
+                            {r.l.detail ? ` · ${r.l.detail}` : ''}
+                          </span>
+                        )}
                         {(size || color) && (
                           <span className="block text-xs text-muted">
                             {[size, color?.name].filter(Boolean).join(' · ')}
@@ -655,7 +752,7 @@ export function AddItemsPage() {
                         )}
                       </td>
                       <td className="px-2 py-2 text-end tnum">
-                        {r.qty} {unit?.name}
+                        {r.qty} {r.l.existing ? '' : unit?.name}
                         {r.perUnit > 1 && (
                           <span className="block text-xs text-muted">
                             {r.pieces} {t('additems.pieces')}
@@ -674,7 +771,7 @@ export function AddItemsPage() {
                         {money(r.pieces * r.after)}
                       </td>
                       <td className="px-1 py-1">
-                        {!r.l.productId && (
+                        {(!r.l.productId || r.l.existing) && (
                           <span className="flex justify-end gap-0.5">
                             <button
                               type="button"

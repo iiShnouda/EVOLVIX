@@ -244,10 +244,7 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
       <Route path="/inventory/models/:id" element={<ModelEditorPage />} />
       <Route path="/purchases" element={<DocumentsPage key="purchases" scope="purchases" />} />
-      <Route
-        path="/purchases/new"
-        element={<InvoiceBuilderPage key="purchase" mode="purchase" />}
-      />
+      <Route path="/purchases/new" element={<AddItemsPage key="purchase" />} />
       <Route
         path="/purchases/invoices/:id/return"
         element={<ReturnBuilderPage scope="purchases" />}

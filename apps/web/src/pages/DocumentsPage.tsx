@@ -98,7 +98,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     if (linkedId) setSelectedId(linkedId);
   }, [linkedId]);
   // Filters: number or customer, department, status, company days.
-  const [search, setSearch] = useState('');
+  // Three searches (owner, 2026-10-06): the number, the customer's name, the customer's code.
+  const [number, setNumber] = useState('');
+  const [partyName, setPartyName] = useState('');
+  const [partyCode, setPartyCode] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [status, setStatus] = useState('');
   const [from, setFrom] = useState(companyToday);
@@ -116,7 +119,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   useEffect(() => {
     if (placed || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
     setPlaced(true);
-    if (place.branchId && myBranches.length > 1) setBranchId(place.branchId);
+    if (place.branchId) setBranchId(place.branchId);
     if (place.warehouseId) setWarehouseId(place.warehouseId);
     if (isSales && place.departmentId) setDepartmentId(place.departmentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,11 +132,16 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   // Rows per page, kept per person (owner, 2026-10-01).
   const [pageSize, setPageSize] = usePageSize(`documents.${scope}`, 50);
   const departments = useDepartments();
-  const deferredSearch = useDeferredValue(search.trim());
+  const deferredSearch = useDeferredValue(
+    [number.trim(), partyName.trim(), partyCode.trim()].join('\u0001'),
+  );
+  const [dNumber = '', dParty = '', dCode = ''] = deferredSearch.split('\u0001');
   const list = useDocumentList(scope, kind, {
     page,
     pageSize,
-    search: deferredSearch || undefined,
+    number: dNumber || undefined,
+    party: dParty || undefined,
+    partyCode: dCode || undefined,
     status: status || undefined,
     departmentId: isSales ? departmentId || undefined : undefined,
     from: from || undefined,
@@ -353,17 +361,38 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
+        <label className="block w-40">
+          <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+          <input
+            type="search"
+            className={`${filterField} tnum`}
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+          />
+        </label>
         <label className="block min-w-48 flex-1">
-          <span className="mb-0.5 block text-xs text-muted">{t('common.search')}</span>
+          <span className="mb-0.5 block text-xs text-muted">
+            {t(isSales ? 'list.customerName' : 'list.supplierName')}
+          </span>
           <input
             type="search"
             className={filterField}
-            placeholder={t('list.searchHint')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={partyName}
+            onChange={(e) => setPartyName(e.target.value)}
           />
         </label>
-        {myBranches.length > 1 && (
+        <label className="block w-28">
+          <span className="mb-0.5 block text-xs text-muted">
+            {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
+          </span>
+          <input
+            inputMode="numeric"
+            className={`${filterField} tnum`}
+            value={partyCode}
+            onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
+          />
+        </label>
+        {myBranches.length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
             <select
@@ -384,7 +413,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             </select>
           </label>
         )}
-        {shownWarehouses.length > 1 && (
+        {/* Always there (owner, 2026-10-06: picking a branch must not take the warehouse away). */}
+        {(warehouses.data ?? []).length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
             <select

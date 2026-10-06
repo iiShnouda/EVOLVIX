@@ -13,9 +13,12 @@ function smooth(points: [number, number][]): string {
     const [x2, y2] = at(i + 1);
     const [x3, y3] = at(i + 2);
     const c1x = x1 + (x2 - x0) / 6;
-    const c1y = y1 + (y2 - y0) / 6;
+    // Bends kept between the two points, so a curve never dips below zero or above a peak.
+    const lo = Math.min(y1, y2);
+    const hi = Math.max(y1, y2);
+    const c1y = Math.min(hi, Math.max(lo, y1 + (y2 - y0) / 6));
     const c2x = x2 - (x3 - x1) / 6;
-    const c2y = y2 - (y3 - y1) / 6;
+    const c2y = Math.min(hi, Math.max(lo, y2 - (y3 - y1) / 6));
     d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
   }
   return d;
@@ -98,6 +101,17 @@ export function AreaTrend({
   const step = Math.max(1, Math.ceil(data.length / 8));
   const shown = hover != null ? data[hover] : null;
   const money = (v: number) => formatMoney(v, currency, locale);
+  const dayLabel = (date: string) =>
+    new Date(date).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
+      ...(monthly
+        ? { month: 'short', ...(data.length > 12 ? { year: '2-digit' } : {}) }
+        : data.length > 8
+          ? { day: 'numeric', month: 'short' }
+          : data.length > 1
+            ? { weekday: 'short' }
+            : { day: 'numeric', month: 'short' }),
+      timeZone: 'UTC',
+    });
 
   return (
     <div className="relative">
@@ -168,30 +182,27 @@ export function AreaTrend({
             vectorEffect="non-scaling-stroke"
           />
         )}
+      </svg>
+      {/* Day labels as text over the chart, so the stretched drawing never squeezes or cuts them. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-5" dir="ltr">
         {data.map((d, i) =>
           (i % step === 0 && data.length - 1 - i >= step / 2) || i === data.length - 1 ? (
-            <text
+            <span
               key={d.date}
-              x={x(i)}
-              y={H - 8}
-              textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}
-              fontSize={11}
-              fill="var(--c-faint)"
+              className={`absolute bottom-0.5 whitespace-nowrap text-[11px] text-faint ${
+                data.length > 1 && i === 0
+                  ? ''
+                  : i === data.length - 1 && data.length > 1
+                    ? '-translate-x-full'
+                    : '-translate-x-1/2'
+              }`}
+              style={{ left: `${(x(i) / W) * 100}%` }}
             >
-              {new Date(d.date).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-                ...(monthly
-                  ? { month: 'short', ...(data.length > 12 ? { year: '2-digit' } : {}) }
-                  : data.length > 8
-                    ? { day: 'numeric', month: 'short' }
-                    : data.length > 1
-                      ? { weekday: 'short' }
-                      : { day: 'numeric', month: 'short' }),
-                timeZone: 'UTC',
-              })}
-            </text>
+              {dayLabel(d.date)}
+            </span>
           ) : null,
         )}
-      </svg>
+      </div>
       {hover != null && (
         <>
           {(['sales', 'purchases'] as const).map((k) => (

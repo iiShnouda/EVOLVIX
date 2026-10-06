@@ -159,6 +159,27 @@ public static class DocumentLists
         return q;
     }
 
+    /// <summary>
+    /// The separate searches (owner, 2026-10-06): the document number, the customer's / supplier's
+    /// name and their code, each in its own box; all that are given must match.
+    /// </summary>
+    public static IQueryable<SalesDocument> Find(IQueryable<SalesDocument> q, string? number, string? party,
+        string? partyCode)
+    {
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            var n = number.Trim().ToLower();
+            q = q.Where(d => d.Number.ToLower().Contains(n));
+        }
+        if (!string.IsNullOrWhiteSpace(party))
+        {
+            var p = party.Trim().ToLower();
+            q = q.Where(d => d.Party!.Name.ToLower().Contains(p));
+        }
+        if (int.TryParse(partyCode?.Trim(), out var code)) q = q.Where(d => d.Party!.Code == code);
+        return q;
+    }
+
     /// <summary>Search (number, name, or the customer's code), status and company days.</summary>
     public static IQueryable<SalesDocument> Filter(IQueryable<SalesDocument> q, string? search, string? status,
         string? from, string? to)

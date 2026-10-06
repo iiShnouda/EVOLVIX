@@ -17,6 +17,7 @@ import { AccountMenu } from './AccountMenu';
 import { NotificationBell } from './NotificationBell';
 import { TabsView, useTabActions } from './Tabs';
 import { QuickActions } from '../QuickActions';
+import { GlobalSearch, PhoneSearch } from './GlobalSearch';
 import { FROM_MENU } from '../../lib/tabs';
 
 function useVisibleNav(): NavItem[] {
@@ -134,10 +135,11 @@ function PhoneShell() {
             <CompanyName className="block truncate text-[11px] text-muted" />
           </span>
         </span>
-        <div className="flex items-center gap-1">
+        {/* Language and look sit in "More" on a phone, so the name in the header has room. */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PhoneSearch />
           <ConnectionBadge showLabel={false} />
           <NotificationBell />
-          <PrefControls compact />
           <AccountMenu />
         </div>
       </header>
@@ -169,6 +171,9 @@ function PhoneShell() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" />
+            <div className="mb-3 flex justify-center">
+              <PrefControls />
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {rest.map((item) => (
                 <MenuLink
@@ -261,19 +266,9 @@ function CompanyRow() {
 }
 
 function TopBar() {
-  const { t } = useT();
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-5 py-2.5 backdrop-blur">
-      <label className="relative hidden max-w-md flex-1 items-center md:flex">
-        <span className="pointer-events-none absolute start-3 text-faint">
-          <Icon name="search" size={18} />
-        </span>
-        <input
-          type="search"
-          placeholder={t('common.search')}
-          className="h-10 w-full rounded-[var(--radius-app)] border border-line bg-canvas ps-10 pe-3 text-sm outline-none focus:border-brand"
-        />
-      </label>
+      <GlobalSearch />
       <div className="ms-auto flex items-center gap-2">
         <ConnectionBadge />
         <NotificationBell />

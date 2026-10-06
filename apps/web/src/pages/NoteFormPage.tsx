@@ -459,7 +459,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="text-xs text-muted">
               <tr>

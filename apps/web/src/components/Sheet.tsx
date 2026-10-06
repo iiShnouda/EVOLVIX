@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './ui';
 
 /**
@@ -34,7 +35,9 @@ export function Sheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // Drawn at the page's top level: a parent with a blur or transform (the phone header, a
+  // docked button) would otherwise trap a fixed sheet inside itself.
+  return createPortal(
     <div
       className={`fixed inset-0 ${top ? 'z-[60]' : 'z-50'} flex items-end justify-center bg-black/40 sm:items-center sm:p-4`}
       onClick={onClose}
@@ -58,6 +61,7 @@ export function Sheet({
         </div>
         {fill ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

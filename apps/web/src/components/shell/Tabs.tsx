@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useContext, useEffect, useMemo, useRef } from 'react';
 import {
   useBlocker,
   useLocation,
   useNavigate,
   useRoutes,
+  parsePath,
+  UNSAFE_NavigationContext,
   type Location,
+  type Navigator,
   type RouteObject,
+  type To,
 } from 'react-router-dom';
 import { Icon } from '../Icon';
 import { useT } from '../../lib/i18n';
@@ -337,12 +341,46 @@ function TabPane({ tab, active, fallback }: { tab: AppTab; active: boolean; fall
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tab.loc, tab.path, tab.loc ? null : fallback],
   );
+  // A tab that isn't shown moves within itself: a page in it that changes its address (a filter
+  // following the person's working place, a redirect) must not take the app away from the page
+  // being worked in.
+  const base = useContext(UNSAFE_NavigationContext);
+  const shown = useRef(active);
+  shown.current = active;
+  const navigation = useMemo(() => {
+    const here = (to: To, state: unknown) => {
+      const path = typeof to === 'string' ? parsePath(to) : to;
+      const next: Location = {
+        pathname: path.pathname ?? '/',
+        search: path.search ?? '',
+        hash: path.hash ?? '',
+        state: state ?? null,
+        key: `${tab.id}-${Date.now().toString(36)}`,
+      };
+      useTabs.setState((st) => ({
+        tabs: st.tabs.map((x) =>
+          x.id === tab.id ? { ...x, path: next.pathname + next.search, loc: next } : x,
+        ),
+      }));
+    };
+    const navigator: Navigator = {
+      ...base.navigator,
+      push: (to, state, opts) =>
+        shown.current ? base.navigator.push(to, state, opts) : here(to, state),
+      replace: (to, state, opts) =>
+        shown.current ? base.navigator.replace(to, state, opts) : here(to, state),
+      go: (delta) => (shown.current ? base.navigator.go(delta) : undefined),
+    };
+    return { ...base, navigator };
+  }, [base, tab.id]);
   const element = useRoutes(tabRoutes, location);
   const value = useMemo(() => ({ id: tab.id, active }), [tab.id, active]);
   return (
-    <TabContext.Provider value={value}>
-      <BackLink location={location} />
-      {element}
-    </TabContext.Provider>
+    <UNSAFE_NavigationContext.Provider value={navigation}>
+      <TabContext.Provider value={value}>
+        <BackLink location={location} />
+        {element}
+      </TabContext.Provider>
+    </UNSAFE_NavigationContext.Provider>
   );
 }

@@ -117,13 +117,6 @@ const ACTIONS: QuickAction[] = [
     permission: 'ledger:view',
   },
   {
-    id: 'addItems',
-    label: 'additems.title',
-    icon: 'inventory',
-    path: '/inventory/products/new',
-    permission: 'products:create',
-  },
-  {
     id: 'stocktake',
     label: 'stocktake.title',
     icon: 'inventory',

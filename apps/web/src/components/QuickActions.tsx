@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
@@ -35,39 +35,81 @@ function useQuickChoice(): [QuickAction[], QuickAction[], (ids: string[]) => voi
 }
 
 /**
- * The quick-action button (owner, 2026-10-05): a tap opens the person's own shortcuts; holding it
- * (or a right-click) lets them choose which, and in what order, from every main action and page
- * they may use. A shortcut opens in a new tab when the shown page has unsaved work, so nothing is
- * lost.
+ * The quick-action button (owner, 2026-10-05; docked like an overlay 2026-10-06): a tab on the
+ * screen's edge that slides out under the mouse and can be dragged up or down. A tap opens the
+ * person's own shortcuts; holding it (or a right-click) lets them choose which, and in what order,
+ * from every main action and page they may use. A shortcut opens in a new tab when the shown page
+ * has unsaved work, so nothing is lost.
  */
 export function QuickActions() {
-  const { t } = useT();
+  const { t, rtl } = useT();
   const navigate = useNavigate();
   const { open: openTab } = useTabActions();
   const { deviceClass } = useDeviceInfo();
+  const touch = deviceClass !== 'desktop';
   const [allowed, chosen, save] = useQuickChoice();
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
-  const held = useRef(false);
+  const [hover, setHover] = useState(false);
+  const [y, setY] = useState(readY);
+  const [dragging, setDragging] = useState(false);
+  const press = useRef<{ startY: number; startTop: number; moved: boolean; timer?: number } | null>(
+    null,
+  );
 
   const go = (a: QuickAction) => {
     setMenu(false);
     if (tabHasWork(useTabs.getState().active)) openTab(a.path);
     else navigate(a.path, { state: FROM_MENU });
   };
-  const startHold = () => {
-    held.current = false;
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      held.current = true;
-      setMenu(false);
-      setEditing(true);
-    }, HOLD_MS);
+  const customize = () => {
+    setMenu(false);
+    setEditing(true);
   };
-  const endHold = () => window.clearTimeout(timer.current);
+
+  // Press: a tap opens the menu, holding still opens the chooser, moving drags it up or down.
+  const onDown = (e: PointerEvent<HTMLButtonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const p = { startY: e.clientY, startTop: y, moved: false, timer: 0 };
+    p.timer = window.setTimeout(() => {
+      if (!p.moved) {
+        press.current = null;
+        customize();
+      }
+    }, HOLD_MS);
+    press.current = p;
+  };
+  const onMove = (e: PointerEvent<HTMLButtonElement>) => {
+    const p = press.current;
+    if (!p) return;
+    const dy = e.clientY - p.startY;
+    if (!p.moved && Math.abs(dy) < 6) return;
+    if (!p.moved) {
+      p.moved = true;
+      window.clearTimeout(p.timer);
+      setDragging(true);
+      setMenu(false);
+    }
+    setY(clampY(p.startTop + (dy / window.innerHeight) * 100));
+  };
+  const onUp = () => {
+    const p = press.current;
+    press.current = null;
+    if (!p) return;
+    window.clearTimeout(p.timer);
+    if (p.moved) {
+      setDragging(false);
+      writeY(y);
+    } else setMenu((m) => !m);
+  };
 
   if (allowed.length === 0) return null;
+  // Docked on the screen's start edge (right in Arabic, left in English), mostly tucked away; it
+  // slides out under the mouse, while dragged or open. A touch screen has no hover, so there a
+  // wider grip stays showing (a tap on it opens the shortcuts) and the page underneath stays clear.
+  const out = (!touch && hover) || menu || dragging;
+  const tucked = out ? '0px' : touch ? 'calc(100% - 26px)' : 'calc(100% - 14px)';
+  const shift = rtl ? tucked : `calc(-1 * (${tucked}))`;
   return (
     <>
       {menu && (
@@ -76,9 +118,8 @@ export function QuickActions() {
             role="menu"
             aria-label={t('qa.title')}
             onClick={(e) => e.stopPropagation()}
-            className={`absolute end-4 w-[min(22rem,calc(100vw-2rem))] rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-[var(--shadow-pop)] ${
-              deviceClass === 'phone' ? 'bottom-40' : 'bottom-24'
-            }`}
+            className="absolute start-16 w-[min(22rem,calc(100vw-5rem))] rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-[var(--shadow-pop)]"
+            style={{ top: `clamp(0.5rem, calc(${y}vh - 8rem), calc(100vh - 22rem))` }}
           >
             <p className="mb-2 px-1 text-sm font-semibold">{t('qa.title')}</p>
             {chosen.length === 0 ? (
@@ -94,17 +135,14 @@ export function QuickActions() {
                     className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 text-center text-xs hover:border-brand hover:bg-brand-soft"
                   >
                     <Icon name={a.icon} size={20} className="text-brand" />
-                    <span className="line-clamp-2">{t(a.label)}</span>
+                    <span className="leading-tight">{t(a.label)}</span>
                   </button>
                 ))}
               </div>
             )}
             <button
               type="button"
-              onClick={() => {
-                setMenu(false);
-                setEditing(true);
-              }}
+              onClick={customize}
               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium text-brand hover:bg-brand-soft"
             >
               <Icon name="edit" size={14} />
@@ -113,31 +151,37 @@ export function QuickActions() {
           </div>
         </div>
       )}
-      <button
-        type="button"
-        aria-label={t('qa.title')}
-        title={t('qa.title')}
-        aria-expanded={menu}
-        onPointerDown={startHold}
-        onPointerUp={endHold}
-        onPointerLeave={endHold}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          endHold();
-          setMenu(false);
-          setEditing(true);
-        }}
-        onClick={() => {
-          if (held.current) return;
-          setMenu((m) => !m);
-        }}
-        className={`fixed end-5 z-40 grid h-14 w-14 select-none place-items-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] transition-transform hover:scale-105 active:scale-95 ${
-          deviceClass === 'phone' ? 'bottom-24' : 'bottom-6'
-        }`}
-        style={{ touchAction: 'manipulation', WebkitTouchCallout: 'none' }}
+      <div
+        className="fixed start-0 z-30 transition-transform duration-200"
+        style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
       >
-        <Icon name={menu ? 'close' : 'bolt'} size={24} />
-      </button>
+        <button
+          type="button"
+          data-quick-dock
+          aria-label={t('qa.title')}
+          title={t('qa.title')}
+          aria-expanded={menu}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            customize();
+          }}
+          className={`flex h-12 select-none items-center gap-1 rounded-e-2xl bg-brand ps-2 pe-3 text-brand-fg shadow-[var(--shadow-pop)] ${
+            dragging ? 'cursor-grabbing' : 'cursor-pointer'
+          } ${out ? '' : 'opacity-90'}`}
+          style={{ touchAction: 'none', WebkitTouchCallout: 'none' }}
+        >
+          <span className="grid h-8 w-6 place-items-center opacity-70" aria-hidden>
+            <span className="block h-5 w-1 rounded-full bg-current opacity-60" />
+          </span>
+          <Icon name={menu ? 'close' : 'bolt'} size={22} />
+        </button>
+      </div>
       {editing && (
         <CustomizeSheet
           allowed={allowed}
@@ -151,6 +195,25 @@ export function QuickActions() {
       )}
     </>
   );
+}
+
+/** Where on the edge the button sits (% of the screen height), kept on this device (a UI choice). */
+const Y_KEY = 'skb.quickY';
+const clampY = (v: number) => Math.min(90, Math.max(10, v));
+function readY(): number {
+  try {
+    const v = Number(localStorage.getItem(Y_KEY));
+    return Number.isFinite(v) && v > 0 ? clampY(v) : 60;
+  } catch {
+    return 60;
+  }
+}
+function writeY(v: number) {
+  try {
+    localStorage.setItem(Y_KEY, String(Math.round(v)));
+  } catch {
+    /* private mode: it just isn't remembered */
+  }
 }
 
 /** Choose the shortcuts and their order (up to MAX_QUICK). */

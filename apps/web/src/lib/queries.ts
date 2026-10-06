@@ -174,6 +174,10 @@ export function useDocumentList(
   params: {
     page: number;
     search?: string;
+    /** The separate searches: document number, party name, party code. */
+    number?: string;
+    party?: string;
+    partyCode?: string;
     status?: string;
     /** Sales: one department ('none' = of no department), and company days from / to. */
     departmentId?: string;
@@ -197,6 +201,9 @@ export function useDocumentList(
   });
   if (params.payment) query.set('payment', params.payment);
   if (params.search) query.set('search', params.search);
+  if (params.number) query.set('number', params.number);
+  if (params.party) query.set('party', params.party);
+  if (params.partyCode) query.set('partyCode', params.partyCode);
   if (params.status) query.set('status', params.status);
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.from) query.set('from', params.from);

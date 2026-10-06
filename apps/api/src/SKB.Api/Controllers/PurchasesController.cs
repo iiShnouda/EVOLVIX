@@ -53,6 +53,7 @@ public sealed class PurchasesController : ControllerBase
     {
         var q = _db.SalesDocuments.Where(d => d.Type == type).InBranches(User, d => d.BranchId);
         q = DocumentLists.Filter(q, search, status, from, to);
+        q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
         return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment, Request.Query["state"]));
     }
