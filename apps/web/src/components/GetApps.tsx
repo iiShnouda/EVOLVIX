@@ -23,13 +23,13 @@ export function GetApps({ compact }: { compact?: boolean }) {
       key: 'android',
       label: t('apps.android'),
       hint: t('apps.androidHint'),
-      href: '/downloads/SKB-Android.apk',
+      href: '/downloads/Evolvix-Android.apk',
     },
     {
       key: 'windows',
       label: t('apps.windows'),
       hint: t('apps.windowsHint'),
-      href: '/downloads/SKB-Windows.zip',
+      href: '/downloads/Evolvix-Windows.zip',
     },
     { key: 'iphone', label: t('apps.iphone'), hint: t('apps.iphoneHint'), href: null },
   ];

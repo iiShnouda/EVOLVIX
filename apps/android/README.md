@@ -34,7 +34,7 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
 `local.properties` (git-ignored) holds `sdk.dir=…`.
 
 The release APK is `app\build\outputs\apk\release\app-release.apk`. To publish it, copy it to
-`apps/web/public/downloads/SKB-Android.apk`. The server then offers it on the login page and in
+`apps/web/public/downloads/Evolvix-Android.apk`. The server then offers it on the login page and in
 Settings → Get the app.
 
 ## Signing key — keep it safe

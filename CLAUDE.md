@@ -9,7 +9,8 @@ you add a page, controller, entity or test suite.
 ## Product in one line
 
 **Evolvix** (owner decision 2026-10-01; the code keeps its old name SKB in folders, packages,
-namespaces, the exe/APK file names and registry keys, so installed copies update in place). The
+namespaces and registry keys, so installed copies update in place; what people see, including the
+downloads, the Windows exe and its install folder, is Evolvix, owner 2026-10-08). The
 name shown to people comes from `app.name`; the mark is `apps/web/public/icon.svg` and the
 `Logo` component (`apps/web/src/components/Logo.tsx`) draws the same thing. A company using it adds
 its own name and logo (Settings; `CompanyMark`/`CompanyName`), shown beside the Evolvix mark, which

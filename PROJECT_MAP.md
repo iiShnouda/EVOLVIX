@@ -343,6 +343,6 @@ Rebuild after changes: `pnpm --filter @skb/shared build`.
   `PROGRESS.md` — what was built and why (long); `COMPANY-SERVER.md` / `HOST-FREE.md` — hosting;
   `README.md` — overview.
 - `apps/android` (WebView shell APK), `apps/windows/src/SKB.Desktop` (WebView2 shell); built
-  files go in `apps/web/public/downloads/` (`SKB-Android.apk`, `SKB-Windows.zip`). `SKB.App` /
+  files go in `apps/web/public/downloads/` (`Evolvix-Android.apk`, `Evolvix-Windows.zip`). `SKB.App` /
   `SKB.Core` = old WPF client, don't extend.
 - Live: Render (`render.yaml`, deploys `main`), DB on Neon.

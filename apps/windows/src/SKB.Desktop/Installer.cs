@@ -9,19 +9,24 @@ namespace SKB.Desktop;
 
 /// <summary>
 /// Per-user install without admin rights, the way modern apps do it: copies the app to
-/// %LOCALAPPDATA%\Programs\SKB, adds Start-menu and desktop shortcuts, and registers an uninstall
-/// entry in Windows Settings › Apps (which runs "SKB.exe --uninstall").
+/// %LOCALAPPDATA%\Programs\Evolvix, adds Start-menu and desktop shortcuts, and registers an uninstall
+/// entry in Windows Settings › Apps (which runs "Evolvix.exe --uninstall").
 /// </summary>
 internal static class Installer
 {
-    private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SKB";
+    // The app's name everywhere people see it (owner, 2026-10-08): the program folder, the exe, the
+    // shortcuts and the entry in Settings › Apps. Its settings (HKCU\Software\SKB) and browser
+    // profile (%LOCALAPPDATA%\SKB) keep the old name, so an update keeps the server and the sign-in.
+    public const string Name = "Evolvix";
+    private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Evolvix";
+    private const string OldUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\SKB";
 
     public static string InstallDir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "SKB");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", Name);
 
-    // The app's shown name (owner, 2026-10-01: SKB became Evolvix). The folder, exe and registry
-    // keys keep the old name so an installed copy updates in place and keeps its settings.
-    public const string Name = "Evolvix";
+    /// <summary>Where copies before the rename were installed.</summary>
+    private static string OldInstallDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "SKB");
 
     private static string StartMenuLink =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Name + ".lnk");
@@ -63,8 +68,9 @@ internal static class Installer
             File.Copy(file, target, overwrite: true);
         }
 
-        var exe = Path.Combine(InstallDir, "SKB.exe");
+        var exe = Path.Combine(InstallDir, Name + ".exe");
         foreach (var link in OldLinks.Where(File.Exists)) File.Delete(link);
+        RemoveOldInstall();
         CreateShortcut(StartMenuLink, exe);
         CreateShortcut(DesktopLink, exe);
 
@@ -90,12 +96,27 @@ internal static class Installer
         foreach (var link in new[] { StartMenuLink, DesktopLink }.Concat(OldLinks).Where(File.Exists)) File.Delete(link);
         Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
         Registry.CurrentUser.DeleteSubKeyTree(@"Software\SKB", throwOnMissingSubKey: false);
+        RemoveOldInstall();
 
         // The browser profile (sign-in cookie) goes too.
         var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SKB");
         var cmd = $"/c timeout /t 2 /nobreak >nul & rmdir /s /q \"{InstallDir}\" & rmdir /s /q \"{data}\"";
         Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false });
         MessageBox.Show(Text.UninstallDone, Name);
+    }
+
+    /// <summary>A copy installed before the rename: its uninstall entry and program folder go.</summary>
+    private static void RemoveOldInstall()
+    {
+        Registry.CurrentUser.DeleteSubKeyTree(OldUninstallKey, throwOnMissingSubKey: false);
+        try
+        {
+            if (Directory.Exists(OldInstallDir)) Directory.Delete(OldInstallDir, recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Still open: it is left for the next update.
+        }
     }
 
     private static void CreateShortcut(string linkPath, string target)

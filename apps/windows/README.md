@@ -23,9 +23,9 @@ Windows 10/11.
 - **Stored on the PC:** settings (the server address and the window position) live in
   `HKCU\Software\SKB`, and the browser profile (the sign-in cookie) in `%LOCALAPPDATA%\SKB`.
   No business data is stored on the PC.
-- **Installing:** running `SKB.exe` from the downloaded folder offers to **install for this
+- **Installing:** running `Evolvix.exe` from the downloaded folder offers to **install for this
   user**, with no admin rights:
-  - It copies the app to `%LOCALAPPDATA%\Programs\SKB`.
+  - It copies the app to `%LOCALAPPDATA%\Programs\Evolvix` (a copy installed before the rename, in `Programs\SKB`, is removed).
   - It adds Start-menu and desktop shortcuts.
   - It adds an entry in **Settings › Apps**, so it can be uninstalled normally.
   - Run with `--portable` to skip installing.
@@ -38,10 +38,10 @@ cd apps\windows\src\SKB.Desktop
 dotnet build -c Release
 ```
 
-Output: `bin\Release\net48\`. To publish, zip these files into a `SKB\` folder as
-`apps/web/public/downloads/SKB-Windows.zip`:
-- `SKB.exe`
-- `SKB.exe.config`
+Output: `bin\Release\net48\`. To publish, zip these files into an `Evolvix\` folder as
+`apps/web/public/downloads/Evolvix-Windows.zip`:
+- `Evolvix.exe`
+- `Evolvix.exe.config`
 - `Microsoft.Web.WebView2.Core.dll`
 - `Microsoft.Web.WebView2.WinForms.dll`
 - `WebView2Loader.dll`
