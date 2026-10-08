@@ -5,8 +5,10 @@ using SKB.Api.Services;
 namespace SKB.Api.Data;
 
 /// <summary>
-/// Seeds a coherent wholesale-office dataset whose totals tie back to the dashboard.
-/// Runs only when the database has no staff yet (idempotent on a fresh DB).
+/// Fills a fresh database (no staff yet). A company server starts clean: the owner, one branch with
+/// its warehouse and main cash box, and the starter units and price levels. With Seed:Demo on
+/// (development and tests) it seeds a coherent demo office instead, whose totals tie back to the
+/// dashboard.
 /// </summary>
 public static class DbSeeder
 {
@@ -43,6 +45,11 @@ public static class DbSeeder
         await Seasons.EnsureAsync(db);
         await FillSearchKeysAsync(db);
         if (await db.Staff.AnyAsync()) return;
+        if (!config.GetValue("Seed:Demo", false))
+        {
+            await SeedCleanAsync(db, auth, config);
+            return;
+        }
 
         var main = new Branch { Name = "Main Branch", Code = "MAIN", Location = "Cairo — Downtown" };
         var wh = new Branch { Name = "Warehouse Branch", Code = "WH2", Location = "6th of October — Industrial" };
@@ -281,6 +288,35 @@ public static class DbSeeder
             Doc(DocumentType.PURCHASE_INVOICE, DocumentStatus.CONFIRMED, s1, accountant, wh, 5, 45, 0, new[] { (4, 30, 0.0), (6, 40, 0.0) }),
             Doc(DocumentType.PURCHASE_INVOICE, DocumentStatus.PARTIALLY_PAID, s2, accountant, wh, 2, 45, 0.4, new[] { (0, 100, 0.0), (1, 20, 0.0) }));
 
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>A real company's first start: nothing but what the app needs to sign in and set up.</summary>
+    private static async Task SeedCleanAsync(AppDbContext db, AuthService auth, IConfiguration config)
+    {
+        var main = new Branch { Name = "الفرع الرئيسي", Code = "MAIN" };
+        db.Branches.Add(main);
+        var store = new Warehouse { Name = "المخزن الرئيسي", Code = "MAIN-1", Branch = main, IsDefault = true };
+        db.Warehouses.Add(store);
+        var ownerEmail = (config["Seed:OwnerEmail"] ?? "owner@skb.local").ToLowerInvariant();
+        var ownerPassword = config["Seed:OwnerPassword"] ?? "ChangeMe!Owner123";
+        db.Staff.Add(new Staff
+        {
+            FullName = "المالك", Email = ownerEmail, Role = Role.OWNER, Branch = main,
+            PasswordHash = auth.HashPassword(ownerPassword),
+        });
+        db.MoneyAccounts.AddRange(
+            new MoneyAccount { Name = "الخزينة الرئيسية", Kind = MoneyAccountKind.CASH_BOX, Branch = main, IsDefault = true, IsMain = true, Currency = Currency },
+            new MoneyAccount { Name = "المخزن الرئيسي", Kind = MoneyAccountKind.CASH_BOX, Branch = main, Warehouse = store, Currency = Currency });
+        db.Units.AddRange(DemoUnits.Select(u => new Unit { Name = u.Name }));
+        db.PriceLevels.AddRange(
+            new PriceLevel { Name = "سعر العملاء", Side = PriceSide.SALE, IsDefault = true, SortOrder = 1 },
+            new PriceLevel { Name = "سعر الموردين", Side = PriceSide.PURCHASE, IsDefault = true, SortOrder = 1 });
+        db.CompanySettings.Add(new CompanySettings
+        {
+            CompanyName = "", Country = "EG", Currency = Currency,
+            DefaultMarkupPercent = 10, MinMarkupPercent = 0, DefaultTaxPercent = 0,
+        });
         await db.SaveChangesAsync();
     }
 }

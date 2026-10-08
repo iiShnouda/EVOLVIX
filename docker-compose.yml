@@ -45,6 +45,8 @@ services:
       Cookie__Secure: "${COOKIE_SECURE:-false}"
       Seed__OwnerEmail: "${SEED_OWNER_EMAIL:-owner@skb.local}"
       Seed__OwnerPassword: "${SEED_OWNER_PASSWORD:-ChangeMe!Owner123}"
+      # true only for a demo server: a fresh database then gets sample staff, items and invoices.
+      Seed__Demo: "${SEED_DEMO:-false}"
       # Automatic backups: every day at BACKUP_HOUR (company time, Settings → time zone) into ./backups, newest BACKUP_KEEP
       # kept, encrypted when BACKUP_PASSPHRASE is set. See COMPANY-SERVER.md.
       TZ: "${TZ:-Africa/Cairo}"

@@ -33,6 +33,13 @@ It installs Docker, makes strong secrets in `.env` (shown once: the owner passwo
 passphrase — write them down), builds and starts everything, opens only the app's port, and prints
 the address (`http://<server-ip>:8080`). Run the same command again to update; data and `.env` stay.
 
+The company starts empty: the owner, one branch, its warehouse and the main cash box.
+
+To wipe every piece of data and start clean again (a copy is saved in `backups/` first):
+```bash
+git pull && sudo bash scripts/reset-data.sh
+```
+
 ## Steps (by hand)
 ```bash
 # 1. Get the code on the server

@@ -75,7 +75,8 @@ done
 ```
 
 `chat` needs the stand-in model server first: `node scripts/checks/fake-ollama.mjs &` (the dev
-`Assistant:Endpoint` is http://127.0.0.1:11434). `reader.test.mjs` needs no server.
+`Assistant:Endpoint` is http://127.0.0.1:11434). `reader.test.mjs` needs no server. `clean.test.mjs`
+needs its own server on an EMPTY database started with `Seed__Demo=false`.
 
 `lib.mjs` has `login`, `check`, `eq`, `ok`, `summary`, `companyToday`, `addDays`. Use a fresh
 database (e.g. `skb_t6`) for a full run; `ids` and `admin` want one.
@@ -270,7 +271,7 @@ SignalR `/hubs/presence`, static SPA from `wwwroot`, migrate + seed on start.
   ChatConversation, ChatMember, ChatMessage, ChatMute, AssistantTurn. `Category` is also the
   department tree (`IsRoot` = the department's own node, `ParentId`, `Prefix`, `Keywords`).
 - `Data/AppDbContext.cs` (model config, `LocalTime` for SQL day grouping), `Data/DbSeeder.cs`
-  (demo users, main box, warehouse boxes), `Data/Localized.cs` (`Loc.Clean`, `Loc.Name`).
+  (a fresh DB: clean start, or demo users and data with `Seed:Demo`, on in Development), `Data/Localized.cs` (`Loc.Clean`, `Loc.Name`).
 - `Models/Dtos.cs` — every request/response record (mirror in `packages/shared/src/types.ts`).
 - `Domain/Enums.cs` — Role (`OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER`), document /
   voucher types (incl. `DISCOUNT`, `DISCOUNT_RECEIVED`), statuses, `HandoverStatus`.
