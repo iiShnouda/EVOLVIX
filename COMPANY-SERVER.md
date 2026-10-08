@@ -59,10 +59,24 @@ and nothing is sent outside the building.
   what that person may see, and never changes anything by itself.
 - Extra machine needed for it: **8 GB more memory** and ~12 GB of disk for the default models
   (`qwen2.5:7b-instruct`, `qwen2.5vl:7b`). A graphics card makes answers much faster but is not
-  required. On a smaller machine set `ASSISTANT_MODEL=qwen2.5:3b-instruct` and
-  `ASSISTANT_VISION_MODEL=qwen2.5vl:3b` in `.env`; set `ASSISTANT_ENABLED=false` to turn it off.
+  required. On a smaller machine set `ASSISTANT_MODEL=qwen2.5:1.5b-instruct` in `.env` (Apache 2.0);
+  don't use the 3b versions of Qwen 2.5 (their licence forbids commercial use). Set
+  `ASSISTANT_ENABLED=false` to turn the assistant off.
 - Check it in the app: **Assistant** page (it says when the models aren't ready yet).
 - Update the models later: `docker compose --profile full run --rm assistant-models`.
+
+## On a Raspberry Pi 5 (16 GB)
+Everything runs on it as is (all the images are built for ARM64): use **64-bit Raspberry Pi OS**,
+install Docker, then the same `docker compose --profile full up -d --build`.
+- **Put the system and the data on an NVMe SSD** (M.2 HAT), not the SD card: the database writes
+  on every save and SD cards wear out and lose data.
+- An **active cooler** and the official 27 W power supply; a small **UPS** so a power cut doesn't
+  stop it mid-write.
+- The app and database are comfortable there for a shop's staff (about 10–15 people at once).
+- The assistant runs on the Pi's CPU, so it is **slow**: a few words a second for answers, and
+  reading a photo can take a minute or more. Use `ASSISTANT_MODEL=qwen2.5:1.5b-instruct` for faster
+  answers, keep `qwen2.5vl:7b` for photos, or set `ASSISTANT_ENABLED=false`.
+- Backups to a USB disk or another machine, as below.
 
 ## Where the data lives
 Everything is in the Docker volume **`skb-db-data`** on this server's disk — in your building,
