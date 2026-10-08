@@ -4,9 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 
-/** The company server this app opens: the cloud by default, or an office (LAN) server. */
+/** The company server this app opens: the company server (the office Raspberry Pi by default). */
 final class ServerConfig {
-    static final String DEFAULT_URL = "https://skb-d211.onrender.com";
+    static final String DEFAULT_URL = "http://192.168.100.63:8080";
     private static final String PREFS = "skb";
     private static final String KEY = "server";
 

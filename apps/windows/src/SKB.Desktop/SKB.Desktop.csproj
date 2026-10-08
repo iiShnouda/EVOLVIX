@@ -13,7 +13,7 @@
     <AssemblyName>SKB</AssemblyName>
     <RootNamespace>SKB.Desktop</RootNamespace>
     <ApplicationIcon>skb.ico</ApplicationIcon>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Company>SKB</Company>
     <Product>Evolvix</Product>
     <PlatformTarget>x64</PlatformTarget>

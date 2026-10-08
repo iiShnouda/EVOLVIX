@@ -127,10 +127,26 @@ docker compose --profile full up -d
 - Add an internal DNS name like `skb.company.local` → that IP, so staff use a stable address.
 - For HTTPS on the LAN, add a local TLS certificate (see `apps/api/README.md`).
 
-## Going online later (without exposing this machine directly)
-When you want staff to reach it from outside the office, put **Cloudflare Tunnel** in front so
-the server's real address stays hidden and Cloudflare handles HTTPS + DDoS — the machine is
-never directly exposed to the internet.
+## Reaching it from outside the office (Tailscale, no domain, no open ports)
+Tailscale joins the server and each person's devices into one private, encrypted network. Nothing
+is opened on the router, and no domain is needed.
+
+On the server (once):
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --advertise-routes=192.168.100.63/32   # this server's own LAN address
+```
+Then in the Tailscale admin page:
+1. Open the server's **Edit route settings** and approve the route.
+2. Turn off **key expiry** for the server only.
+
+On each phone or PC: install Tailscale and sign in to the same account. The apps keep using
+`http://192.168.100.63:8080` in the office and outside it alike.
+
+Lock it down:
+- Turn on **two-step sign-in** on the Tailscale account.
+- Turn on **Device approval**.
+- Use access rules so staff devices reach port 8080 only.
 
 ## Updating to a new version
 ```bash

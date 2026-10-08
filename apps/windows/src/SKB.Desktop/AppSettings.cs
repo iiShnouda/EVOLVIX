@@ -11,7 +11,7 @@ namespace SKB.Desktop;
 /// </summary>
 internal static class AppSettings
 {
-    public const string DefaultServer = "https://skb-d211.onrender.com";
+    public const string DefaultServer = "http://192.168.100.63:8080";
     private const string KeyPath = @"Software\SKB";
 
     public static string Server

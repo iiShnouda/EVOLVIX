@@ -14,7 +14,7 @@ Windows 10/11.
 
 ## What it does
 
-- Opens the server address: `https://skb-d211.onrender.com` by default.
+- Opens the server address: `http://192.168.100.63:8080` (the office Raspberry Pi) by default.
 - **Changing the server:** right-click the title bar → **Server address…**. This works for the
   company's own server on the office network; plain http:// gets a warning.
 - **Links:** only pages of that server open inside the window. Other links open in the default

@@ -9,7 +9,7 @@ full-screen window.
 
 ## What it does
 
-- Opens the server address: `https://skb-d211.onrender.com` by default.
+- Opens the server address: `http://192.168.100.63:8080` (the office Raspberry Pi) by default.
 - **Changing the server:** long-press the app icon → **Server address**. This works for the
   company's own server on the office network (e.g. `http://192.168.1.10:8080`); plain http://
   gets a warning, because it's for the office network only.
