@@ -24,7 +24,16 @@ second, 1,100+ invoices a minute) used under 2 cores and ~470 MB.
 - **An SSD matters more than a faster CPU** (the database writes on every save).
 - Keep backups on a different disk or machine (see Backups below).
 
-## Steps
+## Quick install (Ubuntu 22.04 / 24.04, PC or Raspberry Pi)
+```bash
+git clone https://github.com/iiShnouda/EVOLVIX.git && cd EVOLVIX
+sudo bash scripts/install-server.sh            # add --no-assistant to skip the AI models
+```
+It installs Docker, makes strong secrets in `.env` (shown once: the owner password and the backup
+passphrase — write them down), builds and starts everything, opens only the app's port, and prints
+the address (`http://<server-ip>:8080`). Run the same command again to update; data and `.env` stay.
+
+## Steps (by hand)
 ```bash
 # 1. Get the code on the server
 git clone https://github.com/iiShnouda/SKB.git

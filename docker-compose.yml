@@ -11,8 +11,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skb_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-skb}
     ports:
-      # Exposed on the host so the API server (and, on the LAN, other machines) can reach it.
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Only this machine reaches the database (the app talks to it over the private Docker
+      # network); nobody else on the office network can connect to it.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - skb-db-data:/var/lib/postgresql/data
     healthcheck:
