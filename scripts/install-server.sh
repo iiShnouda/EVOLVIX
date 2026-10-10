@@ -3,6 +3,9 @@
 #
 #   cd EVOLVIX && sudo bash scripts/install-server.sh              # app + database + offline assistant
 #   sudo bash scripts/install-server.sh --no-assistant              # app + database only
+#   sudo bash scripts/install-server.sh --admin 192.168.100.20      # SSH only from this device
+#        (repeat --admin for more; your own SSH device is added by itself; --tailscale-only: the app
+#         only over Tailscale; --no-firewall: leave the firewall alone. See scripts/firewall.sh.)
 #
 # Run it again any time to update: it keeps your .env (secrets, passwords) and your data.
 # Installs Docker if needed, makes strong secrets the first time, builds and starts everything,
@@ -11,11 +14,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ASSISTANT=true
-for arg in "$@"; do
-  case "$arg" in
+FIREWALL=true
+FIREWALL_ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
     --no-assistant) ASSISTANT=false ;;
-    *) echo "Unknown option: $arg"; exit 1 ;;
+    --no-firewall) FIREWALL=false ;;
+    --tailscale-only) FIREWALL_ARGS+=(--tailscale-only) ;;
+    --admin) [ $# -ge 2 ] || { echo "--admin needs an IP address"; exit 1; }; FIREWALL_ARGS+=(--admin "$2"); shift ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
   esac
+  shift
 done
 
 say() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -75,11 +84,14 @@ for _ in $(seq 1 90); do
 done
 curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null || { echo "The app didn't start: docker compose logs app"; exit 1; }
 
-# ---- 5. Firewall: only the app's port is opened -------------------------------------------------
-# (Not after scripts/lock-to-tailscale.sh: then only Tailscale reaches it.)
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active" \
-   && ! grep -q 'BEGIN evolvix-tailscale-only' /etc/ufw/after.rules 2>/dev/null; then
-  ufw allow "${PORT}/tcp" >/dev/null
+# ---- 5. Firewall: the app from the office + Tailscale, SSH only from the admin -------------------
+if [ "$FIREWALL" = true ]; then
+  say "Firewall"
+  bash scripts/firewall.sh --yes "${FIREWALL_ARGS[@]}"
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then break; fi
+    sleep 2
+  done
 fi
 
 # ---- 6. How to reach it ------------------------------------------------------------------------

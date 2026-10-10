@@ -27,10 +27,10 @@ second, 1,100+ invoices a minute) used under 2 cores and ~470 MB.
 ## Quick install (Ubuntu 22.04 / 24.04, PC or Raspberry Pi)
 ```bash
 git clone https://github.com/iiShnouda/EVOLVIX.git && cd EVOLVIX
-sudo bash scripts/install-server.sh            # add --no-assistant to skip the AI models
+sudo bash scripts/install-server.sh --admin <your PC's IP>   # add --no-assistant to skip the AI models
 ```
 It installs Docker, makes strong secrets in `.env` (shown once: the owner password and the backup
-passphrase — write them down), builds and starts everything, opens only the app's port, and prints
+passphrase — write them down), builds and starts everything, sets the firewall (see Firewall below), and prints
 the address (`http://<server-ip>:8080`). Run the same command again to update; data and `.env` stay.
 
 The company starts empty: the owner, one branch, its warehouse and the main cash box.
@@ -150,13 +150,22 @@ Then in the Tailscale admin page:
 On each phone or PC: install Tailscale and sign in to the same account. The apps keep using
 `http://192.168.100.63:8080` in the office and outside it alike.
 
-Close everything else (the office network and the internet reach nothing; only Tailscale's own
-port, 41641/udp, is open; SSH too works only over Tailscale):
+## Firewall (set by the installer)
+`install-server.sh` runs `scripts/firewall.sh`. After it, only these get in:
+- **The app (port 8080):** from the office network and over Tailscale.
+- **SSH:** only from the admin devices. Pass each one with `--admin <IP>` (its office IP and/or its
+  Tailscale IP); the device you are connected from over SSH is added by itself.
+- **Tailscale's own port** (41641/udp).
+
+Everything else is refused, and the database and the assistant have no open port at all. Docker's
+published ports skip ufw's normal rules, so the script also limits them in Docker's `DOCKER-USER` chain.
+
 ```bash
-sudo bash scripts/lock-to-tailscale.sh          # --undo opens the office network again
+sudo bash scripts/firewall.sh --admin 192.168.100.20 --admin 100.101.102.103   # change it any time
+sudo bash scripts/firewall.sh --tailscale-only --admin 100.101.102.103          # the app only over Tailscale
 ```
-Docker's published ports skip ufw's normal rules, so the script also closes them in Docker's
-`DOCKER-USER` chain. Office devices then need the Tailscale app as well.
+Give admin devices a fixed IP on the router. If you use Tailscale SSH (`tailscale up --ssh`), limit
+it to your devices in the Tailscale access rules, because it doesn't pass through this firewall.
 
 Lock it down:
 - Turn on **two-step sign-in** on the Tailscale account.
