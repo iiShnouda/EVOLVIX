@@ -4,6 +4,7 @@ import type { TranslationKey } from './i18n';
 /** Icon name understood by the web app's local icon set (no emoji as UI symbols). */
 export type IconName =
   | 'dashboard'
+  | 'server'
   | 'sales'
   | 'purchases'
   | 'receipts'
@@ -177,6 +178,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'presence',
     path: '/presence',
     permission: 'presence:view',
+  },
+  // The owner's server monitor (owner, 2026-10-10).
+  {
+    key: 'system',
+    labelKey: 'nav.system',
+    icon: 'server',
+    path: '/system',
+    permission: 'system:monitor',
   },
   {
     key: 'audit',

@@ -23,6 +23,7 @@ import type {
   ChatConversation,
   ChatMessage,
   AssistantConversation,
+  SystemMonitor,
   AssistantStatus,
   AssistantTurn,
   ProfitLoss,
@@ -2405,5 +2406,16 @@ export function useProfitLoss(from: string, to: string, enabled = true) {
     queryKey: ['analytics', 'profit-loss', from, to],
     queryFn: () => api.get<ProfitLoss>(`/analytics/profit-loss?from=${from}&to=${to}`),
     enabled,
+  });
+}
+
+// ---------------------------------------------------------------- server monitor
+
+/** The server's load, read again every few seconds while the page is open (kept in memory only). */
+export function useSystemMonitor() {
+  return useQuery({
+    queryKey: ['system', 'monitor'],
+    queryFn: () => api.get<SystemMonitor>('/system/monitor'),
+    refetchInterval: 5_000,
   });
 }

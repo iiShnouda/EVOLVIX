@@ -65,6 +65,7 @@ import { CashMovePage } from './pages/CashMovePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
+import { SystemPage } from './pages/SystemPage';
 import { PayrollPage } from './pages/PayrollPage';
 import { ThemesPage } from './pages/ThemesPage';
 
@@ -270,6 +271,7 @@ const routes = createRoutesFromElements(
       <Route path="/analytics" element={<AnalyticsPage />} />
       <Route path="/audit" element={<ActivityPage />} />
       <Route path="/presence" element={<PresencePage />} />
+      <Route path="/system" element={<SystemPage />} />
       <Route path="/payroll" element={<PayrollPage />} />
       <Route path="/staff" element={<StaffPage />} />
       <Route path="/branches" element={<BranchesPage />} />

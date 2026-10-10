@@ -2612,3 +2612,39 @@ export interface ProfitLoss {
   general: PlFigures | null;
   lines: PlLine[];
 }
+
+// ---- Server monitor (owner, 2026-10-10): figures only ----
+export interface SystemDisk {
+  role: 'system' | 'backups';
+  total: number;
+  free: number;
+}
+export interface SystemMonitor {
+  at: string;
+  machine: {
+    model: string;
+    cores: number;
+    cpuPercent: number;
+    load1: number;
+    load5: number;
+    load15: number;
+    memoryTotal: number;
+    memoryAvailable: number;
+    swapTotal: number;
+    swapFree: number;
+    temperatureC: number | null;
+    uptimeSeconds: number;
+    disks: SystemDisk[];
+  };
+  app: { memoryBytes: number; managedBytes: number; threads: number; uptimeSeconds: number; version: string };
+  database: { sizeBytes: number; connections: number; version: string };
+  assistant: {
+    enabled: boolean;
+    reachable: boolean;
+    chatReady: boolean;
+    visionReady: boolean;
+    speechReady: boolean;
+    models: { name: string; sizeBytes: number; loaded: boolean; memoryBytes: number }[];
+  };
+  backups: { count: number; sizeBytes: number; latestAt: string | null };
+}

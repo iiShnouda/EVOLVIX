@@ -1165,3 +1165,17 @@ public record PlLineDto(string Code, string Name, string Section, long Amount);
 /// <param name="General">Expenses paid from the main cash box and entries of no branch; null when the person doesn't see every branch.</param>
 public record ProfitLossDto(string From, string To, string Currency, PlFiguresDto Total, PlUnitDto[] Branches,
     PlFiguresDto? General, PlLineDto[] Lines);
+
+// ---- Server monitor (owner, 2026-10-10): figures only, no paths or settings ----
+public record SystemDiskDto(string Role, long Total, long Free);
+public record SystemMachineDto(string Model, int Cores, double CpuPercent, double Load1, double Load5, double Load15,
+    long MemoryTotal, long MemoryAvailable, long SwapTotal, long SwapFree, double? TemperatureC, long UptimeSeconds,
+    List<SystemDiskDto> Disks);
+public record SystemAppDto(long MemoryBytes, long ManagedBytes, int Threads, long UptimeSeconds, string Version);
+public record SystemDatabaseDto(long SizeBytes, int Connections, string Version);
+public record SystemModelDto(string Name, long SizeBytes, bool Loaded, long MemoryBytes);
+public record SystemAssistantDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady,
+    List<SystemModelDto> Models);
+public record SystemBackupsDto(int Count, long SizeBytes, DateTime? LatestAt);
+public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, SystemAppDto App, SystemDatabaseDto Database,
+    SystemAssistantDto Assistant, SystemBackupsDto Backups);

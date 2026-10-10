@@ -15,7 +15,13 @@ http
       return send({ text: ' كم رصيد النور؟ ', language: 'ar' });
     }
     if (req.url === '/api/tags')
-      return send({ models: [{ name: 'qwen2.5:7b-instruct' }, { name: 'qwen2.5vl:7b' }] });
+      return send({
+        models: [
+          { name: 'qwen2.5:7b-instruct', size: 4683087332 },
+          { name: 'qwen2.5vl:7b', size: 5969245856 },
+        ],
+      });
+    if (req.url === '/api/ps') return send({ models: [{ name: 'qwen2.5:7b-instruct', size: 5600000000 }] });
     if (req.url === '/api/chat') {
       const b = JSON.parse(body);
       const last = b.messages[b.messages.length - 1];
