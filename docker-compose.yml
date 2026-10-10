@@ -59,6 +59,8 @@ services:
       Assistant__Endpoint: http://assistant:11434
       Assistant__Model: "${ASSISTANT_MODEL:-qwen2.5:7b-instruct}"
       Assistant__VisionModel: "${ASSISTANT_VISION_MODEL:-qwen2.5vl:7b}"
+      # Spoken questions (owner, 2026-10-10): read by the speech service below, on this machine.
+      Assistant__SpeechEndpoint: "${ASSISTANT_SPEECH_ENDPOINT:-http://speech:9000}"
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
     ports:
@@ -94,8 +96,24 @@ services:
         ollama pull ${ASSISTANT_MODEL:-qwen2.5:7b-instruct} &&
         ollama pull ${ASSISTANT_VISION_MODEL:-qwen2.5vl:7b}
 
+  # Speech to text for spoken questions (Whisper, MIT licence), on this machine; the model downloads
+  # once on first start. No port is published: only the app reaches it, and recordings aren't kept.
+  speech:
+    profiles: ["full"]
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: skb-speech
+    restart: unless-stopped
+    environment:
+      ASR_ENGINE: faster_whisper
+      ASR_MODEL: "${SPEECH_MODEL:-small}"
+      ASR_MODEL_PATH: /data/whisper
+    volumes:
+      - skb-speech-models:/data/whisper
+
 volumes:
   skb-db-data:
     name: skb-db-data
   skb-assistant-models:
     name: skb-assistant-models
+  skb-speech-models:
+    name: skb-speech-models

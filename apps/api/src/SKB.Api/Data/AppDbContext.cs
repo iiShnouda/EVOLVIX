@@ -68,6 +68,7 @@ public class AppDbContext : DbContext
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<ChatMute> ChatMutes => Set<ChatMute>();
     public DbSet<AssistantTurn> AssistantTurns => Set<AssistantTurn>();
+    public DbSet<AssistantConversation> AssistantConversations => Set<AssistantConversation>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<CashHandover> CashHandovers => Set<CashHandover>();
     public DbSet<WorkDraft> WorkDrafts => Set<WorkDraft>();
@@ -418,6 +419,10 @@ public class AppDbContext : DbContext
         b.Entity<ChatMute>().HasOne(m => m.Staff).WithMany()
             .HasForeignKey(m => m.StaffId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AssistantTurn>().HasIndex(t => new { t.StaffId, t.CreatedAt });
+        b.Entity<AssistantConversation>().HasIndex(c => new { c.StaffId, c.UpdatedAt });
+        b.Entity<AssistantConversation>().Property(c => c.Title).HasMaxLength(120);
+        b.Entity<AssistantTurn>().HasOne(t => t.Conversation).WithMany(c => c.Turns)
+            .HasForeignKey(t => t.ConversationId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AssistantTurn>().Property(t => t.Role).HasMaxLength(10);
         b.Entity<SalesDocument>().HasIndex(d => d.DepartmentId);
         b.Entity<SalesDocument>().HasOne(d => d.Department).WithMany()

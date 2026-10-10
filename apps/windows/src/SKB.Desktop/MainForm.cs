@@ -67,7 +67,13 @@ internal sealed class MainForm : Form
         var dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SKB", "WebView2");
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
+            // An office server reached over plain http (http://192.168.x.x:8080) still gets the
+            // microphone for spoken questions: the browser treats that one address as secure.
+            var options = new CoreWebView2EnvironmentOptions();
+            if (Uri.TryCreate(AppSettings.Server, UriKind.Absolute, out var origin) && origin.Scheme == Uri.UriSchemeHttp)
+                options.AdditionalBrowserArguments =
+                    $"--unsafely-treat-insecure-origin-as-secure={origin.Scheme}://{origin.Authority}";
+            var env = await CoreWebView2Environment.CreateAsync(null, dataFolder, options);
             await _web.EnsureCoreWebView2Async(env);
         }
         catch (WebView2RuntimeNotFoundException)
@@ -85,6 +91,12 @@ internal sealed class MainForm : Form
         core.Settings.IsGeneralAutofillEnabled = false;
         core.Settings.IsPasswordAutosaveEnabled = false;
 
+        // The company server's pages may use the microphone (the assistant's spoken questions).
+        core.PermissionRequested += (_, a) =>
+        {
+            if (a.PermissionKind == CoreWebView2PermissionKind.Microphone && AppSettings.IsServerUrl(a.Uri))
+                a.State = CoreWebView2PermissionState.Allow;
+        };
         core.NavigationStarting += (_, a) =>
         {
             if (a.Uri.StartsWith("data:", StringComparison.Ordinal) || a.Uri.StartsWith("about:", StringComparison.Ordinal)

@@ -8,6 +8,12 @@ http
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(o));
     };
+    // The speech service (whisper-asr-webservice), when the app is pointed here for it too.
+    if (req.url === '/docs') return send({ ok: true });
+    if (req.url?.startsWith('/asr')) {
+      log.push(['asr', req.url, req.headers['content-type'] ?? '', body.length]);
+      return send({ text: ' كم رصيد النور؟ ', language: 'ar' });
+    }
     if (req.url === '/api/tags')
       return send({ models: [{ name: 'qwen2.5:7b-instruct' }, { name: 'qwen2.5vl:7b' }] });
     if (req.url === '/api/chat') {

@@ -2528,6 +2528,23 @@ export interface AssistantStatus {
   reachable: boolean;
   chatReady: boolean;
   visionReady: boolean;
+  /** The server's speech service answers: questions can be spoken. */
+  speechReady: boolean;
+}
+
+/** One of a person's conversations with the assistant. */
+export interface AssistantConversation {
+  id: string;
+  /** The first question, shortened. */
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  turns: number;
+}
+
+export interface AssistantAnswer {
+  conversationId: string;
+  answer: AssistantTurn;
 }
 
 export interface AssistantTurn {

@@ -40,7 +40,47 @@ public sealed class AssistantService
     public string ChatModel => _config["Assistant:Model"] ?? "qwen2.5:7b-instruct";
     public string VisionModel => _config["Assistant:VisionModel"] ?? "qwen2.5vl:7b";
 
+    /// <summary>The offline speech-to-text service (Whisper) on the server, if any.</summary>
+    private string? SpeechEndpoint =>
+        _config["Assistant:SpeechEndpoint"] is { Length: > 0 } s ? s.TrimEnd('/') : null;
+
     public sealed record Status(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
+
+    /// <summary>Whether the speech service answers (a quick look, so the page isn't held up).</summary>
+    public async Task<bool> SpeechReadyAsync(CancellationToken ct = default)
+    {
+        if (!Enabled || SpeechEndpoint is null) return false;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+            using var res = await _http.GetAsync($"{SpeechEndpoint}/docs", cts.Token);
+            return res.IsSuccessStatusCode;
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// What was said in a recording (Arabic or English, found by the service), read on the company's
+    /// own server: the recording goes nowhere else and isn't kept.
+    /// </summary>
+    public async Task<string> TranscribeAsync(byte[] audio, string? contentType, CancellationToken ct)
+    {
+        if (!Enabled || SpeechEndpoint is null) throw new AssistantUnavailableException("No speech service.");
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(audio);
+        file.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType, out var type)
+            ? type
+            : new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        form.Add(file, "audio_file", "speech");
+        using var res = await _http.PostAsync($"{SpeechEndpoint}/asr?task=transcribe&output=json&encode=true&vad_filter=true", form, ct);
+        if (!res.IsSuccessStatusCode) throw new AssistantUnavailableException($"Speech service: {(int)res.StatusCode}");
+        var json = await res.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: ct);
+        return (json?["text"]?.GetValue<string>() ?? "").Trim();
+    }
 
     /// <summary>Whether the model server answers and has the two models.</summary>
     public async Task<Status> StatusAsync(CancellationToken ct = default)

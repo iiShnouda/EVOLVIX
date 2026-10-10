@@ -63,6 +63,16 @@ const PATHS: Record<string, string> = {
   assistant:
     'M12 3l1.6 3.9L17.5 8.5l-3.9 1.6L12 14l-1.6-3.9L6.5 8.5l3.9-1.6L12 3ZM18.5 14l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8.8-1.7ZM6 15l.6 1.4L8 17l-1.4.6L6 19l-.6-1.4L4 17l1.4-.6L6 15Z',
   send: 'M4 12l16-8-6 16-2.5-6.5L4 12Z',
+  // A microphone on its stand.
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3M9 21h6',
+  // Stop: a rounded square.
+  stop: 'M7 7h10v10H7z',
+  // A speaker with sound waves.
+  speaker: 'M4 9h4l5-4v14l-5-4H4V9ZM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12',
+  // A waste bin.
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  // A server rack: two units with status lights.
+  server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01M12 7.5h5M12 16.5h5',
   // An open ledger book.
   ledger: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5ZM4 19V5M19 17H6M9 7h6M9 11h6',
   // A delivery truck: box, cab and two wheels.

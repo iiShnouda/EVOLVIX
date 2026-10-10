@@ -11,7 +11,9 @@ namespace SKB.Api.Controllers;
 /// <summary>
 /// The company's offline assistant (see <see cref="AssistantService"/>): ask it (<c>ai:chat</c>), and
 /// read a photo of a supplier invoice or cheques into a draft (<c>ai:scan</c> and the permission of
-/// the screen the draft goes to). Each person's conversation stays on the server, theirs alone.
+/// the screen the draft goes to). Each person's conversations stay on the server, theirs alone; they
+/// can keep several and delete any (owner, 2026-10-10). A question can be spoken: the recording is
+/// read by the server's own speech service (Whisper) and not kept.
 /// </summary>
 [ApiController]
 [Route("api/assistant")]
@@ -19,6 +21,8 @@ namespace SKB.Api.Controllers;
 public sealed class AssistantController : ControllerBase
 {
     private const int MaxImage = 10 * 1024 * 1024;
+    /// <summary>About two minutes of speech.</summary>
+    private const int MaxAudio = 8 * 1024 * 1024;
     private const int MaxQuestion = 2000;
     private const int HistoryTurns = 12;
     private readonly AppDbContext _db;
@@ -48,43 +52,89 @@ public sealed class AssistantController : ControllerBase
         if (!Can(Permissions.AiChat) && !Can(Permissions.AiScan))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var s = await _ai.StatusAsync(ct);
-        return Ok(new AssistantStatusDto(s.Enabled, s.Reachable, s.ChatReady, s.VisionReady));
+        var speech = Can(Permissions.AiChat) && await _ai.SpeechReadyAsync(ct);
+        return Ok(new AssistantStatusDto(s.Enabled, s.Reachable, s.ChatReady, s.VisionReady, speech));
     }
 
-    [HttpGet("history")]
+    /// <summary>This person's conversations, latest first.</summary>
+    [HttpGet("conversations")]
     [Authorize(Policy = Permissions.AiChat)]
-    public async Task<ActionResult<AssistantTurnDto[]>> History()
+    public async Task<ActionResult<AssistantConversationDto[]>> Conversations()
     {
         var me = Me;
-        var rows = await _db.AssistantTurns.AsNoTracking().Where(t => t.StaffId == me)
-            .OrderByDescending(t => t.CreatedAt).Take(100)
-            .Select(t => new AssistantTurnDto(t.Role, t.Content, t.CreatedAt)).ToListAsync();
-        rows.Reverse();
-        return Ok(rows.ToArray());
+        return Ok(await _db.AssistantConversations.AsNoTracking().Where(c => c.StaffId == me)
+            .OrderByDescending(c => c.UpdatedAt).Take(500)
+            .Select(c => new AssistantConversationDto(c.Id.ToString(), c.Title, c.CreatedAt, c.UpdatedAt, c.Turns.Count))
+            .ToArrayAsync());
     }
 
-    [HttpDelete("history")]
+    /// <summary>One conversation's questions and answers, oldest first (the person's own only).</summary>
+    [HttpGet("conversations/{id:guid}")]
     [Authorize(Policy = Permissions.AiChat)]
-    public async Task<IActionResult> Clear()
+    public async Task<ActionResult<AssistantTurnDto[]>> Turns(Guid id)
     {
         var me = Me;
-        await _db.AssistantTurns.Where(t => t.StaffId == me).ExecuteDeleteAsync();
-        await AuditAsync("clear", "assistant", me);
+        if (!await _db.AssistantConversations.AnyAsync(c => c.Id == id && c.StaffId == me)) return NotFoundConversation();
+        return Ok(await _db.AssistantTurns.AsNoTracking().Where(t => t.ConversationId == id)
+            .OrderBy(t => t.CreatedAt).Take(400)
+            .Select(t => new AssistantTurnDto(t.Role, t.Content, t.CreatedAt)).ToArrayAsync());
+    }
+
+    [HttpDelete("conversations/{id:guid}")]
+    [Authorize(Policy = Permissions.AiChat)]
+    public async Task<IActionResult> DeleteConversation(Guid id)
+    {
+        var me = Me;
+        var gone = await _db.AssistantConversations.Where(c => c.Id == id && c.StaffId == me).ExecuteDeleteAsync();
+        if (gone == 0) return NotFoundConversation();
+        await AuditAsync("delete", "assistant_conversation", id);
         return NoContent();
     }
 
-    /// <summary>Ask a question; the answer is kept with it.</summary>
+    /// <summary>
+    /// Delete this person's old conversations: those untouched for <paramref name="olderThanDays"/>
+    /// days, or all of them when it isn't given.
+    /// </summary>
+    [HttpDelete("conversations")]
+    [Authorize(Policy = Permissions.AiChat)]
+    public async Task<ActionResult<object>> DeleteConversations([FromQuery] int? olderThanDays)
+    {
+        var me = Me;
+        var q = _db.AssistantConversations.Where(c => c.StaffId == me);
+        if (olderThanDays is int days)
+        {
+            if (days < 1) return BadRequest(new { message = "Choose a number of days.", code = "bad_days" });
+            var before = DateTime.UtcNow.AddDays(-days);
+            q = q.Where(c => c.UpdatedAt < before);
+        }
+        var deleted = await q.ExecuteDeleteAsync();
+        await AuditAsync("delete", "assistant_conversations", me);
+        return Ok(new { deleted });
+    }
+
+    /// <summary>
+    /// Ask a question in a conversation (a new one when none is given); the answer is kept with it.
+    /// </summary>
     [HttpPost("ask")]
     [Authorize(Policy = Permissions.AiChat)]
-    public async Task<ActionResult<AssistantTurnDto>> Ask([FromBody] AssistantAskRequest req, CancellationToken ct)
+    public async Task<ActionResult<AssistantAnswerDto>> Ask([FromBody] AssistantAskRequest req, CancellationToken ct)
     {
         var question = (req.Text ?? "").Trim();
         if (question.Length == 0) return BadRequest(new { message = "Write a question.", code = "empty_message" });
         if (question.Length > MaxQuestion) question = question[..MaxQuestion];
         var me = Me;
-        var history = await _db.AssistantTurns.AsNoTracking().Where(t => t.StaffId == me)
-            .OrderByDescending(t => t.CreatedAt).Take(HistoryTurns)
-            .Select(t => new AssistantService.Turn(t.Role, t.Content)).ToListAsync(ct);
+        AssistantConversation? conv = null;
+        if (!string.IsNullOrEmpty(req.ConversationId))
+        {
+            if (!Guid.TryParse(req.ConversationId, out var cid)) return NotFoundConversation();
+            conv = await _db.AssistantConversations.FirstOrDefaultAsync(c => c.Id == cid && c.StaffId == me, ct);
+            if (conv is null) return NotFoundConversation();
+        }
+        var history = conv is null
+            ? new List<AssistantService.Turn>()
+            : await _db.AssistantTurns.AsNoTracking().Where(t => t.ConversationId == conv.Id)
+                .OrderByDescending(t => t.CreatedAt).Take(HistoryTurns)
+                .Select(t => new AssistantService.Turn(t.Role, t.Content)).ToListAsync(ct);
         history.Reverse();
         string answer;
         try
@@ -96,13 +146,50 @@ public sealed class AssistantController : ControllerBase
             return Unavailable();
         }
         if (answer.Length == 0) return Unavailable();
-        var asked = new AssistantTurn { StaffId = me, Role = "user", Content = question };
-        var said = new AssistantTurn { StaffId = me, Role = "assistant", Content = answer, CreatedAt = asked.CreatedAt.AddMilliseconds(1) };
+        if (conv is null)
+        {
+            var title = question.ReplaceLineEndings(" ");
+            conv = new AssistantConversation { StaffId = me, Title = title.Length > 80 ? title[..80] + "…" : title };
+            _db.AssistantConversations.Add(conv);
+        }
+        var asked = new AssistantTurn { StaffId = me, ConversationId = conv.Id, Role = "user", Content = question };
+        var said = new AssistantTurn
+        {
+            StaffId = me, ConversationId = conv.Id, Role = "assistant", Content = answer,
+            CreatedAt = asked.CreatedAt.AddMilliseconds(1),
+        };
+        conv.UpdatedAt = said.CreatedAt;
         _db.AssistantTurns.AddRange(asked, said);
         await _db.SaveChangesAsync(ct);
         await AuditAsync("ask", "assistant", said.Id);
-        return Ok(new AssistantTurnDto(said.Role, said.Content, said.CreatedAt));
+        return Ok(new AssistantAnswerDto(conv.Id.ToString(), new AssistantTurnDto(said.Role, said.Content, said.CreatedAt)));
     }
+
+    /// <summary>What was said in a short recording, read by the server's own speech service.</summary>
+    [HttpPost("transcribe")]
+    [Authorize(Policy = Permissions.AiChat)]
+    [RequestSizeLimit(MaxAudio + 64 * 1024)]
+    public async Task<ActionResult<AssistantTranscriptDto>> Transcribe(IFormFile? file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Record something first.", code = "empty_audio" });
+        if (file.Length > MaxAudio) return BadRequest(new { message = "The recording is too long.", code = "audio_too_long" });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        try
+        {
+            var text = await _ai.TranscribeAsync(ms.ToArray(), file.ContentType, ct);
+            await AuditAsync("transcribe", "assistant", Me);
+            return Ok(new AssistantTranscriptDto(text));
+        }
+        catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
+        {
+            return StatusCode(503, new { message = "Speech isn't available on the server.", code = "speech_unavailable" });
+        }
+    }
+
+    private NotFoundObjectResult NotFoundConversation() =>
+        NotFound(new { message = "Conversation not found.", code = "not_found" });
 
     /// <summary>Read a supplier's invoice from a photo into a draft for the purchase screen.</summary>
     [HttpPost("scan/purchase")]

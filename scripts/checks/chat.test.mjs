@@ -105,12 +105,38 @@ check('audited send', JSON.stringify(rows).includes('chat_message'));
 check('karim no ai', (await karim.get('/assistant/status')).status === 403);
 const st = ok('ai status', await o.get('/assistant/status'));
 check('ready', st.reachable && st.chatReady && st.visionReady, st);
+// Several conversations (owner, 2026-10-10): a question without one starts one; asking in it continues it.
 const a1 = ok('ask balance', await o.post('/assistant/ask', { text: 'كم رصيد النور؟' }));
-check('tool used', a1.content.includes('Al-Nour') && a1.content.includes('balance'), a1.content);
-const a2 = ok('ask sales', await o.post('/assistant/ask', { text: 'مبيعات الشهر' }));
-check('sales summary', a2.content.includes('sales'), a2.content);
-const hist = ok('history', await o.get('/assistant/history'));
-check('history 4', hist.length >= 4);
+check('tool used', a1.answer.content.includes('Al-Nour') && a1.answer.content.includes('balance'), a1.answer.content);
+const a2 = ok('ask sales in the same conversation', await o.post('/assistant/ask', { text: 'مبيعات الشهر', conversationId: a1.conversationId }));
+eq('same conversation', a2.conversationId, a1.conversationId);
+check('sales summary', a2.answer.content.includes('sales'), a2.answer.content);
+const a3 = ok('a new conversation', await o.post('/assistant/ask', { text: 'أرصدة الخزائن' }));
+check('it is another one', a3.conversationId !== a1.conversationId);
+const convs = ok('conversations', await o.get('/assistant/conversations'));
+check('both listed, latest first', convs[0]?.id === a3.conversationId && convs.some((c) => c.id === a1.conversationId), convs);
+eq('titled by the first question', convs.find((c) => c.id === a1.conversationId)?.title, 'كم رصيد النور؟');
+const turns = ok('its turns', await o.get(`/assistant/conversations/${a1.conversationId}`));
+eq('four turns in order', turns.map((t) => t.role), ['user', 'assistant', 'user', 'assistant']);
+eq("nobody else reads it", (await mona.get(`/assistant/conversations/${a1.conversationId}`)).status, mona.user.permissions.includes('ai:chat') ? 404 : 403);
+eq("nor deletes it", (await mona.del(`/assistant/conversations/${a1.conversationId}`)).status, mona.user.permissions.includes('ai:chat') ? 404 : 403);
+eq('asking in someone else\'s conversation', (await o.post('/assistant/ask', { text: 'x', conversationId: '00000000-0000-0000-0000-000000000001' })).status, 404);
+eq('delete one', (await o.del(`/assistant/conversations/${a3.conversationId}`)).status, 204);
+check('gone', !(await o.get('/assistant/conversations')).data.some((c) => c.id === a3.conversationId));
+eq('old ones: none older than 30 days', (await o.del('/assistant/conversations?olderThanDays=30')).data?.deleted, 0);
+check('the recent one stays', (await o.get('/assistant/conversations')).data.some((c) => c.id === a1.conversationId));
+// Speaking a question: the recording goes to the server's speech service.
+if (st.speechReady) {
+  const fa = new FormData();
+  fa.append('file', new Blob([new Uint8Array(2000)], { type: 'audio/webm' }), 'q.webm');
+  const ra = await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fa });
+  const ta = await ra.json();
+  eq('a spoken question read back', [ra.status, ta.text], [200, 'كم رصيد النور؟']);
+  const fe = new FormData();
+  fe.append('file', new Blob([], { type: 'audio/webm' }), 'e.webm');
+  eq('an empty recording', (await (await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fe })).json()).code, 'empty_audio');
+} else console.log('  (speech service not configured: start the API with Assistant__SpeechEndpoint=http://127.0.0.1:11434)');
+eq('karim may not transcribe', (await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${karim.token}` } })).status, 403);
 // scans
 const fd = new FormData();
 fd.append('file', new Blob([TINY], { type: 'image/png' }), 'p.png');

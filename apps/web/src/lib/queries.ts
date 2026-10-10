@@ -22,6 +22,7 @@ import type {
   ChatPerson,
   ChatConversation,
   ChatMessage,
+  AssistantConversation,
   AssistantStatus,
   AssistantTurn,
   ProfitLoss,
@@ -2372,11 +2373,24 @@ export function useAssistantStatus(enabled: boolean) {
   });
 }
 
-export function useAssistantHistory() {
+export function useAssistantConversations() {
   return useQuery({
-    queryKey: ['assistant', 'history'],
-    queryFn: () => api.get<AssistantTurn[]>('/assistant/history'),
+    queryKey: ['assistant', 'conversations'],
+    queryFn: () => api.get<AssistantConversation[]>('/assistant/conversations'),
   });
+}
+
+export function useAssistantTurns(id: string | null) {
+  return useQuery({
+    queryKey: ['assistant', 'turns', id],
+    queryFn: () => api.get<AssistantTurn[]>(`/assistant/conversations/${id}`),
+    enabled: !!id,
+  });
+}
+
+/** What was said in a recording, read by the server's speech service. */
+export async function transcribe(audio: Blob): Promise<string> {
+  return (await api.upload<{ text: string }>('/assistant/transcribe', audio, false, 'POST')).text;
 }
 
 /** Send a photo to be read by the assistant (purchase invoice or cheques). */

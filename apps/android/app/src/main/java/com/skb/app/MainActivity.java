@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.print.PrintAttributes;
+import android.provider.MediaStore;
 import android.print.PrintManager;
 import android.text.TextUtils;
 import android.util.Base64;
@@ -233,13 +234,29 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static boolean acceptsAudio(WebChromeClient.FileChooserParams params) {
+        for (String type : params.getAcceptTypes()) if (type != null && type.startsWith("audio")) return true;
+        return false;
+    }
+
     private final class Chrome extends WebChromeClient {
         @Override
         public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
             if (pendingFiles != null) pendingFiles.onReceiveValue(null);
             pendingFiles = callback;
             try {
-                startActivityForResult(params.createIntent(), FILE_REQUEST);
+                Intent pick = params.createIntent();
+                // A spoken question (the assistant's microphone): offer the phone's sound recorder
+                // first, and picking a recording as well.
+                if (params.isCaptureEnabled() && acceptsAudio(params)) {
+                    Intent record = new Intent(MediaStore.Audio.Media.RECORD_SOUND_ACTION);
+                    if (record.resolveActivity(getPackageManager()) != null) {
+                        Intent chooser = Intent.createChooser(record, null);
+                        chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[] {pick});
+                        pick = chooser;
+                    }
+                }
+                startActivityForResult(pick, FILE_REQUEST);
             } catch (ActivityNotFoundException e) {
                 pendingFiles = null;
                 return false;

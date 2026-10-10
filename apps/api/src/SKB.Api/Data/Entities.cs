@@ -1687,10 +1687,24 @@ public class ChatMute
 // ---------------------------------------------------------------- assistant (owner, 2026-10-06)
 
 /// <summary>One turn of a person's conversation with the company's offline assistant, kept on the server.</summary>
+/// <summary>One of a person's conversations with the assistant (owner, 2026-10-10: several, each deletable).</summary>
+public class AssistantConversation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StaffId { get; set; }
+    /// <summary>The first question, shortened.</summary>
+    public string Title { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public List<AssistantTurn> Turns { get; set; } = new();
+}
+
 public class AssistantTurn
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StaffId { get; set; }
+    public Guid ConversationId { get; set; }
+    public AssistantConversation? Conversation { get; set; }
     /// <summary>"user" or "assistant".</summary>
     public string Role { get; set; } = "user";
     public string Content { get; set; } = "";

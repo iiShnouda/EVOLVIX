@@ -29,6 +29,33 @@ namespace SKB.Api.Migrations
 
             modelBuilder.HasSequence<int>("StaffCodes");
 
+            modelBuilder.Entity("SKB.Api.Data.AssistantConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StaffId", "UpdatedAt");
+
+                    b.ToTable("AssistantConversations");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.AssistantTurn", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,6 +65,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -51,6 +81,8 @@ namespace SKB.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
 
                     b.HasIndex("StaffId", "CreatedAt");
 
@@ -3206,6 +3238,17 @@ namespace SKB.Api.Migrations
                     b.ToTable("WorkDrafts");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.AssistantTurn", b =>
+                {
+                    b.HasOne("SKB.Api.Data.AssistantConversation", "Conversation")
+                        .WithMany("Turns")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.AttendanceDay", b =>
                 {
                     b.HasOne("SKB.Api.Data.Employee", "Employee")
@@ -4426,6 +4469,11 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.AssistantConversation", b =>
+                {
+                    b.Navigation("Turns");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>

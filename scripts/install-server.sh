@@ -66,6 +66,7 @@ if [ "$ASSISTANT" = false ]; then
 elif [ "$MEM_GB" -lt 12 ]; then
   say "Only ${MEM_GB} GB of memory: using the lighter assistant model"
   sed -i "s|^ASSISTANT_MODEL=.*|ASSISTANT_MODEL=qwen2.5:1.5b-instruct|" .env
+  if grep -q '^SPEECH_MODEL=' .env; then sed -i "s|^SPEECH_MODEL=.*|SPEECH_MODEL=base|" .env; else echo 'SPEECH_MODEL=base' >> .env; fi
 fi
 
 # ---- 4. Build and start ------------------------------------------------------------------------

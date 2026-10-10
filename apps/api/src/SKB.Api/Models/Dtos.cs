@@ -1139,9 +1139,12 @@ public record ChatSendRequest(string? Text);
 
 // ---------------------------------------------------------------- assistant
 
-public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
+public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady);
 public record AssistantTurnDto(string Role, string Content, DateTime At);
-public record AssistantAskRequest(string? Text);
+public record AssistantAskRequest(string? Text, string? ConversationId = null);
+public record AssistantConversationDto(string Id, string Title, DateTime CreatedAt, DateTime UpdatedAt, int Turns);
+public record AssistantAnswerDto(string ConversationId, AssistantTurnDto Answer);
+public record AssistantTranscriptDto(string Text);
 
 // ---------------------------------------------------------------- profit and loss (owner, 2026-10-06)
 
