@@ -13,7 +13,8 @@ console.log('== lists');
 const staff = ok('owner lists staff', await owner.get('/staff'));
 check('seeded staff listed', staff.length >= 4, staff.map((s) => s.email));
 const me = staff.find((s) => s.email === 'owner@skb.local');
-eq('owner has every permission', me.permissions.length, (await owner.get('/permissions')).data.length);
+// Every grantable permission, plus the owner's own (the server monitor), which nobody can be given.
+eq('owner has every permission', me.permissions.length, (await owner.get('/permissions')).data.length + 1);
 eq('sales cannot list staff', (await karim.get('/staff')).status, 403);
 eq('accountant cannot list staff', (await mona.get('/staff')).status, 403);
 const roles = ok('roles', await owner.get('/roles'));

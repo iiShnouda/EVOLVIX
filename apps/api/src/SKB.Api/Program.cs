@@ -125,7 +125,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(options =>
 {
     foreach (var perm in Permissions.All)
-        options.AddPolicy(perm, policy => policy.RequireClaim("permission", perm));
+        options.AddPolicy(perm, policy =>
+        {
+            policy.RequireClaim("permission", perm);
+            // The owner's own permissions also need the owner's role (a forged grant can't pass).
+            if (Permissions.OwnerOnly.Contains(perm)) policy.RequireClaim("role", nameof(Role.OWNER));
+        });
 });
 
 // --- CORS (strict allow-list, credentials for the refresh cookie) -----------------------

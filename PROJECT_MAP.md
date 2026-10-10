@@ -68,7 +68,7 @@ BASE=http://localhost:5080/api node scripts/checks/paystates.test.mjs   # one su
 # all, in this order (limits first: it sets the Settings the others expect; admin last):
 for t in limits catalog charges parties costs departments orders codes invoices branding delivery \
          ledger statements notes cheques money staff payroll access pricing quotes returns additems \
-         dashboard story dates ids scope handovers paystates time system tree chat profit admin; do
+         dashboard story dates ids scope handovers paystates time system tree chat profit places admin; do
   BASE=http://localhost:5080/api timeout 600 node scripts/checks/$t.test.mjs > /tmp/t-$t.log 2>&1
   echo "$t $? $(grep -E 'passed, [0-9]+ failed' /tmp/t-$t.log | tail -1)"
 done

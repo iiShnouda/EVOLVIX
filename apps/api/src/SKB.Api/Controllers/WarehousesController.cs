@@ -11,8 +11,9 @@ namespace SKB.Api.Controllers;
 /// <summary>
 /// Branches and their warehouses (الفروع والمخازن). Everyone who sees inventory can list the
 /// warehouses they may use; managing branches and warehouses (add, rename, close, choose the branch
-/// default) needs <c>branches:manage</c>. Nothing is ever deleted: a warehouse is closed, and only
-/// once it is empty. Names are kept exactly as typed.
+/// default) needs <c>branches:manage</c>. A branch or warehouse with nothing recorded in it can be
+/// deleted (<c>branches:delete</c>, <c>warehouses:delete</c>); once it has documents, stock or money
+/// it can only be closed. Names are kept exactly as typed.
 /// </summary>
 [ApiController]
 [Route("api")]
@@ -259,6 +260,113 @@ public sealed class WarehousesController : ControllerBase
         return Ok(ToDto(warehouse, await StatsAsync()));
     }
 
+    /// <summary>Delete a warehouse that has nothing recorded in it, with its own cash box.</summary>
+    [HttpDelete("warehouses/{id:guid}")]
+    [Authorize(Policy = Permissions.WarehousesDelete)]
+    public async Task<IActionResult> DeleteWarehouse(Guid id)
+    {
+        var warehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == id && w.Kind == WarehouseKind.STORE);
+        if (warehouse is null) return NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+        if (warehouse.IsDefault)
+        {
+            var others = await _db.Warehouses.AnyAsync(w =>
+                w.BranchId == warehouse.BranchId && w.Id != id && w.Kind == WarehouseKind.STORE && w.IsActive);
+            return BadRequest(others
+                ? new { message = "This is the branch's default warehouse. Make another warehouse the default first.", code = "warehouse_is_default" }
+                : new { message = "A branch needs a warehouse: delete the branch instead.", code = "last_warehouse" });
+        }
+        if (await InUseAsync(() => RemoveWarehouseAsync(warehouse))) return InUse();
+        await AuditAsync("delete", "warehouse", id, warehouse.BranchId);
+        return NoContent();
+    }
+
+    /// <summary>Delete a branch that has nothing recorded in it, with its warehouses and cash boxes.</summary>
+    [HttpDelete("branches/{id:guid}")]
+    [Authorize(Policy = Permissions.BranchesDelete)]
+    public async Task<IActionResult> DeleteBranch(Guid id)
+    {
+        var branch = await _db.Branches.FirstOrDefaultAsync(b => b.Id == id);
+        if (branch is null) return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
+        if (!await _db.Branches.AnyAsync(b => b.Id != id))
+            return BadRequest(new { message = "The company needs at least one branch.", code = "last_branch" });
+        if (await _db.Staff.AnyAsync(s => s.BranchId == id))
+            return BadRequest(new { message = "Some staff belong to this branch. Move them to another branch first.", code = "branch_has_staff" });
+        // Records that point at the branch without a database link (or with one that would take them along).
+        if (await _db.SalesDocuments.AnyAsync(d => d.BranchId == id)
+            || await _db.JournalEntries.AnyAsync(e => e.BranchId == id)
+            || await _db.StockMovements.AnyAsync(m => m.BranchId == id))
+            return InUse();
+
+        var failed = await InUseAsync(async () =>
+        {
+            foreach (var w in await _db.Warehouses.Where(w => w.BranchId == id).ToListAsync())
+                await RemoveWarehouseAsync(w);
+            await RemoveMoneyAccountsAsync(await _db.MoneyAccounts.Where(a => a.BranchId == id && a.WarehouseId == null).ToListAsync());
+            _db.StockCosts.RemoveRange(await _db.StockCosts.Where(c => c.PoolId == id).ToListAsync());
+            foreach (var s in await _db.Staff.Where(s => s.BranchIds.Contains(id)).ToListAsync())
+                s.BranchIds = s.BranchIds.Where(b => b != id).ToList();
+            _db.Branches.Remove(branch);
+        });
+        if (failed) return InUse();
+        await AuditAsync("delete", "branch", id, id);
+        return NoContent();
+    }
+
+    private BadRequestObjectResult InUse() => BadRequest(new
+    {
+        message = "It has documents, stock or money recorded. Close it instead.",
+        code = "place_in_use",
+    });
+
+    /// <summary>
+    /// Runs <paramref name="remove"/> and saves in one transaction. True (and nothing changed) when
+    /// something still refers to what was removed: the database refuses, the transaction rolls back.
+    /// </summary>
+    private async Task<bool> InUseAsync(Func<Task> remove)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            await remove();
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            return false;
+        }
+        catch (Exception e) when (e is PlaceInUse
+                                   || e is DbUpdateException { InnerException: Npgsql.PostgresException { SqlState: "23503" } })
+        {
+            await tx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return true;
+        }
+    }
+
+    /// <summary>A warehouse, its department links, empty stock rows, its cash box, and people's access to it.</summary>
+    private async Task RemoveWarehouseAsync(Warehouse warehouse)
+    {
+        var id = warehouse.Id;
+        _db.WarehouseDepartments.RemoveRange(await _db.WarehouseDepartments.Where(l => l.WarehouseId == id).ToListAsync());
+        // A row left at zero is not a record; any quantity still held keeps it (the database refuses).
+        _db.StockBalances.RemoveRange(await _db.StockBalances.Where(b => b.WarehouseId == id && b.Quantity == 0).ToListAsync());
+        await RemoveMoneyAccountsAsync(await _db.MoneyAccounts.Where(a => a.WarehouseId == id).ToListAsync());
+        foreach (var s in await _db.Staff.Where(s => s.WarehouseIds.Contains(id)).ToListAsync())
+            s.WarehouseIds = s.WarehouseIds.Where(w => w != id).ToList();
+        _db.Warehouses.Remove(warehouse);
+    }
+
+    /// <summary>Cash boxes and their ledger sub-accounts; one with any movement makes the database refuse.</summary>
+    private async Task RemoveMoneyAccountsAsync(List<MoneyAccount> accounts)
+    {
+        var ids = accounts.Select(a => a.Id).ToList();
+        if (ids.Count == 0) return;
+        if (await _db.MoneyMovements.AnyAsync(m => ids.Contains(m.AccountId)))
+            throw new PlaceInUse();
+        _db.LedgerAccounts.RemoveRange(await _db.LedgerAccounts.Where(l => l.MoneyAccountId != null && ids.Contains(l.MoneyAccountId.Value)).ToListAsync());
+        foreach (var s in await _db.Staff.Where(s => s.MoneyAccountIds.Count > 0).ToListAsync())
+            if (s.MoneyAccountIds.Any(ids.Contains)) s.MoneyAccountIds = s.MoneyAccountIds.Where(a => !ids.Contains(a)).ToList();
+        _db.MoneyAccounts.RemoveRange(accounts);
+    }
+
     private BadRequestObjectResult BadPrefix() =>
         BadRequest(new { message = "A prefix is up to 10 letters or digits.", code = "bad_prefix" });
 
@@ -363,4 +471,7 @@ public sealed class WarehousesController : ControllerBase
 
     private async Task<string> CurrencyAsync() =>
         await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP";
+
+    /// <summary>Something recorded still uses the place being deleted.</summary>
+    private sealed class PlaceInUse : Exception;
 }

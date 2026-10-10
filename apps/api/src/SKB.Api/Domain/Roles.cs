@@ -146,6 +146,15 @@ public static class Permissions
     public const string BranchesView = "branches:view";
     /// <summary>Create, rename, deactivate warehouses and pick each branch's default warehouse.</summary>
     public const string BranchesManage = "branches:manage";
+    /// <summary>Delete a branch that has nothing recorded in it (owner, 2026-10-10).</summary>
+    public const string BranchesDelete = "branches:delete";
+    /// <summary>Delete a warehouse that has nothing recorded in it (owner, 2026-10-10).</summary>
+    public const string WarehousesDelete = "warehouses:delete";
+    /// <summary>
+    /// See the server's load: processor, memory, disk, temperature, the database and the assistant
+    /// (owner, 2026-10-10). The owner's alone: not given to the admin, nor grantable (see OwnerOnly).
+    /// </summary>
+    public const string SystemMonitor = "system:monitor";
     public const string AnalyticsView = "analytics:view";
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
@@ -254,7 +263,7 @@ public static class Permissions
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,
-        BranchesView, BranchesManage,
+        BranchesView, BranchesManage, BranchesDelete, WarehousesDelete,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
         VariantOptionsManage, SeasonsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
@@ -268,8 +277,11 @@ public static class Permissions
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel, NotesLost,
         PayrollView, EmployeesManage, AttendanceEdit, PayrollAdjust, PayrollAdvance, PayrollPost, PayrollPay,
-        LabelsPrint, ChatUse, ChatMonitor, ChatManage, AiChat, AiScan,
+        LabelsPrint, ChatUse, ChatMonitor, ChatManage, AiChat, AiScan, SystemMonitor,
     };
+
+    /// <summary>Held by the owner alone: never by the admin, a role or a grant.</summary>
+    public static readonly string[] OwnerOnly = { SystemMonitor };
 }
 
 public static class RolePermissions
@@ -279,8 +291,9 @@ public static class RolePermissions
     public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
-        // The admin has every permission, and every one added later (owner decision 2026-10-02).
-        [Role.ADMIN] = All,
+        // The admin has every permission, and every one added later (owner decision 2026-10-02),
+        // except the owner's own.
+        [Role.ADMIN] = All.Except(Permissions.OwnerOnly).ToArray(),
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,

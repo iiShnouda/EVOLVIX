@@ -526,7 +526,7 @@ public sealed class StaffController : ControllerBase
     [HttpGet("permissions")]
     [Authorize(Policy = Permissions.StaffView)]
     public ActionResult<PermissionInfoDto[]> AllPermissions() =>
-        Ok(Permissions.All.Select(p => new PermissionInfoDto(p, p.Split(':')[0])).ToArray());
+        Ok(Permissions.All.Except(Permissions.OwnerOnly).Select(p => new PermissionInfoDto(p, p.Split(':')[0])).ToArray());
 
     // ------------------------------------------------------------------ helpers
 

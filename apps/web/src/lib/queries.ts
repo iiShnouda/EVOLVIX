@@ -790,6 +790,25 @@ export function useUpdateWarehouse() {
   });
 }
 
+export function useDeleteWarehouse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/warehouses/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['inventory'] }),
+  });
+}
+
+export function useDeleteBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/branches/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['branches'] });
+    },
+  });
+}
+
 export function useStocktake() {
   const qc = useQueryClient();
   return useMutation({

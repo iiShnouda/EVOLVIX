@@ -44,6 +44,8 @@ const ALL: Permission[] = [
   'staff:access',
   'branches:view',
   'branches:manage',
+  'branches:delete',
+  'warehouses:delete',
   'analytics:view',
   'settings:view',
   'settings:manage',
@@ -122,7 +124,11 @@ const ALL: Permission[] = [
   'chat:manage',
   'ai:chat',
   'ai:scan',
+  'system:monitor',
 ];
+
+/** The owner's alone: never the admin's, a role's or a grant (the server enforces it too). */
+export const OWNER_ONLY: Permission[] = ['system:monitor'];
 
 const PURCHASE_CHARGES: Permission[] = [
   'purchases:discount',
@@ -146,7 +152,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
   // The admin has every permission, new ones too (owner decision 2026-10-02).
-  ADMIN: ALL,
+  ADMIN: ALL.filter((p) => !OWNER_ONLY.includes(p)),
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',

@@ -11,6 +11,8 @@ import {
   useCompanySettings,
   useCreateBranch,
   useCreateWarehouse,
+  useDeleteBranch,
+  useDeleteWarehouse,
   useDepartments,
   useUpdateBranch,
   useUpdateWarehouse,
@@ -25,7 +27,9 @@ const EMPTY: NameValues = '';
 /**
  * Branches & warehouses (الفروع والمخازن): every branch with the warehouses that hold its stock.
  * Managers add and rename branches, add, rename, close or reopen warehouses and pick each branch's
- * default. Names are kept exactly as typed. The server refuses closing a warehouse that still holds stock or is the default.
+ * default; a branch or warehouse with nothing recorded can be deleted. Names are kept exactly as
+ * typed. The server refuses closing a warehouse that still holds stock or is the default, and
+ * deleting one that has documents, stock or money.
  */
 export function BranchesPage() {
   const { t } = useT();
@@ -133,6 +137,8 @@ function BranchCard({
   const { t } = useT();
   const create = useCreateWarehouse();
   const update = useUpdateBranch();
+  const remove = useDeleteBranch();
+  const canDelete = useCan()('branches:delete');
   const [names, setNames] = useState<NameValues>(EMPTY);
   const [code, setCode] = useState('');
   const [editing, setEditing] = useState(false);
@@ -140,7 +146,7 @@ function BranchCard({
   const [location, setLocation] = useState(branch.location ?? '');
   const [prefix, setPrefix] = useState(branch.prefix ?? '');
   const error = create.error as ApiError | null;
-  const editError = update.error as ApiError | null;
+  const editError = (update.error ?? remove.error) as ApiError | null;
   const typed = changedNames(names);
 
   async function add() {
@@ -237,9 +243,23 @@ function BranchCard({
                   {t('branches.edit')}
                 </Button>
               )}
+              {canDelete && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive"
+                  loading={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm(t('branches.deleteAsk'))) remove.mutate(branch.id);
+                  }}
+                >
+                  {t('common.delete')}
+                </Button>
+              )}
             </div>
           </div>
         )}
+        {!editing && editError && <p className="mt-2 text-xs text-destructive">{errorText(t, editError)}</p>}
       </div>
 
       {branch.warehouses.length === 0 ? (
@@ -301,12 +321,14 @@ function WarehouseRow({
   // A warehouse's stock value (at cost) is the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
   const update = useUpdateWarehouse();
+  const remove = useDeleteWarehouse();
+  const canDelete = useCan()('warehouses:delete');
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(w.name));
   const [prefix, setPrefix] = useState(w.prefix ?? '');
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   const mine = new Set(w.departmentIds ?? []);
-  const error = update.error as ApiError | null;
+  const error = (update.error ?? remove.error) as ApiError | null;
 
   async function run(input: Parameters<typeof update.mutateAsync>[0]['input']) {
     try {
@@ -385,9 +407,6 @@ function WarehouseRow({
               );
             })}
           </div>
-          {mine.size === 0 && (
-            <p className="mt-1 text-xs text-faint">{t('warehouse.allDepartments')}</p>
-          )}
         </div>
       )}
 
@@ -448,6 +467,19 @@ function WarehouseRow({
                   onClick={() => run({ isActive: true })}
                 >
                   {t('warehouse.reopen')}
+                </Button>
+              )}
+              {canDelete && !w.isDefault && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive"
+                  loading={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm(t('warehouse.deleteAsk'))) remove.mutate(w.id);
+                  }}
+                >
+                  {t('common.delete')}
                 </Button>
               )}
             </>

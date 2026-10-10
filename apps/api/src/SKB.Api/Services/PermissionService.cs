@@ -21,8 +21,8 @@ public sealed class PermissionService
     {
         var saved = await _db.RolePermissionSets.AsNoTracking().ToDictionaryAsync(r => r.Role);
         return Enum.GetValues<Role>().ToDictionary(role => role, role =>
-            role is Role.OWNER or Role.ADMIN
-                ? (Permissions.All, false)
+            role is Role.OWNER ? (Permissions.All, false)
+            : role is Role.ADMIN ? (Known(Permissions.All.Except(Permissions.OwnerOnly)), false)
                 : saved.TryGetValue(role, out var set)
                     ? (Known(set.Permissions), true)
                     : (RolePermissions.For(role), false));
@@ -33,10 +33,12 @@ public sealed class PermissionService
     public static string[] Effective(Staff staff, IReadOnlyDictionary<Role, (string[] Permissions, bool Custom)> sets)
     {
         // The owner and the admin have everything, including permissions added later.
-        if (staff.Role == Role.OWNER || (staff.Role == Role.ADMIN && staff.CustomRole is null)) return Permissions.All;
+        // The owner's own permissions (Permissions.OwnerOnly) are nobody else's.
+        if (staff.Role == Role.OWNER) return Permissions.All;
+        if (staff.Role == Role.ADMIN && staff.CustomRole is null) return Known(Permissions.All.Except(Permissions.OwnerOnly));
         var set = staff.CustomRole is { } custom ? custom.Permissions.ToArray()
             : sets.TryGetValue(staff.Role, out var s) ? s.Permissions : RolePermissions.For(staff.Role);
-        return Known(set.Union(staff.GrantedPermissions).Except(staff.RevokedPermissions));
+        return Known(set.Union(staff.GrantedPermissions).Except(staff.RevokedPermissions).Except(Permissions.OwnerOnly));
     }
 
     /// <summary>Only real permission names, in their standard order.</summary>

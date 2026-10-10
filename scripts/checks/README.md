@@ -6,6 +6,7 @@ live company server.
 
 | Script | What it checks |
 |---|---|
+| `places.test.mjs` | Deleting branches and warehouses: an empty one goes with its store and cash boxes; one with documents or stock, the default warehouse, the last warehouse and a branch people belong to stay; own permissions; the server monitor can't be given. |
 | `clean.test.mjs` | A company server's first start (`Seed__Demo=false`, empty database): only the owner, one branch, its warehouse, the cash customer; buying and selling work at once. |
 | `profit.test.mjs` | Profit and loss: equals the ledger, branches + general = total, warehouses add up to their branch, an expense from a warehouse's box lands on it and one from the main box on general, moving money between boxes changes no profit, sales staff refused. |
 | `tree.test.mjs` | Department sub-groups (prefixes, keywords, no two siblings with one name, no loops), item codes following the path, the in-store EAN-13 barcode, search by folded spellings, outlines and a slipped letter, the group filter, label barcodes. |
