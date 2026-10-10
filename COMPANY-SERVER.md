@@ -150,6 +150,14 @@ Then in the Tailscale admin page:
 On each phone or PC: install Tailscale and sign in to the same account. The apps keep using
 `http://192.168.100.63:8080` in the office and outside it alike.
 
+Close everything else (the office network and the internet reach nothing; only Tailscale's own
+port, 41641/udp, is open; SSH too works only over Tailscale):
+```bash
+sudo bash scripts/lock-to-tailscale.sh          # --undo opens the office network again
+```
+Docker's published ports skip ufw's normal rules, so the script also closes them in Docker's
+`DOCKER-USER` chain. Office devices then need the Tailscale app as well.
+
 Lock it down:
 - Turn on **two-step sign-in** on the Tailscale account.
 - Turn on **Device approval**.

@@ -76,7 +76,9 @@ done
 curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null || { echo "The app didn't start: docker compose logs app"; exit 1; }
 
 # ---- 5. Firewall: only the app's port is opened -------------------------------------------------
-if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+# (Not after scripts/lock-to-tailscale.sh: then only Tailscale reaches it.)
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active" \
+   && ! grep -q 'BEGIN evolvix-tailscale-only' /etc/ufw/after.rules 2>/dev/null; then
   ufw allow "${PORT}/tcp" >/dev/null
 fi
 
