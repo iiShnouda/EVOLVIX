@@ -27,6 +27,7 @@ import { setTabRoutes } from './components/shell/Tabs';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
+import { CrashScreen } from './components/CrashScreen';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
@@ -219,8 +220,8 @@ function EditSalesInvoiceRoute() {
 // A data router, so a screen with work on it can ask before it is left (useBlocker).
 const routes = createRoutesFromElements(
   <>
-    <Route path="/login" element={<LoginRoute />} />
-    <Route element={<ProtectedApp />}>
+    <Route path="/login" element={<LoginRoute />} errorElement={<CrashScreen />} />
+    <Route element={<ProtectedApp />} errorElement={<CrashScreen />}>
       <Route index element={<Landing />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />

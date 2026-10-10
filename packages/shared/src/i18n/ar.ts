@@ -2515,4 +2515,7 @@ export const ar: TranslationDictionary = {
   'pnl.losses': 'الخسائر والتكاليف',
   'pnl.details': 'عرض التفاصيل',
   'pnl.title': 'الأرباح والخسائر',
+  'crash.title': 'تعذّر عرض هذه الصفحة',
+  'crash.reload': 'إعادة التحميل',
+  'crash.home': 'لوحة التحكم',
 };

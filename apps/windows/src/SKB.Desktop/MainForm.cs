@@ -32,14 +32,17 @@ internal sealed class MainForm : Form
     {
         Text = Installer.Name;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        MinimumSize = new Size(1024, 700);
         StartPosition = FormStartPosition.Manual;
         // The screen it was last on (owner, 2026-10-05: "full screen on the computer, never small"):
-        // it always opens filling that screen; F11 hides the title bar and the taskbar too.
+        // it always opens filling that screen; F11 hides the title bar and the taskbar too, and is
+        // remembered for the next start.
         var bounds = AppSettings.WindowBounds;
         var screen = bounds is Rectangle r && Array.Find(Screen.AllScreens, s => s.WorkingArea.IntersectsWith(r)) is Screen hit
             ? hit
             : Screen.PrimaryScreen;
+        // Never larger than the screen (a laptop at 125-150% scaling is smaller than 1024 x 700), or
+        // Windows can't make it fill the screen.
+        MinimumSize = new Size(Math.Min(1024, screen.WorkingArea.Width), Math.Min(700, screen.WorkingArea.Height));
         Bounds = screen.WorkingArea;
         WindowState = FormWindowState.Maximized;
         KeyPreview = true;
@@ -50,6 +53,13 @@ internal sealed class MainForm : Form
     {
         base.OnLoad(e);
         await InitAsync();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (AppSettings.FullScreen) ToggleFullScreen(true);
+        else WindowState = FormWindowState.Maximized;
     }
 
     private async Task InitAsync()
@@ -96,13 +106,20 @@ internal sealed class MainForm : Form
             else if (a.HttpStatusCode >= 500)
                 ShowOffline($"HTTP {a.HttpStatusCode}");
         };
-        // Buttons on the offline page. Harmless if a server page sends them: retry / open settings.
+        // Buttons on the offline page, and F11 inside the page (the page has the keyboard, so the
+        // window never sees it). Harmless if a server page sends them.
         core.WebMessageReceived += (_, a) =>
         {
             var message = a.TryGetWebMessageAsString();
             if (message == "retry") OpenServer();
             else if (message == "settings") ShowSettings();
+            else if (message == "fullscreen") ToggleFullScreen(!_fullScreen);
         };
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(
+            "addEventListener('keydown',function(e){if(e.key==='F11'){e.preventDefault();" +
+            "chrome.webview.postMessage('fullscreen')}},true);");
+        // A page asking for the whole screen (e.g. a video) gets the window's whole screen too.
+        core.ContainsFullScreenElementChanged += (_, _) => ToggleFullScreen(core.ContainsFullScreenElement);
 
         OpenServer();
     }
@@ -171,6 +188,7 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
     {
         if (on == _fullScreen) return;
         _fullScreen = on;
+        AppSettings.FullScreen = on;
         if (on)
         {
             WindowState = FormWindowState.Normal;
@@ -180,6 +198,7 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
         else
         {
             FormBorderStyle = FormBorderStyle.Sizable;
+            Bounds = Screen.FromControl(this).WorkingArea;
             WindowState = FormWindowState.Maximized;
         }
     }
@@ -197,7 +216,7 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         AppSettings.Maximized = WindowState == FormWindowState.Maximized;
-        AppSettings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        if (!_fullScreen) AppSettings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
         base.OnFormClosing(e);
     }
 }

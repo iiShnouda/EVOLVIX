@@ -2529,4 +2529,7 @@ export const en = {
   'pnl.losses': 'Losses and costs',
   'pnl.details': 'View details',
   'pnl.title': 'Profit and loss',
+  'crash.title': 'This page couldn\'t be shown',
+  'crash.reload': 'Reload',
+  'crash.home': 'Dashboard',
 } as const;
