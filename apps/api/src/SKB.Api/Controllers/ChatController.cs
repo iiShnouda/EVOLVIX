@@ -108,17 +108,33 @@ public sealed class ChatController : ControllerBase
         if (!Guid.TryParse(req.StaffId, out var other) || other == me
             || !await _db.Staff.AnyAsync(s => s.Id == other && s.IsActive))
             return BadRequest(new { message = "Choose a colleague.", code = "staff_not_found" });
-        var found = await _db.ChatConversations.Where(c => c.Kind == ChatKind.DIRECT
-                && c.Members.Any(m => m.StaffId == me) && c.Members.Any(m => m.StaffId == other))
-            .Select(c => (Guid?)c.Id).FirstOrDefaultAsync();
-        if (found is Guid id) return Ok(new ChatConversationRefDto(id.ToString()));
-        var conv = new ChatConversation { Kind = ChatKind.DIRECT, CreatedById = me };
+        return Ok(new ChatConversationRefDto((await DirectWithAsync(me, other)).ToString()));
+    }
+
+    /// <summary>
+    /// The one conversation between two people, made the first time. The pair's key is unique, so a
+    /// second request at the same moment (a double click) finds the first one's.
+    /// </summary>
+    private async Task<Guid> DirectWithAsync(Guid me, Guid other)
+    {
+        var key = ChatConversation.PairKey(me, other);
+        var found = await _db.ChatConversations.Where(c => c.DirectKey == key).Select(c => (Guid?)c.Id).FirstOrDefaultAsync();
+        if (found is Guid id) return id;
+        var conv = new ChatConversation { Kind = ChatKind.DIRECT, CreatedById = me, DirectKey = key };
         conv.Members.Add(new ChatMember { StaffId = me });
         conv.Members.Add(new ChatMember { StaffId = other });
         _db.ChatConversations.Add(conv);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            _db.ChangeTracker.Clear();
+            return await _db.ChatConversations.Where(c => c.DirectKey == key).Select(c => c.Id).FirstAsync();
+        }
         await AuditAsync("create", "chat_conversation", conv.Id);
-        return Ok(new ChatConversationRefDto(conv.Id.ToString()));
+        return conv.Id;
     }
 
     /// <summary>Make a group conversation (chat:manage); its maker is in it.</summary>
@@ -130,6 +146,10 @@ public sealed class ChatController : ControllerBase
         if (title is null) return BadRequest(new { message = "The group needs a name.", code = "bad_name" });
         var members = await MembersAsync(req.MemberIds);
         if (members is null) return BadRequest(new { message = "Choose its members.", code = "staff_not_found" });
+        // A "group" of one other person is the one-to-one conversation with them.
+        var others = members.Where(m => m != Me).Distinct().ToList();
+        if (others.Count == 1)
+            return Ok(new ChatConversationRefDto((await DirectWithAsync(Me, others[0])).ToString()));
         var conv = new ChatConversation { Kind = ChatKind.GROUP, Title = title[..Math.Min(120, title.Length)], CreatedById = Me };
         foreach (var id in members.Append(Me).Distinct()) conv.Members.Add(new ChatMember { StaffId = id });
         _db.ChatConversations.Add(conv);

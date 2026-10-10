@@ -412,6 +412,8 @@ public class AppDbContext : DbContext
         b.Entity<ChatMessage>().Property(m => m.Text).HasMaxLength(4000);
         b.Entity<ChatConversation>().Property(c => c.Kind).HasConversion<string>().HasMaxLength(10);
         b.Entity<ChatConversation>().Property(c => c.Title).HasMaxLength(120);
+        b.Entity<ChatConversation>().Property(c => c.DirectKey).HasMaxLength(80);
+        b.Entity<ChatConversation>().HasIndex(c => c.DirectKey).IsUnique().HasFilter("\"DirectKey\" IS NOT NULL");
         b.Entity<ChatMute>().HasKey(m => m.StaffId);
         b.Entity<ChatMute>().HasOne(m => m.Staff).WithMany()
             .HasForeignKey(m => m.StaffId).OnDelete(DeleteBehavior.Cascade);

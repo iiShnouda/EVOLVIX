@@ -1637,10 +1637,21 @@ public class ChatConversation
     public Guid Id { get; set; } = Guid.NewGuid();
     public ChatKind Kind { get; set; }
     public string? Title { get; set; }
+    /// <summary>
+    /// A one-to-one conversation's pair, the two people's ids in order ("a:b"), unique: there is one
+    /// conversation per two people (owner, 2026-10-10). Null for a group.
+    /// </summary>
+    public string? DirectKey { get; set; }
     public Guid CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastMessageAt { get; set; } = DateTime.UtcNow;
     public List<ChatMember> Members { get; set; } = new();
+
+    public static string PairKey(Guid a, Guid b)
+    {
+        string x = a.ToString(), y = b.ToString();
+        return string.CompareOrdinal(x, y) < 0 ? $"{x}:{y}" : $"{y}:{x}";
+    }
 }
 
 public class ChatMember

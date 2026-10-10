@@ -22,6 +22,10 @@ const karimId = people.find((p) => p.name.startsWith('Karim')).id;
 const conv = ok('direct', await karim.post('/chat/direct', { staffId: saraId }));
 const again = ok('direct again', await karim.post('/chat/direct', { staffId: saraId }));
 eq('same conversation', again.id, conv.id);
+// One conversation per two people (owner, 2026-10-10): from either side, and with clicks at once.
+eq('the other side opens the same one', (await sara.post('/chat/direct', { staffId: karimId })).data?.id, conv.id);
+const burst = await Promise.all([1, 2, 3, 4].map(() => mona.post('/chat/direct', { staffId: saraId })));
+eq('clicks at once open one conversation', new Set(burst.map((r) => r.data?.id)).size, 1);
 ok(
   'send',
   await karim.post(`/chat/conversations/${conv.id}/messages`, {
@@ -74,6 +78,11 @@ ok(
 const g = ok(
   'group',
   await o.post('/chat/groups', { title: 'المندوبون', memberIds: [karimId, saraId] }),
+);
+eq(
+  'a group of one other person is the one-to-one conversation',
+  (await o.post('/chat/groups', { title: 'x', memberIds: [karimId] })).data?.id,
+  (await o.post('/chat/direct', { staffId: karimId })).data?.id,
 );
 check(
   'karim cannot make group',
