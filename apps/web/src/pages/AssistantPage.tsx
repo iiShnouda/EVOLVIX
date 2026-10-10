@@ -23,7 +23,11 @@ export function AssistantPage() {
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const turns: AssistantTurn[] = history.data ?? [];
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [turns.length, pending]);
+  // A block body: newer browsers return a promise from scrollIntoView, and React would take a
+  // returned value for the effect's clean-up ("is not a function" on leaving the page).
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' });
+  }, [turns.length, pending]);
   const ready = !!status.data?.chatReady;
 
   async function ask() {

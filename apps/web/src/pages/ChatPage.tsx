@@ -223,7 +223,11 @@ function Thread({
   const [sending, setSending] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => messages.data ?? [], [messages.data]);
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [rows.length]);
+  // A block body: newer browsers return a promise from scrollIntoView, and React would take a
+  // returned value for the effect's clean-up ("is not a function" on leaving the page).
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' });
+  }, [rows.length]);
   const canWrite = conversation.mine && can('chat:use') && !muted;
 
   async function send() {

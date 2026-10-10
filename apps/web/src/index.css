@@ -140,6 +140,12 @@ input[type='number'] {
 
 /* Visible, consistent focus ring for keyboard users. In the base layer, so a field that draws its
    own focus (its box lights up, e.g. the sign-in boxes) can turn it off with outline-none. */
+/* Edge / the Windows app add their own eye and clear buttons to inputs; the app has its own. */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
 @layer base {
   :where(button, a, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid var(--c-brand);
