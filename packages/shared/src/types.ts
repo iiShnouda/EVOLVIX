@@ -2086,7 +2086,7 @@ export interface BalanceSheet {
 }
 
 export interface MonthlySales {
-  /** yyyy-MM. */
+  /** The period: yyyy-MM (a month) or yyyy (a year). */
   month: string;
   sales: number;
   returns: number;

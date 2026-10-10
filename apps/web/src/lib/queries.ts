@@ -1879,10 +1879,14 @@ export function useBalanceSheet(asOf: string) {
   });
 }
 
-export function useMonthlySales(months: number) {
+/** Net sales and purchases a month (the last `count` months) or a year (the last `count` years). */
+export function useMonthlySales(count: number, by: 'month' | 'year' = 'month') {
   return useQuery({
-    queryKey: ['report', 'monthly', months],
-    queryFn: () => api.get<MonthlySales[]>(`/analytics/monthly?months=${months}`),
+    queryKey: ['report', 'monthly', by, count],
+    queryFn: () =>
+      api.get<MonthlySales[]>(
+        by === 'year' ? `/analytics/monthly?by=year&years=${count}` : `/analytics/monthly?months=${count}`,
+      ),
   });
 }
 

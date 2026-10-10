@@ -25,29 +25,37 @@ public sealed class AnalyticsController : ControllerBase
     private static readonly DocumentType[] SalesTypes = { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN };
     private static readonly DocumentType[] PurchaseTypes = { DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN };
 
-    /// <summary>Net sales and purchases for each of the last <paramref name="months"/> months (the company's months).</summary>
+    /// <summary>
+    /// Net sales and purchases for each of the last <paramref name="months"/> months, or with
+    /// <paramref name="by"/> = "year" each of the last <paramref name="years"/> years (the company's
+    /// months and years). Each row's key is "yyyy-MM" or "yyyy".
+    /// </summary>
     [HttpGet("monthly")]
-    public async Task<ActionResult<MonthlySalesDto[]>> Monthly([FromQuery] int months = 12)
+    public async Task<ActionResult<MonthlySalesDto[]>> Monthly([FromQuery] int months = 12, [FromQuery] string? by = null,
+        [FromQuery] int years = 5)
     {
-        months = Math.Clamp(months, 1, 36);
+        var yearly = string.Equals(by, "year", StringComparison.OrdinalIgnoreCase);
         var today = CompanyClock.Today;
-        var first = new DateOnly(today.Year, today.Month, 1).AddMonths(-(months - 1));
+        var first = yearly
+            ? new DateOnly(today.Year - (Math.Clamp(years, 1, 15) - 1), 1, 1)
+            : new DateOnly(today.Year, today.Month, 1).AddMonths(-(Math.Clamp(months, 1, 60) - 1));
         var since = CompanyClock.StartOf(first);
         var zone = CompanyClock.ZoneId;
         var rows = await Docs().Where(d => d.IssueDate >= since)
             .Select(d => new { At = AppDbContext.LocalTime(zone, d.IssueDate), d.Type, d.Subtotal, d.DiscountTotal })
-            .GroupBy(d => new { d.At.Year, d.At.Month, d.Type })
+            .GroupBy(d => new { d.At.Year, Month = yearly ? 1 : d.At.Month, d.Type })
             .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Type, Net = g.Sum(d => d.Subtotal - d.DiscountTotal), Count = g.Count() })
             .ToListAsync();
         var result = new List<MonthlySalesDto>();
-        for (var m = first; m <= today; m = m.AddMonths(1))
+        for (var m = first; m <= today; m = yearly ? m.AddYears(1) : m.AddMonths(1))
         {
-            long Sum(DocumentType t) => rows.Where(r => r.Year == m.Year && r.Month == m.Month && r.Type == t).Sum(r => r.Net);
+            var period = rows.Where(r => r.Year == m.Year && (yearly || r.Month == m.Month)).ToList();
+            long Sum(DocumentType t) => period.Where(r => r.Type == t).Sum(r => r.Net);
             var sales = Sum(DocumentType.SALES_INVOICE);
             var returns = Sum(DocumentType.SALES_RETURN);
-            result.Add(new MonthlySalesDto(m.ToString("yyyy-MM"), sales, returns, sales - returns,
+            result.Add(new MonthlySalesDto(m.ToString(yearly ? "yyyy" : "yyyy-MM"), sales, returns, sales - returns,
                 Sum(DocumentType.PURCHASE_INVOICE) - Sum(DocumentType.PURCHASE_RETURN),
-                rows.Where(r => r.Year == m.Year && r.Month == m.Month && r.Type == DocumentType.SALES_INVOICE).Sum(r => r.Count)));
+                period.Where(r => r.Type == DocumentType.SALES_INVOICE).Sum(r => r.Count)));
         }
         return Ok(result.ToArray());
     }

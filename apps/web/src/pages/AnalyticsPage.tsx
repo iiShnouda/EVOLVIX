@@ -10,7 +10,7 @@ import {
   companyToday,
 } from '@skb/shared';
 import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
-import { TrendChart } from '../components/charts/TrendChart';
+import { PeriodBars } from '../components/charts/PeriodBars';
 import { ProfitabilityPage } from './ProfitabilityPage';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
@@ -142,35 +142,61 @@ function Period({
 
 function MonthlyTab() {
   const { t, locale } = useT();
+  const [by, setBy] = useState<'month' | 'year'>('month');
   const [months, setMonths] = useState(12);
-  const { data, isLoading } = useMonthlySales(months);
+  const [years, setYears] = useState(5);
+  const yearly = by === 'year';
+  const { data, isLoading } = useMonthlySales(yearly ? years : months, by);
   const currency = 'EGP';
   const m = (v: number) => formatMoney(v, currency, locale);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
-  const monthName = (month: string) =>
-    new Date(`${month}-15`).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-      month: 'long',
-      year: 'numeric',
-    });
-  const subtitle = `${t('analytics.months')}: ${formatNumber(months, locale)}`;
+  const intl = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
+  // A period's name: "October 2026" for a month, "2026" for a year.
+  const monthName = (period: string) =>
+    period.length === 4
+      ? formatNumber(Number(period), locale).replace(/[,٬]/g, '')
+      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const shortName = (period: string) =>
+    period.length === 4
+      ? monthName(period)
+      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, { month: 'short', year: '2-digit', timeZone: 'UTC' });
+  const subtitle = yearly
+    ? `${t('analytics.years')}: ${formatNumber(years, locale)}`
+    : `${t('analytics.months')}: ${formatNumber(months, locale)}`;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted">{t('analytics.months')}</span>
-          <select
-            className={small}
-            value={months}
-            onChange={(e) => setMonths(Number(e.target.value))}
-          >
-            {[3, 6, 12, 24].map((n) => (
-              <option key={n} value={n}>
-                {formatNumber(n, locale)}
-              </option>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex rounded-[var(--radius-app)] bg-surface-2 p-1 text-sm" role="tablist">
+            {(['month', 'year'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={by === v}
+                onClick={() => setBy(v)}
+                className={`h-8 rounded-lg px-4 ${by === v ? 'bg-surface font-semibold text-brand shadow-sm' : 'text-muted hover:text-fg'}`}
+              >
+                {t(v === 'month' ? 'analytics.byMonth' : 'analytics.byYear')}
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">{t(yearly ? 'analytics.years' : 'analytics.months')}</span>
+            <select
+              className={small}
+              value={yearly ? years : months}
+              onChange={(e) => (yearly ? setYears : setMonths)(Number(e.target.value))}
+            >
+              {(yearly ? [2, 3, 5, 10] : [3, 6, 12, 24, 36]).map((n) => (
+                <option key={n} value={n}>
+                  {formatNumber(n, locale)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <ReportActions
           disabled={!data}
           onPrint={() => report.print(paper.current, t('analytics.tabMonthly'), subtitle)}
@@ -180,7 +206,7 @@ function MonthlyTab() {
               t('analytics.tabMonthly'),
               subtitle,
               [
-                t('analytics.month'),
+                t(yearly ? 'analytics.year' : 'analytics.month'),
                 t('analytics.sales'),
                 t('analytics.returns'),
                 t('analytics.netSales'),
@@ -223,15 +249,27 @@ function MonthlyTab() {
                 {t('analytics.netPurchases')}
               </span>
             </div>
-            <TrendChart
-              data={data.map((x) => ({
-                date: `${x.month}-15`,
-                sales: x.netSales,
-                purchases: x.netPurchases,
+            <PeriodBars
+              rows={data.map((x) => ({
+                key: x.month,
+                label: shortName(x.month),
+                title: monthName(x.month),
+                sales: x.sales,
+                returns: x.returns,
+                netSales: x.netSales,
+                netPurchases: x.netPurchases,
+                invoices: x.invoices,
               }))}
               locale={locale}
               currency={currency}
-              labels="month"
+              labels={{
+                sales: t('analytics.sales'),
+                returns: t('analytics.returns'),
+                netSales: t('analytics.netSales'),
+                netPurchases: t('analytics.netPurchases'),
+                invoices: t('analytics.invoices'),
+                change: t(yearly ? 'analytics.changeYear' : 'analytics.changeMonth'),
+              }}
             />
           </Card>
           <Card padded={false} className="overflow-x-auto">
@@ -239,7 +277,9 @@ function MonthlyTab() {
               <table className="w-full min-w-[34rem] text-sm">
                 <thead className="bg-surface-2 text-xs text-muted">
                   <tr>
-                    <th className="px-3 py-2 text-start font-normal">{t('analytics.month')}</th>
+                    <th className="px-3 py-2 text-start font-normal">
+                      {t(yearly ? 'analytics.year' : 'analytics.month')}
+                    </th>
                     <th className="px-3 py-2 text-end font-normal">{t('analytics.sales')}</th>
                     <th className="px-3 py-2 text-end font-normal">{t('analytics.returns')}</th>
                     <th className="px-3 py-2 text-end font-normal">{t('analytics.netSales')}</th>
