@@ -73,6 +73,7 @@ const ALL: Permission[] = [
   'price_levels:manage',
   'price_lists:manage',
   'categories:manage',
+  'departments:delete',
   'units:manage',
   'variant_options:manage',
   'seasons:manage',

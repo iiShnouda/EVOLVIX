@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { formatNumber, type Permission, type TranslationKey } from '@skb/shared';
+import { formatNumber, type Permission, type TranslationKey, type Warehouse } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
+import { Icon } from '../components/Icon';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -9,6 +10,7 @@ import { ApiError } from '../lib/api';
 import {
   useCreateCatalogEntry,
   useCreateSeason,
+  useDeleteDepartment,
   useDepartments,
   useGroups,
   useSeasons,
@@ -26,7 +28,8 @@ type Tab = 'departments' | 'groups' | 'units' | 'sizes' | 'colors' | 'seasons';
 /**
  * The lists items are built from (owner decision 2026-10-01): departments (no separate groups),
  * units with how many pieces each holds, sizes, colors with their swatch, and seasons. No price
- * levels: an item has one sale price per unit.
+ * levels: an item has one sale price per unit. A department is added in the branches' warehouses
+ * chosen, shows where it is, and one with nothing recorded can be deleted (owner, 2026-10-11).
  */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'departments', label: 'setup.departments', permission: 'categories:manage' },
@@ -66,7 +69,7 @@ export function CatalogSetupPage() {
   const options = useVariantOptions();
   const seasons = useSeasons();
   const warehouses = useWarehouses(true);
-  const warehouseName = new Map((warehouses.data ?? []).map((w) => [w.id, w.name]));
+  const stores = (warehouses.data ?? []).filter((w) => w.kind === 'STORE');
 
   const current = TABS.find((x) => x.key === tab)!;
   const canManage = can(current.permission);
@@ -131,7 +134,11 @@ export function CatalogSetupPage() {
       ) : (
         <>
           {canManage &&
-            (tab === 'seasons' ? <AddSeason /> : <AddEntry key={tab} tab={tab} list={list} />)}
+            (tab === 'seasons' ? (
+              <AddSeason />
+            ) : (
+              <AddEntry key={tab} tab={tab} list={list} stores={stores} />
+            ))}
 
           <Card padded={false} className="overflow-hidden">
             {loading ? (
@@ -149,7 +156,7 @@ export function CatalogSetupPage() {
                     tab={tab}
                     list={list}
                     canManage={canManage && tab !== 'seasons'}
-                    warehouseName={warehouseName}
+                    stores={stores}
                   />
                 ))}
               </ul>
@@ -171,11 +178,83 @@ const LABELS: Record<
   colors: { name: 'setup.colorName', placeholder: 'setup.colorPlaceholder' },
 };
 
-function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons' | 'groups'>; list: CatalogList }) {
+/**
+ * The warehouses a department is in, grouped by branch (owner, 2026-10-11: "it should say which
+ * branch it is in"). With a single warehouse it is simply chosen.
+ */
+function PlacePicker({
+  stores,
+  value,
+  onChange,
+}: {
+  stores: Warehouse[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const { t } = useT();
+  const branches = [...new Map(stores.map((w) => [w.branchId, w.branchName])).entries()];
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="mb-1 text-xs text-muted">{t('setup.departmentPlace')}</legend>
+      {branches.map(([branchId, branchName]) => (
+        <div key={branchId} className="flex flex-wrap items-center gap-1.5">
+          <span className="me-1 inline-flex items-center gap-1 text-xs font-semibold">
+            <Icon name="branches" size={14} className="text-muted" />
+            {branchName}
+          </span>
+          {stores
+            .filter((w) => w.branchId === branchId)
+            .map((w) => {
+              const on = value.includes(w.id);
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => toggle(w.id)}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
+                    on
+                      ? 'border-brand bg-brand-soft text-brand'
+                      : 'border-line bg-surface text-muted hover:text-fg'
+                  }`}
+                >
+                  <Icon name={on ? 'check' : 'inventory'} size={14} />
+                  {w.name}
+                </button>
+              );
+            })}
+        </div>
+      ))}
+    </fieldset>
+  );
+}
+
+/** Where a department is: the warehouses that offer it (one with no departments picked offers every one). */
+function placesOf(departmentId: string, stores: Warehouse[]): string[] {
+  return stores
+    .filter((w) => !w.departmentIds?.length || w.departmentIds.includes(departmentId))
+    .map((w) => w.id);
+}
+
+function AddEntry({
+  tab,
+  list,
+  stores,
+}: {
+  tab: Exclude<Tab, 'seasons' | 'groups'>;
+  list: CatalogList;
+  stores: Warehouse[];
+}) {
   const { t } = useT();
   const create = useCreateCatalogEntry(list);
   const [names, setNames] = useState<NameValues>('');
   const [prefix, setPrefix] = useState('');
+  const only = stores.length === 1 ? [stores[0]!.id] : [];
+  const [places, setPlaces] = useState<string[]>(only);
+  const placed = tab !== 'departments' || places.length > 0 || stores.length === 0;
   const [pieces, setPieces] = useState('1');
   const [hex, setHex] = useState('#1d4ed8');
   const typed = changedNames(names);
@@ -191,12 +270,17 @@ function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons' | 'groups'>; list
               ...(tab === 'colors' ? { hex } : {}),
             }
           : tab === 'departments'
-            ? { ...typed, prefix: prefix.trim() || undefined }
+            ? {
+                ...typed,
+                prefix: prefix.trim() || undefined,
+                ...(stores.length ? { warehouseIds: places } : {}),
+              }
             : { ...typed, pieces: Math.max(1, Math.floor(Number(pieces) || 1)) };
       await create.mutateAsync(input);
       setNames('');
       setPrefix('');
       setPieces('1');
+      setPlaces(only);
     } catch {
       /* shown below */
     }
@@ -250,10 +334,18 @@ function AddEntry({ tab, list }: { tab: Exclude<Tab, 'seasons' | 'groups'>; list
             />
           </label>
         )}
-        <Button icon="plus" loading={create.isPending} disabled={!typed.name} onClick={add}>
+        <Button
+          icon="plus"
+          loading={create.isPending}
+          disabled={!typed.name || !placed}
+          onClick={add}
+        >
           {t('common.add')}
         </Button>
       </div>
+      {tab === 'departments' && stores.length > 0 && (
+        <PlacePicker stores={stores} value={places} onChange={setPlaces} />
+      )}
       {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
     </Card>
   );
@@ -296,21 +388,35 @@ function EntryRow({
   tab,
   list,
   canManage,
-  warehouseName,
+  stores,
 }: {
   entry: Entry;
   tab: Tab;
   list: CatalogList;
   canManage: boolean;
-  warehouseName: Map<string, string>;
+  stores: Warehouse[];
 }) {
   const { t, locale } = useT();
+  const can = useCan();
   const update = useUpdateCatalogEntry(list);
+  const remove = useDeleteDepartment();
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(entry.name));
   const [prefix, setPrefix] = useState(entry.prefix ?? '');
   const [pieces, setPieces] = useState(String(entry.pieces ?? 1));
-  const error = update.error as ApiError | null;
+  const isDepartment = tab === 'departments';
+  const where = isDepartment ? placesOf(entry.id, stores) : [];
+  const [places, setPlaces] = useState<string[]>(where);
+  const error = (update.error ?? remove.error) as ApiError | null;
+
+  async function del() {
+    if (!window.confirm(t('setup.deleteDepartmentAsk'))) return;
+    try {
+      await remove.mutateAsync(entry.id);
+    } catch {
+      /* shown below */
+    }
+  }
 
   async function run(input: Record<string, unknown>) {
     try {
@@ -326,6 +432,8 @@ function EntryRow({
     if (tab === 'departments' && prefix.trim() !== (entry.prefix ?? ''))
       input.prefix = prefix.trim();
     if (tab === 'units') input.pieces = Math.max(1, Math.floor(Number(pieces) || 1));
+    if (isDepartment && stores.length && [...places].sort().join() !== [...where].sort().join())
+      input.warehouseIds = places;
     void run(input);
   }
 
@@ -333,6 +441,11 @@ function EntryRow({
     <li className={`p-4 ${entry.isActive === false ? 'opacity-60' : ''}`}>
       {editing ? (
         <div className="grid gap-2 sm:grid-cols-[1fr_160px]">
+          {isDepartment && stores.length > 0 && (
+            <div className="sm:col-span-2 sm:row-start-2">
+              <PlacePicker stores={stores} value={places} onChange={setPlaces} />
+            </div>
+          )}
           <NameFields values={names} onChange={setNames} autoFocus />
           {tab === 'departments' && (
             <label className="block">
@@ -386,10 +499,22 @@ function EntryRow({
               {t('setup.itemCount')}: {formatNumber(entry.itemCount, locale)}
             </span>
           )}
-          {tab === 'departments' && (entry.warehouseIds?.length ?? 0) > 0 && (
-            <span className="text-xs text-muted">
-              {t('setup.inWarehouses')}:{' '}
-              {entry.warehouseIds!.map((id) => warehouseName.get(id) ?? '').join('، ')}
+          {isDepartment && where.length > 0 && (
+            <span className="flex basis-full flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+              {[...new Set(stores.filter((w) => where.includes(w.id)).map((w) => w.branchId))].map(
+                (branchId) => {
+                  const inBranch = stores.filter(
+                    (w) => w.branchId === branchId && where.includes(w.id),
+                  );
+                  return (
+                    <span key={branchId} className="inline-flex items-center gap-1">
+                      <Icon name="branches" size={13} />
+                      <span className="font-medium text-fg">{inBranch[0]!.branchName}:</span>
+                      <span>{inBranch.map((w) => w.name).join('، ')}</span>
+                    </span>
+                  );
+                },
+              )}
             </span>
           )}
         </div>
@@ -415,6 +540,7 @@ function EntryRow({
                   setNames(namesFrom(entry.name));
                   setPrefix(entry.prefix ?? '');
                   setPieces(String(entry.pieces ?? 1));
+                  setPlaces(where);
                   setEditing(true);
                 }}
               >
@@ -449,6 +575,17 @@ function EntryRow({
                   onClick={() => run({ isActive: true })}
                 >
                   {t('setup.reopen')}
+                </Button>
+              )}
+              {isDepartment && can('departments:delete') && (
+                <Button
+                  size="sm"
+                  variant="dangerGhost"
+                  icon="trash"
+                  loading={remove.isPending}
+                  onClick={() => void del()}
+                >
+                  {t('common.delete')}
                 </Button>
               )}
             </>

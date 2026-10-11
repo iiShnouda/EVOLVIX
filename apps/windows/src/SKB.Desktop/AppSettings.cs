@@ -59,13 +59,6 @@ internal static class AppSettings
             : null);
     }
 
-    /// <summary>F11 (no title bar or taskbar) was on when the app was closed.</summary>
-    public static bool FullScreen
-    {
-        get => Read("FullScreen") == "1";
-        set => Write("FullScreen", value ? "1" : "0");
-    }
-
     public static bool Maximized
     {
         get => Read("Maximized") == "1";

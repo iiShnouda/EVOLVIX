@@ -108,6 +108,7 @@ export type Permission =
   | 'price_levels:manage'
   | 'price_lists:manage'
   | 'categories:manage'
+  | 'departments:delete'
   | 'labels:print'
   // Staff chat and the offline assistant (owner, 2026-10-06)
   | 'chat:use'

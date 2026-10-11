@@ -34,8 +34,8 @@ internal sealed class MainForm : Form
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.Manual;
         // The screen it was last on (owner, 2026-10-05: "full screen on the computer, never small"):
-        // it always opens filling that screen; F11 hides the title bar and the taskbar too, and is
-        // remembered for the next start.
+        // it always opens in full screen there, no title bar or taskbar (owner, 2026-10-11: "open
+        // full screen by default"); F11 brings them back for the moment, F11 again hides them.
         var bounds = AppSettings.WindowBounds;
         var screen = bounds is Rectangle r && Array.Find(Screen.AllScreens, s => s.WorkingArea.IntersectsWith(r)) is Screen hit
             ? hit
@@ -58,8 +58,7 @@ internal sealed class MainForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        if (AppSettings.FullScreen) ToggleFullScreen(true);
-        else WindowState = FormWindowState.Maximized;
+        ToggleFullScreen(true);
     }
 
     private async Task InitAsync()
@@ -200,7 +199,6 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
     {
         if (on == _fullScreen) return;
         _fullScreen = on;
-        AppSettings.FullScreen = on;
         if (on)
         {
             WindowState = FormWindowState.Normal;

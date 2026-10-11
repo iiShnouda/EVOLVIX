@@ -71,11 +71,13 @@ elif [ "$MEM_GB" -lt 12 ]; then
 fi
 
 # ---- 4. Build and start ------------------------------------------------------------------------
-say "Building and starting (the first time takes a while)"
-if grep -q '^ASSISTANT_ENABLED=false' .env; then
-  docker compose --profile full up -d --build db app
-else
-  docker compose --profile full up -d --build
+# The app and its database first, so a problem with the assistant's parts never holds the app back.
+say "Building and starting the app (the first time takes a while)"
+docker compose --profile full up -d --build --remove-orphans db app
+if ! grep -q '^ASSISTANT_ENABLED=false' .env; then
+  say "Building and starting the assistant, its hearing and its voice"
+  docker compose --profile full up -d --build assistant assistant-models speech voice \
+    || echo "!! The assistant's parts didn't start (the app works without them): docker compose --profile full logs voice speech assistant"
 fi
 
 PORT=$(grep -E '^APP_PORT=' .env | cut -d= -f2); PORT=${PORT:-8080}
@@ -85,6 +87,8 @@ for _ in $(seq 1 90); do
   sleep 2
 done
 curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null || { echo "The app didn't start: docker compose logs app"; exit 1; }
+VERSION=$(grep -m1 '"version"' apps/api/src/SKB.Api/release-notes.json | cut -d'"' -f4)
+echo "Evolvix ${VERSION} is running."
 
 # ---- 5. Updates from the app (the owner's updates page) -----------------------------------------
 # The app can only leave the word "check" or "update" in /var/lib/evolvix/updates; systemd runs

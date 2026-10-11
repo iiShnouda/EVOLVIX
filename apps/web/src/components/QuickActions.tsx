@@ -5,6 +5,8 @@ import { Sheet } from './Sheet';
 import { Button } from './ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
+import { usePrefs } from '../stores/prefs';
+import { Logo } from './Logo';
 import { useDeviceInfo } from '../lib/device';
 import { useHiddenColumns } from '../lib/queries';
 import { FROM_MENU, useTabs } from '../lib/tabs';
@@ -35,11 +37,13 @@ function useQuickChoice(): [QuickAction[], QuickAction[], (ids: string[]) => voi
 }
 
 /**
- * The quick-action button (owner, 2026-10-05; docked like an overlay 2026-10-06): a tab on the
- * screen's edge that slides out under the mouse and can be dragged up or down. A tap opens the
+ * The quick-action button (owner, 2026-10-05; docked like an overlay 2026-10-06). A tap opens the
  * person's own shortcuts; holding it (or a right-click) lets them choose which, and in what order,
  * from every main action and page they may use. A shortcut opens in a new tab when the shown page
- * has unsaved work, so nothing is lost.
+ * has unsaved work, so nothing is lost. Its shape is chosen on the Themes page (owner, 2026-10-11):
+ * - dock: a tab on the screen's start edge that slides out under the mouse, dragged up or down;
+ * - bubble: a round button floating over the page, dragged anywhere, settling on the nearer side;
+ * - tab: a half-round tab always showing on the start edge, dragged up or down.
  */
 export function QuickActions() {
   const { t, rtl } = useT();
@@ -47,15 +51,23 @@ export function QuickActions() {
   const { open: openTab } = useTabActions();
   const { deviceClass } = useDeviceInfo();
   const touch = deviceClass !== 'desktop';
+  const shape = usePrefs((s) => s.quickShape);
   const [allowed, chosen, save] = useQuickChoice();
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [hover, setHover] = useState(false);
   const [y, setY] = useState(readY);
+  const [spot, setSpot] = useState(readSpot);
   const [dragging, setDragging] = useState(false);
-  const press = useRef<{ startY: number; startTop: number; moved: boolean; timer?: number } | null>(
-    null,
-  );
+  const press = useRef<{
+    startX: number;
+    startY: number;
+    startTop: number;
+    startSpot: Spot;
+    moved: boolean;
+    timer?: number;
+  } | null>(null);
+  const bubble = shape === 'bubble';
 
   const go = (a: QuickAction) => {
     setMenu(false);
@@ -67,10 +79,17 @@ export function QuickActions() {
     setEditing(true);
   };
 
-  // Press: a tap opens the menu, holding still opens the chooser, moving drags it up or down.
+  // Press: a tap opens the menu, holding still opens the chooser, moving drags it.
   const onDown = (e: PointerEvent<HTMLButtonElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
-    const p = { startY: e.clientY, startTop: y, moved: false, timer: 0 };
+    const p = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: y,
+      startSpot: spot,
+      moved: false,
+      timer: 0,
+    };
     p.timer = window.setTimeout(() => {
       if (!p.moved) {
         press.current = null;
@@ -82,15 +101,21 @@ export function QuickActions() {
   const onMove = (e: PointerEvent<HTMLButtonElement>) => {
     const p = press.current;
     if (!p) return;
+    const dx = e.clientX - p.startX;
     const dy = e.clientY - p.startY;
-    if (!p.moved && Math.abs(dy) < 6) return;
+    if (!p.moved && Math.hypot(bubble ? dx : 0, dy) < 6) return;
     if (!p.moved) {
       p.moved = true;
       window.clearTimeout(p.timer);
       setDragging(true);
       setMenu(false);
     }
-    setY(clampY(p.startTop + (dy / window.innerHeight) * 100));
+    if (bubble)
+      setSpot({
+        x: clampX(p.startSpot.x + (dx / window.innerWidth) * 100),
+        y: clampY(p.startSpot.y + (dy / window.innerHeight) * 100),
+      });
+    else setY(clampY(p.startTop + (dy / window.innerHeight) * 100));
   };
   const onUp = () => {
     const p = press.current;
@@ -99,18 +124,109 @@ export function QuickActions() {
     window.clearTimeout(p.timer);
     if (p.moved) {
       setDragging(false);
-      writeY(y);
+      if (bubble) {
+        // It settles on the nearer side, out of the way of the page.
+        const settled = { x: spot.x < 50 ? 0 : 100, y: spot.y };
+        setSpot(settled);
+        writeSpot(settled);
+      } else writeY(y);
     } else setMenu((m) => !m);
   };
 
   if (allowed.length === 0) return null;
-  // Docked on the screen's start edge (right in Arabic, left in English), mostly tucked away; it
-  // slides out under the mouse, while dragged or open. A touch screen has no hover, so there a
-  // wider grip stays showing (a tap on it opens the shortcuts) and the page underneath stays clear.
-  const out = (!touch && hover) || menu || dragging;
-  // A phone's grip stays within the page's side margin (16px), so it never covers a label.
-  const tucked = out ? '0px' : touch ? 'calc(100% - 16px)' : 'calc(100% - 14px)';
-  const shift = rtl ? tucked : `calc(-1 * (${tucked}))`;
+  const handlers = {
+    onPointerDown: onDown,
+    onPointerMove: onMove,
+    onPointerUp: onUp,
+    onPointerCancel: onUp,
+    onContextMenu: (e: { preventDefault: () => void }) => {
+      e.preventDefault();
+      customize();
+    },
+  };
+  const common = {
+    type: 'button' as const,
+    'data-quick-dock': true,
+    'aria-label': t('qa.title'),
+    title: t('qa.title'),
+    'aria-expanded': menu,
+    style: { touchAction: 'none', WebkitTouchCallout: 'none' } as const,
+  };
+
+  // Where the shortcuts open: beside the button, kept on the screen.
+  const onLeft = bubble ? spot.x < 50 : !rtl;
+  const top = bubble ? spot.y : y;
+  const menuStyle = {
+    top: `clamp(0.5rem, calc(${top}vh - 8rem), calc(100vh - 22rem))`,
+    ...(onLeft ? { left: bubble ? '5rem' : '4rem' } : { right: bubble ? '5rem' : '4rem' }),
+  };
+
+  let trigger;
+  if (bubble) {
+    // A round button over the page (owner's picture: like a phone's floating button), the Evolvix
+    // mark on it; a little see-through until it is used.
+    trigger = (
+      <button
+        {...common}
+        {...handlers}
+        className={`fixed z-30 grid h-14 w-14 select-none place-items-center rounded-full bg-fg text-surface shadow-[var(--shadow-pop)] ring-4 ring-fg/10 transition-[opacity,left,top] ${
+          dragging ? 'cursor-grabbing duration-0' : 'cursor-pointer duration-200'
+        } ${menu || dragging ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+        style={{
+          ...common.style,
+          left: `clamp(8px, calc(${spot.x}vw - 28px), calc(100vw - 64px))`,
+          top: `clamp(8px, calc(${spot.y}vh - 28px), calc(100vh - 64px))`,
+        }}
+      >
+        {menu ? <Icon name="close" size={24} /> : <Logo size={34} className="rounded-xl" />}
+      </button>
+    );
+  } else if (shape === 'tab') {
+    // A half-round tab on the start edge, always showing (owner's drawing).
+    trigger = (
+      <button
+        {...common}
+        {...handlers}
+        className={`fixed start-0 z-30 flex h-28 w-7 select-none flex-col items-center justify-center gap-2 rounded-e-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] transition-[width,opacity] duration-150 hover:w-8 ${
+          dragging ? 'cursor-grabbing' : 'cursor-pointer'
+        } ${menu || dragging ? 'opacity-100' : 'opacity-90'}`}
+        style={{ ...common.style, top: `${y}vh`, transform: 'translateY(-50%)' }}
+      >
+        <Icon name={menu ? 'close' : 'bolt'} size={16} />
+        <span className="block h-6 w-1 rounded-full bg-current opacity-50" aria-hidden />
+      </button>
+    );
+  } else {
+    // Docked on the screen's start edge (right in Arabic, left in English), mostly tucked away; it
+    // slides out under the mouse, while dragged or open. A touch screen has no hover, so there a
+    // wider grip stays showing (a tap on it opens the shortcuts) and the page underneath stays clear.
+    const out = (!touch && hover) || menu || dragging;
+    // A phone's grip stays within the page's side margin (16px), so it never covers a label.
+    const tucked = out ? '0px' : touch ? 'calc(100% - 16px)' : 'calc(100% - 14px)';
+    const shift = rtl ? tucked : `calc(-1 * (${tucked}))`;
+    trigger = (
+      <div
+        className="fixed start-0 z-30 transition-transform duration-200"
+        style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
+      >
+        <button
+          {...common}
+          {...handlers}
+          className={`flex h-12 select-none items-center gap-1 rounded-e-2xl bg-brand ps-2 pe-3 text-brand-fg shadow-[var(--shadow-pop)] ${
+            dragging ? 'cursor-grabbing' : 'cursor-pointer'
+          } ${out ? '' : 'opacity-90'}`}
+        >
+          <span className="grid h-8 w-6 place-items-center opacity-70" aria-hidden>
+            <span className="block h-5 w-1 rounded-full bg-current opacity-60" />
+          </span>
+          <Icon name={menu ? 'close' : 'bolt'} size={22} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       {menu && (
@@ -119,8 +235,8 @@ export function QuickActions() {
             role="menu"
             aria-label={t('qa.title')}
             onClick={(e) => e.stopPropagation()}
-            className="absolute start-16 w-[min(22rem,calc(100vw-5rem))] rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-[var(--shadow-pop)]"
-            style={{ top: `clamp(0.5rem, calc(${y}vh - 8rem), calc(100vh - 22rem))` }}
+            className="absolute w-[min(22rem,calc(100vw-5rem))] rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-[var(--shadow-pop)]"
+            style={menuStyle}
           >
             <p className="mb-2 px-1 text-sm font-semibold">{t('qa.title')}</p>
             {chosen.length === 0 ? (
@@ -152,37 +268,7 @@ export function QuickActions() {
           </div>
         </div>
       )}
-      <div
-        className="fixed start-0 z-30 transition-transform duration-200"
-        style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
-        onPointerEnter={() => setHover(true)}
-        onPointerLeave={() => setHover(false)}
-      >
-        <button
-          type="button"
-          data-quick-dock
-          aria-label={t('qa.title')}
-          title={t('qa.title')}
-          aria-expanded={menu}
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onPointerCancel={onUp}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            customize();
-          }}
-          className={`flex h-12 select-none items-center gap-1 rounded-e-2xl bg-brand ps-2 pe-3 text-brand-fg shadow-[var(--shadow-pop)] ${
-            dragging ? 'cursor-grabbing' : 'cursor-pointer'
-          } ${out ? '' : 'opacity-90'}`}
-          style={{ touchAction: 'none', WebkitTouchCallout: 'none' }}
-        >
-          <span className="grid h-8 w-6 place-items-center opacity-70" aria-hidden>
-            <span className="block h-5 w-1 rounded-full bg-current opacity-60" />
-          </span>
-          <Icon name={menu ? 'close' : 'bolt'} size={22} />
-        </button>
-      </div>
+      {trigger}
       {editing && (
         <CustomizeSheet
           allowed={allowed}
@@ -212,6 +298,31 @@ function readY(): number {
 function writeY(v: number) {
   try {
     localStorage.setItem(Y_KEY, String(Math.round(v)));
+  } catch {
+    /* private mode: it just isn't remembered */
+  }
+}
+
+/** Where the round button floats (% of the screen's width and height), kept on this device. */
+interface Spot {
+  x: number;
+  y: number;
+}
+const SPOT_KEY = 'skb.quickSpot';
+const clampX = (v: number) => Math.min(100, Math.max(0, v));
+function readSpot(): Spot {
+  try {
+    const v = JSON.parse(localStorage.getItem(SPOT_KEY) ?? 'null') as Spot | null;
+    if (v && Number.isFinite(v.x) && Number.isFinite(v.y))
+      return { x: clampX(v.x), y: clampY(v.y) };
+  } catch {
+    /* none kept */
+  }
+  return { x: document.documentElement.dir === 'rtl' ? 100 : 0, y: 75 };
+}
+function writeSpot(v: Spot) {
+  try {
+    localStorage.setItem(SPOT_KEY, JSON.stringify({ x: Math.round(v.x), y: Math.round(v.y) }));
   } catch {
     /* private mode: it just isn't remembered */
   }

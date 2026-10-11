@@ -623,13 +623,17 @@ public record PriceLevelDto(
 public record VariantOptionDto(
     string Id, string Kind, string Name, int SortOrder, bool IsActive, string? Hex = null);
 
-/// <summary>A new unit / category / size / color: its name, as typed.</summary>
-public record CreateNamedRequest(string? Name = null, string? Prefix = null, int? Pieces = null);
+/// <summary>
+/// A new unit / category / size / color: its name, as typed. A department also says which warehouses
+/// (so which branches) have it (owner, 2026-10-11); null leaves that as it was.
+/// </summary>
+public record CreateNamedRequest(string? Name = null, string? Prefix = null, int? Pieces = null,
+    string[]? WarehouseIds = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateNamedRequest(
     string? Name = null, bool? IsActive = null, int? SortOrder = null, string? Prefix = null, int? Pieces = null,
-    string? Hex = null);
+    string? Hex = null, string[]? WarehouseIds = null);
 
 public record CreatePriceLevelRequest(string? Side, string? Name = null);
 

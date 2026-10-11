@@ -993,6 +993,15 @@ export function useCreateCatalogEntry(list: CatalogList) {
   });
 }
 
+/** Delete a department that has nothing recorded under it (departments:delete). */
+export function useDeleteDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/departments/${id}`),
+    onSuccess: () => invalidateCatalog(qc),
+  });
+}
+
 export function useUpdateCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({

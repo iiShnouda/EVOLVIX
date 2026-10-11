@@ -7,6 +7,12 @@ export const SKINS = ['evolvix', 'ocean', 'forest', 'sunset', 'royal', 'valorant
 export type Skin = (typeof SKINS)[number];
 export const BACKDROPS = ['none', 'evolvix', 'company', 'custom'] as const;
 export type Backdrop = (typeof BACKDROPS)[number];
+/**
+ * The quick-action button's shape (owner, 2026-10-11): a tab tucked into the screen's edge, a round
+ * button floating anywhere, or a half-round tab always showing on the edge.
+ */
+export const QUICK_SHAPES = ['dock', 'bubble', 'tab'] as const;
+export type QuickShape = (typeof QUICK_SHAPES)[number];
 
 interface PrefsState {
   locale: Locale;
@@ -23,6 +29,8 @@ interface PrefsState {
   backdropStrength: number;
   setBackdrop: (backdrop: Backdrop) => void;
   setBackdropStrength: (strength: number) => void;
+  quickShape: QuickShape;
+  setQuickShape: (shape: QuickShape) => void;
   /** The side menu shrunk to icons, for more room (owner, 2026-10-01). */
   navCollapsed: boolean;
   setNavCollapsed: (collapsed: boolean) => void;
@@ -47,6 +55,9 @@ export const usePrefs = create<PrefsState>()(
       setBackdrop: (backdrop) => set({ backdrop }),
       setBackdropStrength: (backdropStrength) =>
         set({ backdropStrength: Math.min(40, Math.max(4, Math.round(backdropStrength))) }),
+      quickShape: 'dock',
+      setQuickShape: (quickShape) =>
+        set({ quickShape: QUICK_SHAPES.includes(quickShape) ? quickShape : 'dock' }),
       navCollapsed: false,
       setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
       setLocale: (locale) => set({ locale }),

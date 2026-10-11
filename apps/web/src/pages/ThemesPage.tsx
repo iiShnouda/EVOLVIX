@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { ThemeMode } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
@@ -7,7 +7,15 @@ import { CompanyMark } from '../components/CompanyBadge';
 import { useT } from '../lib/i18n';
 import { useBranding } from '../lib/queries';
 import { backdropFromFile, setCustomBackdrop, useCustomBackdrop } from '../lib/backdrop';
-import { BACKDROPS, SKINS, resolveTheme, usePrefs, type Skin } from '../stores/prefs';
+import {
+  BACKDROPS,
+  QUICK_SHAPES,
+  SKINS,
+  resolveTheme,
+  usePrefs,
+  type QuickShape,
+  type Skin,
+} from '../stores/prefs';
 
 const MODES: ThemeMode[] = ['light', 'dark', 'system'];
 
@@ -49,6 +57,8 @@ export function ThemesPage() {
 
       <BackdropPicker />
 
+      <QuickShapePicker />
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {SKINS.map((id) => (
           <SkinCard
@@ -62,6 +72,75 @@ export function ThemesPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * The quick-action button's shape (owner, 2026-10-11): each card draws a small screen with the
+ * button on it; picking one changes it at once.
+ */
+function QuickShapePicker() {
+  const { t, rtl } = useT();
+  const { quickShape, setQuickShape } = usePrefs();
+  const side = rtl ? 'right-0' : 'left-0';
+  const draw: Record<QuickShape, ReactNode> = {
+    dock: (
+      <span
+        className={`absolute top-1/2 ${side} flex h-7 w-4 -translate-y-1/2 items-center justify-center bg-brand ${
+          rtl ? 'rounded-s-lg' : 'rounded-e-lg'
+        }`}
+      >
+        <span className="h-3 w-0.5 rounded-full bg-brand-fg/70" />
+      </span>
+    ),
+    bubble: (
+      <span
+        className={`absolute bottom-3 ${rtl ? 'right-2' : 'left-2'} grid h-8 w-8 place-items-center rounded-full bg-fg shadow-md ring-2 ring-fg/10`}
+      >
+        <Logo size={18} className="rounded-md" />
+      </span>
+    ),
+    tab: (
+      <span
+        className={`absolute top-1/2 ${side} flex h-14 w-3.5 -translate-y-1/2 items-center justify-center bg-brand ${
+          rtl ? 'rounded-s-full' : 'rounded-e-full'
+        }`}
+      >
+        <span className="h-4 w-0.5 rounded-full bg-brand-fg/60" />
+      </span>
+    ),
+  };
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-sm font-semibold">{t('themes.quickShape')}</h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {QUICK_SHAPES.map((shape) => {
+          const on = quickShape === shape;
+          return (
+            <button
+              key={shape}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setQuickShape(shape)}
+              className={`rounded-[var(--radius-app)] border p-2 text-start transition-colors ${
+                on ? 'border-brand ring-2 ring-brand/30' : 'border-line hover:border-brand/50'
+              }`}
+            >
+              <span className="relative block h-24 overflow-hidden rounded-lg border border-line bg-surface-2">
+                <span className="absolute inset-x-3 top-3 block h-2 rounded bg-line" />
+                <span className="absolute inset-x-3 top-7 block h-2 w-2/3 rounded bg-line" />
+                <span className="absolute inset-x-3 top-11 block h-2 w-1/2 rounded bg-line" />
+                {draw[shape]}
+              </span>
+              <span className="mt-2 flex items-center justify-between gap-2 px-1 text-sm font-medium">
+                {t(`themes.quick.${shape}`)}
+                {on && <Icon name="check" size={16} className="text-brand" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 

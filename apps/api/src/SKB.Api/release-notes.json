@@ -1,6 +1,38 @@
 {
   "releases": [
     {
+      "version": "1.9.0",
+      "date": "2026-10-11",
+      "features": [
+        {
+          "ar": "عند إضافة قسم تختار الفرع والمخزن الذي يتبعه، ويظهر بجانب كل قسم الفرع والمخزن الموجود فيهما.",
+          "en": "Adding a department asks for its branch and warehouse, and each department shows where it is."
+        },
+        {
+          "ar": "حذف القسم الذي لم تُسجَّل عليه أصناف أو فواتير، بصلاحية مستقلة.",
+          "en": "Delete a department with no items or invoices, with its own permission."
+        },
+        {
+          "ar": "زر الإجراءات السريعة بثلاثة أشكال تختار منها في صفحة الثيمات: لسان مخفي على الحافة، أو زر دائري عائم، أو نصف دائرة على الحافة.",
+          "en": "The quick-action button comes in three shapes, chosen on the Themes page: a tucked edge tab, a floating round button, or a half-round edge tab."
+        },
+        {
+          "ar": "تطبيق Windows يفتح على ملء الشاشة دائماً، ويُظهر F11 شريط العنوان عند الحاجة.",
+          "en": "The Windows app always opens full screen; F11 shows the title bar when needed."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "تحديث السيرفر كان يتوقف بسبب خطأ في تجهيز خدمة الصوت، وأصبح البرنامج يتحدّث حتى لو تعطلت خدمات المساعد الذكي.",
+          "en": "The server update stopped on an error preparing the voice service; the app now updates even if the assistant's services fail."
+        }
+      ],
+      "apps": {
+        "windows": "1.7.0",
+        "android": "1.4.0"
+      }
+    },
+    {
       "version": "1.8.0",
       "date": "2026-10-11",
       "features": [
@@ -35,7 +67,10 @@
           "en": "Speech is read in the app's language, so Arabic is understood more accurately."
         }
       ],
-      "apps": { "windows": "1.6.0", "android": "1.4.0" }
+      "apps": {
+        "windows": "1.6.0",
+        "android": "1.4.0"
+      }
     },
     {
       "version": "1.7.0",
@@ -84,7 +119,10 @@
           "en": "Full screen (F11) in the Windows app."
         }
       ],
-      "apps": { "windows": "1.6.0", "android": "1.3.0" }
+      "apps": {
+        "windows": "1.6.0",
+        "android": "1.3.0"
+      }
     },
     {
       "version": "1.6.0",

@@ -209,7 +209,8 @@ systemd units `evolvix-update.path` and `evolvix-update-check.timer` that the in
 the work and writes back how it went. Its log stays on the server: `/var/log/evolvix-update.log`.
 What a version brings comes from `apps/api/src/SKB.Api/release-notes.json`.
 
-The first time (a server installed before updates came to the app), set the updater up once:
+The first time (a server installed before updates came to the app), set the updater up once (the
+app and its database start first, so a problem with the assistant's parts never holds them back):
 ```bash
 cd EVOLVIX && git pull && sudo bash scripts/install-server.sh --no-firewall
 ```

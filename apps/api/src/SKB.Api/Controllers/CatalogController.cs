@@ -260,35 +260,144 @@ public sealed class CatalogController : ControllerBase
             }).ToArray());
     }
 
+    /// <summary>
+    /// A new department, in the warehouses chosen (owner, 2026-10-11: "it should ask which branch it is
+    /// in"); every other warehouse goes on without it.
+    /// </summary>
     [HttpPost("departments")]
     [Authorize(Policy = Permissions.CategoriesManage)]
     public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req,
-        [FromServices] AccessService access)
+        [FromServices] AccessService access, [FromServices] WarehouseService warehouses)
     {
         var department = new Department();
         var error = await NameAsync(department, req.Name, _db.Departments, "department")
                     ?? PrefixOf(department, req.Prefix);
         if (error is not null) return error;
         _db.Departments.Add(department);
+        error = await PlaceAsync(department.Id, req.WarehouseIds, warehouses, creating: true);
+        if (error is not null) return error;
         await access.KeepNewHiddenAsync(NewKind.Department, department.Id, CurrentUser.Id(User));
         await SaveAsync("create", "department", department.Id);
-        return Created($"/api/departments/{department.Id}", ToDto(department, 0));
+        return Created($"/api/departments/{department.Id}", ToDto(department, 0) with
+        {
+            WarehouseIds = await LinksAsync(department.Id),
+        });
     }
 
-    /// <summary>Rename, close or reopen a department. Its old sales keep its name.</summary>
+    /// <summary>Rename, close or reopen a department, or change its warehouses. Its old sales keep its name.</summary>
     [HttpPut("departments/{id:guid}")]
     [Authorize(Policy = Permissions.CategoriesManage)]
-    public async Task<ActionResult<DepartmentDto>> UpdateDepartment(Guid id, [FromBody] UpdateNamedRequest req)
+    public async Task<ActionResult<DepartmentDto>> UpdateDepartment(Guid id, [FromBody] UpdateNamedRequest req,
+        [FromServices] WarehouseService warehouses)
     {
         var department = await _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
         if (department is null) return NotFound(new { message = "Department not found.", code = "department_not_found" });
         var error = await RenameAsync(department, req, _db.Departments, "department")
-                    ?? PrefixOf(department, req.Prefix);
+                    ?? PrefixOf(department, req.Prefix)
+                    ?? await PlaceAsync(id, req.WarehouseIds, warehouses);
         if (error is not null) return error;
         if (req.IsActive is bool active) department.IsActive = active;
         await SaveAsync("update", "department", department.Id);
-        return Ok(ToDto(department, await _db.Categories.CountAsync(c => c.DepartmentId == id)));
+        return Ok(ToDto(department, await _db.Categories.CountAsync(c => c.DepartmentId == id)) with
+        {
+            WarehouseIds = await LinksAsync(id),
+        });
     }
+
+    /// <summary>
+    /// Delete a department that has nothing recorded under it (owner, 2026-10-11): no items, and no
+    /// sales, returns or quotations. Its groups go with it, and it leaves the warehouses and people
+    /// that had it. One that has things recorded can be closed instead.
+    /// </summary>
+    [HttpDelete("departments/{id:guid}")]
+    [Authorize(Policy = Permissions.DepartmentsDelete)]
+    public async Task<IActionResult> DeleteDepartment(Guid id)
+    {
+        var department = await _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
+        if (department is null) return NotFound(new { message = "Department not found.", code = "department_not_found" });
+        if (await _db.SalesDocuments.AnyAsync(d => d.DepartmentId == id)
+            || await _db.Products.AnyAsync(p => p.Category!.DepartmentId == id))
+            return InUse();
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // Its groups (none has an item): unhooked from each other first, then removed.
+            var groups = await _db.Categories.Where(c => c.DepartmentId == id).ToListAsync();
+            foreach (var g in groups) g.ParentId = null;
+            await _db.SaveChangesAsync();
+            _db.Categories.RemoveRange(groups);
+            _db.WarehouseDepartments.RemoveRange(await _db.WarehouseDepartments.Where(l => l.DepartmentId == id).ToListAsync());
+            foreach (var s in await _db.Staff.Where(s => s.DepartmentIds.Contains(id)).ToListAsync())
+                s.DepartmentIds = s.DepartmentIds.Where(d => d != id).ToList();
+            _db.Departments.Remove(department);
+            await SaveAsync("delete", "department", id);
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23503" })
+        {
+            await tx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return InUse();
+        }
+        return NoContent();
+
+        ObjectResult InUse() => Conflict(new
+        {
+            message = "The department has items or invoices; close it instead.", code = "department_in_use",
+        });
+    }
+
+    /// <summary>
+    /// Put a department in exactly the warehouses given, among those the person sees: null leaves an
+    /// existing one as it is and puts a new one in every warehouse. A warehouse with no departments
+    /// picked offers every one, so before such a warehouse is changed, the departments it offers now
+    /// are picked for it, and nothing else changes for it. Leaving a warehouse with none at all would
+    /// turn it back to "every department": refused.
+    /// </summary>
+    private async Task<ActionResult?> PlaceAsync(Guid departmentId, string[]? raw, WarehouseService warehouses,
+        bool creating = false)
+    {
+        if (raw is null && !creating) return null;
+        var visible = await warehouses.Visible(User).Where(w => w.Kind == WarehouseKind.STORE)
+            .Select(w => w.Id).ToListAsync();
+        var wanted = raw is null
+            ? visible.ToHashSet()
+            : raw.Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).ToHashSet();
+        if (raw is null && visible.Count == 0) return null;
+        if (wanted.Contains(Guid.Empty) || wanted.Any(w => !visible.Contains(w)))
+            return BadRequest(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+        if (wanted.Count == 0)
+            return BadRequest(new { message = "Choose at least one warehouse.", code = "choose_warehouse" });
+
+        var links = await _db.WarehouseDepartments.Where(l => visible.Contains(l.WarehouseId)).ToListAsync();
+        var others = await _db.Departments.Where(d => d.Id != departmentId).Select(d => d.Id).ToListAsync();
+        foreach (var w in visible)
+        {
+            var mine = links.Where(l => l.WarehouseId == w).ToList();
+            var has = mine.Any(l => l.DepartmentId == departmentId);
+            if (mine.Count == 0)
+            {
+                // It offers every department now: pick them all for it, then add or leave this one out.
+                // (Not wanted, with no other department at all: it stays offering every one, just this.)
+                foreach (var d in others) _db.WarehouseDepartments.Add(new WarehouseDepartment { WarehouseId = w, DepartmentId = d });
+                if (wanted.Contains(w))
+                    _db.WarehouseDepartments.Add(new WarehouseDepartment { WarehouseId = w, DepartmentId = departmentId });
+            }
+            else if (wanted.Contains(w) && !has)
+                _db.WarehouseDepartments.Add(new WarehouseDepartment { WarehouseId = w, DepartmentId = departmentId });
+            else if (!wanted.Contains(w) && has)
+            {
+                if (mine.Count == 1)
+                    return BadRequest(new { message = "A warehouse needs a department.", code = "warehouse_needs_department" });
+                _db.WarehouseDepartments.Remove(mine.First(l => l.DepartmentId == departmentId));
+            }
+        }
+        return null;
+    }
+
+    private async Task<string[]> LinksAsync(Guid departmentId) =>
+        (await _db.WarehouseDepartments.Where(l => l.DepartmentId == departmentId).Select(l => l.WarehouseId).ToListAsync())
+        .Select(w => w.ToString()).ToArray();
 
     private static DepartmentDto ToDto(Department d, int count) =>
         new(d.Id.ToString(), Loc.Name(d), d.IsActive, count, d.Prefix);

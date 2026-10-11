@@ -202,6 +202,8 @@ public static class Permissions
     /// <summary>Make and change price lists (special prices) and quantity discounts.</summary>
     public const string PriceListsManage = "price_lists:manage";
     public const string CategoriesManage = "categories:manage";
+    /// <summary>Delete a department that has nothing recorded under it (owner, 2026-10-11).</summary>
+    public const string DepartmentsDelete = "departments:delete";
     /// <summary>Print barcode labels for items (label printer or sticker sheets).</summary>
     public const string LabelsPrint = "labels:print";
 
@@ -270,7 +272,7 @@ public static class Permissions
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage, BranchesDelete, WarehousesDelete,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
-        ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, UnitsManage,
+        ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, DepartmentsDelete, UnitsManage,
         VariantOptionsManage, SeasonsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,

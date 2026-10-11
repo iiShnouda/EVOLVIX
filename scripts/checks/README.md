@@ -6,7 +6,7 @@ live company server.
 
 | Script | What it checks |
 |---|---|
-| `places.test.mjs` | Deleting branches and warehouses: an empty one goes with its store and cash boxes; one with documents or stock, the default warehouse, the last warehouse and a branch people belong to stay; own permissions; the server monitor can't be given. |
+| `places.test.mjs` | Deleting branches and warehouses: an empty one goes with its store and cash boxes; one with documents or stock, the default warehouse, the last warehouse and a branch people belong to stay; own permissions; the server monitor can't be given.; departments added in the warehouses chosen (the others go on as they were), moved, and deleted with their groups when nothing is recorded (one with items stays). |
 | `server.test.mjs` | The owner's server pages: the monitor (machine, each part, no paths) and updates (up to date, a new version and its notes read carefully, check / update leave the right word for the updater, busy, timed out, updater not running, retry after a failure, audit); neither for the admin. Updates checks need the API with `Updates__Folder=<dir>` and `UPDATES_DIR=<dir>` here. |
 | `clean.test.mjs` | A company server's first start (`Seed__Demo=false`, empty database): only the owner, one branch, its warehouse, the cash customer; buying and selling work at once. |
 | `profit.test.mjs` | Profit and loss: equals the ledger, branches + general = total, warehouses add up to their branch, an expense from a warehouse's box lands on it and one from the main box on general, moving money between boxes changes no profit, sales staff refused. |

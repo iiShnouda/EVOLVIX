@@ -92,12 +92,15 @@ update() {
   git_ pull --ff-only --quiet >> "$LOG" 2>&1 || fail local_changes
   # Build while the running version keeps serving, then swap (the app is away for a moment).
   status updating build ""
-  local services=()
-  grep -q '^ASSISTANT_ENABLED=false' .env 2>/dev/null && services=(db app)
-  docker compose --profile full build "${services[@]}" >> "$LOG" 2>&1 || fail build_failed
+  docker compose --profile full build app >> "$LOG" 2>&1 || fail build_failed
+  local extra=()
+  grep -q '^ASSISTANT_ENABLED=false' .env 2>/dev/null || extra=(assistant speech voice)
+  # The assistant's parts: built too, but a problem there never holds the app back.
+  [ ${#extra[@]} -gt 0 ] && { docker compose --profile full build voice >> "$LOG" 2>&1 || log "voice build failed (the app goes on)"; }
   status updating restart ""
-  docker compose --profile full up -d --remove-orphans "${services[@]}" >> "$LOG" 2>&1 || fail start_failed
+  docker compose --profile full up -d --remove-orphans db app >> "$LOG" 2>&1 || fail start_failed
   health || fail start_failed
+  [ ${#extra[@]} -gt 0 ] && { docker compose --profile full up -d "${extra[@]}" >> "$LOG" 2>&1 || log "assistant parts didn't start (the app goes on)"; }
   docker image prune -f >> "$LOG" 2>&1 || true   # the old version's images: keep the disk free
   BEHIND=0; FINISHED_AT=$(now)
   status idle done ""
