@@ -127,8 +127,8 @@ export function ChatPage() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{titleOf(c, me)}</span>
-                    <span className="shrink-0 text-[11px] text-faint tnum">
-                      {formatDateTime(c.lastAt, locale)}
+                    <span className="shrink-0 text-[11px] text-faint tnum" title={formatDateTime(c.lastAt, locale)}>
+                      {listTime(c.lastAt, locale)}
                     </span>
                   </span>
                   <span className="flex items-center justify-between gap-2">
@@ -502,4 +502,13 @@ function MutesSheet({ me, onClose }: { me: string; onClose: () => void }) {
       {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
     </Sheet>
   );
+}
+
+/** In the list, short: the time for today's, else the day and month (the full time is its tooltip). */
+function listTime(iso: string, locale: 'ar' | 'en'): string {
+  const at = new Date(iso);
+  const intl = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
+  return at.toDateString() === new Date().toDateString()
+    ? at.toLocaleTimeString(intl, { hour: 'numeric', minute: '2-digit' })
+    : at.toLocaleDateString(intl, { day: 'numeric', month: 'short' });
 }

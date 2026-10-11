@@ -108,7 +108,8 @@ export function QuickActions() {
   // slides out under the mouse, while dragged or open. A touch screen has no hover, so there a
   // wider grip stays showing (a tap on it opens the shortcuts) and the page underneath stays clear.
   const out = (!touch && hover) || menu || dragging;
-  const tucked = out ? '0px' : touch ? 'calc(100% - 26px)' : 'calc(100% - 14px)';
+  // A phone's grip stays within the page's side margin (16px), so it never covers a label.
+  const tucked = out ? '0px' : touch ? 'calc(100% - 16px)' : 'calc(100% - 14px)';
   const shift = rtl ? tucked : `calc(-1 * (${tucked}))`;
   return (
     <>

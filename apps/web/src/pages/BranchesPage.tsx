@@ -216,7 +216,7 @@ function BranchCard({
             </div>
           </div>
         ) : (
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
                 <span className="truncate">{branch.name}</span>
@@ -227,7 +227,7 @@ function BranchCard({
                 {branch.location ? ` · ${branch.location}` : ''}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {!branch.isActive && <Badge>{t('warehouse.closed')}</Badge>}
               {canManage && (
                 <Button
@@ -246,8 +246,7 @@ function BranchCard({
               {canDelete && (
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="text-destructive"
+                  variant="dangerGhost"
                   loading={remove.isPending}
                   onClick={() => {
                     if (window.confirm(t('branches.deleteAsk'))) remove.mutate(branch.id);
@@ -472,8 +471,7 @@ function WarehouseRow({
               {canDelete && !w.isDefault && (
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="text-destructive"
+                  variant="dangerGhost"
                   loading={remove.isPending}
                   onClick={() => {
                     if (window.confirm(t('warehouse.deleteAsk'))) remove.mutate(w.id);

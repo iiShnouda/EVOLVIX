@@ -81,6 +81,20 @@ and nothing is sent outside the building.
 - Check it in the app: **Assistant** page (it says when the models aren't ready yet).
 - Update the models later: `docker compose --profile full run --rm assistant-models`.
 
+**Spoken questions.** The `skb-speech` container (Whisper, MIT licence; `SPEECH_MODEL=small` in `.env`,
+`base` on smaller machines) turns a recorded question into text on this machine; the recording is
+not kept. Browsers only allow the microphone on a secure address:
+- **Windows app:** works on the office address as it is (the app trusts the company server).
+- **Phones and browsers:** use the HTTPS address Tailscale gives the server
+  (`sudo tailscale serve --bg 8080`, then `https://<server-name>.<tailnet>.ts.net`). On plain
+  `http://192.168.x.x:8080` an Android phone offers its own sound recorder instead.
+
+## The owner's server monitor
+**Server monitor** in the app (the owner alone) shows the processor, memory, disk, temperature, the
+database and the assistant's models, refreshed every few seconds. It shows figures only: there is
+deliberately no command line in the app. To run commands, use SSH from your own device (see
+Firewall below), which the firewall allows only from the admin devices.
+
 ## On a Raspberry Pi 5 (16 GB)
 Everything runs on it as is (all the images are built for ARM64): use **64-bit Raspberry Pi OS**,
 install Docker, then the same `docker compose --profile full up -d --build`.

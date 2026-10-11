@@ -98,7 +98,9 @@ export function AreaTrend({
     data.length > 1
       ? `${path} L${x(data.length - 1)},${pad.top + inner} L${x(0)},${pad.top + inner} Z`
       : '';
-  const step = Math.max(1, Math.ceil(data.length / 8));
+  // Fewer day labels on a phone, so neighbours never run into each other.
+  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
+  const step = Math.max(1, Math.ceil(data.length / (narrow ? 4 : 8)));
   const shown = hover != null ? data[hover] : null;
   const money = (v: number) => formatMoney(v, currency, locale);
   const dayLabel = (date: string) =>

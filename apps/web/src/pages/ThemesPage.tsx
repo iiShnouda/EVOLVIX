@@ -150,8 +150,6 @@ function BackdropPicker() {
           </label>
         )}
       </div>
-      {!hasLogo && <p className="text-xs text-faint">{t('themes.bd.noLogo')}</p>}
-      <p className="text-xs text-faint">{t('themes.bd.local')}</p>
       {error && <p className="text-xs text-destructive">{t('themes.bd.bad')}</p>}
     </Card>
   );

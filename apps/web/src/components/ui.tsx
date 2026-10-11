@@ -3,7 +3,7 @@ import { Icon } from './Icon';
 
 /* ------------------------------- Button --------------------------------- */
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerGhost';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANT: Record<ButtonVariant, string> = {
@@ -11,6 +11,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   secondary: 'bg-surface text-fg border border-line hover:bg-surface-2',
   ghost: 'text-muted hover:bg-surface-2 hover:text-fg',
   danger: 'bg-destructive text-white hover:opacity-90',
+  /** A quiet delete: red text, no fill. */
+  dangerGhost: 'text-destructive hover:bg-destructive-soft',
 };
 const SIZE: Record<ButtonSize, string> = {
   sm: 'h-8 px-3 text-sm gap-1.5',
@@ -36,7 +38,7 @@ export function Button({
     <button
       data-ui="btn"
       data-variant={variant}
-      className={`inline-flex items-center justify-center rounded-[var(--radius-app)] font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none ${VARIANT[variant]} ${SIZE[size]} ${className ?? ''}`}
+      className={`inline-flex items-center justify-center whitespace-nowrap rounded-[var(--radius-app)] font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none ${VARIANT[variant]} ${SIZE[size]} ${className ?? ''}`}
       disabled={loading || props.disabled}
       {...props}
     >

@@ -112,8 +112,7 @@ export function AssistantPage() {
           </Button>
           <Button
             size="sm"
-            variant="ghost"
-            className="text-destructive"
+            variant="dangerGhost"
             onClick={() => void removeOld(null)}
           >
             {t('assistant.deleteAll')}
