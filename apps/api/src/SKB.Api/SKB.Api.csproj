@@ -17,4 +17,10 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 
+  <!-- What each version brings (the updates page); read from inside the app. -->
+  <ItemGroup>
+    <Content Remove="release-notes.json" />
+    <EmbeddedResource Include="release-notes.json" LogicalName="release-notes.json" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,137 @@
+{
+  "releases": [
+    {
+      "version": "1.8.0",
+      "date": "2026-10-11",
+      "features": [
+        {
+          "ar": "محادثة صوتية مع المساعد الذكي: تتحدث إليه فيرد عليك بصوته، ثم يستمع إليك مرة أخرى.",
+          "en": "A voice conversation with the assistant: talk to it, it answers aloud, then listens again."
+        },
+        {
+          "ar": "صوت عربي وإنجليزي على السيرفر نفسه، بالصوت ذاته على كل الأجهزة.",
+          "en": "An Arabic and an English voice on the server itself, the same on every device."
+        },
+        {
+          "ar": "مراقبة السيرفر تعمل على أي سيرفر، وتعرض استهلاك كل جزء منه: البرنامج وقاعدة البيانات والمساعد الذكي والصوت.",
+          "en": "The server monitor works on any server and shows each part's use: the app, the database, the assistant and its voice."
+        },
+        {
+          "ar": "صفحة التحديثات: معرفة الإصدار الجديد ومميزاته وإصلاحاته، والتحديث بضغطة واحدة.",
+          "en": "The updates page: see a new version, what it brings and fixes, and update with one press."
+        },
+        {
+          "ar": "تطبيق Android يسجّل الصوت بنفسه، فتعمل المحادثة الصوتية على عنوان المكتب مباشرة.",
+          "en": "The Android app records by itself, so the voice conversation works on the office address."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "المساعد الذكي يرد دائماً بلغة البرنامج، ولم يعد يرد بالإنجليزية على الأسئلة العربية.",
+          "en": "The assistant always answers in the app's language; it no longer answers Arabic questions in English."
+        },
+        {
+          "ar": "تحويل الكلام إلى نص يتم بلغة البرنامج، فيفهم الكلام العربي بدقة أعلى.",
+          "en": "Speech is read in the app's language, so Arabic is understood more accurately."
+        }
+      ],
+      "apps": { "windows": "1.6.0", "android": "1.4.0" }
+    },
+    {
+      "version": "1.7.0",
+      "date": "2026-10-10",
+      "features": [
+        {
+          "ar": "عدة محادثات مع المساعد الذكي، وحذف المحادثات القديمة.",
+          "en": "Several conversations with the assistant, and deleting old ones."
+        },
+        {
+          "ar": "مراقبة السيرفر للمالك وحده: المعالج والذاكرة والقرص والحرارة وقاعدة البيانات.",
+          "en": "The owner's server monitor: processor, memory, disk, temperature and the database."
+        },
+        {
+          "ar": "المبيعات الشهرية والسنوية برسم بياني تفاعلي يعرض تفاصيل كل فترة.",
+          "en": "Sales by month and year, with an interactive chart showing each period's details."
+        },
+        {
+          "ar": "حذف الفرع أو المخزن الذي لم يُسجَّل عليه شيء.",
+          "en": "Deleting a branch or warehouse that has nothing recorded."
+        },
+        {
+          "ar": "محادثة واحدة فقط بين كل شخصين في محادثات الموظفين.",
+          "en": "One staff chat only between any two people."
+        },
+        {
+          "ar": "جدار الحماية يُضبط عند تثبيت السيرفر: البرنامج للمكتب وTailscale، وSSH لجهاز المسؤول فقط.",
+          "en": "The installer sets the firewall: the app for the office and Tailscale, SSH only from the admin's device."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "خطأ «is not a function» بعد مغادرة صفحة المساعد أو المحادثات.",
+          "en": "The \"is not a function\" error after leaving the assistant or chat page."
+        },
+        {
+          "ar": "ظهور أيقونتي عين في خانات كلمة المرور.",
+          "en": "Two eye icons in password fields."
+        },
+        {
+          "ar": "المبالغ وأسماء الحسابات لم تعد تُقص على الهاتف، وأزرار الحذف باللون الأحمر.",
+          "en": "Amounts and account names are no longer cut on phones, and delete buttons are red."
+        },
+        {
+          "ar": "ملء الشاشة (F11) في تطبيق Windows.",
+          "en": "Full screen (F11) in the Windows app."
+        }
+      ],
+      "apps": { "windows": "1.6.0", "android": "1.3.0" }
+    },
+    {
+      "version": "1.6.0",
+      "date": "2026-10-08",
+      "features": [
+        {
+          "ar": "تثبيت سيرفر الشركة بأمر واحد، وقاعدة البيانات لا يصل إليها إلا السيرفر.",
+          "en": "One-command company server install; the database is reachable only from the server."
+        },
+        {
+          "ar": "تشغيل السيرفر على Raspberry Pi 5، بنموذج ذكاء اصطناعي أخف.",
+          "en": "Running the server on a Raspberry Pi 5, with a lighter assistant model."
+        },
+        {
+          "ar": "سيرفر الشركة يبدأ فارغاً، مع أداة لمسح البيانات والبدء من جديد.",
+          "en": "Company servers start empty, with a tool to wipe the data and start again."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "التنزيلات وتطبيق Windows تحمل اسم Evolvix.",
+          "en": "Downloads and the Windows app carry the Evolvix name."
+        }
+      ]
+    },
+    {
+      "version": "1.5.0",
+      "date": "2026-10-06",
+      "features": [
+        {
+          "ar": "محادثات الموظفين مع إشراف المسؤول.",
+          "en": "Staff chat with supervision."
+        },
+        {
+          "ar": "مساعد ذكي يعمل على سيرفر الشركة دون إنترنت، ويقرأ فواتير الموردين والشيكات من الصور.",
+          "en": "An assistant on the company server with no internet, reading supplier invoices and cheques from photos."
+        },
+        {
+          "ar": "الأرباح والخسائر للشركة ولكل فرع ومخزن.",
+          "en": "Profit and loss for the company, each branch and warehouse."
+        },
+        {
+          "ar": "شجرة الأقسام والبحث الذكي وطباعة ملصقات الباركود.",
+          "en": "The department tree, smart search and barcode labels."
+        }
+      ],
+      "fixes": []
+    }
+  ]
+}

@@ -125,10 +125,11 @@ const ALL: Permission[] = [
   'ai:chat',
   'ai:scan',
   'system:monitor',
+  'system:update',
 ];
 
 /** The owner's alone: never the admin's, a role's or a grant (the server enforces it too). */
-export const OWNER_ONLY: Permission[] = ['system:monitor'];
+export const OWNER_ONLY: Permission[] = ['system:monitor', 'system:update'];
 
 const PURCHASE_CHARGES: Permission[] = [
   'purchases:discount',

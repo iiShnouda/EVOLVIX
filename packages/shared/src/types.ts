@@ -116,6 +116,7 @@ export type Permission =
   | 'ai:chat'
   | 'ai:scan'
   | 'system:monitor'
+  | 'system:update'
   | 'branches:delete'
   | 'warehouses:delete'
   | 'units:manage'
@@ -2621,10 +2622,22 @@ export interface SystemDisk {
   total: number;
   free: number;
 }
+/** One part of the server; figures null where the machine doesn't tell (owner, 2026-10-11). */
+export interface SystemService {
+  key: 'app' | 'db' | 'assistant' | 'speech' | 'voice';
+  running: boolean;
+  /** Share of the whole machine's processor, in percent. */
+  cpuPercent: number | null;
+  memoryBytes: number | null;
+}
 export interface SystemMonitor {
   at: string;
   machine: {
+    /** The machine: a Raspberry Pi's board, a PC's maker and model ('' when unknown). */
     model: string;
+    processor: string;
+    /** Linux and its kernel, or the Windows version. */
+    system: string;
     cores: number;
     cpuPercent: number;
     load1: number;
@@ -2638,7 +2651,14 @@ export interface SystemMonitor {
     uptimeSeconds: number;
     disks: SystemDisk[];
   };
-  app: { memoryBytes: number; managedBytes: number; threads: number; uptimeSeconds: number; version: string };
+  services: SystemService[];
+  app: {
+    memoryBytes: number;
+    managedBytes: number;
+    threads: number;
+    uptimeSeconds: number;
+    version: string;
+  };
   database: { sizeBytes: number; connections: number; version: string };
   assistant: {
     enabled: boolean;
@@ -2646,7 +2666,44 @@ export interface SystemMonitor {
     chatReady: boolean;
     visionReady: boolean;
     speechReady: boolean;
+    voiceReady: boolean;
+    voiceMemoryBytes: number;
     models: { name: string; sizeBytes: number; loaded: boolean; memoryBytes: number }[];
   };
   backups: { count: number; sizeBytes: number; latestAt: string | null };
+}
+
+// ---- Updates (owner, 2026-10-11): a new version, what it brings, updating ----
+export interface ReleaseNote {
+  ar: string;
+  en: string;
+}
+export interface Release {
+  version: string;
+  date: string;
+  features: ReleaseNote[];
+  fixes: ReleaseNote[];
+  /** The Windows and Android apps' versions that go with it, when they changed. */
+  apps: { windows?: string; android?: string } | null;
+}
+export type UpdateState = 'idle' | 'waiting' | 'checking' | 'updating' | 'failed';
+export type UpdateStep = 'fetch' | 'backup' | 'download' | 'build' | 'restart' | 'done';
+export interface SystemUpdates {
+  /** The server's updater is set up (install-server.sh). */
+  enabled: boolean;
+  /** This server's version; installed: its notes and the earlier ones, newest first. */
+  version: string;
+  installed: Release[];
+  available: boolean;
+  /** How many changes the newest code is ahead. */
+  behind: number;
+  /** What the newer versions bring. */
+  coming: Release[];
+  state: UpdateState;
+  step: UpdateStep | null;
+  /** no_connection, local_changes, build_failed, start_failed, timed_out, updater_not_running… */
+  error: string | null;
+  checkedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
 }

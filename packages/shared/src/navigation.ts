@@ -5,6 +5,7 @@ import type { TranslationKey } from './i18n';
 export type IconName =
   | 'dashboard'
   | 'server'
+  | 'update'
   | 'sales'
   | 'purchases'
   | 'receipts'
@@ -186,6 +187,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'server',
     path: '/system',
     permission: 'system:monitor',
+  },
+  // The owner's updates: a new version, what it brings, updating (owner, 2026-10-11).
+  {
+    key: 'updates',
+    labelKey: 'nav.updates',
+    icon: 'update',
+    path: '/updates',
+    permission: 'system:update',
   },
   {
     key: 'audit',

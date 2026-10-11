@@ -1175,14 +1175,26 @@ public record ProfitLossDto(string From, string To, string Currency, PlFiguresDt
 
 // ---- Server monitor (owner, 2026-10-10): figures only, no paths or settings ----
 public record SystemDiskDto(string Role, long Total, long Free);
-public record SystemMachineDto(string Model, int Cores, double CpuPercent, double Load1, double Load5, double Load15,
-    long MemoryTotal, long MemoryAvailable, long SwapTotal, long SwapFree, double? TemperatureC, long UptimeSeconds,
-    List<SystemDiskDto> Disks);
+/// <param name="Model">The machine (a Raspberry Pi's board, a PC's maker and model); System: Linux and its kernel, or Windows.</param>
+public record SystemMachineDto(string Model, string Processor, string System, int Cores, double CpuPercent,
+    double Load1, double Load5, double Load15, long MemoryTotal, long MemoryAvailable, long SwapTotal, long SwapFree,
+    double? TemperatureC, long UptimeSeconds, List<SystemDiskDto> Disks);
+/// <summary>One part of the server (app, db, assistant, speech, voice); figures null where the machine doesn't tell.</summary>
+public record SystemServiceDto(string Key, bool Running, double? CpuPercent, long? MemoryBytes);
 public record SystemAppDto(long MemoryBytes, long ManagedBytes, int Threads, long UptimeSeconds, string Version);
 public record SystemDatabaseDto(long SizeBytes, int Connections, string Version);
 public record SystemModelDto(string Name, long SizeBytes, bool Loaded, long MemoryBytes);
 public record SystemAssistantDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady,
-    List<SystemModelDto> Models);
+    bool VoiceReady, long VoiceMemoryBytes, List<SystemModelDto> Models);
 public record SystemBackupsDto(int Count, long SizeBytes, DateTime? LatestAt);
-public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, SystemAppDto App, SystemDatabaseDto Database,
-    SystemAssistantDto Assistant, SystemBackupsDto Backups);
+/// <summary>
+/// The updates page (owner, 2026-10-11). Enabled: the server's updater is set up. Version: this
+/// server's; Installed: its release notes and the earlier ones. Available: the newest code is ahead
+/// (Behind commits), Coming: what its newer versions bring. State: idle, waiting, checking, updating or
+/// failed (Error: a code); Step: fetch, backup, download, build, restart or done.
+/// </summary>
+public record SystemUpdatesDto(bool Enabled, string Version, IReadOnlyList<SKB.Api.Services.Releases.Release> Installed,
+    bool Available, int Behind, IReadOnlyList<SKB.Api.Services.Releases.Release> Coming, string State, string? Step,
+    string? Error, DateTime? CheckedAt, DateTime? StartedAt, DateTime? FinishedAt);
+public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, List<SystemServiceDto> Services, SystemAppDto App,
+    SystemDatabaseDto Database, SystemAssistantDto Assistant, SystemBackupsDto Backups);

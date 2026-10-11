@@ -9,9 +9,16 @@ namespace SKB.Api.Services;
 
 /// <summary>
 /// The server's load for the owner's monitor (owner, 2026-10-10): the machine's processor, memory,
-/// disk, temperature and uptime, this app, the database and the assistant's models. Only figures:
-/// no file names, paths, settings or commands ever leave the server, and nothing can be changed.
-/// Read from Linux's /proc and /sys, which inside the app's container show the whole machine.
+/// disk, temperature and uptime, each part of the server (the app, the database, the assistant, its
+/// hearing and its voice) and the assistant's models. Only figures: no file names, paths, settings or
+/// commands ever leave the server, and nothing can be changed.
+/// <para>
+/// Any server (owner, 2026-10-11: "not only the Pi"): on Linux (a Raspberry Pi, a PC, a cloud server;
+/// in the app's container /proc and /sys show the whole machine) and on Windows when the app runs
+/// there directly. Each part's share is read from the machine's control groups, mounted read-only
+/// into the app's container (<c>System:Cgroups</c>, /host/cgroup): docker-compose.yml puts each
+/// service in its own group, <c>evolvix-&lt;part&gt;.slice</c>. Counters only, no processes.
+/// </para>
 /// </summary>
 public sealed class SystemMonitor
 {
@@ -28,29 +35,74 @@ public sealed class SystemMonitor
         _assistant = assistant;
     }
 
+    /// <summary>The server's parts, each in its own control group (see docker-compose.yml).</summary>
+    public static readonly string[] Parts = { "app", "db", "assistant", "speech", "voice" };
+
     public async Task<SystemMonitorDto> ReadAsync(CancellationToken ct)
     {
-        var cpu = await CpuPercentAsync(ct);
-        var mem = MemInfo();
-        var load = ReadText("/proc/loadavg")?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
-        double Load(int i) => load.Length > i && double.TryParse(load[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
-        var uptime = ReadText("/proc/uptime")?.Split(' ').FirstOrDefault() is { } up
-                     && double.TryParse(up, NumberStyles.Float, CultureInfo.InvariantCulture, out var secs) ? (long)secs : 0;
+        // The processor's use over a short moment, the machine's and each part's over the same one.
+        var me = Process.GetCurrentProcess();
+        var cpuBefore = CpuTimes();
+        var partsBefore = Parts.ToDictionary(p => p, PartCpuMicros);
+        var appBefore = me.TotalProcessorTime;
+        var clock = Stopwatch.StartNew();
+        await Task.Delay(400, ct);
+        var cpuAfter = CpuTimes();
+        var partsAfter = Parts.ToDictionary(p => p, PartCpuMicros);
+        me.Refresh();
+        var appCpu = me.TotalProcessorTime - appBefore;
+        var elapsedMicros = clock.Elapsed.TotalMicroseconds;
+        var cores = Environment.ProcessorCount;
+        double Share(double busyMicros) => Math.Round(Math.Clamp(100.0 * busyMicros / (elapsedMicros * cores), 0, 100), 1);
+
+        var cpu = cpuBefore is { } a && cpuAfter is { } b && b.Total > a.Total
+            ? Math.Round(100.0 * (b.Total - a.Total - (b.Idle - a.Idle)) / (b.Total - a.Total), 1)
+            : 0;
+        var (memTotal, memAvailable, swapTotal, swapFree) = Memory();
 
         var machine = new SystemMachineDto(
-            Model(), Environment.ProcessorCount, cpu, Load(0), Load(1), Load(2),
-            mem.GetValueOrDefault("MemTotal"), mem.GetValueOrDefault("MemAvailable"),
-            mem.GetValueOrDefault("SwapTotal"), mem.GetValueOrDefault("SwapFree"),
-            Temperature(), uptime, Disks());
+            Model(), Processor(), SystemName(), cores, cpu, Load(0), Load(1), Load(2),
+            memTotal, memAvailable, swapTotal, swapFree, Temperature(), Uptime(), Disks());
 
-        var me = Process.GetCurrentProcess();
         var app = new SystemAppDto(
             me.WorkingSet64, GC.GetTotalMemory(false), me.Threads.Count,
-            (long)(DateTime.Now - me.StartTime).TotalSeconds,
-            typeof(SystemMonitor).Assembly.GetName().Version?.ToString() ?? "");
+            (long)(DateTime.Now - me.StartTime).TotalSeconds, Releases.Current.Version);
 
-        return new SystemMonitorDto(DateTime.UtcNow, machine, app, await DatabaseAsync(ct),
-            await AssistantAsync(ct), Backups());
+        var assistant = await AssistantAsync(ct);
+        var database = await DatabaseAsync(ct);
+
+        // Each part: its group's figures when the machine's groups are there; otherwise what the part
+        // itself tells (the app's own process, the models in memory, the voice's own figure).
+        var services = new List<SystemServiceDto>();
+        foreach (var part in Parts)
+        {
+            var group = PartGroup(part);
+            double? partCpu = partsBefore[part] is { } before && partsAfter[part] is { } after
+                ? Share(after - before)
+                : part == "app" ? Share(appCpu.TotalMicroseconds) : null;
+            var memory = group is null ? null : GroupMemory(group);
+            memory ??= part switch
+            {
+                "app" => me.WorkingSet64,
+                "assistant" when assistant.Models.Any(m => m.Loaded) => assistant.Models.Where(m => m.Loaded).Sum(m => m.MemoryBytes),
+                "voice" when assistant.VoiceMemoryBytes > 0 => assistant.VoiceMemoryBytes,
+                _ => null,
+            };
+            var running = group is not null
+                ? GroupRunning(group)
+                : part switch
+                {
+                    "app" or "db" => true,
+                    "assistant" => assistant.Reachable,
+                    "speech" => assistant.SpeechReady,
+                    "voice" => assistant.VoiceReady,
+                    _ => false,
+                };
+            if (!running && part is not ("app" or "db") && !assistant.Enabled) continue; // the assistant is turned off
+            services.Add(new SystemServiceDto(part, running, running ? partCpu : null, running ? memory : null));
+        }
+
+        return new SystemMonitorDto(DateTime.UtcNow, machine, services, app, database, assistant, Backups());
     }
 
     // ------------------------------------------------------------------ machine
@@ -67,26 +119,50 @@ public sealed class SystemMonitor
         }
     }
 
-    /// <summary>The processor's use over a short moment, in percent of all its cores.</summary>
-    private static async Task<double> CpuPercentAsync(CancellationToken ct)
+    /// <summary>The processor's idle and total time so far (Linux /proc/stat, or Windows).</summary>
+    private static (long Idle, long Total)? CpuTimes()
     {
-        static (long Idle, long Total)? Sample()
+        if (OperatingSystem.IsWindows())
+            return Native.GetSystemTimes(out var idle, out var kernel, out var user)
+                ? (idle, kernel + user) // kernel time includes idle time
+                : null;
+        var line = ReadText("/proc/stat")?.Split('\n').FirstOrDefault(l => l.StartsWith("cpu "));
+        if (line is null) return null;
+        var n = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1)
+            .Select(x => long.TryParse(x, out var v) ? v : 0).ToArray();
+        if (n.Length < 4) return null;
+        return (n[3] + (n.Length > 4 ? n[4] : 0), n.Sum());
+    }
+
+    private static string[]? _load;
+
+    private static double Load(int i)
+    {
+        if (i == 0) _load = ReadText("/proc/loadavg")?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return _load is { } l && l.Length > i && double.TryParse(l[i], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0;
+    }
+
+    private static long Uptime()
+    {
+        if (OperatingSystem.IsWindows()) return Environment.TickCount64 / 1000;
+        return ReadText("/proc/uptime")?.Split(' ').FirstOrDefault() is { } up
+               && double.TryParse(up, NumberStyles.Float, CultureInfo.InvariantCulture, out var secs) ? (long)secs : 0;
+    }
+
+    /// <summary>Memory and swap (total and free) in bytes.</summary>
+    private static (long Total, long Available, long SwapTotal, long SwapFree) Memory()
+    {
+        if (OperatingSystem.IsWindows())
         {
-            var line = ReadText("/proc/stat")?.Split('\n').FirstOrDefault(l => l.StartsWith("cpu "));
-            if (line is null) return null;
-            var n = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1)
-                .Select(x => long.TryParse(x, out var v) ? v : 0).ToArray();
-            if (n.Length < 4) return null;
-            var idle = n[3] + (n.Length > 4 ? n[4] : 0);
-            return (idle, n.Sum());
+            var m = new Native.MemoryStatus { Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Native.MemoryStatus>() };
+            if (!Native.GlobalMemoryStatusEx(ref m)) return (0, 0, 0, 0);
+            var swap = Math.Max(0, (long)m.TotalPageFile - (long)m.TotalPhys);
+            var swapFree = Math.Clamp((long)m.AvailPageFile - (long)m.AvailPhys, 0, swap);
+            return ((long)m.TotalPhys, (long)m.AvailPhys, swap, swapFree);
         }
-        var a = Sample();
-        await Task.Delay(400, ct);
-        var b = Sample();
-        if (a is null || b is null || b.Value.Total <= a.Value.Total) return 0;
-        var total = b.Value.Total - a.Value.Total;
-        var busy = total - (b.Value.Idle - a.Value.Idle);
-        return Math.Round(100.0 * busy / total, 1);
+        var mem = MemInfo();
+        return (mem.GetValueOrDefault("MemTotal"), mem.GetValueOrDefault("MemAvailable"),
+            mem.GetValueOrDefault("SwapTotal"), mem.GetValueOrDefault("SwapFree"));
     }
 
     /// <summary>/proc/meminfo in bytes.</summary>
@@ -103,14 +179,22 @@ public sealed class SystemMonitor
         return map;
     }
 
-    /// <summary>The hottest of the machine's sensors, in °C (a Raspberry Pi has one on its chip).</summary>
+    /// <summary>
+    /// The hottest of the machine's sensors, in °C: a Raspberry Pi's chip, a PC's processor (thermal
+    /// zones, else the hardware monitors). Null where the machine shows none (Windows, most VMs).
+    /// </summary>
     private static double? Temperature()
     {
         try
         {
-            if (!Directory.Exists("/sys/class/thermal")) return null;
-            var temps = Directory.GetDirectories("/sys/class/thermal", "thermal_zone*")
-                .Select(d => ReadText(Path.Combine(d, "temp")))
+            var readings = new List<string?>();
+            if (Directory.Exists("/sys/class/thermal"))
+                readings.AddRange(Directory.GetDirectories("/sys/class/thermal", "thermal_zone*")
+                    .Select(d => ReadText(Path.Combine(d, "temp"))));
+            if (readings.Count == 0 && Directory.Exists("/sys/class/hwmon"))
+                readings.AddRange(Directory.GetDirectories("/sys/class/hwmon")
+                    .SelectMany(d => Directory.GetFiles(d, "temp*_input")).Select(ReadText));
+            var temps = readings
                 .Select(t => long.TryParse(t, out var milli) ? milli / 1000.0 : (double?)null)
                 .Where(t => t is > 0 and < 150).ToList();
             return temps.Count == 0 ? null : Math.Round(temps.Max()!.Value, 1);
@@ -121,14 +205,102 @@ public sealed class SystemMonitor
         }
     }
 
-    /// <summary>The machine's name: a Raspberry Pi's board, else the processor's.</summary>
+    /// <summary>The machine: a Raspberry Pi's board, else the maker and model of a PC or server.</summary>
     private static string Model()
     {
         var board = ReadText("/sys/firmware/devicetree/base/model") ?? ReadText("/proc/device-tree/model");
         if (!string.IsNullOrWhiteSpace(board)) return board.TrimEnd('\0');
-        var cpu = (ReadText("/proc/cpuinfo") ?? "").Split('\n')
-            .FirstOrDefault(l => l.StartsWith("model name") || l.StartsWith("Model"));
-        return cpu?.Split(':', 2).ElementAtOrDefault(1)?.Trim() ?? "";
+        var vendor = ReadText("/sys/class/dmi/id/sys_vendor");
+        var product = ReadText("/sys/class/dmi/id/product_name");
+        var name = string.Join(' ', new[] { vendor, product }.Where(x => !string.IsNullOrWhiteSpace(x)
+            && !x!.Contains("To Be Filled", StringComparison.OrdinalIgnoreCase)
+            && !x.Contains("System Product Name", StringComparison.OrdinalIgnoreCase)));
+        return name.Length > 0 ? name : Environment.MachineName.Length > 0 && OperatingSystem.IsWindows() ? "Windows PC" : "";
+    }
+
+    /// <summary>The processor's name ("Cortex-A76", "Intel(R) Core(TM) i5-…").</summary>
+    private static string Processor()
+    {
+        if (OperatingSystem.IsWindows())
+            return (Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER") ?? "").Trim();
+        var info = (ReadText("/proc/cpuinfo") ?? "").Split('\n');
+        string? Field(string key) => info.FirstOrDefault(l => l.StartsWith(key, StringComparison.OrdinalIgnoreCase))
+            ?.Split(':', 2).ElementAtOrDefault(1)?.Trim();
+        var name = Field("model name") ?? Field("Hardware") ?? Field("cpu model");
+        if (!string.IsNullOrEmpty(name)) return name;
+        // ARM boards name the core by number (Raspberry Pi 5: 0xd0b, Cortex-A76).
+        return Field("CPU part") switch
+        {
+            "0xd0b" => "ARM Cortex-A76",
+            "0xd08" => "ARM Cortex-A72",
+            "0xd03" => "ARM Cortex-A53",
+            "0xd05" => "ARM Cortex-A55",
+            "0xd0c" => "ARM Neoverse-N1",
+            "0xd40" => "ARM Neoverse-V1",
+            _ => System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+        };
+    }
+
+    /// <summary>The machine's system: Linux with its kernel version, or the Windows version.</summary>
+    private static string SystemName()
+    {
+        if (OperatingSystem.IsWindows()) return System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+        var kernel = ReadText("/proc/sys/kernel/osrelease");
+        return kernel is null ? System.Runtime.InteropServices.RuntimeInformation.OSDescription : $"Linux {kernel}";
+    }
+
+    // ------------------------------------------------------------------ the server's parts
+
+    /// <summary>Where the machine's control groups are mounted in the app's container (read-only).</summary>
+    private string CgroupRoot => _config["System:Cgroups"] ?? "/host/cgroup";
+
+    /// <summary>A part's group: evolvix.slice/evolvix-app.slice (systemd), or evolvix-app.slice.</summary>
+    private string? PartGroup(string part)
+    {
+        foreach (var path in new[]
+                 {
+                     Path.Combine(CgroupRoot, "evolvix.slice", $"evolvix-{part}.slice"),
+                     Path.Combine(CgroupRoot, $"evolvix-{part}.slice"),
+                 })
+            if (Directory.Exists(path)) return path;
+        return null;
+    }
+
+    /// <summary>The processor time a part has used, in microseconds (cgroup v2 cpu.stat).</summary>
+    private double? PartCpuMicros(string part)
+    {
+        var group = PartGroup(part);
+        var line = group is null ? null : ReadText(Path.Combine(group, "cpu.stat"))?.Split('\n')
+            .FirstOrDefault(l => l.StartsWith("usage_usec "));
+        return line is not null && long.TryParse(line[11..].Trim(), out var micros) ? micros : null;
+    }
+
+    /// <summary>
+    /// The memory a part uses, like "docker stats": its group's memory less the file cache it can give
+    /// back. Null where the machine doesn't count memory per group (a Raspberry Pi until memory
+    /// accounting is turned on: install-server.sh does it).
+    /// </summary>
+    private static long? GroupMemory(string group)
+    {
+        if (!long.TryParse(ReadText(Path.Combine(group, "memory.current")), out var current)) return null;
+        var inactive = (ReadText(Path.Combine(group, "memory.stat")) ?? "").Split('\n')
+            .FirstOrDefault(l => l.StartsWith("inactive_file "))?[14..].Trim();
+        return Math.Max(0, current - (long.TryParse(inactive, out var cache) ? cache : 0));
+    }
+
+    /// <summary>Whether a part has a running container in its group.</summary>
+    private static bool GroupRunning(string group)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(group).Any(d =>
+                (ReadText(Path.Combine(d, "cgroup.procs")) is { Length: > 0 }) ||
+                (ReadText(Path.Combine(d, "pids.current")) is { } pids && pids != "0"));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -188,6 +360,7 @@ public sealed class SystemMonitor
     {
         var status = await _assistant.StatusAsync(ct);
         var speech = await _assistant.SpeechReadyAsync(ct);
+        var voice = await _assistant.VoiceStatusAsync(ct);
         var models = new List<SystemModelDto>();
         if (status.Reachable)
         {
@@ -219,7 +392,8 @@ public sealed class SystemMonitor
             {
             }
         }
-        return new SystemAssistantDto(status.Enabled, status.Reachable, status.ChatReady, status.VisionReady, speech, models);
+        return new SystemAssistantDto(status.Enabled, status.Reachable, status.ChatReady, status.VisionReady, speech,
+            voice.Languages.Length > 0, voice.MemoryBytes, models);
     }
 
     private SystemBackupsDto Backups()
@@ -237,4 +411,31 @@ public sealed class SystemMonitor
             return new SystemBackupsDto(0, 0, null);
         }
     }
+}
+
+/// <summary>The machine's figures on Windows, where the app runs there without a container.</summary>
+internal static class Native
+{
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    internal struct MemoryStatus
+    {
+        public uint Length;
+        public uint MemoryLoad;
+        public ulong TotalPhys;
+        public ulong AvailPhys;
+        public ulong TotalPageFile;
+        public ulong AvailPageFile;
+        public ulong TotalVirtual;
+        public ulong AvailVirtual;
+        public ulong AvailExtendedVirtual;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    internal static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
+
+    /// <summary>Idle, kernel (idle included) and user time of all processors, in 100 ns.</summary>
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    internal static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
 }

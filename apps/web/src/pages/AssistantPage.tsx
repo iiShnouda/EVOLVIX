@@ -103,7 +103,9 @@ export function AssistantPage() {
                   c.id === chosen ? 'bg-brand-soft/60' : ''
                 }`}
               >
-                <span className="block truncate text-sm font-semibold">{c.title}</span>
+                <span dir="auto" className="block truncate text-start text-sm font-semibold">
+                  {c.title}
+                </span>
                 <span className="block text-[11px] text-faint tnum">
                   {formatDateTime(c.updatedAt, locale)}
                 </span>
@@ -263,7 +265,7 @@ function Thread({
             <Icon name="chevronRight" size={18} className="rotate-180" />
           </button>
         )}
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+        <h2 dir="auto" className="min-w-0 flex-1 truncate text-start text-sm font-semibold">
           {conversation?.title ?? t('assistant.new')}
         </h2>
       </div>
@@ -367,7 +369,9 @@ function Bubble({
             <SpeakButton text={turn.content} voices={voices} />
           </div>
         )}
-        <p className="whitespace-pre-wrap break-words">{turn.content}</p>
+        <p dir="auto" className="whitespace-pre-wrap break-words text-start">
+          {turn.content}
+        </p>
         <p className={`mt-1 text-[10px] tnum ${mine ? 'opacity-80' : 'text-faint'}`}>
           {formatDateTime(turn.at, locale)}
         </p>

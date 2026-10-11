@@ -9,7 +9,8 @@
 #
 # Run it again any time to update: it keeps your .env (secrets, passwords) and your data.
 # Installs Docker if needed, makes strong secrets the first time, builds and starts everything,
-# opens the app's port on the firewall, and prints the address staff use.
+# opens the app's port on the firewall, sets up updates from the app (the owner's updates page,
+# scripts/update-server.sh) and prints the address staff use.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -85,7 +86,71 @@ for _ in $(seq 1 90); do
 done
 curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null || { echo "The app didn't start: docker compose logs app"; exit 1; }
 
-# ---- 5. Firewall: the app from the office + Tailscale, SSH only from the admin -------------------
+# ---- 5. Updates from the app (the owner's updates page) -----------------------------------------
+# The app can only leave the word "check" or "update" in /var/lib/evolvix/updates; systemd runs
+# scripts/update-server.sh for it, and once a day to look for a new version.
+say "Updates from the app"
+REPO=$(pwd)
+mkdir -p /var/lib/evolvix/updates
+cat > /etc/systemd/system/evolvix-update.service <<UNIT
+[Unit]
+Description=Evolvix: do the update or check asked for in the app
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash ${REPO}/scripts/update-server.sh request
+TimeoutStartSec=2h
+UNIT
+cat > /etc/systemd/system/evolvix-update.path <<UNIT
+[Unit]
+Description=Evolvix: watch for update requests from the app
+
+[Path]
+PathExists=/var/lib/evolvix/updates/request
+Unit=evolvix-update.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/evolvix-update-check.service <<UNIT
+[Unit]
+Description=Evolvix: look for a new version
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash ${REPO}/scripts/update-server.sh check
+UNIT
+cat > /etc/systemd/system/evolvix-update-check.timer <<UNIT
+[Unit]
+Description=Evolvix: look for a new version every day
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now evolvix-update.path evolvix-update-check.timer >/dev/null 2>&1
+bash scripts/update-server.sh check >/dev/null 2>&1 || echo "Couldn't reach the code's home to look for updates yet (see /var/log/evolvix-update.log)."
+
+# ---- 6. Raspberry Pi: count memory per part, for the server monitor ------------------------------
+# Raspberry Pi OS leaves memory accounting off; the monitor then shows each part's processor use
+# but not its memory. Turned on here (once; the old boot line is kept beside it), after a restart.
+NEED_REBOOT=false
+CMDLINE=/boot/firmware/cmdline.txt
+if [ -f "$CMDLINE" ] && ! grep -qw memory /sys/fs/cgroup/cgroup.controllers 2>/dev/null \
+   && ! grep -q 'cgroup_enable=memory' "$CMDLINE"; then
+  cp "$CMDLINE" "$CMDLINE.before-evolvix"
+  sed -i '1 s/$/ cgroup_enable=memory cgroup_memory=1/' "$CMDLINE"
+  NEED_REBOOT=true
+fi
+
+# ---- 7. Firewall: the app from the office + Tailscale, SSH only from the admin -------------------
 if [ "$FIREWALL" = true ]; then
   say "Firewall"
   bash scripts/firewall.sh --yes "${FIREWALL_ARGS[@]}"
@@ -95,7 +160,7 @@ if [ "$FIREWALL" = true ]; then
   done
 fi
 
-# ---- 6. How to reach it ------------------------------------------------------------------------
+# ---- 8. How to reach it ------------------------------------------------------------------------
 say "Ready"
 echo "Open from any PC / phone on the office network:"
 for ip in $(hostname -I); do
@@ -113,4 +178,8 @@ fi
 if ! grep -q '^ASSISTANT_ENABLED=false' .env; then
   echo
   echo "The assistant's models download in the background (a few GB): docker compose logs -f assistant-models"
+fi
+if [ "$NEED_REBOOT" = true ]; then
+  echo
+  echo "Restart the server once so the monitor can show each part's memory:  sudo reboot"
 fi

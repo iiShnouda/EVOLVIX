@@ -233,7 +233,9 @@ export function VoiceCall({
                 <span className="block text-[11px] font-semibold text-muted">
                   {t('assistant.you')}
                 </span>
-                <span className="line-clamp-3 break-words">{heard}</span>
+                <span dir="auto" className="line-clamp-3 block break-words text-start">
+                  {heard}
+                </span>
               </p>
             )}
             {said && (
@@ -241,7 +243,12 @@ export function VoiceCall({
                 <span className="block text-[11px] font-semibold text-brand">
                   {t('nav.assistant')}
                 </span>
-                <span className="line-clamp-6 whitespace-pre-wrap break-words">{said}</span>
+                <span
+                  dir="auto"
+                  className="line-clamp-6 block whitespace-pre-wrap break-words text-start"
+                >
+                  {said}
+                </span>
               </p>
             )}
           </div>

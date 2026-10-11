@@ -6,6 +6,8 @@ services:
     image: postgres:16-alpine
     container_name: skb-db
     restart: unless-stopped
+    # Each part in its own group, so the owner's monitor shows what each one uses (see the app below).
+    cgroup_parent: evolvix-db.slice
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-skb}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skb_dev_password}
@@ -32,6 +34,7 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: skb-app
     restart: unless-stopped
+    cgroup_parent: evolvix-app.slice
     depends_on:
       db:
         condition: service_healthy
@@ -63,8 +66,14 @@ services:
       Assistant__SpeechEndpoint: "${ASSISTANT_SPEECH_ENDPOINT:-http://speech:9000}"
       # Its voice (owner, 2026-10-11: talk with it by voice): the voice service below.
       Assistant__VoiceEndpoint: "${ASSISTANT_VOICE_ENDPOINT:-http://voice:5000}"
+      # The owner's updates page (owner, 2026-10-11): the app only leaves "check" or "update" in this
+      # folder; the server's updater (scripts/update-server.sh, set up by install-server.sh) does it.
+      Updates__Folder: /updates
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
+      - "${UPDATES_DIR:-/var/lib/evolvix/updates}:/updates"
+      # The machine's control groups, read-only: each part's processor and memory for the monitor.
+      - /sys/fs/cgroup:/host/cgroup:ro
     ports:
       # Staff on the LAN reach the app at http://<this-server-ip>:8080
       - "${APP_PORT:-8080}:8080"
@@ -77,6 +86,7 @@ services:
     image: ollama/ollama:latest
     container_name: skb-assistant
     restart: unless-stopped
+    cgroup_parent: evolvix-assistant.slice
     environment:
       OLLAMA_KEEP_ALIVE: "30m"
     volumes:
@@ -105,6 +115,7 @@ services:
     image: onerahmet/openai-whisper-asr-webservice:latest
     container_name: skb-speech
     restart: unless-stopped
+    cgroup_parent: evolvix-speech.slice
     environment:
       ASR_ENGINE: faster_whisper
       ASR_MODEL: "${SPEECH_MODEL:-small}"
@@ -120,6 +131,7 @@ services:
     build: ./apps/voice
     container_name: skb-voice
     restart: unless-stopped
+    cgroup_parent: evolvix-voice.slice
     environment:
       VOICE_AR: "${VOICE_AR:-ar_JO-kareem-medium}"
       VOICE_EN: "${VOICE_EN:-en_US-hfc_female-medium}"

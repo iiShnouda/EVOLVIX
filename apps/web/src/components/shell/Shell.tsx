@@ -18,6 +18,7 @@ import { NotificationBell } from './NotificationBell';
 import { TabsView, useTabActions } from './Tabs';
 import { QuickActions } from '../QuickActions';
 import { ChatBadge } from './ChatBadge';
+import { UpdateBadge } from './UpdateBadge';
 import { GlobalSearch, PhoneSearch } from './GlobalSearch';
 import { FROM_MENU } from '../../lib/tabs';
 
@@ -186,6 +187,7 @@ function PhoneShell() {
                   <span className="relative">
                     <Icon name={item.icon} size={22} className="text-brand" />
                     {item.key === 'chat' && <ChatBadge className="absolute -end-2.5 -top-1.5" />}
+                    {item.key === 'updates' && <UpdateBadge className="absolute -end-1 -top-1" />}
                   </span>
                   <span className="text-xs">{t(item.labelKey)}</span>
                 </MenuLink>
@@ -311,6 +313,7 @@ function SidebarLink({ item, label }: { item: NavItem; label: string }) {
       <Icon name={item.icon} size={20} />
       {label}
       {item.key === 'chat' && <ChatBadge className="ms-auto" />}
+      {item.key === 'updates' && <UpdateBadge className="ms-auto" />}
     </MenuLink>
   );
 }
@@ -329,6 +332,7 @@ function RailLink({ item, label }: { item: NavItem; label: string }) {
       <span className="relative">
         <Icon name={item.icon} size={22} />
         {item.key === 'chat' && <ChatBadge className="absolute -end-2.5 -top-1.5" />}
+        {item.key === 'updates' && <UpdateBadge className="absolute -end-1 -top-1" />}
       </span>
       <span className="line-clamp-1 px-1">{label}</span>
     </MenuLink>

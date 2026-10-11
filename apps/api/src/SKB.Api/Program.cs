@@ -50,6 +50,7 @@ builder.Services.AddScoped<WarehouseService>();
 builder.Services.AddHttpClient<AssistantService>();
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<SystemMonitor>();
+builder.Services.AddSingleton<UpdateService>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
 builder.Services.AddScoped<NotificationService>();

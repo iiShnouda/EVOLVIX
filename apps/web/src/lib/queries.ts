@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   AssistantConversation,
   SystemMonitor,
+  SystemUpdates,
   AssistantStatus,
   AssistantTurn,
   ProfitLoss,
@@ -2425,6 +2426,21 @@ export function useProfitLoss(from: string, to: string, enabled = true) {
 // ---------------------------------------------------------------- server monitor
 
 /** The server's load, read again every few seconds while the page is open (kept in memory only). */
+export function useSystemUpdates(enabled = true) {
+  return useQuery({
+    queryKey: ['system', 'updates'],
+    queryFn: () => api.get<SystemUpdates>('/system/updates'),
+    enabled,
+    // Often while the server is busy with it, else now and then (the menu shows when one is out).
+    refetchInterval: (q) =>
+      q.state.data && q.state.data.state !== 'idle' && q.state.data.state !== 'failed'
+        ? 3_000
+        : 5 * 60_000,
+    // While the app restarts for an update, the page keeps what it last read.
+    retry: false,
+  });
+}
+
 export function useSystemMonitor() {
   return useQuery({
     queryKey: ['system', 'monitor'],

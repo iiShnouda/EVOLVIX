@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { formatDateTime, formatNumber, type SystemMonitor } from '@skb/shared';
+import { formatDateTime, formatNumber, type SystemMonitor, type SystemService } from '@skb/shared';
 import { Badge, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { useT } from '../lib/i18n';
@@ -10,9 +10,10 @@ type Tone = 'ok' | 'warn' | 'bad';
 
 /**
  * The owner's server monitor (owner, 2026-10-10; system:monitor, the owner's alone): the machine's
- * processor, memory, disk and temperature, the app, the database, the assistant's models and the
- * backups, read again every few seconds. Figures only: nothing on the server can be run or opened
- * from here.
+ * processor, memory, disk and temperature, what each part of the server uses (the app, the database,
+ * the assistant, its hearing and its voice; owner, 2026-10-11), the assistant's models and the
+ * backups, read again every few seconds. Any server: a Raspberry Pi, a PC or a cloud machine.
+ * Figures only: nothing on the server can be run or opened from here.
  */
 export function SystemPage() {
   const { t, locale } = useT();
@@ -85,13 +86,30 @@ function Body({ d }: { d: SystemMonitor }) {
         />
       </div>
 
+      <Services d={d} />
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Section title={t('sys.machine')} icon="server">
-          <Row label={t('sys.model')} value={m.model || '—'} />
+          {m.model && <Row label={t('sys.model')} value={m.model} ltr />}
+          {m.processor && (
+            <Row
+              label={t('sys.processor')}
+              value={`${m.processor} · ${n(m.cores)} ${t('sys.cores')}`}
+              ltr
+            />
+          )}
+          {m.system && <Row label={t('sys.system')} value={m.system} ltr />}
           <Row label={t('sys.uptime')} value={duration(m.uptimeSeconds, t, n)} />
-          <Row label={t('sys.load')} value={[m.load1, m.load5, m.load15].map((x) => n(x)).join(' · ')} ltr />
+          <Row
+            label={t('sys.load')}
+            value={[m.load1, m.load5, m.load15].map((x) => n(x)).join(' · ')}
+            ltr
+          />
           {m.swapTotal > 0 && (
-            <Row label={t('sys.swap')} value={`${bytes(m.swapTotal - m.swapFree)} / ${bytes(m.swapTotal)}`} />
+            <Row
+              label={t('sys.swap')}
+              value={`${bytes(m.swapTotal - m.swapFree)} / ${bytes(m.swapTotal)}`}
+            />
           )}
           {m.disks
             .filter((x) => x.role === 'backups')
@@ -133,6 +151,7 @@ function Body({ d }: { d: SystemMonitor }) {
           <Status on={d.assistant.chatReady} label={t('sys.aiChat')} />
           <Status on={d.assistant.visionReady} label={t('sys.aiVision')} />
           <Status on={d.assistant.speechReady} label={t('sys.aiSpeech')} />
+          <Status on={d.assistant.voiceReady} label={t('sys.aiVoice')} />
         </div>
         {d.assistant.models.length > 0 && (
           <div className="overflow-x-auto">
@@ -152,7 +171,11 @@ function Body({ d }: { d: SystemMonitor }) {
                     </td>
                     <td className="py-1.5 pe-3 tnum whitespace-nowrap">{bytes(x.sizeBytes)}</td>
                     <td className="py-1.5 tnum whitespace-nowrap">
-                      {x.loaded ? bytes(x.memoryBytes) : <span className="text-faint">{t('sys.notLoaded')}</span>}
+                      {x.loaded ? (
+                        bytes(x.memoryBytes)
+                      ) : (
+                        <span className="text-faint">{t('sys.notLoaded')}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -162,6 +185,77 @@ function Body({ d }: { d: SystemMonitor }) {
         )}
       </Section>
     </>
+  );
+}
+
+/**
+ * What each part of the server uses: its share of the machine's processor and its memory, and, when
+ * every part's memory is known, what the system and everything else on the machine use.
+ */
+function Services({ d }: { d: SystemMonitor }) {
+  const { t, locale } = useT();
+  const n = (v: number) => formatNumber(v, locale);
+  const rows = d.services;
+  if (rows.length === 0) return null;
+  const m = d.machine;
+  const running = rows.filter((r) => r.running);
+  const allMemory = running.every((r) => r.memoryBytes != null);
+  const allCpu = running.every((r) => r.cpuPercent != null);
+  const usedMemory = m.memoryTotal - m.memoryAvailable;
+  const other =
+    allMemory || allCpu
+      ? {
+          cpu: allCpu
+            ? Math.max(0, m.cpuPercent - running.reduce((a, r) => a + (r.cpuPercent ?? 0), 0))
+            : null,
+          memory: allMemory
+            ? Math.max(0, usedMemory - running.reduce((a, r) => a + (r.memoryBytes ?? 0), 0))
+            : null,
+        }
+      : null;
+
+  const line = (
+    key: string,
+    name: string,
+    on: boolean,
+    cpu: number | null,
+    memory: number | null,
+  ) => (
+    <li key={key} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 py-2.5 text-sm">
+      <span className="flex min-w-0 basis-full items-center gap-2 font-medium sm:basis-auto sm:flex-1">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${on ? 'bg-positive' : 'bg-faint'}`} />
+        <span className="truncate">{name}</span>
+        {!on && <span className="text-xs font-normal text-muted">({t('sys.stopped')})</span>}
+      </span>
+      <span className="flex flex-1 items-center gap-2 sm:w-36 sm:flex-none" title={t('sys.cpu')}>
+        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+          <span
+            className={`block h-full rounded-full ${cpu != null && cpu >= 90 ? 'bg-destructive' : cpu != null && cpu >= 70 ? 'bg-warning' : 'bg-brand'}`}
+            style={{ width: `${Math.min(100, cpu ?? 0)}%` }}
+          />
+        </span>
+        <span className="w-12 text-end text-xs tnum">{cpu == null ? '—' : `${n(cpu)}%`}</span>
+      </span>
+      <span className="w-24 text-end text-xs tnum" title={t('sys.memory')}>
+        {memory == null ? '—' : formatBytes(memory, locale)}
+      </span>
+    </li>
+  );
+
+  return (
+    <Section title={t('sys.services')} icon="dashboard">
+      <div className="hidden items-center gap-x-4 border-b border-line pb-1.5 text-xs text-muted sm:flex">
+        <span className="flex-1">{t('sys.part')}</span>
+        <span className="w-36 text-end">{t('sys.cpu')}</span>
+        <span className="w-24 text-end">{t('sys.memory')}</span>
+      </div>
+      <ul className="divide-y divide-[var(--c-line)]">
+        {rows.map((r: SystemService) =>
+          line(r.key, t(`sys.svc.${r.key}`), r.running, r.cpuPercent, r.memoryBytes),
+        )}
+        {other && line('other', t('sys.svc.other'), true, other.cpu, other.memory)}
+      </ul>
+    </Section>
   );
 }
 
@@ -189,9 +283,14 @@ function Gauge({
           {label}
         </span>
       </div>
-      <p className={`text-2xl font-semibold tnum ${tone === 'bad' ? 'text-destructive' : ''}`}>{value}</p>
+      <p className={`text-2xl font-semibold tnum ${tone === 'bad' ? 'text-destructive' : ''}`}>
+        {value}
+      </p>
       <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-        <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
+        <div
+          className={`h-full rounded-full ${bar}`}
+          style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+        />
       </div>
       <p className="truncate text-xs text-muted tnum">{detail}</p>
     </Card>

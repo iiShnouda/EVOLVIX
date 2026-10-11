@@ -96,10 +96,14 @@ The microphone works:
   server (`sudo tailscale serve --bg 8080`, then `https://<server-name>.<tailnet>.ts.net`).
 
 ## The owner's server monitor
-**Server monitor** in the app (the owner alone) shows the processor, memory, disk, temperature, the
-database and the assistant's models, refreshed every few seconds. It shows figures only: there is
-deliberately no command line in the app. To run commands, use SSH from your own device (see
-Firewall below), which the firewall allows only from the admin devices.
+**Server monitor** in the app (the owner alone) works on any server (a Raspberry Pi, a PC, a cloud
+machine): the processor, memory, disk and temperature, and **what each part uses**: the app, the
+database, the assistant, its hearing (speech) and its voice, plus the system and everything else. It
+reads the machine's control groups read-only (each container is in its own `evolvix-<part>.slice`,
+see docker-compose.yml). On a Raspberry Pi the memory per part shows after one restart: the installer
+turns memory accounting on (`cgroup_enable=memory` in `/boot/firmware/cmdline.txt`). It shows figures
+only: there is deliberately no command line in the app. To run commands, use SSH from your own
+device (see Firewall below), which the firewall allows only from the admin devices.
 
 ## On a Raspberry Pi 5 (16 GB)
 Everything runs on it as is (all the images are built for ARM64): use **64-bit Raspberry Pi OS**,
@@ -193,8 +197,24 @@ Lock it down:
 - Use access rules so staff devices reach port 8080 only.
 
 ## Updating to a new version
+**From the app (the owner alone):** **Updates** in the menu says whether a new version is out and what
+it brings and fixes; **Update now** updates the server, and **Check for updates** looks again (it also
+looks once a day by itself). A backup is made first, the new version is built while the current one
+keeps working, and the app pauses for a moment while it restarts; every device then loads the new
+version by itself.
+
+How: the app can't run anything on the server. It only leaves the word `check` or `update` in
+`/var/lib/evolvix/updates`, and the server's own updater (`scripts/update-server.sh`, started by the
+systemd units `evolvix-update.path` and `evolvix-update-check.timer` that the installer sets up) does
+the work and writes back how it went. Its log stays on the server: `/var/log/evolvix-update.log`.
+What a version brings comes from `apps/api/src/SKB.Api/release-notes.json`.
+
+The first time (a server installed before updates came to the app), set the updater up once:
 ```bash
-git pull
-docker compose --profile full up -d --build
+cd EVOLVIX && git pull && sudo bash scripts/install-server.sh --no-firewall
+```
+**By hand**, any time:
+```bash
+sudo bash scripts/update-server.sh update      # or: git pull && sudo docker compose --profile full up -d --build
 ```
 Your data in `skb-db-data` is preserved across updates.

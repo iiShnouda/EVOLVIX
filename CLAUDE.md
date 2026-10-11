@@ -102,6 +102,15 @@ list/detail templates that render device‑appropriately.
 4. Add the page under `apps/web/src/pages/` using the list/detail templates + a query hook.
 5. Register it in the shared navigation model so it appears in every device's shell.
 
+## Releases (owner decision 2026-10-11)
+
+The owner's **Updates** page shows what each version brings, from
+`apps/api/src/SKB.Api/release-notes.json` (its first release is the version the server runs). Any
+change people will notice adds a line to the top release, in Arabic and English (`features` /
+`fixes`), or starts a new release with a higher version and today's date; note the Windows/Android
+app versions in `apps` when a shell changes. The server updates itself through
+`scripts/update-server.sh` (see COMPANY-SERVER.md): keep it doing only check and update.
+
 ## Commands
 
 - Server: `cd apps/api/src/SKB.Api && dotnet run` (migrates + seeds on startup). Migrations:
