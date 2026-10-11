@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -66,14 +67,20 @@ export function AssistantPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['assistant'] });
 
   async function remove(id: string) {
-    if (!window.confirm(t('assistant.deleteAsk'))) return;
+    if (!(await confirm({ message: t('assistant.deleteAsk'), danger: true }))) return;
     await api.del(`/assistant/conversations/${id}`);
     if (chosen === id) open(null);
     await refresh();
   }
 
   async function removeOld(days: number | null) {
-    if (!window.confirm(t(days ? 'assistant.deleteOldAsk' : 'assistant.deleteAllAsk'))) return;
+    if (
+      !(await confirm({
+        message: t(days ? 'assistant.deleteOldAsk' : 'assistant.deleteAllAsk'),
+        danger: true,
+      }))
+    )
+      return;
     await api.del(`/assistant/conversations${days ? `?olderThanDays=${days}` : ''}`);
     if (!days) open(null);
     await refresh();

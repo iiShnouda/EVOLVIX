@@ -10,6 +10,7 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { ConfirmHost } from './components/ConfirmHost';
 import { setCompanyTimeZone } from '@skb/shared';
 import { queryClient } from './lib/queryClient';
 import { useCompanySettings, usePreferences, usePrintPaper } from './lib/queries';
@@ -302,6 +303,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <UpdateNotice />
       <RouterProvider router={router} />
+      <ConfirmHost />
     </QueryClientProvider>
   );
 }

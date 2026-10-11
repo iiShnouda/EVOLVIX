@@ -2713,4 +2713,6 @@ export const en = {
   'audit.device.linux': 'Linux',
   'presence.liveActivity': 'Live activity',
   'presence.liveWaiting': 'Each action staff take will appear here the moment it happens.',
+  'common.confirmTitle': 'Please confirm',
+  'common.confirmOk': 'Confirm',
 } as const;

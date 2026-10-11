@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -2000,8 +2001,9 @@ export function InvoiceBuilderPage({
                   size="sm"
                   variant="ghost"
                   icon="close"
-                  onClick={() => {
-                    if (!window.confirm(t('invoice.clearLinesAsk'))) return;
+                  onClick={async () => {
+                    if (!(await confirm({ message: t('invoice.clearLinesAsk'), danger: true })))
+                      return;
                     setLines([]);
                     setSecond(new Set());
                   }}

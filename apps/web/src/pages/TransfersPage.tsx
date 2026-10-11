@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -207,7 +208,11 @@ function TransferDetail({
   }
 
   async function act(action: 'receive' | 'cancel') {
-    if (action === 'cancel' && !window.confirm(t('transfer.cancelConfirm'))) return;
+    if (
+      action === 'cancel' &&
+      !(await confirm({ message: t('transfer.cancelConfirm'), danger: true }))
+    )
+      return;
     try {
       await finish.mutateAsync({ id: tr!.id, action });
     } catch {

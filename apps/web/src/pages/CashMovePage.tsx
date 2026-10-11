@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -682,7 +683,7 @@ function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: 
               title={t('move.deleteItem')}
               aria-label={t('move.deleteItem')}
               onClick={async () => {
-                if (!window.confirm(t('move.deleteItemAsk'))) return;
+                if (!(await confirm({ message: t('move.deleteItemAsk'), danger: true }))) return;
                 try {
                   await remove.mutateAsync(value);
                   onChange('');
@@ -767,7 +768,7 @@ function AccountManager({
             type="button"
             className="font-medium text-destructive hover:underline"
             onClick={async () => {
-              if (!window.confirm(t('move.deleteAccountAsk'))) return;
+              if (!(await confirm({ message: t('move.deleteAccountAsk'), danger: true }))) return;
               try {
                 await remove.mutateAsync(selected.id);
                 onDeleted();

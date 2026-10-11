@@ -2699,4 +2699,6 @@ export const ar: TranslationDictionary = {
   'audit.device.linux': 'Linux',
   'presence.liveActivity': 'النشاط المباشر',
   'presence.liveWaiting': 'ستظهر هنا أي حركة يقوم بها الموظفون فور حدوثها.',
+  'common.confirmTitle': 'تأكيد',
+  'common.confirmOk': 'تأكيد',
 };

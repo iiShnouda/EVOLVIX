@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -1220,7 +1221,7 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
               icon="close"
               loading={remove.isPending}
               onClick={async () => {
-                if (!window.confirm(t('payroll.deleteAsk'))) return;
+                if (!(await confirm({ message: t('payroll.deleteAsk'), danger: true }))) return;
                 try {
                   await remove.mutateAsync(employee.id);
                   onClose();

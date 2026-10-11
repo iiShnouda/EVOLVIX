@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -78,7 +79,7 @@ function StatusCard({ u, offline }: { u: SystemUpdates; offline: boolean }) {
   const [error, setError] = useState<string | null>(null);
 
   async function send(what: 'check' | 'apply') {
-    if (what === 'apply' && !window.confirm(t('updates.confirm'))) return;
+    if (what === 'apply' && !(await confirm({ message: t('updates.confirm') }))) return;
     setBusy(what);
     setError(null);
     try {

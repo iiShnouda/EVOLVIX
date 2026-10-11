@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -560,7 +561,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
                 icon="close"
                 loading={remove.isPending}
                 onClick={async () => {
-                  if (!window.confirm(t('staff.deleteAsk'))) return;
+                  if (!(await confirm({ message: t('staff.deleteAsk'), danger: true }))) return;
                   try {
                     await remove.mutateAsync(person.id);
                   } catch {

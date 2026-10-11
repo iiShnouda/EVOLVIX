@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatNumber, type Permission, type TranslationKey, type Warehouse } from '@skb/shared';
@@ -410,7 +411,7 @@ function EntryRow({
   const error = (update.error ?? remove.error) as ApiError | null;
 
   async function del() {
-    if (!window.confirm(t('setup.deleteDepartmentAsk'))) return;
+    if (!(await confirm({ message: t('setup.deleteDepartmentAsk'), danger: true }))) return;
     try {
       await remove.mutateAsync(entry.id);
     } catch {

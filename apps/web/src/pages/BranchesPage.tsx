@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useState } from 'react';
 import { formatMoney, formatNumber, type BranchWithWarehouses, type Warehouse } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -248,8 +249,9 @@ function BranchCard({
                   size="sm"
                   variant="dangerGhost"
                   loading={remove.isPending}
-                  onClick={() => {
-                    if (window.confirm(t('branches.deleteAsk'))) remove.mutate(branch.id);
+                  onClick={async () => {
+                    if (await confirm({ message: t('branches.deleteAsk'), danger: true }))
+                      remove.mutate(branch.id);
                   }}
                 >
                   {t('common.delete')}
@@ -258,7 +260,9 @@ function BranchCard({
             </div>
           </div>
         )}
-        {!editing && editError && <p className="mt-2 text-xs text-destructive">{errorText(t, editError)}</p>}
+        {!editing && editError && (
+          <p className="mt-2 text-xs text-destructive">{errorText(t, editError)}</p>
+        )}
       </div>
 
       {branch.warehouses.length === 0 ? (
@@ -473,8 +477,9 @@ function WarehouseRow({
                   size="sm"
                   variant="dangerGhost"
                   loading={remove.isPending}
-                  onClick={() => {
-                    if (window.confirm(t('warehouse.deleteAsk'))) remove.mutate(w.id);
+                  onClick={async () => {
+                    if (await confirm({ message: t('warehouse.deleteAsk'), danger: true }))
+                      remove.mutate(w.id);
                   }}
                 >
                   {t('common.delete')}

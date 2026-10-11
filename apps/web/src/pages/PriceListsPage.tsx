@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -450,7 +451,7 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
               variant="ghost"
               loading={remove.isPending}
               onClick={async () => {
-                if (!window.confirm(t('pl.deleteConfirm'))) return;
+                if (!(await confirm({ message: t('pl.deleteConfirm'), danger: true }))) return;
                 await remove.mutateAsync(list.id);
                 onGone();
               }}
