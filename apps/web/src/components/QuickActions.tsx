@@ -138,21 +138,21 @@ export function QuickActions() {
 
   let triggerEl;
   if (shape === 'tab') {
-    // A small rounded nub that grows into a tall tab when the mouse reaches it (owner's drawing).
+    // A rounded tab on the edge, big enough that its bolt and grip always show (owner, 2026-10-12);
+    // it grows a little more when the mouse reaches it, and its shortcuts open in a column beside it.
     triggerEl = (
       <button
         {...common}
         {...handlers}
-        className={`flex select-none flex-col items-center justify-center gap-1.5 overflow-hidden rounded-e-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] transition-all duration-200 ${
+        className={`flex select-none flex-col items-center justify-center gap-1.5 overflow-hidden rounded-e-2xl bg-brand text-brand-fg shadow-[var(--shadow-pop)] transition-all duration-200 ${
           dragging ? 'cursor-grabbing' : 'cursor-pointer'
-        } ${out ? 'h-28 w-7' : touch ? 'h-14 w-3.5 opacity-90' : 'h-10 w-2 opacity-80'}`}
+        } ${out ? 'h-28 w-9' : 'h-20 w-6 opacity-90'}`}
       >
-        {out && (
-          <>
-            <Icon name={menu ? 'close' : 'bolt'} size={16} />
-            <span className="block h-6 w-1 rounded-full bg-current opacity-50" aria-hidden />
-          </>
-        )}
+        <Icon name={menu ? 'close' : 'bolt'} size={out ? 20 : 16} />
+        <span
+          className={`block w-1 rounded-full bg-current opacity-50 ${out ? 'h-6' : 'h-4'}`}
+          aria-hidden
+        />
       </button>
     );
   } else if (shape === 'bubble') {
@@ -217,6 +217,16 @@ export function QuickActions() {
             customizeLabel={t('qa.customize')}
             onClose={() => setMenu(false)}
           />
+        ) : shape === 'tab' ? (
+          <ColumnMenu
+            items={chosen}
+            y={y}
+            labelOf={(a) => t(a.label)}
+            onPick={go}
+            onCustomize={customize}
+            customizeLabel={t('qa.customize')}
+            onClose={() => setMenu(false)}
+          />
         ) : (
           <div className="fixed inset-0 z-40" onClick={() => setMenu(false)}>
             <div
@@ -269,6 +279,63 @@ export function QuickActions() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * The tab's shortcuts, stacked in a column of round buttons beside it at the edge (owner, 2026-10-12):
+ * a tall rounded holder with one circle per shortcut, centred on the tab, and the chooser at the end.
+ */
+function ColumnMenu({
+  items,
+  y,
+  labelOf,
+  onPick,
+  onCustomize,
+  customizeLabel,
+  onClose,
+}: {
+  items: QuickAction[];
+  y: number;
+  labelOf: (a: QuickAction) => string;
+  onPick: (a: QuickAction) => void;
+  onCustomize: () => void;
+  customizeLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40" onClick={onClose}>
+      <div
+        role="menu"
+        onClick={(e) => e.stopPropagation()}
+        className="absolute start-0 flex max-h-[92vh] flex-col items-center gap-2 overflow-y-auto rounded-e-3xl border border-line bg-surface p-2 shadow-[var(--shadow-pop)]"
+        style={{ top: `${y}vh`, transform: 'translateY(-50%)' }}
+      >
+        {items.map((a, i) => (
+          <button
+            key={a.id}
+            role="menuitem"
+            type="button"
+            title={labelOf(a)}
+            aria-label={labelOf(a)}
+            onClick={() => onPick(a)}
+            className="grid h-12 w-12 shrink-0 animate-[quickPop_.16s_ease-out_both] place-items-center rounded-full border border-line bg-surface text-brand hover:border-brand hover:bg-brand-soft"
+            style={{ animationDelay: `${i * 25}ms`, transform: 'none' }}
+          >
+            <Icon name={a.icon} size={20} />
+          </button>
+        ))}
+        <button
+          type="button"
+          title={customizeLabel}
+          aria-label={customizeLabel}
+          onClick={onCustomize}
+          className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-brand bg-brand-soft text-brand"
+        >
+          <Icon name="edit" size={18} />
+        </button>
+      </div>
+    </div>
   );
 }
 
