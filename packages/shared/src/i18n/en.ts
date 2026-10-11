@@ -2696,6 +2696,6 @@ export const en = {
   'audit.resource.department': 'Department',
   'themes.quickShape': 'Quick-action button shape',
   'themes.quick.dock': 'Tucked edge tab',
-  'themes.quick.bubble': 'Floating round button',
-  'themes.quick.tab': 'Half-round edge tab',
+  'themes.quick.bubble': 'Hidden round button, shortcuts fan around it',
+  'themes.quick.tab': 'Small nub that grows',
 } as const;

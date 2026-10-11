@@ -95,19 +95,17 @@ function QuickShapePicker() {
     ),
     bubble: (
       <span
-        className={`absolute bottom-3 ${rtl ? 'right-2' : 'left-2'} grid h-8 w-8 place-items-center rounded-full bg-fg shadow-md ring-2 ring-fg/10`}
+        className={`absolute top-1/2 ${rtl ? '-right-3' : '-left-3'} grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-fg shadow-md ring-2 ring-fg/10`}
       >
-        <Logo size={18} className="rounded-md" />
+        <Logo size={16} className="rounded-md" />
       </span>
     ),
     tab: (
       <span
-        className={`absolute top-1/2 ${side} flex h-14 w-3.5 -translate-y-1/2 items-center justify-center bg-brand ${
+        className={`absolute top-1/2 ${side} flex h-6 w-1.5 -translate-y-1/2 items-center justify-center bg-brand ${
           rtl ? 'rounded-s-full' : 'rounded-e-full'
         }`}
-      >
-        <span className="h-4 w-0.5 rounded-full bg-brand-fg/60" />
-      </span>
+      />
     ),
   };
   return (

@@ -54,7 +54,7 @@ public sealed class SystemController : ControllerBase
         if (v.State is "waiting" or "checking" or "updating") return Busy();
         _updates.Request("check");
         await AuditAsync("check");
-        return Accepted();
+        return Accepted(new { code = "checking" });
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public sealed class SystemController : ControllerBase
         }
         _updates.Request("update");
         await AuditAsync("upgrade");
-        return Accepted();
+        return Accepted(new { code = "updating" });
     }
 
     private ObjectResult NotSetUp() => Conflict(new { message = "Updates aren't set up on this server.", code = "updates_off" });

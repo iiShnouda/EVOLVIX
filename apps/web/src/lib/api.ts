@@ -84,8 +84,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const payload = await res.json().catch(() => ({}));
     throw new ApiError(res.status, payload.message ?? res.statusText, payload.code);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  // 202/204 and any empty body (e.g. an accepted request) carry nothing to parse.
+  if (res.status === 204 || res.status === 202) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

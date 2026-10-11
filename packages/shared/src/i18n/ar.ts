@@ -2682,6 +2682,6 @@ export const ar: TranslationDictionary = {
   'audit.resource.department': 'قسم',
   'themes.quickShape': 'شكل زر الإجراءات السريعة',
   'themes.quick.dock': 'لسان مخفي على الحافة',
-  'themes.quick.bubble': 'زر دائري عائم',
-  'themes.quick.tab': 'نصف دائرة على الحافة',
+  'themes.quick.bubble': 'زر دائري مخفي، تظهر الاختصارات حوله',
+  'themes.quick.tab': 'نقطة صغيرة تكبر عند الاقتراب',
 };
