@@ -2669,9 +2669,17 @@ export interface SystemMonitor {
     speechReady: boolean;
     voiceReady: boolean;
     voiceMemoryBytes: number;
+    voiceDiskBytes: number;
     models: { name: string; sizeBytes: number; loaded: boolean; memoryBytes: number }[];
   };
   backups: { count: number; sizeBytes: number; latestAt: string | null };
+  /** What fills the disk, by part (database, aiModels, voiceModels, backups, app, other), biggest first. */
+  storage: {
+    totalBytes: number;
+    freeBytes: number;
+    usedBytes: number;
+    items: { key: string; bytes: number }[];
+  };
 }
 
 // ---- Updates (owner, 2026-10-11): a new version, what it brings, updating ----

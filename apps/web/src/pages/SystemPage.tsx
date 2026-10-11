@@ -88,6 +88,8 @@ function Body({ d }: { d: SystemMonitor }) {
 
       <Services d={d} />
 
+      <Storage d={d} />
+
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Section title={t('sys.machine')} icon="server">
           {m.model && <Row label={t('sys.model')} value={m.model} ltr />}
@@ -259,6 +261,71 @@ function Services({ d }: { d: SystemMonitor }) {
   );
 }
 
+/**
+ * What fills the system disk (owner, 2026-10-12: "what القرص has and what takes more space"): a
+ * stacked bar and the parts behind it, biggest first — the database, the AI models, the voice, the
+ * backups, the app itself, and everything else (the system, Docker's images, logs).
+ */
+function Storage({ d }: { d: SystemMonitor }) {
+  const { t, locale } = useT();
+  const s = d.storage;
+  const bytes = (v: number) => formatBytes(v, locale);
+  if (!s || s.totalBytes === 0) return null;
+  const colors: Record<string, string> = {
+    database: 'bg-brand',
+    aiModels: 'bg-info',
+    voiceModels: 'bg-positive',
+    backups: 'bg-warning',
+    app: 'bg-violet-500',
+    other: 'bg-slate-400',
+  };
+  const usedPct = pct(s.usedBytes, s.totalBytes);
+  return (
+    <Section title={t('sys.disk')} icon="server">
+      <div className="flex items-baseline justify-between gap-3 pb-2 text-sm">
+        <span className="text-muted">{t('sys.used')}</span>
+        <span className="font-medium tnum" dir="ltr">
+          {bytes(s.usedBytes)} / {bytes(s.totalBytes)}
+          <span className="ms-1.5 text-xs text-muted">({pctText(usedPct, locale)})</span>
+        </span>
+      </div>
+      <div className="mb-3 flex h-3 w-full overflow-hidden rounded-full bg-surface-2" dir="ltr">
+        {s.items.map((it) => (
+          <span
+            key={it.key}
+            className={colors[it.key] ?? 'bg-slate-400'}
+            style={{ width: `${(it.bytes / s.totalBytes) * 100}%` }}
+            title={`${t(`sys.disk.${it.key}` as 'sys.disk.database')}: ${bytes(it.bytes)}`}
+          />
+        ))}
+        <span className="flex-1" />
+      </div>
+      <ul className="space-y-1.5">
+        {s.items.map((it) => (
+          <li key={it.key} className="flex items-center justify-between gap-3 text-sm">
+            <span className="flex items-center gap-2">
+              <span
+                className={`h-2.5 w-2.5 shrink-0 rounded-sm ${colors[it.key] ?? 'bg-slate-400'}`}
+              />
+              {t(`sys.disk.${it.key}` as 'sys.disk.database')}
+            </span>
+            <span className="tnum font-medium">
+              {bytes(it.bytes)}
+              <span className="ms-1.5 text-xs text-muted">
+                {pctText((it.bytes / s.usedBytes) * 100, locale)}
+              </span>
+            </span>
+          </li>
+        ))}
+        <li className="flex items-center justify-between gap-3 border-t border-line pt-1.5 text-sm text-muted">
+          <span>{t('sys.free')}</span>
+          <span className="tnum">{bytes(s.freeBytes)}</span>
+        </li>
+      </ul>
+    </Section>
+  );
+}
+
 function Gauge({
   icon,
   label,
@@ -326,6 +393,10 @@ function Status({ on, label }: { on: boolean; label: string }) {
 
 function pct(part: number, total: number): number {
   return total > 0 ? Math.round((1000 * part) / total) / 10 : 0;
+}
+
+function pctText(value: number, locale: 'ar' | 'en'): string {
+  return `${formatNumber(Math.round(value * 10) / 10, locale)}%`;
 }
 
 function level(value: number, warn: number, bad: number): Tone {

@@ -2698,4 +2698,11 @@ export const en = {
   'themes.quick.dock': 'Tucked edge tab',
   'themes.quick.bubble': 'Hidden round button, shortcuts fan around it',
   'themes.quick.tab': 'Small nub that grows',
+  'sys.used': 'Used',
+  'sys.disk.database': 'Database',
+  'sys.disk.aiModels': 'AI models',
+  'sys.disk.voiceModels': 'Assistant voices',
+  'sys.disk.backups': 'Backups',
+  'sys.disk.app': 'The app',
+  'sys.disk.other': 'System and other files',
 } as const;

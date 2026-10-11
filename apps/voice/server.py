@@ -115,6 +115,18 @@ def memory_bytes() -> int:
     return 0
 
 
+def disk_bytes() -> int:
+    """How much the downloaded voices take on disk."""
+    total = 0
+    try:
+        for f in VOICE_DIR.glob("*"):
+            if f.is_file():
+                total += f.stat().st_size
+    except OSError:
+        pass
+    return total
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "EvolvixVoice"
     sys_version = ""
@@ -137,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.error(HTTPStatus.NOT_FOUND, "not_found")
         body = {lang: lang in loaded for lang in VOICES}
         body["memoryBytes"] = memory_bytes()
+        body["diskBytes"] = disk_bytes()
         self.reply(HTTPStatus.OK, json.dumps(body).encode(), "application/json")
 
     def do_POST(self):

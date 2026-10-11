@@ -57,6 +57,13 @@ check(
   'no paths or settings in it',
   !/\/(home|etc|var|backups|host)\b|Password|Secret/i.test(JSON.stringify(m)),
 );
+// What fills the disk (owner, 2026-10-12): named parts, biggest first, inside the disk's size.
+const st = m.storage;
+check('a disk breakdown', st && st.totalBytes > 0 && Array.isArray(st.items) && st.items.length > 0, st);
+check('each part is a known one', st.items.every((i) => ['database', 'aiModels', 'voiceModels', 'backups', 'app', 'other'].includes(i.key)));
+check('biggest first', st.items.every((i, idx) => idx === 0 || i.bytes <= st.items[idx - 1].bytes));
+check('the database is one of them', st.items.some((i) => i.key === 'database' && i.bytes > 0));
+check('the parts fit inside the disk', st.items.reduce((a, i) => a + i.bytes, 0) <= st.usedBytes + 1);
 
 // ------------------------------------------------------------------ updates
 console.log('== updates');

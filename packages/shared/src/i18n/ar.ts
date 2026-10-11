@@ -2684,4 +2684,11 @@ export const ar: TranslationDictionary = {
   'themes.quick.dock': 'لسان مخفي على الحافة',
   'themes.quick.bubble': 'زر دائري مخفي، تظهر الاختصارات حوله',
   'themes.quick.tab': 'نقطة صغيرة تكبر عند الاقتراب',
+  'sys.used': 'المستخدم',
+  'sys.disk.database': 'قاعدة البيانات',
+  'sys.disk.aiModels': 'نماذج الذكاء الاصطناعي',
+  'sys.disk.voiceModels': 'أصوات المساعد',
+  'sys.disk.backups': 'النسخ الاحتياطية',
+  'sys.disk.app': 'البرنامج',
+  'sys.disk.other': 'النظام وملفات أخرى',
 };

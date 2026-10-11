@@ -13,7 +13,7 @@ http
     // The speech service (whisper-asr-webservice), when the app is pointed here for it too.
     if (req.url === '/docs') return send({ ok: true });
     // The voice (Piper, apps/voice), when the app is pointed here for it too.
-    if (req.url === '/health') return send({ ar: true, en: true, memoryBytes: 90000000 });
+    if (req.url === '/health') return send({ ar: true, en: true, memoryBytes: 90000000, diskBytes: 130000000 });
     if (req.url === '/speak') {
       log.push({ speak: JSON.parse(body) });
       res.writeHead(200, { 'content-type': 'audio/wav' });

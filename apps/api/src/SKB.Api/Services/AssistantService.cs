@@ -51,11 +51,11 @@ public sealed class AssistantService
     public sealed record Status(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
 
     /// <summary>The languages the server's voice speaks now ("ar", "en") and the memory it uses.</summary>
-    public sealed record VoiceStatus(string[] Languages, long MemoryBytes);
+    public sealed record VoiceStatus(string[] Languages, long MemoryBytes, long DiskBytes);
 
     public async Task<VoiceStatus> VoiceStatusAsync(CancellationToken ct = default)
     {
-        if (!Enabled || VoiceEndpoint is null) return new(Array.Empty<string>(), 0);
+        if (!Enabled || VoiceEndpoint is null) return new(Array.Empty<string>(), 0, 0);
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -64,11 +64,12 @@ public sealed class AssistantService
             var languages = new[] { "ar", "en" }
                 .Where(l => health?[l] is JsonValue v && v.TryGetValue<bool>(out var on) && on).ToArray();
             var memory = health?["memoryBytes"] is JsonValue m && m.TryGetValue<long>(out var bytes) ? bytes : 0;
-            return new(languages, memory);
+            var disk = health?["diskBytes"] is JsonValue d && d.TryGetValue<long>(out var db) ? db : 0;
+            return new(languages, memory, disk);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
-            return new(Array.Empty<string>(), 0);
+            return new(Array.Empty<string>(), 0, 0);
         }
     }
 

@@ -102,7 +102,9 @@ public sealed class SystemMonitor
             services.Add(new SystemServiceDto(part, running, running ? partCpu : null, running ? memory : null));
         }
 
-        return new SystemMonitorDto(DateTime.UtcNow, machine, services, app, database, assistant, Backups());
+        var backups = Backups();
+        var storage = Storage(database, assistant, backups);
+        return new SystemMonitorDto(DateTime.UtcNow, machine, services, app, database, assistant, backups, storage);
     }
 
     // ------------------------------------------------------------------ machine
@@ -393,7 +395,75 @@ public sealed class SystemMonitor
             }
         }
         return new SystemAssistantDto(status.Enabled, status.Reachable, status.ChatReady, status.VisionReady, speech,
-            voice.Languages.Length > 0, voice.MemoryBytes, models);
+            voice.Languages.Length > 0, voice.MemoryBytes, voice.DiskBytes, models);
+    }
+
+    /// <summary>
+    /// What fills the system disk (owner, 2026-10-12: "what القرص has and what takes more space"),
+    /// as named parts: the database, the AI models, the assistant's voice, the backups, the app
+    /// itself, and everything else (the system, Docker's images and layers, logs). Measured where
+    /// the app can see it; the rest is the disk's used space less the parts it can measure, so the
+    /// total always adds up to what the disk holds.
+    /// </summary>
+    private SystemStorageDto Storage(SystemDatabaseDto database, SystemAssistantDto assistant, SystemBackupsDto backups)
+    {
+        long total = 0, free = 0;
+        try
+        {
+            var root = new DriveInfo("/");
+            if (root.IsReady) { total = root.TotalSize; free = root.AvailableFreeSpace; }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+        }
+        var used = Math.Max(0, total - free);
+        var db = database.SizeBytes;
+        var models = assistant.Models.Sum(m => m.SizeBytes);
+        var voice = assistant.VoiceDiskBytes;
+        var backup = backups.SizeBytes;
+        var appDisk = AppDiskBytes();
+        var known = db + models + voice + backup + appDisk;
+        var other = total > 0 ? Math.Max(0, used - known) : 0;
+        var items = new List<SystemStorageItemDto>
+        {
+            new("database", db),
+            new("aiModels", models),
+            new("voiceModels", voice),
+            new("backups", backup),
+            new("app", appDisk),
+            new("other", other),
+        };
+        return new SystemStorageDto(total, free, used, items.Where(i => i.Bytes > 0).OrderByDescending(i => i.Bytes).ToArray());
+    }
+
+    /// <summary>The published app's own size on disk (its program files).</summary>
+    private static long AppDiskBytes()
+    {
+        try
+        {
+            return DirSize(new DirectoryInfo(AppContext.BaseDirectory), 4);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>A folder's size, to a few levels deep so it stays quick.</summary>
+    private static long DirSize(DirectoryInfo dir, int depth)
+    {
+        long total = 0;
+        try
+        {
+            foreach (var f in dir.EnumerateFiles()) total += f.Length;
+            if (depth > 0)
+                foreach (var d in dir.EnumerateDirectories())
+                    total += DirSize(d, depth - 1);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+        return total;
     }
 
     private SystemBackupsDto Backups()

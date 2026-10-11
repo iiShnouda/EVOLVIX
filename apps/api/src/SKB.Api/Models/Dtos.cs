@@ -1189,7 +1189,10 @@ public record SystemAppDto(long MemoryBytes, long ManagedBytes, int Threads, lon
 public record SystemDatabaseDto(long SizeBytes, int Connections, string Version);
 public record SystemModelDto(string Name, long SizeBytes, bool Loaded, long MemoryBytes);
 public record SystemAssistantDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady,
-    bool VoiceReady, long VoiceMemoryBytes, List<SystemModelDto> Models);
+    bool VoiceReady, long VoiceMemoryBytes, long VoiceDiskBytes, List<SystemModelDto> Models);
+/// <summary>What fills the system disk, by part (database, aiModels, voiceModels, backups, app, other), biggest first.</summary>
+public record SystemStorageItemDto(string Key, long Bytes);
+public record SystemStorageDto(long TotalBytes, long FreeBytes, long UsedBytes, SystemStorageItemDto[] Items);
 public record SystemBackupsDto(int Count, long SizeBytes, DateTime? LatestAt);
 /// <summary>
 /// The updates page (owner, 2026-10-11). Enabled: the server's updater is set up. Version: this
@@ -1201,4 +1204,4 @@ public record SystemUpdatesDto(bool Enabled, string Version, IReadOnlyList<SKB.A
     bool Available, int Behind, IReadOnlyList<SKB.Api.Services.Releases.Release> Coming, string State, string? Step,
     string? Error, DateTime? CheckedAt, DateTime? StartedAt, DateTime? FinishedAt);
 public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, List<SystemServiceDto> Services, SystemAppDto App,
-    SystemDatabaseDto Database, SystemAssistantDto Assistant, SystemBackupsDto Backups);
+    SystemDatabaseDto Database, SystemAssistantDto Assistant, SystemBackupsDto Backups, SystemStorageDto Storage);
