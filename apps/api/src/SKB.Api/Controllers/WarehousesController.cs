@@ -276,7 +276,7 @@ public sealed class WarehousesController : ControllerBase
                 : new { message = "A branch needs a warehouse: delete the branch instead.", code = "last_warehouse" });
         }
         if (await InUseAsync(() => RemoveWarehouseAsync(warehouse))) return InUse();
-        await AuditAsync("delete", "warehouse", id, warehouse.BranchId);
+        await AuditAsync("delete", "warehouse", id, warehouse.BranchId, Loc.Name(warehouse));
         return NoContent();
     }
 
@@ -308,7 +308,7 @@ public sealed class WarehousesController : ControllerBase
             _db.Branches.Remove(branch);
         });
         if (failed) return InUse();
-        await AuditAsync("delete", "branch", id, id);
+        await AuditAsync("delete", "branch", id, id, Loc.Name(branch));
         return NoContent();
     }
 
@@ -449,10 +449,10 @@ public sealed class WarehousesController : ControllerBase
             w.Prefix, _departments.GetValueOrDefault(w.Id, Array.Empty<string>())));
     }
 
-    private Task AuditAsync(string action, string resource, Guid id, Guid branchId) =>
+    private Task AuditAsync(string action, string resource, Guid id, Guid branchId, string? details = null) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), id.ToString());
+            Request.Headers.UserAgent.ToString(), id.ToString(), details);
 
     /// <summary>A warehouse's own cash box, named after it (with its code if that name is taken).</summary>
     private async Task<MoneyAccount> StoreBoxAsync(Warehouse store, Branch branch, string? alsoTaken)

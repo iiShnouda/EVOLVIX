@@ -335,6 +335,7 @@ public class AppDbContext : DbContext
         b.Entity<PartyIdCard>().HasOne<Party>().WithMany().HasForeignKey(x => x.PartyId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AuditEntry>().HasIndex(x => x.CreatedAt);
         b.Entity<AuditEntry>().HasIndex(x => x.Resource);
+        b.Entity<AuditEntry>().Property(x => x.Details).HasMaxLength(500);
         b.Entity<SalesDocument>().HasIndex(x => x.Number).IsUnique();
         b.Entity<SalesDocument>().HasIndex(x => new { x.Type, x.Status });
         b.Entity<SalesDocument>().HasIndex(x => x.IssueDate);

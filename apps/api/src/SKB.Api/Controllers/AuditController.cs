@@ -48,7 +48,8 @@ public sealed class AuditController : ControllerBase
         var branchIds = rows.Select(r => Guid.TryParse(r.BranchId, out var b) ? b : Guid.Empty).Distinct().ToList();
         var branches = await _db.Branches.AsNoTracking().Where(b => branchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id);
         return Ok(new PaginatedDto<AuditEntryDto>(rows.Select(r => new AuditEntryDto(
-            r.Id.ToString(), r.ActorId, r.ActorName, r.Action, r.Resource, r.ResourceId,
+            r.Id.ToString(), r.ActorId, r.ActorName, r.Action, r.Resource, r.ResourceId, r.Details,
+            AuditService.DeviceKind(r.UserAgent),
             Guid.TryParse(r.BranchId, out var b) && branches.TryGetValue(b, out var branch) ? Loc.Name(branch) : null,
             r.Ip, r.CreatedAt.ToString("o"))).ToArray(), total, page, pageSize));
     }

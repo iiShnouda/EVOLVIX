@@ -2705,4 +2705,12 @@ export const en = {
   'sys.disk.backups': 'Backups',
   'sys.disk.app': 'The app',
   'sys.disk.other': 'System and other files',
+  'audit.device.web': 'Browser',
+  'audit.device.windows': 'Windows app',
+  'audit.device.android': 'Android app',
+  'audit.device.ios': 'iPhone / iPad',
+  'audit.device.mac': 'Mac',
+  'audit.device.linux': 'Linux',
+  'presence.liveActivity': 'Live activity',
+  'presence.liveWaiting': 'Each action staff take will appear here the moment it happens.',
 } as const;

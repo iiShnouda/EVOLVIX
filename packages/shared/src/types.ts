@@ -2138,9 +2138,26 @@ export interface AuditEntry {
   /** e.g. "sales_invoice", "party", "ledger". */
   resource: string;
   resourceId: string | null;
+  /** A short note on what was done (the invoice number and total, the name, what changed). */
+  details: string | null;
+  /** The kind of device the action came from: web, windows, android, ios, mac, linux. */
+  device: string | null;
   branchName: string | null;
   ip: string | null;
   createdAt: string;
+}
+
+/** A live line of what someone is doing now (pushed to the connected-now page, owner 2026-10-12). */
+export interface ActivityEvent {
+  id: string;
+  actorId: string;
+  actorName: string;
+  action: string;
+  resource: string;
+  resourceId: string | null;
+  details: string | null;
+  device: string | null;
+  at: string;
 }
 
 export interface AuditFacets {

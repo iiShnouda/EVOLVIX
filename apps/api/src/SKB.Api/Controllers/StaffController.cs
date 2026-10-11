@@ -96,7 +96,7 @@ public sealed class StaffController : ControllerBase
         };
         _db.Staff.Add(staff);
         await _db.SaveChangesAsync();
-        await AuditAsync("create", "staff", staff.Id);
+        await AuditAsync("create", "staff", staff.Id, details: $"{staff.FullName} · {staff.Role}");
 
         await _db.Entry(staff).Reference(s => s.Branch).LoadAsync();
         return Created($"/api/staff/{staff.Id}", ToDto(staff, await _permissions.RoleSetsAsync()));
@@ -249,7 +249,7 @@ public sealed class StaffController : ControllerBase
         {
             return Bad("in_use", "This person has work in the books: deactivate them instead.");
         }
-        await AuditAsync("delete", "staff", id, staff.FullName);
+        await AuditAsync("delete", "staff", id, staff.FullName, staff.FullName);
         return NoContent();
     }
 
@@ -584,8 +584,8 @@ public sealed class StaffController : ControllerBase
 
     private ObjectResult Forbidden(string code, string message) => StatusCode(403, new { message, code });
 
-    private Task AuditAsync(string action, string resource, Guid id, string? name = null) =>
+    private Task AuditAsync(string action, string resource, Guid id, string? name = null, string? details = null) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), name ?? id.ToString());
+            Request.Headers.UserAgent.ToString(), name ?? id.ToString(), details);
 }

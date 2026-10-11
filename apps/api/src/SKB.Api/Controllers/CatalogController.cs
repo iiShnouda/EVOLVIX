@@ -330,7 +330,7 @@ public sealed class CatalogController : ControllerBase
             foreach (var s in await _db.Staff.Where(s => s.DepartmentIds.Contains(id)).ToListAsync())
                 s.DepartmentIds = s.DepartmentIds.Where(d => d != id).ToList();
             _db.Departments.Remove(department);
-            await SaveAsync("delete", "department", id);
+            await SaveAsync("delete", "department", id, Loc.Name(department));
             await tx.CommitAsync();
         }
         catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23503" })
@@ -598,11 +598,11 @@ public sealed class CatalogController : ControllerBase
         _ => Guid.Empty,
     };
 
-    private async Task SaveAsync(string action, string resource, Guid id)
+    private async Task SaveAsync(string action, string resource, Guid id, string? details = null)
     {
         await _db.SaveChangesAsync();
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), id.ToString());
+            Request.Headers.UserAgent.ToString(), id.ToString(), details);
     }
 }

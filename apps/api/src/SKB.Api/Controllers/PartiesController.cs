@@ -96,7 +96,7 @@ public sealed class PartiesController : ControllerBase
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
-        await AuditAsync("create", party.Id);
+        await AuditAsync("create", party.Id, $"{party.Code} · {party.Name}");
         return Created($"/api/parties/{party.Id}", Mapper.ToParty(party));
     }
 
@@ -242,10 +242,10 @@ public sealed class PartiesController : ControllerBase
         return t.Length == 0 ? null : t[..Math.Min(max, t.Length)];
     }
 
-    private Task AuditAsync(string action, Guid id) =>
+    private Task AuditAsync(string action, Guid id, string? details = null) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, "party",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), id.ToString());
+            Request.Headers.UserAgent.ToString(), id.ToString(), details);
 
     /// <summary>
     /// A customer's / supplier's own price level and price list: new invoices to them start at the

@@ -176,8 +176,18 @@ export function ActivityPage() {
                     </Badge>{' '}
                     <span className="text-muted">{label(t, 'audit.resource', e.resource)}</span>
                   </p>
+                  {e.details && (
+                    <p className="break-words text-sm text-fg">
+                      <bdi>{e.details}</bdi>
+                    </p>
+                  )}
                   <p className="truncate text-xs text-faint">
-                    {[e.branchName, e.ip, e.resourceId && `#${e.resourceId.slice(0, 8)}`]
+                    {[
+                      e.device && t(`audit.device.${e.device}` as 'audit.device.web'),
+                      e.branchName,
+                      e.ip,
+                      !e.details && e.resourceId && `#${e.resourceId.slice(0, 8)}`,
+                    ]
                       .filter(Boolean)
                       .join(' · ')}
                   </p>

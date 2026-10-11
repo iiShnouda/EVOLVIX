@@ -872,7 +872,8 @@ public sealed class SalesController : ControllerBase
     private Task AuditAsync(string action, string resource, SalesDocument doc) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             doc.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString(),
+            $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
 
     /// <summary>
     /// Make a sales invoice, a quotation or a pending invoice (<paramref name="type"/>). With

@@ -17,6 +17,7 @@ const listeners = new Set<() => void>();
 
 const bell = new Set<() => void>();
 const chat = new Set<(conversationId: string) => void>();
+const activity = new Set<(event: unknown) => void>();
 
 /** Run `fn` when a conversation of the staff chat changes ('' = the person's own chat state). */
 export function onChat(fn: (conversationId: string) => void): () => void {
@@ -31,6 +32,17 @@ export function onNotify(fn: () => void): () => void {
   bell.add(fn);
   return () => {
     bell.delete(fn);
+  };
+}
+
+/**
+ * Run `fn` with each live activity line the server pushes to people who may see presence: what
+ * someone just did in the app (owner, 2026-10-12). The payload is an ActivityEvent.
+ */
+export function onActivity(fn: (event: unknown) => void): () => void {
+  activity.add(fn);
+  return () => {
+    activity.delete(fn);
   };
 }
 
@@ -120,6 +132,9 @@ export function usePresenceReporter(): void {
           } else if (msg.type === 1 && msg.target === 'chat') {
             const id = String(msg.arguments?.[0] ?? '');
             chat.forEach((fn) => fn(id));
+          } else if (msg.type === 1 && msg.target === 'activity') {
+            const ev = msg.arguments?.[0];
+            activity.forEach((fn) => fn(ev));
           } else if (msg.type === 7) {
             socket.close();
           }

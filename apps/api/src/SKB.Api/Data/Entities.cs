@@ -233,6 +233,12 @@ public class AuditEntry
     public string Action { get; set; } = "";
     public string Resource { get; set; } = "";
     public string? ResourceId { get; set; }
+    /// <summary>
+    /// A short human-readable note on what was done (owner, 2026-10-12: a more detailed log), e.g. the
+    /// invoice number and total, the customer, what changed. Kept in the screen-neutral form the
+    /// caller wrote; the app shows it as is.
+    /// </summary>
+    public string? Details { get; set; }
     public string? BranchId { get; set; }
     public string? Ip { get; set; }
     public string? UserAgent { get; set; }

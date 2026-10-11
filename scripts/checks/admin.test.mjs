@@ -69,6 +69,10 @@ check(
   'newest first',
   log.items.every((e, i, a) => i === 0 || a[i - 1].createdAt >= e.createdAt),
 );
+// A more detailed log (owner, 2026-10-12): the device each action came from, and a note for the ones that carry one.
+check('each row names the device', log.items.every((e) => typeof e.device === 'string' && e.device.length > 0));
+const sale = ok('a sale in the log', await owner.get('/audit?resource=sales_invoice&action=create&pageSize=1'));
+check('a sale carries a detail (its number and total)', sale.items.length === 0 || /\d/.test(sale.items[0].details || ''), sale.items[0]);
 const facets = ok('filters', await owner.get('/audit/facets'));
 check(
   'filters list what happened',

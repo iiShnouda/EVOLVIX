@@ -3,15 +3,24 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   NAV_ITEMS,
   companyTimeZone,
+  en,
   formatNumber,
+  type ActivityEvent,
   type PresenceEntry,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
+import { useCan } from '../lib/can';
 import { usePresence } from '../lib/queries';
-import { onPresenceChanged } from '../lib/presence';
+import { onActivity, onPresenceChanged } from '../lib/presence';
 import { useAuth } from '../stores/auth';
+
+/** A code's label in the screen language, or the code made readable. */
+function codeLabel(t: (k: TranslationKey) => string, prefix: string, code: string) {
+  const key = `${prefix}.${code}`;
+  return key in en ? t(key as TranslationKey) : code.replace(/[._]/g, ' ');
+}
 
 /** Used the app within this long: active; otherwise idle. */
 const ACTIVE_MS = 2 * 60_000;
@@ -31,8 +40,21 @@ export function PresencePage() {
   const { t, locale } = useT();
   const qc = useQueryClient();
   const me = useAuth((s) => s.user?.id);
+  const can = useCan();
+  const seesActivity = can('audit:view');
   const { data, isLoading } = usePresence(true);
   const [now, setNow] = useState(Date.now());
+  const [feed, setFeed] = useState<ActivityEvent[]>([]);
+
+  // The live feed of what people are doing in the app (owner, 2026-10-12), for those who may read
+  // the activity log. It keeps the latest few lines; nothing is stored.
+  useEffect(() => {
+    if (!seesActivity) return;
+    return onActivity((ev) => {
+      const e = ev as ActivityEvent;
+      if (e && e.id) setFeed((cur) => [e, ...cur.filter((x) => x.id !== e.id)].slice(0, 40));
+    });
+  }, [seesActivity]);
 
   // Live: refresh when someone comes, goes or changes screen (at most once a second).
   useEffect(() => {
@@ -141,6 +163,51 @@ export function PresencePage() {
             );
           })}
         </div>
+      )}
+
+      {seesActivity && (
+        <Card className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-positive" />
+            </span>
+            <h2 className="text-sm font-semibold">{t('presence.liveActivity')}</h2>
+          </div>
+          {feed.length === 0 ? (
+            <p className="py-3 text-sm text-muted">{t('presence.liveWaiting')}</p>
+          ) : (
+            <ul className="max-h-96 space-y-0.5 overflow-y-auto">
+              {feed.map((e) => (
+                <li
+                  key={e.id}
+                  className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-line py-1.5 text-sm last:border-0"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium">{e.actorName || t('audit.unknown')}</span>{' '}
+                    <span className="text-brand">{codeLabel(t, 'audit.action', e.action)}</span>{' '}
+                    <span className="text-muted">{codeLabel(t, 'audit.resource', e.resource)}</span>
+                    {e.details && (
+                      <>
+                        {' '}
+                        — <bdi className="text-fg">{e.details}</bdi>
+                      </>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-xs text-faint tnum">
+                    {e.device && (
+                      <>
+                        {t(`audit.device.${e.device}` as 'audit.device.web')}
+                        {' · '}
+                      </>
+                    )}
+                    {time(e.at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       )}
     </div>
   );

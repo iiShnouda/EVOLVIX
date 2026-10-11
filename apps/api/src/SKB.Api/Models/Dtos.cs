@@ -1009,7 +1009,7 @@ public record ItemMovementDto(string From, string To, ItemMoveDto[] TopMovers, D
 
 public record AuditEntryDto(
     string Id, string ActorId, string ActorName, string Action, string Resource, string? ResourceId,
-    string? BranchName, string? Ip, string CreatedAt);
+    string? Details, string? Device, string? BranchName, string? Ip, string CreatedAt);
 
 /// <summary>What a party owes (customers) or is owed (suppliers), by how old the open invoices are.</summary>
 /// <param name="OnAccount">The party's balance not tied to an open invoice (opening balances, payments on account…).</param>
