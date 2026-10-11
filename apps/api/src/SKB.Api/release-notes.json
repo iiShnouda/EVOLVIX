@@ -19,12 +19,32 @@
         {
           "ar": "تطبيق Windows يفتح على ملء الشاشة دائماً، ويُظهر F11 شريط العنوان عند الحاجة.",
           "en": "The Windows app always opens full screen; F11 shows the title bar when needed."
+        },
+        {
+          "ar": "مراقبة السيرفر تعرض ما الذي يملأ القرص وما يأخذ مساحة أكبر: قاعدة البيانات، نماذج الذكاء الاصطناعي، الأصوات، النسخ الاحتياطية، البرنامج، وبقية النظام.",
+          "en": "The server monitor shows what fills the disk and what takes the most space: the database, the AI models, the voices, the backups, the app, and the rest of the system."
+        },
+        {
+          "ar": "سجل النشاط أصبح أكثر تفصيلاً: ماذا فعل كل شخص (رقم الفاتورة وقيمتها، الاسم، ما تغيّر) ومن أي جهاز وفي أي وقت بالضبط.",
+          "en": "The activity log is more detailed: what each person did (invoice number and total, the name, what changed), from which device and the exact time."
+        },
+        {
+          "ar": "صفحة «المتصلون الآن» تعرض نشاطاً مباشراً: ما يقوم به الموظفون داخل البرنامج لحظة قيامهم به.",
+          "en": "The connected-now page shows a live feed of what staff are doing in the app the moment they do it."
         }
       ],
       "fixes": [
         {
           "ar": "تحديث السيرفر كان يتوقف بسبب خطأ في تجهيز خدمة الصوت، وأصبح البرنامج يتحدّث حتى لو تعطلت خدمات المساعد الذكي.",
           "en": "The server update stopped on an error preparing the voice service; the app now updates even if the assistant's services fail."
+        },
+        {
+          "ar": "زر «البحث عن تحديث» كان يظهر خطأ «تعذّر تنفيذ العملية»، وأصبح يعمل.",
+          "en": "The \"Check for updates\" button showed an error; it now works."
+        },
+        {
+          "ar": "زر الإجراءات السريعة الدائري ونصف الدائرة أصبحا مخفيين على الحافة مثل الأول، والدائري يفتح الاختصارات حوله.",
+          "en": "The round and half-round quick-action buttons are now tucked at the edge like the first, and the round one fans the shortcuts around it."
         }
       ],
       "apps": {
