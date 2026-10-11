@@ -31,6 +31,10 @@
         {
           "ar": "صفحة «المتصلون الآن» تعرض نشاطاً مباشراً: ما يقوم به الموظفون داخل البرنامج لحظة قيامهم به.",
           "en": "The connected-now page shows a live feed of what staff are doing in the app the moment they do it."
+        },
+        {
+          "ar": "رسائل التأكيد (مثل الحذف) أصبحت نافذة أنيقة داخل البرنامج بدل رسالة المتصفح، مع زر تأكيد أحمر للحذف ودعم Enter وEsc.",
+          "en": "Confirmation prompts (such as deletes) now use a tidy in-app dialog instead of the browser's pop-up, with a red confirm button for deletes and Enter/Esc support."
         }
       ],
       "fixes": [
@@ -43,8 +47,8 @@
           "en": "The \"Check for updates\" button showed an error; it now works."
         },
         {
-          "ar": "زر الإجراءات السريعة الدائري ونصف الدائرة أصبحا مخفيين على الحافة مثل الأول، والدائري يفتح الاختصارات حوله.",
-          "en": "The round and half-round quick-action buttons are now tucked at the edge like the first, and the round one fans the shortcuts around it."
+          "ar": "زر الإجراءات السريعة الدائري ونصف الدائرة أصبحا مخفيين على الحافة مثل الأول، والدائري يفتح الاختصارات حوله، ونصف الدائرة يكبُر عند الفتح ويعرض الاختصارات عموداً من الأزرار الدائرية على الحافة.",
+          "en": "The round and half-round quick-action buttons are now tucked at the edge like the first; the round one fans the shortcuts around it, and the half-round one grows when opened and lays the shortcuts out as a column of round buttons along the edge."
         }
       ],
       "apps": {
