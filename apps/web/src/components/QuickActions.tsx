@@ -6,7 +6,6 @@ import { Button } from './ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
-import { Logo } from './Logo';
 import { useDeviceInfo } from '../lib/device';
 import { useHiddenColumns } from '../lib/queries';
 import { FROM_MENU, useTabs } from '../lib/tabs';
@@ -156,16 +155,17 @@ export function QuickActions() {
       </button>
     );
   } else if (shape === 'bubble') {
-    // A round button with the Evolvix mark, tucked at the edge; clicking fans the shortcuts around it.
+    // A round button in the app's accent colour, like the nav icons, tucked at the edge; clicking
+    // fans the shortcuts around it (owner, 2026-10-12: matched to the nav colour, not the heavy mark).
     triggerEl = (
       <button
         {...common}
         {...handlers}
-        className={`grid h-14 w-14 select-none place-items-center rounded-full bg-fg text-surface shadow-[var(--shadow-pop)] ring-4 ring-fg/10 ${
+        className={`grid h-14 w-14 select-none place-items-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] ring-4 ring-brand/15 ${
           dragging ? 'cursor-grabbing' : 'cursor-pointer'
-        } ${out ? '' : 'opacity-80'}`}
+        } ${out ? '' : 'opacity-85'}`}
       >
-        {menu ? <Icon name="close" size={24} /> : <Logo size={34} className="rounded-xl" />}
+        <Icon name={menu ? 'close' : 'bolt'} size={24} />
       </button>
     );
   } else {

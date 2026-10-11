@@ -68,7 +68,40 @@ public static class Releases
     public static Version? VersionOf(string? version) =>
         System.Version.TryParse(version?.Trim(), out var v) && v.Major >= 0 ? v : null;
 
-    /// <summary>The releases in <paramref name="newest"/> that are newer than this server's version.</summary>
-    public static IReadOnlyList<Release> NewerThanCurrent(IReadOnlyList<Release> newest) =>
-        newest.Where(r => VersionOf(r.Version) > VersionOf(Current.Version)).ToList();
+    /// <summary>
+    /// What an update would bring: the releases in <paramref name="newest"/> (the newest code's notes)
+    /// that this server doesn't have yet. A release with a higher version number is new in full. The
+    /// release that matches this server's version may have gained lines since this server was built —
+    /// the rules allow adding a line to the top release — so for it only the new lines are shown.
+    /// </summary>
+    public static IReadOnlyList<Release> NewerThanCurrent(IReadOnlyList<Release> newest)
+    {
+        var current = VersionOf(Current.Version);
+        var result = new List<Release>();
+        foreach (var r in newest)
+        {
+            var v = VersionOf(r.Version);
+            if (v is null) continue;
+            if (current is null || v > current)
+            {
+                result.Add(r);
+            }
+            else if (v == current)
+            {
+                // Same version, but more may have been added to it since this server was built.
+                var features = AddedSince(r.Features, Current.Features);
+                var fixes = AddedSince(r.Fixes, Current.Fixes);
+                if (features.Length > 0 || fixes.Length > 0)
+                    result.Add(r with { Features = features, Fixes = fixes });
+            }
+        }
+        return result;
+    }
+
+    /// <summary>The lines in <paramref name="newest"/> that aren't already in <paramref name="have"/>.</summary>
+    private static Note[] AddedSince(Note[] newest, Note[] have)
+    {
+        var known = have.Select(n => n.Ar + "\u0001" + n.En).ToHashSet();
+        return newest.Where(n => !known.Contains(n.Ar + "\u0001" + n.En)).ToArray();
+    }
 }

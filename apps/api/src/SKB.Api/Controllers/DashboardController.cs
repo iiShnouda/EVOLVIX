@@ -251,8 +251,9 @@ public sealed class DashboardController : ControllerBase
     private async Task<TrendPointDto[]> BuildTrendAsync(DateOnly first, DateOnly last)
     {
         var monthly = last.DayNumber - first.DayNumber + 1 > 62;
-        // Days still to come have nothing yet: the line stops at today.
-        if (first <= CompanyClock.Today && last > CompanyClock.Today) last = CompanyClock.Today;
+        // A day still to come has nothing yet, so a day-by-day line stops at today. A by-month view
+        // keeps the whole period — a full year shows all twelve months, the ones to come at zero.
+        if (!monthly && first <= CompanyClock.Today && last > CompanyClock.Today) last = CompanyClock.Today;
         var (since, until) = CompanyClock.Days(first, last);
         var zone = CompanyClock.ZoneId;
         var rows = await _db.SalesDocuments.InBranches(User, d => d.BranchId)

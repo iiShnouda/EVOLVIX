@@ -59,11 +59,29 @@ check(
 );
 // What fills the disk (owner, 2026-10-12): named parts, biggest first, inside the disk's size.
 const st = m.storage;
-check('a disk breakdown', st && st.totalBytes > 0 && Array.isArray(st.items) && st.items.length > 0, st);
-check('each part is a known one', st.items.every((i) => ['database', 'aiModels', 'voiceModels', 'backups', 'app', 'other'].includes(i.key)));
-check('biggest first', st.items.every((i, idx) => idx === 0 || i.bytes <= st.items[idx - 1].bytes));
-check('the database is one of them', st.items.some((i) => i.key === 'database' && i.bytes > 0));
-check('the parts fit inside the disk', st.items.reduce((a, i) => a + i.bytes, 0) <= st.usedBytes + 1);
+check(
+  'a disk breakdown',
+  st && st.totalBytes > 0 && Array.isArray(st.items) && st.items.length > 0,
+  st,
+);
+check(
+  'each part is a known one',
+  st.items.every((i) =>
+    ['database', 'aiModels', 'voiceModels', 'backups', 'app', 'other'].includes(i.key),
+  ),
+);
+check(
+  'biggest first',
+  st.items.every((i, idx) => idx === 0 || i.bytes <= st.items[idx - 1].bytes),
+);
+check(
+  'the database is one of them',
+  st.items.some((i) => i.key === 'database' && i.bytes > 0),
+);
+check(
+  'the parts fit inside the disk',
+  st.items.reduce((a, i) => a + i.bytes, 0) <= st.usedBytes + 1,
+);
 
 // ------------------------------------------------------------------ updates
 console.log('== updates');
@@ -121,6 +139,36 @@ if (!dir) {
   let u = ok('read', await owner.get('/system/updates'));
   eq('up to date', [u.enabled, u.available, u.coming.length, u.state], [true, false, 0, 'idle']);
   eq('nothing to update to', (await owner.post('/system/updates/apply')).data?.code, 'up_to_date');
+
+  // A newer build of the SAME version: more lines were added to the top release (the rules allow
+  // adding to it). The page must still show those new lines, not just say "improvements available".
+  status({ behind: 2 });
+  const top = u0.installed[0];
+  const grown = {
+    ...top,
+    features: [...(top.features ?? []), { ar: 'سطر جديد', en: 'A new line' }],
+    fixes: [...(top.fixes ?? []), { ar: 'إصلاح جديد', en: 'A new fix' }],
+  };
+  writeFileSync(
+    file('latest-release-notes.json'),
+    JSON.stringify({ releases: [grown, ...u0.installed.slice(1)] }),
+  );
+  u = ok('read, same version grown', await owner.get('/system/updates'));
+  eq(
+    'new lines on the same version are shown',
+    [
+      u.available,
+      u.coming.map((r) => r.version),
+      u.coming[0]?.features.at(-1)?.en,
+      u.coming[0]?.fixes.at(-1)?.en,
+    ],
+    [true, [u0.version], 'A new line', 'A new fix'],
+  );
+  eq(
+    'only the new lines, not the ones already installed',
+    [u.coming[0].features.length, u.coming[0].fixes.length],
+    [1, 1],
+  );
 
   // The server's updater found a newer version.
   status({ behind: 3 });

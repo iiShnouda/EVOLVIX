@@ -1,6 +1,34 @@
 {
   "releases": [
     {
+      "version": "1.10.0",
+      "date": "2026-10-11",
+      "features": [
+        {
+          "ar": "رسائل التأكيد (مثل الحذف) أصبحت نافذة أنيقة داخل البرنامج بدل رسالة المتصفح، مع زر تأكيد أحمر للحذف ودعم Enter وEsc.",
+          "en": "Confirmation prompts (such as deletes) now use a tidy in-app dialog instead of the browser's pop-up, with a red confirm button for deletes and Enter/Esc support."
+        },
+        {
+          "ar": "زر الإجراءات نصف الدائرة يكبُر عند الفتح ويعرض الاختصارات عموداً من الأزرار الدائرية على الحافة، وهو أكبر قليلاً وهو مخفي ليظهر البرق والمسطرة.",
+          "en": "The half-round quick-action button grows when opened and lays its shortcuts out as a column of round buttons along the edge, and is a little bigger when tucked so the bolt and grip show."
+        },
+        {
+          "ar": "زر الإجراءات السريعة الدائري بلون البرنامج نفسه مثل أيقونات القائمة، أنظف وأهدأ شكلاً.",
+          "en": "The round quick-action button now uses the app's accent colour like the nav icons, for a cleaner, calmer look."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "صفحة التحديثات أصبحت تعرض ما الذي يجلبه التحديث الجديد (الميزات والإصلاحات)، حتى عند إضافة تحسينات إلى نفس الإصدار.",
+          "en": "The Updates page now shows what a new update brings (its features and fixes), even when improvements are added to the same version."
+        },
+        {
+          "ar": "رسم «المبيعات مقابل المشتريات» يعرض السنة كاملة من يناير إلى ديسمبر، لا حتى الشهر الحالي فقط.",
+          "en": "The sales-vs-purchases chart now shows the full year, January to December, not only up to the current month."
+        }
+      ]
+    },
+    {
       "version": "1.9.0",
       "date": "2026-10-11",
       "features": [
@@ -31,10 +59,6 @@
         {
           "ar": "صفحة «المتصلون الآن» تعرض نشاطاً مباشراً: ما يقوم به الموظفون داخل البرنامج لحظة قيامهم به.",
           "en": "The connected-now page shows a live feed of what staff are doing in the app the moment they do it."
-        },
-        {
-          "ar": "رسائل التأكيد (مثل الحذف) أصبحت نافذة أنيقة داخل البرنامج بدل رسالة المتصفح، مع زر تأكيد أحمر للحذف ودعم Enter وEsc.",
-          "en": "Confirmation prompts (such as deletes) now use a tidy in-app dialog instead of the browser's pop-up, with a red confirm button for deletes and Enter/Esc support."
         }
       ],
       "fixes": [
