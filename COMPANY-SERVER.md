@@ -99,6 +99,9 @@ The microphone works:
 **Server monitor** in the app (the owner alone) works on any server (a Raspberry Pi, a PC, a cloud
 machine): the processor, memory, disk and temperature, and **what each part uses**: the app, the
 database, the assistant, its hearing (speech) and its voice, plus the system and everything else. It
+also shows **what fills the disk** (owner, 2026-10-12): the database, the AI models, the assistant's
+voices, the backups, the app itself, and everything else (the system, Docker's images, logs), biggest
+first, so you can see what takes the most space. It
 reads the machine's control groups read-only (each container is in its own `evolvix-<part>.slice`,
 see docker-compose.yml). On a Raspberry Pi the memory per part shows after one restart: the installer
 turns memory accounting on (`cgroup_enable=memory` in `/boot/firmware/cmdline.txt`). It shows figures
