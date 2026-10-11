@@ -8,8 +8,17 @@ http
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(o));
     };
+    // What the app sent (system prompts, recordings' settings, text to read aloud), for the tests.
+    if (req.url === '/__log') return send(log);
     // The speech service (whisper-asr-webservice), when the app is pointed here for it too.
     if (req.url === '/docs') return send({ ok: true });
+    // The voice (Piper, apps/voice), when the app is pointed here for it too.
+    if (req.url === '/health') return send({ ar: true, en: true, memoryBytes: 90000000 });
+    if (req.url === '/speak') {
+      log.push({ speak: JSON.parse(body) });
+      res.writeHead(200, { 'content-type': 'audio/wav' });
+      return res.end(Buffer.from('RIFF0000WAVEfmt '));
+    }
     if (req.url?.startsWith('/asr')) {
       log.push(['asr', req.url, req.headers['content-type'] ?? '', body.length]);
       return send({ text: ' كم رصيد النور؟ ', language: 'ar' });
@@ -21,7 +30,8 @@ http
           { name: 'qwen2.5vl:7b', size: 5969245856 },
         ],
       });
-    if (req.url === '/api/ps') return send({ models: [{ name: 'qwen2.5:7b-instruct', size: 5600000000 }] });
+    if (req.url === '/api/ps')
+      return send({ models: [{ name: 'qwen2.5:7b-instruct', size: 5600000000 }] });
     if (req.url === '/api/chat') {
       const b = JSON.parse(body);
       const last = b.messages[b.messages.length - 1];
@@ -75,8 +85,21 @@ http
         });
       }
       const tools = (b.tools ?? []).map((t) => t.function.name);
+      const system = b.messages[0].content;
+      // The app asks for an answer in the wrong language to be written again.
+      if (system.startsWith('Rewrite')) {
+        log.push({ rewrite: system });
+        return send({
+          message: {
+            role: 'assistant',
+            content: system.includes('Arabic')
+              ? 'هذه هي الإجابة مكتوبة باللغة العربية الفصحى كما طلبت تماما: ' + last.content
+              : 'In English: ' + last.content,
+          },
+        });
+      }
       if (last.role === 'user') {
-        log.push({ q: last.content, tools });
+        log.push({ q: last.content, tools, system });
         if (/رصيد|balance/i.test(last.content) && tools.includes('find_party'))
           return send({
             message: {

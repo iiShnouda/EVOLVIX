@@ -2528,8 +2528,10 @@ export interface AssistantStatus {
   reachable: boolean;
   chatReady: boolean;
   visionReady: boolean;
-  /** The server's speech service answers: questions can be spoken. */
+  /** The server's speech service answers: one can talk with the assistant. */
   speechReady: boolean;
+  /** The languages the server's own voice reads answers in ("ar", "en"). */
+  voiceLanguages: string[];
 }
 
 /** One of a person's conversations with the assistant. */

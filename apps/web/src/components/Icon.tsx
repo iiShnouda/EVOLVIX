@@ -72,6 +72,9 @@ const PATHS: Record<string, string> = {
   // A waste bin.
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   // A server rack: two units with status lights.
+  // Sound waves: talking with the assistant by voice.
+  waves: 'M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4',
+  play: 'M7 5v14l11-7z',
   server: 'M4 4h16v7H4zM4 13h16v7H4zM8 7.5h.01M8 16.5h.01M12 7.5h5M12 16.5h5',
   // An open ledger book.
   ledger: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5ZM4 19V5M19 17H6M9 7h6M9 11h6',

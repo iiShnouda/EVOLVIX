@@ -12,8 +12,9 @@ namespace SKB.Api.Controllers;
 /// The company's offline assistant (see <see cref="AssistantService"/>): ask it (<c>ai:chat</c>), and
 /// read a photo of a supplier invoice or cheques into a draft (<c>ai:scan</c> and the permission of
 /// the screen the draft goes to). Each person's conversations stay on the server, theirs alone; they
-/// can keep several and delete any (owner, 2026-10-10). A question can be spoken: the recording is
-/// read by the server's own speech service (Whisper) and not kept.
+/// can keep several and delete any (owner, 2026-10-10). Answers come in the app's language, and one
+/// can talk with it by voice (owner, 2026-10-11): the server's own speech service (Whisper) reads what
+/// was said and its own voice (Piper) reads the answer aloud; recordings and audio aren't kept.
 /// </summary>
 [ApiController]
 [Route("api/assistant")]
@@ -52,8 +53,10 @@ public sealed class AssistantController : ControllerBase
         if (!Can(Permissions.AiChat) && !Can(Permissions.AiScan))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var s = await _ai.StatusAsync(ct);
-        var speech = Can(Permissions.AiChat) && await _ai.SpeechReadyAsync(ct);
-        return Ok(new AssistantStatusDto(s.Enabled, s.Reachable, s.ChatReady, s.VisionReady, speech));
+        var chat = Can(Permissions.AiChat);
+        var speech = chat && await _ai.SpeechReadyAsync(ct);
+        var voice = chat ? (await _ai.VoiceStatusAsync(ct)).Languages : Array.Empty<string>();
+        return Ok(new AssistantStatusDto(s.Enabled, s.Reachable, s.ChatReady, s.VisionReady, speech, voice));
     }
 
     /// <summary>This person's conversations, latest first.</summary>
@@ -139,7 +142,7 @@ public sealed class AssistantController : ControllerBase
         string answer;
         try
         {
-            answer = await _ai.AskAsync(User, history, question, _tools, ct);
+            answer = await _ai.AskAsync(User, history, question, _tools, Language(req.Language, question), req.Spoken, ct);
         }
         catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
         {
@@ -169,7 +172,8 @@ public sealed class AssistantController : ControllerBase
     [HttpPost("transcribe")]
     [Authorize(Policy = Permissions.AiChat)]
     [RequestSizeLimit(MaxAudio + 64 * 1024)]
-    public async Task<ActionResult<AssistantTranscriptDto>> Transcribe(IFormFile? file, CancellationToken ct)
+    public async Task<ActionResult<AssistantTranscriptDto>> Transcribe(IFormFile? file, [FromQuery] string? language,
+        CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { message = "Record something first.", code = "empty_audio" });
@@ -178,7 +182,7 @@ public sealed class AssistantController : ControllerBase
         await file.CopyToAsync(ms, ct);
         try
         {
-            var text = await _ai.TranscribeAsync(ms.ToArray(), file.ContentType, ct);
+            var text = await _ai.TranscribeAsync(ms.ToArray(), file.ContentType, language, ct);
             await AuditAsync("transcribe", "assistant", Me);
             return Ok(new AssistantTranscriptDto(text));
         }
@@ -187,6 +191,32 @@ public sealed class AssistantController : ControllerBase
             return StatusCode(503, new { message = "Speech isn't available on the server.", code = "speech_unavailable" });
         }
     }
+
+    /// <summary>
+    /// An answer read aloud by the server's own voice (a WAV recording), so it sounds the same on every
+    /// device and in Arabic too, where a device may have no Arabic voice of its own.
+    /// </summary>
+    [HttpPost("speak")]
+    [Authorize(Policy = Permissions.AiChat)]
+    public async Task<IActionResult> Speak([FromBody] AssistantSpeakRequest req, CancellationToken ct)
+    {
+        var language = req.Language is "ar" or "en" ? req.Language : null;
+        var text = AssistantService.SpokenText(req.Text ?? "", language ?? "en");
+        if (language is null || text.Length == 0)
+            return BadRequest(new { message = "Nothing to read.", code = "empty_message" });
+        try
+        {
+            return File(await _ai.SpeakAsync(text, language, ct), "audio/wav");
+        }
+        catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
+        {
+            return StatusCode(503, new { message = "The server's voice isn't available.", code = "voice_unavailable" });
+        }
+    }
+
+    /// <summary>The answer's language: the app's as sent, else the question's script.</summary>
+    private static string Language(string? asked, string question) =>
+        asked is "ar" or "en" ? asked : question.Any(c => c is >= '\u0600' and <= '\u06FF') ? "ar" : "en";
 
     private NotFoundObjectResult NotFoundConversation() =>
         NotFound(new { message = "Conversation not found.", code = "not_found" });

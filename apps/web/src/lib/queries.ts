@@ -1885,7 +1885,9 @@ export function useMonthlySales(count: number, by: 'month' | 'year' = 'month') {
     queryKey: ['report', 'monthly', by, count],
     queryFn: () =>
       api.get<MonthlySales[]>(
-        by === 'year' ? `/analytics/monthly?by=year&years=${count}` : `/analytics/monthly?months=${count}`,
+        by === 'year'
+          ? `/analytics/monthly?by=year&years=${count}`
+          : `/analytics/monthly?months=${count}`,
       ),
   });
 }
@@ -2393,9 +2395,16 @@ export function useAssistantTurns(id: string | null) {
   });
 }
 
-/** What was said in a recording, read by the server's speech service. */
-export async function transcribe(audio: Blob): Promise<string> {
-  return (await api.upload<{ text: string }>('/assistant/transcribe', audio, false, 'POST')).text;
+/** What was said in a recording, read by the server's speech service in the app's language. */
+export async function transcribe(audio: Blob, language: 'ar' | 'en'): Promise<string> {
+  return (
+    await api.upload<{ text: string }>(
+      `/assistant/transcribe?language=${language}`,
+      audio,
+      false,
+      'POST',
+    )
+  ).text;
 }
 
 /** Send a photo to be read by the assistant (purchase invoice or cheques). */

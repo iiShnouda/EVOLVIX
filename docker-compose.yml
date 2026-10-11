@@ -61,6 +61,8 @@ services:
       Assistant__VisionModel: "${ASSISTANT_VISION_MODEL:-qwen2.5vl:7b}"
       # Spoken questions (owner, 2026-10-10): read by the speech service below, on this machine.
       Assistant__SpeechEndpoint: "${ASSISTANT_SPEECH_ENDPOINT:-http://speech:9000}"
+      # Its voice (owner, 2026-10-11: talk with it by voice): the voice service below.
+      Assistant__VoiceEndpoint: "${ASSISTANT_VOICE_ENDPOINT:-http://voice:5000}"
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
     ports:
@@ -110,6 +112,20 @@ services:
     volumes:
       - skb-speech-models:/data/whisper
 
+  # Reads the assistant's answers aloud (Piper, apps/voice) with an Arabic and an English voice, on
+  # this machine; the voices download once on first start. No port is published: only the app
+  # reaches it, and nothing it says is kept.
+  voice:
+    profiles: ["full"]
+    build: ./apps/voice
+    container_name: skb-voice
+    restart: unless-stopped
+    environment:
+      VOICE_AR: "${VOICE_AR:-ar_JO-kareem-medium}"
+      VOICE_EN: "${VOICE_EN:-en_US-hfc_female-medium}"
+    volumes:
+      - skb-voice-models:/data/voices
+
 volumes:
   skb-db-data:
     name: skb-db-data
@@ -117,3 +133,5 @@ volumes:
     name: skb-assistant-models
   skb-speech-models:
     name: skb-speech-models
+  skb-voice-models:
+    name: skb-voice-models

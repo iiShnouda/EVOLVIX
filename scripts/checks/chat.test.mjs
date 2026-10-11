@@ -125,6 +125,37 @@ eq('delete one', (await o.del(`/assistant/conversations/${a3.conversationId}`)).
 check('gone', !(await o.get('/assistant/conversations')).data.some((c) => c.id === a3.conversationId));
 eq('old ones: none older than 30 days', (await o.del('/assistant/conversations?olderThanDays=30')).data?.deleted, 0);
 check('the recent one stays', (await o.get('/assistant/conversations')).data.some((c) => c.id === a1.conversationId));
+// The answer's language is the app's (owner, 2026-10-11), whatever the tools' results are in.
+const fake = async () => (await fetch('http://127.0.0.1:11434/__log')).json();
+const en = ok('ask in English', await o.post('/assistant/ask', { text: 'balance of Al-Nour?', language: 'en' }));
+check('an English answer as it is', en.answer.content.startsWith('RESULT:'), en.answer.content);
+let lg = await fake();
+check('told to answer in English', lg.filter((x) => x.q).at(-1).system.includes('Always answer in English'));
+const ar = ok('ask in Arabic', await o.post('/assistant/ask', { text: 'balance of Al-Nour?', language: 'ar' }));
+check('an English answer written again in Arabic', ar.answer.content.startsWith('هذه هي الإجابة') && ar.answer.content.includes('Al-Nour'), ar.answer.content);
+lg = await fake();
+check('told to answer in Arabic', lg.filter((x) => x.q).at(-1).system.includes('formal Arabic'));
+const sp = ok('ask by voice', await o.post('/assistant/ask', { text: 'مبيعات الشهر', language: 'ar', spoken: true, conversationId: ar.conversationId }));
+lg = await fake();
+check('a spoken question asks for a short spoken answer', lg.filter((x) => x.q).at(-1).system.includes('by voice'));
+eq('in the same conversation', sp.conversationId, ar.conversationId);
+// The server's voice reads an answer aloud, made ready for reading (no marks, figures and currency in words).
+if (st.voiceLanguages?.includes('ar')) {
+  const said = await fetch(`${BASE}/assistant/speak`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${o.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ text: '**المبيعات**:\n- اليوم: 1,250.00 EGP\n- الأمس: ٣٬٤٠٠٫٥٠ ج.م 👍', language: 'ar' }),
+  });
+  eq('spoken as a recording', [said.status, said.headers.get('content-type')], [200, 'audio/wav']);
+  lg = await fake();
+  eq('read the way a voice reads it', lg.filter((x) => x.speak).at(-1).speak, {
+    text: 'المبيعات: اليوم: 1250 جنيه. الأمس: 3400.50 جنيه.',
+    language: 'ar',
+  });
+  eq('nothing to read', (await o.post('/assistant/speak', { text: ' ** ', language: 'ar' })).status, 400);
+  eq('no such language', (await o.post('/assistant/speak', { text: 'hi', language: 'fr' })).status, 400);
+} else console.log('  (voice not configured: start the API with Assistant__VoiceEndpoint=http://127.0.0.1:11434)');
+eq('karim may not hear answers', (await karim.post('/assistant/speak', { text: 'hi', language: 'en' })).status, 403);
 // Speaking a question: the recording goes to the server's speech service.
 if (st.speechReady) {
   const fa = new FormData();
@@ -132,6 +163,10 @@ if (st.speechReady) {
   const ra = await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fa });
   const ta = await ra.json();
   eq('a spoken question read back', [ra.status, ta.text], [200, 'كم رصيد النور؟']);
+  const fl = new FormData();
+  fl.append('file', new Blob([new Uint8Array(2000)], { type: 'audio/webm' }), 'q.webm');
+  await fetch(`${BASE}/assistant/transcribe?language=ar`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fl });
+  check('heard in the app\'s language', (await fake()).filter((x) => x[0] === 'asr').at(-1)[1].includes('language=ar'));
   const fe = new FormData();
   fe.append('file', new Blob([], { type: 'audio/webm' }), 'e.webm');
   eq('an empty recording', (await (await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fe })).json()).code, 'empty_audio');

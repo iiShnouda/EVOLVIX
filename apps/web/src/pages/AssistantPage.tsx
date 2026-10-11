@@ -13,19 +13,17 @@ import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useDeviceInfo } from '../lib/device';
-import {
-  transcribe,
-  useAssistantConversations,
-  useAssistantStatus,
-  useAssistantTurns,
-} from '../lib/queries';
+import { useAssistantConversations, useAssistantStatus, useAssistantTurns } from '../lib/queries';
+import { canTalk, openVoiceInput, Speaker, type VoiceInput } from '../lib/voice';
+import { VoiceCall } from '../components/VoiceCall';
 
 /**
  * The company's assistant (owner, 2026-10-06), run offline on the company's own server. People with
  * ai:chat ask it about customers, items, invoices and totals; it answers only from what they may see
  * and never changes anything. Each person keeps several conversations on the server, theirs alone,
- * and deletes any or all of the old ones (owner, 2026-10-10). A question can be spoken (the server's
- * own speech service reads it) and an answer read aloud by the device.
+ * and deletes any or all of the old ones (owner, 2026-10-10). Answers come in the app's language, and
+ * one can talk with it by voice (owner, 2026-10-11): see VoiceCall. Any answer can be read aloud by
+ * the server's own voice.
  */
 export function AssistantPage() {
   const { t, locale } = useT();
@@ -39,6 +37,24 @@ export function AssistantPage() {
   const conversations = list.data ?? [];
   const current = conversations.find((c) => c.id === chosen) ?? null;
   const ready = !!status.data?.chatReady;
+  const voices = status.data?.voiceLanguages ?? [];
+  const serverVoice = voices.includes(locale);
+  const [call, setCall] = useState<{ speaker: Speaker; input: Promise<VoiceInput> } | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+
+  // Made in the tap itself: phones only let sound and the microphone start from one.
+  function startCall() {
+    setCallError(null);
+    if (!canTalk()) {
+      setCallError(t('assistant.micUnavailable'));
+      return;
+    }
+    const speaker = new Speaker();
+    speaker.unlock();
+    const input = openVoiceInput();
+    input.catch(() => undefined);
+    setCall({ speaker, input });
+  }
 
   const open = (id: string | null, startNew = false) => {
     const next = new URLSearchParams(params);
@@ -110,11 +126,7 @@ export function AssistantPage() {
           <Button size="sm" variant="ghost" onClick={() => void removeOld(30)}>
             {t('assistant.deleteOld')}
           </Button>
-          <Button
-            size="sm"
-            variant="dangerGhost"
-            onClick={() => void removeOld(null)}
-          >
+          <Button size="sm" variant="dangerGhost" onClick={() => void removeOld(null)}>
             {t('assistant.deleteAll')}
           </Button>
         </div>
@@ -129,7 +141,10 @@ export function AssistantPage() {
       conversation={current}
       conversationId={chosen}
       ready={ready}
-      canSpeak={!!status.data?.speechReady}
+      canTalk={!!status.data?.speechReady}
+      voices={voices}
+      talkError={callError}
+      onTalk={startCall}
       onBack={phone ? () => open(null) : undefined}
       onStarted={(id) => open(id)}
     />
@@ -161,6 +176,16 @@ export function AssistantPage() {
           </>
         )}
       </Card>
+      {call && (
+        <VoiceCall
+          conversationId={chosen}
+          serverVoice={serverVoice}
+          speaker={call.speaker}
+          input={call.input}
+          onConversation={(id) => open(id)}
+          onClose={() => setCall(null)}
+        />
+      )}
     </div>
   );
 }
@@ -170,14 +195,22 @@ function Thread({
   conversation,
   conversationId,
   ready,
-  canSpeak,
+  canTalk,
+  voices,
+  talkError,
+  onTalk,
   onBack,
   onStarted,
 }: {
   conversation: AssistantConversation | null;
   conversationId: string | null;
   ready: boolean;
-  canSpeak: boolean;
+  /** The server can hear: a voice conversation can start. */
+  canTalk: boolean;
+  /** The languages the server's voice speaks. */
+  voices: string[];
+  talkError: string | null;
+  onTalk: () => void;
   onBack?: () => void;
   onStarted: (id: string) => void;
 }) {
@@ -205,6 +238,7 @@ function Thread({
       const res = await api.post<AssistantAnswer>('/assistant/ask', {
         text: q,
         conversationId: conversationId ?? undefined,
+        language: locale,
       });
       await qc.invalidateQueries({ queryKey: ['assistant'] });
       if (!conversationId) onStarted(res.conversationId);
@@ -248,13 +282,14 @@ function Thread({
         ) : (
           <>
             {turns.map((m, i) => (
-              <Bubble key={i} turn={m} locale={locale} />
+              <Bubble key={i} turn={m} locale={locale} voices={voices} />
             ))}
             {pending && (
               <>
                 <Bubble
                   turn={{ role: 'user', content: pending, at: new Date().toISOString() }}
                   locale={locale}
+                  voices={voices}
                 />
                 <div className="flex justify-end">
                   <span className="inline-flex items-center gap-2 rounded-2xl bg-surface px-3 py-2 text-sm text-muted shadow-sm">
@@ -270,12 +305,17 @@ function Thread({
       </div>
       <div className="border-t border-line p-2">
         <div className="flex items-end gap-2">
-          {canSpeak && (
-            <MicButton
+          {canTalk && (
+            <button
+              type="button"
               disabled={!ready || !!pending}
-              onText={(said) => setText((v) => (v.trim() ? `${v.trim()} ${said}` : said))}
-              onError={setError}
-            />
+              onClick={onTalk}
+              aria-label={t('assistant.talk')}
+              title={t('assistant.talk')}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-app)] border border-line bg-surface text-brand transition-colors hover:bg-brand-soft disabled:opacity-50"
+            >
+              <Icon name="waves" size={18} />
+            </button>
           )}
           <textarea
             rows={1}
@@ -296,13 +336,23 @@ function Thread({
             {t('chat.send')}
           </Button>
         </div>
-        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+        {(error || talkError) && (
+          <p className="mt-1 text-xs text-destructive">{error ?? talkError}</p>
+        )}
       </div>
     </div>
   );
 }
 
-function Bubble({ turn, locale }: { turn: AssistantTurn; locale: 'ar' | 'en' }) {
+function Bubble({
+  turn,
+  locale,
+  voices,
+}: {
+  turn: AssistantTurn;
+  locale: 'ar' | 'en';
+  voices: string[];
+}) {
   const mine = turn.role === 'user';
   return (
     <div className={`flex ${mine ? 'justify-start' : 'justify-end'}`}>
@@ -314,7 +364,7 @@ function Bubble({ turn, locale }: { turn: AssistantTurn; locale: 'ar' | 'en' }) 
         {!mine && (
           <div className="mb-1 flex items-center justify-between gap-3">
             <Icon name="assistant" size={14} className="text-brand" />
-            <SpeakButton text={turn.content} />
+            <SpeakButton text={turn.content} voices={voices} />
           </div>
         )}
         <p className="whitespace-pre-wrap break-words">{turn.content}</p>
@@ -326,179 +376,45 @@ function Bubble({ turn, locale }: { turn: AssistantTurn; locale: 'ar' | 'en' }) 
   );
 }
 
-/** Read an answer aloud with the device's own voice (nothing leaves the device). */
-function SpeakButton({ text }: { text: string }) {
+/**
+ * Read an answer aloud: the server's own voice (the same on every device, Arabic too), else the
+ * device's. Its language is the answer's own.
+ */
+function SpeakButton({ text, voices }: { text: string; voices: string[] }) {
   const { t } = useT();
   const [speaking, setSpeaking] = useState(false);
+  const speaker = useRef<Speaker | null>(null);
   useEffect(() => {
-    return () => {
-      if (speaking) window.speechSynthesis?.cancel();
-    };
-  }, [speaking]);
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+    return () => speaker.current?.stop();
+  }, []);
 
-  function toggle() {
-    const synth = window.speechSynthesis;
+  async function toggle() {
     if (speaking) {
-      synth.cancel();
+      speaker.current?.stop();
       setSpeaking(false);
       return;
     }
-    const say = new SpeechSynthesisUtterance(text);
-    const arabic = /[؀-ۿ]/.test(text);
-    say.lang = arabic ? 'ar-EG' : 'en-US';
-    const voice = synth.getVoices().find((v) => v.lang.toLowerCase().startsWith(arabic ? 'ar' : 'en'));
-    if (voice) say.voice = voice;
-    say.onend = () => setSpeaking(false);
-    say.onerror = () => setSpeaking(false);
-    synth.cancel();
-    synth.speak(say);
+    const s = (speaker.current ??= new Speaker());
     setSpeaking(true);
+    const arabic =
+      (text.match(/[\u0621-\u064A]/g)?.length ?? 0) >= (text.match(/[A-Za-z]/g)?.length ?? 0);
+    const language = arabic ? 'ar' : 'en';
+    try {
+      await s.say(text, language, voices.includes(language));
+    } finally {
+      setSpeaking(false);
+    }
   }
 
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={() => void toggle()}
       aria-label={t(speaking ? 'assistant.stopSpeaking' : 'assistant.speak')}
       title={t(speaking ? 'assistant.stopSpeaking' : 'assistant.speak')}
       className={`grid h-6 w-6 place-items-center rounded-md hover:bg-surface-2 ${speaking ? 'text-brand' : 'text-faint'}`}
     >
       <Icon name={speaking ? 'stop' : 'speaker'} size={14} />
     </button>
-  );
-}
-
-const MAX_SECONDS = 120;
-
-/**
- * Ask by voice: record on the device, the server's speech service writes it out, and the words go
- * in the question box to check before sending. Where the browser can't record (a page opened over
- * plain http), the phone's own recorder is offered instead.
- */
-function MicButton({
-  disabled,
-  onText,
-  onError,
-}: {
-  disabled: boolean;
-  onText: (text: string) => void;
-  onError: (message: string | null) => void;
-}) {
-  const { t } = useT();
-  const [state, setState] = useState<'idle' | 'recording' | 'working'>('idle');
-  const [seconds, setSeconds] = useState(0);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const file = useRef<HTMLInputElement>(null);
-  const canRecord =
-    typeof window !== 'undefined' &&
-    typeof window.MediaRecorder !== 'undefined' &&
-    !!navigator.mediaDevices?.getUserMedia;
-
-  useEffect(() => {
-    if (state !== 'recording') return;
-    const started = Date.now();
-    const timer = window.setInterval(() => {
-      const s = Math.floor((Date.now() - started) / 1000);
-      setSeconds(s);
-      if (s >= MAX_SECONDS) recorder.current?.stop();
-    }, 250);
-    return () => window.clearInterval(timer);
-  }, [state]);
-
-  // Leaving the page stops a recording and frees the microphone.
-  useEffect(() => {
-    return () => {
-      const r = recorder.current;
-      if (r && r.state !== 'inactive') r.stop();
-    };
-  }, []);
-
-  async function read(audio: Blob) {
-    setState('working');
-    try {
-      const said = await transcribe(audio);
-      if (said) onText(said);
-    } catch (e) {
-      onError(errorText(t, e));
-    } finally {
-      setState('idle');
-    }
-  }
-
-  async function start() {
-    onError(null);
-    if (!canRecord) {
-      file.current?.click();
-      return;
-    }
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      onError(t('assistant.micDenied'));
-      return;
-    }
-    const chunks: Blob[] = [];
-    const r = new MediaRecorder(stream);
-    r.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-    r.onstop = () => {
-      stream.getTracks().forEach((tr) => tr.stop());
-      recorder.current = null;
-      void read(new Blob(chunks, { type: r.mimeType || 'audio/webm' }));
-    };
-    recorder.current = r;
-    setSeconds(0);
-    r.start();
-    setState('recording');
-  }
-
-  const label =
-    state === 'recording'
-      ? t('assistant.stopRecording')
-      : state === 'working'
-        ? t('assistant.transcribing')
-        : t('assistant.record');
-
-  return (
-    <>
-      <button
-        type="button"
-        disabled={disabled || state === 'working'}
-        onClick={() => (state === 'recording' ? recorder.current?.stop() : void start())}
-        aria-label={label}
-        title={label}
-        className={`relative grid h-10 shrink-0 place-items-center rounded-[var(--radius-app)] border px-2.5 transition-colors disabled:opacity-50 ${
-          state === 'recording'
-            ? 'border-destructive bg-destructive text-white'
-            : 'border-line bg-surface text-muted hover:text-brand'
-        }`}
-      >
-        {state === 'working' ? (
-          <Spinner size={16} />
-        ) : state === 'recording' ? (
-          <span className="flex items-center gap-1.5 text-xs font-semibold tnum">
-            <Icon name="stop" size={14} />
-            {`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}
-          </span>
-        ) : (
-          <Icon name="mic" size={18} />
-        )}
-      </button>
-      <input
-        ref={file}
-        type="file"
-        accept="audio/*"
-        capture
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          if (f) void read(f);
-        }}
-      />
-    </>
   );
 }

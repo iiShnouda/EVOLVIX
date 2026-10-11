@@ -1139,9 +1139,16 @@ public record ChatSendRequest(string? Text);
 
 // ---------------------------------------------------------------- assistant
 
-public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady);
+/// <summary>VoiceLanguages: the languages the server's voice speaks now ("ar", "en").</summary>
+public record AssistantStatusDto(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady, bool SpeechReady,
+    string[] VoiceLanguages);
 public record AssistantTurnDto(string Role, string Content, DateTime At);
-public record AssistantAskRequest(string? Text, string? ConversationId = null);
+/// <summary>
+/// Language: the app's ("ar" or "en"), the answer's language. Spoken: asked in a voice conversation, so
+/// the answer is short and plain, to be read aloud.
+/// </summary>
+public record AssistantAskRequest(string? Text, string? ConversationId = null, string? Language = null, bool Spoken = false);
+public record AssistantSpeakRequest(string? Text, string? Language);
 public record AssistantConversationDto(string Id, string Title, DateTime CreatedAt, DateTime UpdatedAt, int Turns);
 public record AssistantAnswerDto(string ConversationId, AssistantTurnDto Answer);
 public record AssistantTranscriptDto(string Text);

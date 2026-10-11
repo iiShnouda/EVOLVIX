@@ -2,13 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- The phone's sound recorder, offered for a spoken question to the assistant. -->
-    <queries>
-        <intent>
-            <action android:name="android.provider.MediaStore.RECORD_SOUND" />
-        </intent>
-    </queries>
+    <!-- Talking with the assistant; the phone asks the person the first time. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- allowBackup=false: the signed-in session never leaves the phone in a backup. -->
     <application

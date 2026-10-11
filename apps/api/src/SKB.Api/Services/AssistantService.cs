@@ -44,7 +44,47 @@ public sealed class AssistantService
     private string? SpeechEndpoint =>
         _config["Assistant:SpeechEndpoint"] is { Length: > 0 } s ? s.TrimEnd('/') : null;
 
+    /// <summary>The offline voice (Piper) that reads answers aloud on the server, if any.</summary>
+    private string? VoiceEndpoint =>
+        _config["Assistant:VoiceEndpoint"] is { Length: > 0 } s ? s.TrimEnd('/') : null;
+
     public sealed record Status(bool Enabled, bool Reachable, bool ChatReady, bool VisionReady);
+
+    /// <summary>The languages the server's voice speaks now ("ar", "en") and the memory it uses.</summary>
+    public sealed record VoiceStatus(string[] Languages, long MemoryBytes);
+
+    public async Task<VoiceStatus> VoiceStatusAsync(CancellationToken ct = default)
+    {
+        if (!Enabled || VoiceEndpoint is null) return new(Array.Empty<string>(), 0);
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+            var health = await _http.GetFromJsonAsync<JsonObject>($"{VoiceEndpoint}/health", cts.Token);
+            var languages = new[] { "ar", "en" }
+                .Where(l => health?[l] is JsonValue v && v.TryGetValue<bool>(out var on) && on).ToArray();
+            var memory = health?["memoryBytes"] is JsonValue m && m.TryGetValue<long>(out var bytes) ? bytes : 0;
+            return new(languages, memory);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            return new(Array.Empty<string>(), 0);
+        }
+    }
+
+    /// <summary>
+    /// An answer read aloud by the server's own voice, as a WAV recording; the text goes nowhere else
+    /// and isn't kept.
+    /// </summary>
+    public async Task<byte[]> SpeakAsync(string text, string language, CancellationToken ct)
+    {
+        if (!Enabled || VoiceEndpoint is null) throw new AssistantUnavailableException("No voice service.");
+        var body = new JsonObject { ["text"] = text, ["language"] = language };
+        using var res = await _http.PostAsync($"{VoiceEndpoint}/speak",
+            new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json"), ct);
+        if (!res.IsSuccessStatusCode) throw new AssistantUnavailableException($"Voice service: {(int)res.StatusCode}");
+        return await res.Content.ReadAsByteArrayAsync(ct);
+    }
 
     /// <summary>Whether the speech service answers (a quick look, so the page isn't held up).</summary>
     public async Task<bool> SpeechReadyAsync(CancellationToken ct = default)
@@ -64,10 +104,10 @@ public sealed class AssistantService
     }
 
     /// <summary>
-    /// What was said in a recording (Arabic or English, found by the service), read on the company's
-    /// own server: the recording goes nowhere else and isn't kept.
+    /// What was said in a recording, read on the company's own server in the app's language ("ar" or
+    /// "en"; found by the service when not given): the recording goes nowhere else and isn't kept.
     /// </summary>
-    public async Task<string> TranscribeAsync(byte[] audio, string? contentType, CancellationToken ct)
+    public async Task<string> TranscribeAsync(byte[] audio, string? contentType, string? language, CancellationToken ct)
     {
         if (!Enabled || SpeechEndpoint is null) throw new AssistantUnavailableException("No speech service.");
         using var form = new MultipartFormDataContent();
@@ -76,7 +116,9 @@ public sealed class AssistantService
             ? type
             : new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         form.Add(file, "audio_file", "speech");
-        using var res = await _http.PostAsync($"{SpeechEndpoint}/asr?task=transcribe&output=json&encode=true&vad_filter=true", form, ct);
+        var lang = language is "ar" or "en" ? $"&language={language}" : "";
+        using var res = await _http.PostAsync(
+            $"{SpeechEndpoint}/asr?task=transcribe&output=json&encode=true&vad_filter=true{lang}", form, ct);
         if (!res.IsSuccessStatusCode) throw new AssistantUnavailableException($"Speech service: {(int)res.StatusCode}");
         var json = await res.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: ct);
         return (json?["text"]?.GetValue<string>() ?? "").Trim();
@@ -104,20 +146,39 @@ public sealed class AssistantService
     // ------------------------------------------------------------------ chat
 
     private const string Instructions =
-        "You are the assistant inside Evolvix, a wholesale accounting program. Answer in the language the " +
-        "person writes in (formal business Arabic or English), briefly and exactly. Use the tools for any " +
-        "figure, name or document; never guess numbers. Amounts from tools are already formatted. If a tool " +
-        "says the person may not see something, say so politely. You can read but not change anything: for " +
-        "changes, tell the person which screen to use. Never talk about the server, its files, settings, " +
-        "passwords or how the program is built.";
+        "You are the assistant inside Evolvix, a wholesale accounting program. Answer briefly and exactly. " +
+        "Use the tools for any figure, name or document; never guess numbers. Amounts from tools are already " +
+        "formatted. If a tool says the person may not see something, say so politely. You can read but not " +
+        "change anything: for changes, tell the person which screen to use. Never talk about the server, its " +
+        "files, settings, passwords or how the program is built.";
+
+    /// <summary>
+    /// The answer's language is the app's (owner, 2026-10-11: "it should talk in the app's language"),
+    /// whatever the question, the earlier answers or the tools' results are written in.
+    /// </summary>
+    private static string LanguageRule(string language) => language == "ar"
+        ? " Always answer in formal Arabic, even when the question, the conversation or the tools' results are " +
+          "in English; keep names, codes and numbers exactly as given. أجب دائماً باللغة العربية الفصحى."
+        : " Always answer in English, even when the question or the conversation is in Arabic; keep names, " +
+          "codes and numbers exactly as given (names may be in Arabic).";
+
+    private const string SpokenRule =
+        " The person is talking with you by voice and hears your answer read aloud: answer the way a person " +
+        "speaks, in one to three short sentences, with no lists, tables, symbols, emojis or formatting, and " +
+        "say amounts rounded to whole units with the currency's name.";
 
     public sealed record Turn(string Role, string Content);
 
-    /// <summary>One answer to the person's question, given the conversation so far.</summary>
+    /// <summary>
+    /// One answer to the person's question, given the conversation so far, in <paramref name="language"/>
+    /// ("ar" or "en"); <paramref name="spoken"/>: short and plain, to be read aloud in a voice conversation.
+    /// </summary>
     public async Task<string> AskAsync(ClaimsPrincipal user, IReadOnlyList<Turn> history, string question,
-        AssistantTools tools, CancellationToken ct = default)
+        AssistantTools tools, string language, bool spoken, CancellationToken ct = default)
     {
-        var messages = new JsonArray { Msg("system", Instructions + $" Today is {CompanyClock.Today:yyyy-MM-dd}.") };
+        var system = Instructions + LanguageRule(language) + (spoken ? SpokenRule : "") +
+                     $" Today is {CompanyClock.Today:yyyy-MM-dd}.";
+        var messages = new JsonArray { Msg("system", system) };
         foreach (var t in history) messages.Add(Msg(t.Role, t.Content));
         messages.Add(Msg("user", question));
         var toolList = tools.Definitions(user);
@@ -134,7 +195,8 @@ public sealed class AssistantService
             var reply = await PostAsync("/api/chat", body, ct);
             var message = reply["message"] as JsonObject ?? new JsonObject();
             var calls = message["tool_calls"] as JsonArray;
-            if (calls is null || calls.Count == 0) return message["content"]?.GetValue<string>()?.Trim() ?? "";
+            if (calls is null || calls.Count == 0)
+                return await InLanguageAsync(message["content"]?.GetValue<string>()?.Trim() ?? "", language, ct);
             messages.Add(message.DeepClone());
             foreach (var call in calls)
             {
@@ -155,6 +217,104 @@ public sealed class AssistantService
             }
         }
         return "";
+    }
+
+    private static readonly Dictionary<string, (string Ar, string En)> CurrencyNames = new()
+    {
+        ["EGP"] = ("جنيه", "pounds"), ["USD"] = ("دولار", "dollars"), ["EUR"] = ("يورو", "euros"),
+        ["GBP"] = ("جنيه إسترليني", "pounds sterling"), ["SAR"] = ("ريال", "riyals"), ["AED"] = ("درهم", "dirhams"),
+        ["KWD"] = ("دينار", "dinars"), ["QAR"] = ("ريال", "riyals"), ["OMR"] = ("ريال", "riyals"),
+        ["BHD"] = ("دينار", "dinars"), ["JOD"] = ("دينار", "dinars"), ["IQD"] = ("دينار", "dinars"),
+        ["LYD"] = ("دينار", "dinars"), ["TND"] = ("دينار", "dinars"), ["MAD"] = ("درهم", "dirhams"),
+    };
+
+    /// <summary>
+    /// An answer made ready to be read aloud: no formatting marks or symbols, figures written the way
+    /// the voice reads them (1,250.00 → 1250) and currency codes as words (EGP → جنيه).
+    /// </summary>
+    public static string SpokenText(string text, string language)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (ch is >= '٠' and <= '٩') sb.Append((char)('0' + (ch - '٠')));
+            else if (ch is >= '۰' and <= '۹') sb.Append((char)('0' + (ch - '۰')));
+            else if (ch == '٫') sb.Append('.');
+            else if (ch == '٬') sb.Append(',');
+            else sb.Append(ch);
+        }
+        var s = sb.ToString();
+        var lines = s.Split('\n')
+            .Select(l => System.Text.RegularExpressions.Regex.Replace(l.Trim(), @"^(#{1,6}\s*|[-*•·]\s+|>\s*)", ""))
+            .Select(l => l.Replace("|", "، ").Trim(' ', '،'))
+            .Where(l => l.Length > 0 && !System.Text.RegularExpressions.Regex.IsMatch(l, @"^[-:،\s]+$"))
+            .Select(l => ".!?؟:;،,".Contains(l[^1]) ? l : l + ".");
+        s = string.Join(" ", lines);
+        s = s.Replace("**", "").Replace("__", "").Replace("`", "");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?<=\d),(?=\d{3}(\D|$))", "");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?<=\d)\.0{1,2}(?!\d)", "");
+        foreach (var (code, name) in CurrencyNames)
+            s = System.Text.RegularExpressions.Regex.Replace(s, $@"\b{code}\b", language == "ar" ? name.Ar : name.En);
+        if (language == "ar")
+            s = s.Replace("ج.م.", "جنيه.").Replace("ج.م", "جنيه").Replace("ر.س", "ريال").Replace("د.إ", "درهم");
+        // Emojis and other symbols aren't read.
+        s = new string(s.Where(c => char.GetUnicodeCategory(c) is not (UnicodeCategory.OtherSymbol
+            or UnicodeCategory.Surrogate or UnicodeCategory.PrivateUse or UnicodeCategory.ModifierSymbol)).ToArray());
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s+(?=[.,!?؟،:;])", "").Trim();
+        if (!s.Any(char.IsLetterOrDigit)) return "";
+        return s.Length > 1500 ? s[..1500] : s;
+    }
+
+    /// <summary>
+    /// A small model sometimes answers in the language of the tools' results (English) despite the rule:
+    /// such an answer is written again in the app's language, names and figures kept as they are.
+    /// </summary>
+    private async Task<string> InLanguageAsync(string answer, string language, CancellationToken ct)
+    {
+        if (answer.Length == 0 || !WrongLanguage(answer, language)) return answer;
+        var body = new JsonObject
+        {
+            ["model"] = ChatModel,
+            ["stream"] = false,
+            ["options"] = new JsonObject { ["temperature"] = 0.1 },
+            ["messages"] = new JsonArray
+            {
+                Msg("system", language == "ar"
+                    ? "Rewrite the text you are given in formal Arabic. Keep every name, code, number and amount " +
+                      "exactly as written. Reply with the rewritten text only. أعد كتابة النص بالعربية الفصحى."
+                    : "Rewrite the text you are given in English. Keep every name, code, number and amount " +
+                      "exactly as written. Reply with the rewritten text only."),
+                Msg("user", answer),
+            },
+        };
+        try
+        {
+            var reply = await PostAsync("/api/chat", body, ct);
+            var text = reply["message"]?["content"]?.GetValue<string>()?.Trim() ?? "";
+            return text.Length > 0 && !WrongLanguage(text, language) ? text : answer;
+        }
+        catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException)
+        {
+            return answer;
+        }
+    }
+
+    /// <summary>
+    /// Whether a text is mostly in the other language: counted on letters, so names, codes and numbers
+    /// written in the other script don't count against an answer that is otherwise right.
+    /// </summary>
+    public static bool WrongLanguage(string text, string language)
+    {
+        int arabic = 0, latin = 0;
+        foreach (var ch in text)
+        {
+            if (ch is >= '\u0621' and <= '\u064A' or >= '\u0671' and <= '\u06D3') arabic++;
+            else if (ch is >= 'a' and <= 'z' or >= 'A' and <= 'Z') latin++;
+        }
+        var total = arabic + latin;
+        if (total < 12) return false;
+        return language == "ar" ? arabic < total * 0.35 : arabic > total * 0.75;
     }
 
     private static JsonObject ParseArgs(JsonNode? raw)

@@ -81,13 +81,19 @@ and nothing is sent outside the building.
 - Check it in the app: **Assistant** page (it says when the models aren't ready yet).
 - Update the models later: `docker compose --profile full run --rm assistant-models`.
 
-**Spoken questions.** The `skb-speech` container (Whisper, MIT licence; `SPEECH_MODEL=small` in `.env`,
-`base` on smaller machines) turns a recorded question into text on this machine; the recording is
-not kept. Browsers only allow the microphone on a secure address:
-- **Windows app:** works on the office address as it is (the app trusts the company server).
-- **Phones and browsers:** use the HTTPS address Tailscale gives the server
-  (`sudo tailscale serve --bg 8080`, then `https://<server-name>.<tailnet>.ts.net`). On plain
-  `http://192.168.x.x:8080` an Android phone offers its own sound recorder instead.
+**Talking with it by voice.** The assistant answers in the app's language (Arabic or English), and
+one can talk with it like with a person: it listens, answers briefly and says the answer aloud, then
+listens again. Two more containers do this on this machine, with no internet after the first start:
+- `skb-speech` (Whisper, MIT licence; `SPEECH_MODEL=small` in `.env`, `base` on smaller machines)
+  writes out what was said; the recording is not kept.
+- `skb-voice` (Piper, GPL-3.0, its own container; `VOICE_AR` / `VOICE_EN` in `.env`) reads the
+  answer aloud in an Arabic or an English voice, the same on every device; downloads ~130 MB of
+  voices once.
+
+The microphone works:
+- **Windows app** and **Android app (1.4 or newer):** on the office address as it is.
+- **iPhone and browsers:** only on a secure address: use the HTTPS address Tailscale gives the
+  server (`sudo tailscale serve --bg 8080`, then `https://<server-name>.<tailnet>.ts.net`).
 
 ## The owner's server monitor
 **Server monitor** in the app (the owner alone) shows the processor, memory, disk, temperature, the

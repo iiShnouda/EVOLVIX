@@ -1,19 +1,22 @@
 package com.skb.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.print.PrintAttributes;
-import android.provider.MediaStore;
 import android.print.PrintManager;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -25,7 +28,10 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 
 /**
  * SKB for Android. The whole app — screens, rules, data — lives on the company server; this
@@ -33,12 +39,18 @@ import java.io.OutputStream;
  * moment the server is updated. Only pages of the configured server open inside the app; any
  * other link opens in the phone's browser. When the server can't be reached, a local page offers
  * to retry or change the server address. Printing and saving files (Excel exports) go through
- * {@link Bridge}, because a WebView can't print or save a file made in the page on its own.
+ * {@link Bridge}, because a WebView can't print or save a file made in the page on its own; so does
+ * the microphone for talking with the assistant (owner, 2026-10-11), because a page opened over
+ * plain http (the office address) may not use the browser's own. Over https the page's own
+ * microphone is allowed for the server's pages.
  */
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 1;
     private static final int SETTINGS_REQUEST = 2;
     private static final int SAVE_REQUEST = 3;
+    private static final int MIC_REQUEST = 4;
+    /** A recording for the assistant is at most this long. */
+    private static final int MAX_RECORDING_MS = 60_000;
     /** A file the page asked to save is at most this big. */
     private static final int MAX_SAVE_BYTES = 20 * 1024 * 1024;
 
@@ -46,6 +58,12 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> pendingFiles;
     private String loadedServer;
     private byte[] pendingSave;
+    private final Object micLock = new Object();
+    private MediaRecorder recorder;
+    private File recording;
+    private volatile boolean micAsked;
+    private volatile boolean micAnswered;
+    private PermissionRequest pendingMic;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -59,8 +77,9 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        s.setMediaPlaybackRequiresUserGesture(true);
-        s.setUserAgentString(s.getUserAgentString() + " SKBAndroid/1.0");
+        // The assistant reads its answers aloud right after they arrive (only the server's pages load here).
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setUserAgentString(s.getUserAgentString() + " SKBAndroid/" + versionName());
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -76,6 +95,14 @@ public class MainActivity extends Activity {
             loadedServer = state.getString("server");
         } else {
             openServer();
+        }
+    }
+
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "1";
         }
     }
 
@@ -95,6 +122,116 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         CookieManager.getInstance().flush();
+        // The microphone never listens with the app in the background.
+        micCancel();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        if (request != MIC_REQUEST) {
+            super.onRequestPermissionsResult(request, permissions, results);
+            return;
+        }
+        micAnswered = true;
+        boolean granted = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+        PermissionRequest page = pendingMic;
+        pendingMic = null;
+        if (page != null) {
+            if (granted) page.grant(new String[] {PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            else page.deny();
+        }
+    }
+
+    private boolean micAllowed() {
+        return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void askMic() {
+        micAsked = true;
+        runOnUiThread(() -> requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, MIC_REQUEST));
+    }
+
+    /** Start a recording: "ok", "asking" (the phone is asking the person), "denied" or "error". */
+    private String micStart() {
+        if (!micAllowed()) {
+            if (!micAsked) {
+                askMic();
+                return "asking";
+            }
+            return micAnswered ? "denied" : "asking";
+        }
+        synchronized (micLock) {
+            releaseRecorder();
+            try {
+                recording = File.createTempFile("talk", ".m4a", getCacheDir());
+                recorder = new MediaRecorder();
+                recorder.setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION);
+                recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+                recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+                recorder.setAudioChannels(1);
+                recorder.setAudioSamplingRate(16000);
+                recorder.setAudioEncodingBitRate(32000);
+                recorder.setMaxDuration(MAX_RECORDING_MS);
+                recorder.setOutputFile(recording.getAbsolutePath());
+                recorder.prepare();
+                recorder.start();
+                return "ok";
+            } catch (IOException | RuntimeException e) {
+                releaseRecorder();
+                return "error";
+            }
+        }
+    }
+
+    /** How loud it has been since the last look, 0..1. */
+    private double micLevel() {
+        synchronized (micLock) {
+            if (recorder == null) return 0;
+            try {
+                return recorder.getMaxAmplitude() / 32767.0;
+            } catch (RuntimeException e) {
+                return 0;
+            }
+        }
+    }
+
+    /** End the recording and hand it over (base64); nothing of it stays on the phone. */
+    private String micStop() {
+        synchronized (micLock) {
+            if (recorder == null) return "";
+            try {
+                recorder.stop();
+                recorder.release();
+                recorder = null;
+                return Base64.encodeToString(Files.readAllBytes(recording.toPath()), Base64.NO_WRAP);
+            } catch (IOException | RuntimeException e) {
+                return "";
+            } finally {
+                releaseRecorder();
+            }
+        }
+    }
+
+    private void micCancel() {
+        synchronized (micLock) {
+            releaseRecorder();
+        }
+    }
+
+    private void releaseRecorder() {
+        if (recorder != null) {
+            try {
+                recorder.release();
+            } catch (RuntimeException ignored) {
+                // already stopped
+            }
+            recorder = null;
+        }
+        if (recording != null) {
+            //noinspection ResultOfMethodCallIgnored
+            recording.delete();
+            recording = null;
+        }
     }
 
     @Override
@@ -128,6 +265,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        micCancel();
         web.destroy();
         super.onDestroy();
     }
@@ -234,29 +372,29 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static boolean acceptsAudio(WebChromeClient.FileChooserParams params) {
-        for (String type : params.getAcceptTypes()) if (type != null && type.startsWith("audio")) return true;
-        return false;
-    }
-
     private final class Chrome extends WebChromeClient {
+        /** Over https the server's pages may use the microphone (only it), once the person allows it. */
+        @Override
+        public void onPermissionRequest(PermissionRequest request) {
+            boolean audioOnly = request.getResources().length == 1
+                    && PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(request.getResources()[0]);
+            if (!audioOnly || !ServerConfig.isServerUrl(MainActivity.this, request.getOrigin())) {
+                request.deny();
+            } else if (micAllowed()) {
+                request.grant(new String[] {PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            } else {
+                if (pendingMic != null) pendingMic.deny();
+                pendingMic = request;
+                askMic();
+            }
+        }
+
         @Override
         public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
             if (pendingFiles != null) pendingFiles.onReceiveValue(null);
             pendingFiles = callback;
             try {
-                Intent pick = params.createIntent();
-                // A spoken question (the assistant's microphone): offer the phone's sound recorder
-                // first, and picking a recording as well.
-                if (params.isCaptureEnabled() && acceptsAudio(params)) {
-                    Intent record = new Intent(MediaStore.Audio.Media.RECORD_SOUND_ACTION);
-                    if (record.resolveActivity(getPackageManager()) != null) {
-                        Intent chooser = Intent.createChooser(record, null);
-                        chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[] {pick});
-                        pick = chooser;
-                    }
-                }
-                startActivityForResult(pick, FILE_REQUEST);
+                startActivityForResult(params.createIntent(), FILE_REQUEST);
             } catch (ActivityNotFoundException e) {
                 pendingFiles = null;
                 return false;
@@ -267,7 +405,7 @@ public class MainActivity extends Activity {
 
     /**
      * Called from pages: the offline page's buttons (retry / open settings) and the server app's
-     * print and save. Only the configured server's pages load in this window.
+     * print, save and microphone. Only the configured server's pages load in this window.
      */
     private final class Bridge {
         @JavascriptInterface
@@ -283,6 +421,27 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void print(String title) {
             runOnUiThread(() -> MainActivity.this.print(title));
+        }
+
+        /** The microphone, for talking with the assistant (see {@link MainActivity#micStart}). */
+        @JavascriptInterface
+        public String micStart() {
+            return MainActivity.this.micStart();
+        }
+
+        @JavascriptInterface
+        public double micLevel() {
+            return MainActivity.this.micLevel();
+        }
+
+        @JavascriptInterface
+        public String micStop() {
+            return MainActivity.this.micStop();
+        }
+
+        @JavascriptInterface
+        public void micCancel() {
+            MainActivity.this.micCancel();
         }
 
         /** Save a file the page made: its name, type and contents (base64). */
