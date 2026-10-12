@@ -690,6 +690,17 @@ public record ProductDetailDto(
 public record ModelSummaryDto(
     string Id, string Code, string Name, string CategoryName, int Variants, int StockOnHand, bool IsActive);
 
+/// <summary>
+/// One line of the public storefront catalog (owner, 2026-10-12): deliberately scrubbed — a name,
+/// its department, its colours and sizes, and whether it is in stock (never the stock count), and
+/// a reference to fetch its photo. No cost, no price, no stock number, no supplier, no customer.
+/// </summary>
+public record StorefrontItemDto(
+    string Ref, string Name, string? Department, string[] Colors, string[] Sizes, bool InStock, bool HasImage);
+
+/// <summary>The whole public catalog the owner publishes outward; holds nothing the company keeps private.</summary>
+public record StorefrontCatalogDto(string Company, string GeneratedAt, int Count, StorefrontItemDto[] Items);
+
 /// <param name="OwnPrices">The variant has prices of its own (the rest come from the model).</param>
 public record ModelVariantDto(
     string ProductId, string Sku, string Name, string? SizeId, string? ColorId, int StockOnHand,
