@@ -328,6 +328,7 @@ public class AppDbContext : DbContext
         b.Entity<Session>().HasIndex(x => x.TokenHash).IsUnique();
         b.Entity<Session>().HasIndex(x => x.StaffId);
         b.Entity<Session>().Property(x => x.RevokedReason).HasMaxLength(40);
+        b.Entity<Session>().Property(x => x.Kind).HasMaxLength(10);
         b.Entity<Session>().HasIndex(x => x.ExpiresAt);
         b.Entity<Product>().HasIndex(x => x.Sku).IsUnique();
         b.Entity<Product>().HasIndex(x => x.CategoryId);

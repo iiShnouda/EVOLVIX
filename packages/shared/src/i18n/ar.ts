@@ -41,6 +41,12 @@ export const ar: TranslationDictionary = {
 
   // Connection / offline gate
   'conn.online': 'متصل',
+  'devices.phone': 'الهاتف',
+  'devices.computer': 'الكمبيوتر',
+  'devices.online': 'متصل الآن',
+  'devices.offline': 'مسجّل، غير متصل',
+  'devices.signedOut': 'غير مسجّل',
+  'devices.thisOne': 'هذا الجهاز',
   'conn.connecting': 'جارٍ الاتصال…',
   'conn.offline': 'غير متصل',
   'conn.lastSynced': 'آخر اتصال',

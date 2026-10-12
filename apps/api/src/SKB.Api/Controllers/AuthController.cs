@@ -23,9 +23,10 @@ public sealed class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly AppDbContext _db;
     private readonly AccessService _access;
+    private readonly PresenceTracker _presence;
 
     public AuthController(AuthService auth, TokenService tokens, AuditService audit, IConfiguration config,
-        AppDbContext db, AccessService access)
+        AppDbContext db, AccessService access, PresenceTracker presence)
     {
         _db = db;
         _access = access;
@@ -33,6 +34,30 @@ public sealed class AuthController : ControllerBase
         _tokens = tokens;
         _audit = audit;
         _config = config;
+        _presence = presence;
+    }
+
+    /// <summary>
+    /// The person's own two devices (owner, 2026-10-12: "know whether the other device is running"):
+    /// a phone and a computer, whether each is signed in and whether it is connected right now, and
+    /// which kind this request is from — so the app can show the other device's state.
+    /// </summary>
+    [Authorize]
+    [HttpGet("devices")]
+    public async Task<IActionResult> Devices()
+    {
+        if (!Guid.TryParse(CurrentUser.Id(User), out var staffId)) return Unauthorized();
+        var (mobile, desktop) = await DeviceGate.CurrentAsync(_db, staffId);
+        var online = _presence.Snapshot()
+            .Where(c => c.UserId == staffId.ToString())
+            .Select(c => DeviceGate.KindOf(c.Device))
+            .ToHashSet();
+        return Ok(new
+        {
+            thisKind = DeviceGate.Kind(Request.Headers.UserAgent.ToString()),
+            mobile = new { signedIn = mobile is not null, online = online.Contains("MOBILE") },
+            desktop = new { signedIn = desktop is not null, online = online.Contains("DESKTOP") },
+        });
     }
 
     [AllowAnonymous]

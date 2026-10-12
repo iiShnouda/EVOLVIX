@@ -40,6 +40,12 @@ export const en = {
 
   // Connection / offline gate
   'conn.online': 'Online',
+  'devices.phone': 'Phone',
+  'devices.computer': 'Computer',
+  'devices.online': 'online',
+  'devices.offline': 'signed in, not now',
+  'devices.signedOut': 'not signed in',
+  'devices.thisOne': 'this one',
   'conn.connecting': 'Connecting…',
   'conn.offline': 'Offline',
   'conn.lastSynced': 'Last connected',

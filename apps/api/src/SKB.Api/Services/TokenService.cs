@@ -78,8 +78,10 @@ public sealed class TokenService
         var raw = CryptoService.GenerateOpaqueToken();
         var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
         var device = Guid.NewGuid();
+        var kind = DeviceGate.Kind(ctx.UserAgent);
         var now = DateTime.UtcNow;
-        await _db.Sessions.Where(s => s.StaffId == staff.Id && s.RevokedAt == null)
+        // End only the other sign-ins of this kind (a new phone frees the old phone; the computer stays).
+        await _db.Sessions.Where(s => s.StaffId == staff.Id && s.RevokedAt == null && s.Kind == kind)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, "other_device"));
         _db.Sessions.Add(new Session
         {
@@ -91,11 +93,13 @@ public sealed class TokenService
             DeviceLabel = ctx.DeviceLabel,
             ExpiresAt = now.AddSeconds(ttl),
             DeviceId = device,
+            Kind = kind,
             Remember = remember,
         });
-        staff.CurrentDeviceId = device;
+        if (kind == "MOBILE") staff.CurrentMobileDeviceId = device;
+        else staff.CurrentDesktopDeviceId = device;
         await _db.SaveChangesAsync();
-        DeviceGate.Set(staff.Id, device);
+        DeviceGate.Set(staff.Id, staff.CurrentMobileDeviceId, staff.CurrentDesktopDeviceId);
         return (raw, device);
     }
 
@@ -108,8 +112,10 @@ public sealed class TokenService
         var session = await _db.Sessions.Include(s => s.Staff)
             .FirstOrDefaultAsync(s => s.TokenHash == hash);
         if (session is null) return (null, null);
+        // Superseded only by a newer sign-in of the SAME kind (the other kind's device doesn't affect it).
+        var slot = session.Kind == "MOBILE" ? session.Staff?.CurrentMobileDeviceId : session.Staff?.CurrentDesktopDeviceId;
         if (session.RevokedReason == "other_device"
-            || (session.RevokedAt is null && session.Staff?.CurrentDeviceId is Guid current && current != session.DeviceId))
+            || (session.RevokedAt is null && slot is Guid current && current != session.DeviceId))
             return (null, "other_device");
         if (session.RevokedAt is not null || session.ExpiresAt < DateTime.UtcNow)
             return (null, null);
@@ -131,6 +137,7 @@ public sealed class TokenService
             DeviceLabel = ctx.DeviceLabel,
             ExpiresAt = DateTime.UtcNow.AddSeconds(ttl),
             DeviceId = session.DeviceId,
+            Kind = session.Kind,
             Remember = session.Remember,
         });
         await _db.SaveChangesAsync();

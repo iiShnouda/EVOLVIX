@@ -95,17 +95,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
                 return Task.CompletedTask;
             },
-            // One device per account (owner, 2026-10-01): a token from a device the account has
-            // since left (signed in elsewhere) no longer works.
+            // One phone and one computer per account (owner, 2026-10-01; two at once 2026-10-12):
+            // a token from a device the account has since left (a newer sign-in of the same kind)
+            // no longer works; the other kind's device is unaffected.
             OnTokenValidated = async ctx =>
             {
                 var sub = ctx.Principal?.FindFirst("sub")?.Value;
                 if (!Guid.TryParse(sub, out var staffId)) return;
                 var db = ctx.HttpContext.RequestServices.GetRequiredService<SKB.Api.Data.AppDbContext>();
                 var current = await SKB.Api.Services.DeviceGate.CurrentAsync(db, staffId);
-                if (current is null) return;
+                if (current.Mobile is null && current.Desktop is null) return;
                 var sid = ctx.Principal?.FindFirst(SKB.Api.Services.TokenService.DeviceClaim)?.Value;
-                if (!Guid.TryParse(sid, out var device) || device != current)
+                if (!Guid.TryParse(sid, out var device) || !SKB.Api.Services.DeviceGate.Allows(current, device))
                 {
                     ctx.HttpContext.Items["signedInElsewhere"] = true;
                     ctx.Fail("Signed in on another device.");

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../Icon';
 import { useT } from '../../lib/i18n';
@@ -107,6 +108,7 @@ export function AccountMenu() {
                 )}
               </span>
             </div>
+            <DeviceStatus />
           </div>
           {branches.length > 1 && (
             <div
@@ -158,6 +160,60 @@ export function AccountMenu() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface DevicesInfo {
+  thisKind: 'MOBILE' | 'DESKTOP';
+  mobile: { signedIn: boolean; online: boolean };
+  desktop: { signedIn: boolean; online: boolean };
+}
+
+/**
+ * The person's own two devices (owner, 2026-10-12): a phone and a computer, both usable at once, and
+ * whether each is connected right now — so they can tell if the other device is running. Refreshed
+ * every little while while the menu is open.
+ */
+function DeviceStatus() {
+  const { t } = useT();
+  const q = useQuery({
+    queryKey: ['auth', 'devices'],
+    queryFn: () => api.get<DevicesInfo>('/auth/devices'),
+    refetchInterval: 20000,
+    staleTime: 10000,
+  });
+  const d = q.data;
+  if (!d) return null;
+  const row = (kind: 'MOBILE' | 'DESKTOP', label: string) => {
+    const s = kind === 'MOBILE' ? d.mobile : d.desktop;
+    const state = s.online
+      ? 'devices.online'
+      : s.signedIn
+        ? 'devices.offline'
+        : 'devices.signedOut';
+    return (
+      <div key={kind} className="flex items-center gap-2">
+        <Icon name="device" size={14} />
+        <span className="flex-1">
+          {label}
+          {d.thisKind === kind && ` · ${t('devices.thisOne')}`}
+        </span>
+        <span className={`inline-flex items-center gap-1 ${s.online ? 'text-positive' : ''}`}>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              s.online ? 'bg-positive' : s.signedIn ? 'bg-warning' : 'bg-surface-2'
+            }`}
+          />
+          {t(state as 'devices.online')}
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-2 space-y-1 border-t border-line pt-2 text-xs text-muted">
+      {row('MOBILE', t('devices.phone'))}
+      {row('DESKTOP', t('devices.computer'))}
     </div>
   );
 }

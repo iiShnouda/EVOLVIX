@@ -5,6 +5,10 @@
       "date": "2026-10-11",
       "features": [
         {
+          "ar": "كل مستخدم يقدر يفتح موبايل وكمبيوتر في نفس الوقت (تعمل فاتورة على الكمبيوتر وتسكان باركود بالموبايل). الحساب له جهاز موبايل واحد وكمبيوتر واحد؛ تسجيل دخول جديد من نوع يحلّ محل جهاز نفس النوع فقط. وفي قائمة الحساب مؤشّر يوضّح إن كان الجهاز الآخر متصلاً الآن أم لا.",
+          "en": "Each person can use a phone and a computer at the same time (make a bill on the computer while scanning a barcode on the phone). An account has one phone and one computer; a new sign-in replaces only the device of its own kind. The account menu shows whether the other device is online right now."
+        },
+        {
           "ar": "صورة لكل صنف: ترفعها من الجهاز أو تلتقطها بالكاميرا، وتظهر في صفحة الصنف. تُقبل فقط JPEG أو PNG أو WebP حتى 3 ميجابايت، ويُفحَص الملف بنفسه فلا يمرّ أي سكريبت متنكّر كصورة.",
           "en": "A photo for each item: upload it or take it with the camera; shown in the item page. Only JPEG, PNG or WebP up to 3 MB, and the file itself is checked so no script disguised as an image can slip through."
         },

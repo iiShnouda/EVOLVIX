@@ -148,10 +148,13 @@ public class Staff
 
     /// <summary>Permissions this person has on top of their role's.</summary>
     /// <summary>
-    /// The one device this account works on (owner, 2026-10-01): a new sign-in takes it over and
-    /// ends the others. Null = not yet signed in since the rule came in.
+    /// The devices this account works on (owner, 2026-10-01; two at once 2026-10-12: "a phone and a
+    /// computer at the same time"): one phone and one computer. A new sign-in takes over the slot of
+    /// its own kind and ends that kind's other sessions, leaving the other kind be. Null = no device
+    /// of that kind signed in. A token works while its device is still the current one of its kind.
     /// </summary>
-    public Guid? CurrentDeviceId { get; set; }
+    public Guid? CurrentMobileDeviceId { get; set; }
+    public Guid? CurrentDesktopDeviceId { get; set; }
     public List<string> GrantedPermissions { get; set; } = new();
     /// <summary>Permissions of their role this person does not get.</summary>
     public List<string> RevokedPermissions { get; set; } = new();
@@ -219,6 +222,8 @@ public class Session
     public DateTime? RevokedAt { get; set; }
     /// <summary>One sign-in on one device: every refresh of it keeps this id (the access token's "sid").</summary>
     public Guid DeviceId { get; set; } = Guid.NewGuid();
+    /// <summary>"MOBILE" or "DESKTOP": a sign-in holds only the current device of its own kind.</summary>
+    public string Kind { get; set; } = "DESKTOP";
     /// <summary>"Remember this device": the cookie outlives the browser; else it ends with it.</summary>
     public bool Remember { get; set; }
     /// <summary>Why it ended early: "logout", or "other_device" (the account signed in elsewhere).</summary>

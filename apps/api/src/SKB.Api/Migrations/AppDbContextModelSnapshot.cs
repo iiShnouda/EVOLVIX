@@ -2514,6 +2514,11 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Ip")
                         .HasColumnType("text");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<DateTime>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2696,7 +2701,10 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("CurrentDeviceId")
+                    b.Property<Guid?>("CurrentDesktopDeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CurrentMobileDeviceId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("CustomRoleId")
