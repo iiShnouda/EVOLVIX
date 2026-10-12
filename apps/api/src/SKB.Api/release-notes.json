@@ -25,6 +25,14 @@
         {
           "ar": "رسم «المبيعات مقابل المشتريات» يعرض السنة كاملة من يناير إلى ديسمبر، لا حتى الشهر الحالي فقط.",
           "en": "The sales-vs-purchases chart now shows the full year, January to December, not only up to the current month."
+        },
+        {
+          "ar": "زر الإجراءات السريعة على الموبايل أصبح ظاهراً كاملاً وسهل اللمس، وقائمته تظهر فوق خلفية معتمة واضحة بدل ما كانت تبان نصّها على الحافة.",
+          "en": "The quick-action button on phones is now fully visible and easy to tap, and its menu opens over a clear dimmed background instead of half-hidden at the edge."
+        },
+        {
+          "ar": "لما السيرفر مش شغّال، البرنامج يعرض شاشة بالشعار ورسالة «جارٍ الاتصال… / السيرفر غير متاح» مع زر إعادة محاولة، بدل الشاشة السوداء (الويب وتطبيق ويندوز وأندرويد).",
+          "en": "When the server is unreachable, the app shows a branded 'connecting… / server unavailable' screen with a retry button instead of a black screen (web, Windows and Android)."
         }
       ]
     },

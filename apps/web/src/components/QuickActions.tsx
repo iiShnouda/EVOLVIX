@@ -60,7 +60,9 @@ export function QuickActions() {
   const press = useRef<{ startY: number; startTop: number; moved: boolean; timer?: number } | null>(
     null,
   );
-  const out = (!touch && hover) || menu || dragging;
+  // A touch screen has no hover to pull the button out, so there it always sits fully out and
+  // tappable (owner, 2026-10-12: the bubble and dock were a near-invisible sliver on phones).
+  const out = (!touch && hover) || menu || dragging || touch;
 
   const go = (a: QuickAction) => {
     setMenu(false);
@@ -304,7 +306,7 @@ function ColumnMenu({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40" onClick={onClose}>
+    <div className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]" onClick={onClose}>
       <div
         role="menu"
         onClick={(e) => e.stopPropagation()}
@@ -379,7 +381,7 @@ function RadialMenu({
   const inward = rtl ? Math.PI : 0;
 
   return (
-    <div className="fixed inset-0 z-40" onClick={onClose}>
+    <div className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]" onClick={onClose}>
       {nodes.map((node, i) => {
         const angle =
           inward + (n > 1 ? (i - (n - 1) / 2) * (spread / (n - 1)) : 0) * (rtl ? -1 : 1);

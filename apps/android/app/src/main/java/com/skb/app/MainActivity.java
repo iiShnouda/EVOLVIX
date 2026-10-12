@@ -85,6 +85,9 @@ public class MainActivity extends Activity {
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(web, false);
 
+        // A light backdrop so the view is never a black flash while a page is still loading or while
+        // the server is being reached (owner, 2026-10-12: "a black screen that tells me nothing").
+        web.setBackgroundColor(0xFFF6F7FB);
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
         web.addJavascriptInterface(new Bridge(), "SKBApp");

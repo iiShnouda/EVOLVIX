@@ -46,6 +46,9 @@ internal sealed class MainForm : Form
         Bounds = screen.WorkingArea;
         WindowState = FormWindowState.Maximized;
         KeyPreview = true;
+        // A light backdrop so the view is never a black flash while a page is still loading or while
+        // the server is being reached (owner, 2026-10-12: "a black screen that tells me nothing").
+        _web.DefaultBackgroundColor = Color.FromArgb(0xF6, 0xF7, 0xFB);
         Controls.Add(_web);
     }
 
