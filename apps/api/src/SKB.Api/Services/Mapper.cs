@@ -63,7 +63,7 @@ public static class Mapper
             p.ModelId?.ToString(), p.Size is null ? null : Loc.Name(p.Size), p.Color is null ? null : Loc.Name(p.Color),
             matchedUnitId?.ToString(), p.SupplierId?.ToString(), p.Supplier?.Name, p.SupplierCode,
             p.Category?.DepartmentId?.ToString(), p.Category?.Department is { } d ? Loc.Name(d) : null,
-            p.SeasonId?.ToString(), p.Season is { } season ? Seasons.NameOf(season) : null, p.Color?.Hex);
+            p.SeasonId?.ToString(), p.Season is { } season ? Seasons.NameOf(season) : null, p.Color?.Hex, p.HasImage);
     }
 
     /// <summary>

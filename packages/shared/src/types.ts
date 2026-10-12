@@ -543,6 +543,8 @@ export interface Product {
   seasonName?: string | null;
   /** The color's swatch. */
   colorHex?: string | null;
+  /** True when the item has a photo (GET /products/:id/image returns it). */
+  hasImage?: boolean;
 }
 
 // ---------------------------------------------------------------------------

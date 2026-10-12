@@ -60,6 +60,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyIdCard> PartyIdCards => Set<PartyIdCard>();
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<NotePhoto> NotePhotos => Set<NotePhoto>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Department> Departments => Set<Department>();
@@ -333,6 +334,9 @@ public class AppDbContext : DbContext
         b.Entity<Party>().HasIndex(x => x.Name);
         b.Entity<PartyIdCard>().HasIndex(x => new { x.PartyId, x.Side }).IsUnique();
         b.Entity<PartyIdCard>().HasOne<Party>().WithMany().HasForeignKey(x => x.PartyId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ProductImage>().HasKey(x => x.ProductId);
+        b.Entity<ProductImage>().Property(x => x.ContentType).HasMaxLength(40);
+        b.Entity<ProductImage>().HasOne<Product>().WithOne().HasForeignKey<ProductImage>(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<AuditEntry>().HasIndex(x => x.CreatedAt);
         b.Entity<AuditEntry>().HasIndex(x => x.Resource);
         b.Entity<AuditEntry>().Property(x => x.Details).HasMaxLength(500);

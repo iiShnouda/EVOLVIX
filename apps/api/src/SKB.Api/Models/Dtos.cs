@@ -33,7 +33,7 @@ public record ProductDto(
     string? ModelId, string? SizeName, string? ColorName, string? MatchedUnitId,
     string? SupplierId = null, string? SupplierName = null, string? SupplierCode = null,
     string? DepartmentId = null, string? DepartmentName = null, string? SeasonId = null, string? SeasonName = null,
-    string? ColorHex = null);
+    string? ColorHex = null, bool HasImage = false);
 
 /// <param name="Prices">The unit's price at each active level that has one (see PriceBook for the order).</param>
 public record ProductUnitDto(string UnitId, string Name, int Factor, string? Barcode, UnitPriceDto[] Prices);

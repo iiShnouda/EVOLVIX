@@ -11,6 +11,7 @@ import {
   type UnitRow,
 } from '../components/UnitsEditor';
 import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../components/PriceGrid';
+import { ProductImageCard } from '../components/ProductImage';
 import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -494,6 +495,7 @@ export function ProductEditorPage() {
         </div>
 
         <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
+          {!isNew && id && <ProductImageCard productId={id} canEdit={canFields} />}
           <Card className="space-y-3">
             {d && (
               <dl className="space-y-1.5 text-sm">

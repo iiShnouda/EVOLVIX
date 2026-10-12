@@ -341,6 +341,20 @@ public class PartyIdCard
     public Guid? UploadedBy { get; set; }
 }
 
+/// <summary>
+/// An item's photo (owner, 2026-10-12: "a picture for every item"). One per item, stored in the
+/// database (never a file on disk), only a real JPEG/PNG/WebP (checked against its own bytes by
+/// <see cref="Services.Pictures"/>), served with no-sniff and never cached.
+/// </summary>
+public class ProductImage
+{
+    public Guid ProductId { get; set; }
+    public string ContentType { get; set; } = "image/jpeg";
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public Guid? UploadedBy { get; set; }
+}
+
 public class Category : INamed
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -616,6 +630,9 @@ public class Product : INamed
     public int StockOnHand { get; set; }
     public int ReorderLevel { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>True when the item has a photo (<see cref="ProductImage"/>); kept for list screens.</summary>
+    public bool HasImage { get; set; }
 
     public Guid CategoryId { get; set; }
     public Category? Category { get; set; }

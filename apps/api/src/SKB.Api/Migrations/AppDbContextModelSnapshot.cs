@@ -2116,6 +2116,9 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("HasImage")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -2178,6 +2181,31 @@ namespace SKB.Api.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("ModelId", "SizeId", "ColorId"), false);
 
                     b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ProductImage", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ProductId");
+
+                    b.ToTable("ProductImages");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ProductModel", b =>
@@ -4019,6 +4047,15 @@ namespace SKB.Api.Migrations
                     b.Navigation("Size");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.ProductImage", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Product", null)
+                        .WithOne()
+                        .HasForeignKey("SKB.Api.Data.ProductImage", "ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ProductModel", b =>

@@ -686,6 +686,66 @@ public sealed class ProductsController : ControllerBase
             .Where(x => x.Score >= 0).OrderBy(x => x.Score).Take(take).Select(x => x.Id).ToList();
     }
 
+    private const long MaxImageBytes = 3 * 1024 * 1024;
+
+    /// <summary>
+    /// Keep the item's photo, replacing the one before (owner, 2026-10-12: "a picture for every item").
+    /// Only a real JPEG, PNG or WebP up to 3 MB — the first bytes are checked, so a script renamed to
+    /// .jpg is refused; stored in the database, never on the server's disk.
+    /// </summary>
+    [HttpPut("{id:guid}/image")]
+    [Authorize(Policy = Permissions.ProductsEdit)]
+    [RequestSizeLimit(MaxImageBytes + 64 * 1024)]
+    public async Task<ActionResult> PutImage(Guid id, IFormFile? file)
+    {
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+        if (product is null) return NotFound(new { message = "Item not found.", code = "not_found" });
+        if (file is null || file.Length == 0 || file.Length > MaxImageBytes)
+            return BadRequest(new { message = "Choose a photo of up to 3 MB.", code = "bad_photo" });
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var data = buffer.ToArray();
+        var type = Pictures.TypeOf(data);
+        if (type is null) return BadRequest(new { message = "Only JPEG, PNG or WebP photos.", code = "bad_photo" });
+
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var image = await _db.ProductImages.FirstOrDefaultAsync(x => x.ProductId == id);
+        if (image is null) _db.ProductImages.Add(image = new ProductImage { ProductId = id });
+        image.ContentType = type;
+        image.Data = data;
+        image.UploadedAt = DateTime.UtcNow;
+        image.UploadedBy = staffId == Guid.Empty ? null : staffId;
+        product.HasImage = true;
+        await _db.SaveChangesAsync();
+        await AuditAsync("image", "product", id);
+        return Ok(new { hasImage = true });
+    }
+
+    /// <summary>The item's photo, never cached. Anyone who may see inventory may see it.</summary>
+    [HttpGet("{id:guid}/image")]
+    public async Task<IActionResult> GetImage(Guid id)
+    {
+        var image = await _db.ProductImages.AsNoTracking().FirstOrDefaultAsync(x => x.ProductId == id);
+        if (image is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        Response.Headers.CacheControl = "no-store";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(image.Data, image.ContentType);
+    }
+
+    [HttpDelete("{id:guid}/image")]
+    [Authorize(Policy = Permissions.ProductsEdit)]
+    public async Task<ActionResult> DeleteImage(Guid id)
+    {
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+        if (product is null) return NotFound(new { message = "Item not found.", code = "not_found" });
+        var image = await _db.ProductImages.FirstOrDefaultAsync(x => x.ProductId == id);
+        if (image is not null) _db.ProductImages.Remove(image);
+        product.HasImage = false;
+        await _db.SaveChangesAsync();
+        await AuditAsync("image_remove", "product", id);
+        return NoContent();
+    }
+
     private Task AuditAsync(string action, string resource, Guid id) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
