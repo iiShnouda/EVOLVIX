@@ -547,6 +547,16 @@ export function useDiscountAll() {
   });
 }
 
+/** Freeze or reopen invoices for editing/deleting (the accountant); also used on combined print. */
+export function useLockInvoices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: string[]; locked: boolean }) =>
+      api.post<{ locked: boolean; count: number }>('/sales/invoices/lock', input),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
 export function useRejectOrder() {
   const qc = useQueryClient();
   return useMutation({

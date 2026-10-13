@@ -129,6 +129,9 @@ export type Permission =
   | 'purchases:choose_price_level'
   | 'parties:set_price_level'
   | 'sales:discount'
+  | 'sales:discount_line'
+  | 'sales:discount_combined'
+  | 'sales:lock'
   | 'sales:bonus'
   | 'sales:change_tax'
   | 'sales:additions'
@@ -694,6 +697,8 @@ export interface SalesDocument {
   owed?: number | null;
   /** Changed after it was saved. */
   edited?: boolean;
+  /** Frozen by the accountant (or on combined print): no more editing or deleting until reopened. */
+  locked?: boolean;
   /** The customer's / supplier's and the rep's codes (كود). */
   partyCode?: number | null;
   repCode?: number | null;

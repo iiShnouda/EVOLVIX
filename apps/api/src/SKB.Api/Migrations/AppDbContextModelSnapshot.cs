@@ -2360,6 +2360,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("EditLocked")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("EnteredAt")
                         .HasColumnType("timestamp with time zone");
 

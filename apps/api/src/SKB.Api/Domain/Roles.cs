@@ -246,8 +246,14 @@ public static class Permissions
     public const string PartiesCreditLimit = "parties:credit_limit";
 
     // ---- Invoice charges (DOMAIN.md step 4) ----
-    /// <summary>Give an invoice-level discount on a sale (خصم مسموح به / خصم إضافي).</summary>
+    /// <summary>Give a whole-invoice discount on a sale (خصم على الفاتورة), from the customer's invoice view.</summary>
     public const string SalesDiscount = "sales:discount";
+    /// <summary>Give a discount on one line/item of a sale (خصم على صنف), from the customer's invoice view.</summary>
+    public const string SalesDiscountLine = "sales:discount_line";
+    /// <summary>Give one discount across a customer's combined invoices (خصم على الفواتير المجمعة).</summary>
+    public const string SalesDiscountCombined = "sales:discount_combined";
+    /// <summary>Freeze or reopen a sales invoice for editing and deleting (قفل/فتح الفاتورة) — the accountant.</summary>
+    public const string SalesLock = "sales:lock";
     /// <summary>Add free goods (بونص) to a sale.</summary>
     public const string SalesBonus = "sales:bonus";
     /// <summary>Charge another tax rate than the company's, or another tax, on a sale.</summary>
@@ -275,7 +281,7 @@ public static class Permissions
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, DepartmentsDelete, UnitsManage,
         VariantOptionsManage, SeasonsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
-        SalesDiscount, SalesBonus, SalesChangeTax, SalesAdditions,
+        SalesDiscount, SalesDiscountLine, SalesDiscountCombined, SalesLock, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
         PartiesCreate, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
@@ -323,7 +329,9 @@ public static class RolePermissions
             Permissions.SalesChangePrice, Permissions.SalesChoosePriceLevel,
             Permissions.PurchasesChangePrice, Permissions.PurchasesChoosePriceLevel, Permissions.PartiesSetPriceLevel,
             Permissions.PartiesCreditLimit,
-            Permissions.SalesDiscount, Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
+            Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
+            Permissions.SalesLock,
+            Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
             Permissions.PartiesCreate, Permissions.PartiesIdCards,

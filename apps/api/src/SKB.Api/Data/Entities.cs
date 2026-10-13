@@ -766,6 +766,12 @@ public class SalesDocument
 
     public List<DocumentLine> Lines { get; set; } = new();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>
+    /// The accountant froze this invoice (owner, 2026-10-13): no more editing or deleting until it is
+    /// unlocked. It is set by hand (a button on the invoice) and automatically when the combined
+    /// invoices are printed. The maker's own half-hour window to edit a fresh invoice also ends here.
+    /// </summary>
+    public bool EditLocked { get; set; }
 }
 
 public class DocumentLine

@@ -66,7 +66,7 @@ what it covers: `scripts/checks/README.md` (add a row for every new suite).
 ```bash
 BASE=http://localhost:5080/api node scripts/checks/paystates.test.mjs   # one suite
 # all, in this order (limits first: it sets the Settings the others expect; admin last):
-for t in limits catalog images storefront charges parties costs departments orders codes invoices branding delivery devices \
+for t in limits catalog images storefront charges parties costs departments orders codes invoices invoicelock branding delivery devices \
          ledger statements notes cheques money staff payroll access pricing quotes returns additems \
          dashboard story dates ids scope handovers paystates time system tree chat profit places server admin; do
   BASE=http://localhost:5080/api timeout 600 node scripts/checks/$t.test.mjs > /tmp/t-$t.log 2>&1

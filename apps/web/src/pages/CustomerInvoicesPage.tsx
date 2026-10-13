@@ -30,7 +30,12 @@ import { errorText } from '../lib/errors';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 import { STATE_TONE, statusOf } from '../lib/status';
-import { useCustomerInvoices, useDiscountAll, useSetInvoiceDiscount } from '../lib/queries';
+import {
+  useCustomerInvoices,
+  useDiscountAll,
+  useLockInvoices,
+  useSetInvoiceDiscount,
+} from '../lib/queries';
 import { PartyLink } from '../components/PartyContact';
 
 const field =
@@ -65,6 +70,8 @@ export function CustomerInvoicesPage() {
   const { t, locale } = useT();
   const can = useCan();
   const canDiscount = can('sales:discount');
+  const canDiscountCombined = can('sales:discount_combined');
+  const canLock = can('sales:lock');
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const data = useCustomerInvoices(partyId || null, from, to);
@@ -79,6 +86,7 @@ export function CustomerInvoicesPage() {
 
   const setDiscount = useSetInvoiceDiscount();
   const discountAll = useDiscountAll();
+  const lock = useLockInvoices();
   const [all, setAll] = useState<DiscountDraft>({ mode: 'percent', value: '' });
   // One invoice printed: the print setup first (paper and what shows).
   const [printing, setPrinting] = useState<SalesDocument | null>(null);
@@ -86,6 +94,11 @@ export function CustomerInvoicesPage() {
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
   const paid = posted.reduce((s, d) => s + d.paidAmount, 0);
+  // Printing the combined invoices freezes them (owner, 2026-10-13): the accountant has finished with
+  // them, so no one changes them afterwards. Only the posted invoices are locked, and only if allowed.
+  const lockPostedForPrint = () => {
+    if (canLock && posted.length > 0) lock.mutate({ ids: posted.map((d) => d.id), locked: true });
+  };
 
   // Printing: one invoice, the combined one, or every invoice and then the combined one.
   const combined = useRef<HTMLDivElement>(null);
@@ -192,6 +205,9 @@ export function CustomerInvoicesPage() {
                   single.current[doc.id] = el;
                 }}
                 onPrint={() => setPrinting(doc)}
+                canLock={canLock && doc.type === 'SALES_INVOICE'}
+                locked={!!doc.locked}
+                onToggleLock={() => lock.mutate({ ids: [doc.id], locked: !doc.locked })}
               />
             ))}
             {setDiscount.error && (
@@ -250,7 +266,7 @@ export function CustomerInvoicesPage() {
                 <div className="my-1 border-t border-line" />
                 <Line label={t('together.balance')} value={money(data.data!.balance)} strong />
               </dl>
-              {canDiscount && (
+              {canDiscountCombined && (
                 <div className="mt-4 space-y-2 border-t border-line pt-3">
                   <p className="text-xs font-medium text-muted">{t('together.discountAll')}</p>
                   <DiscountInputs value={all} onChange={setAll} currency={currency} />
@@ -271,20 +287,22 @@ export function CustomerInvoicesPage() {
               <div className="mt-4 grid gap-2">
                 <Button
                   icon="print"
-                  onClick={() =>
-                    combined.current &&
-                    printElement(combined.current, printName(t('together.title')))
-                  }
+                  onClick={() => {
+                    if (!combined.current) return;
+                    lockPostedForPrint();
+                    printElement(combined.current, printName(t('together.title')));
+                  }}
                 >
                   {t('together.printCombined')}
                 </Button>
                 <Button
                   variant="secondary"
                   icon="print"
-                  onClick={() =>
-                    everything.current &&
-                    printElement(everything.current, printName(t('together.title')))
-                  }
+                  onClick={() => {
+                    if (!everything.current) return;
+                    lockPostedForPrint();
+                    printElement(everything.current, printName(t('together.title')));
+                  }}
                 >
                   {t('together.printAll')}
                 </Button>
@@ -356,6 +374,9 @@ function InvoiceCard({
   onPrint,
   paperRef,
   isReturn,
+  canLock,
+  locked,
+  onToggleLock,
 }: {
   doc: SalesDocument;
   isReturn?: boolean;
@@ -365,6 +386,9 @@ function InvoiceCard({
   onDiscount: (d: DiscountDraft) => void;
   onPrint: () => void;
   paperRef: (el: HTMLDivElement | null) => void;
+  canLock?: boolean;
+  locked?: boolean;
+  onToggleLock?: () => void;
 }) {
   const { t, locale } = useT();
   const [open, setOpen] = useState(false);
@@ -385,6 +409,7 @@ function InvoiceCard({
           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs">
             <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
             {doc.edited && <Badge tone="info">{t('state.EDITED')}</Badge>}
+            {locked && <Badge tone="neutral">{t('invoice.locked')}</Badge>}
             {doc.overLimit && <Badge tone="warning">{t('approval.waiting')}</Badge>}
             {approval && <span className="text-muted">{approval}</span>}
           </p>
@@ -404,9 +429,19 @@ function InvoiceCard({
         <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
           {t(open ? 'together.hideItems' : 'together.showItems')} ({doc.lines.length})
         </Button>
-        {canDiscount && (
+        {canDiscount && !locked && (
           <Button size="sm" variant="secondary" onClick={() => setDiscounting((d) => !d)}>
             {t('invoice.addDiscount')}
+          </Button>
+        )}
+        {canLock && onToggleLock && (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={locked ? 'unlock' : 'lock'}
+            onClick={onToggleLock}
+          >
+            {t(locked ? 'invoice.unlock' : 'invoice.lock')}
           </Button>
         )}
         <Button size="sm" variant="secondary" icon="print" className="ms-auto" onClick={onPrint}>

@@ -715,7 +715,10 @@ export const ar: TranslationDictionary = {
   'staff.details': 'البيانات',
 
   // Invoice charges, bonus, reps (DOMAIN step 4)
-  'perm.sales:discount': 'منح خصم على فاتورة المبيعات',
+  'perm.sales:discount': 'منح خصم على الفاتورة كلها (من فاتورة العميل)',
+  'perm.sales:discount_line': 'منح خصم على صنف واحد (من فاتورة العميل)',
+  'perm.sales:discount_combined': 'منح خصم واحد على فواتير العميل المجمعة',
+  'perm.sales:lock': 'قفل الفاتورة أو فتحها للتعديل والحذف',
   'perm.sales:bonus': 'منح بضاعة مجانية (بونص) في البيع',
   'perm.sales:change_tax': 'تغيير الضريبة في فاتورة المبيعات',
   'perm.sales:additions': 'إضافة مصاريف (مثل التوصيل) على فاتورة المبيعات',
@@ -1889,6 +1892,9 @@ export const ar: TranslationDictionary = {
   'col.profit': 'الربح',
   'col.delete': 'حذف',
   'invoice.addDiscount': 'إضافة خصم',
+  'invoice.lock': 'قفل',
+  'invoice.unlock': 'فتح',
+  'invoice.locked': 'مقفولة',
   'invoice.addExtraDiscount': 'إضافة خصم إضافي',
   'invoice.removeDiscount': 'إزالة',
   'shell.collapse': 'تصغير القائمة',
@@ -2627,7 +2633,8 @@ export const ar: TranslationDictionary = {
   'assistant.talkInterrupt': 'مقاطعة',
   'assistant.talkEnd': 'إنهاء المحادثة',
   'assistant.you': 'أنت',
-  'assistant.micUnavailable': 'المحادثة الصوتية تتطلب فتح البرنامج عبر عنوان آمن (https) أو من تطبيق Windows أو Android.',
+  'assistant.micUnavailable':
+    'المحادثة الصوتية تتطلب فتح البرنامج عبر عنوان آمن (https) أو من تطبيق Windows أو Android.',
   'error.voice_unavailable': 'صوت السيرفر غير متاح حالياً.',
   'nav.updates': 'التحديثات',
   'perm.system:update': 'تحديث البرنامج',
@@ -2646,7 +2653,8 @@ export const ar: TranslationDictionary = {
   'updates.updateNow': 'تحديث الآن',
   'updates.retry': 'إعادة المحاولة',
   'updates.check': 'البحث عن تحديث',
-  'updates.confirm': 'سيتوقف البرنامج لحظات لجميع المستخدمين أثناء التحديث، وتُحفظ نسخة احتياطية قبله. هل تريد المتابعة؟',
+  'updates.confirm':
+    'سيتوقف البرنامج لحظات لجميع المستخدمين أثناء التحديث، وتُحفظ نسخة احتياطية قبله. هل تريد المتابعة؟',
   'updates.step.download': 'تنزيل الإصدار',
   'updates.step.build': 'تجهيز الإصدار',
   'updates.step.restart': 'إعادة التشغيل',
@@ -2658,7 +2666,8 @@ export const ar: TranslationDictionary = {
   'updates.fixes': 'الإصلاحات',
   'updates.app.windows': 'تطبيق Windows',
   'updates.app.android': 'تطبيق Android',
-  'updates.error.no_connection': 'تعذّر الوصول إلى مصدر التحديثات. تأكد من اتصال السيرفر بالإنترنت.',
+  'updates.error.no_connection':
+    'تعذّر الوصول إلى مصدر التحديثات. تأكد من اتصال السيرفر بالإنترنت.',
   'updates.error.local_changes': 'توجد تعديلات يدوية في ملفات البرنامج على السيرفر تمنع التحديث.',
   'updates.error.build_failed': 'تعذّر تجهيز الإصدار الجديد، وما زال الإصدار الحالي يعمل.',
   'updates.error.start_failed': 'تعذّر تشغيل الإصدار الجديد.',
@@ -2688,7 +2697,8 @@ export const ar: TranslationDictionary = {
   'setup.departmentPlace': 'الفرع والمخزن',
   'setup.deleteDepartmentAsk': 'هل تريد حذف هذا القسم نهائياً؟',
   'perm.departments:delete': 'حذف الأقسام',
-  'error.department_in_use': 'لا يمكن حذف القسم لوجود أصناف أو فواتير مسجّلة عليه، ويمكن إغلاقه بدلاً من ذلك.',
+  'error.department_in_use':
+    'لا يمكن حذف القسم لوجود أصناف أو فواتير مسجّلة عليه، ويمكن إغلاقه بدلاً من ذلك.',
   'error.choose_warehouse': 'اختر مخزناً واحداً على الأقل.',
   'error.warehouse_needs_department': 'لا يمكن ترك مخزن بلا أقسام.',
   'audit.resource.department': 'قسم',

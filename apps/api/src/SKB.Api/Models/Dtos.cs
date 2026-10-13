@@ -89,7 +89,7 @@ public record SalesDetailDto(
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
-    string? EnteredAt = null, string? State = null, long? Owed = null);
+    string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
@@ -108,6 +108,9 @@ public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = nul
 
 /// <summary>Cancelling a posted sales invoice; the reason is optional.</summary>
 public record CancelInvoiceRequest(string? Reason = null);
+
+/// <summary>Freeze (or reopen) one or more invoices for editing and deleting (the accountant).</summary>
+public record LockInvoicesRequest(Guid[]? Ids = null, bool Locked = true);
 
 /// <summary>One change to a posted invoice, for the "cancelled and changed invoices" report.</summary>
 public record InvoiceRevisionDto(

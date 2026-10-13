@@ -282,7 +282,7 @@ public sealed class SalesController : ControllerBase
     /// so it adds up exactly). It is each invoice's second discount. All or nothing.
     /// </summary>
     [HttpPost("invoices/discount-all")]
-    [Authorize(Policy = Permissions.SalesDiscount)]
+    [Authorize(Policy = Permissions.SalesDiscountCombined)]
     public async Task<ActionResult<SalesDetailDto[]>> SetDiscountAll([FromBody] SetDiscountAllRequest req)
     {
         var ids = (req.InvoiceIds ?? Array.Empty<string>()).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty)
@@ -346,12 +346,53 @@ public sealed class SalesController : ControllerBase
             return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
         if (doc.Type == DocumentType.SALES_INVOICE && doc.Status == DocumentStatus.CANCELLED)
             return BadRequest(new { message = "This invoice is already cancelled.", code = "invoice_cancelled" });
-        if (doc.Type == DocumentType.SALES_INVOICE && !Can(Permissions.SalesEdit) && !Can(Permissions.SalesApprove))
-            return StatusCode(403, new { message = "Changing a saved invoice needs permission.", code = "edit_not_allowed" });
+        // The discount is its own permission now (owner, 2026-10-13: a per-kind discount right), so
+        // giving one no longer needs the edit right — only that the invoice isn't frozen.
+        if (doc.Type == DocumentType.SALES_INVOICE && doc.EditLocked)
+            return StatusCode(403, new { message = "This invoice is locked. Reopen it to change a discount.", code = "invoice_locked" });
         return null;
     }
 
     private bool Can(string permission) => User.HasClaim("permission", permission);
+
+    private static readonly TimeSpan EditGrace = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Whether a posted invoice may still be changed or deleted now (owner, 2026-10-13). Whoever holds
+    /// the given right (the accountant) may, unless the invoice is locked; the person who made it may
+    /// for half an hour after creating it. A locked invoice is frozen for everyone until it is reopened.
+    /// </summary>
+    private ActionResult? CheckEditable(Guid makerId, DateTime createdAt, bool editLocked, string permission)
+    {
+        if (editLocked)
+            return StatusCode(403, new { message = "This invoice is locked. Ask the accountant to reopen it.", code = "invoice_locked" });
+        if (Can(permission)) return null;
+        Guid.TryParse(CurrentUser.Id(User), out var uid);
+        if (makerId == uid && DateTime.UtcNow - createdAt <= EditGrace) return null;
+        var mine = makerId == uid;
+        return StatusCode(403, new
+        {
+            message = mine ? "The half-hour to change this invoice has passed." : "Changing this invoice needs permission.",
+            code = mine ? "edit_window_closed" : "edit_not_allowed",
+        });
+    }
+
+    /// <summary>
+    /// Freeze or reopen invoices for editing and deleting (owner, 2026-10-13): the accountant's button
+    /// on one invoice, and the automatic lock the web app asks for when the combined invoices are printed.
+    /// </summary>
+    [HttpPost("invoices/lock")]
+    [Authorize(Policy = Permissions.SalesLock)]
+    public async Task<ActionResult> LockInvoices([FromBody] LockInvoicesRequest req)
+    {
+        var ids = (req.Ids ?? Array.Empty<Guid>()).Distinct().ToArray();
+        if (ids.Length == 0) return BadRequest(new { message = "No invoices.", code = "no_invoices" });
+        var docs = await ScopedInvoices().Where(d => ids.Contains(d.Id) && d.Status != DocumentStatus.CANCELLED).ToListAsync();
+        foreach (var d in docs) d.EditLocked = req.Locked;
+        await _db.SaveChangesAsync();
+        foreach (var d in docs) await AuditAsync(req.Locked ? "lock" : "unlock", "sales_invoice", d);
+        return Ok(new { locked = req.Locked, count = docs.Count });
+    }
 
     /// <summary>Post <paramref name="doc"/> again with one of its discounts set; nothing else changes.</summary>
     private async Task<ActionResult<SalesDetailDto>> ApplyDiscountAsync(SalesDocument doc, ChargeKind kind,
@@ -431,12 +472,14 @@ public sealed class SalesController : ControllerBase
     /// it is in a locked period.
     /// </summary>
     [HttpPut("invoices/{id:guid}")]
-    [Authorize(Policy = Permissions.SalesEdit)]
     public async Task<ActionResult<SalesDetailDto>> UpdateInvoice(Guid id, [FromBody] CreateSalesInvoiceRequest req)
     {
-        var branch = await ScopedInvoices().Where(d => d.Id == id).Select(d => (Guid?)d.BranchId).FirstOrDefaultAsync();
-        if (branch is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
-        return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: branch, editId: id);
+        var doc = await ScopedInvoices().Where(d => d.Id == id)
+            .Select(d => new { d.BranchId, d.StaffId, d.CreatedAt, d.EditLocked }).FirstOrDefaultAsync();
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var gate = CheckEditable(doc.StaffId, doc.CreatedAt, doc.EditLocked, Permissions.SalesEdit);
+        if (gate is not null) return gate;
+        return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId, editId: id);
     }
 
     /// <summary>
@@ -445,7 +488,6 @@ public sealed class SalesController : ControllerBase
     /// entry is reversed. It stays on the list as cancelled, under its number.
     /// </summary>
     [HttpPost("invoices/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.SalesCancel)]
     public async Task<ActionResult<SalesDetailDto>> CancelInvoice(Guid id,
         [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelInvoiceRequest? req)
     {
@@ -455,6 +497,8 @@ public sealed class SalesController : ControllerBase
         var doc = await ScopedInvoices().Include(d => d.Lines).ThenInclude(l => l.Warehouse)
             .FirstOrDefaultAsync(d => d.Id == id);
         if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var gate = CheckEditable(doc.StaffId, doc.CreatedAt, doc.EditLocked, Permissions.SalesCancel);
+        if (gate is not null) return gate;
         var totalBefore = doc.GrandTotal;
         var error = await ReverseInvoiceAsync(doc, staffId);
         if (error is not null) return InvoiceLines.Refuse(this, error);
