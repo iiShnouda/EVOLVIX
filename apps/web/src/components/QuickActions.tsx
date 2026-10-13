@@ -60,9 +60,10 @@ export function QuickActions() {
   const press = useRef<{ startY: number; startTop: number; moved: boolean; timer?: number } | null>(
     null,
   );
-  // A touch screen has no hover to pull the button out, so there it always sits fully out and
-  // tappable (owner, 2026-10-12: the bubble and dock were a near-invisible sliver on phones).
-  const out = (!touch && hover) || menu || dragging || touch;
+  // "out" = pulled out and enlarged: on hover (desktop), while dragging, or while the menu is open.
+  // On a touch screen it stays tucked as a clear handle on the edge and a tap opens it — it is not
+  // left filling the screen (owner, 2026-10-13: "the circle and the tab don't hide").
+  const out = (!touch && hover) || menu || dragging;
 
   const go = (a: QuickAction) => {
     setMenu(false);
@@ -133,8 +134,10 @@ export function QuickActions() {
   // All three sit on the start edge (right in Arabic, left in English) and are tucked away until the
   // mouse reaches them, dragged or opened — the dock and the bubble slide out, the tab grows from a
   // small nub. A touch screen has no hover, so a little always shows there (a tap opens the shortcuts).
-  const grip = touch ? 16 : 13;
-  const tuck = shape === 'tab' || out ? '0px' : `calc(100% - ${grip}px)`;
+  const grip = touch ? 24 : 13;
+  // Desktop: the tab lives on the edge; the dock and bubble tuck until hovered. Touch: every shape
+  // tucks to a clear handle on the edge until tapped, so none of them fills the screen.
+  const tuck = out || (shape === 'tab' && !touch) ? '0px' : `calc(100% - ${grip}px)`;
   const shift = rtl ? tuck : `calc(-1 * (${tuck}))`;
 
   let triggerEl;
