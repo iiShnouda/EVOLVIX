@@ -32,4 +32,24 @@ if (cat.items.length > 0) {
   );
 }
 
+console.log('== publishing outward is owner-only too');
+eq('sales may not read the publish status', (await karim.get('/storefront/status')).status, 403);
+eq('sales may not trigger a publish', (await karim.post('/storefront/publish')).status, 403);
+
+console.log('== and the owner can publish the catalogue outward');
+// In Development the publisher uses an in-memory target (no real bucket), so it reports as on.
+const status = ok('owner reads the publish status', await owner.get('/storefront/status'));
+check('publishing is set up (Development memory target)', status.enabled === true, status);
+check('it names where it publishes', typeof status.publicBaseUrl === 'string' && status.publicBaseUrl.length > 0, status);
+
+const after = ok('owner publishes now', await owner.post('/storefront/publish'));
+check('it pushed the catalogue plus any photos', after.lastPushedFiles >= 1, after);
+eq('the item count matches the catalogue', after.itemCount, cat.count);
+check('it recorded when it last published', typeof after.lastPublishedAt === 'string' && !Number.isNaN(Date.parse(after.lastPublishedAt)), after);
+check('nothing went wrong', after.error == null, after);
+
+// Publishing again is safe (it re-pushes the catalogue; unchanged photos are skipped).
+const again = ok('publishing again is idempotent', await owner.post('/storefront/publish'));
+check('still at least the catalogue pushed', again.lastPushedFiles >= 1, again);
+
 process.exit(summary('storefront') ? 1 : 0);

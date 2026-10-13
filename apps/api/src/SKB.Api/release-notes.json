@@ -2,8 +2,12 @@
   "releases": [
     {
       "version": "1.10.0",
-      "date": "2026-10-11",
+      "date": "2026-10-13",
       "features": [
+        {
+          "ar": "واجهة متجر عامة لمنتجات المكتب (موقع KM Collection): السيرفر يدفع نسخة مُنقّاة من الكتالوج للخارج تلقائياً وبشكل لحظي كلما أضفت أو عدّلت صنفاً — الاسم والقسم والألوان والمقاسات وهل الصنف متوفر أم لا والصورة فقط، بدون أي سعر أو تكلفة أو كمية مخزون أو مورّد أو عميل. السيرفر يدفع للخارج فقط ولا يستقبل أي شيء، فالموقع لا يمكن استخدامه للوصول إليه. يُنشَر على Cloudflare (R2 + Pages).",
+          "en": "A public storefront for the office's products (the KM Collection site): the server automatically pushes a scrubbed copy of the catalogue outward, in near-realtime, whenever you add or change an item — only the name, department, colours, sizes, whether it is in stock, and the photo; never a price, cost, stock count, supplier or customer. The server only pushes and accepts nothing back, so the site cannot be used to reach it. Hosted on Cloudflare (R2 + Pages)."
+        },
         {
           "ar": "كل مستخدم يقدر يفتح موبايل وكمبيوتر في نفس الوقت (تعمل فاتورة على الكمبيوتر وتسكان باركود بالموبايل). الحساب له جهاز موبايل واحد وكمبيوتر واحد؛ تسجيل دخول جديد من نوع يحلّ محل جهاز نفس النوع فقط. وفي قائمة الحساب مؤشّر يوضّح إن كان الجهاز الآخر متصلاً الآن أم لا.",
           "en": "Each person can use a phone and a computer at the same time (make a bill on the computer while scanning a barcode on the phone). An account has one phone and one computer; a new sign-in replaces only the device of its own kind. The account menu shows whether the other device is online right now."

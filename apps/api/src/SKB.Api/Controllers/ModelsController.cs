@@ -25,9 +25,11 @@ public sealed class ModelsController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly AuditService _audit;
+    private readonly StorefrontPublisher _storefront;
 
-    public ModelsController(AppDbContext db, AuditService audit)
+    public ModelsController(AppDbContext db, AuditService audit, StorefrontPublisher storefront)
     {
+        _storefront = storefront;
         _db = db;
         _audit = audit;
     }
@@ -123,6 +125,7 @@ public sealed class ModelsController : ControllerBase
         await tx.CommitAsync();
 
         await AuditAsync("create", "product_model", model.Id);
+        _storefront.MarkDirty();
         return Created($"/api/models/{model.Id}", await DetailAsync(model.Id));
     }
 
@@ -260,6 +263,7 @@ public sealed class ModelsController : ControllerBase
         await tx.CommitAsync();
 
         await AuditAsync("update", "product_model", id);
+        _storefront.MarkDirty();
         return Ok(await DetailAsync(id));
     }
 

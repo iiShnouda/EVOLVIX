@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>KM Collection</title>
+    <meta name="description" content="Our wholesale clothing catalogue." />
+    <meta name="robots" content="index,follow" />
+    <meta name="color-scheme" content="light dark" />
+    <!--
+      The public storefront for the office's products. It is READ-ONLY and talks to NOTHING but the
+      published catalogue: it fetches catalog.json and the item photos from the bucket the company
+      server pushes to. There is no path from this page back to the company server, and the data it
+      reads carries only what is meant to be public — names, departments, colours, sizes and whether
+      an item is in stock. No price, cost, stock count, supplier or customer is ever published here.
+    -->
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #14161c;
+        --muted: #697086;
+        --line: #e6e8f0;
+        --accent: #6d28d9;
+        --accent-ink: #ffffff;
+        --in: #0a7d4d;
+        --in-bg: #e7f6ee;
+        --out: #9a3220;
+        --out-bg: #fbeae6;
+        --shadow: 0 1px 2px rgba(16, 20, 40, 0.06), 0 8px 24px rgba(16, 20, 40, 0.06);
+        --radius: 16px;
+      }
+      :root:not([data-theme='light']) {
+        @media (prefers-color-scheme: dark) {
+          --bg: #0d0f15;
+          --panel: #161922;
+          --ink: #eef0f6;
+          --muted: #9aa1b4;
+          --line: #262a36;
+          --accent: #a78bfa;
+          --accent-ink: #14161c;
+          --in: #4ade80;
+          --in-bg: #0f2a1e;
+          --out: #f6a99a;
+          --out-bg: #2a1512;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+        }
+      }
+      :root[data-theme='dark'] {
+        --bg: #0d0f15;
+        --panel: #161922;
+        --ink: #eef0f6;
+        --muted: #9aa1b4;
+        --line: #262a36;
+        --accent: #a78bfa;
+        --accent-ink: #14161c;
+        --in: #4ade80;
+        --in-bg: #0f2a1e;
+        --out: #f6a99a;
+        --out-bg: #2a1512;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          'Noto Sans Arabic',
+          'Helvetica Neue',
+          Arial,
+          sans-serif;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      header.top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: color-mix(in srgb, var(--panel) 88%, transparent);
+        backdrop-filter: saturate(1.4) blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 0;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .brand .dot {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+        display: grid;
+        place-items: center;
+        color: var(--accent-ink);
+        font-weight: 800;
+        flex: none;
+      }
+      .brand .name {
+        font-weight: 800;
+        font-size: 18px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .spacer {
+        flex: 1;
+      }
+      .lang {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 14px;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .lang:hover {
+        border-color: var(--accent);
+      }
+      .hero {
+        padding: 22px 0 6px;
+      }
+      .hero h1 {
+        margin: 0 0 4px;
+        font-size: 24px;
+        letter-spacing: -0.01em;
+      }
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 16px 0 8px;
+      }
+      .search {
+        position: relative;
+        flex: 1;
+        min-width: 220px;
+      }
+      .search input {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 12px;
+        padding: 11px 40px 11px 14px;
+        font-size: 15px;
+        outline: none;
+      }
+      html[dir='ltr'] .search input {
+        padding: 11px 14px 11px 40px;
+      }
+      .search input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+      .search .ic {
+        position: absolute;
+        top: 50%;
+        inset-inline-end: 12px;
+        transform: translateY(-50%);
+        color: var(--muted);
+        pointer-events: none;
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 6px 0 2px;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 13px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .chip[aria-pressed='true'] {
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-color: var(--accent);
+      }
+      .count {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 10px 2px 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+        padding: 10px 0 40px;
+      }
+      @media (max-width: 480px) {
+        .grid {
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 12px;
+        }
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+      }
+      .photo {
+        position: relative;
+        aspect-ratio: 1 / 1;
+        background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .photo .ph {
+        font-size: 40px;
+        font-weight: 800;
+        color: color-mix(in srgb, var(--accent) 55%, var(--muted));
+        opacity: 0.6;
+      }
+      .badge {
+        position: absolute;
+        top: 10px;
+        inset-inline-start: 10px;
+        font-size: 11.5px;
+        font-weight: 800;
+        padding: 4px 9px;
+        border-radius: 999px;
+      }
+      .badge.in {
+        color: var(--in);
+        background: var(--in-bg);
+      }
+      .badge.out {
+        color: var(--out);
+        background: var(--out-bg);
+      }
+      .body {
+        padding: 12px 13px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+      }
+      .title {
+        font-weight: 700;
+        font-size: 15px;
+        line-height: 1.35;
+        word-break: break-word;
+      }
+      .dept {
+        color: var(--muted);
+        font-size: 12.5px;
+        margin-top: -4px;
+      }
+      .pills {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: auto;
+      }
+      .pill {
+        font-size: 11.5px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 2px 7px;
+        color: var(--ink);
+        background: color-mix(in srgb, var(--accent) 5%, var(--panel));
+      }
+      .pill.size {
+        font-variant-numeric: tabular-nums;
+      }
+      .state {
+        text-align: center;
+        color: var(--muted);
+        padding: 60px 16px;
+      }
+      .state h2 {
+        color: var(--ink);
+        margin: 0 0 6px;
+        font-size: 18px;
+      }
+      .skeleton .photo {
+        background: linear-gradient(100deg, var(--line) 30%, color-mix(in srgb, var(--line) 50%, var(--panel)) 50%, var(--line) 70%);
+        background-size: 200% 100%;
+        animation: sh 1.2s infinite;
+      }
+      .skeleton .title,
+      .skeleton .dept {
+        background: var(--line);
+        border-radius: 6px;
+        color: transparent;
+      }
+      @keyframes sh {
+        to {
+          background-position: -200% 0;
+        }
+      }
+      footer.foot {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12.5px;
+        padding: 18px 0 30px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap bar">
+        <div class="brand">
+          <div class="dot" id="mark">KM</div>
+          <div class="name" id="brandName">KM Collection</div>
+        </div>
+        <div class="spacer"></div>
+        <button class="lang" id="langBtn" type="button">EN</button>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="hero">
+        <h1 id="heroTitle">الكتالوج</h1>
+        <p id="heroSub">كل المنتجات المتوفرة لدينا.</p>
+      </section>
+
+      <div class="controls">
+        <label class="search">
+          <input id="q" type="search" autocomplete="off" />
+          <span class="ic" aria-hidden="true">⌕</span>
+        </label>
+      </div>
+      <div class="chips" id="depts"></div>
+      <div class="count" id="count"></div>
+
+      <div class="grid" id="grid"></div>
+      <div class="state" id="state" hidden></div>
+    </main>
+
+    <footer class="wrap foot">
+      <span id="footName">KM Collection</span>
+      <span id="updated"></span>
+    </footer>
+
+    <script src="config.js"></script>
+    <script>
+      (function () {
+        'use strict';
+        var CFG = window.KM || {};
+        var BASE = (CFG.base || '').replace(/\/+$/, '');
+        var url = function (p) {
+          return (BASE ? BASE + '/' : '') + p;
+        };
+
+        var T = {
+          ar: {
+            dir: 'rtl',
+            lang: 'ar',
+            toggle: 'EN',
+            catalogue: 'الكتالوج',
+            sub: 'كل المنتجات المتوفرة لدينا.',
+            search: 'ابحث عن منتج…',
+            all: 'الكل',
+            inStock: 'متوفر',
+            outStock: 'غير متوفر',
+            count: function (n) {
+              return n === 1 ? 'منتج واحد' : n === 2 ? 'منتجان' : n + ' منتجات';
+            },
+            none: 'لا توجد منتجات مطابقة.',
+            empty: 'لا توجد منتجات بعد.',
+            emptySub: 'تابعنا قريباً.',
+            offline: 'تعذّر تحميل الكتالوج',
+            offlineSub: 'حاول تحديث الصفحة بعد قليل.',
+            updated: function (s) {
+              return 'آخر تحديث: ' + s;
+            },
+          },
+          en: {
+            dir: 'ltr',
+            lang: 'en',
+            toggle: 'ع',
+            catalogue: 'Catalogue',
+            sub: 'Everything we have in stock.',
+            search: 'Search for a product…',
+            all: 'All',
+            inStock: 'In stock',
+            outStock: 'Out of stock',
+            count: function (n) {
+              return n === 1 ? '1 product' : n + ' products';
+            },
+            none: 'No matching products.',
+            empty: 'No products yet.',
+            emptySub: 'Check back soon.',
+            offline: 'Could not load the catalogue',
+            offlineSub: 'Please refresh in a moment.',
+            updated: function (s) {
+              return 'Updated: ' + s;
+            },
+          },
+        };
+
+        var state = { items: [], company: '', generatedAt: '', dept: '*', q: '', lang: 'ar' };
+        try {
+          var saved = localStorage.getItem('km_lang');
+          if (saved === 'ar' || saved === 'en') state.lang = saved;
+        } catch (e) {}
+
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var esc = function (s) {
+          return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+          });
+        };
+
+        function applyChrome() {
+          var t = T[state.lang];
+          document.documentElement.lang = t.lang;
+          document.documentElement.dir = t.dir;
+          $('langBtn').textContent = t.toggle;
+          $('q').placeholder = t.search;
+          $('heroTitle').textContent = t.catalogue;
+          $('heroSub').textContent = state.sub || t.sub;
+          var name = state.company || CFG.title || 'KM Collection';
+          $('brandName').textContent = name;
+          $('footName').textContent = name;
+          document.title = name;
+          $('mark').textContent = (name.trim()[0] || 'K').toUpperCase();
+          if (state.generatedAt) {
+            var d = new Date(state.generatedAt);
+            $('updated').textContent = isNaN(d) ? '' : t.updated(d.toLocaleDateString(t.lang));
+          }
+        }
+
+        function depts() {
+          var set = {};
+          state.items.forEach(function (it) {
+            if (it.department) set[it.department] = 1;
+          });
+          return Object.keys(set).sort();
+        }
+
+        function renderDepts() {
+          var t = T[state.lang];
+          var list = depts();
+          var box = $('depts');
+          box.innerHTML = '';
+          if (!list.length) return;
+          var mk = function (label, value) {
+            var b = document.createElement('button');
+            b.className = 'chip';
+            b.type = 'button';
+            b.textContent = label;
+            b.setAttribute('aria-pressed', state.dept === value ? 'true' : 'false');
+            b.onclick = function () {
+              state.dept = value;
+              renderDepts();
+              renderGrid();
+            };
+            return b;
+          };
+          box.appendChild(mk(t.all, '*'));
+          list.forEach(function (d) {
+            box.appendChild(mk(d, d));
+          });
+        }
+
+        function filtered() {
+          var q = state.q.trim().toLowerCase();
+          return state.items.filter(function (it) {
+            if (state.dept !== '*' && it.department !== state.dept) return false;
+            if (!q) return true;
+            var hay = [it.name, it.department].concat(it.colors || [], it.sizes || []).join(' ').toLowerCase();
+            return hay.indexOf(q) !== -1;
+          });
+        }
+
+        function card(it) {
+          var t = T[state.lang];
+          var el = document.createElement('article');
+          el.className = 'card';
+          var photo =
+            it.hasImage && it.ref
+              ? '<img loading="lazy" alt="' + esc(it.name) + '" src="' + esc(url('images/' + encodeURIComponent(it.ref))) + '" onerror="this.parentNode.innerHTML=&quot;<span class=\\&quot;ph\\&quot;>' + esc((it.name.trim()[0] || '•').toUpperCase()) + '</span>&quot;" />'
+              : '<span class="ph">' + esc((it.name.trim()[0] || '•').toUpperCase()) + '</span>';
+          var badge = it.inStock ? '<span class="badge in">' + t.inStock + '</span>' : '<span class="badge out">' + t.outStock + '</span>';
+          var pills = (it.colors || [])
+            .map(function (c) {
+              return '<span class="pill">' + esc(c) + '</span>';
+            })
+            .concat(
+              (it.sizes || []).map(function (s) {
+                return '<span class="pill size">' + esc(s) + '</span>';
+              }),
+            )
+            .join('');
+          el.innerHTML =
+            '<div class="photo">' +
+            badge +
+            photo +
+            '</div>' +
+            '<div class="body">' +
+            '<div class="title">' +
+            esc(it.name) +
+            '</div>' +
+            (it.department ? '<div class="dept">' + esc(it.department) + '</div>' : '') +
+            (pills ? '<div class="pills">' + pills + '</div>' : '') +
+            '</div>';
+          return el;
+        }
+
+        function renderGrid() {
+          var t = T[state.lang];
+          var grid = $('grid');
+          var st = $('state');
+          var rows = filtered();
+          grid.innerHTML = '';
+          if (!state.items.length) {
+            grid.hidden = true;
+            st.hidden = false;
+            st.innerHTML = '<h2>' + t.empty + '</h2><div>' + t.emptySub + '</div>';
+            $('count').textContent = '';
+            return;
+          }
+          if (!rows.length) {
+            grid.hidden = true;
+            st.hidden = false;
+            st.innerHTML = '<div>' + t.none + '</div>';
+            $('count').textContent = '';
+            return;
+          }
+          st.hidden = true;
+          grid.hidden = false;
+          var frag = document.createDocumentFragment();
+          rows.forEach(function (it) {
+            frag.appendChild(card(it));
+          });
+          grid.appendChild(frag);
+          $('count').textContent = t.count(rows.length);
+        }
+
+        function skeleton() {
+          var grid = $('grid');
+          grid.innerHTML = '';
+          for (var i = 0; i < 8; i++) {
+            var el = document.createElement('article');
+            el.className = 'card skeleton';
+            el.innerHTML = '<div class="photo"></div><div class="body"><div class="title">&nbsp;</div><div class="dept">&nbsp;</div></div>';
+            grid.appendChild(el);
+          }
+        }
+
+        function offline() {
+          var t = T[state.lang];
+          $('grid').hidden = true;
+          var st = $('state');
+          st.hidden = false;
+          st.innerHTML = '<h2>' + t.offline + '</h2><div>' + t.offlineSub + '</div>';
+        }
+
+        function render() {
+          applyChrome();
+          renderDepts();
+          renderGrid();
+        }
+
+        $('langBtn').onclick = function () {
+          state.lang = state.lang === 'ar' ? 'en' : 'ar';
+          try {
+            localStorage.setItem('km_lang', state.lang);
+          } catch (e) {}
+          render();
+        };
+        $('q').oninput = function (e) {
+          state.q = e.target.value;
+          renderGrid();
+        };
+
+        applyChrome();
+        skeleton();
+
+        fetch(url('catalog.json'), { cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('http ' + r.status);
+            return r.json();
+          })
+          .then(function (data) {
+            state.items = Array.isArray(data.items) ? data.items : [];
+            state.company = data.company || '';
+            state.generatedAt = data.generatedAt || '';
+            render();
+          })
+          .catch(function () {
+            offline();
+          });
+      })();
+    </script>
+  </body>
+</html>

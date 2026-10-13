@@ -61,6 +61,26 @@ builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
 builder.Services.AddHostedService<Housekeeping>();
 
+// The public storefront publisher (owner, 2026-10-13): pushes the scrubbed catalogue + photos OUT to
+// Cloudflare R2 when products change. R2 when configured; a memory target in Development for the
+// tests; off otherwise. The company server only pushes — nothing comes back in.
+builder.Services.AddSingleton<IStorefrontUploader>(sp =>
+{
+    var c = sp.GetRequiredService<IConfiguration>();
+    var endpoint = c["Storefront:R2Endpoint"];
+    var bucket = c["Storefront:R2Bucket"];
+    var keyId = c["Storefront:R2AccessKeyId"];
+    var secret = c["Storefront:R2SecretKey"];
+    if (!string.IsNullOrWhiteSpace(endpoint) && !string.IsNullOrWhiteSpace(bucket) &&
+        !string.IsNullOrWhiteSpace(keyId) && !string.IsNullOrWhiteSpace(secret))
+        return new R2StorefrontUploader(endpoint, bucket, keyId, secret, c["Storefront:PublicBaseUrl"]);
+    return sp.GetRequiredService<IWebHostEnvironment>().IsDevelopment()
+        ? new MemoryStorefrontUploader()
+        : new NullStorefrontUploader();
+});
+builder.Services.AddSingleton<StorefrontPublisher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<StorefrontPublisher>());
+
 
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]

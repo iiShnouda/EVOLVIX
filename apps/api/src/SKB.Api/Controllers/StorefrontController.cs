@@ -23,52 +23,30 @@ namespace SKB.Api.Controllers;
 public sealed class StorefrontController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly StorefrontPublisher _publisher;
 
-    public StorefrontController(AppDbContext db) => _db = db;
-
-    [HttpGet("catalog")]
-    public async Task<ActionResult<StorefrontCatalogDto>> Catalog()
+    public StorefrontController(AppDbContext db, StorefrontPublisher publisher)
     {
-        var products = await _db.Products.AsNoTracking()
-            .Include(p => p.Size).Include(p => p.Color)
-            .Include(p => p.Category).ThenInclude(c => c!.Department)
-            .Include(p => p.Model)
-            .Where(p => p.IsActive)
-            .ToListAsync();
-
-        var items = new List<StorefrontItemDto>();
-        // A model's size/colour variants roll up into one catalogue line; a standalone item stands alone.
-        foreach (var group in products.GroupBy(p => p.ModelId))
-        {
-            if (group.Key is not null)
-            {
-                var vs = group.ToList();
-                var first = vs.FirstOrDefault(v => v.HasImage) ?? vs[0];
-                items.Add(new StorefrontItemDto(
-                    first.Id.ToString(),
-                    first.Model is { } m ? Loc.Name(m) : Loc.Name(first),
-                    DeptOf(first),
-                    vs.Where(v => v.Color is not null).Select(v => Loc.Name(v.Color!)).Distinct().ToArray(),
-                    vs.Where(v => v.Size is not null).Select(v => Loc.Name(v.Size!)).Distinct().ToArray(),
-                    vs.Any(v => v.StockOnHand > 0),
-                    vs.Any(v => v.HasImage)));
-            }
-            else
-            {
-                foreach (var p in group)
-                    items.Add(new StorefrontItemDto(
-                        p.Id.ToString(), Loc.Name(p), DeptOf(p),
-                        p.Color is not null ? [Loc.Name(p.Color)] : [],
-                        p.Size is not null ? [Loc.Name(p.Size)] : [],
-                        p.StockOnHand > 0, p.HasImage));
-            }
-        }
-
-        var company = (await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync())?.CompanyName ?? "";
-        var ordered = items.OrderBy(i => i.Name, StringComparer.Ordinal).ToArray();
-        return Ok(new StorefrontCatalogDto(company, DateTime.UtcNow.ToString("o"), ordered.Length, ordered));
+        _db = db;
+        _publisher = publisher;
     }
 
-    private static string? DeptOf(Product p) =>
-        p.Category?.Department is { } d ? Loc.Name(d) : p.Category is { } c ? Loc.Name(c) : null;
+    /// <summary>The scrubbed catalogue the owner publishes outward (and the publisher pushes).</summary>
+    [HttpGet("catalog")]
+    public async Task<ActionResult<StorefrontCatalogDto>> Catalog(CancellationToken ct) =>
+        Ok(await StorefrontCatalog.BuildAsync(_db, ct));
+
+    /// <summary>Whether auto-publishing is on, where it publishes, and when it last ran.</summary>
+    [HttpGet("status")]
+    public ActionResult<StorefrontPublisher.StatusView> Status() => Ok(_publisher.Status);
+
+    /// <summary>Publish the catalogue now (it also publishes automatically when products change).</summary>
+    [HttpPost("publish")]
+    public async Task<ActionResult<StorefrontPublisher.StatusView>> Publish(CancellationToken ct)
+    {
+        if (!_publisher.Status.Enabled)
+            return Conflict(new { message = "Publishing isn't set up on this server.", code = "storefront_off" });
+        await _publisher.PublishAsync(ct);
+        return Ok(_publisher.Status);
+    }
 }

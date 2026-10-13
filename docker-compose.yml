@@ -69,6 +69,14 @@ services:
       # The owner's updates page (owner, 2026-10-11): the app only leaves "check" or "update" in this
       # folder; the server's updater (scripts/update-server.sh, set up by install-server.sh) does it.
       Updates__Folder: /updates
+      # Public storefront (owner, 2026-10-13): push the scrubbed catalogue + photos OUT to a Cloudflare
+      # R2 bucket when products change; the KM Collection site on Pages reads them. Outbound only — the
+      # server never faces the public. Leave blank to keep it off.
+      Storefront__R2Endpoint: "${STOREFRONT_R2_ENDPOINT:-}"
+      Storefront__R2Bucket: "${STOREFRONT_R2_BUCKET:-}"
+      Storefront__R2AccessKeyId: "${STOREFRONT_R2_ACCESS_KEY_ID:-}"
+      Storefront__R2SecretKey: "${STOREFRONT_R2_SECRET_KEY:-}"
+      Storefront__PublicBaseUrl: "${STOREFRONT_PUBLIC_BASE_URL:-}"
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
       - "${UPDATES_DIR:-/var/lib/evolvix/updates}:/updates"

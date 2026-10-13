@@ -24,12 +24,14 @@ public sealed class ProductsController : ControllerBase
     private readonly AuditService _audit;
 
     private readonly WarehouseService _warehouses;
+    private readonly StorefrontPublisher _storefront;
 
-    public ProductsController(AppDbContext db, AuditService audit, WarehouseService warehouses)
+    public ProductsController(AppDbContext db, AuditService audit, WarehouseService warehouses, StorefrontPublisher storefront)
     {
         _db = db;
         _audit = audit;
         _warehouses = warehouses;
+        _storefront = storefront;
     }
 
     /// <summary>
@@ -389,6 +391,7 @@ public sealed class ProductsController : ControllerBase
         await tx.CommitAsync();
 
         await AuditAsync("create", "product", product.Id);
+        _storefront.MarkDirty();
         return Created($"/api/products/{product.Id}", await DetailAsync(product.Id));
     }
 
@@ -512,6 +515,7 @@ public sealed class ProductsController : ControllerBase
         await tx.CommitAsync();
 
         await AuditAsync("update", "product", id);
+        _storefront.MarkDirty();
         return Ok(await DetailAsync(id));
     }
 
@@ -718,6 +722,7 @@ public sealed class ProductsController : ControllerBase
         product.HasImage = true;
         await _db.SaveChangesAsync();
         await AuditAsync("image", "product", id);
+        _storefront.MarkDirty();
         return Ok(new { hasImage = true });
     }
 
@@ -743,6 +748,7 @@ public sealed class ProductsController : ControllerBase
         product.HasImage = false;
         await _db.SaveChangesAsync();
         await AuditAsync("image_remove", "product", id);
+        _storefront.MarkDirty();
         return NoContent();
     }
 
