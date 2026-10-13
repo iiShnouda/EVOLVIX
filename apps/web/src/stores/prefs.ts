@@ -46,7 +46,9 @@ interface PrefsState {
 export const usePrefs = create<PrefsState>()(
   persist(
     (set, get) => ({
-      locale: 'en',
+      // Arabic is the default for a new install; the person can switch it inside the app and the
+      // choice is remembered on this device (owner, 2026-10-13).
+      locale: 'ar',
       theme: 'system',
       skin: 'evolvix',
       setSkin: (skin) => set({ skin }),

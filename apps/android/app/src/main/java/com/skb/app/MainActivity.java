@@ -7,6 +7,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -14,6 +15,13 @@ import android.print.PrintAttributes;
 import android.print.PrintManager;
 import android.text.TextUtils;
 import android.util.Base64;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -55,6 +63,7 @@ public class MainActivity extends Activity {
     private static final int MAX_SAVE_BYTES = 20 * 1024 * 1024;
 
     private WebView web;
+    private View splash;
     private ValueCallback<Uri[]> pendingFiles;
     private String loadedServer;
     private byte[] pendingSave;
@@ -69,7 +78,15 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         web = new WebView(this);
-        setContentView(web);
+        // The app's own name, shown big while the first page loads, so there is never a blank gap
+        // before the server page (which has its own boot splash) appears (owner, 2026-10-13).
+        FrameLayout root = new FrameLayout(this);
+        root.addView(web, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        splash = buildSplash();
+        root.addView(splash, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -99,6 +116,46 @@ public class MainActivity extends Activity {
         } else {
             openServer();
         }
+    }
+
+    private View buildSplash() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(0xFFF6F7FB);
+
+        TextView name = new TextView(this);
+        name.setText("Evolvix");
+        name.setTextColor(0xFF4F46E5);
+        name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        name.setTypeface(Typeface.DEFAULT_BOLD);
+        name.setGravity(Gravity.CENTER);
+        box.addView(name);
+
+        ProgressBar bar = new ProgressBar(this);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        bp.topMargin = dp(22);
+        box.addView(bar, bp);
+
+        TextView sub = new TextView(this);
+        sub.setText(getString(R.string.starting));
+        sub.setTextColor(0xFF6B7280);
+        sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        sub.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = dp(16);
+        box.addView(sub, sp);
+        return box;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void hideSplash() {
+        if (splash != null && splash.getVisibility() != View.GONE) splash.setVisibility(View.GONE);
     }
 
     private String versionName() {
@@ -361,6 +418,12 @@ public class MainActivity extends Activity {
             if (ServerConfig.isServerUrl(MainActivity.this, url)) return false;
             openExternal(url);
             return true;
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            // The server page (or the offline page) is now showing — drop the startup splash.
+            hideSplash();
         }
 
         @Override

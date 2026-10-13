@@ -27,6 +27,13 @@ internal sealed class MainForm : Form
     private const int MfSeparator = 0x800;
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
+    // A branded splash shown from the very first moment, while WebView2 starts up and the server
+    // page (which has its own boot splash) is still loading — so there is never a blank gap.
+    private readonly Panel _splash = new() { Dock = DockStyle.Fill, BackColor = Color.FromArgb(0xF6, 0xF7, 0xFB) };
+    private bool _splashGone;
+    private bool _closing;
+
+    private enum ExitChoice { Cancel, Exit, SignOut }
 
     public MainForm()
     {
@@ -50,6 +57,64 @@ internal sealed class MainForm : Form
         // the server is being reached (owner, 2026-10-12: "a black screen that tells me nothing").
         _web.DefaultBackgroundColor = Color.FromArgb(0xF6, 0xF7, 0xFB);
         Controls.Add(_web);
+        BuildSplash();
+        Controls.Add(_splash);
+        _splash.BringToFront();
+    }
+
+    /// <summary>The app's own name, shown big while the first page loads (owner, 2026-10-13).</summary>
+    private void BuildSplash()
+    {
+        var box = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 3,
+            Anchor = AnchorStyles.None,
+        };
+        var name = new Label
+        {
+            Text = "Evolvix",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 30f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(0x4F, 0x46, 0xE5),
+            Anchor = AnchorStyles.None,
+            Margin = new Padding(0, 0, 0, 16),
+        };
+        var bar = new ProgressBar
+        {
+            Style = ProgressBarStyle.Marquee,
+            MarqueeAnimationSpeed = 28,
+            Width = 220,
+            Height = 6,
+            Anchor = AnchorStyles.None,
+            Margin = new Padding(0, 0, 0, 12),
+        };
+        var sub = new Label
+        {
+            Text = Text_.Starting,
+            AutoSize = true,
+            ForeColor = Color.FromArgb(0x6B, 0x72, 0x80),
+            Font = new Font("Segoe UI", 10f),
+            Anchor = AnchorStyles.None,
+        };
+        box.Controls.Add(name, 0, 0);
+        box.Controls.Add(bar, 0, 1);
+        box.Controls.Add(sub, 0, 2);
+        _splash.Controls.Add(box);
+        void Centre() => box.Location =
+            new Point((_splash.Width - box.Width) / 2, (_splash.Height - box.Height) / 2);
+        _splash.Resize += (_, _) => Centre();
+        box.SizeChanged += (_, _) => Centre();
+        Centre();
+    }
+
+    private void HideSplash()
+    {
+        if (_splashGone) return;
+        _splashGone = true;
+        _splash.Visible = false;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -115,6 +180,7 @@ internal sealed class MainForm : Form
         };
         core.NavigationCompleted += (_, a) =>
         {
+            if (a.IsSuccess) HideSplash(); // the server page (or the offline page) is now showing
             if (!a.IsSuccess && a.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
                 ShowOffline(a.WebErrorStatus == CoreWebView2WebErrorStatus.Unknown ? "" : a.WebErrorStatus.ToString());
             else if (a.HttpStatusCode >= 500)
@@ -148,6 +214,7 @@ internal sealed class MainForm : Form
 
     private void ShowOffline(string reason)
     {
+        HideSplash();
         var dir = Text_.Arabic ? "rtl" : "ltr";
         var html = $@"<!doctype html><html dir='{dir}'><head><meta charset='utf-8'>
 <style>body{{font-family:'Segoe UI',sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f6f7fb;color:#1f2937}}
@@ -228,8 +295,82 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        // Ask before leaving (owner, 2026-10-13): just exit, or exit and sign out, or stay.
+        if (!_closing && e.CloseReason == CloseReason.UserClosing)
+        {
+            switch (AskExit())
+            {
+                case ExitChoice.Cancel:
+                    e.Cancel = true;
+                    return;
+                case ExitChoice.SignOut:
+                    // Clear the sign-in so the next launch asks to log in again on this computer.
+                    try { _web.CoreWebView2?.CookieManager.DeleteAllCookies(); } catch { /* nothing to clear */ }
+                    break;
+            }
+            _closing = true;
+        }
         AppSettings.Maximized = WindowState == FormWindowState.Maximized;
         if (!_fullScreen) AppSettings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
         base.OnFormClosing(e);
+    }
+
+    /// <summary>The close prompt: Exit, Exit and sign out, or stay.</summary>
+    private ExitChoice AskExit()
+    {
+        using var dlg = new Form
+        {
+            Text = Text_.ExitTitle,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            ClientSize = new Size(400, 158),
+            BackColor = Color.White,
+            RightToLeft = Text_.Arabic ? RightToLeft.Yes : RightToLeft.No,
+            RightToLeftLayout = Text_.Arabic,
+        };
+        var prompt = new Label
+        {
+            Text = Text_.ExitPrompt,
+            Dock = DockStyle.Top,
+            Height = 92,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 11f),
+        };
+        Button Make(string text, DialogResult result) => new()
+        {
+            Text = text,
+            DialogResult = result,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Height = 36,
+            Margin = new Padding(6, 0, 6, 0),
+            Padding = new Padding(10, 6, 10, 6),
+        };
+        var exit = Make(Text_.ExitJustClose, DialogResult.Yes);
+        var signOut = Make(Text_.ExitSignOut, DialogResult.No);
+        var cancel = Make(Text_.Cancel, DialogResult.Cancel);
+        var row = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 60,
+            FlowDirection = FlowDirection.RightToLeft,
+            Padding = new Padding(12, 10, 12, 10),
+        };
+        row.Controls.Add(exit);
+        row.Controls.Add(signOut);
+        row.Controls.Add(cancel);
+        dlg.Controls.Add(row);
+        dlg.Controls.Add(prompt);
+        dlg.AcceptButton = exit;
+        dlg.CancelButton = cancel;
+        return dlg.ShowDialog(this) switch
+        {
+            DialogResult.Yes => ExitChoice.Exit,
+            DialogResult.No => ExitChoice.SignOut,
+            _ => ExitChoice.Cancel,
+        };
     }
 }

@@ -1,11 +1,15 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<!-- Arabic is the app's default language; the boot script below switches to the last-used one. -->
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <!-- iPhone/iPad home-screen icon (iOS ignores SVG icons). -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0"
+    />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -13,67 +17,329 @@
     <title>Evolvix</title>
     <!--
       Boot splash: shown the instant the page opens, so the app never flashes a blank/black screen
-      while the code loads or while it is reaching the server. React replaces #root once it mounts;
-      if that hasn't happened after a while (code didn't load, or the server is unreachable), the
-      splash turns into a clear "server unavailable" message with a Retry button, never a black void.
+      while the code loads or while it is reaching the server. It shows the app's own name (Evolvix)
+      with an animated mark. React replaces #root once it mounts; if that hasn't happened after a
+      while (code didn't load, or the server is unreachable), the splash turns into a clear "server
+      unavailable" message with a Retry button, never a black void.
     -->
     <style>
-      :root { --boot-bg: #f6f7fb; --boot-fg: #1f2937; --boot-muted: #6b7280; --boot-brand: #4f46e5; }
+      :root {
+        --boot-bg: #f6f7fb;
+        --boot-fg: #1f2937;
+        --boot-muted: #6b7280;
+        --boot-brand: #4f46e5;
+        --boot-brand2: #7263ff;
+        --boot-track: rgba(79, 70, 229, 0.14);
+      }
       @media (prefers-color-scheme: dark) {
-        :root { --boot-bg: #0b1020; --boot-fg: #e5e7eb; --boot-muted: #9aa4b2; }
+        :root {
+          --boot-bg: #0b1020;
+          --boot-fg: #e5e7eb;
+          --boot-muted: #9aa4b2;
+          --boot-track: rgba(124, 110, 255, 0.22);
+        }
       }
-      html, body { margin: 0; height: 100%; background: var(--boot-bg); }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--boot-bg);
+      }
       #boot {
-        position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 18px; padding: 24px; text-align: center;
-        font-family: 'Segoe UI', system-ui, -apple-system, 'Noto Sans Arabic', sans-serif;
-        color: var(--boot-fg); background: var(--boot-bg);
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        padding: 24px;
+        text-align: center;
+        overflow: hidden;
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          'Noto Sans Arabic',
+          sans-serif;
+        color: var(--boot-fg);
+        background: radial-gradient(
+          1100px 560px at 50% 32%,
+          color-mix(in srgb, var(--boot-brand) 11%, var(--boot-bg)),
+          var(--boot-bg) 72%
+        );
       }
-      #boot .mark { width: 72px; height: 72px; border-radius: 20px; box-shadow: 0 10px 30px rgba(79,70,229,.35); }
-      #boot h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-      #boot p { margin: 0; font-size: 14px; color: var(--boot-muted); max-width: 320px; word-break: break-word; }
-      #boot .spin {
-        width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(127,127,127,.25);
-        border-top-color: var(--boot-brand); animation: boot-spin .8s linear infinite;
+      #boot .stage {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        animation: boot-in 0.6s ease-out both;
       }
-      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      #boot .halo {
+        position: absolute;
+        top: -14px;
+        left: 50%;
+        width: 150px;
+        height: 150px;
+        margin-left: -75px;
+        border-radius: 50%;
+        filter: blur(16px);
+        z-index: 0;
+        background: radial-gradient(
+          circle,
+          color-mix(in srgb, var(--boot-brand) 45%, transparent),
+          transparent 66%
+        );
+        animation: boot-pulse 2.6s ease-in-out infinite;
+      }
+      #boot .mark {
+        position: relative;
+        z-index: 1;
+        width: 98px;
+        height: 98px;
+        border-radius: 27px;
+        box-shadow: 0 18px 50px rgba(79, 70, 229, 0.42);
+        animation: boot-float 3.2s ease-in-out infinite;
+      }
+      #boot .evolve {
+        stroke-dasharray: 600;
+        stroke-dashoffset: 600;
+        animation: boot-draw 1.5s 0.25s ease-out forwards;
+      }
+      #boot .spark {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: boot-twinkle 2s 0.9s ease-in-out infinite;
+      }
+      #boot h1 {
+        margin: 0;
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        background: linear-gradient(
+          100deg,
+          var(--boot-brand) 0%,
+          var(--boot-brand2) 38%,
+          #a5b4fc 50%,
+          var(--boot-brand2) 62%,
+          var(--boot-brand) 100%
+        );
+        background-size: 220% 100%;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        animation:
+          boot-rise 0.6s 0.15s ease-out both,
+          boot-shimmer 2.6s 0.7s linear infinite;
+      }
+      #boot .bar {
+        width: 190px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--boot-track);
+        overflow: hidden;
+        position: relative;
+      }
+      #boot .bar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--boot-brand),
+          var(--boot-brand2),
+          transparent
+        );
+        animation: boot-slide 1.15s ease-in-out infinite;
+      }
+      #boot p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--boot-muted);
+        max-width: 320px;
+        word-break: break-word;
+      }
       #boot .retry {
-        display: none; margin-top: 4px; height: 42px; padding: 0 22px; border: 0; border-radius: 10px;
-        background: var(--boot-brand); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+        display: none;
+        margin-top: 4px;
+        height: 44px;
+        padding: 0 24px;
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(90deg, var(--boot-brand), var(--boot-brand2));
+        color: #fff;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(79, 70, 229, 0.4);
       }
-      #boot.failed .spin { display: none; }
-      #boot.failed .retry { display: inline-block; }
+      #boot.failed .bar,
+      #boot.failed .halo {
+        display: none;
+      }
+      #boot.failed .retry {
+        display: inline-block;
+      }
+      #boot.failed .mark {
+        animation: none;
+      }
+      @keyframes boot-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes boot-rise {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes boot-float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-7px);
+        }
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          opacity: 0.5;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.9;
+          transform: scale(1.08);
+        }
+      }
+      @keyframes boot-draw {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+      @keyframes boot-twinkle {
+        0%,
+        100% {
+          opacity: 0.4;
+          transform: scale(0.8);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.18);
+        }
+      }
+      @keyframes boot-slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      @keyframes boot-shimmer {
+        to {
+          background-position: -220% 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot * {
+          animation: none !important;
+        }
+        #boot .evolve {
+          stroke-dashoffset: 0;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="root">
       <div id="boot">
-        <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
-          <defs>
-            <linearGradient id="bootbg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#7263ff" />
-              <stop offset=".55" stop-color="#4f46e5" />
-              <stop offset="1" stop-color="#3423b5" />
-            </linearGradient>
-            <linearGradient id="bootup" x1="136" y1="386" x2="376" y2="126" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stop-color="#0ea371" />
-              <stop offset=".55" stop-color="#34d399" />
-              <stop offset="1" stop-color="#b4f8d8" />
-            </linearGradient>
-          </defs>
-          <rect width="512" height="512" rx="116" fill="url(#bootbg)" />
-          <path d="M136 126C178.2 144.4 203.7 166.4 221.3 189.9M290.7 322.1C308.3 345.6 333.8 367.6 376 386"
-                fill="none" stroke="#fff" stroke-width="54" stroke-linecap="round" />
-          <path d="M136 386C296 316 216 196 376 126" fill="none" stroke="url(#bootup)" stroke-width="54" stroke-linecap="round" />
-          <path d="M428 60q3 22 25 25q-22 3-25 25q-3-22-25-25q22-3 25-25Z" fill="#d1fae5" />
-        </svg>
-        <h1>Evolvix</h1>
-        <div class="spin" role="status" aria-label="Loading"></div>
-        <p id="boot-msg" dir="auto">جارٍ الاتصال بالخادم…<br />Connecting to the server…</p>
-        <button class="retry" type="button" onclick="location.reload()">إعادة المحاولة · Retry</button>
+        <div class="stage">
+          <div class="halo" aria-hidden="true"></div>
+          <svg class="mark" viewBox="0 0 512 512" aria-hidden="true">
+            <defs>
+              <linearGradient id="bootbg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#7263ff" />
+                <stop offset=".55" stop-color="#4f46e5" />
+                <stop offset="1" stop-color="#3423b5" />
+              </linearGradient>
+              <linearGradient
+                id="bootup"
+                x1="136"
+                y1="386"
+                x2="376"
+                y2="126"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0" stop-color="#0ea371" />
+                <stop offset=".55" stop-color="#34d399" />
+                <stop offset="1" stop-color="#b4f8d8" />
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" rx="116" fill="url(#bootbg)" />
+            <path
+              d="M136 126C178.2 144.4 203.7 166.4 221.3 189.9M290.7 322.1C308.3 345.6 333.8 367.6 376 386"
+              fill="none"
+              stroke="#fff"
+              stroke-width="54"
+              stroke-linecap="round"
+            />
+            <path
+              class="evolve"
+              d="M136 386C296 316 216 196 376 126"
+              fill="none"
+              stroke="url(#bootup)"
+              stroke-width="54"
+              stroke-linecap="round"
+            />
+            <path
+              class="spark"
+              d="M428 60q3 22 25 25q-22 3-25 25q-3-22-25-25q22-3 25-25Z"
+              fill="#d1fae5"
+            />
+          </svg>
+          <h1>Evolvix</h1>
+          <div class="bar" role="status" aria-label="Loading"></div>
+          <p id="boot-msg">جارٍ التشغيل…</p>
+          <button class="retry" id="boot-retry" type="button" onclick="location.reload()">
+            إعادة المحاولة
+          </button>
+        </div>
       </div>
     </div>
     <script>
+      // The splash shows ONE language — the last one used on this device (Arabic by default for a
+      // new install). The app's own language preference is kept under "skb.prefs"; read it so the
+      // splash matches, and set the page direction before anything paints.
+      var BOOT_AR = true;
+      (function () {
+        try {
+          var p = JSON.parse(localStorage.getItem('skb.prefs') || '{}');
+          if (p && p.state && p.state.locale === 'en') BOOT_AR = false;
+        } catch (e) {
+          /* default to Arabic */
+        }
+        document.documentElement.lang = BOOT_AR ? 'ar' : 'en';
+        document.documentElement.dir = BOOT_AR ? 'rtl' : 'ltr';
+        var msg = document.getElementById('boot-msg');
+        if (msg) msg.textContent = BOOT_AR ? 'جارٍ التشغيل…' : 'Starting…';
+        var retry = document.getElementById('boot-retry');
+        if (retry) retry.textContent = BOOT_AR ? 'إعادة المحاولة' : 'Retry';
+      })();
       // If React hasn't replaced #root after a while, the code didn't load or the server is down.
       (function () {
         setTimeout(function () {
@@ -81,7 +347,10 @@
           if (!boot) return; // React mounted and replaced the splash — all good.
           boot.className = 'failed';
           var msg = document.getElementById('boot-msg');
-          if (msg) msg.innerHTML = 'الخادم غير متاح حالياً. تأكد أن السيرفر يعمل ثم أعد المحاولة.<br />The server is unavailable. Make sure it is running, then retry.';
+          if (msg)
+            msg.textContent = BOOT_AR
+              ? 'الخادم غير متاح حالياً. تأكد أن السيرفر يعمل ثم أعد المحاولة.'
+              : 'The server is unavailable. Make sure it is running, then retry.';
         }, 12000);
       })();
     </script>

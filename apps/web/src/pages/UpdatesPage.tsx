@@ -10,6 +10,7 @@ import {
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { Logo } from '../components/Logo';
 import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
@@ -113,91 +114,69 @@ function StatusCard({ u, offline }: { u: SystemUpdates; offline: boolean }) {
 
   if (!u.enabled)
     return (
-      <Card className="flex items-start gap-3">
-        <Icon name="update" size={22} className="mt-0.5 shrink-0 text-muted" />
-        <div className="space-y-1">
-          <p className="font-semibold">{t('updates.offTitle')}</p>
-          <p className="text-sm text-muted">{t('updates.off')}</p>
-        </div>
+      <Card className="flex flex-col items-center gap-2 py-8 text-center">
+        <Logo size={56} />
+        <p className="text-lg font-semibold">{t('updates.offTitle')}</p>
+        <p className="max-w-sm text-sm text-muted">{t('updates.off')}</p>
       </Card>
     );
 
-  const tone = failure
-    ? 'border-destructive/40'
-    : u.available
-      ? 'border-brand/40'
-      : 'border-positive/40';
+  // iOS "Software Update" style (owner, 2026-10-13): the app's own icon and name front and centre,
+  // one big state line, and full-width rounded buttons underneath.
+  const bigTitle =
+    u.state === 'updating' || (offline && u.state !== 'idle')
+      ? t('updates.updating')
+      : u.state === 'waiting' || u.state === 'checking'
+        ? t('updates.checking')
+        : failure
+          ? t('updates.failed')
+          : u.available
+            ? newest
+              ? `Evolvix ${newest}`
+              : t('updates.newChanges')
+            : t('updates.upToDate');
+  const updatedLine =
+    u.state === 'idle' && u.step === 'done' && u.finishedAt
+      ? `${t('updates.updatedAt')}: ${formatDateTime(u.finishedAt, locale)}`
+      : null;
+  const subLine = failure
+    ? failure
+    : updatedLine
+      ? updatedLine
+      : u.available
+        ? (checked ?? `${t('updates.current')}: ${u.version}`)
+        : `${t('updates.current')}: ${u.version}`;
+  const dotTone = failure
+    ? 'bg-destructive text-white'
+    : u.available || working
+      ? 'bg-brand text-brand-fg'
+      : 'bg-positive text-white';
+
   return (
-    <Card className={`space-y-4 border ${tone}`}>
-      <div className="flex flex-wrap items-center gap-4">
-        <span
-          className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${
-            failure
-              ? 'bg-destructive-soft text-destructive'
-              : u.available || working
-                ? 'bg-brand-soft text-brand'
-                : 'bg-positive-soft text-positive'
-          }`}
-        >
-          {working ? (
-            <Spinner size={22} />
-          ) : (
-            <Icon name={failure ? 'alert' : u.available ? 'update' : 'check'} size={24} />
-          )}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-lg font-semibold">
-            {u.state === 'updating' || (offline && u.state !== 'idle')
-              ? t('updates.updating')
-              : u.state === 'waiting' || u.state === 'checking'
-                ? t('updates.checking')
-                : failure
-                  ? t('updates.failed')
-                  : u.available
-                    ? newest
-                      ? `${t('updates.newVersion')} ${newest}`
-                      : t('updates.newChanges')
-                    : t('updates.upToDate')}
-          </p>
-          {failure ? (
-            <p className="text-sm text-destructive">{failure}</p>
-          ) : u.state === 'idle' && u.step === 'done' && u.finishedAt ? (
-            <p className="text-sm text-muted">
-              {t('updates.updatedAt')}: {formatDateTime(u.finishedAt, locale)}
-            </p>
-          ) : (
-            checked && !working && <p className="text-sm text-muted">{checked}</p>
-          )}
-        </div>
-        {!working && (
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            {(u.available || failure) && (
-              <Button
-                icon="update"
-                loading={busy === 'apply'}
-                disabled={!!busy}
-                onClick={() => void send('apply')}
-                className="flex-1 sm:flex-none"
-              >
-                {t(failure ? 'updates.retry' : 'updates.updateNow')}
-              </Button>
+    <Card className="overflow-hidden p-0">
+      <div className="flex flex-col items-center gap-3 px-6 pb-6 pt-8 text-center">
+        <span className="relative">
+          <Logo size={64} className="drop-shadow-[0_10px_26px_rgba(79,70,229,0.4)]" />
+          <span
+            className={`absolute -bottom-1 grid h-7 w-7 place-items-center rounded-full border-4 border-surface end-[-6px] ${dotTone}`}
+          >
+            {working ? (
+              <Spinner size={14} />
+            ) : (
+              <Icon name={failure ? 'alert' : u.available ? 'update' : 'check'} size={14} />
             )}
-            <Button
-              variant="secondary"
-              icon="search"
-              loading={busy === 'check'}
-              disabled={!!busy}
-              onClick={() => void send('check')}
-              className="flex-1 sm:flex-none"
-            >
-              {t('updates.check')}
-            </Button>
-          </div>
-        )}
+          </span>
+        </span>
+        <div className="space-y-1">
+          <p className="text-xl font-bold" dir="auto">
+            {bigTitle}
+          </p>
+          <p className={`text-sm ${failure ? 'text-destructive' : 'text-muted'}`}>{subLine}</p>
+        </div>
       </div>
 
       {u.state === 'updating' && (
-        <ol className="grid grid-cols-3 gap-2 text-center text-xs">
+        <ol className="grid grid-cols-3 gap-2 px-6 pb-5 text-center text-xs">
           {STEPS.map((s, i) => {
             const at = Math.max(0, STEPS.indexOf(u.step as (typeof STEPS)[number]));
             const done = i < at;
@@ -219,7 +198,35 @@ function StatusCard({ u, offline }: { u: SystemUpdates; offline: boolean }) {
           })}
         </ol>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {!working && (
+        <div className="space-y-2 border-t border-line p-4">
+          {(u.available || failure) && (
+            <Button
+              size="lg"
+              icon="update"
+              loading={busy === 'apply'}
+              disabled={!!busy}
+              onClick={() => void send('apply')}
+              className="w-full !rounded-2xl"
+            >
+              {t(failure ? 'updates.retry' : 'updates.updateNow')}
+            </Button>
+          )}
+          <Button
+            size="lg"
+            variant={u.available || failure ? 'ghost' : 'secondary'}
+            icon="search"
+            loading={busy === 'check'}
+            disabled={!!busy}
+            onClick={() => void send('check')}
+            className="w-full !rounded-2xl"
+          >
+            {t('updates.check')}
+          </Button>
+        </div>
+      )}
+      {error && <p className="px-4 pb-4 text-sm text-destructive">{error}</p>}
     </Card>
   );
 }

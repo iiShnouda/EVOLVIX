@@ -225,7 +225,6 @@ export function QuickActions() {
         ) : shape === 'tab' ? (
           <ColumnMenu
             items={chosen}
-            y={y}
             labelOf={(a) => t(a.label)}
             onPick={go}
             onCustomize={customize}
@@ -293,7 +292,6 @@ export function QuickActions() {
  */
 function ColumnMenu({
   items,
-  y,
   labelOf,
   onPick,
   onCustomize,
@@ -301,20 +299,21 @@ function ColumnMenu({
   onClose,
 }: {
   items: QuickAction[];
-  y: number;
   labelOf: (a: QuickAction) => string;
   onPick: (a: QuickAction) => void;
   onCustomize: () => void;
   customizeLabel: string;
   onClose: () => void;
 }) {
+  // Centred in the middle of the screen, not hung off the tab's position (owner, 2026-10-13: the
+  // column was tall and off-centre with an inner scroll). It sits in the vertical centre and only
+  // scrolls inside if there are more shortcuts than the screen can hold.
   return (
     <div className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]" onClick={onClose}>
       <div
         role="menu"
         onClick={(e) => e.stopPropagation()}
-        className="absolute start-0 flex max-h-[92vh] flex-col items-center gap-2 overflow-y-auto rounded-e-3xl border border-line bg-surface p-2 shadow-[var(--shadow-pop)]"
-        style={{ top: `${y}vh`, transform: 'translateY(-50%)' }}
+        className="absolute start-0 top-1/2 flex max-h-[calc(100dvh-1.5rem)] -translate-y-1/2 flex-col items-center gap-2 overflow-y-auto rounded-e-3xl border border-line bg-surface p-2 shadow-[var(--shadow-pop)]"
       >
         {items.map((a, i) => (
           <button

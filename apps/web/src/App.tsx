@@ -25,6 +25,7 @@ import { UpdateNotice } from './components/UpdateNotice';
 import { LeavePrompt } from './components/LeavePrompt';
 import { PrintEditorHost } from './components/PrintEditor';
 import { setTabRoutes } from './components/shell/Tabs';
+import { isTabSwitch } from './lib/tabs';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
@@ -154,12 +155,27 @@ function ProtectedApp() {
     <>
       <CompanyClock />
       <RememberPage />
+      <ScrollReset />
       <PrintPaper />
       <LeavePrompt />
       <PrintEditorHost />
       <Shell />
     </>
   );
+}
+
+/**
+ * A new page opens at the top (owner, 2026-10-13: entering a page while scrolled down landed in the
+ * middle of the new one). Switching tabs keeps each tab's own remembered scroll, so those are left
+ * alone; a filter or redirect that keeps the same page (same path) doesn't jump either.
+ */
+function ScrollReset() {
+  const { pathname, state } = useLocation();
+  useEffect(() => {
+    if (isTabSwitch(state)) return;
+    window.scrollTo({ top: 0 });
+  }, [pathname, state]);
+  return null;
 }
 
 /**

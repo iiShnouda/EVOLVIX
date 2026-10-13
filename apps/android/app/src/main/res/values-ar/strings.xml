@@ -15,4 +15,5 @@
     <string name="downloading">جارٍ التنزيل…</string>
     <string name="saved">تم الحفظ</string>
     <string name="save_failed">تعذّر حفظ الملف</string>
+    <string name="starting">جارٍ التشغيل…</string>
 </resources>
