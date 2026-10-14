@@ -19,6 +19,7 @@ import { applyDocumentPrefs, usePrefs } from './stores/prefs';
 import { useAuth } from './stores/auth';
 import { useConnection } from './stores/connection';
 import { useConnectionMonitor } from './lib/useConnectionMonitor';
+import { useIdleLogout } from './lib/useIdleLogout';
 import { Shell } from './components/shell/Shell';
 import { OfflineGate } from './components/OfflineGate';
 import { UpdateNotice } from './components/UpdateNotice';
@@ -313,6 +314,7 @@ export default function App() {
   useRefetchOnLocale();
   useConnectionMonitor();
   useBootstrapAuth();
+  useIdleLogout();
   useEffect(startAppUpdates, []);
 
   return (

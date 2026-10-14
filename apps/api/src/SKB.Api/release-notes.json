@@ -5,6 +5,10 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "حماية الجلسة: البرنامج يسجّل الخروج لوحده بعد مدة بدون استخدام (تختار المدة من قائمة الحساب، أو توقفها)، وفيه زر «تسجيل الخروج من كل الأجهزة» يُنهي الجلسة على كل جهاز فوراً — مفيد لو ضاع موبايل أو كمبيوتر أو يُحتمل إصابته بفيروس.",
+          "en": "Session safety: the app can sign out on its own after a stretch with no use (you pick the delay in the account menu, or turn it off), and a 'Sign out of all devices' button ends the session on every device at once — handy if a phone or computer is lost or might have a virus."
+        },
+        {
           "ar": "البرنامج بيبحث عن إصدار جديد لوحده كل فترة، فمش لازم تدوس «البحث عن تحديث» بنفسك؛ أول ما يبقى في جديد بيظهر تنبيه، والتحديث نفسه يفضل باختيارك.",
           "en": "The app now checks for a new version on its own periodically — you no longer have to press 'Check for updates'; when one is ready a badge appears, and applying the update stays your choice."
         },

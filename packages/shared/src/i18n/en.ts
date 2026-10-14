@@ -1958,6 +1958,13 @@ export const en = {
   'print.paper': 'Paper size',
   'auth.signedInElsewhere':
     'Your account was signed in on another device, so this device was signed out.',
+  'auth.idleSignedOut': 'You were signed out after a while with no activity.',
+  'auth.idleLock': 'Sign out when idle',
+  'auth.idleMinutes': 'After {n} min',
+  'auth.idleNever': 'Never',
+  'auth.signOutAll': 'Sign out of all devices',
+  'auth.signOutAllConfirm':
+    'Sign this account out of every device, this one included? Use this if a phone or computer is lost or may have a virus.',
   'auth.showPassword': 'Show password',
   'auth.hidePassword': 'Hide password',
   'auth.rememberHint': 'You stay signed in on this device for 30 days.',
@@ -2669,7 +2676,6 @@ export const en = {
   'updates.updateNow': 'Update now',
   'updates.retry': 'Try again',
   'updates.check': 'Check for updates',
-  'updates.autoCheck': 'The server checks for a new version on its own; you can also check now.',
   'updates.confirm':
     'The app will pause for a moment for everyone while it updates; a backup is made first. Continue?',
   'updates.step.download': 'Downloading',

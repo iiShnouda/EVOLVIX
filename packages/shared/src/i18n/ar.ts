@@ -1948,6 +1948,13 @@ export const ar: TranslationDictionary = {
   'print.paper': 'مقاس الورق',
   'auth.signedInElsewhere':
     'تم تسجيل الدخول بحسابك من جهاز آخر، لذلك تم إنهاء الجلسة على هذا الجهاز.',
+  'auth.idleSignedOut': 'تم تسجيل خروجك بعد مدة بدون أي نشاط.',
+  'auth.idleLock': 'تسجيل الخروج عند عدم الاستخدام',
+  'auth.idleMinutes': 'بعد {n} دقيقة',
+  'auth.idleNever': 'بدون',
+  'auth.signOutAll': 'تسجيل الخروج من كل الأجهزة',
+  'auth.signOutAllConfirm':
+    'هل تريد تسجيل الخروج من كل الأجهزة بما فيها هذا الجهاز؟ استخدم هذا لو ضاع موبايل أو كمبيوتر أو يُحتمل إصابته بفيروس.',
   'auth.showPassword': 'إظهار كلمة المرور',
   'auth.hidePassword': 'إخفاء كلمة المرور',
   'auth.rememberHint': 'يبقى تسجيل الدخول على هذا الجهاز لمدة 30 يومًا.',
@@ -2655,7 +2662,6 @@ export const ar: TranslationDictionary = {
   'updates.updateNow': 'تحديث الآن',
   'updates.retry': 'إعادة المحاولة',
   'updates.check': 'البحث عن تحديث',
-  'updates.autoCheck': 'السيرفر بيبحث عن إصدار جديد لوحده، وتقدر تبحث دلوقتي كمان.',
   'updates.confirm':
     'سيتوقف البرنامج لحظات لجميع المستخدمين أثناء التحديث، وتُحفظ نسخة احتياطية قبله. هل تريد المتابعة؟',
   'updates.step.download': 'تنزيل الإصدار',

@@ -160,13 +160,13 @@ export function LoginPage() {
             <p className="text-sm text-muted">{t('auth.welcome')}</p>
           </div>
 
-          {notice === 'signedInElsewhere' && (
+          {notice && (
             <div
               role="status"
               className="flex items-start gap-2 rounded-[var(--radius-app)] border border-warning/40 bg-warning-soft px-3 py-2.5 text-sm text-warning"
             >
-              <Icon name="device" size={18} className="mt-0.5 shrink-0" />
-              {t('auth.signedInElsewhere')}
+              <Icon name={notice === 'idle' ? 'lock' : 'device'} size={18} className="mt-0.5 shrink-0" />
+              {t(notice === 'idle' ? 'auth.idleSignedOut' : 'auth.signedInElsewhere')}
             </div>
           )}
 

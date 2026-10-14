@@ -9,6 +9,8 @@ import { useWorkBranch, useWorkBranchStore } from '../../stores/workBranch';
 import { queryClient } from '../../lib/queryClient';
 import { SHOW_COSTS_KEY, useMaySeeCosts } from '../../lib/can';
 import { usePreferences } from '../../lib/queries';
+import { usePrefs } from '../../stores/prefs';
+import { confirm } from '../../lib/confirm';
 
 export function AccountMenu() {
   const { t } = useT();
@@ -59,6 +61,12 @@ export function AccountMenu() {
 
   const logout = async () => {
     await api.logout();
+    navigate('/login', { replace: true });
+  };
+
+  const logoutEverywhere = async () => {
+    if (!(await confirm({ message: t('auth.signOutAllConfirm'), danger: true }))) return;
+    await api.logoutAll();
     navigate('/login', { replace: true });
   };
 
@@ -150,6 +158,15 @@ export function AccountMenu() {
               <span className="min-w-0 flex-1">{t('costs.show')}</span>
             </button>
           )}
+          <IdleTimeout />
+          <button
+            role="menuitem"
+            onClick={logoutEverywhere}
+            className="flex w-full items-center gap-2 border-t border-line px-3 py-2.5 text-sm transition-colors hover:bg-surface-2"
+          >
+            <Icon name="shield" size={18} className="text-muted" />
+            <span className="min-w-0 flex-1 text-start">{t('auth.signOutAll')}</span>
+          </button>
           <button
             role="menuitem"
             onClick={logout}
@@ -160,6 +177,35 @@ export function AccountMenu() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Sign out on its own after a stretch of no use (owner, 2026-10-14). Kept on this device. */
+const IDLE_CHOICES = [15, 30, 60, 0] as const;
+
+function IdleTimeout() {
+  const { t } = useT();
+  const idleMinutes = usePrefs((s) => s.idleMinutes);
+  const setIdleMinutes = usePrefs((s) => s.setIdleMinutes);
+  const label = (m: number) =>
+    m === 0 ? t('auth.idleNever') : t('auth.idleMinutes').replace('{n}', String(m));
+  return (
+    <div className="flex items-center gap-2 border-t border-line px-3 py-2.5 text-sm">
+      <Icon name="lock" size={18} className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1">{t('auth.idleLock')}</span>
+      <select
+        value={idleMinutes}
+        onChange={(e) => setIdleMinutes(Number(e.target.value))}
+        aria-label={t('auth.idleLock')}
+        className="rounded-md border border-line bg-surface px-1.5 py-1 text-xs"
+      >
+        {IDLE_CHOICES.map((m) => (
+          <option key={m} value={m}>
+            {label(m)}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

@@ -224,7 +224,6 @@ function StatusCard({ u, offline }: { u: SystemUpdates; offline: boolean }) {
           >
             {t('updates.check')}
           </Button>
-          <p className="pt-1 text-center text-xs text-muted">{t('updates.autoCheck')}</p>
         </div>
       )}
       {error && <p className="px-4 pb-4 text-sm text-destructive">{error}</p>}

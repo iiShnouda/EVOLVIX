@@ -150,4 +150,20 @@ public sealed class TokenService
         await _db.Sessions.Where(s => s.TokenHash == hash && s.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, DateTime.UtcNow).SetProperty(x => x.RevokedReason, "logout"));
     }
+
+    /// <summary>
+    /// Sign the whole account out everywhere (owner, 2026-10-14: for a lost or virus-hit device).
+    /// Every live session ends and both device slots are cleared, so each other device is refused at
+    /// its next refresh and its short-lived access token (15 min) soon stops working too.
+    /// </summary>
+    public async Task RevokeAllForStaffAsync(Guid staffId)
+    {
+        var now = DateTime.UtcNow;
+        await _db.Sessions.Where(s => s.StaffId == staffId && s.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, "signed_out_all"));
+        await _db.Staff.Where(s => s.Id == staffId).ExecuteUpdateAsync(s =>
+            s.SetProperty(x => x.CurrentMobileDeviceId, (Guid?)null)
+             .SetProperty(x => x.CurrentDesktopDeviceId, (Guid?)null));
+        DeviceGate.Set(staffId, null, null);
+    }
 }

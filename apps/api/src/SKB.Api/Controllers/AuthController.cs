@@ -115,6 +115,25 @@ public sealed class AuthController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>
+    /// Sign the account out of every device at once (owner, 2026-10-14: a device is lost or has a
+    /// virus). Ends all this account's sessions — this one included — so each device returns to the
+    /// sign-in page, and clears the kept page and drafts like an ordinary sign-out.
+    /// </summary>
+    [Authorize]
+    [HttpPost("logout-all")]
+    public async Task<IActionResult> LogoutAll()
+    {
+        if (!Guid.TryParse(CurrentUser.Id(User), out var me)) return Unauthorized();
+        await _tokens.RevokeAllForStaffAsync(me);
+        await _db.StaffPreferences.Where(p => p.StaffId == me && p.Key == LastPageKey).ExecuteDeleteAsync();
+        await _db.WorkDrafts.Where(d => d.StaffId == me).ExecuteDeleteAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "auth.logout_all", "auth",
+            CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString());
+        Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });
+        return Ok(new { ok = true });
+    }
+
     /// <summary>Who's signed in: their permissions as in their token, and what they may work with now.</summary>
     [Authorize]
     [HttpGet("me")]

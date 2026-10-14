@@ -1,5 +1,5 @@
 import type { AuthUser, LoginInput } from '@skb/shared';
-import { getAccessToken, useAuth } from '../stores/auth';
+import { getAccessToken, useAuth, type SessionNotice } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
 import { getWorkBranch, useWorkBranchStore } from '../stores/workBranch';
 import { queryClient } from './queryClient';
@@ -38,7 +38,7 @@ const SIGNED_IN_ELSEWHERE = 'SIGNED_IN_ELSEWHERE';
  * The session is over: forget the token and everything read with it (nothing of the business is
  * kept on the device), and say why on the sign-in page when another device took the account.
  */
-function endSession(notice?: 'signedInElsewhere'): void {
+function endSession(notice?: SessionNotice): void {
   queryClient.clear();
   useAuth.getState().clear(notice);
 }
@@ -202,8 +202,20 @@ export const api = {
     return tryRefresh();
   },
   /** Signing out starts everything afresh: the server forgets the last page and drafts. */
-  async logout(): Promise<void> {
+  async logout(notice?: SessionNotice): Promise<void> {
     await request('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    const user = useAuth.getState().user;
+    if (user)
+      useWorkBranchStore.setState((s) => {
+        const byUser = { ...s.byUser };
+        delete byUser[user.id];
+        return { byUser };
+      });
+    endSession(notice);
+  },
+  /** Sign the account out of every device (lost or virus-hit device); this one included. */
+  async logoutAll(): Promise<void> {
+    await request('/auth/logout-all', { method: 'POST' }).catch(() => undefined);
     const user = useAuth.getState().user;
     if (user)
       useWorkBranchStore.setState((s) => {
