@@ -131,28 +131,21 @@ export function QuickActions() {
     style: { touchAction: 'none', WebkitTouchCallout: 'none' } as const,
   };
 
-  // All three sit on the start edge (right in Arabic, left in English) and are tucked away until the
-  // mouse reaches them, dragged or opened — the dock and the bubble slide out, the tab grows from a
-  // small nub. A touch screen has no hover, so a little always shows there (a tap opens the shortcuts).
-  const grip = touch ? 24 : 13;
-  // Desktop: the tab lives on the edge; the dock and bubble tuck until hovered. Touch: every shape
-  // tucks to a clear handle on the edge until tapped, so none of them fills the screen.
-  const tuck = out || (shape === 'tab' && !touch) ? '0px' : `calc(100% - ${grip}px)`;
-  const shift = rtl ? tuck : `calc(-1 * (${tuck}))`;
-
+  // All three sit on the start edge (right in Arabic, left in English) and stay fully in view — a
+  // clear handle you can always find and grab (owner, 2026-10-14: it was hard to reach and hid).
+  // It's compact and a little see-through when idle, and grows and turns solid as the mouse nears it
+  // (the "small dot that grows on approach"), while a tap opens the shortcuts on any device.
   let triggerEl;
   if (shape === 'tab') {
-    // A rounded tab on the edge, big enough that its bolt and grip always show (owner, 2026-10-12);
-    // it grows a little more when the mouse reaches it, and its shortcuts open in a column beside it.
     triggerEl = (
       <button
         {...common}
         {...handlers}
         className={`flex select-none flex-col items-center justify-center gap-1.5 overflow-hidden rounded-e-2xl bg-brand text-brand-fg shadow-[var(--shadow-pop)] transition-all duration-200 ${
           dragging ? 'cursor-grabbing' : 'cursor-pointer'
-        } ${out ? 'h-28 w-9' : 'h-20 w-6 opacity-90'}`}
+        } ${out ? 'h-28 w-10' : 'h-20 w-8 opacity-90'}`}
       >
-        <Icon name={menu ? 'close' : 'bolt'} size={out ? 20 : 16} />
+        <Icon name={menu ? 'close' : 'bolt'} size={out ? 22 : 18} />
         <span
           className={`block w-1 rounded-full bg-current opacity-50 ${out ? 'h-6' : 'h-4'}`}
           aria-hidden
@@ -160,41 +153,39 @@ export function QuickActions() {
       </button>
     );
   } else if (shape === 'bubble') {
-    // A round button in the app's accent colour, like the nav icons, tucked at the edge; clicking
-    // fans the shortcuts around it (owner, 2026-10-12: matched to the nav colour, not the heavy mark).
     triggerEl = (
       <button
         {...common}
         {...handlers}
-        className={`grid h-14 w-14 select-none place-items-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] ring-4 ring-brand/15 ${
+        className={`grid select-none place-items-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-pop)] ring-4 ring-brand/15 transition-all duration-200 ${
           dragging ? 'cursor-grabbing' : 'cursor-pointer'
-        } ${out ? '' : 'opacity-85'}`}
+        } ${out ? 'h-14 w-14' : 'h-12 w-12 opacity-90'}`}
       >
-        <Icon name={menu ? 'close' : 'bolt'} size={24} />
+        <Icon name={menu ? 'close' : 'bolt'} size={out ? 24 : 22} />
       </button>
     );
   } else {
-    // The pill dock: a grip and a bolt, mostly tucked away.
+    // The pill dock: a grip and a bolt, always on the edge, growing a touch when reached.
     triggerEl = (
       <button
         {...common}
         {...handlers}
-        className={`flex h-12 select-none items-center gap-1 rounded-e-2xl bg-brand ps-2 pe-3 text-brand-fg shadow-[var(--shadow-pop)] ${
+        className={`flex select-none items-center gap-1 rounded-e-2xl bg-brand pe-3 text-brand-fg shadow-[var(--shadow-pop)] transition-all duration-200 ${
           dragging ? 'cursor-grabbing' : 'cursor-pointer'
-        } ${out ? '' : 'opacity-90'}`}
+        } ${out ? 'h-12 ps-2' : 'h-11 ps-1.5 opacity-90'}`}
       >
-        <span className="grid h-8 w-6 place-items-center opacity-70" aria-hidden>
+        <span className="grid h-8 w-4 place-items-center opacity-70" aria-hidden>
           <span className="block h-5 w-1 rounded-full bg-current opacity-60" />
         </span>
-        <Icon name={menu ? 'close' : 'bolt'} size={22} />
+        <Icon name={menu ? 'close' : 'bolt'} size={out ? 22 : 20} />
       </button>
     );
   }
 
   const trigger = (
     <div
-      className="fixed start-0 z-30 transition-transform duration-200"
-      style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
+      className="fixed start-0 z-30 -translate-y-1/2"
+      style={{ top: `${y}vh` }}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
     >
@@ -202,74 +193,22 @@ export function QuickActions() {
     </div>
   );
 
-  // The shortcuts: a panel beside the dock and the tab; an arc of round buttons around the bubble.
-  const panelStyle = {
-    top: `clamp(0.5rem, calc(${y}vh - 8rem), calc(100vh - 22rem))`,
-    ...(rtl ? { right: '4rem' } : { left: '4rem' }),
-  };
-
   return (
     <>
-      {menu &&
-        (shape === 'bubble' ? (
-          <RadialMenu
-            items={chosen}
-            y={y}
-            rtl={rtl}
-            labelOf={(a) => t(a.label)}
-            onPick={go}
-            onCustomize={customize}
-            customizeLabel={t('qa.customize')}
-            onClose={() => setMenu(false)}
-          />
-        ) : shape === 'tab' ? (
-          <ColumnMenu
-            items={chosen}
-            labelOf={(a) => t(a.label)}
-            onPick={go}
-            onCustomize={customize}
-            customizeLabel={t('qa.customize')}
-            onClose={() => setMenu(false)}
-          />
-        ) : (
-          <div className="fixed inset-0 z-40" onClick={() => setMenu(false)}>
-            <div
-              role="menu"
-              aria-label={t('qa.title')}
-              onClick={(e) => e.stopPropagation()}
-              className="absolute w-[min(22rem,calc(100vw-5rem))] rounded-[var(--radius-app)] border border-line bg-surface p-3 shadow-[var(--shadow-pop)]"
-              style={panelStyle}
-            >
-              <p className="mb-2 px-1 text-sm font-semibold">{t('qa.title')}</p>
-              {chosen.length === 0 ? (
-                <p className="px-1 py-3 text-sm text-muted">{t('qa.empty')}</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {chosen.map((a) => (
-                    <button
-                      key={a.id}
-                      role="menuitem"
-                      type="button"
-                      onClick={() => go(a)}
-                      className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 text-center text-xs hover:border-brand hover:bg-brand-soft"
-                    >
-                      <Icon name={a.icon} size={20} className="text-brand" />
-                      <span className="leading-tight">{t(a.label)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={customize}
-                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium text-brand hover:bg-brand-soft"
-              >
-                <Icon name="edit" size={14} />
-                {t('qa.customize')}
-              </button>
-            </div>
-          </div>
-        ))}
+      {menu && (
+        <QuickMenu
+          items={chosen}
+          y={y}
+          rtl={rtl}
+          title={t('qa.title')}
+          emptyLabel={t('qa.empty')}
+          labelOf={(a) => t(a.label)}
+          onPick={go}
+          onCustomize={customize}
+          customizeLabel={t('qa.customize')}
+          onClose={() => setMenu(false)}
+        />
+      )}
       {trigger}
       {editing && (
         <CustomizeSheet
@@ -287,71 +226,17 @@ export function QuickActions() {
 }
 
 /**
- * The tab's shortcuts, stacked in a column of round buttons beside it at the edge (owner, 2026-10-12):
- * a tall rounded holder with one circle per shortcut, centred on the tab, and the chooser at the end.
+ * The shortcuts, in one reliable popover for every shape (owner, 2026-10-14: the menu used to open
+ * in the wrong place). It appears right beside the button at its height, on the start edge, and is
+ * always kept fully on screen; it scrolls inside only if there are more shortcuts than fit. Tapping
+ * the dim backdrop closes it.
  */
-function ColumnMenu({
-  items,
-  labelOf,
-  onPick,
-  onCustomize,
-  customizeLabel,
-  onClose,
-}: {
-  items: QuickAction[];
-  labelOf: (a: QuickAction) => string;
-  onPick: (a: QuickAction) => void;
-  onCustomize: () => void;
-  customizeLabel: string;
-  onClose: () => void;
-}) {
-  // Centred in the middle of the screen, not hung off the tab's position (owner, 2026-10-13: the
-  // column was tall and off-centre with an inner scroll). It sits in the vertical centre and only
-  // scrolls inside if there are more shortcuts than the screen can hold.
-  return (
-    <div className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]" onClick={onClose}>
-      <div
-        role="menu"
-        onClick={(e) => e.stopPropagation()}
-        className="absolute start-0 top-1/2 flex max-h-[calc(100dvh-1.5rem)] -translate-y-1/2 flex-col items-center gap-2 overflow-y-auto rounded-e-3xl border border-line bg-surface p-2 shadow-[var(--shadow-pop)]"
-      >
-        {items.map((a, i) => (
-          <button
-            key={a.id}
-            role="menuitem"
-            type="button"
-            title={labelOf(a)}
-            aria-label={labelOf(a)}
-            onClick={() => onPick(a)}
-            className="grid h-12 w-12 shrink-0 animate-[quickPop_.16s_ease-out_both] place-items-center rounded-full border border-line bg-surface text-brand hover:border-brand hover:bg-brand-soft"
-            style={{ animationDelay: `${i * 25}ms`, transform: 'none' }}
-          >
-            <Icon name={a.icon} size={20} />
-          </button>
-        ))}
-        <button
-          type="button"
-          title={customizeLabel}
-          aria-label={customizeLabel}
-          onClick={onCustomize}
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-brand bg-brand-soft text-brand"
-        >
-          <Icon name="edit" size={18} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The bubble's shortcuts, fanned on an arc around the circle (owner, 2026-10-12). The circle sits on
- * the start edge, so the arc opens inward: to the right in English, to the left in Arabic. Each
- * button grows in with a short stagger. The last one opens the chooser.
- */
-function RadialMenu({
+function QuickMenu({
   items,
   y,
   rtl,
+  title,
+  emptyLabel,
   labelOf,
   onPick,
   onCustomize,
@@ -361,56 +246,59 @@ function RadialMenu({
   items: QuickAction[];
   y: number;
   rtl: boolean;
+  title: string;
+  emptyLabel: string;
   labelOf: (a: QuickAction) => string;
   onPick: (a: QuickAction) => void;
   onCustomize: () => void;
   customizeLabel: string;
   onClose: () => void;
 }) {
-  const w = typeof window === 'undefined' ? 1024 : window.innerWidth;
-  const h = typeof window === 'undefined' ? 768 : window.innerHeight;
-  const cx = rtl ? w - 36 : 36;
-  const cy = (y / 100) * h;
-  const nodes = [
-    ...items.map((a) => ({ key: a.id, icon: a.icon, label: labelOf(a), run: () => onPick(a) })),
-  ];
-  if (items.length < MAX_QUICK)
-    nodes.push({ key: '__edit', icon: 'edit', label: customizeLabel, run: onCustomize });
-  const n = nodes.length;
-  // The arc keeps the buttons on the screen: wider with more of them, up to most of a half-circle.
-  const spread = n > 1 ? Math.min(Math.PI * 0.95, (n - 1) * 0.5) : 0;
-  const radius = 92 + Math.min(44, n * 5);
-  const inward = rtl ? Math.PI : 0;
-
+  // Line the panel's top up near the button, then clamp so it never runs off the top or bottom.
+  const style = {
+    top: `clamp(0.75rem, calc(${y}dvh - 6rem), calc(100dvh - 24rem))`,
+    ...(rtl ? { right: '4.25rem' } : { left: '4.25rem' }),
+  };
   return (
     <div className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]" onClick={onClose}>
-      {nodes.map((node, i) => {
-        const angle =
-          inward + (n > 1 ? (i - (n - 1) / 2) * (spread / (n - 1)) : 0) * (rtl ? -1 : 1);
-        const x = cx + radius * Math.cos(angle);
-        const yy = Math.min(h - 32, Math.max(32, cy + radius * Math.sin(angle)));
-        const edit = node.key === '__edit';
-        return (
-          <button
-            key={node.key}
-            type="button"
-            title={node.label}
-            aria-label={node.label}
-            onClick={(e) => {
-              e.stopPropagation();
-              node.run();
-            }}
-            className={`absolute grid h-12 w-12 origin-center -translate-x-1/2 -translate-y-1/2 animate-[quickPop_.18s_ease-out_both] place-items-center rounded-full border shadow-[var(--shadow-pop)] ${
-              edit
-                ? 'border-brand bg-brand-soft text-brand'
-                : 'border-line bg-surface text-brand hover:border-brand hover:bg-brand-soft'
-            }`}
-            style={{ left: x, top: yy, animationDelay: `${i * 25}ms` }}
-          >
-            <Icon name={node.icon} size={20} />
-          </button>
-        );
-      })}
+      <div
+        role="menu"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute flex max-h-[calc(100dvh-1.5rem)] w-[min(20rem,calc(100vw-5.5rem))] flex-col overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-pop)]"
+        style={style}
+      >
+        <p className="border-b border-line px-3 py-2 text-sm font-semibold">{title}</p>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {items.length === 0 ? (
+            <p className="px-1 py-3 text-sm text-muted">{emptyLabel}</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {items.map((a, i) => (
+                <button
+                  key={a.id}
+                  role="menuitem"
+                  type="button"
+                  onClick={() => onPick(a)}
+                  className="flex animate-[quickPop_.16s_ease-out_both] flex-col items-center gap-1.5 rounded-xl border border-line p-2.5 text-center text-xs hover:border-brand hover:bg-brand-soft"
+                  style={{ animationDelay: `${i * 20}ms`, transform: 'none' }}
+                >
+                  <Icon name={a.icon} size={20} className="text-brand" />
+                  <span className="leading-tight">{labelOf(a)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onCustomize}
+          className="flex items-center justify-center gap-1.5 border-t border-line py-2 text-xs font-medium text-brand hover:bg-brand-soft"
+        >
+          <Icon name="edit" size={14} />
+          {customizeLabel}
+        </button>
+      </div>
     </div>
   );
 }
