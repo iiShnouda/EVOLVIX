@@ -28,6 +28,7 @@ import {
   type AppTab,
 } from '../../lib/tabs';
 import { dropTabWork, guards, signedIn, tabHasWork, useLeavePrompt } from '../../lib/workDraft';
+import { getScroll, setScroll } from '../../lib/scrollRoot';
 import { BackLink, pageName } from './BackLink';
 
 /** The app's pages (App.tsx hands them over; each tab shows one of them). */
@@ -43,7 +44,7 @@ interface SavedTabs {
   active: string;
 }
 
-/** Window scroll of each tab, so coming back to one lands where it was. */
+/** Scroll position of each tab (the page scroll box), so coming back to one lands where it was. */
 const scrolls = new Map<string, number>();
 
 /** Show another tab: the address bar follows it; nothing on either page is lost. */
@@ -63,22 +64,22 @@ export function useTabActions() {
     const { active, tabs } = useTabs.getState();
     const tab = tabs.find((x) => x.id === id);
     if (!tab || id === active) return;
-    scrolls.set(active, window.scrollY);
+    scrolls.set(active, getScroll());
     useTabs.setState({ active: id });
     navigate(tab.path || '/dashboard', { replace: true, state: TAB_SWITCH });
-    requestAnimationFrame(() => window.scrollTo({ top: scrolls.get(id) ?? 0 }));
+    requestAnimationFrame(() => setScroll(scrolls.get(id) ?? 0));
   };
   const open = (path: string) => {
     const { tabs, active } = useTabs.getState();
     if (tabs.length >= MAX_TABS) return;
     const id = newTabId();
-    scrolls.set(active, window.scrollY);
+    scrolls.set(active, getScroll());
     useTabs.setState({
       tabs: [...tabs, { id, path, loc: locationOf(path, id) }],
       active: id,
     });
     navigate(path, { state: TAB_SWITCH });
-    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+    requestAnimationFrame(() => setScroll(0));
   };
   const close = (id: string) => {
     const doClose = () => {

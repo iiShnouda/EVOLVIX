@@ -373,6 +373,45 @@ input::-ms-clear {
   }
 }
 
+/* The Evolvix mark breathes gently in the top bar (owner, 2026-10-14: an animated logo). */
+@keyframes logoFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-1.5px) rotate(-4deg) scale(1.04);
+  }
+}
+.logo-anim {
+  display: inline-flex;
+  animation: logoFloat 4.5s ease-in-out infinite;
+  filter: drop-shadow(0 4px 10px rgba(79, 70, 229, 0.3));
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-anim {
+    animation: none;
+  }
+}
+
+/* The side menu's own scroll: a slim bar that sits on the inner edge, not a heavy one (owner, 2026-10-14). */
+.nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line) transparent;
+  overscroll-behavior: contain;
+}
+.nav-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: var(--c-line);
+  border-radius: 9999px;
+}
+.nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* The bubble quick-action's shortcuts pop in around it (owner, 2026-10-12). */
 @keyframes quickPop {
   from {

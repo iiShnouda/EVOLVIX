@@ -65,15 +65,15 @@ function SidebarShell() {
   const collapsed = usePrefs((s) => s.navCollapsed);
   if (collapsed) return <RailShell canExpand />;
   return (
-    <div className="flex min-h-screen bg-canvas" style={backdrop}>
+    // The shell fills the screen and never scrolls itself; the side menu and the page each scroll
+    // on their own (owner, 2026-10-14: one scroll inside the menu, not a second bar on the outside).
+    <div className="flex h-screen overflow-hidden bg-canvas" style={backdrop}>
       <aside
         data-ui="sidebar"
-        className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface"
+        className="flex h-screen w-64 shrink-0 flex-col overflow-hidden border-e border-line bg-surface"
       >
-        <Brand />
-        {/* min-h-0 lets this scroll inside the fixed-height sidebar, on its own, instead of pushing
-            the whole page down (owner, 2026-10-14: the side menu has its own scroll now). */}
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        {/* The side menu's own slim scroll, on its inner edge; the brand now lives in the top bar. */}
+        <nav className="nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {items.map((item) => (
             <SidebarLink key={item.key} item={item} label={t(item.labelKey)} />
           ))}
@@ -92,21 +92,19 @@ function RailShell({ canExpand = false }: { canExpand?: boolean }) {
   const { t } = useT();
   const items = useVisibleNav();
   return (
-    <div className="flex min-h-screen bg-canvas" style={backdrop}>
+    <div className="flex h-screen overflow-hidden bg-canvas" style={backdrop}>
       <aside
         data-ui="sidebar"
-        className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3"
+        className="flex h-screen w-20 shrink-0 flex-col items-center overflow-hidden border-e border-line bg-surface py-3"
       >
-        {canExpand && <MenuToggle className="mb-1" />}
-        <Logo size={40} className="mb-3" />
-        <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
+        <nav className="nav-scroll flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5">
           {items.map((item) => (
             <RailLink key={item.key} item={item} label={t(item.labelKey)} />
           ))}
         </nav>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
+        <TopBar expandable={canExpand} />
         <MainArea />
       </div>
     </div>
@@ -248,36 +246,37 @@ function MenuLink(props: NavLinkProps & { to: string }) {
   );
 }
 
-/** The program's mark and name, then the company's own (owner, 2026-10-01). */
-function Brand() {
-  return (
-    <div className="space-y-3 px-4 py-4">
-      <div className="flex items-center gap-2">
-        <MenuToggle />
-        <Logo size={34} />
-        <Wordmark className="text-lg" />
-      </div>
-      <CompanyRow />
-    </div>
-  );
-}
-
-function CompanyRow() {
+/**
+ * The brand in the top bar (owner, 2026-10-14): the animated Evolvix mark and name at the start,
+ * before the search; then the company's own mark and name, shown bigger. Not in the side menu.
+ */
+function BrandCluster({ expandable }: { expandable?: boolean }) {
   const { data } = useBranding();
-  if (!data?.companyName) return null;
   return (
-    <div className="flex items-center gap-2 rounded-[var(--radius-app)] border border-line bg-surface-2 px-2 py-1.5">
-      <CompanyMark size={28} />
-      <CompanyName className="min-w-0 flex-1 truncate text-sm font-medium" />
+    <div className="flex min-w-0 shrink-0 items-center gap-2">
+      {expandable && <MenuToggle />}
+      <span className="flex shrink-0 items-center gap-2">
+        <span className="logo-anim">
+          <Logo size={30} />
+        </span>
+        <Wordmark className="hidden text-lg sm:inline" />
+      </span>
+      {data?.companyName && (
+        <span className="hidden min-w-0 items-center gap-2 border-s border-line ps-2.5 lg:flex">
+          <CompanyMark size={34} />
+          <CompanyName className="min-w-0 max-w-[14rem] truncate text-base font-semibold" />
+        </span>
+      )}
     </div>
   );
 }
 
-function TopBar() {
+function TopBar({ expandable = true }: { expandable?: boolean }) {
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-5 py-2.5 backdrop-blur">
+    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur">
+      <BrandCluster expandable={expandable} />
       <GlobalSearch />
-      <div className="ms-auto flex items-center gap-2">
+      <div className="ms-auto flex shrink-0 items-center gap-2">
         <ConnectionBadge />
         <NotificationBell />
         <PrefControls />
@@ -293,9 +292,11 @@ function TopBar() {
  * itself, or they would slide down inside it as the page grows (owner report 2026-09-30).
  */
 function MainArea(): ReactNode {
-  // The whole width of the screen (owner, 2026-10-05: "full screen on the computer").
+  // The whole width of the screen (owner, 2026-10-05: "full screen on the computer"). The page
+  // scrolls inside here, not the window (owner, 2026-10-14: one scroll on the inside, none outside);
+  // the builder pages' sticky side columns stick under the top bar against this scroll box.
   return (
-    <main className="min-w-0 flex-1 overflow-x-clip p-5 lg:p-6">
+    <main data-scroll-root className="min-w-0 flex-1 overflow-y-auto overflow-x-clip p-5 lg:p-6">
       <TabsView />
     </main>
   );

@@ -5,6 +5,10 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "تحسينات الواجهة: شعار Evolvix بقى في الشريط العلوي قبل البحث مع حركة خفيفة، واسم وشعار الشركة يظهروا أكبر جنبه؛ زر فتح/قفل القائمة بقى جنب الشعار في مكان أوضح؛ القائمة الجانبية لها تمرير واحد على حافتها الداخلية والصفحة تتمرر من جوه بدون شريط تمرير خارجي؛ وشاشة البدء لو السيرفر مش متاح بتوقف بعد شوية وتقول «غير متصل بالخادم» مع زر إعادة الاتصال بدل ما تفضل تحمّل.",
+          "en": "Interface polish: the Evolvix mark now sits in the top bar before the search with a gentle animation, and the company name and logo show bigger beside it; the open/close menu button moved next to the logo in a clearer spot; the side menu has one scroll on its inner edge and the page scrolls on the inside with no outer bar; and the start-up screen, when the server can't be reached, stops after a few seconds and shows 'not connected to the server' with a reconnect button instead of loading forever."
+        },
+        {
           "ar": "استيراد البيانات من ملف Excel (صفحة «استيراد البيانات»، للمالك): نزّل قالباً فارغاً أو ملف بيانات تجريبية، املأه بالأصناف والعملاء والموردين، وارفعه فيدخل كله البرنامج دفعة واحدة. كل صفحة وعمود يتعرّف عليه البرنامج بالعربي أو الإنجليزي، والأقسام والموردين الجدد تُنشأ تلقائياً، والمكرر يُتخطّى، وأي صف فيه مشكلة يظهر لك سببه.",
           "en": "Import data from an Excel file (the owner's 'Import data' page): download an empty template or a sample-data file, fill in items, customers and suppliers, and upload it to load them all at once. Each sheet and column is recognised in Arabic or English, new departments and suppliers are created automatically, duplicates are skipped, and any row with a problem is shown with its reason."
         },

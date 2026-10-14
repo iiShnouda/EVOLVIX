@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -27,6 +27,7 @@ import { LeavePrompt } from './components/LeavePrompt';
 import { PrintEditorHost } from './components/PrintEditor';
 import { setTabRoutes } from './components/shell/Tabs';
 import { isTabSwitch } from './lib/tabs';
+import { setScroll } from './lib/scrollRoot';
 import { startAppUpdates } from './lib/appUpdate';
 import { Spinner } from './components/ui';
 import { Logo } from './components/Logo';
@@ -102,18 +103,39 @@ function useRefetchOnLocale(): void {
   }, [locale]);
 }
 
-/** Silent session restore: try the refresh cookie once on load. */
-function useBootstrapAuth(): void {
+type BootState = 'checking' | 'ready' | 'unreachable';
+
+/**
+ * Start-up (owner, 2026-10-14): the splash runs while we reach the server; if it can't be reached
+ * within a few seconds we stop waiting and show "connection failed" with a retry, instead of
+ * spinning forever. When it answers, we restore the session silently from the refresh cookie.
+ */
+function useBoot(): { boot: BootState; retry: () => void } {
   const setAnonymous = useAuth((s) => s.setAnonymous);
-  useEffect(() => {
-    let active = true;
-    void api.refreshSession().then((ok) => {
-      if (active && !ok) setAnonymous();
-    });
-    return () => {
-      active = false;
-    };
+  const [boot, setBoot] = useState<BootState>('checking');
+
+  const run = useCallback(async () => {
+    setBoot('checking');
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+      window.clearTimeout(timer);
+      if (!res.ok) throw new Error('unreachable');
+    } catch {
+      window.clearTimeout(timer);
+      setBoot('unreachable');
+      return;
+    }
+    const ok = await api.refreshSession();
+    if (!ok) setAnonymous();
+    setBoot('ready');
   }, [setAnonymous]);
+
+  useEffect(() => {
+    void run();
+  }, [run]);
+  return { boot, retry: run };
 }
 
 function Splash() {
@@ -175,7 +197,8 @@ function ScrollReset() {
   const { pathname, state } = useLocation();
   useEffect(() => {
     if (isTabSwitch(state)) return;
-    window.scrollTo({ top: 0 });
+    // The page scrolls inside the main area now, not the window; reset whichever it is.
+    setScroll(0);
   }, [pathname, state]);
   return null;
 }
@@ -315,14 +338,14 @@ export default function App() {
   useApplyPrefs();
   useRefetchOnLocale();
   useConnectionMonitor();
-  useBootstrapAuth();
   useIdleLogout();
   useEffect(startAppUpdates, []);
+  const { boot, retry } = useBoot();
 
   return (
     <QueryClientProvider client={queryClient}>
       <UpdateNotice />
-      <RouterProvider router={router} />
+      {boot === 'unreachable' ? <OfflineGate onRetry={retry} /> : <RouterProvider router={router} />}
       <ConfirmHost />
     </QueryClientProvider>
   );
