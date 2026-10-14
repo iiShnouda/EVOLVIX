@@ -51,6 +51,14 @@
       ],
       "fixes": [
         {
+          "ar": "القائمة الجانبية بقى ليها تمرير مستقل بتاعها (مش بتحرّك الصفحة)، وفيه زر جنب شعار البرنامج يفتح ويقفل القائمة، وشيلنا «متصل» والسهم من تحتها.",
+          "en": "The side menu now scrolls on its own (without moving the page), there's a button next to the app logo to open and close it, and the 'connected' badge and the arrow were removed from its bottom."
+        },
+        {
+          "ar": "إضافة أو حذف حساب (خزينة/بنك) اتشالت من شاشة السحب والإيداع النقدي، ومكانها دلوقتي في صفحة الخزينة والبنوك.",
+          "en": "Adding or deleting a money account was removed from the cash withdraw/deposit screen; it now lives on the Cash & Banks page."
+        },
+        {
           "ar": "قائمة زر الإجراءات السريعة (شكل اللسان) تفتح في منتصف الشاشة بشكل مرتّب، بدل ما تكون طويلة وبها تمرير وفي غير مكانها.",
           "en": "The quick-action button's shortcut list (the tab shape) now opens neatly in the middle of the screen, instead of being tall, off-centre and scrolling."
         },

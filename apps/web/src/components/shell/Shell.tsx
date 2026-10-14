@@ -71,15 +71,13 @@ function SidebarShell() {
         className="sticky top-0 flex h-screen w-64 flex-col border-e border-line bg-surface"
       >
         <Brand />
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        {/* min-h-0 lets this scroll inside the fixed-height sidebar, on its own, instead of pushing
+            the whole page down (owner, 2026-10-14: the side menu has its own scroll now). */}
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-2">
           {items.map((item) => (
             <SidebarLink key={item.key} item={item} label={t(item.labelKey)} />
           ))}
         </nav>
-        <div className="flex items-center justify-between gap-2 border-t border-line p-3">
-          <ConnectionBadge />
-          <NavSizeToggle collapsed={false} />
-        </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
@@ -99,14 +97,13 @@ function RailShell({ canExpand = false }: { canExpand?: boolean }) {
         data-ui="sidebar"
         className="sticky top-0 flex h-screen w-20 flex-col items-center border-e border-line bg-surface py-3"
       >
+        {canExpand && <MenuToggle className="mb-1" />}
         <Logo size={40} className="mb-3" />
-        <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto">
+        <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
           {items.map((item) => (
             <RailLink key={item.key} item={item} label={t(item.labelKey)} />
           ))}
         </nav>
-        <ConnectionBadge showLabel={false} />
-        {canExpand && <NavSizeToggle collapsed />}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
@@ -200,9 +197,13 @@ function PhoneShell() {
   );
 }
 
-/** Shrink the side menu to icons, or open it again; remembered on this device. */
-function NavSizeToggle({ collapsed }: { collapsed: boolean }) {
+/**
+ * A hamburger next to the logo that opens or closes the side menu, remembered on this device
+ * (owner, 2026-10-14: a toggle by the logo instead of an arrow at the bottom).
+ */
+function MenuToggle({ className }: { className?: string }) {
   const { t } = useT();
+  const collapsed = usePrefs((s) => s.navCollapsed);
   const set = usePrefs((s) => s.setNavCollapsed);
   const label = t(collapsed ? 'shell.expand' : 'shell.collapse');
   return (
@@ -211,9 +212,9 @@ function NavSizeToggle({ collapsed }: { collapsed: boolean }) {
       onClick={() => set(!collapsed)}
       title={label}
       aria-label={label}
-      className="mt-2 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg ${className ?? ''}`}
     >
-      <Icon name="chevronRight" size={18} className={collapsed ? '' : 'rotate-180'} />
+      <Icon name="menu" size={20} />
     </button>
   );
 }
@@ -251,8 +252,9 @@ function MenuLink(props: NavLinkProps & { to: string }) {
 function Brand() {
   return (
     <div className="space-y-3 px-4 py-4">
-      <div className="flex items-center gap-2.5">
-        <Logo size={38} />
+      <div className="flex items-center gap-2">
+        <MenuToggle />
+        <Logo size={34} />
         <Wordmark className="text-lg" />
       </div>
       <CompanyRow />

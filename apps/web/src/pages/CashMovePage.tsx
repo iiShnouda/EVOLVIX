@@ -26,17 +26,14 @@ import { api } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
 import {
   useCreateCashTransfer,
-  useCreateMoneyAccount,
   useCreateVoucher,
   useDeleteExpenseCategory,
-  useDeleteMoneyAccount,
   useExpenseCategories,
   useMoneyAccounts,
   useOpenInvoices,
   useSaveExpenseCategory,
   useSettleDiscount,
 } from '../lib/queries';
-import { useWorkBranch } from '../stores/workBranch';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -537,11 +534,6 @@ function SideCard({
               </option>
             ))}
           </select>
-          <AccountManager
-            selected={accounts.find((a) => a.id === accountId) ?? null}
-            onAdded={(id) => onChange({ ...side, accountId: id })}
-            onDeleted={() => onChange({ ...side, accountId: '' })}
-          />
         </label>
       ) : (
         <PartyPicker
@@ -728,104 +720,5 @@ function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: 
         <p className="text-xs text-destructive">{errorText(t, save.error ?? remove.error)}</p>
       )}
     </div>
-  );
-}
-
-/**
- * Add a cash box (or bank, wallet) on the spot, or delete the picked one if no money has gone
- * through it yet (owner, 2026-10-02), for whoever may manage money accounts.
- */
-function AccountManager({
-  selected,
-  onAdded,
-  onDeleted,
-}: {
-  selected: MoneyAccount | null;
-  onAdded: (id: string) => void;
-  onDeleted: () => void;
-}) {
-  const { t } = useT();
-  const can = useCan();
-  const branchId = useWorkBranch();
-  const create = useCreateMoneyAccount();
-  const remove = useDeleteMoneyAccount();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<MoneyAccountKind>('CASH_BOX');
-  if (!can('money_accounts:manage')) return null;
-  return (
-    <span className="mt-1.5 block space-y-1.5">
-      <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        <button
-          type="button"
-          className="font-medium text-brand hover:underline"
-          onClick={() => setOpen((o) => !o)}
-        >
-          + {t('move.newAccount')}
-        </button>
-        {selected && !selected.isDefault && (
-          <button
-            type="button"
-            className="font-medium text-destructive hover:underline"
-            onClick={async () => {
-              if (!(await confirm({ message: t('move.deleteAccountAsk'), danger: true }))) return;
-              try {
-                await remove.mutateAsync(selected.id);
-                onDeleted();
-              } catch {
-                /* shown below */
-              }
-            }}
-          >
-            {t('move.deleteAccount')}
-          </button>
-        )}
-      </span>
-      {open && (
-        <span className="flex flex-wrap gap-1.5">
-          <input
-            className={`${field} min-w-40 flex-1`}
-            placeholder={t('move.accountName')}
-            maxLength={100}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <select
-            className={`${field} w-36`}
-            value={kind}
-            onChange={(e) => setKind(e.target.value as MoneyAccountKind)}
-          >
-            {(['CASH_BOX', 'BANK', 'WALLET', 'CUSTODY'] as const).map((k) => (
-              <option key={k} value={k}>
-                {t(`money.kind.${k}` as TranslationKey)}
-              </option>
-            ))}
-          </select>
-          <Button
-            size="sm"
-            icon="check"
-            disabled={!name.trim()}
-            loading={create.isPending}
-            onClick={async () => {
-              try {
-                const made = await create.mutateAsync({ name: name.trim(), kind, branchId });
-                setName('');
-                setOpen(false);
-                onAdded(made.id);
-              } catch {
-                /* shown below */
-              }
-            }}
-          >
-            {t('common.add')}
-          </Button>
-        </span>
-      )}
-      {(create.error || remove.error) && (
-        <span className="block text-xs text-destructive">
-          {errorText(t, create.error ?? remove.error)}
-        </span>
-      )}
-    </span>
   );
 }

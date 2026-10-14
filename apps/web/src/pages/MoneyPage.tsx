@@ -22,6 +22,7 @@ import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { confirm } from '../lib/confirm';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from '../components/ReportActions';
 import { useAuth } from '../stores/auth';
@@ -40,6 +41,7 @@ import {
   useReps,
   useSaveExpenseCategory,
   useUpdateMoneyAccount,
+  useDeleteMoneyAccount,
   useVouchers,
   useWarehouses,
   type VoucherKind,
@@ -548,6 +550,7 @@ function AddAccountSheet({ accounts, onClose }: { accounts: MoneyAccount[]; onCl
 function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }) {
   const { t } = useT();
   const update = useUpdateMoneyAccount();
+  const remove = useDeleteMoneyAccount();
   const [name, setName] = useState(a.name);
   const [number, setNumber] = useState(a.number ?? '');
   const [bankName, setBankName] = useState(a.bankName ?? '');
@@ -634,6 +637,9 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
       {update.error && (
         <p className="mt-3 text-sm text-destructive">{errorText(t, update.error)}</p>
       )}
+      {remove.error && (
+        <p className="mt-3 text-sm text-destructive">{errorText(t, remove.error)}</p>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           {a.kind === 'CASH_BOX' && a.isActive && !a.isDefault && (
@@ -674,6 +680,26 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
               onClick={() => void run({ isActive: true })}
             >
               {t('money.reopen')}
+            </Button>
+          )}
+          {/* Delete an account that no money has gone through yet (owner, 2026-10-14: moved here from
+              the cash-move screen). The default and main boxes can't be deleted. */}
+          {can('money_accounts:manage') && !a.isDefault && !a.isMain && !a.hasMovements && (
+            <Button
+              size="sm"
+              variant="dangerGhost"
+              disabled={remove.isPending}
+              onClick={async () => {
+                if (!(await confirm({ message: t('move.deleteAccountAsk'), danger: true }))) return;
+                try {
+                  await remove.mutateAsync(a.id);
+                  onClose();
+                } catch {
+                  /* shown below */
+                }
+              }}
+            >
+              {t('move.deleteAccount')}
             </Button>
           )}
         </div>
