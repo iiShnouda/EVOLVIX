@@ -100,21 +100,35 @@ public sealed class UpdateService
 }
 
 /// <summary>
-/// Looks for a new version on its own (owner, 2026-10-14: "why do I have to press check myself?"):
-/// soon after start and then every few hours it leaves a "check" request for the updater, so the
-/// Updates badge appears by itself when a new version is ready. It never updates on its own — pressing
-/// Update stays the owner's choice. It only checks while idle, so it never disturbs a running update.
+/// Keeps the server up to date on its own (owner, 2026-10-14: "the server didn't update by itself").
+/// Every little while it asks the updater to look for a new version; when one is there it updates by
+/// itself at a quiet moment — when nobody is connected to the app, or at night (company time, 2–5 am)
+/// — so nobody's work is cut off while the app restarts for a minute. A backup is taken first, like
+/// pressing Update. A failed update isn't retried for a few hours. The Update button still works
+/// any time for an update right now.
 /// </summary>
 public sealed class UpdateChecker : BackgroundService
 {
     private static readonly TimeSpan First = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan Every = TimeSpan.FromHours(6);
-    private readonly UpdateService _updates;
-    private readonly ILogger<UpdateChecker> _log;
+    private static readonly TimeSpan Tick = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan CheckEvery = TimeSpan.FromHours(1);
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromHours(6);
 
-    public UpdateChecker(UpdateService updates, ILogger<UpdateChecker> log)
+    private readonly UpdateService _updates;
+    private readonly PresenceTracker _presence;
+    private readonly BackupScheduler _backups;
+    private readonly IServiceScopeFactory _scopes;
+    private readonly ILogger<UpdateChecker> _log;
+    private DateTime _lastCheck = DateTime.MinValue;
+    private DateTime _lastApply = DateTime.MinValue;
+
+    public UpdateChecker(UpdateService updates, PresenceTracker presence, BackupScheduler backups,
+        IServiceScopeFactory scopes, ILogger<UpdateChecker> log)
     {
         _updates = updates;
+        _presence = presence;
+        _backups = backups;
+        _scopes = scopes;
         _log = log;
     }
 
@@ -126,14 +140,48 @@ public sealed class UpdateChecker : BackgroundService
         {
             try
             {
-                if (_updates.Read().State is "idle" or "failed") _updates.Request("check");
+                await StepAsync(ct);
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException)
             {
-                _log.LogWarning(e, "Automatic update check failed");
+                _log.LogWarning(e, "Automatic update step failed");
             }
-            if (!await Wait(Every, ct)) break;
+            if (!await Wait(Tick, ct)) break;
         }
+    }
+
+    private async Task StepAsync(CancellationToken ct)
+    {
+        var v = _updates.Read();
+        if (!v.Enabled || v.State is "waiting" or "checking" or "updating") return;
+        var now = DateTime.UtcNow;
+        var available = v.Behind > 0 || (v.Newest is not null && Releases.NewerThanCurrent(v.Newest).Count > 0);
+
+        if (available && v.State != "failed" && now - _lastApply > RetryAfter && Quiet())
+        {
+            _lastApply = now;
+            var latest = _backups.Folder is null ? null : _backups.Files().FirstOrDefault();
+            if (_backups.Folder is not null && (latest is null || now - latest.LastWriteTimeUtc > TimeSpan.FromMinutes(15)))
+                await _backups.RunAsync(ct);
+            _updates.Request("update");
+            _log.LogInformation("New version found: updating the server automatically");
+            await using var scope = _scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AuditService>()
+                .RecordAsync("system", "Evolvix", "auto_upgrade", "system_update", details: Releases.Current.Version);
+            return;
+        }
+        if (now - _lastCheck >= CheckEvery || v.State == "failed")
+        {
+            _lastCheck = now;
+            _updates.Request("check");
+        }
+    }
+
+    /// <summary>Nobody is using the app right now, or it's the middle of the night (company time).</summary>
+    private bool Quiet()
+    {
+        var hour = CompanyClock.Now.Hour;
+        return _presence.Snapshot().Count == 0 || hour is >= 2 and < 5;
     }
 
     private static async Task<bool> Wait(TimeSpan span, CancellationToken ct)
