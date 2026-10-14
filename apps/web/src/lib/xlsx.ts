@@ -42,7 +42,81 @@ const STYLES =
   '<xf numFmtId="4" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
   '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
+/** A single-sheet workbook (reports). */
 export function buildXlsx(sheet: Sheet): Uint8Array {
+  return buildWorkbook([sheet]);
+}
+
+/** A workbook with one sheet per tab (used by the data-import template and sample files). */
+export function buildWorkbook(sheets: Sheet[]): Uint8Array {
+  const list: Sheet[] = sheets.length ? sheets : [{ name: 'Sheet1', header: [], rows: [] }];
+  const bodies = list.map(worksheetXml);
+  const names = dedupeNames(list.map((s) => cleanName(s.name)));
+  const n = list.length;
+
+  const contentTypes =
+    `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    list
+      .map(
+        (_, i) =>
+          `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+      )
+      .join('') +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    '</Types>';
+
+  const workbookXml =
+    `${HEAD}<workbook xmlns="${NS}" xmlns:r="${REL}"><sheets>` +
+    names.map((nm, i) => `<sheet name="${xml(nm)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') +
+    '</sheets></workbook>';
+
+  const workbookRels =
+    `${HEAD}<Relationships xmlns="${PKG}">` +
+    list
+      .map(
+        (_, i) =>
+          `<Relationship Id="rId${i + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
+      )
+      .join('') +
+    `<Relationship Id="rId${n + 1}" Type="${REL}/styles" Target="styles.xml"/></Relationships>`;
+
+  return zip([
+    ['[Content_Types].xml', contentTypes],
+    [
+      '_rels/.rels',
+      `${HEAD}<Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    ],
+    ['xl/workbook.xml', workbookXml],
+    ['xl/_rels/workbook.xml.rels', workbookRels],
+    ...list.map((_, i) => [`xl/worksheets/sheet${i + 1}.xml`, bodies[i]!] as [string, string]),
+    ['xl/styles.xml', STYLES],
+  ]);
+}
+
+function cleanName(name: string): string {
+  return (
+    name
+      .replace(/[[\]:*?/\\]/g, ' ')
+      .trim()
+      .slice(0, 31) || 'Sheet1'
+  );
+}
+
+/** Excel refuses two tabs with the same name; make them unique. */
+function dedupeNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  return names.map((raw) => {
+    let name = raw;
+    for (let i = 2; seen.has(name.toLowerCase()); i++) name = `${raw.slice(0, 28)} ${i}`;
+    seen.add(name.toLowerCase());
+    return name;
+  });
+}
+
+function worksheetXml(sheet: Sheet): string {
   const title = sheet.title?.filter(Boolean) ?? [];
   const lines: { cells: Cell[]; bold: boolean }[] = [
     ...title.map((t) => ({ cells: [t] as Cell[], bold: false })),
@@ -88,43 +162,11 @@ export function buildXlsx(sheet: Sheet): Uint8Array {
         : '',
     )
     .join('');
-  const worksheet =
+  return (
     `${HEAD}<worksheet xmlns="${NS}"><sheetViews><sheetView workbookViewId="0"${sheet.rtl ? ' rightToLeft="1"' : ''}>` +
     `<pane ySplit="${headerRow}" topLeftCell="A${headerRow + 1}" activePane="bottomLeft" state="frozen"/>` +
-    `</sheetView></sheetViews>${cols ? `<cols>${cols}</cols>` : ''}<sheetData>${rowsXml}</sheetData></worksheet>`;
-
-  const name =
-    sheet.name
-      .replace(/[[\]:*?/\\]/g, ' ')
-      .trim()
-      .slice(0, 31) || 'Sheet1';
-  return zip([
-    [
-      '[Content_Types].xml',
-      `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-        '<Default Extension="xml" ContentType="application/xml"/>' +
-        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
-        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
-        '</Types>',
-    ],
-    [
-      '_rels/.rels',
-      `${HEAD}<Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    ],
-    [
-      'xl/workbook.xml',
-      `${HEAD}<workbook xmlns="${NS}" xmlns:r="${REL}"><sheets><sheet name="${xml(name)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
-    ],
-    [
-      'xl/_rels/workbook.xml.rels',
-      `${HEAD}<Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/>` +
-        `<Relationship Id="rId2" Type="${REL}/styles" Target="styles.xml"/></Relationships>`,
-    ],
-    ['xl/worksheets/sheet1.xml', worksheet],
-    ['xl/styles.xml', STYLES],
-  ]);
+    `</sheetView></sheetViews>${cols ? `<cols>${cols}</cols>` : ''}<sheetData>${rowsXml}</sheetData></worksheet>`
+  );
 }
 
 function column(i: number): string {

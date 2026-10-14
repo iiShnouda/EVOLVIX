@@ -1220,3 +1220,12 @@ public record SystemUpdatesDto(bool Enabled, string Version, IReadOnlyList<SKB.A
     string? Error, DateTime? CheckedAt, DateTime? StartedAt, DateTime? FinishedAt);
 public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, List<SystemServiceDto> Services, SystemAppDto App,
     SystemDatabaseDto Database, SystemAssistantDto Assistant, SystemBackupsDto Backups, SystemStorageDto Storage);
+
+/// <summary>
+/// The result of a data import (owner, 2026-10-14): for each kind (items, customers, suppliers) how
+/// many rows were added and how many skipped, and the rows that couldn't be read with why.
+/// </summary>
+public record ImportGroupDto(string Kind, int Added, int Skipped, ImportIssueDto[] Issues);
+/// <summary>One row that couldn't be imported: its sheet, 1-based row number and the reason.</summary>
+public record ImportIssueDto(string Sheet, int Row, string Message);
+public record ImportResultDto(ImportGroupDto[] Groups, string[] UnknownSheets);

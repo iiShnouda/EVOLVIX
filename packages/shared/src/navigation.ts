@@ -6,6 +6,7 @@ export type IconName =
   | 'dashboard'
   | 'server'
   | 'update'
+  | 'upload'
   | 'sales'
   | 'purchases'
   | 'receipts'
@@ -195,6 +196,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'update',
     path: '/updates',
     permission: 'system:update',
+  },
+  // The owner's bulk import from an Excel file (owner, 2026-10-14).
+  {
+    key: 'import',
+    labelKey: 'nav.import',
+    icon: 'upload',
+    path: '/import',
+    permission: 'data:import',
   },
   {
     key: 'audit',

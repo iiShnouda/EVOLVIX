@@ -160,6 +160,11 @@ public static class Permissions
     /// 2026-10-11). The owner's alone, like the monitor.
     /// </summary>
     public const string SystemUpdate = "system:update";
+    /// <summary>
+    /// Load items, customers and suppliers in bulk from an Excel file the owner uploads (owner,
+    /// 2026-10-14). The owner's alone, like the monitor and updates (see OwnerOnly).
+    /// </summary>
+    public const string DataImport = "data:import";
     public const string AnalyticsView = "analytics:view";
     public const string SettingsView = "settings:view";
     public const string SettingsManage = "settings:manage";
@@ -290,11 +295,11 @@ public static class Permissions
         NotesView, NotesReceive, NotesIssue, NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse,
         NotesCancel, NotesLost,
         PayrollView, EmployeesManage, AttendanceEdit, PayrollAdjust, PayrollAdvance, PayrollPost, PayrollPay,
-        LabelsPrint, ChatUse, ChatMonitor, ChatManage, AiChat, AiScan, SystemMonitor, SystemUpdate,
+        LabelsPrint, ChatUse, ChatMonitor, ChatManage, AiChat, AiScan, SystemMonitor, SystemUpdate, DataImport,
     };
 
     /// <summary>Held by the owner alone: never by the admin, a role or a grant.</summary>
-    public static readonly string[] OwnerOnly = { SystemMonitor, SystemUpdate };
+    public static readonly string[] OwnerOnly = { SystemMonitor, SystemUpdate, DataImport };
 }
 
 public static class RolePermissions

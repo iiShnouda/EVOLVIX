@@ -24,6 +24,7 @@ import type {
   ChatMessage,
   AssistantConversation,
   SystemMonitor,
+  ImportResult,
   SystemUpdates,
   AssistantStatus,
   AssistantTurn,
@@ -2465,5 +2466,19 @@ export function useSystemMonitor() {
     queryKey: ['system', 'monitor'],
     queryFn: () => api.get<SystemMonitor>('/system/monitor'),
     refetchInterval: 5_000,
+  });
+}
+
+/** Import items, customers and suppliers from an uploaded Excel file (owner only). */
+export function useImportData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: Blob) => api.upload<ImportResult>('/import', file, false, 'POST'),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['products'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['departments'] });
+    },
   });
 }

@@ -118,6 +118,7 @@ export type Permission =
   | 'ai:scan'
   | 'system:monitor'
   | 'system:update'
+  | 'data:import'
   | 'branches:delete'
   | 'warehouses:delete'
   | 'units:manage'
@@ -2744,4 +2745,25 @@ export interface SystemUpdates {
   checkedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+}
+
+/** One row an import couldn't read: its sheet, 1-based row number and why. */
+export interface ImportIssue {
+  sheet: string;
+  row: number;
+  message: string;
+}
+
+/** How one kind fared in an import (owner, 2026-10-14). */
+export interface ImportGroup {
+  kind: 'items' | 'customers' | 'suppliers';
+  added: number;
+  skipped: number;
+  issues: ImportIssue[];
+}
+
+/** The result of importing an uploaded Excel file: a group per kind, plus any sheets not recognised. */
+export interface ImportResult {
+  groups: ImportGroup[];
+  unknownSheets: string[];
 }
