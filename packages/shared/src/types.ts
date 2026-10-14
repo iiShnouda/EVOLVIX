@@ -2675,6 +2675,11 @@ export interface SystemMonitor {
     temperatureC: number | null;
     uptimeSeconds: number;
     disks: SystemDisk[];
+    /** Internet/network usage: total bytes in/out since boot, and the live rate per second. */
+    netRxBytes: number;
+    netTxBytes: number;
+    netRxPerSec: number;
+    netTxPerSec: number;
   };
   services: SystemService[];
   app: {

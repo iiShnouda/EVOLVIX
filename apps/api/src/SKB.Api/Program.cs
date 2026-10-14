@@ -51,6 +51,8 @@ builder.Services.AddHttpClient<AssistantService>();
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<SystemMonitor>();
 builder.Services.AddSingleton<UpdateService>();
+// Looks for a new version on its own, so the owner doesn't have to press "check" (owner, 2026-10-14).
+builder.Services.AddHostedService<UpdateChecker>();
 builder.Services.AddScoped<StockValuation>();
 builder.Services.AddScoped<PermissionService>();
 builder.Services.AddScoped<NotificationService>();

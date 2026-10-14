@@ -2582,6 +2582,8 @@ export const en = {
   'sys.model': 'Machine',
   'sys.uptime': 'Up for',
   'sys.load': 'Load average',
+  'sys.network': 'Internet now (in / out)',
+  'sys.networkTotal': 'Internet since start',
   'sys.swap': 'Swap',
   'sys.backupDisk': 'Backups disk',
   'sys.app': 'The app',
@@ -2667,6 +2669,7 @@ export const en = {
   'updates.updateNow': 'Update now',
   'updates.retry': 'Try again',
   'updates.check': 'Check for updates',
+  'updates.autoCheck': 'The server checks for a new version on its own; you can also check now.',
   'updates.confirm':
     'The app will pause for a moment for everyone while it updates; a backup is made first. Continue?',
   'updates.step.download': 'Downloading',

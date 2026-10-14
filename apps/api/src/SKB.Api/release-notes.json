@@ -2,8 +2,16 @@
   "releases": [
     {
       "version": "1.10.0",
-      "date": "2026-10-13",
+      "date": "2026-10-14",
       "features": [
+        {
+          "ar": "البرنامج بيبحث عن إصدار جديد لوحده كل فترة، فمش لازم تدوس «البحث عن تحديث» بنفسك؛ أول ما يبقى في جديد بيظهر تنبيه، والتحديث نفسه يفضل باختيارك.",
+          "en": "The app now checks for a new version on its own periodically — you no longer have to press 'Check for updates'; when one is ready a badge appears, and applying the update stays your choice."
+        },
+        {
+          "ar": "صفحة مراقبة السيرفر بقت تعرض استهلاك الإنترنت: الوارد والصادر الآن، والإجمالي منذ تشغيل الجهاز.",
+          "en": "The server monitor now shows the internet usage: in and out right now, and the total since the machine started."
+        },
         {
           "ar": "شاشة بدء بهوية Evolvix (اسم التطبيق) تظهر لحظة فتح البرنامج على الويب والآيفون والأندرويد والويندوز، فلا توجد شاشة فارغة أثناء التحميل.",
           "en": "An Evolvix-branded startup screen (the app's own name) shows the instant the program opens on web, iPhone, Android and Windows, so there is no blank screen while it loads."

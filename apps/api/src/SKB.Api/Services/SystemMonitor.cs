@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.NetworkInformation;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
@@ -45,10 +46,12 @@ public sealed class SystemMonitor
         var cpuBefore = CpuTimes();
         var partsBefore = Parts.ToDictionary(p => p, PartCpuMicros);
         var appBefore = me.TotalProcessorTime;
+        var netBefore = NetCounters();
         var clock = Stopwatch.StartNew();
         await Task.Delay(400, ct);
         var cpuAfter = CpuTimes();
         var partsAfter = Parts.ToDictionary(p => p, PartCpuMicros);
+        var netAfter = NetCounters();
         me.Refresh();
         var appCpu = me.TotalProcessorTime - appBefore;
         var elapsedMicros = clock.Elapsed.TotalMicroseconds;
@@ -59,10 +62,14 @@ public sealed class SystemMonitor
             ? Math.Round(100.0 * (b.Total - a.Total - (b.Idle - a.Idle)) / (b.Total - a.Total), 1)
             : 0;
         var (memTotal, memAvailable, swapTotal, swapFree) = Memory();
+        var elapsedSec = clock.Elapsed.TotalSeconds;
+        long Rate(long before, long after) =>
+            elapsedSec > 0 ? (long)Math.Max(0, (after - before) / elapsedSec) : 0;
 
         var machine = new SystemMachineDto(
             Model(), Processor(), SystemName(), cores, cpu, Load(0), Load(1), Load(2),
-            memTotal, memAvailable, swapTotal, swapFree, Temperature(), Uptime(), Disks());
+            memTotal, memAvailable, swapTotal, swapFree, Temperature(), Uptime(), Disks(),
+            netAfter.Rx, netAfter.Tx, Rate(netBefore.Rx, netAfter.Rx), Rate(netBefore.Tx, netAfter.Tx));
 
         var app = new SystemAppDto(
             me.WorkingSet64, GC.GetTotalMemory(false), me.Threads.Count,
@@ -303,6 +310,31 @@ public sealed class SystemMonitor
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Total bytes in and out over every real network card (loopback aside), since the machine came
+    /// up (owner, 2026-10-14: "the internet usage on the server"). Sampled twice for the live rate.
+    /// </summary>
+    private static (long Rx, long Tx) NetCounters()
+    {
+        long rx = 0, tx = 0;
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                try
+                {
+                    var s = ni.GetIPStatistics();
+                    rx += s.BytesReceived;
+                    tx += s.BytesSent;
+                }
+                catch (NetworkInformationException) { /* some interfaces have no stats */ }
+            }
+        }
+        catch (NetworkInformationException) { /* no network info on this host */ }
+        return (rx, tx);
     }
 
     /// <summary>

@@ -25,6 +25,9 @@ public sealed class UpdateService
     public UpdateService(IConfiguration config) =>
         _folder = config["Updates:Folder"] is { Length: > 0 } f ? f : null;
 
+    /// <summary>True when the server shares an updates folder, so checking/updating is possible.</summary>
+    public bool Configured => _folder is not null;
+
     /// <summary>What the server's updater last wrote (all optional: it is read as it comes).</summary>
     public sealed record Status(string? State, string? Step, string? Error, int? Behind, DateTime? CheckedAt,
         DateTime? StartedAt, DateTime? FinishedAt);
@@ -93,5 +96,56 @@ public sealed class UpdateService
         var part = path + ".part";
         File.WriteAllText(part, what);
         File.Move(part, path, overwrite: true);
+    }
+}
+
+/// <summary>
+/// Looks for a new version on its own (owner, 2026-10-14: "why do I have to press check myself?"):
+/// soon after start and then every few hours it leaves a "check" request for the updater, so the
+/// Updates badge appears by itself when a new version is ready. It never updates on its own — pressing
+/// Update stays the owner's choice. It only checks while idle, so it never disturbs a running update.
+/// </summary>
+public sealed class UpdateChecker : BackgroundService
+{
+    private static readonly TimeSpan First = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan Every = TimeSpan.FromHours(6);
+    private readonly UpdateService _updates;
+    private readonly ILogger<UpdateChecker> _log;
+
+    public UpdateChecker(UpdateService updates, ILogger<UpdateChecker> log)
+    {
+        _updates = updates;
+        _log = log;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        if (!_updates.Configured) return; // no updater on this server
+        if (!await Wait(First, ct)) return;
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (_updates.Read().State is "idle" or "failed") _updates.Request("check");
+            }
+            catch (Exception e)
+            {
+                _log.LogWarning(e, "Automatic update check failed");
+            }
+            if (!await Wait(Every, ct)) break;
+        }
+    }
+
+    private static async Task<bool> Wait(TimeSpan span, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(span, ct);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 }

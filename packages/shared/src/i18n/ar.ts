@@ -2568,6 +2568,8 @@ export const ar: TranslationDictionary = {
   'sys.model': 'الجهاز',
   'sys.uptime': 'مدة التشغيل',
   'sys.load': 'متوسط الحمل',
+  'sys.network': 'الإنترنت الآن (داخل / خارج)',
+  'sys.networkTotal': 'الإنترنت منذ التشغيل',
   'sys.swap': 'الذاكرة الاحتياطية',
   'sys.backupDisk': 'قرص النسخ الاحتياطية',
   'sys.app': 'البرنامج',
@@ -2653,6 +2655,7 @@ export const ar: TranslationDictionary = {
   'updates.updateNow': 'تحديث الآن',
   'updates.retry': 'إعادة المحاولة',
   'updates.check': 'البحث عن تحديث',
+  'updates.autoCheck': 'السيرفر بيبحث عن إصدار جديد لوحده، وتقدر تبحث دلوقتي كمان.',
   'updates.confirm':
     'سيتوقف البرنامج لحظات لجميع المستخدمين أثناء التحديث، وتُحفظ نسخة احتياطية قبله. هل تريد المتابعة؟',
   'updates.step.download': 'تنزيل الإصدار',

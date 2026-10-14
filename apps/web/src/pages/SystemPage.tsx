@@ -107,6 +107,20 @@ function Body({ d }: { d: SystemMonitor }) {
             value={[m.load1, m.load5, m.load15].map((x) => n(x)).join(' · ')}
             ltr
           />
+          {(m.netRxBytes > 0 || m.netTxBytes > 0) && (
+            <>
+              <Row
+                label={t('sys.network')}
+                value={`↓ ${bytes(m.netRxPerSec)}/s · ↑ ${bytes(m.netTxPerSec)}/s`}
+                ltr
+              />
+              <Row
+                label={t('sys.networkTotal')}
+                value={`↓ ${bytes(m.netRxBytes)} · ↑ ${bytes(m.netTxBytes)}`}
+                ltr
+              />
+            </>
+          )}
           {m.swapTotal > 0 && (
             <Row
               label={t('sys.swap')}

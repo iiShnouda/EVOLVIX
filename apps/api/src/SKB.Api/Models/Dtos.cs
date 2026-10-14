@@ -1196,7 +1196,8 @@ public record SystemDiskDto(string Role, long Total, long Free);
 /// <param name="Model">The machine (a Raspberry Pi's board, a PC's maker and model); System: Linux and its kernel, or Windows.</param>
 public record SystemMachineDto(string Model, string Processor, string System, int Cores, double CpuPercent,
     double Load1, double Load5, double Load15, long MemoryTotal, long MemoryAvailable, long SwapTotal, long SwapFree,
-    double? TemperatureC, long UptimeSeconds, List<SystemDiskDto> Disks);
+    double? TemperatureC, long UptimeSeconds, List<SystemDiskDto> Disks,
+    long NetRxBytes = 0, long NetTxBytes = 0, long NetRxPerSec = 0, long NetTxPerSec = 0);
 /// <summary>One part of the server (app, db, assistant, speech, voice); figures null where the machine doesn't tell.</summary>
 public record SystemServiceDto(string Key, bool Running, double? CpuPercent, long? MemoryBytes);
 public record SystemAppDto(long MemoryBytes, long ManagedBytes, int Threads, long UptimeSeconds, string Version);
