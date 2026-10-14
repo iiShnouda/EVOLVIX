@@ -48,6 +48,8 @@
       #boot {
         position: fixed;
         inset: 0;
+        z-index: 2147483000;
+        transition: opacity 0.22s ease;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -68,6 +70,10 @@
           color-mix(in srgb, var(--boot-brand) 11%, var(--boot-bg)),
           var(--boot-bg) 72%
         );
+      }
+      #boot.leaving {
+        opacity: 0;
+        pointer-events: none;
       }
       #boot .stage {
         position: relative;
@@ -266,7 +272,7 @@
     </style>
   </head>
   <body>
-    <div id="root">
+    <div id="root"></div>
       <div id="boot">
         <div class="stage">
           <div class="halo" aria-hidden="true"></div>
@@ -320,7 +326,6 @@
           </button>
         </div>
       </div>
-    </div>
     <script>
       // The splash shows ONE language — the last one used on this device (Arabic by default for a
       // new install). The app's own language preference is kept under "skb.prefs"; read it so the
@@ -340,11 +345,11 @@
         var retry = document.getElementById('boot-retry');
         if (retry) retry.textContent = BOOT_AR ? 'إعادة المحاولة' : 'Retry';
       })();
-      // If React hasn't replaced #root after a while, the code didn't load or the server is down.
+      // If the app hasn't taken the splash away after a while, the code didn't load or the server is down.
       (function () {
         setTimeout(function () {
           var boot = document.getElementById('boot');
-          if (!boot) return; // React mounted and replaced the splash — all good.
+          if (!boot) return; // the app is up and took the splash away — all good.
           boot.className = 'failed';
           var msg = document.getElementById('boot-msg');
           if (msg)

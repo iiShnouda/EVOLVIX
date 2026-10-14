@@ -9,9 +9,9 @@ export const BACKDROPS = ['none', 'evolvix', 'company', 'custom'] as const;
 export type Backdrop = (typeof BACKDROPS)[number];
 /**
  * The quick-action button's shape (owner, 2026-10-11): a tab tucked into the screen's edge, a round
- * button floating anywhere, or a half-round tab always showing on the edge.
+ * button floating anywhere (the edge tab was taken out 2026-10-14, to be redesigned).
  */
-export const QUICK_SHAPES = ['dock', 'bubble', 'tab'] as const;
+export const QUICK_SHAPES = ['dock', 'bubble'] as const;
 export type QuickShape = (typeof QUICK_SHAPES)[number];
 
 interface PrefsState {

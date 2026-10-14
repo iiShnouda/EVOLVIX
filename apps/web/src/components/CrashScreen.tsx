@@ -3,12 +3,14 @@ import { useRouteError } from 'react-router-dom';
 import { Button } from './ui';
 import { Logo } from './Logo';
 import { useT } from '../lib/i18n';
+import { hideBootSplash } from '../lib/bootSplash';
 
 /** Shown instead of a page that failed while drawing: start again, or go to the dashboard. */
 export function CrashScreen() {
   const { t } = useT();
   const error = useRouteError();
   useEffect(() => console.error(error), [error]);
+  useEffect(hideBootSplash, []);
   return (
     <div className="grid min-h-screen place-items-center bg-canvas p-4 text-center">
       <div className="flex max-w-sm flex-col items-center gap-3">

@@ -28,9 +28,8 @@ import { PrintEditorHost } from './components/PrintEditor';
 import { setTabRoutes } from './components/shell/Tabs';
 import { isTabSwitch } from './lib/tabs';
 import { setScroll } from './lib/scrollRoot';
+import { BootDone } from './lib/bootSplash';
 import { startAppUpdates } from './lib/appUpdate';
-import { Spinner } from './components/ui';
-import { Logo } from './components/Logo';
 import { CrashScreen } from './components/CrashScreen';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -118,17 +117,17 @@ function useBoot(): { boot: BootState; retry: () => void } {
     setBoot('checking');
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 8000);
-    try {
-      const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
-      window.clearTimeout(timer);
-      if (!res.ok) throw new Error('unreachable');
-    } catch {
-      window.clearTimeout(timer);
+    // Both at once, so a running server costs one round trip, not two.
+    const reachable = fetch(`${API_BASE}/health`, { signal: controller.signal })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => window.clearTimeout(timer));
+    const restored = api.refreshSession();
+    if (!(await reachable)) {
       setBoot('unreachable');
       return;
     }
-    const ok = await api.refreshSession();
-    if (!ok) setAnonymous();
+    if (!(await restored)) setAnonymous();
     setBoot('ready');
   }, [setAnonymous]);
 
@@ -138,15 +137,9 @@ function useBoot(): { boot: BootState; retry: () => void } {
   return { boot, retry: run };
 }
 
+/** While starting, the index.html splash stays on screen (see lib/bootSplash); nothing extra here. */
 function Splash() {
-  return (
-    <div className="grid min-h-screen place-items-center bg-canvas text-muted">
-      <div className="flex flex-col items-center gap-3">
-        <Logo size={56} />
-        <Spinner size={22} />
-      </div>
-    </div>
-  );
+  return null;
 }
 
 /** Guards the app area: requires auth, and blocks all data when offline. */
@@ -161,22 +154,26 @@ function ProtectedApp() {
   // Server-authoritative security: nothing is readable without a live connection.
   if (connection === 'offline') {
     return (
-      <OfflineGate
-        onRetry={async () => {
-          setConnState('connecting');
-          try {
-            const res = await fetch(`${API_BASE}/health`);
-            setConnState(res.ok ? 'online' : 'offline');
-          } catch {
-            setConnState('offline');
-          }
-        }}
-      />
+      <>
+        <BootDone />
+        <OfflineGate
+          onRetry={async () => {
+            setConnState('connecting');
+            try {
+              const res = await fetch(`${API_BASE}/health`);
+              setConnState(res.ok ? 'online' : 'offline');
+            } catch {
+              setConnState('offline');
+            }
+          }}
+        />
+      </>
     );
   }
 
   return (
     <>
+      <BootDone />
       <CompanyClock />
       <RememberPage />
       <ScrollReset />
@@ -252,7 +249,12 @@ function Landing() {
 function LoginRoute() {
   const status = useAuth((s) => s.status);
   if (status === 'authenticated') return <Navigate to="/" replace />;
-  return <LoginPage />;
+  return (
+    <>
+      <BootDone />
+      <LoginPage />
+    </>
+  );
 }
 
 /** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
@@ -345,7 +347,14 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <UpdateNotice />
-      {boot === 'unreachable' ? <OfflineGate onRetry={retry} /> : <RouterProvider router={router} />}
+      {boot === 'unreachable' ? (
+        <>
+          <BootDone />
+          <OfflineGate onRetry={retry} />
+        </>
+      ) : (
+        <RouterProvider router={router} />
+      )}
       <ConfirmHost />
     </QueryClientProvider>
   );

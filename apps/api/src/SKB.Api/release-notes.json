@@ -5,12 +5,12 @@
       "date": "2026-10-14",
       "features": [
         {
-          "ar": "زر الإجراءات السريعة بقى ظاهر دايماً وواضح على حافة الشاشة (مش بيختفي ولا صعب توصله)، ويكبر شوية لما تقرب منه، وشغّال بنفس الوضوح على الكمبيوتر والموبايل؛ وقائمة الاختصارات بتفتح في مكان ثابت جنب الزر وبتفضل كاملة على الشاشة.",
-          "en": "The quick-action button now stays clearly on the screen's edge at all times (no more hiding or being hard to reach), grows a little as you approach it, and works the same on computer and phone; its shortcuts menu now opens in a steady spot right beside the button and always stays fully on screen."
+          "ar": "زر الإجراءات السريعة رجع زي ما كان، واتشال منه شكل «نقطة صغيرة تكبر عند الاقتراب» مؤقتاً لحد ما يتعمل من جديد.",
+          "en": "The quick-action button is back to how it was, and its 'small dot that grows as you approach' shape is taken out for now, to be redesigned."
         },
         {
-          "ar": "تحسينات الواجهة: شعار Evolvix بقى في الشريط العلوي قبل البحث مع حركة خفيفة، واسم وشعار الشركة يظهروا أكبر جنبه؛ زر فتح/قفل القائمة بقى جنب الشعار في مكان أوضح؛ القائمة الجانبية لها تمرير واحد على حافتها الداخلية والصفحة تتمرر من جوه بدون شريط تمرير خارجي؛ وشاشة البدء لو السيرفر مش متاح بتوقف بعد شوية وتقول «غير متصل بالخادم» مع زر إعادة الاتصال بدل ما تفضل تحمّل.",
-          "en": "Interface polish: the Evolvix mark now sits in the top bar before the search with a gentle animation, and the company name and logo show bigger beside it; the open/close menu button moved next to the logo in a clearer spot; the side menu has one scroll on its inner edge and the page scrolls on the inside with no outer bar; and the start-up screen, when the server can't be reached, stops after a few seconds and shows 'not connected to the server' with a reconnect button instead of loading forever."
+          "ar": "تحسينات الواجهة: شعار Evolvix بقى في الشريط العلوي قبل البحث مع حركة خفيفة، واسم وشعار الشركة يظهروا أكبر جنبه؛ زر فتح/قفل القائمة بقى جنب الشعار في مكان أوضح؛ القائمة الجانبية لها تمرير واحد على حافتها الداخلية والصفحة تتمرر من جوه بدون شريط تمرير خارجي؛ وشاشة البدء لو السيرفر مش متاح بتوقف بعد شوية وتقول «غير متصل بالخادم» مع زر إعادة الاتصال بدل ما تفضل تحمّل. وبقت شاشة تحميل واحدة بس (شاشة Evolvix)، وبتختفي أول ما البرنامج يجهز من غير انتظار زيادة.",
+          "en": "Interface polish: the Evolvix mark now sits in the top bar before the search with a gentle animation, and the company name and logo show bigger beside it; the open/close menu button moved next to the logo in a clearer spot; the side menu has one scroll on its inner edge and the page scrolls on the inside with no outer bar; and the start-up screen, when the server can't be reached, stops after a few seconds and shows 'not connected to the server' with a reconnect button instead of loading forever. There is now a single start-up screen (the Evolvix one), and it goes away as soon as the app is ready, with no extra wait."
         },
         {
           "ar": "استيراد البيانات من ملف Excel (صفحة «استيراد البيانات»، للمالك): نزّل قالباً فارغاً أو ملف بيانات تجريبية، املأه بالأصناف والعملاء والموردين، وارفعه فيدخل كله البرنامج دفعة واحدة. كل صفحة وعمود يتعرّف عليه البرنامج بالعربي أو الإنجليزي، والأقسام والموردين الجدد تُنشأ تلقائياً، والمكرر يُتخطّى، وأي صف فيه مشكلة يظهر لك سببه.",

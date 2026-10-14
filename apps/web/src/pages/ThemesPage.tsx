@@ -100,20 +100,13 @@ function QuickShapePicker() {
         <Logo size={16} className="rounded-md" />
       </span>
     ),
-    tab: (
-      <span
-        className={`absolute top-1/2 ${side} flex h-6 w-1.5 -translate-y-1/2 items-center justify-center bg-brand ${
-          rtl ? 'rounded-s-full' : 'rounded-e-full'
-        }`}
-      />
-    ),
   };
   return (
     <Card className="space-y-3">
       <h2 className="text-sm font-semibold">{t('themes.quickShape')}</h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {QUICK_SHAPES.map((shape) => {
-          const on = quickShape === shape;
+          const on = (quickShape === 'bubble' ? 'bubble' : 'dock') === shape;
           return (
             <button
               key={shape}
