@@ -1,5 +1,5 @@
 import { confirm } from '../lib/confirm';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   formatDate,
@@ -36,6 +36,19 @@ export function UpdatesPage() {
   const { t } = useT();
   const updates = useSystemUpdates();
   const u = updates.data;
+  const qc = useQueryClient();
+  // Opening the page looks for a new version straight away, unless it just did (owner, 2026-10-14).
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || !u?.enabled || u.state !== 'idle') return;
+    const last = u.checkedAt ? Date.parse(u.checkedAt) : 0;
+    if (Date.now() - last < 2 * 60_000) return;
+    asked.current = true;
+    void api
+      .post('/system/updates/check')
+      .catch(() => undefined)
+      .finally(() => void qc.invalidateQueries({ queryKey: ['system', 'updates'] }));
+  }, [u, qc]);
 
   return (
     <div className="space-y-4">

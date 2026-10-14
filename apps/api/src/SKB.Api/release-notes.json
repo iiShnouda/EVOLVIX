@@ -21,8 +21,8 @@
           "en": "Session safety: the app can sign out on its own after a stretch with no use (you pick the delay in the account menu, or turn it off), and a 'Sign out of all devices' button ends the session on every device at once — handy if a phone or computer is lost or might have a virus."
         },
         {
-          "ar": "السيرفر بيحدّث نفسه لوحده: بيدوّر على إصدار جديد كل ساعة، ولما يلاقي بيعمل نسخة احتياطية ويحدّث تلقائياً في وقت هادي (لما مفيش حد فاتح البرنامج، أو بالليل من ٢ لـ ٥ الفجر) عشان محدش شغله يتقطع. وزر «تحديث الآن» لسه موجود لو عاوز تحدّث فوراً.",
-          "en": "The server now updates itself: it looks for a new version every hour and, when one is out, takes a backup and updates automatically at a quiet moment (when nobody has the app open, or at night between 2 and 5 am) so nobody's work is cut off. The 'Update now' button still updates right away."
+          "ar": "السيرفر بيدوّر على إصدار جديد لوحده كل ربع ساعة، وكمان أول ما تفتح صفحة التحديثات؛ أول ما يبقى في جديد بتظهر علامة على «التحديثات» والصفحة تقولك، وإنت اللي بتدوس «تحديث الآن».",
+          "en": "The server looks for a new version on its own every 15 minutes, and also as soon as you open the Updates page; when one is out a badge appears on 'Updates' and the page tells you, and you press 'Update now'."
         },
         {
           "ar": "صفحة مراقبة السيرفر بقت تعرض استهلاك الإنترنت: الوارد والصادر الآن، والإجمالي منذ تشغيل الجهاز.",
