@@ -53,7 +53,10 @@ public sealed class ImportController : ControllerBase
         var createdProducts = new List<Guid>();
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        foreach (var sheet in workbook.Sheets)
+        // Suppliers and customers first, so an item naming a supplier finds the full supplier row
+        // from the file (phone, address, contact) instead of creating a bare one by name.
+        static int Order(string? kind) => kind switch { "suppliers" => 0, "customers" => 1, "items" => 2, _ => 3 };
+        foreach (var sheet in workbook.Sheets.OrderBy(sh => Order(KindOf(sh.Name))))
         {
             var kind = KindOf(sheet.Name);
             if (kind is null) { if (sheet.Rows.Count > 0) unknown.Add(sheet.Name); continue; }

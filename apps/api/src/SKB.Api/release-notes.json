@@ -79,6 +79,14 @@
       ],
       "fixes": [
         {
+          "ar": "شاشة التحميل مش بتظهر خالص لو البرنامج فتح بسرعة، بتظهر بس لو التحميل خد وقت.",
+          "en": "The start-up screen no longer flashes when the app opens quickly; it only shows if loading takes a moment."
+        },
+        {
+          "ar": "استيراد البيانات: بيانات الموردين (التليفون والعنوان والمسؤول) بقت بتتحفظ صح حتى لو الأصناف في نفس الملف بتذكر نفس المورد.",
+          "en": "Data import: suppliers' phone, address and contact are now kept even when items in the same file name the same supplier."
+        },
+        {
           "ar": "شريط البرنامج العلوي بقى ثابت اللون من غير التغبيش (blur).",
           "en": "The top bar is now solid, without the blur."
         },
