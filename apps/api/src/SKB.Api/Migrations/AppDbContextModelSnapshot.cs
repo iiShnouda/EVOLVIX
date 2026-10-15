@@ -539,6 +539,17 @@ namespace SKB.Api.Migrations
                     b.Property<bool>("HideNewPlaces")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid>("InstallId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("LicenseCode")
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("LicenseSigningKey")
+                        .HasColumnType("bytea");
+
                     b.Property<DateTime?>("LockDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -979,6 +990,43 @@ namespace SKB.Api.Migrations
                     b.HasIndex("DocumentId");
 
                     b.ToTable("InvoiceRevisions");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.IssuedLicense", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Customer")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InstallId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IssuedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MaxUsers")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("IssuedLicenses");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.ItemPrice", b =>

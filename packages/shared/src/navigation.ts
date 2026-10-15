@@ -7,6 +7,7 @@ export type IconName =
   | 'server'
   | 'update'
   | 'upload'
+  | 'key'
   | 'sales'
   | 'purchases'
   | 'receipts'
@@ -204,6 +205,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'upload',
     path: '/import',
     permission: 'data:import',
+  },
+  // The owner's licence: users bought, end date, entering a code (owner, 2026-10-15).
+  {
+    key: 'license',
+    labelKey: 'nav.license',
+    icon: 'key',
+    path: '/license',
+    permission: 'license:manage',
   },
   {
     key: 'audit',

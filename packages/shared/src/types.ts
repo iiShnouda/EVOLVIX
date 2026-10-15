@@ -119,6 +119,7 @@ export type Permission =
   | 'system:monitor'
   | 'system:update'
   | 'data:import'
+  | 'license:manage'
   | 'branches:delete'
   | 'warehouses:delete'
   | 'units:manage'
@@ -2766,4 +2767,29 @@ export interface ImportGroup {
 export interface ImportResult {
   groups: ImportGroup[];
   unknownSheets: string[];
+}
+
+/** This server's licence (owner only; see the server's Licensing). maxUsers null = no limit. */
+export interface LicenseStatus {
+  state: 'none' | 'valid' | 'ending' | 'grace' | 'expired' | 'invalid';
+  installId: string;
+  customer: string | null;
+  maxUsers: number | null;
+  activeUsers: number;
+  expiresAt: string | null;
+  /** The vendor's key is loaded here, so this server can issue licences. */
+  canIssue: boolean;
+  error: string | null;
+}
+
+/** A licence code issued from the vendor's server. installId "*" = any server; maxUsers 0 = no limit. */
+export interface IssuedLicense {
+  id: string;
+  customer: string;
+  installId: string;
+  maxUsers: number;
+  expiresAt: string | null;
+  code: string;
+  issuedBy: string;
+  createdAt: string;
 }

@@ -56,6 +56,7 @@ const PATHS: Record<string, string> = {
   print:
     'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M6 14h12v7H6z',
   download: 'M12 3v12M7 10l5 5 5-5M5 21h14',
+  key: 'M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM12 10v11M12 15h3M12 18h2',
   upload: 'M12 15V3M7 8l5-5 5 5M5 21h14',
   building:
     'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M8 7h.01M12 7h.01M8 11h.01M12 11h.01M16 21V9h2a2 2 0 0 1 2 2v10',

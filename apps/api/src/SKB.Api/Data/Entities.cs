@@ -1210,7 +1210,33 @@ public class CompanySettings
     /// admins aside) until they are given it (owner decision 2026-10-02).
     /// </summary>
     public bool HideNewPlaces { get; set; } = true;
+    /// <summary>
+    /// This installation's own id (owner, 2026-10-15: licences per company): made once, shown on the
+    /// licence page, and written into the licence the vendor issues, so a code works on one server only.
+    /// </summary>
+    public Guid InstallId { get; set; } = Guid.NewGuid();
+    /// <summary>The signed licence code this company was given (see Services/Licensing.cs); null = none.</summary>
+    public string? LicenseCode { get; set; }
+    /// <summary>
+    /// The vendor's own signing key (PKCS#8, encrypted with the session key) — present only on the
+    /// vendor's server, which issues licences. It is accepted only if it matches the public key built in.
+    /// </summary>
+    public byte[]? LicenseSigningKey { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>A licence the vendor issued from this server (their own record of who bought what).</summary>
+public class IssuedLicense
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Customer { get; set; } = "";
+    public Guid InstallId { get; set; }
+    /// <summary>Most active users; 0 = no limit.</summary>
+    public int MaxUsers { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public string Code { get; set; } = "";
+    public string IssuedBy { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

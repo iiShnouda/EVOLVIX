@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { LicenseBanner } from '../LicenseBanner';
 import { NavLink, useLocation, type NavLinkProps } from 'react-router-dom';
 import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
 import { Icon } from '../Icon';
@@ -145,6 +146,7 @@ function PhoneShell() {
       </header>
 
       <main className="min-w-0 flex-1 px-4 py-4 pb-24">
+        <LicenseBanner />
         <TabsView />
       </main>
 
@@ -300,6 +302,7 @@ function MainArea(): ReactNode {
   // the builder pages' sticky side columns stick under the top bar against this scroll box.
   return (
     <main data-scroll-root className="min-w-0 flex-1 overflow-y-auto overflow-x-clip p-5 lg:p-6">
+      <LicenseBanner />
       <TabsView />
     </main>
   );

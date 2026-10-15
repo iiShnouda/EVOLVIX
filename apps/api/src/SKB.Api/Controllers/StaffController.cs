@@ -58,7 +58,7 @@ public sealed class StaffController : ControllerBase
     [HttpPost("staff")]
     [Authorize(Policy = Permissions.StaffManage)]
     public async Task<ActionResult<StaffDto>> Create([FromBody] CreateStaffRequest req,
-        [FromServices] CryptoService crypto)
+        [FromServices] CryptoService crypto, [FromServices] LicenseService license)
     {
         var name = Clean(req.FullName, 100);
         if (name is null) return Bad("bad_name", "Enter the person's name.");
@@ -87,6 +87,8 @@ public sealed class StaffController : ControllerBase
         if (phoneProblem is not null) return Bad(phoneProblem, IdRules.Message(phoneProblem));
         if (req.RememberPassword && !User.HasClaim("permission", Permissions.StaffPasswordNote))
             return Forbidden("not_your_permission", "Only someone allowed to read passwords may keep one.");
+        // The licence: no more active users than were bought (owner, 2026-10-15).
+        if (await license.CannotAddUserAsync() is { } full) return Forbidden(full.Code, full.Message);
         var staff = new Staff
         {
             FullName = name, Email = email, Role = custom?.BaseRole ?? role, BranchId = branchId, Phone = Clean(req.Phone, 40),
@@ -105,7 +107,7 @@ public sealed class StaffController : ControllerBase
     [HttpPut("staff/{id:guid}")]
     [Authorize(Policy = Permissions.StaffManage)]
     public async Task<ActionResult<StaffDto>> Update(Guid id, [FromBody] UpdateStaffRequest req,
-        [FromServices] CryptoService crypto)
+        [FromServices] CryptoService crypto, [FromServices] LicenseService license)
     {
         var staff = await _db.Staff.Include(s => s.Branch).FirstOrDefaultAsync(s => s.Id == id);
         if (staff is null) return NotFound(new { message = "Person not found.", code = "not_found" });
@@ -187,6 +189,7 @@ public sealed class StaffController : ControllerBase
             if (!active && id == me) return Bad("own_account", "You can't deactivate yourself.");
             if (!active && staff.Role == Role.OWNER && await LastOwnerAsync(id))
                 return Bad("last_owner", "The company needs at least one active owner.");
+            if (active && await license.CannotAddUserAsync() is { } full) return Forbidden(full.Code, full.Message);
             staff.IsActive = active;
             if (!active) await EndSessionsAsync(id);
         }

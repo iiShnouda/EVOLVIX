@@ -84,6 +84,7 @@ public class AppDbContext : DbContext
     public DbSet<StockCost> StockCosts => Set<StockCost>();
     public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+    public DbSet<IssuedLicense> IssuedLicenses => Set<IssuedLicense>();
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
     public DbSet<DocumentNumbering> DocumentNumberings => Set<DocumentNumbering>();
     public DbSet<InvoiceRevision> InvoiceRevisions => Set<InvoiceRevision>();
@@ -386,6 +387,9 @@ public class AppDbContext : DbContext
 
         // Codes (كود) of customers / suppliers and of staff: numbered by the database, so two
         // added at once never get the same one.
+        // Existing companies get their own install id when this column arrives (licences, 2026-10-15).
+        b.Entity<CompanySettings>().Property(x => x.InstallId).HasDefaultValueSql("gen_random_uuid()");
+        b.Entity<IssuedLicense>().HasIndex(x => x.CreatedAt);
         b.HasSequence<int>("PartyCodes");
         b.HasSequence<int>("StaffCodes");
         b.Entity<Party>().Property(p => p.Code).HasDefaultValueSql("nextval('\"PartyCodes\"')");

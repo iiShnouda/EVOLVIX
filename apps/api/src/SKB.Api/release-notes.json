@@ -5,6 +5,10 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "صفحة الترخيص (للمالك): كل سيرفر له رقم تثبيت، وكود ترخيص بيحدد اسم الشركة وعدد المستخدمين وتاريخ انتهاء الاشتراك. لما العدد يكمل مينفعش تضيف مستخدم جديد، ولما الاشتراك يخلص الموظفين ميقدروش يدخلوا بعد ٧ أيام (المالك دايماً يقدر). والمالك بيشوف تنبيه قبل الانتهاء بأسبوعين. وعلى سيرفر البائع: إصدار أكواد للعملاء.",
+          "en": "Licence page (owner): each server has an install ID, and a licence code sets the company, the number of users and the subscription end date. At the limit no new user can be added; 7 days after the end, staff can no longer sign in (the owner always can). The owner is warned two weeks before the end. On the vendor's server: issue codes for customers."
+        },
+        {
           "ar": "حماية السيرفر: بعد ١٠ محاولات دخول بكلمة مرور غلط على نفس الحساب في ربع ساعة، الحساب بيتقفل ربع ساعة؛ ومحاولات الدخول من نفس الجهاز/الشبكة ليها حد في الدقيقة؛ وأي صفحة جديدة في السيرفر مقفولة إلا لو الشخص مسجّل دخوله؛ والسيرفر بيرفض ملفات Excel المضروبة اللي بتكبر جداً؛ ولو سر التوقيع في الإعدادات متساب على القيمة الافتراضية، السيرفر بيستبدله بسر عشوائي آمن.",
           "en": "Server hardening: 10 wrong passwords on one account within 15 minutes lock its sign-in for 15 minutes; sign-in attempts from one address are limited per minute; anything new on the server needs a signed-in person by default; tampered Excel files that would blow up in size are refused; and if the token-signing secret was left at its default, the server swaps in a strong random one."
         },

@@ -18,10 +18,12 @@ public sealed class AuthService
     private readonly IPasswordHasher<Staff> _hasher;
     private readonly PermissionService _permissions;
     private readonly AccessService _access;
+    private readonly LicenseService _license;
 
     public AuthService(AppDbContext db, TokenService tokens, AuditService audit, IPasswordHasher<Staff> hasher,
-        PermissionService permissions, AccessService access)
+        PermissionService permissions, AccessService access, LicenseService license)
     {
+        _license = license;
         _access = access;
         _db = db;
         _tokens = tokens;
@@ -57,6 +59,9 @@ public sealed class AuthService
         }
 
         LoginGuard.Succeeded(email);
+        // The subscription ended (past its grace days): only the owner may sign in, to renew it.
+        if (await _license.SignInBlockedAsync(staff))
+            return new LoginResult(null!, "", "", Refused: "license_expired");
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
         var (refresh, device) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
@@ -73,6 +78,8 @@ public sealed class AuthService
             return new LoginResult(null!, "", "", Refused: refused);
         if (rotated is null) return null;
         var staff = rotated.Staff;
+        if (await _license.SignInBlockedAsync(staff))
+            return new LoginResult(null!, "", "", Refused: "license_expired");
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
         var access = _tokens.IssueAccessToken(staff, permissions, scope, rotated.DeviceId);

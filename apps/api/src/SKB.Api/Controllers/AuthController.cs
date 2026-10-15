@@ -70,6 +70,8 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { message = "Email and password are required", code = "VALIDATION_ERROR" });
 
         var result = await _auth.LoginAsync(req, Context());
+        if (result?.Refused == "license_expired")
+            return StatusCode(403, new { message = "The subscription has ended. Ask the owner to renew it.", code = "LICENSE_EXPIRED" });
         if (result?.Refused == "locked")
             return StatusCode(429, new { message = "Too many wrong passwords. Try again in 15 minutes.", code = "TOO_MANY_ATTEMPTS" });
         if (result is null)
@@ -88,6 +90,11 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new { message = "No session", code = "NO_SESSION" });
 
         var result = await _auth.RefreshAsync(raw, Context());
+        if (result?.Refused == "license_expired")
+        {
+            Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });
+            return Unauthorized(new { message = "The subscription has ended. Ask the owner to renew it.", code = "LICENSE_EXPIRED" });
+        }
         if (result?.Refused == "other_device")
         {
             Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });

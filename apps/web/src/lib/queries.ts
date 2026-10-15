@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { periodQuery, type Period } from './period';
 import { toMinor } from '@skb/shared';
 import type {
+  IssuedLicense,
+  LicenseStatus,
   Season,
   Branding,
   InvoiceRevision,
@@ -2458,5 +2460,59 @@ export function useImportData() {
       void qc.invalidateQueries({ queryKey: ['inventory'] });
       void qc.invalidateQueries({ queryKey: ['departments'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------- licence
+
+/** This server's licence (owner only). Read now and then so the owner's banner stays current. */
+export function useLicense(enabled = true) {
+  return useQuery({
+    queryKey: ['license'],
+    queryFn: () => api.get<LicenseStatus>('/license'),
+    enabled,
+    staleTime: 60_000,
+    refetchInterval: 30 * 60_000,
+  });
+}
+
+export function useInstallLicense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => api.put<LicenseStatus>('/license', { code }),
+    onSuccess: (data) => qc.setQueryData(['license'], data),
+  });
+}
+
+/** The vendor's signing key (PEM text), loaded once on the vendor's own server; null removes it. */
+export function useVendorKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pem: string | null) =>
+      pem === null
+        ? api.del<void>('/license/vendor-key')
+        : api.put<void>('/license/vendor-key', { pem }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['license'] }),
+  });
+}
+
+export function useIssuedLicenses(enabled: boolean) {
+  return useQuery({
+    queryKey: ['license', 'issued'],
+    queryFn: () => api.get<IssuedLicense[]>('/license/issued'),
+    enabled,
+  });
+}
+
+export function useIssueLicense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      customer: string;
+      installId: string;
+      maxUsers: number;
+      expiresAt: string | null;
+    }) => api.post<IssuedLicense>('/license/issue', body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['license', 'issued'] }),
   });
 }
