@@ -35,6 +35,13 @@ public sealed class AuthService
     public async Task<LoginResult?> LoginAsync(LoginRequest req, SessionContext ctx)
     {
         var email = req.Email.Trim().ToLowerInvariant();
+        // Too many wrong passwords for this account lately: refuse without even checking this one.
+        if (LoginGuard.IsLocked(email))
+        {
+            await _audit.RecordAsync("anonymous", req.Email, "auth.login.locked", "auth",
+                ip: ctx.Ip, userAgent: ctx.UserAgent);
+            return new LoginResult(null!, "", "", Refused: "locked");
+        }
         var staff = await _db.Staff.FirstOrDefaultAsync(s => s.Email == email);
 
         var ok = staff is not null &&
@@ -43,11 +50,13 @@ public sealed class AuthService
 
         if (staff is null || !ok || !staff.IsActive)
         {
+            LoginGuard.Failed(email);
             await _audit.RecordAsync("anonymous", req.Email, "auth.login.failed", "auth",
                 ip: ctx.Ip, userAgent: ctx.UserAgent);
             return null;
         }
 
+        LoginGuard.Succeeded(email);
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
         var (refresh, device) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
@@ -69,4 +78,42 @@ public sealed class AuthService
         var access = _tokens.IssueAccessToken(staff, permissions, scope, rotated.DeviceId);
         return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, rotated.RefreshToken, rotated.Remember);
     }
+}
+
+/// <summary>
+/// Password-guessing guard per account (2026-10-15 security review): 10 wrong passwords within
+/// 15 minutes lock that account's sign-in for 15 minutes; a right one clears the count. Kept in
+/// memory — a restart forgets it, which is fine for slowing guessing down. The per-address limit on
+/// the sign-in endpoint (Program.cs, "login") covers guessing across many accounts.
+/// </summary>
+public static class LoginGuard
+{
+    private const int MaxFailures = 10;
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan LockFor = TimeSpan.FromMinutes(15);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Entry> Seen = new();
+
+    private sealed record Entry(int Count, DateTime First, DateTime? LockedUntil);
+
+    public static bool IsLocked(string email) =>
+        Seen.TryGetValue(email, out var e) && e.LockedUntil is { } until && until > DateTime.UtcNow;
+
+    public static void Failed(string email)
+    {
+        var now = DateTime.UtcNow;
+        Seen.AddOrUpdate(email,
+            _ => new Entry(1, now, null),
+            (_, e) =>
+            {
+                var fresh = now - e.First > Window ? new Entry(0, now, null) : e;
+                var count = fresh.Count + 1;
+                return fresh with { Count = count, LockedUntil = count >= MaxFailures ? now + LockFor : null };
+            });
+        // Don't grow without bound from guesses at made-up addresses.
+        if (Seen.Count > 10_000)
+            foreach (var (key, e) in Seen)
+                if (now - e.First > Window && (e.LockedUntil is null || e.LockedUntil < now)) Seen.TryRemove(key, out _);
+    }
+
+    public static void Succeeded(string email) => Seen.TryRemove(email, out _);
 }

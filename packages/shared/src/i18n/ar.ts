@@ -1946,6 +1946,8 @@ export const ar: TranslationDictionary = {
   'invoice.cancelReason': 'سبب الإلغاء (اختياري)',
   'invoice.cancelledReason': 'سبب الإلغاء',
   'print.paper': 'مقاس الورق',
+  'error.TOO_MANY_ATTEMPTS': 'تم إدخال كلمة مرور خاطئة مرات كثيرة لهذا الحساب. حاول مرة أخرى بعد ١٥ دقيقة.',
+  'error.rate_limited': 'محاولات كثيرة في وقت قصير. انتظر دقيقة ثم حاول مرة أخرى.',
   'auth.signedInElsewhere':
     'تم تسجيل الدخول بحسابك من جهاز آخر، لذلك تم إنهاء الجلسة على هذا الجهاز.',
   'auth.idleSignedOut': 'تم تسجيل خروجك بعد مدة بدون أي نشاط.',

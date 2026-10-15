@@ -87,6 +87,17 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<StorefrontPublishe
 // --- Authentication (JWT bearer) --------------------------------------------------------
 var jwtSecret = builder.Configuration["Jwt:AccessSecret"]
                 ?? throw new InvalidOperationException("Jwt:AccessSecret is required");
+// A known default or short secret would let anyone sign their own tokens. Outside development,
+// replace it with a random one for this run (people stay signed in: renewing a session uses the
+// refresh token, not this secret) and say so loudly, so the real one gets set.
+var weakJwtSecret = !builder.Environment.IsDevelopment()
+    && (jwtSecret.Length < 32 || jwtSecret.Contains("change_me", StringComparison.OrdinalIgnoreCase)
+        || jwtSecret.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase));
+if (weakJwtSecret)
+{
+    jwtSecret = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+    builder.Configuration["Jwt:AccessSecret"] = jwtSecret;
+}
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -149,6 +160,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // --- Authorization: one policy per permission (checks the "permission" claim) ------------
 builder.Services.AddAuthorization(options =>
 {
+    // Anything without its own rule needs a signed-in person; open endpoints say [AllowAnonymous].
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser().Build();
     foreach (var perm in Permissions.All)
         options.AddPolicy(perm, policy =>
         {
@@ -170,9 +184,15 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 // password guessing. Limits per minute are configurable (RateLimit:UserPerMinute / IpPerMinute).
 var userPerMinute = builder.Configuration.GetValue("RateLimit:UserPerMinute", 600);
 var ipPerMinute = builder.Configuration.GetValue("RateLimit:IpPerMinute", 120);
+var loginPerMinute = builder.Configuration.GetValue("RateLimit:LoginPerMinute", 20);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Signing in: a few tries a minute from one address (password guessing); an office sharing one
+    // internet address still signs everyone in (RateLimit:LoginPerMinute, 20 by default).
+    options.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        "login:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "anon"),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = loginPerMinute, Window = TimeSpan.FromMinutes(1) }));
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
     {
         var userId = ctx.User.FindFirst("sub")?.Value;
@@ -188,6 +208,20 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+
+if (weakJwtSecret)
+    app.Logger.LogCritical("Jwt:AccessSecret is a default or too short. A random one is used for this run; " +
+                           "set JWT_ACCESS_SECRET in .env (install-server.sh does it) so it is permanent.");
+
+// Safety headers: no MIME sniffing, the app can't be framed by another site, no full URLs leaked.
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "same-origin";
+    await next();
+});
 
 // --- Server commands: "backup <file>" and "restore <file>" run and exit (no web server) ----
 if (args.Length > 0 && args[0] is "backup" or "restore")
@@ -262,6 +296,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PresenceHub>("/hubs/presence");
 // SPA fallback: any non-API, non-file route serves index.html so client-side routing works.
-app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = CacheRules });
+app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = CacheRules })
+    .AllowAnonymous();
 
 app.Run();

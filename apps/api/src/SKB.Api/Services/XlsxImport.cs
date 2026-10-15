@@ -17,6 +17,7 @@ public static class XlsxImport
     private static readonly XNamespace Pkg = "http://schemas.openxmlformats.org/package/2006/relationships";
 
     public const int MaxRows = 20_000;
+    private const long MaxPartBytes = 64L * 1024 * 1024;
 
     public sealed record Workbook(IReadOnlyList<Sheet> Sheets);
     /// <summary>One sheet: its name and its rows, each row a list of cell texts (missing cells are "").</summary>
@@ -57,6 +58,8 @@ public static class XlsxImport
     {
         var entry = zip.GetEntry(path);
         if (entry is null) return null;
+        // A part that unpacks to more than this is not a real sheet of business data.
+        if (entry.Length > MaxPartBytes) throw new InvalidDataException("Workbook part too large.");
         using var stream = entry.Open();
         return XDocument.Load(stream);
     }

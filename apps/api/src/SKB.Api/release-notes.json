@@ -5,6 +5,10 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "حماية السيرفر: بعد ١٠ محاولات دخول بكلمة مرور غلط على نفس الحساب في ربع ساعة، الحساب بيتقفل ربع ساعة؛ ومحاولات الدخول من نفس الجهاز/الشبكة ليها حد في الدقيقة؛ وأي صفحة جديدة في السيرفر مقفولة إلا لو الشخص مسجّل دخوله؛ والسيرفر بيرفض ملفات Excel المضروبة اللي بتكبر جداً؛ ولو سر التوقيع في الإعدادات متساب على القيمة الافتراضية، السيرفر بيستبدله بسر عشوائي آمن.",
+          "en": "Server hardening: 10 wrong passwords on one account within 15 minutes lock its sign-in for 15 minutes; sign-in attempts from one address are limited per minute; anything new on the server needs a signed-in person by default; tampered Excel files that would blow up in size are refused; and if the token-signing secret was left at its default, the server swaps in a strong random one."
+        },
+        {
           "ar": "زر الإجراءات السريعة رجع زي ما كان، واتشال منه شكل «نقطة صغيرة تكبر عند الاقتراب» مؤقتاً لحد ما يتعمل من جديد.",
           "en": "The quick-action button is back to how it was, and its 'small dot that grows as you approach' shape is taken out for now, to be redesigned."
         },
@@ -74,6 +78,10 @@
         }
       ],
       "fixes": [
+        {
+          "ar": "شريط البرنامج العلوي بقى ثابت اللون من غير التغبيش (blur).",
+          "en": "The top bar is now solid, without the blur."
+        },
         {
           "ar": "القائمة الجانبية بقى ليها تمرير مستقل بتاعها (مش بتحرّك الصفحة)، وفيه زر جنب شعار البرنامج يفتح ويقفل القائمة، وشيلنا «متصل» والسهم من تحتها.",
           "en": "The side menu now scrolls on its own (without moving the page), there's a button next to the app logo to open and close it, and the 'connected' badge and the arrow were removed from its bottom."

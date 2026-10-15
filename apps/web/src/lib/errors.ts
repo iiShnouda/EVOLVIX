@@ -12,6 +12,7 @@ export function errorText(t: Translate, error: unknown): string | null {
     const key = `error.${error.code}`;
     if (error.code && key in en) return t(key as TranslationKey);
     if (error.status === 403) return t('error.forbidden');
+    if (error.status === 429) return t('error.rate_limited');
     if (error.status === 404) return t('error.not_found');
     return t('error.generic');
   }

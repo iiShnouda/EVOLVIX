@@ -1956,6 +1956,8 @@ export const en = {
   'invoice.cancelReason': 'Reason for cancelling (optional)',
   'invoice.cancelledReason': 'Reason for cancelling',
   'print.paper': 'Paper size',
+  'error.TOO_MANY_ATTEMPTS': 'Too many wrong passwords for this account. Try again in 15 minutes.',
+  'error.rate_limited': 'Too many tries in a short time. Wait a minute, then try again.',
   'auth.signedInElsewhere':
     'Your account was signed in on another device, so this device was signed out.',
   'auth.idleSignedOut': 'You were signed out after a while with no activity.',

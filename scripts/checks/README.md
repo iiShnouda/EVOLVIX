@@ -55,7 +55,8 @@ live company server.
 ```bash
 # 1. a server on a throwaway database (Development settings, high rate limits)
 ASPNETCORE_ENVIRONMENT=Development ConnectionStrings__Default="Host=localhost;Port=5432;Database=skb_check;Username=skb;Password=..." \
-  RateLimit__UserPerMinute=100000 ASPNETCORE_URLS=http://localhost:5090 dotnet run --project apps/api/src/SKB.Api
+  RateLimit__UserPerMinute=100000 RateLimit__IpPerMinute=100000 RateLimit__LoginPerMinute=100000 \
+  ASPNETCORE_URLS=http://localhost:5090 dotnet run --project apps/api/src/SKB.Api
 
 # 2. the checks (Node 22)
 BASE=http://localhost:5090/api node scripts/checks/catalog.test.mjs

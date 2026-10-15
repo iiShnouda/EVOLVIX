@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
 using SKB.Api.Domain;
@@ -61,6 +62,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting("login")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
@@ -68,6 +70,8 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { message = "Email and password are required", code = "VALIDATION_ERROR" });
 
         var result = await _auth.LoginAsync(req, Context());
+        if (result?.Refused == "locked")
+            return StatusCode(429, new { message = "Too many wrong passwords. Try again in 15 minutes.", code = "TOO_MANY_ATTEMPTS" });
         if (result is null)
             return Unauthorized(new { message = "Incorrect email or password", code = "INVALID_CREDENTIALS" });
 
