@@ -137,18 +137,14 @@ function useBoot(): { boot: BootState; retry: () => void } {
   return { boot, retry: run };
 }
 
-/** While starting, the index.html splash stays on screen (see lib/bootSplash); nothing extra here. */
-function Splash() {
-  return null;
-}
-
 /** Guards the app area: requires auth, and blocks all data when offline. */
 function ProtectedApp() {
   const status = useAuth((s) => s.status);
   const connection = useConnection((s) => s.state);
   const setConnState = useConnection((s) => s.setState);
 
-  if (status === 'unknown') return <Splash />;
+  // Still starting: the index.html splash stays on screen (lib/bootSplash).
+  if (status === 'unknown') return null;
   if (status === 'anonymous') return <Navigate to="/login" replace />;
 
   // Server-authoritative security: nothing is readable without a live connection.
@@ -240,7 +236,7 @@ function PrintPaper() {
 /** Opening the app (or signing in) lands on the page the person was on, else the dashboard. */
 function Landing() {
   const prefs = usePreferences();
-  if (prefs.isPending) return <Splash />;
+  if (prefs.isPending) return null;
   const page = prefs.data?.[LAST_PAGE];
   const safe = page?.startsWith('/') && !page.startsWith('//') && page !== '/';
   return <Navigate to={safe && page ? page : '/dashboard'} replace />;

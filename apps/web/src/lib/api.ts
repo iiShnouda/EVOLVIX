@@ -184,6 +184,19 @@ async function upload<T>(
   return (await res.json()) as T;
 }
 
+/** End the session on the server, forget this person's working branch, and clear the device. */
+async function signOut(path: string, notice?: SessionNotice): Promise<void> {
+  await request(path, { method: 'POST' }).catch(() => undefined);
+  const user = useAuth.getState().user;
+  if (user)
+    useWorkBranchStore.setState((s) => {
+      const byUser = { ...s.byUser };
+      delete byUser[user.id];
+      return { byUser };
+    });
+  endSession(notice);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
   download,
@@ -202,29 +215,9 @@ export const api = {
     return tryRefresh();
   },
   /** Signing out starts everything afresh: the server forgets the last page and drafts. */
-  async logout(notice?: SessionNotice): Promise<void> {
-    await request('/auth/logout', { method: 'POST' }).catch(() => undefined);
-    const user = useAuth.getState().user;
-    if (user)
-      useWorkBranchStore.setState((s) => {
-        const byUser = { ...s.byUser };
-        delete byUser[user.id];
-        return { byUser };
-      });
-    endSession(notice);
-  },
+  logout: (notice?: SessionNotice) => signOut('/auth/logout', notice),
   /** Sign the account out of every device (lost or virus-hit device); this one included. */
-  async logoutAll(): Promise<void> {
-    await request('/auth/logout-all', { method: 'POST' }).catch(() => undefined);
-    const user = useAuth.getState().user;
-    if (user)
-      useWorkBranchStore.setState((s) => {
-        const byUser = { ...s.byUser };
-        delete byUser[user.id];
-        return { byUser };
-      });
-    endSession();
-  },
+  logoutAll: () => signOut('/auth/logout-all'),
 };
 
 export { API_BASE };

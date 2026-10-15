@@ -128,7 +128,7 @@ export function SettingsPage() {
 
       {/* Save stays in reach at the top while scrolling (owner, 2026-10-02). */}
       {canManage && (
-        <div className="sticky top-16 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface/95 px-3 py-2 shadow-sm backdrop-blur">
+        <div className="sticky top-16 z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface px-3 py-2 shadow-sm">
           <Button
             icon="check"
             loading={update.isPending}

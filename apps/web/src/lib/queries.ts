@@ -1827,20 +1827,6 @@ function invalidateAfterNote(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ['purchases'] });
 }
 
-export function useCreateNote() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      direction,
-      input,
-    }: {
-      direction: 'RECEIVABLE' | 'PAYABLE';
-      input: CreateNoteInput;
-    }) => api.post<Note>(direction === 'RECEIVABLE' ? '/notes/receive' : '/notes/issue', input),
-    onSuccess: () => invalidateAfterNote(qc),
-  });
-}
-
 /** Several cheques at once (a series): all saved, or none. */
 export function useCreateNotes() {
   const qc = useQueryClient();
@@ -2031,14 +2017,6 @@ export function useUpdateSalesInvoice() {
     mutationFn: ({ id, input }: { id: string; input: CreateSalesInvoiceInput }) =>
       api.put<SalesDocument>(`/sales/invoices/${id}`, input),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
-  });
-}
-
-export function useCancelQuotation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.post<SalesDocument>(`/sales/quotations/${id}/cancel`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sales'] }),
   });
 }
 

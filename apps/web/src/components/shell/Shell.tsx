@@ -124,7 +124,7 @@ function PhoneShell() {
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas" style={backdrop}>
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface/95 px-4 py-2 backdrop-blur safe-top">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top">
         <span className="flex min-w-0 items-center gap-2">
           <Logo size={32} />
           <span className="min-w-0 leading-tight">
@@ -145,7 +145,7 @@ function PhoneShell() {
         <TabsView />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 backdrop-blur pb-safe">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface pb-safe">
         {primary.map((item) => (
           <PhoneTab key={item.key} item={item} label={t(item.labelKey)} />
         ))}
@@ -273,7 +273,7 @@ function BrandCluster({ expandable }: { expandable?: boolean }) {
 
 function TopBar({ expandable = true }: { expandable?: boolean }) {
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur">
+    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
       <BrandCluster expandable={expandable} />
       <GlobalSearch />
       <div className="ms-auto flex shrink-0 items-center gap-2">

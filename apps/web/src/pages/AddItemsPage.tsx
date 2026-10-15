@@ -963,7 +963,7 @@ export function AddItemsPage() {
         )}
       </Card>
 
-      <div className="sticky bottom-0 z-10 rounded-t-2xl border border-line bg-surface/95 px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] backdrop-blur pb-safe">
+      <div className="sticky bottom-0 z-10 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-muted">{t('additems.owed')}</span>

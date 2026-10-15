@@ -54,6 +54,3 @@ export function shiftPeriod(p: Period, step: -1 | 1): Period {
 
 /** The query string for a period. */
 export const periodQuery = (p: Period) => `from=${p.from}&to=${p.to}`;
-
-/** Does the period reach into the future (so "next" would show days not yet come)? */
-export const reachesToday = (p: Period) => p.to >= companyToday();
