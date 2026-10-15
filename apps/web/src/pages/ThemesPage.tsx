@@ -44,7 +44,7 @@ export function ThemesPage() {
               onClick={() => setTheme(m)}
               className={`inline-flex h-8 items-center gap-1.5 rounded-[calc(var(--radius-app)-2px)] px-3 text-sm ${
                 theme === m
-                  ? 'bg-surface font-semibold text-fg shadow-sm'
+                  ? 'bg-brand font-semibold text-brand-fg shadow-sm'
                   : 'text-muted hover:text-fg'
               }`}
             >
@@ -114,7 +114,7 @@ function QuickShapePicker() {
               aria-pressed={on}
               onClick={() => setQuickShape(shape)}
               className={`rounded-[var(--radius-app)] border p-2 text-start transition-colors ${
-                on ? 'border-brand ring-2 ring-brand/30' : 'border-line hover:border-brand/50'
+                on ? 'border-brand ring-4 ring-brand/30 bg-brand-soft' : 'border-line hover:border-brand/50'
               }`}
             >
               <span className="relative block h-24 overflow-hidden rounded-lg border border-line bg-surface-2">
@@ -184,14 +184,23 @@ function BackdropPicker() {
             aria-pressed={backdrop === id}
             disabled={id === 'company' && !hasLogo}
             onClick={() => (id === 'custom' && !custom ? input.current?.click() : setBackdrop(id))}
-            className={`overflow-hidden rounded-[var(--radius-app)] border-2 text-start disabled:opacity-50 ${
-              backdrop === id ? 'border-brand' : 'border-line hover:border-brand/50'
+            className={`relative overflow-hidden rounded-[var(--radius-app)] border-2 text-start disabled:opacity-50 ${
+              backdrop === id
+                ? 'border-brand ring-4 ring-brand/30'
+                : 'border-line hover:border-brand/50'
             }`}
           >
             <span className="grid h-20 place-items-center overflow-hidden bg-surface-2">
               {preview(id)}
             </span>
-            <span className="block px-2.5 py-2 text-sm font-medium">{t(`themes.bd.${id}`)}</span>
+            <span
+              className={`flex items-center justify-between gap-2 px-2.5 py-2 text-sm font-medium ${
+                backdrop === id ? 'bg-brand text-brand-fg' : ''
+              }`}
+            >
+              {t(`themes.bd.${id}`)}
+              {backdrop === id && <Icon name="check" size={16} />}
+            </span>
           </button>
         ))}
       </div>
@@ -245,7 +254,7 @@ function SkinCard({
       onClick={onPick}
       aria-pressed={active}
       className={`group overflow-hidden rounded-[var(--radius-app)] border-2 bg-surface text-start transition-shadow hover:shadow-[var(--shadow-pop)] ${
-        active ? 'border-brand' : 'border-line'
+        active ? 'border-brand ring-4 ring-brand/30' : 'border-line'
       }`}
     >
       <SkinPreview id={id} mode={mode} rtl={rtl} />

@@ -79,6 +79,14 @@
       ],
       "fixes": [
         {
+          "ar": "على الموبايل: شعار الشركة بقى ظاهر في الشريط العلوي جنب اسمها.",
+          "en": "On phones, the company's logo now shows in the top bar beside its name."
+        },
+        {
+          "ar": "صفحة الثيمات: الاختيار الحالي بقى واضح (لون مميز وإطار وعلامة ✓).",
+          "en": "Themes page: the current choice is now clearly marked (highlight, ring and a ✓)."
+        },
+        {
           "ar": "شاشة التحميل مش بتظهر خالص لو البرنامج فتح بسرعة، بتظهر بس لو التحميل خد وقت.",
           "en": "The start-up screen no longer flashes when the app opens quickly; it only shows if loading takes a moment."
         },

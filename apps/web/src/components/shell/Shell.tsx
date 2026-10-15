@@ -125,11 +125,14 @@ function PhoneShell() {
   return (
     <div className="flex min-h-screen flex-col bg-canvas" style={backdrop}>
       <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top">
+        {/* The Evolvix mark, then the company's own logo and name (owner, 2026-10-15: the
+            company's logo had no place on the phone). */}
         <span className="flex min-w-0 items-center gap-2">
-          <Logo size={32} />
+          <Logo size={30} />
+          <CompanyMark size={32} />
           <span className="min-w-0 leading-tight">
-            <Wordmark className="block text-base" />
-            <CompanyName className="block truncate text-[11px] text-muted" />
+            <CompanyName className="block truncate text-sm font-semibold" />
+            <Wordmark className="block text-[11px] text-muted" />
           </span>
         </span>
         {/* Language and look sit in "More" on a phone, so the name in the header has room. */}
