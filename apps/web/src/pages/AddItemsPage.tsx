@@ -1,8 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   companyToday,
   formatMoney,
+  formatNumber,
   readItemName,
   toMinor,
   type Paginated,
@@ -33,6 +42,7 @@ import {
   usePriceLevels,
   useSeasons,
   useUnits,
+  useUpdateProduct,
   useVariantOptions,
   useWarehouses,
 } from '../lib/queries';
@@ -40,9 +50,7 @@ import {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
-type Mode = 'pct' | 'amt';
-
-/** One new item on the supplier's invoice, as typed; prices are per piece. */
+/** One item on the supplier's invoice, as typed; prices are per piece. */
 interface NewLine {
   key: string;
   name: string;
@@ -51,14 +59,19 @@ interface NewLine {
   colorId: string;
   qty: string;
   costBefore: string;
-  discount: string;
-  discountMode: Mode;
-  margin: string;
-  marginMode: Mode;
+  /**
+   * The supplier's discount, a percent and an amount together (owner, 2026-10-17: "10% and 5
+   * pounds more"), and the margin the same way ("10% + 10 pounds"), on the cost after the discount.
+   */
+  discountPct: string;
+  discountAmt: string;
+  marginPct: string;
+  marginAmt: string;
   /** Typed sale price; '' = worked out from the margin. */
   salePrice: string;
-  barcode: string;
   reorder: string;
+  /** Size and color are shown only when asked for (owner, 2026-10-17). */
+  withVariant?: boolean;
   /**
    * Its department and group of the department's tree (owner, 2026-10-06): read from the name as
    * it is typed, unless chosen by hand (`picked`). '' department = the invoice's.
@@ -78,6 +91,10 @@ interface NewLine {
   perUnit?: number;
   existingSale?: number;
   detail?: string;
+  /** Bought again from an earlier season: moved to the invoice's season (owner, 2026-10-17). */
+  oldSeasonId?: string;
+  oldSeasonName?: string;
+  moveSeason?: boolean;
 }
 
 interface AddItemsDraft {
@@ -88,6 +105,8 @@ interface AddItemsDraft {
   season: string;
   lines: NewLine[];
   entry: NewLine;
+  invPct: string;
+  invAmt: string;
 }
 
 const blank = (unitId = ''): NewLine => ({
@@ -98,24 +117,25 @@ const blank = (unitId = ''): NewLine => ({
   colorId: '',
   qty: '1',
   costBefore: '',
-  discount: '',
-  discountMode: 'pct',
-  margin: '',
-  marginMode: 'pct',
+  discountPct: '',
+  discountAmt: '',
+  marginPct: '',
+  marginAmt: '',
   salePrice: '',
-  barcode: '',
   reorder: '',
 });
 
 /** Minor units of a typed amount ('' = 0). */
 const minor = (v: string) => Math.max(0, toMinor(Number(v) || 0));
+const pct = (v: string) => Math.min(100, Math.max(0, Number(v) || 0));
 
 /**
  * Adding items is a purchase invoice (owner decision 2026-10-01): the supplier, where the goods are
  * stored (branch, warehouse, department) and the season, then each item with its cost before the
- * supplier's discount (per piece, % or an amount), the margin (% or an amount on the cost before the
- * discount) and the sale price. Add puts it in the list; Save creates every item and one purchase
- * invoice that puts them in stock at the net cost, owed to the supplier.
+ * supplier's discount (per piece: a percent and an amount), the margin (a percent and an amount, on
+ * the cost after the discount) and the sale price. Add puts it in the list; Save creates every item
+ * and one purchase invoice that puts them in stock at the net cost, less any discount on the whole
+ * invoice. A photo can go with each new item and with the invoice itself.
  */
 export function AddItemsPage() {
   const { t, locale } = useT();
@@ -162,6 +182,7 @@ export function AddItemsPage() {
   const groups = allGroups.filter((g) => departments.some((d) => d.id === g.departmentId));
   const activeSeasons = (seasons.data ?? []).filter((s) => s.isActive);
   const currentSeason = activeSeasons.find((s) => s.isCurrent)?.id ?? '';
+  const seasonName = activeSeasons.find((s) => s.id === season)?.name ?? '';
   useEffect(() => {
     if (!season && currentSeason) setSeason(currentSeason);
   }, [season, currentSeason]);
@@ -169,21 +190,29 @@ export function AddItemsPage() {
   const [lines, setLines] = useState<NewLine[]>([]);
   const [entry, setEntry] = useState<NewLine>(blank());
   const [editing, setEditing] = useState<string | null>(null);
+  // A discount on the whole invoice instead of (or as well as) on each piece (owner, 2026-10-17).
+  const [invPct, setInvPct] = useState('');
+  const [invAmt, setInvAmt] = useState('');
+  // Photos stay on this device until saved: one per line, and the supplier's invoice.
+  const [photos, setPhotos] = useState<Record<string, File>>({});
+  const [entryPhoto, setEntryPhoto] = useState<File | null>(null);
+  const [invoicePhoto, setInvoicePhoto] = useState<File | null>(null);
   useEffect(() => {
     if (!entry.unitId && pieceUnit) setEntry((e) => ({ ...e, unitId: pieceUnit.id }));
   }, [entry.unitId, pieceUnit]);
 
   const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
   const createInvoice = useCreatePurchaseInvoice();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const work = useWorkDraft<AddItemsDraft>(
-    1,
+    2,
     () =>
       lines.length === 0 && !entry.name
         ? null
-        : { supplier, branch, warehouse, department, season, lines, entry },
+        : { supplier, branch, warehouse, department, season, lines, entry, invPct, invAmt },
     (d) => {
       if (d.supplier && typeof d.supplier.id === 'string') setSupplier(d.supplier);
       if (typeof d.branch === 'string') setBranch(d.branch);
@@ -191,7 +220,9 @@ export function AddItemsPage() {
       if (typeof d.department === 'string') setDepartment(d.department);
       if (typeof d.season === 'string') setSeason(d.season);
       if (Array.isArray(d.lines)) setLines(d.lines.filter((l) => l && typeof l.name === 'string'));
-      if (d.entry && typeof d.entry.name === 'string') setEntry(d.entry);
+      if (d.entry && typeof d.entry.name === 'string') setEntry({ ...blank(), ...d.entry });
+      if (typeof d.invPct === 'string') setInvPct(d.invPct);
+      if (typeof d.invAmt === 'string') setInvAmt(d.invAmt);
     },
   );
 
@@ -199,16 +230,13 @@ export function AddItemsPage() {
   function figures(l: NewLine) {
     const before = minor(l.costBefore);
     const rawDiscount = canDiscount
-      ? l.discountMode === 'pct'
-        ? Math.round((before * Math.min(100, Number(l.discount) || 0)) / 100)
-        : minor(l.discount)
+      ? Math.round((before * pct(l.discountPct)) / 100) + minor(l.discountAmt)
       : 0;
     const discount = Math.min(before, rawDiscount);
     const after = before - discount;
+    // The margin is on what the piece really costs: after the supplier's discount.
     const marginSale =
-      l.marginMode === 'pct'
-        ? Math.round(before * (1 + (Number(l.margin) || 0) / 100))
-        : before + minor(l.margin);
+      Math.round(after * (1 + (Number(l.marginPct) || 0) / 100)) + minor(l.marginAmt);
     const sale = l.existing
       ? (l.existingSale ?? 0)
       : l.salePrice !== ''
@@ -224,28 +252,36 @@ export function AddItemsPage() {
   const entryOk = !!entry.name.trim() && f.qty > 0 && f.before > 0 && !!entry.unitId;
   // New items need their own permissions; buying items already in the catalog does not.
   const canNewItems = can('products:create') && can('prices:edit');
+  const canMoveSeason = can('products:edit');
   const [finding, setFinding] = useState(false);
+
+  /** A line for an item already in the catalog. */
+  function existingLine(p: Product, unitId: string, quantity: number, key: string): NewLine {
+    const unit = p.units.find((u) => u.unitId === unitId) ?? p.units[0];
+    const perUnit = unit?.factor ?? 1;
+    const fromOldSeason = !!season && p.seasonId !== season;
+    return {
+      ...blank(unit?.unitId ?? unitId),
+      key,
+      name: p.name,
+      qty: String(quantity || 1),
+      costBefore: p.costPrice > 0 ? String(p.costPrice / 100) : '',
+      productId: p.id,
+      existing: true,
+      perUnit,
+      existingSale: p.salePrice,
+      detail: [p.sku, p.sizeName, p.colorName, unit?.name].filter(Boolean).join(' · '),
+      oldSeasonId: p.seasonId ?? '',
+      oldSeasonName: p.seasonName ?? '',
+      moveSeason: fromOldSeason && canMoveSeason,
+    };
+  }
   function addExisting(items: FinderPick[]) {
     setLines((prev) => [
       ...prev,
-      ...items.map((i, n) => {
-        const unit = i.product.units.find((u) => u.unitId === i.unitId) ?? i.product.units[0];
-        const perUnit = unit?.factor ?? 1;
-        return {
-          ...blank(i.unitId),
-          key: `${Date.now()}-${prev.length + n}`,
-          name: i.product.name,
-          qty: String(i.quantity || 1),
-          costBefore: i.product.costPrice > 0 ? String(i.product.costPrice / 100) : '',
-          productId: i.product.id,
-          existing: true,
-          perUnit,
-          existingSale: i.product.salePrice,
-          detail: [i.product.sku, i.product.sizeName, i.product.colorName, unit?.name]
-            .filter(Boolean)
-            .join(' · '),
-        } satisfies NewLine;
-      }),
+      ...items.map((i, n) =>
+        existingLine(i.product, i.unitId, i.quantity, `${Date.now()}-${prev.length + n}`),
+      ),
     ]);
   }
 
@@ -285,12 +321,9 @@ export function AddItemsPage() {
           name: l.name,
           qty: String(qty),
           costBefore: l.unitPrice ? String(l.unitPrice) : '',
-          discount: l.discount ? String(l.discount) : '',
-          discountMode: 'amt',
+          discountAmt: l.discount ? String(l.discount) : '',
           departmentId: read.departmentId ?? '',
           groupId: read.groupId ?? '',
-          sizeId: read.sizeId ?? '',
-          colorId: read.colorId ?? '',
         });
       }
     }
@@ -301,21 +334,27 @@ export function AddItemsPage() {
 
   function addEntry() {
     if (!entryOk) return;
+    const key = editing ?? `${Date.now()}-${lines.length}`;
     if (editing) {
-      setLines((prev) => prev.map((l) => (l.key === editing ? { ...entry, key: editing } : l)));
+      setLines((prev) => prev.map((l) => (l.key === editing ? { ...entry, key } : l)));
       setEditing(null);
-    } else setLines((prev) => [...prev, { ...entry, key: `${Date.now()}-${prev.length}` }]);
-    // The next item keeps the unit and the way discount and margin are given.
+    } else setLines((prev) => [...prev, { ...entry, key }]);
+    if (entryPhoto) setPhotos((p) => ({ ...p, [key]: entryPhoto }));
+    setEntryPhoto(null);
+    // The next item keeps the unit and the margin.
     setEntry({
       ...blank(entry.unitId),
-      discountMode: entry.discountMode,
-      marginMode: entry.marginMode,
-      margin: entry.margin,
+      marginPct: entry.existing ? '' : entry.marginPct,
+      marginAmt: entry.existing ? '' : entry.marginAmt,
     });
   }
 
   const rows = lines.map((l) => ({ l, ...figures(l) }));
-  const owed = rows.reduce((s, r) => s + r.pieces * r.after, 0);
+  const subtotal = rows.reduce((s, r) => s + r.pieces * r.after, 0);
+  const invDiscount = canDiscount
+    ? Math.min(subtotal, Math.round((subtotal * pct(invPct)) / 100) + minor(invAmt))
+    : 0;
+  const total = subtotal - invDiscount;
   const pieces = rows.reduce((s, r) => s + r.pieces, 0);
   // Department, season and the price lists matter only for items made here.
   const hasNew = rows.some((r) => !r.l.existing);
@@ -350,20 +389,16 @@ export function AddItemsPage() {
           departmentId: r.l.departmentId || departmentId,
           groupId: r.l.departmentId ? r.l.groupId || undefined : undefined,
           seasonId: season,
-          sizeId: r.l.sizeId || undefined,
-          colorId: r.l.colorId || undefined,
+          sizeId: (r.l.withVariant && r.l.sizeId) || undefined,
+          colorId: (r.l.withVariant && r.l.colorId) || undefined,
           warehouseId,
           supplierId: supplier.id,
           reorderLevel: Math.max(0, Math.floor(Number(r.l.reorder) || 0)),
+          // The barcode is made by the server (owner, 2026-10-17: "automatic, no box for it").
+          autoBarcode: true,
           units: [
-            {
-              unitId: pieceUnit.id,
-              factor: 1,
-              barcode: big ? undefined : r.l.barcode || undefined,
-            },
-            ...(big
-              ? [{ unitId: r.l.unitId, factor: r.perUnit, barcode: r.l.barcode || undefined }]
-              : []),
+            { unitId: pieceUnit.id, factor: 1 },
+            ...(big ? [{ unitId: r.l.unitId, factor: r.perUnit }] : []),
           ],
           prices: [
             { unitId: pieceUnit.id, priceLevelId: saleLevel.id, price: r.sale },
@@ -385,8 +420,9 @@ export function AddItemsPage() {
           prev.map((l) => (l.key === r.l.key ? { ...l, productId: created.id } : l)),
         );
       }
-      // 2. One purchase invoice for all of them, at the cost before the discount less the discount.
-      await createInvoice.mutateAsync({
+      // 2. One purchase invoice for all of them, at the cost before the discount less the discount,
+      // with the discount on the whole invoice as the invoice's own.
+      const invoice = await createInvoice.mutateAsync({
         partyId: supplier.id,
         warehouseId,
         paidAmount: 0,
@@ -401,7 +437,29 @@ export function AddItemsPage() {
             discount: r.discount > 0 ? r.discount * r.pieces : undefined,
           };
         }),
+        charges:
+          canDiscount && (pct(invPct) > 0 || minor(invAmt) > 0)
+            ? [
+                ...(pct(invPct) > 0 ? [{ kind: 'DISCOUNT' as const, percent: pct(invPct) }] : []),
+                ...(minor(invAmt) > 0
+                  ? [{ kind: 'EXTRA_DISCOUNT' as const, amount: minor(invAmt) }]
+                  : []),
+              ]
+            : undefined,
       });
+      // 3. Afterwards, nothing here can undo the stock: photos, and items moved to this season.
+      for (const [i, r] of rows.entries()) {
+        const photo = photos[r.l.key];
+        if (photo) await api.upload(`/products/${ids[i]}/image`, photo).catch(() => undefined);
+        if (r.l.existing && r.l.moveSeason && season && r.l.oldSeasonId !== season)
+          await updateProduct
+            .mutateAsync({ id: ids[i]!, input: { seasonId: season } })
+            .catch(() => undefined);
+      }
+      if (invoicePhoto)
+        await api
+          .upload(`/purchases/invoices/${invoice.id}/image`, invoicePhoto)
+          .catch(() => undefined);
       work.finished();
       navigate('/purchases');
     } catch (e) {
@@ -413,29 +471,26 @@ export function AddItemsPage() {
 
   // New items already made by a save that failed half way: the place and supplier stay.
   const someSaved = lines.some((l) => l.productId && !l.existing);
-  const toggle = (value: Mode, set: (m: Mode) => void, unit: string) => (
-    <div className="flex shrink-0 overflow-hidden rounded-[var(--radius-app)] border border-line text-xs">
-      {(['pct', 'amt'] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          aria-pressed={value === m}
-          className={`h-9 px-2 ${value === m ? 'bg-brand text-brand-fg' : 'bg-surface text-muted'}`}
-          onClick={() => set(m)}
-        >
-          {m === 'pct' ? t('additems.percent') : unit}
-        </button>
-      ))}
-    </div>
-  );
   const label = (text: string, child: ReactNode, className = '') => (
     <label className={`block ${className}`}>
       <span className="mb-0.5 block text-xs text-muted">{text}</span>
       {child}
     </label>
   );
+  const number = (value: string, onChange: (v: string) => void, placeholder?: string) => (
+    <input
+      type="number"
+      min={0}
+      step="0.01"
+      inputMode="decimal"
+      className={`${field} tnum`}
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
   const set = (patch: Partial<NewLine>) => setEntry((e) => ({ ...e, ...patch }));
-  /** A typed name fills the department, group, size and color it names (unless chosen by hand). */
+  /** A typed name fills the department and group it names (unless chosen by hand). */
   const setName = (name: string) =>
     setEntry((e) => {
       const read = readItemName(name, { departments, groups, sizes, colors });
@@ -446,8 +501,12 @@ export function AddItemsPage() {
         ...(picked.includes('place')
           ? {}
           : { departmentId: read.departmentId ?? '', groupId: read.groupId ?? '' }),
-        ...(picked.includes('size') || !read.sizeId ? {} : { sizeId: read.sizeId }),
-        ...(picked.includes('color') || !read.colorId ? {} : { colorId: read.colorId }),
+        ...(!e.withVariant || picked.includes('size') || !read.sizeId
+          ? {}
+          : { sizeId: read.sizeId }),
+        ...(!e.withVariant || picked.includes('color') || !read.colorId
+          ? {}
+          : { colorId: read.colorId }),
       };
     });
   const pick = (field: 'place' | 'size' | 'color', patch: Partial<NewLine>) =>
@@ -460,23 +519,35 @@ export function AddItemsPage() {
     !entry.existing && !!entry.name.trim() && canNewItems,
   );
 
+  // Items already in the catalog with a name like the one typed, so it isn't made twice (owner,
+  // 2026-10-17), each with its season.
+  const typed = useDeferredValue(entry.existing || editing ? '' : entry.name.trim());
+  const [hideSimilar, setHideSimilar] = useState('');
+  const similar = useQuery({
+    queryKey: ['products', 'similar', typed],
+    queryFn: () => api.get<Product[]>(`/products?limit=6&search=${encodeURIComponent(typed)}`),
+    enabled: typed.length >= 2,
+    staleTime: 30_000,
+  });
+  const matches = typed.length >= 2 && hideSimilar !== typed ? (similar.data ?? []) : [];
+  function takeMatch(p: Product) {
+    const line = existingLine(p, p.units[0]?.unitId ?? '', Number(entry.qty) || 1, '');
+    setEntry({
+      ...line,
+      costBefore: entry.costBefore || line.costBefore,
+      discountPct: entry.discountPct,
+      discountAmt: entry.discountAmt,
+    });
+  }
+
   return (
     <div className="space-y-4 pb-4">
       <PageHeader
         title={t('qa.purchaseInvoice')}
         action={
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => navigate('/inventory/products/new?plain=1')}
-            >
-              {t('additems.plain')}
-            </Button>
-            <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/purchases')}>
-              {t('invoice.back')}
-            </Button>
-          </div>
+          <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/purchases')}>
+            {t('invoice.back')}
+          </Button>
         }
       />
 
@@ -579,7 +650,7 @@ export function AddItemsPage() {
         )}
       </Card>
 
-      {/* Items already in the catalog, bought again. */}
+      {/* Items already in the catalog, bought again, or read from the invoice's photo. */}
       <Card className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold">{t('additems.existing')}</span>
         <span className="flex flex-wrap items-start gap-2">
@@ -612,9 +683,38 @@ export function AddItemsPage() {
       {(canNewItems || entry.existing) && (
         <Card className="space-y-3">
           {entry.existing ? (
-            <p className="text-sm font-semibold">
-              {entry.name} <span className="text-xs font-normal text-muted">{entry.detail}</span>
-            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm font-semibold">
+                {entry.name} <span className="text-xs font-normal text-muted">{entry.detail}</span>
+              </p>
+              {entry.oldSeasonId !== season && season && canMoveSeason && (
+                <label className="flex items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={!!entry.moveSeason}
+                    onChange={(e) => set({ moveSeason: e.target.checked })}
+                  />
+                  <span className="text-muted">
+                    {t('additems.fromSeason').replace(
+                      '{s}',
+                      entry.oldSeasonName || t('additems.noSeason'),
+                    )}{' '}
+                    ←{' '}
+                  </span>
+                  {t('additems.moveSeason').replace('{s}', seasonName)}
+                </label>
+              )}
+              {!editing && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ms-auto"
+                  onClick={() => setEntry(blank(pieceUnit?.id ?? ''))}
+                >
+                  {t('common.cancel')}
+                </Button>
+              )}
+            </div>
           ) : (
             <p className="text-sm font-semibold">{t('additems.newItem')}</p>
           )}
@@ -636,32 +736,73 @@ export function AddItemsPage() {
                     {t('groups.read')}
                   </span>
                 )}
-              {nextCode.data && (
-                <span className="ms-auto flex items-center gap-1.5 text-xs">
-                  <span className="text-muted">{t('groups.code')}</span>
-                  <span
-                    className="rounded bg-surface px-1.5 py-0.5 font-mono font-semibold"
-                    dir="ltr"
-                  >
-                    {nextCode.data.code}
-                  </span>
-                </span>
-              )}
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-            {!entry.existing &&
-              label(
-                t('item.name'),
-                <input
-                  className={field}
-                  value={entry.name}
-                  onChange={(e) => setName(e.target.value)}
-                />,
-                'sm:col-span-2',
+          {!entry.existing && (
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_10rem]">
+              <div className="relative">
+                {label(
+                  t('item.name'),
+                  <input
+                    className={field}
+                    value={entry.name}
+                    autoComplete="off"
+                    onChange={(e) => setName(e.target.value)}
+                  />,
+                )}
+                {matches.length > 0 && (
+                  <div className="absolute inset-x-0 z-20 mt-1 overflow-hidden rounded-[var(--radius-app)] border border-warning bg-surface shadow-[var(--shadow-card)]">
+                    <div className="flex items-center justify-between gap-2 bg-warning-soft px-3 py-1.5 text-xs text-warning">
+                      {t('additems.alreadyHave')}
+                      <button
+                        type="button"
+                        className="grid h-6 w-6 place-items-center rounded hover:bg-surface"
+                        aria-label={t('common.close')}
+                        onClick={() => setHideSimilar(typed)}
+                      >
+                        <Icon name="close" size={13} />
+                      </button>
+                    </div>
+                    {matches.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => takeMatch(p)}
+                        className="flex w-full items-center gap-2 border-t border-line px-3 py-2 text-start text-sm hover:bg-surface-2"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{p.name}</span>
+                          <span className="block text-xs text-muted tnum" dir="auto">
+                            {p.sku} · {formatNumber(p.stockOnHand, locale)} {p.units[0]?.name}
+                          </span>
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
+                            p.seasonId && p.seasonId === season
+                              ? 'bg-brand-soft text-brand'
+                              : 'bg-warning-soft text-warning'
+                          }`}
+                        >
+                          {p.seasonName || t('additems.noSeason')}
+                        </span>
+                        <span className="shrink-0 text-xs font-medium text-brand">
+                          {t('additems.useThis')}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {label(
+                t('additems.code'),
+                <div
+                  className={`${field} grid items-center bg-surface-2 font-mono text-xs`}
+                  dir="ltr"
+                >
+                  {nextCode.data?.code ?? '—'}
+                </div>,
               )}
-            {!entry.existing &&
-              label(
+              {label(
                 t('invoice.unit'),
                 <select
                   className={field}
@@ -676,46 +817,69 @@ export function AddItemsPage() {
                   ))}
                 </select>,
               )}
-            {!entry.existing &&
-              label(
-                t('setup.sizeName'),
-                <select
-                  className={field}
-                  value={entry.sizeId}
-                  onChange={(e) => pick('size', { sizeId: e.target.value })}
-                >
-                  <option value="">—</option>
-                  {sizes.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>,
-              )}
-            {!entry.existing &&
-              label(
-                t('setup.colorName'),
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="h-6 w-6 shrink-0 rounded-full border border-line"
-                    style={{
-                      background: colors.find((c) => c.id === entry.colorId)?.hex ?? 'transparent',
-                    }}
-                  />
+            </div>
+          )}
+          {!entry.existing &&
+            (entry.withVariant ? (
+              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                {label(
+                  t('setup.sizeName'),
                   <select
                     className={field}
-                    value={entry.colorId}
-                    onChange={(e) => pick('color', { colorId: e.target.value })}
+                    value={entry.sizeId}
+                    onChange={(e) => pick('size', { sizeId: e.target.value })}
                   >
                     <option value="">—</option>
-                    {colors.map((o) => (
+                    {sizes.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.name}
                       </option>
                     ))}
-                  </select>
-                </span>,
-              )}
+                  </select>,
+                )}
+                {label(
+                  t('setup.colorName'),
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="h-6 w-6 shrink-0 rounded-full border border-line"
+                      style={{
+                        background:
+                          colors.find((c) => c.id === entry.colorId)?.hex ?? 'transparent',
+                      }}
+                    />
+                    <select
+                      className={field}
+                      value={entry.colorId}
+                      onChange={(e) => pick('color', { colorId: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {colors.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </span>,
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => set({ withVariant: false, sizeId: '', colorId: '' })}
+                >
+                  {t('additems.hideVariant')}
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                onClick={() => set({ withVariant: true })}
+              >
+                <Icon name="plus" size={13} />
+                {t('additems.addVariant')}
+              </button>
+            ))}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {label(
               t('invoice.qty'),
               <input
@@ -728,33 +892,17 @@ export function AddItemsPage() {
             )}
             {label(
               t('additems.costBefore'),
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className={`${field} tnum`}
-                value={entry.costBefore}
-                onChange={(e) => set({ costBefore: e.target.value })}
-              />,
+              number(entry.costBefore, (v) => set({ costBefore: v })),
             )}
             {canDiscount &&
               label(
-                t('additems.supplierDiscount'),
-                <span className="flex gap-1">
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={entry.discount}
-                    onChange={(e) => set({ discount: e.target.value })}
-                  />
-                  {toggle(
-                    entry.discountMode,
-                    (m) => set({ discountMode: m }),
-                    t('additems.amount'),
-                  )}
-                </span>,
+                t('additems.discountPct'),
+                number(entry.discountPct, (v) => set({ discountPct: v })),
+              )}
+            {canDiscount &&
+              label(
+                t('additems.discountAmt'),
+                number(entry.discountAmt, (v) => set({ discountAmt: v })),
               )}
             {label(
               t('additems.costAfter'),
@@ -764,44 +912,18 @@ export function AddItemsPage() {
             )}
             {!entry.existing &&
               label(
-                t('additems.margin'),
-                <span className="flex gap-1">
-                  <input
-                    type="number"
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={entry.margin}
-                    onChange={(e) => set({ margin: e.target.value, salePrice: '' })}
-                  />
-                  {toggle(
-                    entry.marginMode,
-                    (m) => set({ marginMode: m, salePrice: '' }),
-                    t('additems.amount'),
-                  )}
-                </span>,
+                t('additems.marginPct'),
+                number(entry.marginPct, (v) => set({ marginPct: v, salePrice: '' })),
+              )}
+            {!entry.existing &&
+              label(
+                t('additems.marginAmt'),
+                number(entry.marginAmt, (v) => set({ marginAmt: v, salePrice: '' })),
               )}
             {!entry.existing &&
               label(
                 t('item.salePrice'),
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className={`${field} tnum`}
-                  placeholder={String(f.sale / 100)}
-                  value={entry.salePrice}
-                  onChange={(e) => set({ salePrice: e.target.value })}
-                />,
-              )}
-            {!entry.existing &&
-              label(
-                t('item.barcode'),
-                <input
-                  className={`${field} tnum`}
-                  dir="ltr"
-                  value={entry.barcode}
-                  onChange={(e) => set({ barcode: e.target.value })}
-                />,
+                number(entry.salePrice, (v) => set({ salePrice: v }), String(f.sale / 100)),
               )}
             {!entry.existing &&
               label(
@@ -815,28 +937,44 @@ export function AddItemsPage() {
                 />,
               )}
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {editing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditing(null);
-                  setEntry(blank(entry.unitId));
-                }}
-              >
-                {t('common.cancel')}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <PhotoPick
+              label={t('additems.photo')}
+              file={entryPhoto ?? (editing ? (photos[editing] ?? null) : null)}
+              onFile={(file) => {
+                setEntryPhoto(file);
+                if (editing && !file)
+                  setPhotos((p) => {
+                    const next = { ...p };
+                    delete next[editing];
+                    return next;
+                  });
+              }}
+            />
+            <span className="flex gap-2">
+              {editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(null);
+                    setEntryPhoto(null);
+                    setEntry(blank(entry.unitId));
+                  }}
+                >
+                  {t('common.cancel')}
+                </Button>
+              )}
+              <Button icon={editing ? 'check' : 'plus'} disabled={!entryOk} onClick={addEntry}>
+                {editing ? t('additems.update') : t('additems.add')}
               </Button>
-            )}
-            <Button icon={editing ? 'check' : 'plus'} disabled={!entryOk} onClick={addEntry}>
-              {editing ? t('additems.update') : t('additems.add')}
-            </Button>
+            </span>
           </div>
         </Card>
       )}
 
       {/* What is on the invoice so far. */}
-      <Card>
+      <Card className="space-y-3">
         {rows.length === 0 ? (
           <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
             {t('additems.empty')}
@@ -863,8 +1001,12 @@ export function AddItemsPage() {
               </thead>
               <tbody className="divide-y divide-[var(--c-line)]">
                 {rows.map((r, i) => {
-                  const size = sizes.find((o) => o.id === r.l.sizeId)?.name;
-                  const color = colors.find((o) => o.id === r.l.colorId);
+                  const size = r.l.withVariant
+                    ? sizes.find((o) => o.id === r.l.sizeId)?.name
+                    : undefined;
+                  const color = r.l.withVariant
+                    ? colors.find((o) => o.id === r.l.colorId)
+                    : undefined;
                   const unit = activeUnits.find((u) => u.id === r.l.unitId);
                   return (
                     <tr key={r.l.key} className={editing === r.l.key ? 'bg-brand-soft/40' : ''}>
@@ -878,6 +1020,9 @@ export function AddItemsPage() {
                             />
                           )}
                           {r.l.name}
+                          {photos[r.l.key] && (
+                            <Icon name="camera" size={13} className="text-muted" />
+                          )}
                           {r.l.productId && !r.l.existing && (
                             <Icon name="check" size={14} className="text-positive" />
                           )}
@@ -886,6 +1031,8 @@ export function AddItemsPage() {
                           <span className="block text-xs text-muted">
                             {t('additems.existingTag')}
                             {r.l.detail ? ` · ${r.l.detail}` : ''}
+                            {r.l.moveSeason &&
+                              ` · ${t('additems.moveSeason').replace('{s}', seasonName)}`}
                           </span>
                         )}
                         {(size || color || r.l.groupId) && (
@@ -935,7 +1082,8 @@ export function AddItemsPage() {
                               title={t('common.edit')}
                               onClick={() => {
                                 setEditing(r.l.key);
-                                setEntry(r.l);
+                                setEntryPhoto(null);
+                                setEntry({ ...blank(), ...r.l });
                               }}
                             >
                               <Icon name="notes" size={15} />
@@ -961,13 +1109,41 @@ export function AddItemsPage() {
             </table>
           </div>
         )}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          {canDiscount && (
+            <div className="flex flex-wrap items-end gap-2">
+              <span className="w-full text-xs font-medium text-muted">
+                {t('additems.invoiceDiscount')}
+              </span>
+              <span className="w-28">
+                {label(t('additems.invoiceDiscountPct'), number(invPct, setInvPct))}
+              </span>
+              <span className="w-32">
+                {label(t('additems.invoiceDiscountAmt'), number(invAmt, setInvAmt))}
+              </span>
+            </div>
+          )}
+          <PhotoPick
+            label={t('additems.invoicePhoto')}
+            file={invoicePhoto}
+            onFile={setInvoicePhoto}
+          />
+        </div>
       </Card>
 
       <div className="sticky bottom-0 z-10 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {invDiscount > 0 && (
+            <div className="flex items-baseline gap-2 text-sm">
+              <span className="text-muted">{t('additems.subtotal')}</span>
+              <span className="tnum">{money(subtotal)}</span>
+              <span className="text-muted">−</span>
+              <span className="tnum text-positive">{money(invDiscount)}</span>
+            </div>
+          )}
           <div className="flex items-baseline gap-2">
             <span className="text-sm text-muted">{t('additems.owed')}</span>
-            <span className="text-xl font-bold tnum">{money(owed)}</span>
+            <span className="text-xl font-bold tnum">{money(total)}</span>
           </div>
           <div className="flex items-baseline gap-2 text-sm">
             <span className="text-muted">{t('additems.pieces')}</span>
@@ -992,6 +1168,71 @@ export function AddItemsPage() {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Take a photo with the camera or pick one already on the device; shows a small preview. */
+function PhotoPick({
+  label,
+  file,
+  onFile,
+}: {
+  label: string;
+  file: File | null;
+  onFile: (file: File | null) => void;
+}) {
+  const { t } = useT();
+  const camera = useRef<HTMLInputElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) return setUrl(null);
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  const take = (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    e.target.value = '';
+    if (picked) onFile(picked);
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={camera}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        className="sr-only"
+        onChange={take}
+      />
+      <input
+        ref={picker}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        onChange={take}
+      />
+      {url ? (
+        <img src={url} alt="" className="h-10 w-10 rounded-md border border-line object-cover" />
+      ) : (
+        <span className="grid h-10 w-10 place-items-center rounded-md border border-dashed border-line text-faint">
+          <Icon name="camera" size={16} />
+        </span>
+      )}
+      <span className="text-xs text-muted">{label}</span>
+      <Button size="sm" variant="ghost" icon="camera" onClick={() => camera.current?.click()}>
+        {t('additems.takePhoto')}
+      </Button>
+      <Button size="sm" variant="ghost" icon="upload" onClick={() => picker.current?.click()}>
+        {t('additems.uploadPhoto')}
+      </Button>
+      {file && (
+        <Button size="sm" variant="dangerGhost" onClick={() => onFile(null)}>
+          {t('additems.removePhoto')}
+        </Button>
+      )}
     </div>
   );
 }

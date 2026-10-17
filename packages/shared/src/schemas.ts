@@ -313,6 +313,8 @@ export const updateSettingsSchema = z.object({
   requireDepartment: z.boolean().optional(),
   returnAfterHours: z.number().int().min(0).max(720).optional(),
   hideNewPlaces: z.boolean().optional(),
+  /** Minutes without use before everyone is signed out; 0 = never. */
+  idleMinutes: z.number().int().min(0).max(1440).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

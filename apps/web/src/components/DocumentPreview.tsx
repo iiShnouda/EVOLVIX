@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { statusOf } from '../lib/status';
+import { api } from '../lib/api';
 import { safeName } from '../lib/print';
 import { PrintEditor } from './PrintEditor';
 import { CodeName } from './CodeName';
@@ -155,7 +156,10 @@ export function DocumentPreview({
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {/* A return says what it is once, in its title (owner, 2026-10-02). */}
-            {!isReturn && <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>}
+            {!isReturn && !doc.type.startsWith('PURCHASE') && (
+              <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
+            )}
+            {doc.hasImage && <InvoicePhotoButton id={doc.id} />}
             {doc.edited && doc.status !== 'CANCELLED' && (
               <Badge tone="info">{t('state.EDITED')}</Badge>
             )}
@@ -232,7 +236,6 @@ export function InvoicePaper({
   const shows = options.shows;
   const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
   const isQuote = doc.type === 'QUOTATION';
-  const isInvoice = doc.type === 'SALES_INVOICE' || doc.type === 'PURCHASE_INVOICE';
   const isPurchaseSide = doc.type === 'PURCHASE_INVOICE' || doc.type === 'PURCHASE_RETURN';
   // An invoice's account is settled oldest first (owner, 2026-10-02): what is left on it is the
   // server's figure when it sends one; paid is the rest.
@@ -349,7 +352,7 @@ export function InvoicePaper({
       </div>
 
       {/* Where it stands: paid or not, changed, waiting for the accountant — all of them. */}
-      {shows('states') && (isInvoice || doc.type === 'SALES_ORDER') && (
+      {shows('states') && (doc.type === 'SALES_INVOICE' || doc.type === 'SALES_ORDER') && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
           <StateBadge doc={doc} />
           {doc.edited && doc.status !== 'CANCELLED' && (
@@ -687,5 +690,32 @@ export function PrintSetupSheet({
         side={<PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />}
       />
     </>
+  );
+}
+
+/** Opens the photo of the supplier's own invoice kept with a purchase invoice (owner, 2026-10-17). */
+function InvoicePhotoButton({ id }: { id: string }) {
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs text-brand hover:underline"
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const file = await api.download(`/purchases/invoices/${id}/image`);
+          const url = URL.createObjectURL(new Blob([file.bytes as BlobPart], { type: file.type }));
+          window.open(url, '_blank', 'noopener');
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <Icon name="camera" size={12} />
+      {t('additems.invoicePhoto')}
+    </button>
   );
 }

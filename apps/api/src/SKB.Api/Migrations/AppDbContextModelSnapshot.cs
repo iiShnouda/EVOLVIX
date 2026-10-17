@@ -539,6 +539,9 @@ namespace SKB.Api.Migrations
                     b.Property<bool>("HideNewPlaces")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("IdleMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("InstallId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
@@ -691,6 +694,31 @@ namespace SKB.Api.Migrations
                     b.HasIndex("DocumentId");
 
                     b.ToTable("DocumentCharges");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.DocumentImage", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("DocumentImages");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>
@@ -3493,6 +3521,15 @@ namespace SKB.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.DocumentImage", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", null)
+                        .WithOne()
+                        .HasForeignKey("SKB.Api.Data.DocumentImage", "DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SKB.Api.Data.DocumentLine", b =>

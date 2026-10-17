@@ -79,7 +79,9 @@ export function LedgerPage() {
   const [params, setParams] = useSearchParams();
   // Trial balance, income statement and balance sheet show cost of goods and profit: the owner's
   // unless given (costs:view); the server refuses them otherwise.
-  const seeCosts = useCan()('costs:view');
+  // …and profit, which has its own permission (owner, 2026-10-17).
+  const can = useCan();
+  const seeCosts = can('costs:view') && can('profit:view');
   const tabs = seeCosts
     ? TABS
     : TABS.filter((x) => !['trial', 'income', 'balance'].includes(x.key));

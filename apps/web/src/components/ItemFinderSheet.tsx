@@ -298,7 +298,7 @@ export function ItemFinderSheet({
               <span className="mb-0.5 block text-xs text-muted">{t('finder.department')}</span>
               <select
                 className={field}
-                disabled={!!departmentId}
+                disabled={!!departmentId && lockPlace}
                 value={filters.departmentId}
                 onChange={(e) =>
                   set({

@@ -180,6 +180,8 @@ public static class Permissions
     /// 2026-09-30); without it the server leaves these numbers out (see Services/Costs.cs).
     /// </summary>
     public const string CostsView = "costs:view";
+    /// <summary>See profit (owner, 2026-10-17: a permission of its own, apart from supply prices).</summary>
+    public const string ProfitView = "profit:view";
     /// <summary>Download a backup of everything (the owner's alone by default).</summary>
     public const string BackupCreate = "backup:create";
     public const string PresenceView = "presence:view";
@@ -287,7 +289,7 @@ public static class Permissions
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,
         BranchesView, BranchesManage, BranchesDelete, WarehousesDelete,
-        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView,
+        AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView, ProfitView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, DepartmentsDelete, UnitsManage,
         VariantOptionsManage, SeasonsManage, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,

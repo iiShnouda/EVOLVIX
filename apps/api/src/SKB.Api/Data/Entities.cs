@@ -351,6 +351,16 @@ public class PartyIdCard
 /// database (never a file on disk), only a real JPEG/PNG/WebP (checked against its own bytes by
 /// <see cref="Services.Pictures"/>), served with no-sniff and never cached.
 /// </summary>
+/// <summary>A photo of the supplier's own invoice, kept with the purchase invoice (owner, 2026-10-17).</summary>
+public class DocumentImage
+{
+    public Guid DocumentId { get; set; }
+    public string ContentType { get; set; } = "image/jpeg";
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public Guid? UploadedBy { get; set; }
+}
+
 public class ProductImage
 {
     public Guid ProductId { get; set; }
@@ -1210,6 +1220,8 @@ public class CompanySettings
     /// admins aside) until they are given it (owner decision 2026-10-02).
     /// </summary>
     public bool HideNewPlaces { get; set; } = true;
+    /// <summary>Minutes without use before the app signs people out; 0 = never (owner, 2026-10-17: a company setting).</summary>
+    public int IdleMinutes { get; set; } = 30;
     /// <summary>
     /// This installation's own id (owner, 2026-10-15: licences per company): made once, shown on the
     /// licence page, and written into the licence the vendor issues, so a code works on one server only.

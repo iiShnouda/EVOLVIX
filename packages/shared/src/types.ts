@@ -86,6 +86,7 @@ export type Permission =
   | 'backup:create'
   /** See costs and profit (owner's unless given): the server leaves them out otherwise. */
   | 'costs:view'
+  | 'profit:view'
   | 'payroll:view'
   | 'employees:manage'
   | 'attendance:edit'
@@ -705,6 +706,8 @@ export interface SalesDocument {
   partyCode?: number | null;
   repCode?: number | null;
   createdAt: string;
+  /** A purchase invoice with a photo of the supplier's own invoice (owner, 2026-10-17). */
+  hasImage?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1084,6 +1087,8 @@ export interface CompanySettings {
   returnAfterHours?: number;
   /** New branches, warehouses, money accounts and departments are hidden until given (owner, 2026-10-02). */
   hideNewPlaces?: boolean;
+  /** Minutes without use before the app signs people out; 0 = never (company setting). */
+  idleMinutes?: number;
 }
 
 /**

@@ -385,10 +385,11 @@ export function useProfitReport(params: { from: string; to: string; by: string }
   });
 }
 
-export function useCompanySettings() {
+export function useCompanySettings(enabled = true) {
   return useQuery({
     queryKey: ['settings'],
     queryFn: () => api.get<CompanySettings>('/settings'),
+    enabled,
     staleTime: 5 * 60_000,
   });
 }
@@ -651,9 +652,13 @@ export function useInventory(params: {
   branchId?: string;
   departmentId?: string;
   groupId?: string;
+  code?: string;
+  supplierId?: string;
 }) {
   const query = new URLSearchParams();
   if (params.search) query.set('search', params.search);
+  if (params.code) query.set('code', params.code);
+  if (params.supplierId) query.set('supplierId', params.supplierId);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.departmentId && params.groupId) query.set('groupId', params.groupId);

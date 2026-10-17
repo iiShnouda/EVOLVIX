@@ -153,20 +153,27 @@ export function DocumentTable({
           } satisfies Column,
         ]
       : []),
-    {
-      key: 'status',
-      label: 'common.status',
-      cell: (d) => (
-        <span className="inline-flex items-center gap-1">
-          <StateBadge doc={d} />
-          {/* A changed invoice over the limit shows all three: paid state, changed, waiting. */}
-          {d.edited && d.status !== 'CANCELLED' && <Badge tone="info">{t('state.EDITED')}</Badge>}
-          {d.overLimit && d.type === 'SALES_INVOICE' && d.status !== 'CANCELLED' && (
-            <Badge tone="warning">{t('state.AWAITING')}</Badge>
-          )}
-        </span>
-      ),
-    },
+    // Purchase invoices carry no status (owner, 2026-10-17).
+    ...(scope === 'purchases'
+      ? []
+      : [
+          {
+            key: 'status',
+            label: 'common.status',
+            cell: (d: SalesDocumentSummary) => (
+              <span className="inline-flex items-center gap-1">
+                <StateBadge doc={d} />
+                {/* A changed invoice over the limit shows all three: paid state, changed, waiting. */}
+                {d.edited && d.status !== 'CANCELLED' && (
+                  <Badge tone="info">{t('state.EDITED')}</Badge>
+                )}
+                {d.overLimit && d.type === 'SALES_INVOICE' && d.status !== 'CANCELLED' && (
+                  <Badge tone="warning">{t('state.AWAITING')}</Badge>
+                )}
+              </span>
+            ),
+          } satisfies Column,
+        ]),
     {
       key: 'notes',
       label: 'list.notes',

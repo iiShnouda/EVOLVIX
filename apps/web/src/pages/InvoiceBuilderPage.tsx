@@ -160,6 +160,8 @@ export function InvoiceBuilderPage({
   const can = useCan();
   /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
   const seeCosts = can('costs:view');
+  // Profit has its own permission and the show/hide switch (owner, 2026-10-17).
+  const seeProfit = can('profit:view');
 
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
@@ -1607,7 +1609,7 @@ export function InvoiceBuilderPage({
       end: true,
       cell: (r) => <span className="font-semibold">{plain.format(toMajor(r.lineTotal))}</span>,
     },
-    ...when(isSale && seeCosts, {
+    ...when(isSale && seeProfit, {
       key: 'profit',
       label: t('col.profit'),
       end: true,
@@ -2158,13 +2160,13 @@ export function InvoiceBuilderPage({
                       )}
                       <div className="block">
                         <span className="mb-0.5 block text-xs text-muted">
-                          {isSale && seeCosts ? t('invoice.lineProfit') : t('common.total')}
+                          {isSale && seeProfit ? t('invoice.lineProfit') : t('common.total')}
                         </span>
                         <div
-                          className={`${field} grid items-center tnum ${isSale && seeCosts ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
+                          className={`${field} grid items-center tnum ${isSale && seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
                         >
                           {formatMoney(
-                            isSale && seeCosts ? r.lineProfit : r.lineTotal,
+                            isSale && seeProfit ? r.lineProfit : r.lineTotal,
                             currency,
                             locale,
                           )}
@@ -2274,22 +2276,26 @@ export function InvoiceBuilderPage({
                 value={formatMoney(grand, currency, locale)}
                 strong
               />
-              {isSale && seeCosts && (
+              {isSale && (seeCosts || seeProfit) && (
                 <>
                   <div className="my-1 border-t border-line" />
-                  <Row
-                    label={t('invoice.totalCost')}
-                    value={formatMoney(costTotal, currency, locale)}
-                  />
-                  <div className="flex items-center justify-between">
-                    <dt className="text-muted">{t('invoice.totalProfit')}</dt>
-                    <dd
-                      className={`font-semibold tnum ${profitTotal < 0 ? 'text-destructive' : 'text-positive'}`}
-                    >
-                      {formatMoney(profitTotal, currency, locale)}{' '}
-                      <span className="text-xs font-normal">({marginPct.toFixed(1)}%)</span>
-                    </dd>
-                  </div>
+                  {seeCosts && (
+                    <Row
+                      label={t('invoice.totalCost')}
+                      value={formatMoney(costTotal, currency, locale)}
+                    />
+                  )}
+                  {seeProfit && (
+                    <div className="flex items-center justify-between">
+                      <dt className="text-muted">{t('invoice.totalProfit')}</dt>
+                      <dd
+                        className={`font-semibold tnum ${profitTotal < 0 ? 'text-destructive' : 'text-positive'}`}
+                      >
+                        {formatMoney(profitTotal, currency, locale)}{' '}
+                        <span className="text-xs font-normal">({marginPct.toFixed(1)}%)</span>
+                      </dd>
+                    </div>
+                  )}
                 </>
               )}
             </dl>

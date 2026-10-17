@@ -300,10 +300,23 @@ function TabButton({
   const { t } = useT();
   const name = pageName(tab.loc?.pathname ?? tab.path, t) ?? t('nav.dashboard');
   return (
+    // The whole tab is the target (owner, 2026-10-17: only the name took a click), and it switches
+    // on press rather than on release.
     <div
       role="tab"
+      tabIndex={0}
       aria-selected={active}
-      className={`group flex h-8 max-w-[14rem] shrink-0 items-center gap-1 rounded-lg ps-3 pe-1 text-sm ${
+      onPointerDown={(e) => {
+        if (e.button === 0 && !(e.target as HTMLElement).closest('[data-tab-close]')) onPick();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onPick();
+        }
+      }}
+      onAuxClick={(e) => e.button === 1 && closable && onClose()}
+      className={`group flex h-8 max-w-[14rem] shrink-0 cursor-pointer select-none items-center gap-1 rounded-lg ps-3 pe-1 text-sm ${
         active
           ? 'bg-brand-soft font-semibold text-brand'
           : shownBeside
@@ -311,17 +324,11 @@ function TabButton({
             : 'text-muted hover:bg-surface-2 hover:text-fg'
       }`}
     >
-      <button
-        type="button"
-        className="min-w-0 truncate"
-        onClick={onPick}
-        onAuxClick={(e) => e.button === 1 && closable && onClose()}
-      >
-        {name}
-      </button>
+      <span className="min-w-0 flex-1 truncate">{name}</span>
       {closable && (
         <button
           type="button"
+          data-tab-close
           onClick={onClose}
           title={t('tabs.close')}
           aria-label={t('tabs.close')}

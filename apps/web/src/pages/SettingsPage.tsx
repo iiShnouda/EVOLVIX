@@ -109,6 +109,7 @@ export function SettingsPage() {
       transfersRequireReceipt: form.transfersRequireReceipt,
       requireDepartment: form.requireDepartment !== false,
       hideNewPlaces: form.hideNewPlaces !== false,
+      idleMinutes: form.idleMinutes ?? 30,
       address: form.address ?? '',
       phone: form.phone ?? '',
       email: form.email ?? '',
@@ -389,6 +390,22 @@ export function SettingsPage() {
             onChange={(e) => set({ hideNewPlaces: e.target.checked })}
           />
           <span className="block text-sm">{t('settings.hideNewPlaces')}</span>
+        </label>
+        {/* Signing out after a while without use, for everyone (owner, 2026-10-17). */}
+        <label className="mt-3 flex items-center gap-3">
+          <span className="min-w-0 flex-1 text-sm">{t('auth.idleLock')}</span>
+          <select
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
+            disabled={disabled}
+            value={form.idleMinutes ?? 30}
+            onChange={(e) => set({ idleMinutes: Number(e.target.value) })}
+          >
+            {[5, 10, 15, 30, 60, 120, 0].map((m) => (
+              <option key={m} value={m}>
+                {m === 0 ? t('auth.idleNever') : t('auth.idleMinutes').replace('{n}', String(m))}
+              </option>
+            ))}
+          </select>
         </label>
       </Card>
 

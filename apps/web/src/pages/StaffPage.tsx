@@ -69,6 +69,7 @@ const SECTION_OF: Record<string, string> = {
   presence: 'system',
   backup: 'system',
   costs: 'system',
+  profit: 'system',
   warehouses: 'branches',
   payroll: 'payroll',
   employees: 'payroll',

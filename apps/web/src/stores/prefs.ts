@@ -31,12 +31,6 @@ interface PrefsState {
   setBackdropStrength: (strength: number) => void;
   quickShape: QuickShape;
   setQuickShape: (shape: QuickShape) => void;
-  /**
-   * Sign out on its own after this many idle minutes (owner, 2026-10-14: a device left open or a
-   * virus-hit machine shouldn't keep a live session). 0 = never. Kept on this device.
-   */
-  idleMinutes: number;
-  setIdleMinutes: (minutes: number) => void;
   /** The side menu shrunk to icons, for more room (owner, 2026-10-01). */
   navCollapsed: boolean;
   setNavCollapsed: (collapsed: boolean) => void;
@@ -66,9 +60,6 @@ export const usePrefs = create<PrefsState>()(
       quickShape: 'dock',
       setQuickShape: (quickShape) =>
         set({ quickShape: QUICK_SHAPES.includes(quickShape) ? quickShape : 'dock' }),
-      idleMinutes: 30,
-      setIdleMinutes: (idleMinutes) =>
-        set({ idleMinutes: Number.isFinite(idleMinutes) ? Math.max(0, Math.round(idleMinutes)) : 30 }),
       navCollapsed: false,
       setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
       setLocale: (locale) => set({ locale }),

@@ -7,11 +7,13 @@ import {
   formatNumber,
   formatQuantity,
   type InventoryItem,
+  type Party,
   companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect } from '../components/WarehouseSelect';
+import { PartyPicker } from '../components/PartyPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
@@ -59,8 +61,13 @@ export function InventoryPage() {
   const placed = useRef(false);
 
   const [search, setSearch] = useState('');
+  // The item's code, its name and the supplier each in a box of their own (owner, 2026-10-17).
+  const [code, setCode] = useState('');
+  const [supplier, setSupplier] = useState<Party | null>(null);
   const list = useInventory({
     search: search.trim() || undefined,
+    code: code.trim() || undefined,
+    supplierId: supplier?.id,
     lowOnly,
     warehouseId: warehouseId || undefined,
     branchId: (!warehouseId && branchId) || undefined,
@@ -190,7 +197,7 @@ export function InventoryPage() {
             </button>
           ))}
         </div>
-        {myBranches.length > 1 && (
+        {myBranches.length > 0 && (
           <select
             className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
             aria-label={t('list.branch')}
@@ -261,6 +268,10 @@ export function InventoryPage() {
           seeCosts={seeCosts}
           search={search}
           onSearch={setSearch}
+          code={code}
+          onCode={setCode}
+          supplier={supplier}
+          onSupplier={setSupplier}
           lowOnly={lowOnly}
           onLowOnly={setLowOnly}
           onOpen={(id) =>
@@ -281,6 +292,10 @@ function ItemsTab({
   seeCosts,
   search,
   onSearch,
+  code,
+  onCode,
+  supplier,
+  onSupplier,
   lowOnly,
   onLowOnly,
   onOpen,
@@ -291,6 +306,10 @@ function ItemsTab({
   seeCosts: boolean;
   search: string;
   onSearch: (v: string) => void;
+  code: string;
+  onCode: (v: string) => void;
+  supplier: Party | null;
+  onSupplier: (p: Party | null) => void;
   lowOnly: boolean;
   onLowOnly: (v: boolean) => void;
   onOpen: (id: string) => void;
@@ -303,18 +322,42 @@ function ItemsTab({
 
   return (
     <Card padded={false} className="overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line p-3">
-        <div className="relative min-w-0 flex-1">
-          <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+      <div className="flex flex-wrap items-end gap-3 border-b border-line p-3">
+        <label className="block w-full sm:w-36">
+          <span className="mb-0.5 block text-xs text-muted">{t('inventory.sku')}</span>
+          <input
+            className={`${field} w-full tnum`}
+            dir="ltr"
+            value={code}
+            onChange={(e) => onCode(e.target.value)}
+          />
+        </label>
+        <label className="relative block min-w-0 flex-1 basis-48">
+          <span className="mb-0.5 block text-xs text-muted">{t('inventory.itemName')}</span>
+          <span className="pointer-events-none absolute bottom-0 start-2.5 grid h-9 place-items-center text-faint">
             <Icon name="search" size={16} />
           </span>
           <input
             className={`${field} w-full ps-8`}
-            placeholder={t('inventory.search')}
             value={search}
             onChange={(e) => onSearch(e.target.value)}
           />
+        </label>
+        <div className="min-w-0 flex-1 basis-64">
+          <PartyPicker
+            type="SUPPLIER"
+            withCode
+            value={supplier}
+            onChange={onSupplier}
+            label={t('inventory.supplier')}
+            placeholder={t('common.all')}
+          />
         </div>
+        {supplier && (
+          <Button size="sm" variant="ghost" icon="close" onClick={() => onSupplier(null)}>
+            {t('common.clear')}
+          </Button>
+        )}
         <label className="flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={lowOnly} onChange={(e) => onLowOnly(e.target.checked)} />
           {t('inventory.lowOnly')}

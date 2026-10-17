@@ -50,6 +50,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
   const { t, locale } = useT();
   // The cost and profit a sales return reverses are the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
+  const seeProfit = useCan()('profit:view');
   const navigate = useNavigate();
 
   const invoice = useDocument(scope, id);
@@ -301,7 +302,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                           {isSale ? t('invoice.price') : t('invoice.receiveCost')}
                         </th>
                         <th className="px-1.5 py-2 text-end font-medium">{t('return.value')}</th>
-                        {isSale && seeCosts && (
+                        {isSale && seeProfit && (
                           <th className="px-1.5 py-2 text-end font-medium">
                             {t('return.profitReversed')}
                           </th>
@@ -342,7 +343,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                           <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
                             {r.q > 0 ? formatMoney(r.value, currency, locale) : ''}
                           </td>
-                          {isSale && seeCosts && (
+                          {isSale && seeProfit && (
                             <td className="whitespace-nowrap px-1.5 py-2 text-end text-warning tnum">
                               {r.q > 0 ? formatMoney(r.profit, currency, locale) : ''}
                             </td>
@@ -399,7 +400,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                         <span className="font-medium">
                           {formatMoney(r.value, currency, locale)}
                         </span>
-                        {isSale && seeCosts && (
+                        {isSale && seeProfit && (
                           <>
                             {' · '}
                             {t('return.profitReversed')}:{' '}
@@ -427,7 +428,7 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                 value={formatMoney(cost, currency, locale)}
               />
             )}
-            {isSale && seeCosts && (
+            {isSale && seeProfit && (
               <div className="flex items-center justify-between">
                 <dt className="text-muted">{t('return.profitReversed')}</dt>
                 <dd className="font-semibold tnum text-warning">

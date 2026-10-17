@@ -10,7 +10,13 @@ import {
   unitRowsValid,
   type UnitRow,
 } from '../components/UnitsEditor';
-import { PriceGrid, inputsFrom, priceChanges, type PriceInputs } from '../components/PriceGrid';
+import {
+  PriceGrid,
+  cellKey,
+  inputsFrom,
+  priceChanges,
+  type PriceInputs,
+} from '../components/PriceGrid';
 import { ProductImageCard } from '../components/ProductImage';
 import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
@@ -97,6 +103,9 @@ export function ProductEditorPage() {
   const [rows, setRows] = useState<UnitRow[]>([]);
   const [prices, setPricesInput] = useState<PriceInputs>({});
   const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [withVariant, setWithVariant] = useState(false);
+  const [marginPct, setMarginPct] = useState('');
+  const [marginAmt, setMarginAmt] = useState('');
 
   // Fill the form once the item has loaded (and again after a save returns fresh data).
   const d = detail.data;
@@ -145,6 +154,33 @@ export function ProductEditorPage() {
         })),
     [rows, units.data],
   );
+
+  // The base unit's purchase and sale prices, typed like on the add-items screen (owner,
+  // 2026-10-17); the margin (a percent and an amount, on the purchase price) fills the sale price.
+  const baseUnit = rows[0]?.unitId;
+  const saleLevel = (levels.data ?? []).find((l) => l.side === 'SALE' && l.isDefault);
+  const purchaseLevel = (levels.data ?? []).find((l) => l.side === 'PURCHASE' && l.isDefault);
+  const quick =
+    baseUnit && saleLevel && purchaseLevel
+      ? { cost: cellKey(baseUnit, purchaseLevel.id), sale: cellKey(baseUnit, saleLevel.id) }
+      : null;
+  const seePurchase = can('costs:view') || can('purchases:view');
+  const quickPrices = (patch: { cost?: string; pct?: string; amt?: string }) => {
+    if (!quick) return;
+    const pctValue = patch.pct ?? marginPct;
+    const amtValue = patch.amt ?? marginAmt;
+    if (patch.pct !== undefined) setMarginPct(patch.pct);
+    if (patch.amt !== undefined) setMarginAmt(patch.amt);
+    setPricesInput((p) => {
+      const cost = patch.cost ?? p[quick.cost] ?? '';
+      const next = { ...p, [quick.cost]: cost };
+      if ((pctValue || amtValue) && Number(cost) > 0) {
+        const sale = Number(cost) * (1 + (Number(pctValue) || 0) / 100) + (Number(amtValue) || 0);
+        next[quick.sale] = String(Math.round(sale * 100) / 100);
+      }
+      return next;
+    });
+  };
 
   const isVariant = !!d?.modelId;
   const error = (create.error ?? update.error ?? setPrices.error) as ApiError | null;
@@ -303,10 +339,10 @@ export function ProductEditorPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,340px)]">
         <div className="min-w-0 space-y-4">
+          {/* Laid out like the item on the add-items screen (owner, 2026-10-17): the place in the
+              tree, then name, code and reorder level, the season, the prices with the margin,
+              size and color behind a button, the supplier and the photo. */}
           <Card className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              {t('item.details')}
-            </h2>
             {isVariant && d ? (
               <div className="rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
                 <p className="text-xs text-muted">{t('item.variantOf')}</p>
@@ -322,19 +358,48 @@ export function ProductEditorPage() {
                 </Link>
               </div>
             ) : (
-              <NameFields
-                values={names}
-                onChange={setNames}
-                label={t('item.name')}
-                placeholder={isNew ? t('item.namePlaceholder') : undefined}
-                autoFocus={isNew}
-              />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--radius-app)] bg-surface-2 p-2">
+                <span className="text-xs text-muted">{t('groups.path')}</span>
+                <GroupPicker
+                  departments={
+                    d?.departmentId &&
+                    departments.length > 0 &&
+                    !departments.some((x) => x.id === d.departmentId)
+                      ? [
+                          ...departments,
+                          {
+                            ...departments[0]!,
+                            id: d.departmentId,
+                            name: d.departmentName ?? '',
+                          },
+                        ]
+                      : departments
+                  }
+                  groups={groups}
+                  departmentId={departmentId}
+                  groupId={groupId}
+                  onChange={(dep, g) => {
+                    if (!canFields) return;
+                    setDepartmentId(dep);
+                    setGroupId(g);
+                  }}
+                />
+              </div>
             )}
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
+              {!isVariant && (
+                <NameFields
+                  values={names}
+                  onChange={setNames}
+                  label={t('item.name')}
+                  placeholder={isNew ? t('item.namePlaceholder') : undefined}
+                  autoFocus={isNew}
+                />
+              )}
               <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('item.sku')}</span>
+                <span className="mb-0.5 block text-xs text-muted">{t('additems.code')}</span>
                 <input
-                  className={`${field} uppercase placeholder:normal-case`}
+                  className={`${field} font-mono uppercase placeholder:normal-case`}
                   dir="ltr"
                   placeholder={t('item.auto')}
                   value={sku}
@@ -342,41 +407,6 @@ export function ProductEditorPage() {
                   onChange={(e) => setSku(e.target.value)}
                 />
               </label>
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('item.department')}</span>
-                <select
-                  className={field}
-                  value={departmentId}
-                  disabled={!canFields || isVariant}
-                  onChange={(e) => {
-                    setDepartmentId(e.target.value);
-                    setGroupId('');
-                  }}
-                >
-                  <option value="">{t('item.pickDepartment')}</option>
-                  {d?.departmentId && !departments.some((x) => x.id === d.departmentId) && (
-                    <option value={d.departmentId}>{d.departmentName}</option>
-                  )}
-                  {departments.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {departmentId && groups.some((g) => g.departmentId === departmentId) && (
-                <div className="block sm:col-span-2">
-                  <span className="mb-0.5 block text-xs text-muted">{t('groups.path')}</span>
-                  <GroupPicker
-                    departments={departments}
-                    groups={groups}
-                    departmentId={departmentId}
-                    groupId={groupId}
-                    showDepartment={false}
-                    onChange={(_, g) => canFields && !isVariant && setGroupId(g)}
-                  />
-                </div>
-              )}
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('item.reorder')}</span>
                 <input
@@ -389,8 +419,7 @@ export function ProductEditorPage() {
                 />
               </label>
             </div>
-            {/* The season (also added to the name of a new item), its size and color. */}
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
                 <select
@@ -407,8 +436,68 @@ export function ProductEditorPage() {
                   ))}
                 </select>
               </label>
-              {isNew && (
-                <>
+              {quick && seePurchase && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {t('additems.costBefore')}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={prices[quick.cost] ?? ''}
+                    disabled={!canPrices}
+                    onChange={(e) => quickPrices({ cost: e.target.value })}
+                  />
+                </label>
+              )}
+              {quick && seePurchase && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('additems.marginPct')}</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={marginPct}
+                    disabled={!canPrices}
+                    onChange={(e) => quickPrices({ pct: e.target.value })}
+                  />
+                </label>
+              )}
+              {quick && seePurchase && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('additems.marginAmt')}</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={marginAmt}
+                    disabled={!canPrices}
+                    onChange={(e) => quickPrices({ amt: e.target.value })}
+                  />
+                </label>
+              )}
+              {quick && (
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('item.salePrice')}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className={`${field} tnum`}
+                    value={prices[quick.sale] ?? ''}
+                    disabled={!canPrices}
+                    onChange={(e) =>
+                      setPricesInput((p) => ({ ...p, [quick.sale]: e.target.value }))
+                    }
+                  />
+                </label>
+              )}
+            </div>
+            {isNew &&
+              (withVariant ? (
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block">
                     <span className="mb-0.5 block text-xs text-muted">{t('setup.sizeName')}</span>
                     <select
@@ -443,9 +532,16 @@ export function ProductEditorPage() {
                         ))}
                     </select>
                   </label>
-                </>
-              )}
-            </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                  onClick={() => setWithVariant(true)}
+                >
+                  {t('additems.addVariant')}
+                </button>
+              ))}
             <SupplierFields
               supplierId={supplierId}
               currentName={d?.supplierName}

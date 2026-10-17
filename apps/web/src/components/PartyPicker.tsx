@@ -39,7 +39,10 @@ export function PartyPicker({
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const search = useDeferredValue(text.trim());
+  // The chosen name stays in the box to edit like any text (owner, 2026-10-17: clicking in it
+  // wiped the whole name); the list narrows only once the text differs from it.
+  const typed = text.trim() !== (value?.name ?? '').trim() ? text.trim() : '';
+  const search = useDeferredValue(typed);
   const list = useParties({
     page: 1,
     pageSize: 30,
@@ -94,10 +97,10 @@ export function PartyPicker({
         disabled={disabled}
         role="combobox"
         aria-expanded={open}
-        placeholder={value ? value.name : placeholder}
+        placeholder={placeholder}
         value={open ? text : (value?.name ?? '')}
         onFocus={() => {
-          setText('');
+          setText(value?.name ?? '');
           setOpen(true);
         }}
         // Later than a click on a result, so the click still lands.

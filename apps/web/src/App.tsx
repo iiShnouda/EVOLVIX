@@ -7,7 +7,6 @@ import {
   RouterProvider,
   useLocation,
   useParams,
-  useSearchParams,
 } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ConfirmHost } from './components/ConfirmHost';
@@ -364,11 +363,7 @@ export default function App() {
  */
 function NewItemsRoute() {
   const can = useCan();
-  const [params] = useSearchParams();
-  const purchase =
-    params.get('plain') !== '1' &&
-    can('purchases:create') &&
-    can('prices:edit') &&
-    can('products:create');
+  // No "new item without a purchase" any more (owner, 2026-10-17): items come in on a purchase.
+  const purchase = can('purchases:create') && can('prices:edit') && can('products:create');
   return purchase ? <AddItemsPage /> : <ProductEditorPage key="new" />;
 }

@@ -89,7 +89,8 @@ public record SalesDetailDto(
     string? DepartmentId = null, string? DepartmentName = null, string? StaffId = null, string? PartyId = null,
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
-    string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null);
+    string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null,
+    bool HasImage = false);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
@@ -238,7 +239,7 @@ public record CompanySettingsDto(
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
     int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
-    bool HideNewPlaces = true);
+    bool HideNewPlaces = true, int IdleMinutes = 30);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -262,7 +263,7 @@ public record UpdateSettingsRequest(
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
-    int? ReturnAfterHours = null, bool? HideNewPlaces = null);
+    int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 

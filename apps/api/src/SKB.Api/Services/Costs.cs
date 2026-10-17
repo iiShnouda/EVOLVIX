@@ -21,16 +21,32 @@ public static class Costs
 {
     public static bool CanSee(ClaimsPrincipal user) => user.HasClaim("permission", Permissions.CostsView);
 
+    /// <summary>Profit has its own permission (owner, 2026-10-17), apart from what goods cost.</summary>
+    public static bool CanSeeProfit(ClaimsPrincipal user) => user.HasClaim("permission", Permissions.ProfitView);
+
+    /// <summary>Reports made of both (profit and loss, the books' statements) need both.</summary>
+    public static bool CanSeeBoth(ClaimsPrincipal user) => CanSee(user) && CanSeeProfit(user);
+
     public static bool CanSeePurchasePrices(ClaimsPrincipal user) =>
         CanSee(user) || user.HasClaim("permission", Permissions.PurchasesView);
 
     /// <summary>A sales invoice, return or quotation without its cost and profit.</summary>
-    public static SalesDetailDto Guard(ClaimsPrincipal user, SalesDetailDto d) => CanSee(user) ? d : d with
+    public static SalesDetailDto Guard(ClaimsPrincipal user, SalesDetailDto d)
     {
-        Lines = d.Lines.Select(l => l with { UnitCost = 0, LineCost = 0, LineProfit = 0 }).ToArray(),
-        CostTotal = 0,
-        ProfitTotal = 0,
-    };
+        bool cost = CanSee(user), profit = CanSeeProfit(user);
+        if (cost && profit) return d;
+        return d with
+        {
+            Lines = d.Lines.Select(l => l with
+            {
+                UnitCost = cost ? l.UnitCost : 0,
+                LineCost = cost ? l.LineCost : 0,
+                LineProfit = profit ? l.LineProfit : 0,
+            }).ToArray(),
+            CostTotal = cost ? d.CostTotal : 0,
+            ProfitTotal = profit ? d.ProfitTotal : 0,
+        };
+    }
 
     /// <summary>An item without its average cost, and without supplier prices for sales-only staff.</summary>
     public static ProductDto Guard(ClaimsPrincipal user, ProductDto p, IReadOnlySet<string> purchaseLevels)
@@ -79,7 +95,7 @@ public static class Costs
         Lines = t.Lines.Select(l => l with { UnitCost = 0, Value = 0 }).ToArray(),
     };
 
-    public static PerformanceDto Guard(ClaimsPrincipal user, PerformanceDto p) => CanSee(user) ? p : p with
+    public static PerformanceDto Guard(ClaimsPrincipal user, PerformanceDto p) => CanSeeProfit(user) ? p : p with
     {
         Profit = 0,
         Rows = p.Rows.Select(r => r with { Profit = 0 }).ToArray(),

@@ -494,7 +494,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
-        {kind === 'invoices' && (
+        {kind === 'invoices' && isSales && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('list.state')}</span>
             <select
@@ -556,9 +556,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                         {t('list.owed')} {formatMoney(doc.owed, doc.currency, locale)}
                       </span>
                     ) : (
-                      <Badge tone={statusOf(doc).tone}>
-                        {t(statusOf(doc).key as TranslationKey)}
-                      </Badge>
+                      isSales && (
+                        <Badge tone={statusOf(doc).tone}>
+                          {t(statusOf(doc).key as TranslationKey)}
+                        </Badge>
+                      )
                     )}
                   </span>
                 </button>

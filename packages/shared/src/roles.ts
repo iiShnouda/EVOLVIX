@@ -53,6 +53,7 @@ const ALL: Permission[] = [
   'presence:view',
   'backup:create',
   'costs:view',
+  'profit:view',
   'payroll:view',
   'employees:manage',
   'attendance:edit',

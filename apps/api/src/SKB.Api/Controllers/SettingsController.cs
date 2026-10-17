@@ -56,6 +56,7 @@ public sealed class SettingsController : ControllerBase
         if (req.RequireDepartment is bool requireDepartment) s.RequireDepartment = requireDepartment;
         if (req.ReturnAfterHours is int returnAfter) s.ReturnAfterHours = Math.Clamp(returnAfter, 0, 720);
         if (req.HideNewPlaces is bool hideNew) s.HideNewPlaces = hideNew;
+        if (req.IdleMinutes is int idle) s.IdleMinutes = Math.Clamp(idle, 0, 24 * 60);
         if (req.CompanyName is not null && req.CompanyName.Trim().Length > 200)
             return BadRequest(new { message = "The name is too long.", code = "bad_name" });
         if (req.Address is not null) s.Address = Text(req.Address, 300);

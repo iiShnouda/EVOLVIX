@@ -185,6 +185,16 @@ console.log('== the owner gives costs:view');
 ok('grant', await owner.put(`/staff/${accP.staff.id}/permissions`, { granted: ['costs:view'] }));
 acc = await login(accP.email, PASS);
 check('now in the token', acc.user.permissions.includes('costs:view'));
+// Profit is a permission of its own (owner, 2026-10-17): supply prices alone don't show it.
+const costOnly = (await acc.get(`/sales/invoices/${sale.id}`)).data;
+check('sees the cost', costOnly.costTotal > 0);
+eq('but not the profit', costOnly.profitTotal, 0);
+eq('nor the trial balance (it holds the profit)', (await acc.get('/ledger/trial-balance')).status, 403);
+ok(
+  'grant profit too',
+  await owner.put(`/staff/${accP.staff.id}/permissions`, { granted: ['costs:view', 'profit:view'] }),
+);
+acc = await login(accP.email, PASS);
 eq('sees the profit', (await acc.get(`/sales/invoices/${sale.id}`)).data.profitTotal, 800);
 eq('and the valuation', (await acc.get('/inventory/valuation')).status, 200);
 eq('and the trial balance', (await acc.get('/ledger/trial-balance')).status, 200);

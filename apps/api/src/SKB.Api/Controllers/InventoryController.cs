@@ -52,7 +52,8 @@ public sealed class InventoryController : ControllerBase
     public async Task<ActionResult<InventoryListDto>> Items(
         [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
         [FromQuery] string? modelId = null, [FromQuery] string? branchId = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null)
+        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null,
+        [FromQuery] string? code = null, [FromQuery] string? supplierId = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -68,6 +69,16 @@ public sealed class InventoryController : ControllerBase
             var under = Catalog.Subtree(gid, tree).ToList();
             productQuery = productQuery.Where(p => under.Contains(p.CategoryId));
         }
+        // The item's code in its own box, and the supplier on its own (owner, 2026-10-17).
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            var c = code.Trim().ToLower();
+            productQuery = productQuery.Where(p => p.Sku.ToLower().Contains(c)
+                || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(c))
+                || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(c)));
+        }
+        if (Guid.TryParse(supplierId, out var sup))
+            productQuery = productQuery.Where(p => p.SupplierId == sup);
         var products = await productQuery
             .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
@@ -207,6 +218,7 @@ public sealed class InventoryController : ControllerBase
         if (product is null) return NotFound(new { message = "Item not found", code = "not_found" });
         bool Has(string permission) => User.HasClaim("permission", permission);
         var seeCosts = Costs.CanSee(User);
+        var seeProfit = Costs.CanSeeProfit(User);
         var canBuy = Has(Permissions.ProductsCardPurchases);
         var canSell = Has(Permissions.ProductsCardSales);
         var canReturn = Has(Permissions.ProductsCardReturns);
@@ -238,7 +250,7 @@ public sealed class InventoryController : ControllerBase
                 r.Party, r.PartyCode, r.Warehouse, r.Branch, r.Staff, r.Quantity, r.UnitQuantity, r.Unit,
                 hidden ? null : (long)Math.Round((decimal)r.UnitPrice / factor), hidden ? null : r.Discount + r.DocDiscount,
                 hidden ? null : perUnit,
-                seeCosts ? r.UnitCost : null, seeCosts ? r.LineProfit : null, r.IsBonus, r.Edited);
+                seeCosts ? r.UnitCost : null, seeProfit ? r.LineProfit : null, r.IsBonus, r.Edited);
         }
 
         var buys = rows.Where(r => r.Type == DocumentType.PURCHASE_INVOICE).ToList();
@@ -252,9 +264,9 @@ public sealed class InventoryController : ControllerBase
             buys.Sum(r => r.Quantity), sells.Sum(r => r.Quantity), backIn.Sum(r => r.Quantity), backOut.Sum(r => r.Quantity),
             seeCosts ? buys.Sum(r => r.LineTotal - r.DocDiscount) : null,
             sells.Sum(r => r.LineTotal - r.DocDiscount) - backIn.Sum(r => r.LineTotal - r.DocDiscount),
-            seeCosts ? sells.Sum(r => r.LineProfit) - backIn.Sum(r => r.LineProfit) : null,
+            seeProfit ? sells.Sum(r => r.LineProfit) - backIn.Sum(r => r.LineProfit) : null,
             seeCosts ? lastCost : null, product.SalePrice,
-            seeCosts && cost > 0 ? (int)Math.Round((product.SalePrice - cost) * 100m / cost) : null);
+            seeCosts && seeProfit && cost > 0 ? (int)Math.Round((product.SalePrice - cost) * 100m / cost) : null);
 
         var limit = await _warehouses.LimitAsync(User);
         var now = await _valuation.CurrentAsync(id);

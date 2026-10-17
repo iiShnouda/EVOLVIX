@@ -5,6 +5,30 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "إضافة الأصناف: خصم المورد خانتين (٪ + جنيه) وهامش الربح خانتين (٪ + جنيه)، والهامش بقى بيتحسب على سعر التوريد بعد الخصم، وخصم على الفاتورة كلها.",
+          "en": "Adding items: the supplier's discount and the margin each take a percent and an amount together; the margin now works on the cost after the discount; a discount on the whole invoice."
+        },
+        {
+          "ar": "إضافة الأصناف: الكود جنب اسم الصنف، الباركود بيتعمل لوحده، المقاس واللون ورا زر، ولما تكتب اسم بيظهر الصنف الموجود بموسمه وتقدر تنقله للموسم الجديد.",
+          "en": "Adding items: the code beside the name, the barcode made automatically, size and color behind a button, and typing a name shows the item already there with its season, to buy it again and move it to the new season."
+        },
+        {
+          "ar": "صورة لكل صنف في فاتورة المشتريات وصورة لفاتورة المورد نفسها، وقراءة الفاتورة من صورة بالكاميرا أو برفع صورة.",
+          "en": "A photo for each item on the purchase invoice and a photo of the supplier's own invoice; reading the invoice from the camera or an uploaded photo."
+        },
+        {
+          "ar": "تعديل الصنف بقى بنفس شكل إضافة الأصناف، واتشال زر صنف جديد بدون شراء، واتشالت حالات فواتير المشتريات.",
+          "en": "Editing an item looks like adding one; no more new item without a purchase; purchase invoices no longer carry a status."
+        },
+        {
+          "ar": "صلاحية لرؤية الربح لوحدها غير صلاحية سعر التوريد، وزر الإظهار والإخفاء بقى للربح بس.",
+          "en": "Seeing profit is its own permission apart from supply prices, and the show/hide switch is for profit only."
+        },
+        {
+          "ar": "المخزون: خانة لكود الصنف وخانة للاسم وفلتر للمورد بكوده وفلتر للفرع دايماً. تسجيل الخروج عند عدم الاستخدام بقى في الإعدادات للشركة كلها.",
+          "en": "Inventory: separate boxes for the item code and name, a supplier filter with its code and always a branch filter. Signing out when idle is now a company setting."
+        },
+        {
           "ar": "صفحة الترخيص (للمالك): كل سيرفر له رقم تثبيت، وكود ترخيص بيحدد اسم الشركة وعدد المستخدمين وتاريخ انتهاء الاشتراك. لما العدد يكمل مينفعش تضيف مستخدم جديد، ولما الاشتراك يخلص الموظفين ميقدروش يدخلوا بعد ٧ أيام (المالك دايماً يقدر). والمالك بيشوف تنبيه قبل الانتهاء بأسبوعين. وعلى سيرفر البائع: إصدار أكواد للعملاء.",
           "en": "Licence page (owner): each server has an install ID, and a licence code sets the company, the number of users and the subscription end date. At the limit no new user can be added; 7 days after the end, staff can no longer sign in (the owner always can). The owner is warned two weeks before the end. On the vendor's server: issue codes for customers."
         },
@@ -82,6 +106,10 @@
         }
       ],
       "fixes": [
+        {
+          "ar": "خانة العميل/المورد بقت تتعدل حرف حرف من غير ما الاسم كله يتمسح، والتابات بقت تستجيب من أول ضغطة، والقسم بيتغير جوه فلتر البحث عن صنف.",
+          "en": "The customer/supplier box can be edited letter by letter without wiping the name; tabs answer the first press; the department can be changed inside the item search."
+        },
         {
           "ar": "على الموبايل: شعار الشركة بقى ظاهر في الشريط العلوي جنب اسمها.",
           "en": "On phones, the company's logo now shows in the top bar beside its name."

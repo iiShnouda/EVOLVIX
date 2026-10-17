@@ -172,7 +172,7 @@ export function DashboardPage() {
 
         {shows('kpis') && <KpiRow {...cardPeriod('kpis')} />}
         {/* Gains, losses and net profit by branch (owner, 2026-10-06), for people who may see costs. */}
-        {shows('profit') && can('costs:view') && (
+        {shows('profit') && can('costs:view') && can('profit:view') && (
           <ProfitLossCard
             from={cardPeriod('profit').period.from}
             to={cardPeriod('profit').period.to}
@@ -360,7 +360,9 @@ function TrendCard({ className, ...p }: PeriodProps & { className?: string }) {
 /** The period's sales against the same number of days before it, as a ring. */
 function MonthCard({ withCounts, ...p }: PeriodProps & { withCounts: boolean }) {
   const { t, locale } = useT();
-  const seeCosts = useCan()('costs:view');
+  const can = useCan();
+  const seeCosts = can('costs:view');
+  const seeProfit = can('profit:view');
   const { data: more } = useDashboardMore(p.period);
   const currency = useContext(Main).currency;
   if (!more?.month) return null;
@@ -396,7 +398,7 @@ function MonthCard({ withCounts, ...p }: PeriodProps & { withCounts: boolean }) 
         <dl className="min-w-[13rem] flex-1 space-y-2 text-sm">
           <Line label={t('dash.todaySales')} value={money(month.sales)} strong />
           <Line label={t('dash.lastMonth')} value={money(month.lastMonth)} />
-          {seeCosts && month.profit != null && (
+          {seeProfit && month.profit != null && (
             <Line label={t('dash.profit')} value={money(month.profit)} tone="text-positive" />
           )}
           {month.expenses != null && (

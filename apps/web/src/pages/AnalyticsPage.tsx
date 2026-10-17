@@ -54,7 +54,7 @@ export function AnalyticsPage() {
   const [params, setParams] = useSearchParams();
   // Profitability is the owner's unless given (costs:view): the server refuses it otherwise.
   const can = useCan();
-  const seeCosts = can('costs:view');
+  const seeCosts = can('costs:view') && can('profit:view');
   const tabs = TABS.filter(
     (x) =>
       ((x.key !== 'profit' && x.key !== 'pl') || seeCosts) &&
@@ -156,11 +156,19 @@ function MonthlyTab() {
   const monthName = (period: string) =>
     period.length === 4
       ? formatNumber(Number(period), locale).replace(/[,٬]/g, '')
-      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, {
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'UTC',
+        });
   const shortName = (period: string) =>
     period.length === 4
       ? monthName(period)
-      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, { month: 'short', year: '2-digit', timeZone: 'UTC' });
+      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, {
+          month: 'short',
+          year: '2-digit',
+          timeZone: 'UTC',
+        });
   const subtitle = yearly
     ? `${t('analytics.years')}: ${formatNumber(years, locale)}`
     : `${t('analytics.months')}: ${formatNumber(months, locale)}`;
@@ -318,7 +326,7 @@ function MonthlyTab() {
  */
 function PerformanceTab() {
   const { t, locale } = useT();
-  const seeCosts = useCan()('costs:view');
+  const seeCosts = useCan()('profit:view');
   /** Drop the profit column (index 3) for people who may not see profit. */
   const cols = <T,>(row: T[]) => (seeCosts ? row : row.filter((_, i) => i !== 3));
   const [from, setFrom] = useState(daysAgo(29));

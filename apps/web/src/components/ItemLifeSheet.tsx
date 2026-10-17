@@ -28,6 +28,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
   const { t, locale } = useT();
   const life = useItemLife(productId);
   const seeCosts = useCan()('costs:view');
+  const seeProfit = useCan()('profit:view');
   const [tab, setTab] = useState<Tab>('summary');
   const data = life.data;
   const money = (v: number | null | undefined) =>
@@ -75,7 +76,9 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto">
-            {tab === 'summary' && <Summary data={data} money={money} seeCosts={seeCosts} />}
+            {tab === 'summary' && (
+              <Summary data={data} money={money} seeCosts={seeCosts} seeProfit={seeProfit} />
+            )}
             {tab === 'purchases' && data.purchases && (
               <Lines id="life.purchases" rows={data.purchases} money={money} party="supplier" />
             )}
@@ -96,10 +99,12 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
     data,
     money,
     seeCosts,
+    seeProfit,
   }: {
     data: ItemLife;
     money: (v: number | null | undefined) => string;
     seeCosts: boolean;
+    seeProfit: boolean;
   }) {
     const x = data.totals;
     const tile = (label: TranslationKey, value: string, tone = '') => (
@@ -126,6 +131,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
           {tile('life.salePrice', money(x.salePrice))}
           {seeCosts && tile('life.lastCost', money(x.lastCost))}
           {seeCosts &&
+            seeProfit &&
             tile(
               'life.margin',
               x.marginPercent == null ? '–' : `${formatNumber(x.marginPercent, locale)}%`,
@@ -137,7 +143,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
           {tile('life.returnedOut', formatNumber(x.returnedToSuppliers, locale))}
           {tile('life.soldValue', money(x.soldValue))}
           {seeCosts && tile('life.boughtValue', money(x.boughtValue))}
-          {seeCosts &&
+          {seeProfit &&
             tile(
               'life.profit',
               money(x.profit),
@@ -205,7 +211,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
               <th className={`${th} text-end`}>{t('col.discount')}</th>
               <th className={`${th} text-end`}>{t('life.netPiece')}</th>
               {profit && seeCosts && <th className={`${th} text-end`}>{t('col.cost')}</th>}
-              {profit && seeCosts && <th className={`${th} text-end`}>{t('life.profit')}</th>}
+              {profit && seeProfit && <th className={`${th} text-end`}>{t('life.profit')}</th>}
               <th className={`${th} text-start`}>{t('list.warehouse')}</th>
               <th className={`${th} text-start`}>{t('life.by')}</th>
             </tr>
@@ -240,7 +246,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
                 {profit && seeCosts && (
                   <td className="px-2 py-1.5 text-end tnum">{money(r.unitCost)}</td>
                 )}
-                {profit && seeCosts && (
+                {profit && seeProfit && (
                   <td
                     className={`px-2 py-1.5 text-end tnum ${(r.profit ?? 0) < 0 ? 'text-destructive' : 'text-positive'}`}
                   >

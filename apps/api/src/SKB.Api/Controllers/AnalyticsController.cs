@@ -69,7 +69,7 @@ public sealed class AnalyticsController : ControllerBase
     public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
         [FromQuery] string? branchId = null)
     {
-        if (!Costs.CanSee(User)) return StatusCode(403, Costs.Refusal);
+        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
         var today = CompanyClock.Today;
         var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);
         var toDay = CompanyClock.ParseDay(to) ?? today;

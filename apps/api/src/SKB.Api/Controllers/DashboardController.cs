@@ -147,7 +147,7 @@ public sealed class DashboardController : ControllerBase
                                 && v.CreatedAt >= monthStart && v.CreatedAt < monthEnd)
                     .SumAsync(v => (long?)v.Amount) ?? 0;
             month = new DashMonthDto(Net(true), Net(false),
-                Can(Permissions.CostsView) ? Net(true, profit: true) : null, expenses);
+                Can(Permissions.ProfitView) ? Net(true, profit: true) : null, expenses);
 
             var monthSales = sales.Where(d => d.IssueDate >= monthStart && d.IssueDate < monthEnd);
             var customers = await monthSales.GroupBy(d => d.PartyId)
