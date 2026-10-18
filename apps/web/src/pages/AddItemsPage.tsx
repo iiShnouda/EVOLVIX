@@ -61,7 +61,8 @@ interface NewLine {
   costBefore: string;
   /**
    * The supplier's discount, a percent and an amount together (owner, 2026-10-17: "10% and 5
-   * pounds more"), and the margin the same way ("10% + 10 pounds"), on the cost after the discount.
+   * pounds more"), and the margin the same way ("10% + 10 pounds"), worked out on the price before
+   * the discount and added to the cost after it.
    */
   discountPct: string;
   discountAmt: string;
@@ -132,8 +133,8 @@ const pct = (v: string) => Math.min(100, Math.max(0, Number(v) || 0));
 /**
  * Adding items is a purchase invoice (owner decision 2026-10-01): the supplier, where the goods are
  * stored (branch, warehouse, department) and the season, then each item with its cost before the
- * supplier's discount (per piece: a percent and an amount), the margin (a percent and an amount, on
- * the cost after the discount) and the sale price. Add puts it in the list; Save creates every item
+ * supplier's discount (per piece: a percent and an amount), the margin (a percent and an amount,
+ * worked out on the price before the discount and added to the cost after it) and the sale price. Add puts it in the list; Save creates every item
  * and one purchase invoice that puts them in stock at the net cost, less any discount on the whole
  * invoice. A photo can go with each new item and with the invoice itself.
  */
@@ -234,9 +235,11 @@ export function AddItemsPage() {
       : 0;
     const discount = Math.min(before, rawDiscount);
     const after = before - discount;
-    // The margin is on what the piece really costs: after the supplier's discount.
+    // The margin is worked out on the supplier's price before the discount, and the discount
+    // counts as part of it (owner, 2026-10-18): 505 less 10% with a 13% margin sells at
+    // 454.50 + 65.65 = 520.15 (3% over the list price); an 8% margin sells at 494.90 (2% under).
     const marginSale =
-      Math.round(after * (1 + (Number(l.marginPct) || 0) / 100)) + minor(l.marginAmt);
+      after + Math.round((before * (Number(l.marginPct) || 0)) / 100) + minor(l.marginAmt);
     const sale = l.existing
       ? (l.existingSale ?? 0)
       : l.salePrice !== ''
