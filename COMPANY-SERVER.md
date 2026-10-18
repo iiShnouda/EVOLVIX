@@ -80,6 +80,12 @@ and nothing is sent outside the building.
   `ASSISTANT_ENABLED=false` to turn the assistant off.
 - Check it in the app: **Assistant** page (it says when the models aren't ready yet).
 - Update the models later: `docker compose --profile full run --rm assistant-models`.
+- **Using the models from your own devices (e.g. a game or another app).** Put this server's
+  Tailscale address in `.env` — `ASSISTANT_LISTEN=100.x.y.z` (from `tailscale ip -4`) — and run
+  `docker compose --profile full up -d assistant`. Then any device on your tailnet uses
+  `http://100.x.y.z:11434/v1` (OpenAI-style) with the model `qwen2.5:7b-instruct`. Only your
+  tailnet reaches it; the models have no password, so never use `0.0.0.0` or a public address.
+  Tailscale must be running before Docker starts it (on a restart the container retries).
 
 **Talking with it by voice.** The assistant answers in the app's language (Arabic or English), and
 one can talk with it like with a person: it listens, answers briefly and says the answer aloud, then

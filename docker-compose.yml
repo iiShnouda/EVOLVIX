@@ -87,8 +87,11 @@ services:
       - "${APP_PORT:-8080}:8080"
 
   # The company's own AI models (Ollama), run on this machine with no internet needed after the
-  # first download. No port is published: only the app reaches it, over the private Docker network,
-  # so nobody on the office network or outside can talk to it or see the server through it.
+  # first download. The app reaches it over the private Docker network. Its port is published on
+  # this machine only (127.0.0.1), so nobody on the office network or outside can talk to it —
+  # unless ASSISTANT_LISTEN is set to this server's Tailscale address (owner, 2026-10-18: use the
+  # same models from the owner's own devices), which only devices on the owner's tailnet reach.
+  # Ollama has no password: never set it to 0.0.0.0 or to an address the internet can reach.
   assistant:
     profiles: ["full"]
     image: ollama/ollama:latest
@@ -97,6 +100,8 @@ services:
     cgroup_parent: evolvix-assistant.slice
     environment:
       OLLAMA_KEEP_ALIVE: "30m"
+    ports:
+      - "${ASSISTANT_LISTEN:-127.0.0.1}:11434:11434"
     volumes:
       - skb-assistant-models:/root/.ollama
 
