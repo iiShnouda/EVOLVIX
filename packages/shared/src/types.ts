@@ -1243,6 +1243,9 @@ export interface InventoryItem {
   modelId?: string | null;
   /** On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب). */
   isLow: boolean;
+  supplierName?: string | null;
+  /** Where it is: "branch / warehouse (quantity)" for each place holding some. */
+  places?: string[] | null;
 }
 
 /** A unit an item comes in: its name and how many base units it holds. */
@@ -1259,6 +1262,10 @@ export interface InventoryList {
   totalItems: number;
   lowStockCount: number;
   currency: string;
+  /** Items the filters found; the list is one page of them (when a page size was asked for). */
+  matched?: number;
+  page?: number;
+  pageSize?: number;
 }
 
 /** One row of the item card: a physical stock change with the balance after it. */
@@ -1357,6 +1364,9 @@ export interface ItemCard {
   /** Today's quantity of the item in each warehouse that holds it. */
   stock: WarehouseStock[];
   currency: string;
+  /** From its last purchase: the supplier's discount (costs:view) and the margin (profit:view), %. */
+  supplierDiscountPercent?: number | null;
+  marginPercent?: number | null;
 }
 
 /** Stock of one item held in one warehouse. */

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatMoney, type TranslationKey } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { ItemFinderSheet, type FinderPick } from '../components/ItemFinderSheet';
+import { LabelPicker, type LabelPick } from '../components/LabelPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { api } from '../lib/api';
@@ -23,6 +23,8 @@ interface LabelItem {
   sizeName: string | null;
   colorName: string | null;
   count: number;
+  /** Its stock when picked from the list (for "as many labels as pieces"). */
+  stock?: number;
 }
 
 /**
@@ -312,7 +314,11 @@ export function LabelsPage() {
   const [items, setItems] = useState<LabelItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [finding, setFinding] = useState(false);
+  // One count for every item (owner, 2026-10-18), or as many labels as pieces in stock.
+  const [each, setEach] = useState('1');
+  const [byStock, setByStock] = useState(false);
+  const countFor = (stock?: number) =>
+    Math.max(0, Math.min(1000, byStock ? (stock ?? 1) : Math.floor(Number(each) || 0)));
   const [saved, save] = useHiddenColumns('labels.options');
   const opt = (k: string) => saved.find((x) => x.startsWith(`${k}:`))?.slice(k.length + 1);
   const layout = LAYOUTS.find((l) => l.id === opt('layout')) ?? LAYOUTS[2]!;
@@ -332,7 +338,11 @@ export function LabelsPage() {
     ]);
   };
 
-  const load = async (query: string, counts?: Map<string, number>) => {
+  const load = async (
+    query: string,
+    counts?: Map<string, number>,
+    stocks?: Map<string, number>,
+  ) => {
     setLoading(true);
     setError(null);
     try {
@@ -342,7 +352,12 @@ export function LabelsPage() {
         for (const r of rows) {
           const was = have.get(r.id);
           const n = counts?.get(r.id) ?? r.count;
-          have.set(r.id, was ? { ...was, count: was.count + n } : { ...r, count: n });
+          const stock = stocks?.get(r.id) ?? was?.stock;
+          // Picked again from the list: the count is set, not added to.
+          have.set(
+            r.id,
+            was ? { ...was, stock, count: counts ? n : was.count + n } : { ...r, stock, count: n },
+          );
         }
         return [...have.values()];
       });
@@ -491,14 +506,37 @@ export function LabelsPage() {
       </Card>
 
       <Card className="space-y-3">
+        <span className="text-sm font-semibold">{t('labels.choose')}</span>
+        <LabelPicker
+          onAdd={(picks: LabelPick[]) =>
+            void load(
+              `ids=${picks
+                .slice(0, 500)
+                .map((p) => p.id)
+                .join(',')}`,
+              new Map(picks.map((p) => [p.id, countFor(p.stock)])),
+              new Map(picks.map((p) => [p.id, p.stock])),
+            ).then(async () => {
+              // More than the server takes at once: the rest in further batches.
+              for (let i = 500; i < picks.length; i += 500) {
+                const part = picks.slice(i, i + 500);
+                await load(
+                  `ids=${part.map((p) => p.id).join(',')}`,
+                  new Map(part.map((p) => [p.id, countFor(p.stock)])),
+                  new Map(part.map((p) => [p.id, p.stock])),
+                );
+              }
+            })
+          }
+        />
+      </Card>
+
+      <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-semibold">
             {t('labels.items')} <span className="text-muted tnum">({total})</span>
           </span>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" icon="search" onClick={() => setFinding(true)}>
-              {t('finder.button')}
-            </Button>
             <Button
               icon="print"
               loading={printing}
@@ -508,6 +546,41 @@ export function LabelsPage() {
               {t('labels.print')}
             </Button>
           </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-app)] bg-surface-2 p-2">
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('labels.countEach')}</span>
+            <input
+              type="number"
+              min={0}
+              max={1000}
+              disabled={byStock}
+              className="h-9 w-24 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm tnum disabled:opacity-50"
+              value={each}
+              onChange={(e) => setEach(e.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-1.5 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={byStock}
+              onChange={(e) => setByStock(e.target.checked)}
+            />
+            {t('labels.byStock')}
+          </label>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={items.length === 0}
+            onClick={() => setItems((cur) => cur.map((x) => ({ ...x, count: countFor(x.stock) })))}
+          >
+            {t('labels.applyAll')}
+          </Button>
+          {items.length > 0 && (
+            <Button size="sm" variant="dangerGhost" onClick={() => setItems([])}>
+              {t('labels.clear')}
+            </Button>
+          )}
         </div>
         {loading ? (
           <div className="grid place-items-center py-8 text-muted">
@@ -582,19 +655,6 @@ export function LabelsPage() {
             </div>
           </div>
         </Card>
-      )}
-
-      {finding && (
-        <ItemFinderSheet
-          onClose={() => setFinding(false)}
-          onAdd={(picks: FinderPick[], close) => {
-            void load(
-              `ids=${picks.map((p) => p.product.id).join(',')}`,
-              new Map(picks.map((p) => [p.product.id, Math.max(1, p.quantity)])),
-            );
-            if (close) setFinding(false);
-          }}
-        />
       )}
     </div>
   );

@@ -181,6 +181,30 @@ export function ItemCardPage() {
               currency={currency}
             />
           </div>
+          {/* The supplier's discount and the margin, from the last purchase (owner, 2026-10-18). */}
+          {(data.supplierDiscountPercent != null ||
+            (data.marginPercent != null && can('profit:view'))) && (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {data.supplierDiscountPercent != null && (
+                <Card>
+                  <p className="text-xs text-muted">{t('itemCard.supplierDiscount')}</p>
+                  <p className="mt-1 text-lg font-semibold tnum">
+                    {formatNumber(data.supplierDiscountPercent, locale)}%
+                  </p>
+                </Card>
+              )}
+              {data.marginPercent != null && can('profit:view') && (
+                <Card>
+                  <p className="text-xs text-muted">{t('itemCard.margin')}</p>
+                  <p
+                    className={`mt-1 text-lg font-semibold tnum ${data.marginPercent < 0 ? 'text-destructive' : 'text-positive'}`}
+                  >
+                    {formatNumber(data.marginPercent, locale)}%
+                  </p>
+                </Card>
+              )}
+            </div>
+          )}
 
           <Card padded={false} className="overflow-hidden">
             {data.movements.length === 0 ? (

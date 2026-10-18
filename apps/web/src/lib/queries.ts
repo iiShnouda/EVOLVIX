@@ -654,8 +654,19 @@ export function useInventory(params: {
   groupId?: string;
   code?: string;
   supplierId?: string;
+  /** One page, sorted by a column (the inventory list); none = every item (stock look-ups). */
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+  dir?: 'asc' | 'desc';
+  inStock?: boolean;
 }) {
   const query = new URLSearchParams();
+  if (params.inStock) query.set('inStock', 'true');
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  if (params.sort) query.set('sort', params.sort);
+  if (params.dir) query.set('dir', params.dir);
   if (params.search) query.set('search', params.search);
   if (params.code) query.set('code', params.code);
   if (params.supplierId) query.set('supplierId', params.supplierId);
@@ -668,6 +679,7 @@ export function useInventory(params: {
   return useQuery({
     queryKey: ['inventory', 'items', params],
     queryFn: () => api.get<InventoryList>(`/inventory/items?${query}`),
+    placeholderData: keepPreviousData,
   });
 }
 

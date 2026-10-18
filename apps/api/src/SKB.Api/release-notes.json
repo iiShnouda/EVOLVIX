@@ -5,6 +5,22 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "الترتيب في كل الجداول: دوس على عنوان أي عمود يترتب من الكبير للصغير، ودوسة تانية من الصغير للكبير.",
+          "en": "Every table: click a column title to sort biggest first, click again for smallest first."
+        },
+        {
+          "ar": "المخزون: كل صنف بيبان فين (الفرع / المخزن والكمية)، والمورد، وسعر البيع، وسعر التوريد والقيمة لصاحب الصلاحية، والقائمة بتتحمل صفحة صفحة علشان السيرفر ميتعبش، ومبقتش بتختار قسم أو مخزن لوحدها.",
+          "en": "Inventory: where each item is (branch / warehouse and quantity), its supplier, sale price, and supply price and value for those allowed; the list loads a page at a time, and no longer picks a department or warehouse by itself."
+        },
+        {
+          "ar": "كارت الصنف: خصم المورد وهامش الربح بالنسبة من آخر فاتورة شراء، كل واحد بصلاحيته.",
+          "en": "Item card: the supplier's discount and the margin in percent from the last purchase, each with its own permission."
+        },
+        {
+          "ar": "طباعة الباركود: فلاتر في نفس الصفحة بدل البحث التفصيلي، وإضافة كل الأصناف اللي لقاها الفلتر مرة واحدة، وعدد ملصقات موحّد لكل الأصناف أو بعدد الرصيد.",
+          "en": "Barcode labels: filters right on the page instead of the detailed search, add every item found at once, and one label count for all or as many as in stock."
+        },
+        {
           "ar": "إضافة الأصناف: خصم المورد خانتين (٪ + جنيه) وهامش الربح خانتين (٪ + جنيه). الهامش بيتحسب على سعر المورد قبل الخصم والخصم جزء منه: 505 بخصم 10% وهامش 13% = 521 (سعر البيع بيتقرّب لفوق لأقرب جنيه)، وهامش 8% = 495. وخصم على الفاتورة كلها.",
           "en": "Adding items: the supplier's discount and the margin each take a percent and an amount together. The margin is worked out on the supplier's price before the discount, which counts as part of it: 505 less 10% with a 13% margin sells at 521 (the sale price is rounded up to a whole pound), with 8% at 495. A discount on the whole invoice."
         },

@@ -32,6 +32,8 @@ export function TableColumns({
   toolbar,
   onMove,
   onDrop,
+  onSort,
+  sorted,
 }: {
   /** Which table this is, e.g. "sales.invoices"; the same table everywhere shares its choice. */
   id: string;
@@ -46,6 +48,12 @@ export function TableColumns({
   onMove?: (label: string, step: -1 | 1) => void;
   /** Tables with their own order (see onMove) put a dragged column where it was dropped. */
   onDrop?: (label: string, target: string) => void;
+  /**
+   * A list sorted by the server (paged): a click on a title asks for that order instead of the
+   * rows on the screen being sorted here; `sorted` says which title is in use.
+   */
+  onSort?: (label: string, dir: 1 | -1) => void;
+  sorted?: { label: string; dir: 1 | -1 } | null;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const scope = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -58,6 +66,9 @@ export function TableColumns({
   const [live, setLive] = useState<{ key: string; px: number } | null>(null);
   // The column being dragged to a new place, and the one it is over.
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
+  // Sorted by a column (owner, 2026-10-18: "click a column: biggest first, again: smallest first").
+  const [ownSort, setOwnSort] = useState<{ label: string; dir: 1 | -1 } | null>(null);
+  const sort = onSort ? (sorted ?? null) : ownSort;
 
   // Read the header after each render, and whenever the table changes underneath.
   const read = () => {
@@ -167,6 +178,42 @@ export function TableColumns({
     watch.observe(box.current, { childList: true, subtree: true });
     return () => watch.disconnect();
   }, [reorder]);
+
+  const sortAt = sort ? headers.indexOf(sort.label) : -1;
+  const sortCss =
+    sortAt >= 0
+      ? `${w} thead tr:first-child > :nth-child(${sortAt + 1})::after{content:"${
+          sort!.dir === -1 ? ' \\25BC' : ' \\25B2'
+        }";font-size:9px;opacity:.75}`
+      : '';
+
+  // The rows on the screen in the chosen order, kept so as rows come and go.
+  useLayoutEffect(() => {
+    if (onSort || sortAt < 0 || !box.current) return;
+    const dir = ownSort!.dir;
+    let busy = false;
+    const apply = () => {
+      if (busy || !box.current) return;
+      busy = true;
+      box.current.querySelectorAll('tbody').forEach((body) => sortBody(body, sortAt, dir));
+      busy = false;
+    };
+    apply();
+    const watch = new MutationObserver(() => {
+      if (!busy) apply();
+    });
+    box.current.querySelectorAll('tbody').forEach((b) => watch.observe(b, { childList: true }));
+    return () => watch.disconnect();
+  }, [onSort, sortAt, ownSort]);
+
+  /** A click on a title: biggest first, then smallest first, and so on. */
+  function sortBy(index: number) {
+    const label = headers[index];
+    if (!label) return;
+    const dir: 1 | -1 = sort?.label === label && sort.dir === -1 ? 1 : -1;
+    if (onSort) onSort(label, dir);
+    else setOwnSort({ label, dir });
+  }
 
   /** Put a column where another one is, and keep that order for next time. */
   function place_(label: string, target: string) {
@@ -323,8 +370,8 @@ export function TableColumns({
           <span className="min-w-0 text-xs text-muted">{toolbar}</span>
         </div>
       )}
-      {(css || orderCss || widthCss || dragCss) && (
-        <style>{[css, orderCss, widthCss, dragCss].filter(Boolean).join('\n')}</style>
+      {(css || orderCss || widthCss || dragCss || sortCss) && (
+        <style>{[css, orderCss, widthCss, dragCss, sortCss].filter(Boolean).join('\n')}</style>
       )}
       <div
         ref={box}
@@ -339,6 +386,13 @@ export function TableColumns({
             e.preventDefault();
             e.stopPropagation();
           }
+        }}
+        onClick={(e) => {
+          const cell = headerCell(e.target);
+          if (!cell || justDragged.current) return;
+          if ((e.target as HTMLElement).closest('input,select,textarea,button,a')) return;
+          if (e.nativeEvent instanceof MouseEvent && !spans && nearEdge(cell.th, e.clientX)) return;
+          sortBy(cell.index);
         }}
         className={drag ? 'select-none' : undefined}
       >
@@ -463,4 +517,54 @@ function ColumnMenu({
       )}
     </div>
   );
+}
+
+const collator = new Intl.Collator(['ar', 'en'], { numeric: true, sensitivity: 'base' });
+const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+
+/** A cell's value to sort by: a number when the cell is one (money, a count), else its text. */
+function sortValue(cell: Element | undefined): number | string {
+  const text = (cell?.textContent ?? '')
+    .replace(/[\u200e\u200f\u061c]/g, '')
+    .replace(/[٠-٩]/g, (d) => String(ARABIC_DIGITS.indexOf(d)))
+    .trim();
+  const bare = text.replace(/ج\.م\.?|EGP|%|٪/g, '').replace(/[\s\u00a0]/g, '');
+  if (/^[-−]?[\d,]*\.?\d+$/.test(bare)) return Number(bare.replace(/,/g, '').replace('−', '-'));
+  return text;
+}
+
+/**
+ * Put a table body's rows in order of one column. A row spanning columns (a note under a line)
+ * stays with the row above it; such rows at the very end (totals) stay at the end.
+ */
+function sortBody(body: HTMLTableSectionElement, col: number, dir: 1 | -1) {
+  const rows = [...body.children] as HTMLTableRowElement[];
+  const isSpan = (r: HTMLTableRowElement) =>
+    r.hasAttribute('data-span') || [...r.cells].some((c) => c.colSpan > 1);
+  let end = rows.length;
+  while (end > 0 && isSpan(rows[end - 1]!)) end--;
+  const groups: HTMLTableRowElement[][] = [];
+  for (const r of rows.slice(0, end)) {
+    if (isSpan(r) && groups.length) groups[groups.length - 1]!.push(r);
+    else groups.push([r]);
+  }
+  if (groups.length < 2) return;
+  const keyed = groups.map((g, i) => ({ g, i, v: sortValue(g[0]!.cells[col]) }));
+  keyed.sort((a, b) => {
+    const x = a.v;
+    const y = b.v;
+    const c =
+      typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : typeof x === 'number'
+          ? -1
+          : typeof y === 'number'
+            ? 1
+            : collator.compare(x, y);
+    return c * dir || a.i - b.i;
+  });
+  const wanted = keyed.flatMap((k) => k.g);
+  if (wanted.every((r, i) => r === rows[i])) return;
+  const tail = rows[end] ?? null;
+  for (const r of wanted) body.insertBefore(r, tail);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -18,7 +18,8 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
-import { useDepartments, useGroups, useInventory, useValuation } from '../lib/queries';
+import { useDepartments, useGroups, useInventory, usePageSize, useValuation } from '../lib/queries';
+import { Pager } from '../components/Pager';
 import { GroupPicker } from '../components/GroupTree';
 import { TableColumns } from '../components/TableColumns';
 import { ReportActions } from '../components/ReportActions';
@@ -56,15 +57,23 @@ export function InventoryPage() {
   );
   const myBranches = useAuth((s) => s.user?.branches ?? []);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
-  // The filters start where the person works (owner, 2026-10-02).
-  const [place, setPlace] = useWorkPlace();
-  const placed = useRef(false);
+  // The filters start at everything (owner, 2026-10-18: it opened on one department and store);
+  // a place chosen here is still remembered for the other screens.
+  const [, setPlace] = useWorkPlace();
 
   const [search, setSearch] = useState('');
   // The item's code, its name and the supplier each in a box of their own (owner, 2026-10-17).
   const [code, setCode] = useState('');
   const [supplier, setSupplier] = useState<Party | null>(null);
+  // One page at a time, sorted by the column clicked (owner, 2026-10-18).
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePageSize('inventory', 50);
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const list = useInventory({
+    page,
+    pageSize,
+    sort: sort?.key,
+    dir: sort?.dir,
     search: search.trim() || undefined,
     code: code.trim() || undefined,
     supplierId: supplier?.id,
@@ -75,6 +84,18 @@ export function InventoryPage() {
     groupId: groupId || undefined,
   });
   const currency = list.data?.currency ?? 'EGP';
+  const filterKey = [
+    search,
+    code,
+    supplier?.id,
+    lowOnly,
+    warehouseId,
+    branchId,
+    departmentId,
+    groupId,
+  ].join('|');
+  useEffect(() => setPage(1), [filterKey]);
+  const pages = Math.max(1, Math.ceil((list.data?.matched ?? 0) / pageSize));
 
   /** Change some URL params, keeping the rest (tab, low-stock filter, warehouse). */
   function update(patch: Record<string, string | null>) {
@@ -88,17 +109,6 @@ export function InventoryPage() {
   const setTab = (next: Tab) =>
     update({ tab: next === 'valuation' ? 'valuation' : null, low: null });
   const setLowOnly = (on: boolean) => update({ low: on ? '1' : null });
-  useEffect(() => {
-    if (placed.current || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
-    placed.current = true;
-    if (params.get('br') || params.get('wh') || params.get('dept')) return;
-    update({
-      br: myBranches.length > 1 ? place.branchId || null : null,
-      wh: place.warehouseId || null,
-      dept: place.departmentId || null,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place.branchId, place.warehouseId, place.departmentId]);
 
   return (
     <div className="space-y-5">
@@ -272,6 +282,11 @@ export function InventoryPage() {
           onCode={setCode}
           supplier={supplier}
           onSupplier={setSupplier}
+          sort={sort}
+          onSort={(key, dir) => {
+            setSort({ key, dir });
+            setPage(1);
+          }}
           lowOnly={lowOnly}
           onLowOnly={setLowOnly}
           onOpen={(id) =>
@@ -280,6 +295,11 @@ export function InventoryPage() {
         />
       ) : (
         <ValuationTab warehouseId={warehouseId} />
+      )}
+      {tab === 'items' && (
+        <div className="flex justify-end">
+          <Pager page={page} size={pageSize} pages={pages} onPage={setPage} onSize={setPageSize} />
+        </div>
       )}
     </div>
   );
@@ -296,6 +316,8 @@ function ItemsTab({
   onCode,
   supplier,
   onSupplier,
+  sort,
+  onSort,
   lowOnly,
   onLowOnly,
   onOpen,
@@ -310,6 +332,8 @@ function ItemsTab({
   onCode: (v: string) => void;
   supplier: Party | null;
   onSupplier: (p: Party | null) => void;
+  sort: { key: string; dir: 'asc' | 'desc' } | null;
+  onSort: (key: string, dir: 'asc' | 'desc') => void;
   lowOnly: boolean;
   onLowOnly: (v: boolean) => void;
   onOpen: (id: string) => void;
@@ -319,6 +343,92 @@ function ItemsTab({
   const isPhone = deviceClass === 'phone';
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
+  const can = useCan();
+  // Each column with the permission it needs (owner, 2026-10-18): where it is, the supplier, the
+  // sale price for everyone here, the supply price and the value for costs:view.
+  const columns: {
+    key: string;
+    label: string;
+    end?: boolean;
+    className?: string;
+    cell: (p: InventoryItem) => ReactNode;
+  }[] = [
+    { key: 'code', label: t('inventory.sku'), className: 'text-muted tnum', cell: (p) => p.sku },
+    { key: 'name', label: t('inventory.products'), className: 'font-medium', cell: (p) => p.name },
+    {
+      key: 'department',
+      label: t('inventory.category'),
+      className: 'text-muted',
+      cell: (p) => p.categoryName,
+    },
+    {
+      key: 'places',
+      label: t('inventory.places'),
+      className: 'text-xs text-muted',
+      cell: (p) =>
+        (p.places ?? []).map((x) => (
+          <span key={x} className="block whitespace-nowrap">
+            {x}
+          </span>
+        )),
+    },
+    ...(can('parties:view') || can('purchases:view')
+      ? [
+          {
+            key: 'supplier',
+            label: t('inventory.supplier'),
+            className: 'text-muted',
+            cell: (p: InventoryItem) => p.supplierName ?? '',
+          },
+        ]
+      : []),
+    {
+      key: 'stock',
+      label: t('inventory.stock'),
+      end: true,
+      cell: (p) => (
+        <>
+          <span className="font-semibold">{formatNumber(p.stockOnHand, locale)}</span>{' '}
+          <span className="text-xs text-muted">{p.unit}</span>
+          {p.units.length > 1 && p.stockOnHand > 0 && (
+            <span className="block text-xs text-muted">
+              {formatQuantity(p.stockOnHand, p.units, locale)}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'reorder',
+      label: t('inventory.reorder'),
+      end: true,
+      className: 'text-muted',
+      cell: (p) => formatNumber(p.reorderLevel, locale),
+    },
+    {
+      key: 'sale',
+      label: t('item.salePrice'),
+      end: true,
+      cell: (p) => formatMoney(p.salePrice, currency, locale),
+    },
+    ...(seeCosts
+      ? [
+          {
+            key: 'cost',
+            label: t('finder.costPrice'),
+            end: true,
+            cell: (p: InventoryItem) => formatMoney(p.avgCost, currency, locale),
+          },
+          {
+            key: 'value',
+            label: t('inventory.value'),
+            end: true,
+            cell: (p: InventoryItem) => formatMoney(p.stockValue, currency, locale),
+          },
+        ]
+      : []),
+    { key: 'status', label: t('common.status'), cell: (p) => <StockBadge item={p} /> },
+  ];
 
   return (
     <Card padded={false} className="overflow-hidden">
@@ -385,6 +495,11 @@ function ItemsTab({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{p.name}</span>
+                    {(p.places?.length ?? 0) > 0 && (
+                      <span className="block truncate text-xs text-muted">
+                        {p.places!.join(' · ')}
+                      </span>
+                    )}
                     <span className="text-xs text-muted tnum">
                       {p.sku}
                       {seeCosts &&
@@ -402,28 +517,29 @@ function ItemsTab({
             ))}
           </ul>
         ) : (
-          <TableColumns id="inventory.items">
-            <table className="w-full text-sm">
+          <TableColumns
+            id="inventory.items"
+            sorted={(() => {
+              const col = columns.find((c) => c.key === sort?.key);
+              return col && sort ? { label: col.label, dir: sort.dir === 'desc' ? -1 : 1 } : null;
+            })()}
+            onSort={(label, dir) => {
+              const col = columns.find((c) => c.label === label);
+              if (col) onSort(col.key, dir === -1 ? 'desc' : 'asc');
+            }}
+            className="overflow-x-auto"
+          >
+            <table className="w-full whitespace-nowrap text-sm">
               <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                 <tr>
-                  <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
-                  <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
-                  <th className="hidden p-3 text-start font-medium xl:table-cell">
-                    {t('inventory.category')}
-                  </th>
-                  <th className="p-3 text-end font-medium">{t('inventory.stock')}</th>
-                  <th className="hidden p-3 text-end font-medium md:table-cell">
-                    {t('inventory.reorder')}
-                  </th>
-                  {seeCosts && (
-                    <>
-                      <th className="hidden p-3 text-end font-medium md:table-cell">
-                        {t('inventory.avgCost')}
-                      </th>
-                      <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
-                    </>
-                  )}
-                  <th className="p-3 text-start font-medium">{t('common.status')}</th>
+                  {columns.map((c) => (
+                    <th
+                      key={c.key}
+                      className={`cursor-pointer select-none p-3 font-medium ${c.end ? 'text-end' : 'text-start'}`}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--c-line)]">
@@ -433,34 +549,14 @@ function ItemsTab({
                     onClick={() => onOpen(p.id)}
                     className="cursor-pointer transition-colors hover:bg-surface-2"
                   >
-                    <td className="p-3 text-muted tnum">{p.sku}</td>
-                    <td className="p-3 font-medium">{p.name}</td>
-                    <td className="hidden p-3 text-muted xl:table-cell">{p.categoryName}</td>
-                    <td className="p-3 text-end font-semibold tnum">
-                      {formatNumber(p.stockOnHand, locale)}{' '}
-                      <span className="text-xs font-normal text-muted">{p.unit}</span>
-                      {p.units.length > 1 && p.stockOnHand > 0 && (
-                        <span className="block text-xs font-normal text-muted">
-                          {formatQuantity(p.stockOnHand, p.units, locale)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="hidden p-3 text-end text-muted tnum md:table-cell">
-                      {formatNumber(p.reorderLevel, locale)}
-                    </td>
-                    {seeCosts && (
-                      <>
-                        <td className="hidden p-3 text-end tnum md:table-cell">
-                          {formatMoney(p.avgCost, currency, locale)}
-                        </td>
-                        <td className="p-3 text-end tnum">
-                          {formatMoney(p.stockValue, currency, locale)}
-                        </td>
-                      </>
-                    )}
-                    <td className="p-3">
-                      <StockBadge item={p} />
-                    </td>
+                    {columns.map((c) => (
+                      <td
+                        key={c.key}
+                        className={`p-3 align-top ${c.end ? 'text-end tnum' : ''} ${c.className ?? ''}`}
+                      >
+                        {c.cell(p)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

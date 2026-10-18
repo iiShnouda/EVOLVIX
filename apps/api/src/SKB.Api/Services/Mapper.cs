@@ -80,7 +80,7 @@ public static class Mapper
             p.Id.ToString(), p.Sku, Loc.Name(p), Loc.Name(units.FirstOrDefault()?.Unit), p.Category?.Department is { } dept ? Loc.Name(dept) : Loc.Name(p.Category),
             qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty <= p.ReorderLevel,
             units.Select(u => new UnitOptionDto(u.UnitId.ToString(), Loc.Name(u.Unit), u.Factor)).ToArray(),
-            p.ModelId?.ToString());
+            p.ModelId?.ToString(), p.Supplier?.Name);
     }
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(

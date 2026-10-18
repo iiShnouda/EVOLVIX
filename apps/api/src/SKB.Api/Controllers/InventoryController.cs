@@ -53,7 +53,9 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
         [FromQuery] string? modelId = null, [FromQuery] string? branchId = null,
         [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null,
-        [FromQuery] string? code = null, [FromQuery] string? supplierId = null)
+        [FromQuery] string? code = null, [FromQuery] string? supplierId = null,
+        [FromQuery] int page = 1, [FromQuery] int? pageSize = null, [FromQuery] string? sort = null,
+        [FromQuery] string? dir = null, [FromQuery] bool inStock = false)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -80,7 +82,7 @@ public sealed class InventoryController : ControllerBase
         if (Guid.TryParse(supplierId, out var sup))
             productQuery = productQuery.Where(p => p.SupplierId == sup);
         var products = await productQuery
-            .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit)
+            .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit).Include(p => p.Supplier)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
         var mine = await _warehouses.LimitAsync(User);
@@ -114,6 +116,7 @@ public sealed class InventoryController : ControllerBase
 
         IEnumerable<InventoryItemDto> rows = all;
         if (lowOnly) rows = rows.Where(i => i.IsLow);
+        if (inStock) rows = rows.Where(i => i.StockOnHand > 0);
         if (Guid.TryParse(modelId, out var model))
             rows = rows.Where(i => i.ModelId == model.ToString());
         if (!string.IsNullOrWhiteSpace(search))
@@ -136,10 +139,45 @@ public sealed class InventoryController : ControllerBase
         }
 
         var seeCosts = Costs.CanSee(User);
+        // Sorted by any column and sent a page at a time (owner, 2026-10-18: "don't load all the
+        // data at once"); cost and value sort only for people who may see them.
+        var desc = dir == "desc";
+        Func<InventoryItemDto, object> key = sort switch
+        {
+            "code" => i => i.Sku,
+            "department" => i => i.CategoryName,
+            "supplier" => i => i.SupplierName ?? "",
+            "stock" => i => i.StockOnHand,
+            "reorder" => i => i.ReorderLevel,
+            "sale" => i => i.SalePrice,
+            "cost" when seeCosts => i => i.AvgCost,
+            "value" when seeCosts => i => i.StockValue,
+            _ => i => i.Name,
+        };
+        var list = rows.ToList();
+        var ordered = desc ? list.OrderByDescending(key).ThenBy(i => i.Name) : list.OrderBy(key).ThenBy(i => i.Name);
+        // Screens that need every item's stock (sales, stocktakes, transfers) ask for no page size.
+        var size = Math.Clamp(pageSize ?? MaxListRows, 1, MaxListRows);
+        var at = Math.Max(1, page);
+        var pageRows = ordered.Skip((at - 1) * size).Take(size).ToList();
+
+        // Where each one is: the branch and warehouse holding it (among those the person may see).
+        var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch)
+            .Where(x => x.Kind == WarehouseKind.STORE).ToDictionaryAsync(x => x.Id);
+        var ids = pageRows.Select(i => Guid.Parse(i.Id)).ToHashSet();
+        var places = state.Quantity
+            .Where(kv => kv.Value != 0 && ids.Contains(kv.Key.Product) && names.ContainsKey(kv.Key.Warehouse)
+                         && (wid is Guid only ? kv.Key.Warehouse == only : mine is null || mine.Contains(kv.Key.Warehouse)))
+            .GroupBy(kv => kv.Key.Product)
+            .ToDictionary(g => g.Key.ToString(), g => g
+                .Select(kv => $"{Loc.Name(names[kv.Key.Warehouse].Branch)} / {Loc.Name(names[kv.Key.Warehouse])} ({kv.Value})")
+                .OrderBy(x => x).ToArray());
+
         return Ok(new InventoryListDto(
-            rows.Take(MaxListRows).Select(i => Costs.Guard(User, i)).ToArray(),
+            pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))
+                .ToArray(),
             seeCosts ? all.Sum(i => i.StockValue) : 0, all.Count, all.Count(i => i.IsLow),
-            await CurrencyAsync()));
+            await CurrencyAsync(), list.Count, at, size));
     }
 
     /// <summary>
@@ -194,6 +232,32 @@ public sealed class InventoryController : ControllerBase
                 : Mapper.ToInventoryItem(product, product.StockOnHand, product.CostPrice, now.Of(id).Value);
 
         var seeCosts = Costs.CanSee(User);
+        // From its last purchase (owner, 2026-10-18): the supplier's discount, and the margin as the
+        // owner works it out — on the supplier's price before the discount, the discount counted in
+        // it — each with its own permission.
+        decimal? discountPct = null, marginPct = null;
+        if (seeCosts)
+        {
+            var myDocs = _db.SalesDocuments.InBranches(User, d => d.BranchId).Select(d => d.Id);
+            var last = await _db.DocumentLines.AsNoTracking()
+                .Where(l => l.ProductId == id && l.Document!.Type == DocumentType.PURCHASE_INVOICE
+                            && l.Document.Status != DocumentStatus.CANCELLED && !l.IsBonus && l.Quantity > 0)
+                .Where(l => myDocs.Contains(l.DocumentId))
+                .OrderByDescending(l => l.Document!.IssueDate).ThenByDescending(l => l.LineNo)
+                .Select(l => new { l.Quantity, l.UnitQuantity, l.UnitPrice, l.Discount, l.DocDiscount })
+                .FirstOrDefaultAsync();
+            if (last is not null)
+            {
+                var before = (decimal)last.UnitPrice * last.UnitQuantity / last.Quantity;
+                var off = (decimal)(last.Discount + last.DocDiscount) / last.Quantity;
+                if (before > 0)
+                {
+                    discountPct = Math.Round(off * 100 / before, 1);
+                    if (Costs.CanSeeProfit(User))
+                        marginPct = Math.Round((product.SalePrice - (before - off)) * 100 / before, 1);
+                }
+            }
+        }
         return Ok(new ItemCardDto(
             Costs.Guard(User, item), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
             opening.Quantity, seeCosts ? opening.Value : 0,
@@ -201,7 +265,7 @@ public sealed class InventoryController : ControllerBase
             moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
             closing.Quantity, seeCosts ? closing.Value : 0,
             (await ToMovementDtosAsync(moves, perWarehouse: wid is not null)).Select(m => Costs.Guard(User, m)).ToArray(),
-            stock.Select(w => Costs.Guard(User, w)).ToArray(), await CurrencyAsync()));
+            stock.Select(w => Costs.Guard(User, w)).ToArray(), await CurrencyAsync(), discountPct, marginPct));
     }
 
     /// <summary>

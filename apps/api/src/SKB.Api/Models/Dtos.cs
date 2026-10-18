@@ -286,14 +286,16 @@ public record ProfitReportDto(
 public record InventoryItemDto(
     string Id, string Sku, string Name, string Unit, string CategoryName,
     int StockOnHand, int ReorderLevel, long AvgCost, long SalePrice, long StockValue, bool IsLow,
-    UnitOptionDto[] Units, string? ModelId);
+    UnitOptionDto[] Units, string? ModelId, string? SupplierName = null, string[]? Places = null);
 
 /// <summary>A unit an item comes in: its name and how many base units it holds.</summary>
 public record UnitOptionDto(string UnitId, string Name, int Factor);
 
 /// <param name="TotalValue">Value of all active stock, regardless of the list filter.</param>
+/// <param name="Matched">Items the filters found (the list holds one page of them).</param>
 public record InventoryListDto(
-    InventoryItemDto[] Items, long TotalValue, int TotalItems, int LowStockCount, string Currency);
+    InventoryItemDto[] Items, long TotalValue, int TotalItems, int LowStockCount, string Currency,
+    int Matched = 0, int Page = 1, int PageSize = 0);
 
 /// <param name="DocumentType">Type of the source document (for linking), if the movement came from one.</param>
 /// <param name="Balance">Running balance after the movement: in its warehouse when the card is
@@ -312,7 +314,8 @@ public record WarehouseStockDto(string WarehouseId, string Name, string BranchNa
 public record ItemCardDto(
     InventoryItemDto Item, string From, string To, string? WarehouseId,
     int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
-    StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency);
+    StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency,
+    decimal? SupplierDiscountPercent = null, decimal? MarginPercent = null);
 
 /// <summary>
 /// One invoice line of an item, on its card (owner, 2026-10-02: the item's whole story). Quantities
