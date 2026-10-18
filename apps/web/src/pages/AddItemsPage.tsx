@@ -238,8 +238,12 @@ export function AddItemsPage() {
     // The margin is worked out on the supplier's price before the discount, and the discount
     // counts as part of it (owner, 2026-10-18): 505 less 10% with a 13% margin sells at
     // 454.50 + 65.65 = 520.15 (3% over the list price); an 8% margin sells at 494.90 (2% under).
+    // …rounded up to a whole pound (owner, 2026-10-18): 520.15 sells at 521.
     const marginSale =
-      after + Math.round((before * (Number(l.marginPct) || 0)) / 100) + minor(l.marginAmt);
+      Math.ceil(
+        (after + Math.round((before * (Number(l.marginPct) || 0)) / 100) + minor(l.marginAmt)) /
+          100,
+      ) * 100;
     const sale = l.existing
       ? (l.existingSale ?? 0)
       : l.salePrice !== ''

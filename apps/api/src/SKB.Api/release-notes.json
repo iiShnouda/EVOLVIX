@@ -5,8 +5,8 @@
       "date": "2026-10-14",
       "features": [
         {
-          "ar": "إضافة الأصناف: خصم المورد خانتين (٪ + جنيه) وهامش الربح خانتين (٪ + جنيه). الهامش بيتحسب على سعر المورد قبل الخصم والخصم جزء منه: 505 بخصم 10% وهامش 13% = 520.15، وهامش 8% = 494.90. وخصم على الفاتورة كلها.",
-          "en": "Adding items: the supplier's discount and the margin each take a percent and an amount together. The margin is worked out on the supplier's price before the discount, which counts as part of it: 505 less 10% with a 13% margin sells at 520.15, with 8% at 494.90. A discount on the whole invoice."
+          "ar": "إضافة الأصناف: خصم المورد خانتين (٪ + جنيه) وهامش الربح خانتين (٪ + جنيه). الهامش بيتحسب على سعر المورد قبل الخصم والخصم جزء منه: 505 بخصم 10% وهامش 13% = 521 (سعر البيع بيتقرّب لفوق لأقرب جنيه)، وهامش 8% = 495. وخصم على الفاتورة كلها.",
+          "en": "Adding items: the supplier's discount and the margin each take a percent and an amount together. The margin is worked out on the supplier's price before the discount, which counts as part of it: 505 less 10% with a 13% margin sells at 521 (the sale price is rounded up to a whole pound), with 8% at 495. A discount on the whole invoice."
         },
         {
           "ar": "إضافة الأصناف: الكود جنب اسم الصنف، الباركود بيتعمل لوحده، المقاس واللون ورا زر، ولما تكتب اسم بيظهر الصنف الموجود بموسمه وتقدر تنقله للموسم الجديد.",

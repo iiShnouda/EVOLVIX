@@ -176,7 +176,7 @@ export function ProductEditorPage() {
       const next = { ...p, [quick.cost]: cost };
       if ((pctValue || amtValue) && Number(cost) > 0) {
         const sale = Number(cost) * (1 + (Number(pctValue) || 0) / 100) + (Number(amtValue) || 0);
-        next[quick.sale] = String(Math.round(sale * 100) / 100);
+        next[quick.sale] = String(Math.ceil(Math.round(sale * 100) / 100)); // whole pounds, rounded up
       }
       return next;
     });
