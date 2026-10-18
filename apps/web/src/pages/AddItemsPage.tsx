@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   companyToday,
@@ -291,6 +291,25 @@ export function AddItemsPage() {
       ),
     ]);
   }
+
+  // Opened from an item ("add stock", owner 2026-10-18): that item is ready to be bought again.
+  const [params] = useSearchParams();
+  const asked = params.get('item');
+  const took = useRef(false);
+  useEffect(() => {
+    if (!asked || took.current || seasons.isLoading || (currentSeason && !season)) return;
+    took.current = true;
+    void (async () => {
+      const detail = await api.get<{ sku: string }>(`/products/${asked}`).catch(() => null);
+      if (!detail) return;
+      const hits = await api
+        .get<Product[]>(`/products?limit=10&search=${encodeURIComponent(detail.sku)}`)
+        .catch(() => [] as Product[]);
+      const p = hits.find((h) => h.id === asked);
+      if (p) setEntry(existingLine(p, p.units[0]?.unitId ?? '', 1, ''));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked, seasons.isLoading, season]);
 
   /**
    * A supplier invoice read from a photo (owner, 2026-10-06): the supplier when found, each line as

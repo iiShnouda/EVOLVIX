@@ -344,6 +344,22 @@ function ItemsTab({
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const can = useCan();
+  const navigate = useNavigate();
+  // A right click on an item (owner, 2026-10-18): its card, or bringing in more of it.
+  const [menu, setMenu] = useState<{ x: number; y: number; item: InventoryItem } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [menu]);
   // Each column with the permission it needs (owner, 2026-10-18): where it is, the supplier, the
   // sale price for everyone here, the supply price and the value for costs:view.
   const columns: {
@@ -491,6 +507,10 @@ function ItemsTab({
               <li key={p.id}>
                 <button
                   onClick={() => onOpen(p.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenu({ x: e.clientX, y: e.clientY, item: p });
+                  }}
                   className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
                 >
                   <span className="min-w-0 flex-1">
@@ -547,6 +567,10 @@ function ItemsTab({
                   <tr
                     key={p.id}
                     onClick={() => onOpen(p.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenu({ x: e.clientX, y: e.clientY, item: p });
+                    }}
                     className="cursor-pointer transition-colors hover:bg-surface-2"
                   >
                     {columns.map((c) => (
@@ -564,7 +588,64 @@ function ItemsTab({
           </TableColumns>
         )}
       </div>
+      {menu && (
+        <div
+          role="menu"
+          className="fixed z-50 min-w-44 overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface py-1 text-sm shadow-[var(--shadow-card)]"
+          style={{
+            top: Math.min(menu.y, window.innerHeight - 130),
+            left: Math.min(menu.x, window.innerWidth - 200),
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <p className="truncate border-b border-line px-3 py-1.5 text-xs text-muted">
+            {menu.item.name}
+          </p>
+          <MenuItem
+            icon="ledger"
+            label={t('itemCard.title')}
+            onClick={() => {
+              setMenu(null);
+              onOpen(menu.item.id);
+            }}
+          />
+          {can('purchases:create') && (
+            <MenuItem
+              icon="plus"
+              label={t('inventory.addStock')}
+              onClick={() => {
+                setMenu(null);
+                navigate(`/inventory/products/new?item=${menu.item.id}`);
+              }}
+            />
+          )}
+          {can('products:edit') && (
+            <MenuItem
+              icon="edit"
+              label={t('catalog.editItem')}
+              onClick={() => {
+                setMenu(null);
+                navigate(`/inventory/products/${menu.item.id}/edit`);
+              }}
+            />
+          )}
+        </div>
+      )}
     </Card>
+  );
+}
+
+function MenuItem({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-surface-2"
+    >
+      <Icon name={icon} size={16} className="text-muted" />
+      {label}
+    </button>
   );
 }
 

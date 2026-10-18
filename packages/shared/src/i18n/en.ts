@@ -2872,4 +2872,5 @@ export const en = {
   'labels.byStock': 'As many as in stock',
   'labels.applyAll': 'Apply to all',
   'labels.clear': 'Clear the list',
+  'inventory.addStock': 'Add stock',
 } as const;

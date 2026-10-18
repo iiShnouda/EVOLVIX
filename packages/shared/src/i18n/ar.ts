@@ -2857,4 +2857,5 @@ export const ar: TranslationDictionary = {
   'labels.byStock': 'بعدد الرصيد',
   'labels.applyAll': 'تطبيق على الكل',
   'labels.clear': 'مسح القائمة',
+  'inventory.addStock': 'إضافة مخزون',
 };

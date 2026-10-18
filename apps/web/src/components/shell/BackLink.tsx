@@ -12,11 +12,17 @@ const EXTRA_PAGES: [string, TranslationKey][] = [
   ['/receipts/move', 'move.title'],
   ['/notes/receive', 'notes.receive'],
   ['/notes/issue', 'notes.issue'],
+  // Inventory's own pages carry their own names on the tab (owner, 2026-10-18).
+  ['/inventory/items', 'itemCard.title'],
+  ['/inventory/labels', 'labels.title'],
+  ['/inventory/products/new', 'additems.title'],
+  ['/purchases/new', 'qa.purchaseInvoice'],
 ];
 
 /** The name of the page at a path: its menu item, or one of the pages above. */
 export function pageName(path: string, t: (k: TranslationKey) => string): string | null {
   if (/^\/parties\/[^/]+\/account/.test(path)) return t('account.statement');
+  if (/^\/inventory\/products\/[^/]+\/edit/.test(path)) return t('item.edit');
   const extra = EXTRA_PAGES.find(([p]) => path === p || path.startsWith(`${p}/`));
   if (extra) return t(extra[1]);
   const item = [...NAV_ITEMS]

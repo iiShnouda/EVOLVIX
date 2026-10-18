@@ -5,6 +5,10 @@
       "date": "2026-10-14",
       "features": [
         {
+          "ar": "كليك يمين على أي صنف في المخزون: كارت الصنف، إضافة مخزون (فاتورة شراء جاهز فيها الصنف)، تعديل الصنف. والتابات بقت باسم الصفحة (كارت الصنف، طباعة الباركود، إضافة أصناف).",
+          "en": "Right-click any item in the inventory: its card, add stock (a purchase with the item ready), edit it. Tabs carry the page's own name (item card, barcode labels, adding items)."
+        },
+        {
           "ar": "الترتيب في كل الجداول: دوس على عنوان أي عمود يترتب من الكبير للصغير، ودوسة تانية من الصغير للكبير.",
           "en": "Every table: click a column title to sort biggest first, click again for smallest first."
         },
