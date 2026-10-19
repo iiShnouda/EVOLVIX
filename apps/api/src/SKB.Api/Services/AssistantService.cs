@@ -447,7 +447,9 @@ public sealed class AssistantService
             ["model"] = VisionModel,
             ["stream"] = false,
             ["format"] = "json",
-            ["options"] = new JsonObject { ["temperature"] = 0 },
+            // Room for the photo and a long invoice's answer: with the model server's small default
+            // window the answer of an 11-line invoice was cut off half way (owner, 2026-10-19).
+            ["options"] = new JsonObject { ["temperature"] = 0, ["num_ctx"] = 8192, ["num_predict"] = 4096 },
             ["messages"] = new JsonArray
             {
                 new JsonObject
@@ -457,13 +459,47 @@ public sealed class AssistantService
                 },
             },
         };
+        var started = System.Diagnostics.Stopwatch.StartNew();
         var reply = await PostAsync("/api/chat", body, ct);
         var text = reply["message"]?["content"] is JsonValue v && v.TryGetValue<string>(out var c) ? c : "{}";
-        return ParseObject(text)
+        var json = ParseObject(text)
             ?? (text.IndexOf('{') is var start and >= 0 && text.LastIndexOf('}') is var end && end > start
                 ? ParseObject(text[start..(end + 1)])
                 : null)
-            ?? new JsonObject();
+            ?? Salvage(text);
+        // What the model answered, for the server log when a photo reads badly (no figures shown on screen).
+        _log.LogInformation("Photo read in {Seconds:0}s ({Bytes} bytes): {Answer}", started.Elapsed.TotalSeconds,
+            image.Length, text.Length > 2000 ? text[..2000] + "…" : text);
+        return json;
+    }
+
+    /// <summary>
+    /// An answer cut off before its end: the lines that did come through whole, each <c>{…}</c> on
+    /// its own, and the invoice's own fields where they can be found.
+    /// </summary>
+    private static JsonObject Salvage(string text)
+    {
+        var lines = new JsonArray();
+        var top = new JsonObject();
+        foreach (System.Text.RegularExpressions.Match m in
+                 System.Text.RegularExpressions.Regex.Matches(text, @"\{[^{}\[\]]*\}"))
+            if (ParseObject(m.Value) is { } o)
+                lines.Add(o);
+        foreach (var key in new[] { "supplierName", "number", "date", "discount" })
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(text, $"\"{key}\"\\s*:\\s*(\"[^\"]*\"|[0-9.]+)");
+            if (!m.Success) continue;
+            try
+            {
+                top[key] = JsonNode.Parse(m.Groups[1].Value);
+            }
+            catch (JsonException)
+            {
+                // left out
+            }
+        }
+        top["lines"] = lines;
+        return top;
     }
 
     /// <summary>The model's answer as a JSON object, or null when it isn't one.</summary>
