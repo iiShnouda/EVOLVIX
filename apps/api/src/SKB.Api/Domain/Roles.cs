@@ -146,6 +146,18 @@ public static class Permissions
     public const string InventoryTransfer = "inventory:transfer";
     /// <summary>Change a transfer already sent: its items, quantities, destination or notes (owner, 2026-10-19).</summary>
     public const string InventoryTransferEdit = "inventory:transfer_edit";
+    /// <summary>Open the stock valuation (تقييم المخزن); its values need costs:view besides (owner, 2026-10-19).</summary>
+    public const string InventoryValuation = "inventory:valuation";
+    /// <summary>The valuation by department.</summary>
+    public const string ValuationDepartments = "inventory:valuation_departments";
+    /// <summary>The valuation by warehouse.</summary>
+    public const string ValuationWarehouses = "inventory:valuation_warehouses";
+    /// <summary>The valuation item by item (and by model).</summary>
+    public const string ValuationItems = "inventory:valuation_items";
+    /// <summary>The valuation's sale-price column.</summary>
+    public const string ValuationPrices = "inventory:valuation_prices";
+    /// <summary>The valuation's supplier column and supplier filter.</summary>
+    public const string ValuationSuppliers = "inventory:valuation_suppliers";
     public const string StaffView = "staff:view";
     /// <summary>Add staff, change their role, branch or password, and deactivate them.</summary>
     public const string StaffManage = "staff:manage";
@@ -297,6 +309,7 @@ public static class Permissions
         SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesContact, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer, InventoryTransferEdit,
+        InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices, ValuationSuppliers,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,

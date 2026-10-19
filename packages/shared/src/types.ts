@@ -74,6 +74,12 @@ export type Permission =
   | 'inventory:stocktake'
   | 'inventory:transfer'
   | 'inventory:transfer_edit'
+  | 'inventory:valuation'
+  | 'inventory:valuation_departments'
+  | 'inventory:valuation_warehouses'
+  | 'inventory:valuation_items'
+  | 'inventory:valuation_prices'
+  | 'inventory:valuation_suppliers'
   | 'staff:view'
   | 'staff:manage'
   | 'roles:manage'
@@ -1393,7 +1399,26 @@ export interface ValuationRow {
   key: string;
   label: string;
   quantity: number;
-  value: number;
+  /** Only for whoever may see costs. */
+  value: number | null;
+  /** How many items. */
+  count: number;
+}
+
+/** One item of the valuation; each column only for whoever may see it. */
+export interface ValuationItem {
+  key: string;
+  code: string;
+  label: string;
+  supplier: string | null;
+  supplierCode: number | null;
+  quantity: number;
+  value: number | null;
+  avgCost: number | null;
+  salePrice: number | null;
+  reorderLevel: number;
+  low: boolean;
+  empty: boolean;
 }
 
 /** Stock valuation (تقييم المخزن) at the end of `asOf`: quantity × weighted-average cost. */
@@ -1403,9 +1428,12 @@ export interface Valuation {
   /** Set when the valuation is limited to one warehouse. */
   warehouseId?: string | null;
   quantity: number;
-  value: number;
+  value: number | null;
+  /** Items in stock before the filters, and after. */
+  totalItems: number;
+  itemCount: number;
   categories: ValuationRow[];
-  items: ValuationRow[];
+  items: ValuationItem[];
   warehouses: ValuationRow[];
   /** Size/color variants rolled up to their model. */
   models: ValuationRow[];

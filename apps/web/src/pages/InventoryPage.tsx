@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -8,12 +8,16 @@ import {
   formatQuantity,
   type InventoryItem,
   type Party,
+  type Valuation,
+  type ValuationRow,
   companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect } from '../components/WarehouseSelect';
 import { PartyPicker } from '../components/PartyPicker';
+import { ItemFinderSheet } from '../components/ItemFinderSheet';
+import { ItemLink } from '../components/ItemLink';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
@@ -54,7 +58,9 @@ export function InventoryPage() {
   const canEdit = can('inventory:stocktake');
   // Average cost, stock value and the valuation are the owner's unless given (costs:view).
   const seeCosts = can('costs:view');
-  const tab: Tab = seeCosts && params.get('tab') === 'valuation' ? 'valuation' : 'items';
+  // The valuation has its own permission, and each part and column another (owner, 2026-10-19).
+  const canValuation = can('inventory:valuation');
+  const tab: Tab = canValuation && params.get('tab') === 'valuation' ? 'valuation' : 'items';
   const lowOnly = params.get('low') === '1';
   const warehouseId = params.get('wh') ?? '';
   // Branch, warehouse and department in every search (owner, 2026-10-01).
@@ -172,7 +178,7 @@ export function InventoryPage() {
           role="tablist"
           className="flex max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
-          {(seeCosts ? (['items', 'valuation'] as const) : (['items'] as const)).map((k) => (
+          {(canValuation ? (['items', 'valuation'] as const) : (['items'] as const)).map((k) => (
             <button
               key={k}
               role="tab"
@@ -649,16 +655,38 @@ function MenuItem({ icon, label, onClick }: { icon: string; label: string; onCli
 
 function ValuationTab({ warehouseId }: { warehouseId: string }) {
   const { t, locale } = useT();
+  const can = useCan();
+  const seeSuppliers = can('inventory:valuation_suppliers');
   const [asOf, setAsOf] = useState(today());
-  const valuation = useValuation(asOf, warehouseId || undefined);
+  // What to look at (owner, 2026-10-19): a department, a supplier (by name or code), an item's
+  // name or code, items picked in the detailed search, and those at their reorder level or run out.
+  const [departmentId, setDepartmentId] = useState('');
+  const [supplier, setSupplier] = useState<Party | null>(null);
+  const [search, setSearch] = useState('');
+  const settled = useDeferredValue(search.trim());
+  const [picked, setPicked] = useState<string[]>([]);
+  const [low, setLow] = useState(false);
+  const [empty, setEmpty] = useState(false);
+  const [finding, setFinding] = useState(false);
+  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
+  const valuation = useValuation(asOf, warehouseId || undefined, {
+    departmentId: departmentId || undefined,
+    supplierId: supplier?.id,
+    search: settled || undefined,
+    productIds: picked,
+    low,
+    empty,
+  });
   const data = valuation.data;
   const currency = data?.currency ?? 'EGP';
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
+  const money = (v: number | null) => (v == null ? '' : formatMoney(v, currency, locale));
+  const seeValue = data?.value != null;
 
   return (
     <div ref={paper} className="space-y-4">
-      <Card>
+      <Card className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('inventory.asOf')}</span>
@@ -677,57 +705,144 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             }
           />
           <div className="text-end">
-            <p className="text-xs text-muted">{t('inventory.stockValue')}</p>
-            <p className="text-lg font-semibold tnum">
-              {formatMoney(data?.value ?? 0, currency, locale)}
-            </p>
+            {seeValue && (
+              <>
+                <p className="text-xs text-muted">{t('inventory.stockValue')}</p>
+                <p className="text-lg font-semibold tnum">{money(data?.value ?? 0)}</p>
+              </>
+            )}
             <p className="text-xs text-muted tnum">
               {formatNumber(data?.quantity ?? 0, locale)} {t('inventory.qty')}
             </p>
+            <p className="text-sm font-medium tnum">
+              {t('valuation.counter')
+                .replace('{n}', formatNumber(data?.itemCount ?? 0, locale))
+                .replace('{total}', formatNumber(data?.totalItems ?? 0, locale))}
+            </p>
           </div>
         </div>
+        <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('valuation.department')}</span>
+            <select
+              className={`${field} w-full`}
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+            >
+              <option value="">{t('common.all')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {seeSuppliers && (
+            <PartyPicker
+              type="SUPPLIER"
+              withCode
+              value={supplier}
+              onChange={setSupplier}
+              label={t('valuation.supplier')}
+              placeholder={t('common.all')}
+            />
+          )}
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('valuation.search')}</span>
+            <input
+              className={`${field} w-full`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <div className="flex items-end">
+            <Button variant="secondary" icon="search" onClick={() => setFinding(true)}>
+              {t('finder.button')}
+            </Button>
+          </div>
+        </div>
+        <div data-noprint className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} />
+            {t('valuation.low')}
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={empty} onChange={(e) => setEmpty(e.target.checked)} />
+            {t('valuation.empty')}
+          </label>
+          {picked.length > 0 && (
+            <span className="inline-flex items-center gap-2">
+              <Badge tone="brand">
+                {t('valuation.picked').replace('{n}', formatNumber(picked.length, locale))}
+              </Badge>
+              <button
+                type="button"
+                className="text-xs font-medium text-brand hover:underline"
+                onClick={() => setPicked([])}
+              >
+                {t('valuation.clearPicked')}
+              </button>
+            </span>
+          )}
+        </div>
       </Card>
+      {finding && (
+        <ItemFinderSheet
+          warehouseId={warehouseId || undefined}
+          departmentId={departmentId || undefined}
+          onClose={() => setFinding(false)}
+          onAdd={(items, close) => {
+            setPicked((prev) => [...new Set([...prev, ...items.map((i) => i.product.id)])]);
+            if (close) setFinding(false);
+          }}
+        />
+      )}
 
-      <PurchasesOfDay day={asOf} />
+      <PurchasesOfDay
+        day={asOf}
+        departmentId={departmentId}
+        supplierCode={supplier ? String(supplier.code) : ''}
+      />
 
       {valuation.isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
           <Spinner size={26} />
         </div>
-      ) : !data || data.items.length === 0 ? (
+      ) : !data || data.itemCount === 0 ? (
         <Card>
           <EmptyState title={t('common.empty')} icon="inventory" />
         </Card>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-          {data.models.length > 0 && (
-            <ValuationTable
-              title={t('inventory.byModel')}
-              rows={data.models}
-              currency={currency}
-              locale={locale}
-            />
+        <div className="space-y-4">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+            {data.categories.length > 0 && (
+              <ValuationTable
+                title={t('inventory.byCategory')}
+                rows={data.categories}
+                money={money}
+                seeValue={seeValue}
+              />
+            )}
+            {!warehouseId && data.warehouses.length > 1 && (
+              <ValuationTable
+                title={t('warehouse.byWarehouse')}
+                rows={data.warehouses}
+                money={money}
+                seeValue={seeValue}
+              />
+            )}
+            {data.models.length > 0 && (
+              <ValuationTable
+                title={t('inventory.byModel')}
+                rows={data.models}
+                money={money}
+                seeValue={seeValue}
+              />
+            )}
+          </div>
+          {can('inventory:valuation_items') && (
+            <ValuationItems data={data} money={money} seeSuppliers={seeSuppliers} />
           )}
-          {!warehouseId && data.warehouses.length > 1 && (
-            <ValuationTable
-              title={t('warehouse.byWarehouse')}
-              rows={data.warehouses}
-              currency={currency}
-              locale={locale}
-            />
-          )}
-          <ValuationTable
-            title={t('inventory.byCategory')}
-            rows={data.categories}
-            currency={currency}
-            locale={locale}
-          />
-          <ValuationTable
-            title={t('inventory.byItem')}
-            rows={data.items}
-            currency={currency}
-            locale={locale}
-          />
         </div>
       )}
     </div>
@@ -737,15 +852,15 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
 function ValuationTable({
   title,
   rows,
-  currency,
-  locale,
+  money,
+  seeValue,
 }: {
   title: string;
-  rows: { key: string; label: string; quantity: number; value: number }[];
-  currency: string;
-  locale: 'en' | 'ar';
+  rows: ValuationRow[];
+  money: (v: number | null) => string;
+  seeValue: boolean;
 }) {
-  const { t } = useT();
+  const { t, locale } = useT();
   return (
     <Card padded={false} className="h-fit overflow-hidden">
       <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -756,22 +871,92 @@ function ValuationTable({
           <thead className="bg-surface-2 text-xs text-muted">
             <tr>
               <th className="p-3 text-start font-medium">{title}</th>
+              <th className="p-3 text-end font-medium">{t('valuation.count')}</th>
               <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
-              <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
+              {seeValue && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--c-line)]">
             {rows.map((r) => (
               <tr key={r.key}>
                 <td className="p-3">{r.label}</td>
+                <td className="p-3 text-end tnum">{formatNumber(r.count, locale)}</td>
                 <td className="p-3 text-end tnum">{formatNumber(r.quantity, locale)}</td>
-                <td className="p-3 text-end font-medium tnum">
-                  {formatMoney(r.value, currency, locale)}
-                </td>
+                {seeValue && <td className="p-3 text-end font-medium tnum">{money(r.value)}</td>}
               </tr>
             ))}
           </tbody>
         </table>
+      </TableColumns>
+    </Card>
+  );
+}
+
+/** The valuation item by item; each column shows only for whoever may see it. */
+function ValuationItems({
+  data,
+  money,
+  seeSuppliers,
+}: {
+  data: Valuation;
+  money: (v: number | null) => string;
+  seeSuppliers: boolean;
+}) {
+  const { t, locale } = useT();
+  const seeValue = data.value != null;
+  const seePrice = data.items.some((i) => i.salePrice != null);
+  return (
+    <Card padded={false} className="overflow-hidden">
+      <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
+        {t('inventory.byItem')}
+      </h2>
+      <TableColumns id="inventory.valuation.items">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
+                <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                {seeSuppliers && (
+                  <th className="p-2 text-start font-medium">{t('inventory.supplier')}</th>
+                )}
+                <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
+                <th className="p-2 text-end font-medium">{t('valuation.reorder')}</th>
+                {seePrice && <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>}
+                {seeValue && <th className="p-2 text-end font-medium">{t('inventory.avgCost')}</th>}
+                {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {data.items.map((r) => (
+                <tr key={r.key}>
+                  <td className="whitespace-nowrap p-2 text-muted tnum" dir="ltr">
+                    {r.code}
+                  </td>
+                  <td className="p-2">
+                    <ItemLink id={r.key} name={r.label} />
+                  </td>
+                  {seeSuppliers && (
+                    <td className="p-2 text-muted">
+                      {r.supplier ? `${r.supplierCode ?? ''} ${r.supplier}`.trim() : ''}
+                    </td>
+                  )}
+                  <td
+                    className={`p-2 text-end tnum ${r.empty ? 'text-destructive' : r.low ? 'text-warning' : ''}`}
+                  >
+                    {formatNumber(r.quantity, locale)}
+                  </td>
+                  <td className="p-2 text-end text-muted tnum">
+                    {r.reorderLevel > 0 ? formatNumber(r.reorderLevel, locale) : ''}
+                  </td>
+                  {seePrice && <td className="p-2 text-end tnum">{money(r.salePrice)}</td>}
+                  {seeValue && <td className="p-2 text-end tnum">{money(r.avgCost)}</td>}
+                  {seeValue && <td className="p-2 text-end font-medium tnum">{money(r.value)}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </TableColumns>
     </Card>
   );
@@ -809,7 +994,16 @@ interface PriceSheet {
  * items that came, how many, and what each sells for, to print for the salespeople. Sale prices
  * only: nothing of what was paid.
  */
-function PurchasesOfDay({ day }: { day: string }) {
+function PurchasesOfDay({
+  day,
+  departmentId,
+  supplierCode,
+}: {
+  day: string;
+  /** The valuation's department and supplier filter the invoices too (owner, 2026-10-19). */
+  departmentId?: string;
+  supplierCode?: string;
+}) {
   const { t, locale } = useT();
   const can = useCan();
   const list = useDocumentList('purchases', 'invoices', {
@@ -817,6 +1011,8 @@ function PurchasesOfDay({ day }: { day: string }) {
     pageSize: 50,
     from: day,
     to: day,
+    departmentId: departmentId || undefined,
+    partyCode: supplierCode || undefined,
     enabled: can('purchases:view'),
   });
   const [sheet, setSheet] = useState<PriceSheet | null>(null);

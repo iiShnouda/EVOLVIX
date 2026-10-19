@@ -340,14 +340,19 @@ public record ItemLifeDto(
     ItemLifeTotalsDto Totals, ItemLifeLineDto[]? Purchases, ItemLifeLineDto[]? Sales, ItemLifeLineDto[]? Returns,
     bool Prices, WarehouseStockDto[] Stock);
 
-public record ValuationRowDto(string Key, string Label, int Quantity, long Value);
+/// <summary>A valuation row; <c>Value</c> only for whoever may see costs; <c>Count</c> = how many items.</summary>
+public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count);
+
+/// <summary>One item of the valuation; each column only for whoever may see it (owner, 2026-10-19).</summary>
+public record ValuationItemDto(string Key, string Code, string Label, string? Supplier, int? SupplierCode,
+    int Quantity, long? Value, long? AvgCost, long? SalePrice, int ReorderLevel, bool Low, bool Empty);
 
 /// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>
 /// <remarks>By category, item, warehouse and model (size/color variants rolled up). <c>WarehouseId</c> is
 /// set when limited to one warehouse. Quantities are in base units.</remarks>
 public record ValuationDto(
-    string AsOf, string Currency, string? WarehouseId, int Quantity, long Value,
-    ValuationRowDto[] Categories, ValuationRowDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models);
+    string AsOf, string Currency, string? WarehouseId, int Quantity, long? Value, int TotalItems, int ItemCount,
+    ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models);
 
 public record StocktakeLineRequest(string ProductId, int CountedQuantity);
 

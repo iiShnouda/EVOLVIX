@@ -706,12 +706,28 @@ export function useItemLife(id: string | null) {
 }
 
 /** Stock valuation (تقييم المخزن) at the end of `asOf` (ISO date), optionally one warehouse. */
-export function useValuation(asOf: string, warehouseId?: string) {
+export interface ValuationFilter {
+  departmentId?: string;
+  supplierId?: string;
+  search?: string;
+  productIds?: string[];
+  low?: boolean;
+  empty?: boolean;
+}
+
+export function useValuation(asOf: string, warehouseId?: string, f: ValuationFilter = {}) {
   const query = new URLSearchParams({ asOf });
   if (warehouseId) query.set('warehouseId', warehouseId);
+  if (f.departmentId) query.set('departmentId', f.departmentId);
+  if (f.supplierId) query.set('supplierId', f.supplierId);
+  if (f.search) query.set('search', f.search);
+  if (f.productIds?.length) query.set('productIds', f.productIds.join(','));
+  if (f.low) query.set('low', 'true');
+  if (f.empty) query.set('empty', 'true');
   return useQuery({
-    queryKey: ['inventory', 'valuation', asOf, warehouseId ?? ''],
+    queryKey: ['inventory', 'valuation', asOf, warehouseId ?? '', f],
     queryFn: () => api.get<Valuation>(`/inventory/valuation?${query}`),
+    placeholderData: (prev) => prev,
   });
 }
 

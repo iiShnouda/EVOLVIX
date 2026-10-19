@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatMoney, formatNumber, type InventoryItem } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -58,6 +59,7 @@ export function TransferBuilderPage({ editId }: { editId?: string } = {}) {
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState('');
+  const [finding, setFinding] = useState(false);
   const create = useCreateTransfer();
   const update = useUpdateTransfer();
   const error = (editId ? update.error : create.error) as ApiError | null;
@@ -211,9 +213,50 @@ export function TransferBuilderPage({ editId }: { editId?: string } = {}) {
           </Card>
 
           <Card>
-            <label className="mb-1.5 block text-sm font-medium text-muted">
-              {t('invoice.addItems')}
-            </label>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-muted">
+                {t('invoice.addItems')}
+              </label>
+              {/* The detailed search, as on a sale (owner, 2026-10-19): pick what moves by department,
+                  supplier, code or name, with quantities. */}
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="search"
+                disabled={!fromId}
+                onClick={() => setFinding(true)}
+              >
+                {t('transfer.finder')}
+              </Button>
+            </div>
+            {finding && (
+              <ItemFinderSheet
+                warehouseId={fromId || undefined}
+                lockPlace
+                inStockFirst
+                checkStock
+                onInvoice={new Map(lines.map((l) => [l.item.id, l.quantity]))}
+                onClose={() => setFinding(false)}
+                onAdd={(picks, close) => {
+                  const items = new Map((stock.data?.items ?? []).map((i) => [i.id, i]));
+                  setLines((prev) => {
+                    const next = [...prev];
+                    for (const p of picks) {
+                      const item = items.get(p.product.id);
+                      if (!item) continue;
+                      const factor =
+                        p.product.units.find((u) => u.unitId === p.unitId)?.factor ?? 1;
+                      const qty = Math.max(1, Math.round(p.quantity * factor));
+                      const at = next.findIndex((l) => l.item.id === item.id);
+                      if (at >= 0) next[at] = { ...next[at]!, quantity: next[at]!.quantity + qty };
+                      else next.push({ item, quantity: qty });
+                    }
+                    return next;
+                  });
+                  if (close) setFinding(false);
+                }}
+              />
+            )}
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
                 <Icon name="search" size={16} />
