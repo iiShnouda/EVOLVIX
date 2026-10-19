@@ -1234,3 +1234,7 @@ public record ImportGroupDto(string Kind, int Added, int Skipped, ImportIssueDto
 /// <summary>One row that couldn't be imported: its sheet, 1-based row number and the reason.</summary>
 public record ImportIssueDto(string Sheet, int Row, string Message);
 public record ImportResultDto(ImportGroupDto[] Groups, string[] UnknownSheets);
+
+/// <summary>A purchase invoice's items with their sale price per piece (minor units), for the salespeople.</summary>
+public record PriceSheetLineDto(string Code, string Name, int Pieces, long SalePrice);
+public record PriceSheetDto(string Number, string Date, string? SupplierName, PriceSheetLineDto[] Lines);

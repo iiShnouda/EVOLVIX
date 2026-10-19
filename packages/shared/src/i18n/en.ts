@@ -2904,4 +2904,6 @@ export const en = {
   'additems.addAnother': 'Another: {x}',
   'additems.page': 'Page',
   'additems.addPage': 'Add a page',
+  'inventory.purchasesOfDay': 'Purchase invoices of this day',
+  'inventory.priceSheet': 'Price sheet',
 } as const;

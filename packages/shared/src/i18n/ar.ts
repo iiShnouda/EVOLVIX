@@ -2888,4 +2888,6 @@ export const ar: TranslationDictionary = {
   'additems.addAnother': '{x} آخر',
   'additems.page': 'صفحة',
   'additems.addPage': 'إضافة صفحة',
+  'inventory.purchasesOfDay': 'فواتير المشتريات في هذا اليوم',
+  'inventory.priceSheet': 'كشف الأسعار',
 };

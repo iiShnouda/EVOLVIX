@@ -386,7 +386,11 @@ public sealed class InventoryController : ControllerBase
             .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(products[g.Key]), g.Sum(l => l.Qty), g.Sum(l => l.Value)))
             .Where(r => r.Quantity != 0)
             .OrderByDescending(r => r.Value).ToArray();
-        var categoryRows = lines.GroupBy(l => Loc.Name(products[l.Product].Category))
+        // By department, the top of the tree (owner, 2026-10-19: "it's men's, not polo"); an item in no
+        // department shows its group.
+        string DepartmentOf(Guid id) => products[id].Category?.Department is { } d
+            ? Loc.Name(d) : Loc.Name(products[id].Category);
+        var categoryRows = lines.GroupBy(l => DepartmentOf(l.Product))
             .Select(g => new ValuationRowDto(g.Key, g.Key, g.Sum(l => l.Qty), g.Sum(l => l.Value)))
             .OrderByDescending(r => r.Value).ToArray();
         var warehouseRows = lines.GroupBy(l => l.Warehouse)

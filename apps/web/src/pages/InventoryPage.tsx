@@ -18,7 +18,16 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
 import { useDeviceInfo } from '../lib/device';
-import { useDepartments, useGroups, useInventory, usePageSize, useValuation } from '../lib/queries';
+import {
+  useDepartments,
+  useDocumentList,
+  useGroups,
+  useInventory,
+  usePageSize,
+  useValuation,
+} from '../lib/queries';
+import { Sheet } from '../components/Sheet';
+import { api } from '../lib/api';
 import { Pager } from '../components/Pager';
 import { GroupPicker } from '../components/GroupTree';
 import { TableColumns } from '../components/TableColumns';
@@ -83,6 +92,14 @@ export function InventoryPage() {
     departmentId: departmentId || undefined,
     groupId: groupId || undefined,
   });
+  // The cards at the top are the whole stock of the branch or warehouse, not the items the list's
+  // filters happen to show (owner, 2026-10-19: they showed 2 items of 3).
+  const summary = useInventory({
+    page: 1,
+    pageSize: 1,
+    warehouseId: warehouseId || undefined,
+    branchId: (!warehouseId && branchId) || undefined,
+  });
   const currency = list.data?.currency ?? 'EGP';
   const filterKey = [
     search,
@@ -123,44 +140,6 @@ export function InventoryPage() {
                   : t('catalog.newItem')}
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="settings"
-              onClick={() => navigate('/inventory/setup')}
-            >
-              {t('catalog.setup')}
-            </Button>
-            {can('labels:print') && (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="scan"
-                onClick={() => navigate('/inventory/labels')}
-              >
-                {t('labels.title')}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => navigate('/inventory/price-lists')}
-            >
-              {t('pl.short')}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="returns"
-              onClick={() => navigate('/inventory/transfers')}
-            >
-              {t('transfer.title')}
-            </Button>
-            {canEdit && (
-              <Button size="sm" icon="check" onClick={() => navigate('/inventory/stocktake')}>
-                {t('stocktake.action')}
-              </Button>
-            )}
           </div>
         }
       />
@@ -169,12 +148,12 @@ export function InventoryPage() {
         {seeCosts && (
           <Kpi
             label={t('inventory.stockValue')}
-            value={formatMoney(list.data?.totalValue ?? 0, currency, locale)}
+            value={formatMoney(summary.data?.totalValue ?? 0, currency, locale)}
           />
         )}
         <Kpi
           label={t('inventory.itemCount')}
-          value={formatNumber(list.data?.totalItems ?? 0, locale)}
+          value={formatNumber(summary.data?.totalItems ?? 0, locale)}
         />
         <button
           onClick={() => setLowOnly(!lowOnly)}
@@ -182,8 +161,8 @@ export function InventoryPage() {
         >
           <Kpi
             label={t('inventory.lowStock')}
-            value={formatNumber(list.data?.lowStockCount ?? 0, locale)}
-            tone={(list.data?.lowStockCount ?? 0) > 0 ? 'warning' : undefined}
+            value={formatNumber(summary.data?.lowStockCount ?? 0, locale)}
+            tone={(summary.data?.lowStockCount ?? 0) > 0 ? 'warning' : undefined}
           />
         </button>
       </div>
@@ -191,7 +170,7 @@ export function InventoryPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div
           role="tablist"
-          className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+          className="flex max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
           {(seeCosts ? (['items', 'valuation'] as const) : (['items'] as const)).map((k) => (
             <button
@@ -199,13 +178,32 @@ export function InventoryPage() {
               role="tab"
               aria-selected={tab === k}
               onClick={() => setTab(k)}
-              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+              className={`h-8 shrink-0 rounded-lg px-3 text-sm font-medium transition-colors ${
                 tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
               }`}
             >
               {t(k === 'items' ? 'inventory.items' : 'inventory.valuation')}
             </button>
           ))}
+          {/* The store's other screens, beside its tabs (owner, 2026-10-19). */}
+          {[
+            canEdit && { path: '/inventory/stocktake', label: t('stocktake.action') },
+            { path: '/inventory/transfers', label: t('transfer.title') },
+            can('labels:print') && { path: '/inventory/labels', label: t('labels.title') },
+            { path: '/inventory/price-lists', label: t('pl.short') },
+            { path: '/inventory/setup', label: t('catalog.setup') },
+          ]
+            .filter((x): x is { path: string; label: string } => !!x)
+            .map((x) => (
+              <button
+                key={x.path}
+                type="button"
+                onClick={() => navigate(x.path)}
+                className="h-8 shrink-0 rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+              >
+                {x.label}
+              </button>
+            ))}
         </div>
         {myBranches.length > 0 && (
           <select
@@ -690,6 +688,8 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
         </div>
       </Card>
 
+      <PurchasesOfDay day={asOf} />
+
       {valuation.isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
           <Spinner size={26} />
@@ -793,6 +793,122 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'war
       <p className={`mt-1 text-lg font-semibold tnum ${tone === 'warning' ? 'text-warning' : ''}`}>
         {value}
       </p>
+    </Card>
+  );
+}
+
+interface PriceSheet {
+  number: string;
+  date: string;
+  supplierName: string | null;
+  lines: { code: string; name: string; pieces: number; salePrice: number }[];
+}
+
+/**
+ * The purchase invoices of the valuation's day (owner, 2026-10-19), each with its price sheet: the
+ * items that came, how many, and what each sells for, to print for the salespeople. Sale prices
+ * only: nothing of what was paid.
+ */
+function PurchasesOfDay({ day }: { day: string }) {
+  const { t, locale } = useT();
+  const can = useCan();
+  const list = useDocumentList('purchases', 'invoices', {
+    page: 1,
+    pageSize: 50,
+    from: day,
+    to: day,
+    enabled: can('purchases:view'),
+  });
+  const [sheet, setSheet] = useState<PriceSheet | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
+  const report = useReportTools();
+  const paper = useRef<HTMLDivElement>(null);
+  const rows = list.data?.items ?? [];
+  if (!can('purchases:view') || rows.length === 0) return null;
+  const currency = list.data?.items[0]?.currency ?? 'EGP';
+  return (
+    <Card padded={false}>
+      <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">
+        {t('inventory.purchasesOfDay')}
+      </h2>
+      <ul className="divide-y divide-[var(--c-line)]">
+        {rows.map((d) => (
+          <li
+            key={d.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+          >
+            <span className="tnum" dir="ltr">
+              {d.number}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-medium">{d.partyName}</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="print"
+              loading={opening === d.id}
+              onClick={async () => {
+                setOpening(d.id);
+                try {
+                  setSheet(await api.get<PriceSheet>(`/purchases/invoices/${d.id}/price-sheet`));
+                } finally {
+                  setOpening(null);
+                }
+              }}
+            >
+              {t('inventory.priceSheet')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {sheet && (
+        <Sheet
+          title={`${t('inventory.priceSheet')} · ${sheet.number}`}
+          onClose={() => setSheet(null)}
+          closeLabel={t('common.close')}
+          wide
+        >
+          <div className="mb-3 flex justify-end">
+            <Button
+              icon="print"
+              onClick={() =>
+                report.print(
+                  paper.current,
+                  `${t('inventory.priceSheet')} ${sheet.number}`,
+                  [sheet.supplierName, formatDate(sheet.date, locale)].filter(Boolean).join(' · '),
+                )
+              }
+            >
+              {t('common.print')}
+            </Button>
+          </div>
+          <div ref={paper}>
+            <table className="w-full text-sm">
+              <thead className="border-b border-line text-xs text-muted">
+                <tr>
+                  <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
+                  <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                  <th className="p-2 text-end font-medium">{t('additems.pieces')}</th>
+                  <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {sheet.lines.map((l) => (
+                  <tr key={l.code + l.name}>
+                    <td className="p-2 text-muted tnum" dir="ltr">
+                      {l.code}
+                    </td>
+                    <td className="p-2 font-medium">{l.name}</td>
+                    <td className="p-2 text-end tnum">{formatNumber(l.pieces, locale)}</td>
+                    <td className="p-2 text-end font-semibold tnum">
+                      {formatMoney(l.salePrice, currency, locale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Sheet>
+      )}
     </Card>
   );
 }

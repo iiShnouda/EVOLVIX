@@ -92,6 +92,26 @@ public sealed class PurchasesController : ControllerBase
 
     private const long MaxImageBytes = 5 * 1024 * 1024;
 
+    /// <summary>
+    /// A purchase invoice's price sheet (owner, 2026-10-19): each item with its code, how many pieces
+    /// came and what it sells for now, to print for the salespeople. Sale prices only, never costs.
+    /// </summary>
+    [HttpGet("invoices/{id:guid}/price-sheet")]
+    public async Task<ActionResult<PriceSheetDto>> PriceSheet(Guid id)
+    {
+        var doc = await _db.SalesDocuments.AsNoTracking().InBranches(User, d => d.BranchId)
+            .Include(d => d.Party).Include(d => d.Lines).ThenInclude(l => l.Product)
+            .FirstOrDefaultAsync(d => d.Id == id && d.Type == DocumentType.PURCHASE_INVOICE);
+        if (doc is null) return NotFound(new { message = "Document not found", code = "not_found" });
+        var rows = doc.Lines.Where(l => l.Product is not null)
+            .GroupBy(l => l.ProductId)
+            .Select(g => new PriceSheetLineDto(g.First().Product!.Sku, Loc.Name(g.First().Product!),
+                g.Sum(l => l.Quantity), g.First().Product!.SalePrice))
+            .OrderBy(r => r.Name).ToArray();
+        return Ok(new PriceSheetDto(doc.Number, CompanyClock.DayOf(doc.IssueDate).ToString("yyyy-MM-dd"),
+            doc.Party?.Name, rows));
+    }
+
     private const int MaxImagePages = 10;
 
     /// <summary>
