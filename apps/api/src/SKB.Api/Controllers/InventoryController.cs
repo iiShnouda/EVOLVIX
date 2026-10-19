@@ -430,6 +430,24 @@ public sealed class InventoryController : ControllerBase
             ? await all.Where(m => m.CreatedAt < start).SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
         var rows = await all.Where(m => m.CreatedAt >= start && m.CreatedAt < end)
             .Include(m => m.Product).OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(5000).ToListAsync();
+        // Where each movement came from or went to (owner, 2026-10-19): the customer or supplier on
+        // its invoice or return, or the other warehouse on a transfer.
+        var docIds = rows.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
+        var parties = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
+            .Select(d => new { d.Id, Name = d.Party != null ? d.Party.Name : null })
+            .ToDictionaryAsync(d => d.Id, d => d.Name);
+        var transfers = await _db.StockTransfers.AsNoTracking().Where(t => docIds.Contains(t.Id))
+            .Include(t => t.FromWarehouse).Include(t => t.ToWarehouse).ToDictionaryAsync(t => t.Id);
+        string? Counterpart(StockMovement m)
+        {
+            if (m.DocumentId is not Guid d) return null;
+            if (transfers.TryGetValue(d, out var t))
+            {
+                var other = m.Type == StockMovementType.TRANSFER_OUT ? t.ToWarehouse : t.FromWarehouse;
+                return other is null ? null : Loc.Name(other);
+            }
+            return parties.GetValueOrDefault(d);
+        }
         var balance = opening;
         var lines = rows.Select(m =>
         {
@@ -437,7 +455,7 @@ public sealed class InventoryController : ControllerBase
             return new WarehouseStatementLineDto(m.CreatedAt.ToString("O"), m.Type.ToString(), m.Reference,
                 m.DocumentId?.ToString(), m.ProductId.ToString(), m.Product?.Sku ?? "",
                 m.Product is null ? "" : Loc.Name(m.Product), m.Quantity,
-                seeCosts ? m.Quantity * m.UnitCost : null, balance, m.Note);
+                seeCosts ? m.Quantity * m.UnitCost : null, balance, m.Note, Counterpart(m));
         }).ToArray();
         var name = Loc.Name(await _db.Warehouses.AsNoTracking().FirstAsync(w => w.Id == wid));
         return Ok(new WarehouseStatementDto(name, await CurrencyAsync(), opening, seeCosts ? openingValue : null,

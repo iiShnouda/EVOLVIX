@@ -2904,7 +2904,7 @@ export const en = {
   'additems.addAnother': 'Another: {x}',
   'additems.page': 'Page',
   'additems.addPage': 'Add a page',
-  'inventory.purchasesOfDay': 'Purchase invoices of this day',
+  'inventory.purchasesOfDay': 'Purchase invoices',
   'inventory.priceSheet': 'Price sheet',
   'statement.total': 'Total',
   'statement.reference': 'Document',
@@ -2920,4 +2920,6 @@ export const en = {
   'invoice.view': 'Invoice',
   'invoice.activity': 'Activity log',
   'invoice.open': 'Open invoice',
+  'statement.fromTo': 'From / to',
+  'statement.movement': 'Movement',
 } as const;

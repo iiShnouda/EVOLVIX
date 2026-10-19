@@ -301,6 +301,10 @@
         {
           "ar": "لما السيرفر مش شغّال، البرنامج يعرض شاشة بالشعار ورسالة «جارٍ الاتصال… / السيرفر غير متاح» مع زر إعادة محاولة، بدل الشاشة السوداء (الويب وتطبيق ويندوز وأندرويد).",
           "en": "When the server is unreachable, the app shows a branded 'connecting… / server unavailable' screen with a retry button instead of a black screen (web, Windows and Android)."
+        },
+        {
+          "ar": "كشف حساب المخزن: كل حركة مكتوب نوعها (مشتريات، مبيعات، مرتجع، تحويل، جرد) وجاية منين أو رايحة لمين: المورد أو العميل أو المخزن التاني في التحويل. وفي المخزون العنوان بقى \"فواتير المشتريات\".",
+          "en": "Warehouse statement: each movement says what it is (purchase, sale, return, transfer, stocktake) and where it came from or went to: the supplier, the customer, or the other warehouse on a transfer. In the inventory the title is now \"Purchase invoices\"."
         }
       ]
     },

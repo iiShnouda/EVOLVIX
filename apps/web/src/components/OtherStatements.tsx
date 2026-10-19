@@ -1,5 +1,12 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { companyToday, formatDate, formatDateTime, formatMoney, formatNumber } from '@skb/shared';
+import {
+  companyToday,
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatNumber,
+  type TranslationKey,
+} from '@skb/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Spinner } from './ui';
 import { ReportActions } from './ReportActions';
@@ -50,6 +57,7 @@ interface WarehouseStatement {
     value: number | null;
     balance: number;
     note: string | null;
+    counterpart: string | null;
   }[];
 }
 
@@ -227,7 +235,8 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
                 <thead className="border-b border-line text-xs text-muted">
                   <tr>
                     <th className="p-2 text-start font-medium">{t('common.date')}</th>
-                    <th className="p-2 text-start font-medium">{t('statement.reference')}</th>
+                    <th className="p-2 text-start font-medium">{t('statement.movement')}</th>
+                    <th className="p-2 text-start font-medium">{t('statement.fromTo')}</th>
                     <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
                     <th className="p-2 text-end font-medium">{t('money.in')}</th>
                     <th className="p-2 text-end font-medium">{t('money.out')}</th>
@@ -243,8 +252,18 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
                       <td className="whitespace-nowrap p-2 text-xs text-muted">
                         {formatDateTime(l.date, locale)}
                       </td>
-                      <td className="whitespace-nowrap p-2 text-xs tnum" dir="ltr">
-                        {l.reference ?? ''}
+                      <td className="whitespace-nowrap p-2 text-xs">
+                        {t(`movement.${l.type}` as TranslationKey)}
+                        {l.reference && (
+                          <span className="block text-muted tnum" dir="ltr">
+                            {l.reference}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2 text-xs">
+                        {l.counterpart
+                          ? `${t(l.quantity > 0 ? 'money.from' : 'money.to')} ${l.counterpart}`
+                          : (l.note ?? '')}
                       </td>
                       <td className="p-2">
                         <ItemLink id={l.productId} name={l.name} code={l.code} />

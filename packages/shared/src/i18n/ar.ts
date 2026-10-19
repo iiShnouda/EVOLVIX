@@ -2888,7 +2888,7 @@ export const ar: TranslationDictionary = {
   'additems.addAnother': '{x} آخر',
   'additems.page': 'صفحة',
   'additems.addPage': 'إضافة صفحة',
-  'inventory.purchasesOfDay': 'فواتير المشتريات في هذا اليوم',
+  'inventory.purchasesOfDay': 'فواتير المشتريات',
   'inventory.priceSheet': 'كشف الأسعار',
   'statement.total': 'الإجمالي',
   'statement.reference': 'المستند',
@@ -2904,4 +2904,6 @@ export const ar: TranslationDictionary = {
   'invoice.view': 'الفاتورة',
   'invoice.activity': 'سجل النشاط',
   'invoice.open': 'فتح الفاتورة',
+  'statement.fromTo': 'من / إلى',
+  'statement.movement': 'البيان',
 };
