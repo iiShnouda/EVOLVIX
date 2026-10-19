@@ -131,6 +131,10 @@
           "en": "Reading an invoice photo: the photo is made smaller first so it reads faster, the wait is longer, and a problem says exactly why (turned off, not answering, photo model missing, or too slow). The photo taken shows under the invoice and is kept with it."
         },
         {
+          "ar": "قراءة الفاتورة من الصورة مابقتش بتفشل بـ\"تعذّر تنفيذ العملية\" لما رد الموديل ييجي بشكل مختلف: اللي يتقري بيتضاف، ولو الموديل نفسه رفض (زي إن الذاكرة مش كفاية) بيقول كده.",
+          "en": "Reading an invoice photo no longer fails with \"the operation failed\" when the model answers in a different shape: what can be read is added, and if the model itself refuses (e.g. not enough memory) it says so."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

@@ -2859,7 +2859,12 @@ export const ar: TranslationDictionary = {
   'labels.clear': 'مسح القائمة',
   'inventory.addStock': 'إضافة مخزون',
   'error.assistant_off': 'المساعد الذكي متوقف في إعدادات الخادم (ASSISTANT_ENABLED).',
-  'error.assistant_unreachable': 'الذكاء الاصطناعي على الخادم لا يستجيب. تأكد من تشغيل الحاوية الخاصة به.',
+  'error.assistant_unreachable':
+    'الذكاء الاصطناعي على الخادم لا يستجيب. تأكد من تشغيل الحاوية الخاصة به.',
   'error.vision_model_missing': 'نموذج قراءة الصور لم يُنزَّل على الخادم بعد.',
   'error.assistant_timeout': 'استغرقت قراءة الصورة وقتًا طويلًا على الخادم. جرّب صورة أقرب وأوضح.',
+  'error.scan_refused':
+    'تعذّر على نموذج الخادم قراءة الصورة (قد تكون الذاكرة غير كافية). أعد المحاولة أو أعد تشغيل المساعد الذكي.',
+  'error.scan_failed': 'تعذّرت قراءة الصورة. جرّب صورة أوضح.',
+  'assistant.fillFailed': 'قُرئت الصورة، ولكن تعذّرت إضافة أصنافها. أعد المحاولة.',
 };

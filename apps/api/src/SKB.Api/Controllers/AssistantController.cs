@@ -30,9 +30,12 @@ public sealed class AssistantController : ControllerBase
     private readonly AuditService _audit;
     private readonly AssistantService _ai;
     private readonly AssistantTools _tools;
+    private readonly ILogger<AssistantController> _log;
 
-    public AssistantController(AppDbContext db, AuditService audit, AssistantService ai, AssistantTools tools)
+    public AssistantController(AppDbContext db, AuditService audit, AssistantService ai, AssistantTools tools,
+        ILogger<AssistantController> log)
     {
+        _log = log;
         _db = db;
         _audit = audit;
         _ai = ai;
@@ -62,11 +65,21 @@ public sealed class AssistantController : ControllerBase
         return null;
     }
 
-    /// <summary>A read that ran out of time (not the person leaving) is told apart from the rest.</summary>
-    private ObjectResult PhotoFailed(Exception e, CancellationToken ct) =>
-        e is TaskCanceledException && !ct.IsCancellationRequested
-            ? StatusCode(504, new { message = "Reading the photo took too long.", code = "assistant_timeout" })
-            : Unavailable();
+    /// <summary>
+    /// A read that ran out of time (not the person leaving), the model server refusing it, or anything
+    /// else going wrong, each told apart (owner, 2026-10-19: "the operation failed" told nothing).
+    /// </summary>
+    private ObjectResult PhotoFailed(Exception e, CancellationToken ct)
+    {
+        if (e is TaskCanceledException && !ct.IsCancellationRequested)
+            return StatusCode(504, new { message = "Reading the photo took too long.", code = "assistant_timeout" });
+        _log.LogWarning(e, "Reading a photo failed");
+        return e is AssistantUnavailableException
+            ? StatusCode(502, new { message = "The model server couldn't read the photo.", code = "scan_refused" })
+            : e is HttpRequestException
+                ? Unavailable()
+                : StatusCode(502, new { message = "The photo couldn't be read.", code = "scan_failed" });
+    }
 
     /// <summary>Whether the assistant is ready (the model server answers and has its models).</summary>
     [HttpGet("status")]
@@ -259,7 +272,7 @@ public sealed class AssistantController : ControllerBase
             await AuditAsync("scan", "purchase_photo", Me);
             return Ok(scan);
         }
-        catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             return PhotoFailed(e, ct);
         }
@@ -282,7 +295,7 @@ public sealed class AssistantController : ControllerBase
             await AuditAsync("scan", "cheque_photo", Me);
             return Ok(scan);
         }
-        catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             return PhotoFailed(e, ct);
         }

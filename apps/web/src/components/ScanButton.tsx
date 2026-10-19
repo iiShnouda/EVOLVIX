@@ -4,6 +4,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { scanPhoto } from '../lib/queries';
+import { ApiError } from '../lib/api';
 import { shrinkPhoto } from './IdCards';
 
 /**
@@ -41,9 +42,17 @@ export function ScanButton<T>({
       const small = await shrinkPhoto(picked).catch(() => picked);
       const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
       onPhoto?.(photo);
-      await onResult(await scanPhoto<T>(kind, photo));
-    } catch (err) {
-      setError(errorText(t, err));
+      let result: T;
+      try {
+        result = await scanPhoto<T>(kind, photo);
+      } catch (err) {
+        // A gateway in front of the server that gave up waiting answers without our code.
+        const gaveUp = err instanceof ApiError && !err.code && [502, 504, 524].includes(err.status);
+        setError(gaveUp ? t('error.assistant_timeout') : errorText(t, err));
+        return;
+      }
+      // Told apart from the reading itself: the photo was read, filling the form failed.
+      await Promise.resolve(onResult(result)).catch(() => setError(t('assistant.fillFailed')));
     } finally {
       setBusy(false);
     }

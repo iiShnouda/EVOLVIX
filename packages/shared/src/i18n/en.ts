@@ -2874,7 +2874,13 @@ export const en = {
   'labels.clear': 'Clear the list',
   'inventory.addStock': 'Add stock',
   'error.assistant_off': 'The assistant is turned off on the server (ASSISTANT_ENABLED).',
-  'error.assistant_unreachable': 'The AI on the server isn\'t answering. Check that its container is running.',
-  'error.vision_model_missing': 'The model that reads photos isn\'t downloaded on the server yet.',
-  'error.assistant_timeout': 'Reading the photo took too long for the server. Try a closer, clearer photo.',
+  'error.assistant_unreachable':
+    "The AI on the server isn't answering. Check that its container is running.",
+  'error.vision_model_missing': "The model that reads photos isn't downloaded on the server yet.",
+  'error.assistant_timeout':
+    'Reading the photo took too long for the server. Try a closer, clearer photo.',
+  'error.scan_refused':
+    "The server's model couldn't read the photo (it may be short of memory). Try again, or restart the assistant.",
+  'error.scan_failed': "The photo couldn't be read. Try a clearer photo.",
+  'assistant.fillFailed': "The photo was read, but its items couldn't be added. Try again.",
 } as const;

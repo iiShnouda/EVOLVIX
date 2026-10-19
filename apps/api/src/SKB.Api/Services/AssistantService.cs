@@ -337,7 +337,12 @@ public sealed class AssistantService
         using var res = await _http.PostAsync($"{Endpoint}{path}",
             new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json"), ct);
         if (!res.IsSuccessStatusCode)
-            throw new AssistantUnavailableException($"Model server answered {(int)res.StatusCode}.");
+        {
+            // Its own reason (e.g. not enough memory) goes to the server log, not to the screen.
+            var why = await res.Content.ReadAsStringAsync(ct);
+            throw new AssistantUnavailableException(
+                $"Model server answered {(int)res.StatusCode}: {why[..Math.Min(300, why.Length)]}");
+        }
         return await res.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: ct) ?? new JsonObject();
     }
 
@@ -362,12 +367,21 @@ public sealed class AssistantService
     {
         var json = await VisionAsync(PurchasePrompt, image, ct);
         var lines = new List<PurchaseLine>();
-        foreach (var l in json["lines"] as JsonArray ?? new JsonArray())
+        // The model doesn't always keep to the shape asked (a line as plain text, a list under another
+        // name): what can't be read is skipped rather than failing the whole photo.
+        foreach (var l in Field(json, "lines", "items") as JsonArray ?? new JsonArray())
         {
-            var name = Str(l?["name"]);
+            if (l is JsonValue && Str(l) is { } text)
+            {
+                lines.Add(new PurchaseLine(text, 1, 0, 0));
+                continue;
+            }
+            if (l is not JsonObject o) continue;
+            var name = Str(Field(o, "name", "item", "description"));
             if (string.IsNullOrWhiteSpace(name)) continue;
             lines.Add(new PurchaseLine(name.Trim()[..Math.Min(200, name.Trim().Length)],
-                Math.Max(0, Num(l?["quantity"])), Math.Max(0, Num(l?["unitPrice"])), Math.Max(0, Num(l?["discount"]))));
+                Math.Max(0, Num(Field(o, "quantity", "qty"))), Math.Max(0, Num(Field(o, "unitPrice", "price"))),
+                Math.Max(0, Num(o["discount"]))));
         }
         return new PurchaseScan(Str(json["supplierName"]), Str(json["number"]), Day(Str(json["date"])), lines.Take(300).ToList());
     }
@@ -376,6 +390,7 @@ public sealed class AssistantService
     {
         var json = await VisionAsync(ChequePrompt, image, ct);
         return (json["cheques"] as JsonArray ?? new JsonArray())
+            .OfType<JsonObject>()
             .Select(c => new ChequeScan(Str(c?["serial"]), Math.Max(0, Num(c?["amount"])), Day(Str(c?["dueDate"])),
                 Str(c?["bank"]), Str(c?["drawer"])))
             .Where(c => c.Amount > 0 || c.Serial is not null).Take(100).ToList();
@@ -399,19 +414,33 @@ public sealed class AssistantService
             },
         };
         var reply = await PostAsync("/api/chat", body, ct);
-        var text = reply["message"]?["content"]?.GetValue<string>() ?? "{}";
+        var text = reply["message"]?["content"] is JsonValue v && v.TryGetValue<string>(out var c) ? c : "{}";
+        return ParseObject(text)
+            ?? (text.IndexOf('{') is var start and >= 0 && text.LastIndexOf('}') is var end && end > start
+                ? ParseObject(text[start..(end + 1)])
+                : null)
+            ?? new JsonObject();
+    }
+
+    /// <summary>The model's answer as a JSON object, or null when it isn't one.</summary>
+    private static JsonObject? ParseObject(string text)
+    {
         try
         {
-            return JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+            return JsonNode.Parse(text) as JsonObject;
         }
         catch (JsonException)
         {
-            var start = text.IndexOf('{');
-            var end = text.LastIndexOf('}');
-            return start >= 0 && end > start
-                ? JsonNode.Parse(text[start..(end + 1)]) as JsonObject ?? new JsonObject()
-                : new JsonObject();
+            return null;
         }
+    }
+
+    /// <summary>The first of these names the object has (the model sometimes words a field its own way).</summary>
+    private static JsonNode? Field(JsonObject o, params string[] names)
+    {
+        foreach (var n in names)
+            if (o[n] is { } v) return v;
+        return null;
     }
 
     private static string? Str(JsonNode? n)
@@ -426,7 +455,9 @@ public sealed class AssistantService
     private static decimal Num(JsonNode? n)
     {
         if (n is null) return 0;
-        if (n.GetValueKind() == JsonValueKind.Number) return n.GetValue<decimal>();
+        if (n is not JsonValue) return 0;
+        if (n.GetValueKind() == JsonValueKind.Number)
+            return n.AsValue().TryGetValue<decimal>(out var d0) ? d0 : 0;
         var sb = new System.Text.StringBuilder();
         foreach (var ch in n.ToString())
         {
