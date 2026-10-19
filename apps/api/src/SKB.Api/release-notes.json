@@ -317,6 +317,10 @@
         {
           "ar": "سحب / إيداع نقدي على الموبايل: الصفحة مبقتش أعرض من الشاشة، والفواتير المفتوحة بقت كل فاتورة في سطر وجنبها خانة السداد.",
           "en": "Cash move on phones: the page no longer runs wider than the screen, and each open invoice is its own row with its payment box beside it."
+        },
+        {
+          "ar": "تقييم المخزن: اتشالت علامة \"وصل لحد الطلب\"، وفضلت علامة \"رصيده خلص\" تعرض الأصناف اللي ملهاش رصيد بس.",
+          "en": "Stock valuation: the \"reached the reorder level\" tick is gone; \"out of stock\" shows only the items with nothing left."
         }
       ]
     },

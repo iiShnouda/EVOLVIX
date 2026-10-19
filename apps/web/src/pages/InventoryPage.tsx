@@ -659,13 +659,13 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
   const seeSuppliers = can('inventory:valuation_suppliers');
   const [asOf, setAsOf] = useState(today());
   // What to look at (owner, 2026-10-19): a department, a supplier (by name or code), an item's
-  // name or code, items picked in the detailed search, and those at their reorder level or run out.
+  // name or code, items picked in the detailed search, and only those run out (no reorder-level box:
+  // owner, same day).
   const [departmentId, setDepartmentId] = useState('');
   const [supplier, setSupplier] = useState<Party | null>(null);
   const [search, setSearch] = useState('');
   const settled = useDeferredValue(search.trim());
   const [picked, setPicked] = useState<string[]>([]);
-  const [low, setLow] = useState(false);
   const [empty, setEmpty] = useState(false);
   const [finding, setFinding] = useState(false);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
@@ -674,7 +674,6 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
     supplierId: supplier?.id,
     search: settled || undefined,
     productIds: picked,
-    low,
     empty,
   });
   const data = valuation.data;
@@ -762,10 +761,6 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
           </div>
         </div>
         <div data-noprint className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} />
-            {t('valuation.low')}
-          </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={empty} onChange={(e) => setEmpty(e.target.checked)} />
             {t('valuation.empty')}
