@@ -5,6 +5,7 @@ import { Button, Card, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
 import { useT } from '../lib/i18n';
+import { onlyChoice } from '../lib/onlyChoice';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -93,7 +94,9 @@ export function FreeReturnForm({
   const branchWarehouses = (allWarehouses.data ?? []).filter(
     (w) => w.kind === 'STORE' && w.isActive && w.branchId === branch,
   );
-  const warehouseId = branchWarehouses.some((w) => w.id === warehouse) ? warehouse : '';
+  const warehouseId = branchWarehouses.some((w) => w.id === warehouse)
+    ? warehouse
+    : onlyChoice(branchWarehouses);
   const departmentList = useDepartments();
   const myDepartments = me?.departmentIds ?? null;
   const onWarehouse = branchWarehouses.find((w) => w.id === warehouseId)?.departmentIds;
@@ -103,7 +106,9 @@ export function FreeReturnForm({
       (!myDepartments || myDepartments.includes(d.id)) &&
       (!onWarehouse?.length || onWarehouse.includes(d.id)),
   );
-  const departmentId = departments.some((d) => d.id === department) ? department : '';
+  const departmentId = departments.some((d) => d.id === department)
+    ? department
+    : onlyChoice(departments);
   const departmentRequired =
     isSale && departments.length > 0 && settings.data?.requireDepartment !== false;
 

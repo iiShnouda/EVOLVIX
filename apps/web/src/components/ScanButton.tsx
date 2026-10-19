@@ -26,7 +26,6 @@ export function ScanButton<T>({
 }) {
   const { t } = useT();
   const can = useCan();
-  const camera = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,17 +56,9 @@ export function ScanButton<T>({
       setBusy(false);
     }
   };
-  // The camera, or a photo already on the device (owner, 2026-10-17: "upload it or take it").
+  // One button (owner, 2026-10-19): the phone itself offers the camera or a photo already on it.
   return (
     <span className="inline-flex flex-col items-start gap-1">
-      <input
-        ref={camera}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        className="sr-only"
-        onChange={read}
-      />
       <input
         ref={file}
         type="file"
@@ -75,27 +66,17 @@ export function ScanButton<T>({
         className="sr-only"
         onChange={read}
       />
-      <span className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          icon="camera"
-          loading={busy}
-          disabled={disabled || busy}
-          onClick={() => camera.current?.click()}
-        >
-          {busy
-            ? t('assistant.reading')
-            : t(kind === 'purchase' ? 'assistant.scanCamera' : 'assistant.scanCheques')}
-        </Button>
-        <Button
-          variant="secondary"
-          icon="upload"
-          disabled={disabled || busy}
-          onClick={() => file.current?.click()}
-        >
-          {t(kind === 'purchase' ? 'assistant.scanUpload' : 'additems.uploadPhoto')}
-        </Button>
-      </span>
+      <Button
+        variant="secondary"
+        icon="camera"
+        loading={busy}
+        disabled={disabled || busy}
+        onClick={() => file.current?.click()}
+      >
+        {busy
+          ? t('assistant.reading')
+          : t(kind === 'purchase' ? 'assistant.scanUpload' : 'assistant.scanCheques')}
+      </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}
     </span>
   );

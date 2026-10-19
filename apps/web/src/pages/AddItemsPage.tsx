@@ -32,6 +32,7 @@ import { ItemFinderSheet, type FinderPick } from '../components/ItemFinderSheet'
 import { GroupPicker, groupLabel } from '../components/GroupTree';
 import { ScanButton } from '../components/ScanButton';
 import { api } from '../lib/api';
+import { onlyChoice } from '../lib/onlyChoice';
 import {
   useCompanySettings,
   useCreateProduct,
@@ -173,12 +174,16 @@ export function AddItemsPage() {
   const branchWarehouses = (allWarehouses.data ?? []).filter(
     (w) => w.kind === 'STORE' && w.isActive && w.branchId === branch,
   );
-  const warehouseId = branchWarehouses.some((w) => w.id === warehouse) ? warehouse : '';
+  const warehouseId = branchWarehouses.some((w) => w.id === warehouse)
+    ? warehouse
+    : onlyChoice(branchWarehouses);
   const onWarehouse = branchWarehouses.find((w) => w.id === warehouseId)?.departmentIds;
   const departments = (useDepartments().data ?? []).filter(
     (d) => d.isActive && (!onWarehouse?.length || onWarehouse.includes(d.id)),
   );
-  const departmentId = departments.some((d) => d.id === department) ? department : '';
+  const departmentId = departments.some((d) => d.id === department)
+    ? department
+    : onlyChoice(departments);
   const allGroups = useGroups().data ?? [];
   const groups = allGroups.filter((g) => departments.some((d) => d.id === g.departmentId));
   const activeSeasons = (seasons.data ?? []).filter((s) => s.isActive);
@@ -1214,7 +1219,6 @@ function PhotoPick({
   onFile: (file: File | null) => void;
 }) {
   const { t } = useT();
-  const camera = useRef<HTMLInputElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -1230,14 +1234,6 @@ function PhotoPick({
   };
   return (
     <div className="flex items-center gap-2">
-      <input
-        ref={camera}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        className="sr-only"
-        onChange={take}
-      />
       <input
         ref={picker}
         type="file"
@@ -1255,9 +1251,6 @@ function PhotoPick({
         </span>
       )}
       <span className="text-xs text-muted">{label}</span>
-      <Button size="sm" variant="ghost" icon="camera" onClick={() => camera.current?.click()}>
-        {t('additems.takePhoto')}
-      </Button>
       <Button size="sm" variant="ghost" icon="upload" onClick={() => picker.current?.click()}>
         {t('additems.uploadPhoto')}
       </Button>

@@ -31,6 +31,7 @@ import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { useDeviceInfo } from '../lib/device';
 import { useWorkPlace } from '../lib/workPlace';
+import { onlyChoice } from '../lib/onlyChoice';
 import { ItemLifeSheet } from '../components/ItemLifeSheet';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
@@ -236,7 +237,7 @@ export function InvoiceBuilderPage({
     ? ''
     : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
       ? pickedDepartment
-      : '';
+      : onlyChoice(departments);
 
   const carriers = useParties({
     page: 1,
@@ -287,7 +288,7 @@ export function InvoiceBuilderPage({
   const warehouseId = isSale
     ? branchWarehouses.some((w) => w.id === pickedWarehouse)
       ? pickedWarehouse
-      : ''
+      : onlyChoice(branchWarehouses)
     : pickedWarehouse || defaultWarehouse;
   /** The warehouse's departments (none picked on it = every department). */
   const warehouseDepartments = (allWarehouses.data ?? []).find(

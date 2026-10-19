@@ -139,6 +139,14 @@
           "en": "The open pages' strip stays at the top while you scroll, on the computer and the phone."
         },
         {
+          "ar": "زرار التصوير اتشال: زرار رفع الصورة لوحده بيفتح على الموبايل اختيار الكاميرا أو الصور.",
+          "en": "The separate camera button is gone: on a phone the upload button itself offers the camera or the gallery."
+        },
+        {
+          "ar": "الحساب اللي ليه فرع واحد أو مخزن واحد أو قسم واحد بيتختارله لوحده في الفواتير وإضافة الأصناف والمرتجعات.",
+          "en": "An account with only one branch, warehouse or department has it picked for it on invoices, adding items and returns."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

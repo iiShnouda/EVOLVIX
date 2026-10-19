@@ -99,7 +99,6 @@ export function ProductImageCard({ productId, canEdit }: { productId: string; ca
             ref={input}
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            capture="environment"
             className="hidden"
             onChange={(e) => void pick(e.target.files?.[0])}
           />

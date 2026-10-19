@@ -20,6 +20,7 @@ import {
 import { ProductImageCard } from '../components/ProductImage';
 import { SupplierFields } from '../components/SupplierFields';
 import { useT } from '../lib/i18n';
+import { onlyChoice } from '../lib/onlyChoice';
 import { useCan } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
@@ -91,6 +92,11 @@ export function ProductEditorPage() {
   const [names, setNames] = useState<NameValues>('');
   const [sku, setSku] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  // The only department, when the company has just one (owner, 2026-10-19).
+  const soleDepartment = onlyChoice(departments);
+  useEffect(() => {
+    if (!departmentId && soleDepartment) setDepartmentId(soleDepartment);
+  }, [departmentId, soleDepartment]);
   // The group of the department's tree it sits in (owner, 2026-10-06); '' = the department itself.
   const [groupId, setGroupId] = useState('');
   const groups = useGroups().data ?? [];

@@ -133,7 +133,6 @@ function Slot({
           ref={input}
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          capture="environment"
           className="hidden"
           onChange={(e) => void pick(e.target.files?.[0])}
         />
