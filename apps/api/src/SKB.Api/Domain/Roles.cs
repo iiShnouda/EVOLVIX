@@ -115,6 +115,11 @@ public static class Permissions
     public const string PayrollPost = "payroll:post";
     public const string PayrollPay = "payroll:pay";
     public const string PartiesView = "parties:view";
+    /// <summary>
+    /// See and change a party's contact details — phones, email, addresses, owner or person in charge,
+    /// national ID and tax number (owner, 2026-10-19: not shown to whoever only picks a supplier).
+    /// </summary>
+    public const string PartiesContact = "parties:contact";
     public const string PartiesEdit = "parties:edit";
     /// <summary>Close a party's account (or reopen it).</summary>
     public const string PartiesClose = "parties:close";
@@ -289,7 +294,7 @@ public static class Permissions
         PartiesCashCustomer, SalesChangesReport, SalesOverrideFloor, SalesReturn, SalesQuote,
         SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
-        PartiesView, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
+        PartiesView, PartiesContact, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,
@@ -334,7 +339,7 @@ public static class RolePermissions
             // stays only for pending invoices someone may still be asked to save.
             Permissions.SalesApprove, Permissions.SalesInvoiceAlerts, Permissions.SalesRaisePrice,
             Permissions.PurchasesView, Permissions.PurchasesCreate, Permissions.PurchasesReturn,
-            Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesEdit,
+            Permissions.ReceiptsView, Permissions.PartiesView, Permissions.PartiesContact, Permissions.PartiesEdit,
             Permissions.InventoryView, Permissions.InventoryEdit, Permissions.InventoryStocktake,
             Permissions.InventoryTransfer, Permissions.ProductsClose, Permissions.PartiesClose,
             Permissions.SalesReturnFree, Permissions.PurchasesReturnFree,
@@ -375,7 +380,7 @@ public static class RolePermissions
             Permissions.SalesQuote, Permissions.SalesRaisePrice,
             // The seller writes a customer's return; it goes straight back into its warehouse.
             Permissions.SalesReturn, Permissions.SalesReturnFree,
-            Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
+            Permissions.PartiesView, Permissions.PartiesContact, Permissions.PartiesEdit, Permissions.InventoryView,
             Permissions.PartiesCreateCustomer, Permissions.PartiesCreateSupplier,
             Permissions.PartiesCreateCarrier, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
             Permissions.ChatUse,

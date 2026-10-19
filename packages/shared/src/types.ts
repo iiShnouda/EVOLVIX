@@ -143,6 +143,7 @@ export type Permission =
   | 'purchases:change_tax'
   | 'purchases:additions'
   // Parties and delivery (DOMAIN step 4b)
+  | 'parties:contact'
   | 'parties:create_customer'
   | 'parties:create_supplier'
   | 'parties:create_carrier'

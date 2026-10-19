@@ -388,12 +388,13 @@ export function PartySheet({
   const customer = types.includes('CUSTOMER');
   const withIdCard = (customer || types.includes('CARRIER')) && can('parties:id_cards');
   // The address is required (owner, 2026-10-01), except for a walk-in cash customer.
-  const addressMissing = !address.trim() && !(customer && isCashCustomer);
+  // Contact details are seen and changed only with parties:contact; a new account's are typed in
+  // by whoever adds it (owner, 2026-10-19).
+  const showContact = isNew || can('parties:contact');
+  const addressMissing = showContact && !address.trim() && !(customer && isCashCustomer);
   const phones = otherPhones.filter((x) => x.phone.trim());
 
-  const values = {
-    name: name.trim(),
-    types,
+  const contact = {
     phone: phone.trim(),
     phoneLabel: phone.trim() ? phoneLabel.trim() : '',
     email: carrierOnly ? '' : email.trim(),
@@ -406,6 +407,11 @@ export function PartySheet({
     extraAddressLabel: extraAddress.trim() ? extraAddressLabel.trim() : '',
     contactName: contactName.trim(),
     shippingAddress: shippingAddress.trim(),
+  };
+  const values = {
+    name: name.trim(),
+    types,
+    ...(showContact ? contact : {}),
     notes: notes.trim(),
     ...(customer
       ? {
@@ -427,7 +433,8 @@ export function PartySheet({
     setTouched(true);
     if (!parsed.success || addressMissing) return;
     // Phones and the national ID as the company's country has them (owner, 2026-10-02).
-    if (anyIdProblem(country, [phone, ...phones.map((x) => x.phone)], nationalId)) return;
+    if (showContact && anyIdProblem(country, [phone, ...phones.map((x) => x.phone)], nationalId))
+      return;
     try {
       if (isNew) {
         const created = await create.mutateAsync(values);
@@ -520,7 +527,7 @@ export function PartySheet({
         </label>
 
         {/* A factory's owner; a customer has no "person in charge" (owner, 2026-10-19). */}
-        {(factory || (contactName && !customer)) && (
+        {showContact && (factory || (contactName && !customer)) && (
           <label className="block">
             <span className="mb-1 block text-xs text-muted">
               {t(factory ? 'parties.ownerName' : 'parties.contactName')}
@@ -536,28 +543,32 @@ export function PartySheet({
 
         <div className="grid gap-3 sm:grid-cols-2">
           {/* The main number and what it is, then the other numbers right under it (owner, 2026-10-19). */}
-          <div className="flex items-start gap-2 sm:col-span-2">
-            <div className="min-w-0 flex-1">
-              <PhoneInput value={phone} onChange={setPhone} label={t('parties.phone')} />
+          {showContact && (
+            <div className="flex items-start gap-2 sm:col-span-2">
+              <div className="min-w-0 flex-1">
+                <PhoneInput value={phone} onChange={setPhone} label={t('parties.phone')} />
+              </div>
+              <label className="block w-36 shrink-0 sm:w-48">
+                <span className="mb-1 block text-xs text-muted">{t('parties.mainPhoneLabel')}</span>
+                <input
+                  className={input}
+                  list="party-phone-kinds"
+                  value={phoneLabel}
+                  maxLength={60}
+                  onChange={(e) => setPhoneLabel(e.target.value)}
+                />
+              </label>
             </div>
-            <label className="block w-36 shrink-0 sm:w-48">
-              <span className="mb-1 block text-xs text-muted">{t('parties.mainPhoneLabel')}</span>
-              <input
-                className={input}
-                list="party-phone-kinds"
-                value={phoneLabel}
-                maxLength={60}
-                onChange={(e) => setPhoneLabel(e.target.value)}
-              />
-            </label>
-          </div>
-          <PhoneList
-            value={otherPhones}
-            onChange={setOtherPhones}
-            max={MAX_OTHER_PHONES}
-            listId="party-phone-kinds"
-          />
-          {!carrierOnly && (
+          )}
+          {showContact && (
+            <PhoneList
+              value={otherPhones}
+              onChange={setOtherPhones}
+              max={MAX_OTHER_PHONES}
+              listId="party-phone-kinds"
+            />
+          )}
+          {showContact && !carrierOnly && (
             <label className="block">
               <span className="mb-1 block text-xs text-muted">{t('parties.email')}</span>
               <input
@@ -571,14 +582,14 @@ export function PartySheet({
               />
             </label>
           )}
-          {(customer || types.includes('CARRIER')) && (
+          {showContact && (customer || types.includes('CARRIER')) && (
             <NationalIdInput
               value={nationalId}
               onChange={setNationalId}
               label={t('parties.nationalId')}
             />
           )}
-          {!carrierOnly && (
+          {showContact && !carrierOnly && (
             <label className="block sm:col-span-2">
               <span className="mb-1 block text-xs text-muted">
                 {t(factory ? 'parties.taxFile' : 'parties.taxNumber')}
@@ -592,34 +603,38 @@ export function PartySheet({
               />
             </label>
           )}
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">
-              {t(factory ? 'parties.factoryAddress' : 'parties.address')}
-            </span>
-            <textarea
-              className={`${input} h-auto min-h-16 py-2 ${touched && addressMissing ? 'border-destructive' : ''}`}
-              rows={2}
-              value={address}
-              maxLength={300}
-              aria-invalid={touched && addressMissing}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-            {touched && addressMissing && (
-              <span className="mt-0.5 block text-xs text-destructive">
-                {t('parties.addressRequired')}
+          {showContact && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-muted">
+                {t(factory ? 'parties.factoryAddress' : 'parties.address')}
               </span>
-            )}
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-xs text-muted">{t('parties.extraAddress')}</span>
-            <input
-              className={input}
-              value={extraAddress}
-              maxLength={300}
-              onChange={(e) => setExtraAddress(e.target.value)}
-            />
-          </label>
-          {customer && shippingAddress && (
+              <textarea
+                className={`${input} h-auto min-h-16 py-2 ${touched && addressMissing ? 'border-destructive' : ''}`}
+                rows={2}
+                value={address}
+                maxLength={300}
+                aria-invalid={touched && addressMissing}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+              {touched && addressMissing && (
+                <span className="mt-0.5 block text-xs text-destructive">
+                  {t('parties.addressRequired')}
+                </span>
+              )}
+            </label>
+          )}
+          {showContact && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-xs text-muted">{t('parties.extraAddress')}</span>
+              <input
+                className={input}
+                value={extraAddress}
+                maxLength={300}
+                onChange={(e) => setExtraAddress(e.target.value)}
+              />
+            </label>
+          )}
+          {showContact && customer && shippingAddress && (
             <label className="block sm:col-span-2">
               <span className="mb-1 block text-xs text-muted">{t('parties.shippingAddress')}</span>
               <input

@@ -155,14 +155,9 @@ export function PartyPicker({
                 <span className="mt-px min-w-8 shrink-0 rounded bg-surface-2 px-1 text-center text-xs text-muted tnum">
                   {p.code}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{p.name}</span>
-                  {(p.phone || p.contactName) && (
-                    <span className="block truncate text-xs text-muted">
-                      {[p.phone, p.contactName].filter(Boolean).join(' · ')}
-                    </span>
-                  )}
-                </span>
+                {/* Only the code and name: a party's details are on its directory page, for
+                    whoever may see them (owner, 2026-10-19). */}
+                <span className="block min-w-0 flex-1 truncate font-medium">{p.name}</span>
               </button>
             ))
           )}

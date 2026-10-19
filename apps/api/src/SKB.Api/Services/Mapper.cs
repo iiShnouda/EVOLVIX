@@ -1,5 +1,6 @@
 using SKB.Api.Data;
 using SKB.Api.Models;
+using SKB.Api.Domain;
 
 namespace SKB.Api.Services;
 
@@ -89,6 +90,20 @@ public static class Mapper
         s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent,
         s.PendingHoldDays, s.LogoVersion, s.RequireDepartment, s.ReturnAfterHours, s.HideNewPlaces, s.IdleMinutes,
         s.CurrentSeasonId?.ToString());
+
+    /// <summary>
+    /// A party as this person may see it: its contact details (phones, email, addresses, owner or
+    /// person in charge, national ID, tax number) only with <c>parties:contact</c> (owner, 2026-10-19).
+    /// </summary>
+    public static PartyDto ToParty(Party p, System.Security.Claims.ClaimsPrincipal user) =>
+        user.HasClaim("permission", Permissions.PartiesContact)
+            ? ToParty(p)
+            : ToParty(p) with
+            {
+                Phone = null, PhoneLabel = null, OtherPhones = Array.Empty<string>(), OtherPhoneLabels = Array.Empty<string>(),
+                Email = null, TaxNumber = null, Address = null, ShippingAddress = null, ExtraAddress = null,
+                ExtraAddressLabel = null, ContactName = null, NationalId = null,
+            };
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,

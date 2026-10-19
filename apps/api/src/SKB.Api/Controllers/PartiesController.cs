@@ -69,7 +69,7 @@ public sealed class PartiesController : ControllerBase
         var rows = await q.OrderBy(p => p.Name)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
-        return Ok(new PaginatedDto<PartyDto>(rows.Select(Mapper.ToParty).ToArray(), total, page, pageSize));
+        return Ok(new PaginatedDto<PartyDto>(rows.Select(p => Mapper.ToParty(p, User)).ToArray(), total, page, pageSize));
     }
 
     [HttpGet("{id:guid}")]
@@ -77,7 +77,7 @@ public sealed class PartiesController : ControllerBase
     {
         var party = await _db.Parties.FindAsync(id);
         if (party is null) return NotFound(new { message = "Party not found" });
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 
     /// <summary>Whether this person may add parties of these types (each type has its own permission).</summary>
@@ -110,7 +110,7 @@ public sealed class PartiesController : ControllerBase
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
         await AuditAsync("create", party.Id, $"{party.Code} · {party.Name}");
-        return Created($"/api/parties/{party.Id}", Mapper.ToParty(party));
+        return Created($"/api/parties/{party.Id}", Mapper.ToParty(party, User));
     }
 
     /// <summary>Edit a party. Closing one needs its balance at zero, so nothing owed is hidden.</summary>
@@ -125,10 +125,19 @@ public sealed class PartiesController : ControllerBase
         // Locked first, so "balance is zero" still holds when the account closes.
         await using var tx = await _db.Database.BeginTransactionAsync();
         await MoneyService.LockPartiesAsync(_db, party.Id);
-        var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
+        var fields = new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
-            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId, req.PhoneLabel), isNew: false);
+            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId, req.PhoneLabel);
+        // Whoever can't see the contact details can't change them either (left as they are).
+        if (!User.HasClaim("permission", Permissions.PartiesContact))
+            fields = fields with
+            {
+                Phone = null, PhoneLabel = null, OtherPhones = null, OtherPhoneLabels = null, Email = null,
+                TaxNumber = null, Address = null, ShippingAddress = null, ExtraAddress = null,
+                ExtraAddressLabel = null, ContactName = null, NationalId = null,
+            };
+        var error = await ApplyAsync(party, fields, isNew: false);
         if (error is not null) return error;
         // The walk-in cash customer stays a cash customer, and stays open.
         if (party.IsSystem && (req.IsActive == false || !party.IsCashCustomer
@@ -154,7 +163,7 @@ public sealed class PartiesController : ControllerBase
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("update", id);
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 
     private sealed record Fields(
@@ -322,7 +331,7 @@ public sealed class PartiesController : ControllerBase
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "price_levels", "party",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), id.ToString());
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 
     private const int MaxIdCardBytes = 3 * 1024 * 1024;
@@ -368,7 +377,7 @@ public sealed class PartiesController : ControllerBase
         if (which == "FRONT") party.HasIdFront = true; else party.HasIdBack = true;
         await _db.SaveChangesAsync();
         await AuditAsync($"id_card_{which.ToLowerInvariant()}", id);
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 
     /// <summary>The ID card photo, never cached anywhere.</summary>
@@ -396,7 +405,7 @@ public sealed class PartiesController : ControllerBase
         if (which == "FRONT") party.HasIdFront = false; else party.HasIdBack = false;
         await _db.SaveChangesAsync();
         await AuditAsync($"id_card_{which.ToLowerInvariant()}_removed", id);
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 
     /// <summary>Set or clear (null) a customer's credit limit (حد الائتمان), in minor units.</summary>
@@ -413,6 +422,6 @@ public sealed class PartiesController : ControllerBase
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "credit_limit", "party",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), id.ToString());
-        return Ok(Mapper.ToParty(party));
+        return Ok(Mapper.ToParty(party, User));
     }
 }

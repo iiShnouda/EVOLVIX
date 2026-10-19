@@ -2878,4 +2878,5 @@ export const ar: TranslationDictionary = {
   'settings.seasonAuto': 'تلقائي ({s})',
   'error.one_type': 'اختر نوعًا واحدًا: عميل أو مورد أو شركة شحن.',
   'parties.mainPhoneLabel': 'اسم الرقم',
+  'perm.parties:contact': 'رؤية بيانات الاتصال للعملاء والموردين وشركات الشحن',
 };

@@ -2894,4 +2894,5 @@ export const en = {
   'settings.seasonAuto': 'Automatic ({s})',
   'error.one_type': 'Choose one: customer, supplier or shipping company.',
   'parties.mainPhoneLabel': 'Number name',
+  'perm.parties:contact': 'See contact details of customers, suppliers and shipping companies',
 } as const;

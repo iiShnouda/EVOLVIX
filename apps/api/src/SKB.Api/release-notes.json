@@ -183,6 +183,10 @@
           "en": "Account form: the phone number has a name of its own, \"Add number\" sits right under it, and the extra address's \"name\" box and the customer's \"person in charge\" box are gone."
         },
         {
+          "ar": "لما تختار مورد أو عميل في أي صفحة زي إضافة الأصناف، بيظهر الكود والاسم بس من غير تليفون أو اسم صاحب المصنع. وبيانات الاتصال (التليفونات والعناوين والإيميل وصاحب المصنع والرقم القومي والضريبي) بقت ليها صلاحية لوحدها، وبتظهر في صفحة العملاء والموردين ودليل الحساب لمين معاه الصلاحية بس.",
+          "en": "Picking a supplier or customer anywhere, such as adding items, shows only its code and name. Contact details (phones, addresses, email, owner, national ID and tax number) have their own permission and show on the customers & suppliers page and the account directory only to whoever holds it."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

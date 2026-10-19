@@ -245,7 +245,7 @@ public sealed class SalesController : ControllerBase
         var offBalance = back.Where(d => d.SourceDocumentId is not Guid src || !postedIds.Contains(src))
             .Sum(d => d.GrandTotal - d.PaidAmount);
         var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
-        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party), party.Balance, party.Balance - onThese + offBalance, onThese,
+        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party, User), party.Balance, party.Balance - onThese + offBalance, onThese,
             currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray(),
             returns.ToArray(), returnsTotal, DocumentLists.Together(states.Values, posted.Sum(d => d.GrandTotal))));
     }
