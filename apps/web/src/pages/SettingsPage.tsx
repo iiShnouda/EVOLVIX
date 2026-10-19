@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { COUNTRIES, CURRENCIES, TIME_ZONES, findCountry, type CompanySettings } from '@skb/shared';
+import {
+  COUNTRIES,
+  CURRENCIES,
+  TIME_ZONES,
+  companyToday,
+  findCountry,
+  type CompanySettings,
+} from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
@@ -9,6 +16,7 @@ import {
   useCompanySettings,
   useNumbering,
   useSaveNumbering,
+  useSeasons,
   useUpdateSettings,
 } from '../lib/queries';
 import { CompanyMark } from '../components/CompanyBadge';
@@ -46,6 +54,7 @@ function clockIn(zone: string, locale: string): string {
 }
 
 export function SettingsPage() {
+  const seasons = useSeasons();
   const { t, locale } = useT();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canManage = permissions.includes('settings:manage');
@@ -110,6 +119,7 @@ export function SettingsPage() {
       requireDepartment: form.requireDepartment !== false,
       hideNewPlaces: form.hideNewPlaces !== false,
       idleMinutes: form.idleMinutes ?? 30,
+      currentSeasonId: form.currentSeasonId ?? '',
       address: form.address ?? '',
       phone: form.phone ?? '',
       email: form.email ?? '',
@@ -122,6 +132,15 @@ export function SettingsPage() {
   }
 
   const disabled = !canManage;
+  // The season the date falls in: summer April–September, winter October–March named for the year
+  // it ends in (as the server works it out).
+  const seasonList = seasons.data ?? [];
+  const [ty, tm] = companyToday().split('-').map(Number) as [number, number];
+  const autoSeason = seasonList.find((x) =>
+    tm >= 4 && tm <= 9
+      ? x.kind === 'SUMMER' && x.year === ty
+      : x.kind === 'WINTER' && x.year === (tm >= 10 ? ty + 1 : ty),
+  );
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -405,6 +424,27 @@ export function SettingsPage() {
                 {m === 0 ? t('auth.idleNever') : t('auth.idleMinutes').replace('{n}', String(m))}
               </option>
             ))}
+          </select>
+        </label>
+        {/* The season it is now: worked out from the date, or set by hand when that is wrong (owner, 2026-10-19). */}
+        <label className="mt-3 flex items-center gap-3">
+          <span className="min-w-0 flex-1 text-sm">{t('settings.currentSeason')}</span>
+          <select
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
+            disabled={disabled}
+            value={form.currentSeasonId ?? ''}
+            onChange={(e) => set({ currentSeasonId: e.target.value || null })}
+          >
+            <option value="">
+              {t('settings.seasonAuto').replace('{s}', autoSeason?.name ?? '—')}
+            </option>
+            {seasonList
+              .filter((x) => x.kind !== 'NONE')
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
           </select>
         </label>
       </Card>

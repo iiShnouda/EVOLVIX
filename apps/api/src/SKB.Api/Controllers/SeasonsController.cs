@@ -29,7 +29,7 @@ public sealed class SeasonsController : ControllerBase
     public async Task<ActionResult<SeasonDto[]>> List()
     {
         await Seasons.EnsureAsync(_db);
-        var now = Seasons.Of(CompanyClock.Today);
+        var now = (await Seasons.CurrentAsync(_db))?.Id;
         var rows = await _db.Seasons.AsNoTracking().Where(s => s.IsActive).ToListAsync();
         return Ok(rows
             .OrderBy(s => s.Kind == Seasons.None ? 1 : 0)
@@ -54,6 +54,6 @@ public sealed class SeasonsController : ControllerBase
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "season",
             CurrentUser.BranchId(User), HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), season.Id.ToString());
-        return Created($"/api/seasons/{season.Id}", Seasons.ToDto(season, Seasons.Of(CompanyClock.Today)));
+        return Created($"/api/seasons/{season.Id}", Seasons.ToDto(season, (await Seasons.CurrentAsync(_db))?.Id));
     }
 }

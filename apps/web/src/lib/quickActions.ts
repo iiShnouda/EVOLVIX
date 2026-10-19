@@ -107,7 +107,8 @@ const ACTIONS: QuickAction[] = [
     label: 'qa.newParty',
     icon: 'parties',
     path: '/parties?new=1',
-    permission: 'parties:create',
+    permission: 'parties:create_customer',
+    anyOf: ['parties:create_supplier', 'parties:create_carrier'],
   },
   {
     id: 'accountStatement',

@@ -159,6 +159,18 @@
           "en": "Reading an invoice photo no longer stops with \"took too long\": the server reads on in the background for up to 30 minutes, the button counts the time until it is done, and the photo sent to the model is smaller so it reads faster."
         },
         {
+          "ar": "الصنف اللي اتشرى تاني بقى ممكن تغيّر له هامش الربح وسعر البيع وحد الطلب في إضافة الأصناف، وسعر المورد الجديد وسعر البيع بيتحفظوا على الصنف (كل واحد بصلاحيته).",
+          "en": "An item bought again can get a new margin, sale price and reorder level on the add-items screen; the new supplier price and sale price are saved on the item (each with its permission)."
+        },
+        {
+          "ar": "زرار \"مورد جديد\" فوق خانة المورد في إضافة الأصناف، وإضافة العميل والمورد وشركة الشحن بقى لكل واحد صلاحية لوحده.",
+          "en": "A \"New supplier\" button above the supplier box on the add-items screen, and adding a customer, a supplier and a shipping company each have their own permission."
+        },
+        {
+          "ar": "الموسم الحالي بقى بيتحسب صح (من أكتوبر 2026 لمارس 2027 = شتوي 2027)، ولو غلط تقدر تختاره بنفسك من الإعدادات.",
+          "en": "The current season is worked out right (October 2026 to March 2027 = Winter 2027), and can be set by hand in Settings when it is wrong."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

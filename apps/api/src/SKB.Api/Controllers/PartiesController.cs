@@ -80,11 +80,24 @@ public sealed class PartiesController : ControllerBase
         return Ok(Mapper.ToParty(party));
     }
 
+    /// <summary>Whether this person may add parties of these types (each type has its own permission).</summary>
+    private bool MayAdd(IEnumerable<string?>? types) =>
+        (types ?? Array.Empty<string?>()).All(t => (t?.ToUpperInvariant()) switch
+        {
+            "CUSTOMER" => User.HasClaim("permission", Permissions.PartiesCreateCustomer),
+            "SUPPLIER" or "FACTORY" => User.HasClaim("permission", Permissions.PartiesCreateSupplier),
+            "CARRIER" => User.HasClaim("permission", Permissions.PartiesCreateCarrier),
+            _ => true, // an unknown type is refused by the checks that follow
+        });
+
+    private ObjectResult TypeNotAllowed() =>
+        StatusCode(403, new { message = "Adding this kind of party needs permission.", code = "party_type_not_allowed" });
+
     /// <summary>Add a customer, supplier (a factory is a supplier) or shipping company (a party can be several).</summary>
     [HttpPost]
-    [Authorize(Policy = Permissions.PartiesCreate)]
     public async Task<ActionResult<PartyDto>> Create([FromBody] CreatePartyRequest req)
     {
+        if (!MayAdd(req.Types)) return TypeNotAllowed();
         var party = new Party
         {
             Currency = await _db.CompanySettings.Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP",
@@ -107,6 +120,8 @@ public sealed class PartiesController : ControllerBase
     {
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
         if (party is null) return NotFound(new { message = "Party not found", code = "not_found" });
+        // Making a customer a supplier too is adding a supplier: it needs that permission.
+        if (!MayAdd(req.Types?.Where(t => !party.Types.Contains(t?.ToUpperInvariant() ?? "")))) return TypeNotAllowed();
         // Locked first, so "balance is zero" still holds when the account closes.
         await using var tx = await _db.Database.BeginTransactionAsync();
         await MoneyService.LockPartiesAsync(_db, party.Id);

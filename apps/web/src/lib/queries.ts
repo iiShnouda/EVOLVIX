@@ -448,6 +448,8 @@ export function useUpdateSettings() {
       qc.setQueryData(['settings'], data);
       void qc.invalidateQueries({ queryKey: ['settings'] });
       void qc.invalidateQueries({ queryKey: ['branding'] });
+      // The current season can be set here.
+      void qc.invalidateQueries({ queryKey: ['catalog', 'seasons'] });
     },
   });
 }

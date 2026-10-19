@@ -87,7 +87,8 @@ public static class Mapper
         s.CompanyName, s.Country, s.Currency,
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
         s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent,
-        s.PendingHoldDays, s.LogoVersion, s.RequireDepartment, s.ReturnAfterHours, s.HideNewPlaces, s.IdleMinutes);
+        s.PendingHoldDays, s.LogoVersion, s.RequireDepartment, s.ReturnAfterHours, s.HideNewPlaces, s.IdleMinutes,
+        s.CurrentSeasonId?.ToString());
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,

@@ -143,7 +143,9 @@ export type Permission =
   | 'purchases:change_tax'
   | 'purchases:additions'
   // Parties and delivery (DOMAIN step 4b)
-  | 'parties:create'
+  | 'parties:create_customer'
+  | 'parties:create_supplier'
+  | 'parties:create_carrier'
   | 'parties:id_cards'
   | 'delivery:view'
   | 'delivery:manage'
@@ -1089,6 +1091,8 @@ export interface CompanySettings {
   hideNewPlaces?: boolean;
   /** Minutes without use before the app signs people out; 0 = never (company setting). */
   idleMinutes?: number;
+  /** The season it is now when set by hand; null = worked out from the date (owner, 2026-10-19). */
+  currentSeasonId?: string | null;
 }
 
 /**

@@ -239,7 +239,7 @@ public record CompanySettingsDto(
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
     int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
-    bool HideNewPlaces = true, int IdleMinutes = 30);
+    bool HideNewPlaces = true, int IdleMinutes = 30, string? CurrentSeasonId = null);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -263,7 +263,8 @@ public record UpdateSettingsRequest(
     bool? TransfersRequireReceipt = null, string? Address = null, string? Phone = null, string? Email = null,
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
-    int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null);
+    int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null,
+    string? CurrentSeasonId = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 

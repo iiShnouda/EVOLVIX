@@ -22,6 +22,7 @@ import {
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
+import { PartySheet } from './PartiesPage';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -101,6 +102,14 @@ interface NewLine {
   existing?: boolean;
   perUnit?: number;
   existingSale?: number;
+  /**
+   * What it had before (owner, 2026-10-19: bought again, its supplier price, margin, sale price
+   * and reorder level can change): its base unit, supplier price per piece and reorder level, so
+   * only what was changed is saved back to the item.
+   */
+  baseUnitId?: string;
+  existingCost?: number;
+  existingReorder?: number;
   detail?: string;
   /** Bought again from an earlier season: moved to the invoice's season (owner, 2026-10-17). */
   oldSeasonId?: string;
@@ -172,6 +181,7 @@ export function AddItemsPage() {
   const purchaseLevel = (levels.data ?? []).find((l) => l.side === 'PURCHASE' && l.isDefault);
 
   const [supplier, setSupplier] = useState<Party | null>(null);
+  const [addingSupplier, setAddingSupplier] = useState(false);
   const myBranches = me?.branches ?? [];
   const [branch, setBranch] = useState(myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '');
   const [warehouse, setWarehouse] = useState('');
@@ -258,11 +268,13 @@ export function AddItemsPage() {
         (after + Math.round((before * (Number(l.marginPct) || 0)) / 100) + minor(l.marginAmt)) /
           100,
       ) * 100;
-    const sale = l.existing
-      ? (l.existingSale ?? 0)
-      : l.salePrice !== ''
+    // Bought again: its own sale price stays unless a new price or margin is typed.
+    const sale =
+      l.salePrice !== ''
         ? minor(l.salePrice)
-        : marginSale;
+        : l.existing && !(Number(l.marginPct) || 0) && !minor(l.marginAmt)
+          ? (l.existingSale ?? 0)
+          : marginSale;
     const perUnit = l.existing
       ? (l.perUnit ?? 1)
       : (activeUnits.find((u) => u.id === l.unitId)?.pieces ?? 1);
@@ -274,6 +286,8 @@ export function AddItemsPage() {
   // New items need their own permissions; buying items already in the catalog does not.
   const canNewItems = can('products:create') && can('prices:edit');
   const canMoveSeason = can('products:edit');
+  const canPrices = can('prices:edit');
+  const canEditItems = can('products:edit');
   const [finding, setFinding] = useState(false);
 
   /** A line for an item already in the catalog. */
@@ -291,6 +305,10 @@ export function AddItemsPage() {
       existing: true,
       perUnit,
       existingSale: p.salePrice,
+      baseUnitId: p.units[0]?.unitId,
+      existingCost: p.costPrice,
+      existingReorder: p.reorderLevel,
+      reorder: String(p.reorderLevel ?? ''),
       detail: [p.sku, p.sizeName, p.colorName, unit?.name].filter(Boolean).join(' · '),
       oldSeasonId: p.seasonId ?? '',
       oldSeasonName: p.seasonName ?? '',
@@ -523,10 +541,34 @@ export function AddItemsPage() {
       for (const [i, r] of rows.entries()) {
         const photo = photos[r.l.key];
         if (photo) await api.upload(`/products/${ids[i]}/image`, photo).catch(() => undefined);
-        if (r.l.existing && r.l.moveSeason && season && r.l.oldSeasonId !== season)
+        if (!r.l.existing) continue;
+        // Bought again: the new season, reorder level and prices go back on the item.
+        const reorder = Math.max(0, Math.floor(Number(r.l.reorder) || 0));
+        const moved = r.l.moveSeason && season && r.l.oldSeasonId !== season;
+        const reordered = canEditItems && r.l.reorder !== '' && reorder !== r.l.existingReorder;
+        if (moved || reordered)
           await updateProduct
-            .mutateAsync({ id: ids[i]!, input: { seasonId: season } })
+            .mutateAsync({
+              id: ids[i]!,
+              input: {
+                ...(moved ? { seasonId: season } : {}),
+                ...(reordered ? { reorderLevel: reorder } : {}),
+              },
+            })
             .catch(() => undefined);
+        const unitId = r.l.baseUnitId;
+        if (canPrices && unitId && saleLevel && purchaseLevel) {
+          const prices = [
+            ...(r.sale > 0 && r.sale !== r.l.existingSale
+              ? [{ unitId, priceLevelId: saleLevel.id, price: r.sale }]
+              : []),
+            ...(r.before > 0 && r.before !== r.l.existingCost
+              ? [{ unitId, priceLevelId: purchaseLevel.id, price: r.before }]
+              : []),
+          ];
+          if (prices.length)
+            await api.put(`/products/${ids[i]}/prices`, { prices }).catch(() => undefined);
+        }
       }
       if (invoicePhoto)
         await api
@@ -625,7 +667,18 @@ export function AddItemsPage() {
 
       {/* Who it comes from and where it is stored. */}
       <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <div className="sm:col-span-2">
+        <div className="relative sm:col-span-2">
+          {/* A supplier not in the list yet is added right here (owner, 2026-10-19). */}
+          {can('parties:create_supplier') && !someSaved && (
+            <button
+              type="button"
+              className="absolute end-0 top-0 z-[1] inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+              onClick={() => setAddingSupplier(true)}
+            >
+              <Icon name="plus" size={13} />
+              {t('additems.newSupplier')}
+            </button>
+          )}
           <PartyPicker
             type="SUPPLIER"
             withCode
@@ -743,6 +796,14 @@ export function AddItemsPage() {
         </span>
         {scanNote && <p className="w-full text-xs text-brand">{scanNote}</p>}
       </Card>
+      {addingSupplier && (
+        <PartySheet
+          party={null}
+          startTypes={['SUPPLIER']}
+          onCreated={setSupplier}
+          onClose={() => setAddingSupplier(false)}
+        />
+      )}
       {finding && (
         <ItemFinderSheet
           departmentId={departmentId || undefined}
@@ -987,22 +1048,22 @@ export function AddItemsPage() {
                 {money(f.after)}
               </div>,
             )}
-            {!entry.existing &&
+            {(!entry.existing || canPrices) &&
               label(
                 t('additems.marginPct'),
                 number(entry.marginPct, (v) => set({ marginPct: v, salePrice: '' })),
               )}
-            {!entry.existing &&
+            {(!entry.existing || canPrices) &&
               label(
                 t('additems.marginAmt'),
                 number(entry.marginAmt, (v) => set({ marginAmt: v, salePrice: '' })),
               )}
-            {!entry.existing &&
+            {(!entry.existing || canPrices) &&
               label(
                 t('item.salePrice'),
                 number(entry.salePrice, (v) => set({ salePrice: v }), String(f.sale / 100)),
               )}
-            {!entry.existing &&
+            {(!entry.existing || canEditItems) &&
               label(
                 t('item.reorder'),
                 <input

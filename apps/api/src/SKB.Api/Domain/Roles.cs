@@ -118,8 +118,13 @@ public static class Permissions
     public const string PartiesEdit = "parties:edit";
     /// <summary>Close a party's account (or reopen it).</summary>
     public const string PartiesClose = "parties:close";
-    /// <summary>Add a customer, supplier (factories are suppliers) or shipping company.</summary>
-    public const string PartiesCreate = "parties:create";
+    /// <summary>
+    /// Add a customer, a supplier (factories are suppliers) or a shipping company: one permission each
+    /// (owner, 2026-10-19).
+    /// </summary>
+    public const string PartiesCreateCustomer = "parties:create_customer";
+    public const string PartiesCreateSupplier = "parties:create_supplier";
+    public const string PartiesCreateCarrier = "parties:create_carrier";
     /// <summary>See and keep photos of customers' and shipping companies' ID cards.</summary>
     public const string PartiesIdCards = "parties:id_cards";
     /// <summary>See deliveries, shipments and carrier settlements.</summary>
@@ -295,7 +300,7 @@ public static class Permissions
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesDiscountLine, SalesDiscountCombined, SalesLock, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
-        PartiesCreate, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
+        PartiesCreateCustomer, PartiesCreateSupplier, PartiesCreateCarrier, PartiesIdCards, DeliveryView, DeliveryManage, DeliverySettle,
         ReceiptsCreate, PaymentsCreate, ExpensesCreate, CashTransfer, VouchersCancel,
         MoneyAccountsManage, ExpenseCategoriesManage, MoneyAccountsMain, VouchersDiscount, CashHandoverSend, CashHandoverReceive,
         LedgerView, LedgerPost, LedgerManage, LedgerLock,
@@ -346,7 +351,8 @@ public static class RolePermissions
             Permissions.SalesBonus, Permissions.SalesChangeTax, Permissions.SalesAdditions,
             Permissions.PurchasesDiscount, Permissions.PurchasesBonus, Permissions.PurchasesChangeTax,
             Permissions.PurchasesAdditions,
-            Permissions.PartiesCreate, Permissions.PartiesIdCards,
+            Permissions.PartiesCreateCustomer, Permissions.PartiesCreateSupplier,
+            Permissions.PartiesCreateCarrier, Permissions.PartiesIdCards,
             Permissions.DeliveryView, Permissions.DeliveryManage, Permissions.DeliverySettle,
             Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.CashTransfer, Permissions.VouchersCancel, Permissions.MoneyAccountsManage,
@@ -370,7 +376,8 @@ public static class RolePermissions
             // The seller writes a customer's return; it goes straight back into its warehouse.
             Permissions.SalesReturn, Permissions.SalesReturnFree,
             Permissions.PartiesView, Permissions.PartiesEdit, Permissions.InventoryView,
-            Permissions.PartiesCreate, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
+            Permissions.PartiesCreateCustomer, Permissions.PartiesCreateSupplier,
+            Permissions.PartiesCreateCarrier, Permissions.PartiesIdCards, Permissions.DeliveryView, Permissions.DeliveryManage,
             Permissions.ChatUse,
         },
         // Store staff add items and enter supplier invoices as printed; they don't set selling prices.

@@ -1223,6 +1223,11 @@ public class CompanySettings
     /// <summary>Minutes without use before the app signs people out; 0 = never (owner, 2026-10-17: a company setting).</summary>
     public int IdleMinutes { get; set; } = 30;
     /// <summary>
+    /// The season it is now, when set by hand (owner, 2026-10-19: "automatic, and if wrong I change it
+    /// in Settings"); null = worked out from the company's date (<see cref="Services.Seasons.Of"/>).
+    /// </summary>
+    public Guid? CurrentSeasonId { get; set; }
+    /// <summary>
     /// This installation's own id (owner, 2026-10-15: licences per company): made once, shown on the
     /// licence page, and written into the licence the vendor issues, so a code works on one server only.
     /// </summary>

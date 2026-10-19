@@ -527,6 +527,9 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("CurrentSeasonId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("DefaultMarkupPercent")
                         .HasColumnType("integer");
 

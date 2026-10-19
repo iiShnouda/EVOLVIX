@@ -57,6 +57,14 @@ public sealed class SettingsController : ControllerBase
         if (req.ReturnAfterHours is int returnAfter) s.ReturnAfterHours = Math.Clamp(returnAfter, 0, 720);
         if (req.HideNewPlaces is bool hideNew) s.HideNewPlaces = hideNew;
         if (req.IdleMinutes is int idle) s.IdleMinutes = Math.Clamp(idle, 0, 24 * 60);
+        // "" = back to automatic; else a season that exists and is in use.
+        if (req.CurrentSeasonId is { } seasonId)
+        {
+            if (seasonId.Length == 0) s.CurrentSeasonId = null;
+            else if (Guid.TryParse(seasonId, out var sid) && await _db.Seasons.AnyAsync(x => x.Id == sid && x.IsActive))
+                s.CurrentSeasonId = sid;
+            else return BadRequest(new { message = "Choose a season.", code = "bad_season" });
+        }
         if (req.CompanyName is not null && req.CompanyName.Trim().Length > 200)
             return BadRequest(new { message = "The name is too long.", code = "bad_name" });
         if (req.Address is not null) s.Address = Text(req.Address, 300);

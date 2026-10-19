@@ -315,6 +315,8 @@ export const updateSettingsSchema = z.object({
   hideNewPlaces: z.boolean().optional(),
   /** Minutes without use before everyone is signed out; 0 = never. */
   idleMinutes: z.number().int().min(0).max(1440).optional(),
+  /** The season it is now; "" = worked out from the date. */
+  currentSeasonId: z.string().max(64).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

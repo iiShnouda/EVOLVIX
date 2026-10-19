@@ -8,6 +8,7 @@ import {
   toMinor,
   type Party,
   type PartyType,
+  type Permission,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -38,6 +39,12 @@ import { PartyLink } from '../components/PartyContact';
 
 // A factory is a supplier, so there is no separate factory type.
 const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'CARRIER'];
+/** Adding each kind has its own permission (owner, 2026-10-19). */
+export const CREATE_PERMISSION = {
+  CUSTOMER: 'parties:create_customer',
+  SUPPLIER: 'parties:create_supplier',
+  CARRIER: 'parties:create_carrier',
+} as const satisfies Record<PartyType, Permission>;
 
 const TYPE_LABEL: Record<PartyType, TranslationKey> = {
   CUSTOMER: 'parties.customer',
@@ -79,7 +86,7 @@ export function PartiesPage() {
   // `?new=1` (the quick-action button): the add form opens at once.
   useEffect(() => {
     if (params.get('new') !== '1') return;
-    if (can('parties:create')) setEditing('new');
+    if (TYPES.some((x) => can(CREATE_PERMISSION[x]))) setEditing('new');
     const next = new URLSearchParams(params);
     next.delete('new');
     setParams(next, { replace: true });
@@ -100,7 +107,7 @@ export function PartiesPage() {
         title={t('parties.title')}
         subtitle={data ? `${data.total} ${t('common.total')}` : undefined}
         action={
-          can('parties:create') ? (
+          TYPES.some((x) => can(CREATE_PERMISSION[x])) ? (
             <Button icon="plus" onClick={() => setEditing('new')}>
               {t('parties.add')}
             </Button>
@@ -313,8 +320,22 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
   );
 }
 
-/** Add a party, or edit one (including closing / reopening its account). */
-function PartySheet({ party, onClose }: { party: Party | null; onClose: () => void }) {
+/**
+ * Add a party, or edit one (including closing / reopening its account). Opened from another page to
+ * add one there (e.g. a new supplier on the purchase screen), it starts as `startTypes` and hands the
+ * new party to `onCreated`.
+ */
+export function PartySheet({
+  party,
+  onClose,
+  startTypes,
+  onCreated,
+}: {
+  party: Party | null;
+  onClose: () => void;
+  startTypes?: PartyType[];
+  onCreated?: (party: Party) => void;
+}) {
   const { t } = useT();
   const isNew = !party;
   const create = useCreateParty();
@@ -331,7 +352,11 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
   const [tempCarrierName, setTempCarrierName] = useState(party?.tempCarrierName ?? '');
   const isCashCustomer = party?.isCashCustomer ?? false;
   const [name, setName] = useState(party?.name ?? '');
-  const [types, setTypes] = useState<PartyType[]>(party?.types ?? ['CUSTOMER']);
+  // A new one can only be of the kinds this person may add.
+  const addable = TYPES.filter((x) => can(CREATE_PERMISSION[x]));
+  const [types, setTypes] = useState<PartyType[]>(
+    party?.types ?? startTypes ?? (addable.length ? [addable[0]!] : []),
+  );
   const [phone, setPhone] = useState(party?.phone ?? '');
   const [nationalId, setNationalId] = useState(party?.nationalId ?? '');
   const country = useCompanyCountry();
@@ -403,6 +428,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
     try {
       if (isNew) {
         const created = await create.mutateAsync(values);
+        onCreated?.(created);
         setSending(true);
         for (const side of ['front', 'back'] as const) {
           const photo = idPending[side];
@@ -453,7 +479,7 @@ function PartySheet({ party, onClose }: { party: Party | null; onClose: () => vo
         <fieldset>
           <legend className="mb-1 block text-xs text-muted">{t('parties.types')}</legend>
           <div className="flex flex-wrap gap-2">
-            {TYPES.map((type) => (
+            {TYPES.filter((type) => types.includes(type) || addable.includes(type)).map((type) => (
               <label
                 key={type}
                 className={`flex h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-app)] border px-3 text-sm ${
