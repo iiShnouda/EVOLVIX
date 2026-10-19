@@ -474,7 +474,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             </select>
           </label>
         )}
-        <label className="block">
+        <label className="block w-40 min-w-0">
           <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
           <input
             type="date"
@@ -484,7 +484,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="block">
+        <label className="block w-40 min-w-0">
           <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
           <input
             type="date"

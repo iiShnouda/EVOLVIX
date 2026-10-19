@@ -127,6 +127,10 @@
       ],
       "fixes": [
         {
+          "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
+          "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
+        },
+        {
           "ar": "الشريط اللي فوق في الموبايل بقى ثابت ولونه سادة، فمبقاش فيه blur أعلى الشاشة وإنت بتنزل في الصفحة.",
           "en": "On the phone the top bar is fixed and solid, so there is no blur at the very top while scrolling."
         },

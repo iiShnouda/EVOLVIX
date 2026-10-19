@@ -122,6 +122,25 @@ input[type='number'] {
   font-feature-settings: 'tnum';
 }
 
+/* iPhone/iPad: a date box keeps its own built-in width and spills over the next field (owner,
+   2026-10-19: the status box stuck to the date). There it takes the width it is given instead. */
+@supports (-webkit-touch-callout: none) {
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='month'],
+  input[type='time'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    display: block;
+  }
+  input[type='date']::-webkit-date-and-time-value,
+  input[type='datetime-local']::-webkit-date-and-time-value {
+    text-align: start;
+  }
+}
+
 /* Safe-area helpers for notched iPhones / Android. */
 .safe-top {
   padding-top: env(safe-area-inset-top);
