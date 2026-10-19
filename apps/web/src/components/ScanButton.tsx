@@ -4,6 +4,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { scanPhoto } from '../lib/queries';
+import { shrinkPhoto } from './IdCards';
 
 /**
  * Read a supplier invoice or cheques from a photo with the company's offline assistant (owner,
@@ -13,10 +14,13 @@ import { scanPhoto } from '../lib/queries';
 export function ScanButton<T>({
   kind,
   onResult,
+  onPhoto,
   disabled,
 }: {
   kind: 'purchase' | 'cheques';
   onResult: (result: T) => void | Promise<void>;
+  /** The photo taken or picked, kept by the page (owner, 2026-10-19: shown with the invoice). */
+  onPhoto?: (file: File) => void;
   disabled?: boolean;
 }) {
   const { t } = useT();
@@ -33,7 +37,11 @@ export function ScanButton<T>({
     setBusy(true);
     setError(null);
     try {
-      await onResult(await scanPhoto<T>(kind, picked));
+      // Made smaller first (at most 1600 px): a full phone photo takes the server's model minutes.
+      const small = await shrinkPhoto(picked).catch(() => picked);
+      const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
+      onPhoto?.(photo);
+      await onResult(await scanPhoto<T>(kind, photo));
     } catch (err) {
       setError(errorText(t, err));
     } finally {

@@ -2873,4 +2873,8 @@ export const en = {
   'labels.applyAll': 'Apply to all',
   'labels.clear': 'Clear the list',
   'inventory.addStock': 'Add stock',
+  'error.assistant_off': 'The assistant is turned off on the server (ASSISTANT_ENABLED).',
+  'error.assistant_unreachable': 'The AI on the server isn\'t answering. Check that its container is running.',
+  'error.vision_model_missing': 'The model that reads photos isn\'t downloaded on the server yet.',
+  'error.assistant_timeout': 'Reading the photo took too long for the server. Try a closer, clearer photo.',
 } as const;

@@ -127,6 +127,10 @@
       ],
       "fixes": [
         {
+          "ar": "قراءة الفاتورة بالذكاء الاصطناعي: الصورة بتتصغّر قبل ما تتبعت فبتتقري أسرع، ووقت الانتظار بقى أطول، ولو فيه مشكلة بيقول السبب بالظبط (مقفول، السيرفر مش بيرد، موديل الصور مش متنزّل، أو خدت وقت طويل). وصورة الفاتورة اللي صورتها بتظهر تحت مع الفاتورة وبتتحفظ معاها.",
+          "en": "Reading an invoice photo: the photo is made smaller first so it reads faster, the wait is longer, and a problem says exactly why (turned off, not answering, photo model missing, or too slow). The photo taken shows under the invoice and is kept with it."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

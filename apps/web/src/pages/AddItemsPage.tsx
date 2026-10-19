@@ -680,7 +680,12 @@ export function AddItemsPage() {
       <Card className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold">{t('additems.existing')}</span>
         <span className="flex flex-wrap items-start gap-2">
-          <ScanButton<PurchaseScan> kind="purchase" disabled={!warehouseId} onResult={fromScan} />
+          <ScanButton<PurchaseScan>
+            kind="purchase"
+            disabled={!warehouseId}
+            onResult={fromScan}
+            onPhoto={setInvoicePhoto}
+          />
           <Button
             variant="secondary"
             icon="search"
@@ -1241,7 +1246,9 @@ function PhotoPick({
         onChange={take}
       />
       {url ? (
-        <img src={url} alt="" className="h-10 w-10 rounded-md border border-line object-cover" />
+        <a href={url} target="_blank" rel="noreferrer" title={label}>
+          <img src={url} alt="" className="h-16 w-16 rounded-md border border-line object-cover" />
+        </a>
       ) : (
         <span className="grid h-10 w-10 place-items-center rounded-md border border-dashed border-line text-faint">
           <Icon name="camera" size={16} />

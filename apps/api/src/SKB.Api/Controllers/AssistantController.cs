@@ -46,6 +46,28 @@ public sealed class AssistantController : ControllerBase
         message = "The assistant isn't running on the server yet.", code = "assistant_unavailable",
     });
 
+    /// <summary>
+    /// Why a photo can't be read right now (owner, 2026-10-19: one message for every cause told
+    /// nothing): turned off, the model server not answering, or the photo model not downloaded.
+    /// </summary>
+    private async Task<ObjectResult?> PhotoBlockedAsync(CancellationToken ct)
+    {
+        var st = await _ai.StatusAsync(ct);
+        if (!st.Enabled)
+            return StatusCode(503, new { message = "The assistant is turned off.", code = "assistant_off" });
+        if (!st.Reachable)
+            return StatusCode(503, new { message = "The model server isn't answering.", code = "assistant_unreachable" });
+        if (!st.VisionReady)
+            return StatusCode(503, new { message = "The photo model isn't downloaded yet.", code = "vision_model_missing" });
+        return null;
+    }
+
+    /// <summary>A read that ran out of time (not the person leaving) is told apart from the rest.</summary>
+    private ObjectResult PhotoFailed(Exception e, CancellationToken ct) =>
+        e is TaskCanceledException && !ct.IsCancellationRequested
+            ? StatusCode(504, new { message = "Reading the photo took too long.", code = "assistant_timeout" })
+            : Unavailable();
+
     /// <summary>Whether the assistant is ready (the model server answers and has its models).</summary>
     [HttpGet("status")]
     public async Task<ActionResult<AssistantStatusDto>> Status(CancellationToken ct)
@@ -230,6 +252,7 @@ public sealed class AssistantController : ControllerBase
         if (!Can(Permissions.PurchasesCreate)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
+        if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
         try
         {
             var scan = await _ai.ReadPurchaseAsync(image!, ct);
@@ -238,7 +261,7 @@ public sealed class AssistantController : ControllerBase
         }
         catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
         {
-            return Unavailable();
+            return PhotoFailed(e, ct);
         }
     }
 
@@ -252,6 +275,7 @@ public sealed class AssistantController : ControllerBase
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
+        if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
         try
         {
             var scan = await _ai.ReadChequesAsync(image!, ct);
@@ -260,7 +284,7 @@ public sealed class AssistantController : ControllerBase
         }
         catch (Exception e) when (e is HttpRequestException or AssistantUnavailableException or TaskCanceledException)
         {
-            return Unavailable();
+            return PhotoFailed(e, ct);
         }
     }
 
