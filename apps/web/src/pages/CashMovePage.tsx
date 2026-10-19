@@ -19,6 +19,7 @@ import { PartyPicker } from '../components/PartyPicker';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { TableColumns } from '../components/TableColumns';
 import { SidedMoney } from '../components/LedgerStatementSheet';
+import { useDeviceInfo } from '../lib/device';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -303,7 +304,7 @@ export function CashMovePage() {
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         <SideCard
           title={t('move.from')}
           side={from}
@@ -489,6 +490,7 @@ function SideCard({
   onSpread: () => void;
 }) {
   const { t, locale } = useT();
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const account = accounts.find((a) => a.id === accountId);
   const currency = account?.currency ?? accounts[0]?.currency ?? 'EGP';
   // Plain amounts in the table, as on the old screen.
@@ -497,7 +499,7 @@ function SideCard({
     maximumFractionDigits: 2,
   });
   return (
-    <Card className="space-y-3">
+    <Card className="min-w-0 space-y-3">
       <h2 className="text-sm font-semibold">{title}</h2>
       <label className="block">
         <span className="mb-0.5 block text-xs text-muted">{t('move.kind')}</span>
@@ -586,6 +588,40 @@ function SideCard({
             </div>
           ) : invoices.length === 0 ? (
             <p className="text-sm text-muted">{t('move.noDocs')}</p>
+          ) : isPhone ? (
+            // Phones (owner, 2026-10-19): each invoice on its own row, its payment box in view.
+            <ul className="max-h-96 divide-y divide-[var(--c-line)] overflow-y-auto rounded-[var(--radius-app)] border border-line text-[13px]">
+              {invoices.map((o) => (
+                <li key={o.documentId} className="flex items-center gap-3 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      {t(`doc.${o.type}` as TranslationKey)}
+                      <span className="block whitespace-nowrap tnum" dir="ltr">
+                        {o.number}
+                      </span>
+                    </p>
+                    <p className="text-xs text-muted tnum">
+                      {formatDate(o.issueDate, locale, true)} · {t('move.value')}{' '}
+                      {plain.format(toMajor(o.grandTotal))}
+                    </p>
+                    <p className="text-xs font-medium tnum">
+                      {t('move.left')} {plain.format(toMajor(o.outstanding))}
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder={t('move.settle')}
+                    aria-label={`${t('move.settle')} ${o.number}`}
+                    className="h-10 w-24 shrink-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm tnum outline-none focus:border-brand"
+                    value={alloc[o.documentId] ?? ''}
+                    onChange={(e) => setAlloc({ ...alloc, [o.documentId]: e.target.value })}
+                  />
+                </li>
+              ))}
+            </ul>
           ) : (
             <TableColumns id="move.invoices">
               <div className="max-h-80 overflow-auto rounded-[var(--radius-app)] border border-line">

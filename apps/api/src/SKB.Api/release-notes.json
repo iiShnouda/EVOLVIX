@@ -305,6 +305,10 @@
         {
           "ar": "كشف حساب المخزن: كل حركة مكتوب نوعها (مشتريات، مبيعات، مرتجع، تحويل، جرد) وجاية منين أو رايحة لمين: المورد أو العميل أو المخزن التاني في التحويل. وفي المخزون العنوان بقى \"فواتير المشتريات\".",
           "en": "Warehouse statement: each movement says what it is (purchase, sale, return, transfer, stocktake) and where it came from or went to: the supplier, the customer, or the other warehouse on a transfer. In the inventory the title is now \"Purchase invoices\"."
+        },
+        {
+          "ar": "سحب / إيداع نقدي على الموبايل: الصفحة مبقتش أعرض من الشاشة، والفواتير المفتوحة بقت كل فاتورة في سطر وجنبها خانة السداد.",
+          "en": "Cash move on phones: the page no longer runs wider than the screen, and each open invoice is its own row with its payment box beside it."
         }
       ]
     },

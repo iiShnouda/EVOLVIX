@@ -699,7 +699,7 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
           <EmptyState title={t('common.empty')} icon="inventory" />
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           {data.models.length > 0 && (
             <ValuationTable
               title={t('inventory.byModel')}
