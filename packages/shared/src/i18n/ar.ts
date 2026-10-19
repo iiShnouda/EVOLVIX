@@ -2876,4 +2876,5 @@ export const ar: TranslationDictionary = {
   'error.bad_season': 'اختر موسمًا.',
   'settings.currentSeason': 'الموسم الحالي',
   'settings.seasonAuto': 'تلقائي ({s})',
+  'error.one_type': 'اختر نوعًا واحدًا: عميل أو مورد أو شركة شحن.',
 };

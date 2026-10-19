@@ -192,6 +192,10 @@ public sealed class PartiesController : ControllerBase
             }
             if (parsed.Count == 0)
                 return BadRequest(new { message = "Choose customer, supplier or shipping company.", code = "bad_type" });
+            // One kind per account (owner, 2026-10-19). Older accounts that are two kinds keep them
+            // while they are left as they are.
+            if (parsed.Count > 1 && (isNew || !parsed.ToHashSet().SetEquals(party.Types)))
+                return BadRequest(new { message = "Choose one: customer, supplier or shipping company.", code = "one_type" });
             party.Types = parsed;
         }
         // Phones and the national ID as the company's country has them (owner, 2026-10-02).

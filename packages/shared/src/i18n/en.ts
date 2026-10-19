@@ -2892,4 +2892,5 @@ export const en = {
   'error.bad_season': 'Choose a season.',
   'settings.currentSeason': 'Current season',
   'settings.seasonAuto': 'Automatic ({s})',
+  'error.one_type': 'Choose one: customer, supplier or shipping company.',
 } as const;

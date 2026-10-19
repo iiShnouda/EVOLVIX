@@ -175,6 +175,10 @@
           "en": "Dates on the iPhone show in the right order (19 Oct 2026) instead of jumbled."
         },
         {
+          "ar": "الحساب الجديد بقى نوع واحد بس: عميل أو مورد أو شركة شحن، تختار واحد منهم.",
+          "en": "A new account is one kind only: a customer, a supplier or a shipping company, picked as one choice."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

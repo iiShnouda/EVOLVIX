@@ -417,8 +417,8 @@ export function PartySheet({
   const pending = create.isPending || update.isPending || sending;
   const error = errorText(t, create.error ?? update.error);
 
-  const toggle = (type: PartyType) =>
-    setTypes((cur) => (cur.includes(type) ? cur.filter((x) => x !== type) : [...cur, type]));
+  // One kind per account (owner, 2026-10-19): picking one replaces the other.
+  const toggle = (type: PartyType) => setTypes([type]);
 
   async function save() {
     setTouched(true);
@@ -487,7 +487,8 @@ export function PartySheet({
                 }`}
               >
                 <input
-                  type="checkbox"
+                  type="radio"
+                  name="party-type"
                   className="sr-only"
                   checked={types.includes(type)}
                   disabled={system}

@@ -66,9 +66,14 @@ const K = ok(
   'add a shipping company',
   await P({ name: `Courier ${tag}`, types: ['CARRIER'], phone: '01110000111' }),
 );
+eq(
+  'an account is one kind only',
+  (await P({ name: `Courier3 ${tag}`, types: ['CARRIER', 'SUPPLIER'] })).data?.code,
+  'one_type',
+);
 const K2 = ok(
   'add another shipping company',
-  await P({ name: `Courier2 ${tag}`, types: ['CARRIER', 'SUPPLIER'] }),
+  await P({ name: `Courier2 ${tag}`, types: ['CARRIER'] }),
 );
 check(
   'carriers listed by type',
@@ -252,11 +257,20 @@ check(
 );
 // Sales people may post returns now (owner, 2026-09-30); one it was taken from may not.
 const nrTag = Date.now().toString(36).slice(-5);
-const noReturnP = ok('a seller without returns', await owner.post('/staff', {
-  fullName: `No returns ${nrTag}`, email: `noret.${nrTag}@skb.local`, password: 'Str0ngPass!', role: 'SALES',
-  branchId: owner.user.branchId,
-}));
-ok('returns taken from them', await owner.put(`/staff/${noReturnP.id}/permissions`, { granted: [], revoked: ['sales:return'] }));
+const noReturnP = ok(
+  'a seller without returns',
+  await owner.post('/staff', {
+    fullName: `No returns ${nrTag}`,
+    email: `noret.${nrTag}@skb.local`,
+    password: 'Str0ngPass!',
+    role: 'SALES',
+    branchId: owner.user.branchId,
+  }),
+);
+ok(
+  'returns taken from them',
+  await owner.put(`/staff/${noReturnP.id}/permissions`, { granted: [], revoked: ['sales:return'] }),
+);
 const noReturn = await login(`noret.${nrTag}@skb.local`, 'Str0ngPass!');
 eq(
   'without the return permission, no return is posted',
@@ -522,7 +536,7 @@ const s4 = ok(
 );
 ok('picked up', await owner.post(`/shipments/${s4.id}/picked-up`));
 eq(
-  "without the return permission, no returns are posted",
+  'without the return permission, no returns are posted',
   (await noReturn.post(`/shipments/${s4.id}/returned`, {})).data?.code,
   'return_not_allowed',
 );
