@@ -258,6 +258,14 @@ audit → shared types + i18n → web pages (+ Windows views) → register in th
 - Whether purchases also use the margin model or just record actual supplier cost.
 - Multi‑currency now or later (EGP only to start).
 
+### Waiting for the owner's go-ahead
+
+- **Remove "SKB" from every file (owner, 2026-10-19: "do it, but only when I say").** Not yet:
+  the name is in the server's container, database and data-volume names and in the installed
+  Windows/Android apps' keys, so it has to go in steps with the data moved safely (a renamed
+  volume would start an empty database; installed apps would stop updating in place). Start only
+  when the owner says so.
+
 ---
 
 ## 3.x Sources (business‑logic research)
