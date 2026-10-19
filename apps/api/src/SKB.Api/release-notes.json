@@ -215,6 +215,18 @@
           "en": "Purchase returns: the quantity box no longer puts a 0 before the number, the piece price is net of discounts so it matches the return's value, and the repeated \"cost leaving stock\" line and the note below are gone."
         },
         {
+          "ar": "المخزون: الكروت اللي فوق (عدد الأصناف وقيمة المخزون) بقت بتحسب كل المخزون مش اللي ظاهر بالفلتر بس، وتقييم المخزن بقى بيجمّع بالقسم الحقيقي (زي رجالي) مش المجموعة اللي تحته.",
+          "en": "Inventory: the cards at the top (item count, stock value) count the whole stock, not only what the list's filter shows, and the valuation groups by the real department (e.g. men's), not the group under it."
+        },
+        {
+          "ar": "زراير الجرد والتحويلات وطباعة الباركود وقوائم الأسعار وإعداد الأصناف بقت جنب الأصناف وتقييم المخزن.",
+          "en": "Stocktake, transfers, barcode printing, price lists and item setup sit beside the items and valuation tabs."
+        },
+        {
+          "ar": "تقييم المخزن بيعرض فواتير المشتريات بتاعة اليوم اللي مختاره، ولكل فاتورة \"كشف الأسعار\": الأصناف وعددها وسعر بيعها، تطبعه للمندوب (من غير أسعار الشراء).",
+          "en": "The valuation lists the chosen day's purchase invoices, each with a \"price sheet\": its items, how many, and their sale price, to print for the salespeople (no purchase prices)."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },
