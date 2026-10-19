@@ -1,4 +1,5 @@
 import { useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { PartyType, TranslationKey } from '@skb/shared';
 import { Badge, Spinner } from './ui';
 import { Sheet } from './Sheet';
@@ -67,6 +68,8 @@ export function PartyDirectory({ id, onClose }: { id: string; onClose: () => voi
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const factory = !!p && p.types.includes('SUPPLIER') && !p.types.includes('CUSTOMER');
+  const can = useCan();
+  const navigate = useNavigate();
 
   const rows: [string, ReactNode][] = [];
   if (p) {
@@ -119,7 +122,20 @@ export function PartyDirectory({ id, onClose }: { id: string; onClose: () => voi
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {can('ledger:view') && (
+              <button
+                type="button"
+                className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-app)] border border-line px-3 text-sm hover:border-brand hover:text-brand"
+                onClick={() => {
+                  onClose();
+                  navigate(`/statement?party=${p.id}`);
+                }}
+              >
+                <Icon name="ledger" size={16} />
+                {t('statement.openStatement')}
+              </button>
+            )}
             <ReportActions
               onPrint={() =>
                 report.print(paper.current, t('parties.directory'), codeName(p.code, p.name))

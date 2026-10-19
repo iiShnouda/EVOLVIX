@@ -263,6 +263,31 @@ public sealed class MoneyController : ControllerBase
         return Ok(new PaginatedDto<VoucherDto>(rows.Select(v => ToDto(v, currency)).ToArray(), total, page, pageSize));
     }
 
+    /// <summary>
+    /// An expense item's statement (owner, 2026-10-19: كشف حساب for expenses): every expense posted under
+    /// it (or an item under it) between two company days, oldest first, with the total.
+    /// </summary>
+    [HttpGet("expense-categories/{id:guid}/statement")]
+    public async Task<ActionResult<ExpenseStatementDto>> ExpenseStatement(Guid id, [FromQuery] string? from = null,
+        [FromQuery] string? to = null)
+    {
+        var category = await _db.ExpenseCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+        if (category is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        var under = await _db.ExpenseCategories.AsNoTracking().Where(c => c.ParentId == id).Select(c => c.Id).ToListAsync();
+        under.Add(id);
+        var start = CompanyClock.StartOf(CompanyClock.ParseDay(from) ?? CompanyClock.Today);
+        var end = CompanyClock.StartOf((CompanyClock.ParseDay(to) ?? CompanyClock.Today).AddDays(1));
+        var rows = await WithDetails(ScopedVouchers().Where(v => v.Type == VoucherType.EXPENSE
+                && v.Status == VoucherStatus.POSTED && v.ExpenseCategoryId != null && under.Contains(v.ExpenseCategoryId.Value)
+                && v.CreatedAt >= start && v.CreatedAt < end))
+            .OrderBy(v => v.CreatedAt).ToListAsync();
+        return Ok(new ExpenseStatementDto(Loc.Name(category), await CurrencyAsync(), rows.Sum(v => v.Amount),
+            rows.Select(v => new ExpenseStatementLineDto(v.Id.ToString(), v.Number,
+                v.CreatedAt.ToString("O"), v.Amount, Loc.Name(v.ExpenseCategory),
+                v.FromAccount is null ? null : Loc.Name(v.FromAccount), v.Branch is null ? null : Loc.Name(v.Branch),
+                v.Notes, v.CreatedBy?.FullName)).ToArray()));
+    }
+
     [HttpGet("vouchers/{id:guid}")]
     public async Task<ActionResult<VoucherDto>> Voucher(Guid id)
     {

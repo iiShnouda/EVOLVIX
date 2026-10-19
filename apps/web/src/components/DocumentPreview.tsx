@@ -1,4 +1,5 @@
 import { CompanyMark } from './CompanyBadge';
+import { ItemLink } from './ItemLink';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   formatDate,
@@ -428,7 +429,7 @@ export function InvoicePaper({
                 {doc.lines.map((l) => (
                   <tr key={l.id}>
                     <td className="p-2">
-                      {l.productName}
+                      <ItemLink id={l.productId} name={l.productName} />
                       {l.warehouseName && (
                         <span className="block text-xs text-muted" data-noprint>
                           {l.warehouseName}

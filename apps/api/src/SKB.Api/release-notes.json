@@ -123,6 +123,10 @@
         {
           "ar": "زر الإجراءات السريعة الدائري بلون البرنامج نفسه مثل أيقونات القائمة، أنظف وأهدأ شكلاً.",
           "en": "The round quick-action button now uses the app's accent colour like the nav icons, for a cleaner, calmer look."
+        },
+        {
+          "ar": "كشف الحساب: بقى فيه كمان شركات الشحن، والخزائن والبنوك، والمصروفات (كل بند مصروف)، والمخازن (كل حركة دخول وخروج والرصيد بعدها)، ودليل الحسابات. ومن دليل أي عميل أو مورد زرار يفتح كشف حسابه، واسم أي صنف في الفواتير يفتح كارت الصنف.",
+          "en": "Account statement: now also shipping companies, cash boxes and banks, expenses (each expense item), warehouses (every movement in and out with the balance after it) and the chart of accounts. A customer's or supplier's directory has a button to its statement, and any item's name on an invoice opens its card."
         }
       ],
       "fixes": [

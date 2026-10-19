@@ -1238,3 +1238,14 @@ public record ImportResultDto(ImportGroupDto[] Groups, string[] UnknownSheets);
 /// <summary>A purchase invoice's items with their sale price per piece (minor units), for the salespeople.</summary>
 public record PriceSheetLineDto(string Code, string Name, int Pieces, long SalePrice);
 public record PriceSheetDto(string Number, string Date, string? SupplierName, PriceSheetLineDto[] Lines);
+
+/// <summary>An expense item's statement: its expenses between two days (amounts in minor units).</summary>
+public record ExpenseStatementLineDto(string Id, string Number, string Date, long Amount, string? Category,
+    string? AccountName, string? BranchName, string? Notes, string? CreatedByName);
+public record ExpenseStatementDto(string Name, string Currency, long Total, ExpenseStatementLineDto[] Lines);
+
+/// <summary>One movement of a warehouse's statement; Value (minor units) only for people who may see costs.</summary>
+public record WarehouseStatementLineDto(string Date, string Type, string? Reference, string? DocumentId, string ProductId,
+    string Code, string Name, int Quantity, long? Value, int Balance, string? Note);
+public record WarehouseStatementDto(string Name, string Currency, int Opening, long? OpeningValue, int In, int Out,
+    int Closing, long? ClosingValue, WarehouseStatementLineDto[] Lines);

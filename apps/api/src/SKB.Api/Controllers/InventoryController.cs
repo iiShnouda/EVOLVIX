@@ -411,6 +411,41 @@ public sealed class InventoryController : ControllerBase
     }
 
     /// <summary>
+    /// A warehouse's statement (owner, 2026-10-19: كشف حساب for warehouses): every movement in or out
+    /// of it between two company days, oldest first, with the pieces before and after; values only
+    /// for people who may see costs.
+    /// </summary>
+    [HttpGet("warehouses/{id:guid}/statement")]
+    public async Task<ActionResult<WarehouseStatementDto>> WarehouseStatement(Guid id, [FromQuery] string? from = null,
+        [FromQuery] string? to = null)
+    {
+        var (wid, notFound) = await VisibleWarehouseAsync(id.ToString());
+        if (notFound is not null) return notFound;
+        var seeCosts = Costs.CanSee(User);
+        var start = CompanyClock.StartOf(CompanyClock.ParseDay(from) ?? CompanyClock.Today);
+        var end = CompanyClock.StartOf((CompanyClock.ParseDay(to) ?? CompanyClock.Today).AddDays(1));
+        var all = _db.StockMovements.AsNoTracking().Where(m => m.WarehouseId == wid);
+        var opening = await all.Where(m => m.CreatedAt < start).SumAsync(m => (int?)m.Quantity) ?? 0;
+        var openingValue = seeCosts
+            ? await all.Where(m => m.CreatedAt < start).SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
+        var rows = await all.Where(m => m.CreatedAt >= start && m.CreatedAt < end)
+            .Include(m => m.Product).OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(5000).ToListAsync();
+        var balance = opening;
+        var lines = rows.Select(m =>
+        {
+            balance += m.Quantity;
+            return new WarehouseStatementLineDto(m.CreatedAt.ToString("O"), m.Type.ToString(), m.Reference,
+                m.DocumentId?.ToString(), m.ProductId.ToString(), m.Product?.Sku ?? "",
+                m.Product is null ? "" : Loc.Name(m.Product), m.Quantity,
+                seeCosts ? m.Quantity * m.UnitCost : null, balance, m.Note);
+        }).ToArray();
+        var name = Loc.Name(await _db.Warehouses.AsNoTracking().FirstAsync(w => w.Id == wid));
+        return Ok(new WarehouseStatementDto(name, await CurrencyAsync(), opening, seeCosts ? openingValue : null,
+            rows.Where(m => m.Quantity > 0).Sum(m => m.Quantity), -rows.Where(m => m.Quantity < 0).Sum(m => m.Quantity),
+            balance, seeCosts ? openingValue + rows.Sum(m => (long)m.Quantity * m.UnitCost) : null, lines));
+    }
+
+    /// <summary>
     /// Stocktake (الجرد) of one warehouse: post the counted quantity for each item. Only items whose
     /// count differs from that warehouse's books move; gains and shrinkage are valued at the current
     /// weighted-average cost. All lines share one ADJ- reference and commit together. The items are

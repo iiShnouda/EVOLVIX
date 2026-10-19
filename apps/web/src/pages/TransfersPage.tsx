@@ -1,4 +1,5 @@
 import { confirm } from '../lib/confirm';
+import { ItemLink } from '../components/ItemLink';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -294,7 +295,9 @@ function TransferDetail({
           <tbody className="divide-y divide-[var(--c-line)]">
             {tr.lines.map((l) => (
               <tr key={l.id}>
-                <td className="p-3">{l.productName}</td>
+                <td className="p-3">
+                  <ItemLink id={l.productId} name={l.productName} />
+                </td>
                 <td className="p-3 text-end tnum">{formatNumber(l.quantity, locale)}</td>
                 {seeCosts && (
                   <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>

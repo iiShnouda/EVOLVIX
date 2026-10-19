@@ -30,7 +30,7 @@ export function PartyPicker({
   withCode,
   disabled,
 }: {
-  type: 'CUSTOMER' | 'SUPPLIER';
+  type: 'CUSTOMER' | 'SUPPLIER' | 'CARRIER';
   value: Party | null;
   onChange: (party: Party | null) => void;
   label: string;

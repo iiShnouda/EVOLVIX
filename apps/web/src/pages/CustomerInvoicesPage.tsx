@@ -1,4 +1,5 @@
 import { useRef, useState, type Ref } from 'react';
+import { ItemLink } from '../components/ItemLink';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   companyToday,
@@ -599,7 +600,9 @@ function CombinedPaper({
           <tbody className="divide-y divide-[var(--c-line)]">
             {doc.lines.map((l) => (
               <tr key={l.id}>
-                <td className="px-2 py-1">{l.productName}</td>
+                <td className="px-2 py-1">
+                  <ItemLink id={l.productId} name={l.productName} />
+                </td>
                 <td className="px-2 py-1 text-end tnum">
                   {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
                 </td>

@@ -733,6 +733,21 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
 }
 
 function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }) {
+  const { t } = useT();
+  return (
+    <Sheet
+      title={`${t('money.statement')} — ${a.name}`}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      wide
+    >
+      <MoneyStatementBody a={a} />
+    </Sheet>
+  );
+}
+
+/** A cash box's or bank's statement between two days; also on the statement page (كشف الحساب). */
+export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
   const { t, locale } = useT();
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState(today());
@@ -742,12 +757,7 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
   const paper = useRef<HTMLDivElement>(null);
 
   return (
-    <Sheet
-      title={`${t('money.statement')} — ${a.name}`}
-      onClose={onClose}
-      closeLabel={t('common.close')}
-      wide
-    >
+    <>
       <div className="flex flex-wrap items-end gap-3">
         <div className="order-last ms-auto">
           <ReportActions
@@ -838,7 +848,7 @@ function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }
           )}
         </div>
       )}
-    </Sheet>
+    </>
   );
 }
 
