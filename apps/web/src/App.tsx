@@ -147,11 +147,15 @@ function ProtectedApp() {
   if (status === 'unknown') return null;
   if (status === 'anonymous') return <Navigate to="/login" replace />;
 
-  // Server-authoritative security: nothing is readable without a live connection.
-  if (connection === 'offline') {
-    return (
-      <>
-        <BootDone />
+  // Server-authoritative security: nothing is readable without a live connection. The open pages
+  // stay alive behind the gate, hidden and unusable, so what was being typed is still there when
+  // the server is back (owner, 2026-10-19: the server dropped and everything typed was gone).
+  // Nothing is kept on the device: it lives only in this window's memory, as before.
+  const offline = connection === 'offline';
+  return (
+    <>
+      <BootDone />
+      {offline && (
         <OfflineGate
           onRetry={async () => {
             setConnState('connecting');
@@ -163,20 +167,16 @@ function ProtectedApp() {
             }
           }}
         />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <BootDone />
-      <CompanyClock />
-      <RememberPage />
-      <ScrollReset />
-      <PrintPaper />
-      <LeavePrompt />
-      <PrintEditorHost />
-      <Shell />
+      )}
+      <div hidden={offline} inert={offline} aria-hidden={offline}>
+        <CompanyClock />
+        <RememberPage />
+        <ScrollReset />
+        <PrintPaper />
+        <LeavePrompt />
+        <PrintEditorHost />
+        <Shell />
+      </div>
     </>
   );
 }

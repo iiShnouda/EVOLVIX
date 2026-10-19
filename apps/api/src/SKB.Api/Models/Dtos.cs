@@ -90,7 +90,7 @@ public record SalesDetailDto(
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
     string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null,
-    bool HasImage = false);
+    bool HasImage = false, int ImagePages = 0);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>

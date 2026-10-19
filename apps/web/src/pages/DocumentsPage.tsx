@@ -117,6 +117,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [place, setPlace] = useWorkPlace();
   const [placed, setPlaced] = useState(false);
   useEffect(() => {
+    // Purchases start on everything (owner, 2026-10-19): nothing chosen until the person picks.
+    if (!isSales) return;
     if (placed || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
     setPlaced(true);
     if (place.branchId) setBranchId(place.branchId);
@@ -143,7 +145,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     party: dParty || undefined,
     partyCode: dCode || undefined,
     status: status || undefined,
-    departmentId: isSales ? departmentId || undefined : undefined,
+    departmentId: kind === 'invoices' || isSales ? departmentId || undefined : undefined,
     from: from || undefined,
     to: to || undefined,
     state: kind === 'invoices' && state ? state : undefined,
@@ -435,7 +437,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             </select>
           </label>
         )}
-        {isSales && (departments.data ?? []).length > 0 && (
+        {(isSales || kind === 'invoices') && (departments.data ?? []).length > 0 && (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
             <select
@@ -453,7 +455,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   {d.name}
                 </option>
               ))}
-              <option value="none">{t('invoice.noDepartment')}</option>
+              {isSales && <option value="none">{t('invoice.noDepartment')}</option>}
             </select>
           </label>
         )}

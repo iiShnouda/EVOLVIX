@@ -2302,7 +2302,7 @@ export function usePrintPaper(): [PaperSize, (size: PaperSize) => void] {
 }
 
 /** How many rows a list shows on a page, kept per person and list (owner, 2026-10-01). */
-export const PAGE_SIZES = [25, 50, 100, 200] as const;
+export const PAGE_SIZES = [10, 25, 50, 100, 200] as const;
 export function usePageSize(id: string, fallback = 50): [number, (size: number) => void] {
   const [saved, save] = useHiddenColumns(`pageSize:${id}`);
   const n = Number(saved[0]);

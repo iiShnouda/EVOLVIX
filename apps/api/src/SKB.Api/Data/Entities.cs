@@ -357,6 +357,8 @@ public class PartyIdCard
 public class DocumentImage
 {
     public Guid DocumentId { get; set; }
+    /// <summary>Which page of the supplier's invoice, from 0 (owner, 2026-10-19: an invoice can run to several pages).</summary>
+    public int Page { get; set; }
     public string ContentType { get; set; } = "image/jpeg";
     public byte[] Data { get; set; } = Array.Empty<byte>();
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;

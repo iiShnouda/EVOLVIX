@@ -337,9 +337,9 @@ public class AppDbContext : DbContext
         b.Entity<Party>().HasIndex(x => x.Name);
         b.Entity<PartyIdCard>().HasIndex(x => new { x.PartyId, x.Side }).IsUnique();
         b.Entity<PartyIdCard>().HasOne<Party>().WithMany().HasForeignKey(x => x.PartyId).OnDelete(DeleteBehavior.Cascade);
-        b.Entity<DocumentImage>().HasKey(x => x.DocumentId);
+        b.Entity<DocumentImage>().HasKey(x => new { x.DocumentId, x.Page });
         b.Entity<DocumentImage>().Property(x => x.ContentType).HasMaxLength(40);
-        b.Entity<DocumentImage>().HasOne<SalesDocument>().WithOne().HasForeignKey<DocumentImage>(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<DocumentImage>().HasOne<SalesDocument>().WithMany().HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ProductImage>().HasKey(x => x.ProductId);
         b.Entity<ProductImage>().Property(x => x.ContentType).HasMaxLength(40);
         b.Entity<ProductImage>().HasOne<Product>().WithOne().HasForeignKey<ProductImage>(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);

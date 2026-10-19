@@ -187,6 +187,30 @@
           "en": "Picking a supplier or customer anywhere, such as adding items, shows only its code and name. Contact details (phones, addresses, email, owner, national ID and tax number) have their own permission and show on the customers & suppliers page and the account directory only to whoever holds it."
         },
         {
+          "ar": "خانة اختيار المورد أو العميل: أول ما تدوس عليها بتفتح بأول 7 بالترتيب الأبجدي، وبتكمّل الاسم لوحدها وانت بتكتب (Enter أو Tab ياخده)، ولو مسحت الاسم بيتشال الاختيار، والكود بيقولك صاحبه مين قبل ما تاخده.",
+          "en": "Supplier and customer boxes: open with the first 7 by name, complete the name as you type (Enter or Tab takes it), clear when emptied, and a typed code shows whose it is."
+        },
+        {
+          "ar": "لو السيرفر فصل ورجع، اللي كنت بتكتبه في الصفحة بيفضل زي ما هو.",
+          "en": "When the server drops and comes back, what was being typed on the page is still there."
+        },
+        {
+          "ar": "إضافة الأصناف: شريط الإجمالي بيفضل ظاهر فوق شريط الموبايل، وإجمالي الصنف بيظهر وانت بتكتبه، والخصم وهامش الربح بقوا أزرار (نسبة أو جنيه، وتقدر تضيف تاني)، وفيه هامش ربح على الفاتورة كلها، وتحت بيظهر عدد القطع والخصم وإجمالي سعر البيع والمكسب (للي معاه صلاحية الربح).",
+          "en": "Adding items: the totals bar stays above the phone's bar, the item's total shows as it is typed, discounts and margins are buttons (percent or pounds, a second can be added), there is a margin for the whole invoice, and the bottom shows pieces, the discount, what it all sells for and the profit (with the profit permission)."
+        },
+        {
+          "ar": "الفاتورة اللي أكتر من صفحة: تقدر تصوّر أو ترفع كل الصفحات مرة واحدة، والذكاء الاصطناعي بيقرا كل صفحة ويضيف أصنافها لنفس الفاتورة، والصفحات كلها بتتحفظ معاها.",
+          "en": "Invoices of several pages: photograph or upload all the pages at once; each is read and its items added to the same invoice, and every page is kept with it."
+        },
+        {
+          "ar": "صفحة المشتريات: الفرع والمخزن مش متختارين لوحدهم، وفيه فلتر للقسم، وأقل عدد صفوف في كل الصفحات بقى 10.",
+          "en": "Purchases list: no branch or warehouse picked by itself, a department filter, and 10 rows is now the smallest page size everywhere."
+        },
+        {
+          "ar": "خانات الفرع والمخزن والقسم بقت بتبيّن هي متختارة ولا لأ، والتاريخ بقى بيظهر بالترتيب الصح على كل الأجهزة.",
+          "en": "Branch, warehouse and department boxes show whether they are chosen, and dates show in the right order on every device."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

@@ -507,7 +507,7 @@ export function ReturnBar({
 }) {
   const { t } = useT();
   return (
-    <div className="sticky bottom-0 z-10 -mx-1 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
+    <div className="sticky bottom-[var(--bottom-bar,0px)] z-10 -mx-1 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-baseline gap-2">
           <span className="text-sm text-muted">{t('invoice.grandTotal')}</span>

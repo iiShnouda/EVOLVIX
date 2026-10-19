@@ -49,14 +49,31 @@ import {
   useWarehouses,
 } from '../lib/queries';
 
+/**
+ * A place box that shows what state it is in (owner, 2026-10-19: a box not yet chosen looked
+ * chosen): chosen = normal, waiting to be chosen = warning edge and faint text, not open yet =
+ * faded.
+ */
+const pickClass = (chosen: boolean, open: boolean) =>
+  chosen ? 'border-brand/60' : open ? 'border-warning text-muted' : 'text-faint';
+
 const field =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:opacity-60';
 
 /** A factory's short name from how it is written: "مصنع JK" → "JK". */
 function factoryName(name: string): string {
   return name
     .replace(/^\s*(مصنع|مصانع|شركة|شركه|معرض|مؤسسة|مؤسسه|محل|محلات|factory|company)\s+/i, '')
     .trim();
+}
+
+/**
+ * A discount or margin, as a percent or an amount (owner, 2026-10-19: each is a button that asks
+ * which, and a second one can be added). Percents add up, amounts add up.
+ */
+interface Adj {
+  kind: 'pct' | 'amt';
+  value: string;
 }
 
 /** One item on the supplier's invoice, as typed; prices are per piece. */
@@ -73,10 +90,8 @@ interface NewLine {
    * pounds more"), and the margin the same way ("10% + 10 pounds"), worked out on the price before
    * the discount and added to the cost after it.
    */
-  discountPct: string;
-  discountAmt: string;
-  marginPct: string;
-  marginAmt: string;
+  discounts: Adj[];
+  margins: Adj[];
   /** Typed sale price; '' = worked out from the margin. */
   salePrice: string;
   reorder: string;
@@ -125,8 +140,8 @@ interface AddItemsDraft {
   season: string;
   lines: NewLine[];
   entry: NewLine;
-  invPct: string;
-  invAmt: string;
+  invDiscounts: Adj[];
+  invMargins: Adj[];
 }
 
 const blank = (unitId = ''): NewLine => ({
@@ -137,17 +152,19 @@ const blank = (unitId = ''): NewLine => ({
   colorId: '',
   qty: '1',
   costBefore: '',
-  discountPct: '',
-  discountAmt: '',
-  marginPct: '',
-  marginAmt: '',
+  discounts: [],
+  margins: [],
   salePrice: '',
   reorder: '',
 });
 
 /** Minor units of a typed amount ('' = 0). */
 const minor = (v: string) => Math.max(0, toMinor(Number(v) || 0));
-const pct = (v: string) => Math.min(100, Math.max(0, Number(v) || 0));
+/** The percents of a discount or margin added up, and its amounts (minor units). */
+const pctOf = (a: Adj[]) =>
+  a.filter((x) => x.kind === 'pct').reduce((sum, x) => sum + Math.max(0, Number(x.value) || 0), 0);
+const amtOf = (a: Adj[]) =>
+  a.filter((x) => x.kind === 'amt').reduce((sum, x) => sum + minor(x.value), 0);
 
 /**
  * Adding items is a purchase invoice (owner decision 2026-10-01): the supplier, where the goods are
@@ -200,9 +217,12 @@ export function AddItemsPage() {
   const departments = (useDepartments().data ?? []).filter(
     (d) => d.isActive && (!onWarehouse?.length || onWarehouse.includes(d.id)),
   );
-  const departmentId = departments.some((d) => d.id === department)
-    ? department
-    : onlyChoice(departments);
+  // Chosen after the warehouse, not before (it showed chosen while still closed).
+  const departmentId = !warehouseId
+    ? ''
+    : departments.some((d) => d.id === department)
+      ? department
+      : onlyChoice(departments);
   const allGroups = useGroups().data ?? [];
   const groups = allGroups.filter((g) => departments.some((d) => d.id === g.departmentId));
   const activeSeasons = (seasons.data ?? []).filter((s) => s.isActive);
@@ -216,12 +236,14 @@ export function AddItemsPage() {
   const [entry, setEntry] = useState<NewLine>(blank());
   const [editing, setEditing] = useState<string | null>(null);
   // A discount on the whole invoice instead of (or as well as) on each piece (owner, 2026-10-17).
-  const [invPct, setInvPct] = useState('');
-  const [invAmt, setInvAmt] = useState('');
+  const [invDiscounts, setInvDiscounts] = useState<Adj[]>([]);
+  // A margin for the whole invoice: every new item without its own (owner, 2026-10-19).
+  const [invMargins, setInvMargins] = useState<Adj[]>([]);
   // Photos stay on this device until saved: one per line, and the supplier's invoice.
   const [photos, setPhotos] = useState<Record<string, File>>({});
   const [entryPhoto, setEntryPhoto] = useState<File | null>(null);
-  const [invoicePhoto, setInvoicePhoto] = useState<File | null>(null);
+  // The supplier's invoice, a photo per page (owner, 2026-10-19: one invoice can be several pages).
+  const [invoicePhotos, setInvoicePhotos] = useState<File[]>([]);
   useEffect(() => {
     if (!entry.unitId && pieceUnit) setEntry((e) => ({ ...e, unitId: pieceUnit.id }));
   }, [entry.unitId, pieceUnit]);
@@ -233,11 +255,21 @@ export function AddItemsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const work = useWorkDraft<AddItemsDraft>(
-    2,
+    3,
     () =>
       lines.length === 0 && !entry.name
         ? null
-        : { supplier, branch, warehouse, department, season, lines, entry, invPct, invAmt },
+        : {
+            supplier,
+            branch,
+            warehouse,
+            department,
+            season,
+            lines,
+            entry,
+            invDiscounts,
+            invMargins,
+          },
     (d) => {
       if (d.supplier && typeof d.supplier.id === 'string') setSupplier(d.supplier);
       if (typeof d.branch === 'string') setBranch(d.branch);
@@ -246,8 +278,8 @@ export function AddItemsPage() {
       if (typeof d.season === 'string') setSeason(d.season);
       if (Array.isArray(d.lines)) setLines(d.lines.filter((l) => l && typeof l.name === 'string'));
       if (d.entry && typeof d.entry.name === 'string') setEntry({ ...blank(), ...d.entry });
-      if (typeof d.invPct === 'string') setInvPct(d.invPct);
-      if (typeof d.invAmt === 'string') setInvAmt(d.invAmt);
+      if (Array.isArray(d.invDiscounts)) setInvDiscounts(d.invDiscounts);
+      if (Array.isArray(d.invMargins)) setInvMargins(d.invMargins);
     },
   );
 
@@ -255,7 +287,7 @@ export function AddItemsPage() {
   function figures(l: NewLine) {
     const before = minor(l.costBefore);
     const rawDiscount = canDiscount
-      ? Math.round((before * pct(l.discountPct)) / 100) + minor(l.discountAmt)
+      ? Math.round((before * pctOf(l.discounts)) / 100) + amtOf(l.discounts)
       : 0;
     const discount = Math.min(before, rawDiscount);
     const after = before - discount;
@@ -263,16 +295,15 @@ export function AddItemsPage() {
     // counts as part of it (owner, 2026-10-18): 505 less 10% with a 13% margin sells at
     // 454.50 + 65.65 = 520.15 (3% over the list price); an 8% margin sells at 494.90 (2% under).
     // …rounded up to a whole pound (owner, 2026-10-18): 520.15 sells at 521.
+    // A new item without its own margin takes the invoice's.
+    const margins = l.margins.length || l.existing ? l.margins : invMargins;
     const marginSale =
-      Math.ceil(
-        (after + Math.round((before * (Number(l.marginPct) || 0)) / 100) + minor(l.marginAmt)) /
-          100,
-      ) * 100;
+      Math.ceil((after + Math.round((before * pctOf(margins)) / 100) + amtOf(margins)) / 100) * 100;
     // Bought again: its own sale price stays unless a new price or margin is typed.
     const sale =
       l.salePrice !== ''
         ? minor(l.salePrice)
-        : l.existing && !(Number(l.marginPct) || 0) && !minor(l.marginAmt)
+        : l.existing && !l.margins.length
           ? (l.existingSale ?? 0)
           : marginSale;
     const perUnit = l.existing
@@ -288,6 +319,13 @@ export function AddItemsPage() {
   const canMoveSeason = can('products:edit');
   const canPrices = can('prices:edit');
   const canEditItems = can('products:edit');
+  // Sale totals and profit on a purchase are profit figures (owner, 2026-10-19).
+  const seeProfit = can('profit:view');
+  /** "10% + 5 ج.م" — a discount or margin as typed. */
+  const adjText = (a: Adj[]) =>
+    [pctOf(a) > 0 ? `${formatNumber(pctOf(a), locale)}%` : '', amtOf(a) > 0 ? money(amtOf(a)) : '']
+      .filter(Boolean)
+      .join(' + ');
   const [finding, setFinding] = useState(false);
 
   /** A line for an item already in the catalog. */
@@ -408,7 +446,7 @@ export function AddItemsPage() {
           supplierCode: l.model ?? undefined,
           qty: String(qty),
           costBefore: l.unitPrice ? String(l.unitPrice) : '',
-          discountAmt: l.discount ? String(l.discount) : '',
+          discounts: l.discount ? [{ kind: 'amt', value: String(l.discount) }] : [],
           departmentId: read.departmentId ?? '',
           groupId: read.groupId ?? '',
         });
@@ -417,7 +455,10 @@ export function AddItemsPage() {
     if (picks.length) addExisting(picks);
     if (fresh.length) setLines((prev) => [...prev, ...fresh]);
     // The discount written under the total goes on the whole invoice.
-    if (canDiscount && scan.discount > 0 && !minor(invAmt)) setInvAmt(String(scan.discount));
+    if (canDiscount && scan.discount > 0 && !amtOf(invDiscounts))
+      setInvDiscounts((cur) =>
+        [...cur, { kind: 'amt' as const, value: String(scan.discount) }].slice(0, 2),
+      );
     setScanNote(t('assistant.scanned').replace('{n}', String(picks.length + fresh.length)));
   }
 
@@ -433,18 +474,20 @@ export function AddItemsPage() {
     // The next item keeps the unit and the margin.
     setEntry({
       ...blank(entry.unitId),
-      marginPct: entry.existing ? '' : entry.marginPct,
-      marginAmt: entry.existing ? '' : entry.marginAmt,
+      margins: entry.existing ? [] : entry.margins,
     });
   }
 
   const rows = lines.map((l) => ({ l, ...figures(l) }));
   const subtotal = rows.reduce((s, r) => s + r.pieces * r.after, 0);
   const invDiscount = canDiscount
-    ? Math.min(subtotal, Math.round((subtotal * pct(invPct)) / 100) + minor(invAmt))
+    ? Math.min(subtotal, Math.round((subtotal * pctOf(invDiscounts)) / 100) + amtOf(invDiscounts))
     : 0;
   const total = subtotal - invDiscount;
   const pieces = rows.reduce((s, r) => s + r.pieces, 0);
+  // What it all sells for and what is made on it (owner, 2026-10-19), for whoever may see profit.
+  const saleTotal = rows.reduce((s, r) => s + r.pieces * r.sale, 0);
+  const profit = saleTotal - total;
   // Department, season and the price lists matter only for items made here.
   const hasNew = rows.some((r) => !r.l.existing);
   const ready =
@@ -528,11 +571,13 @@ export function AddItemsPage() {
           };
         }),
         charges:
-          canDiscount && (pct(invPct) > 0 || minor(invAmt) > 0)
+          canDiscount && invDiscount > 0
             ? [
-                ...(pct(invPct) > 0 ? [{ kind: 'DISCOUNT' as const, percent: pct(invPct) }] : []),
-                ...(minor(invAmt) > 0
-                  ? [{ kind: 'EXTRA_DISCOUNT' as const, amount: minor(invAmt) }]
+                ...(pctOf(invDiscounts) > 0
+                  ? [{ kind: 'DISCOUNT' as const, percent: pctOf(invDiscounts) }]
+                  : []),
+                ...(amtOf(invDiscounts) > 0
+                  ? [{ kind: 'EXTRA_DISCOUNT' as const, amount: amtOf(invDiscounts) }]
                   : []),
               ]
             : undefined,
@@ -570,9 +615,9 @@ export function AddItemsPage() {
             await api.put(`/products/${ids[i]}/prices`, { prices }).catch(() => undefined);
         }
       }
-      if (invoicePhoto)
+      for (const [page, photo] of invoicePhotos.slice(0, 10).entries())
         await api
-          .upload(`/purchases/invoices/${invoice.id}/image`, invoicePhoto)
+          .upload(`/purchases/invoices/${invoice.id}/image?page=${page}`, photo)
           .catch(() => undefined);
       work.finished();
       navigate('/purchases');
@@ -649,8 +694,7 @@ export function AddItemsPage() {
     setEntry({
       ...line,
       costBefore: entry.costBefore || line.costBefore,
-      discountPct: entry.discountPct,
-      discountAmt: entry.discountAmt,
+      discounts: entry.discounts,
     });
   }
 
@@ -693,7 +737,7 @@ export function AddItemsPage() {
         {label(
           t('list.branch'),
           <select
-            className={`${field} ${!branch ? 'border-warning' : ''}`}
+            className={`${field} ${pickClass(!!branch, true)}`}
             value={branch}
             disabled={someSaved}
             onChange={(e) => {
@@ -715,7 +759,7 @@ export function AddItemsPage() {
         {label(
           t('list.warehouse'),
           <select
-            className={`${field} ${branch && !warehouseId ? 'border-warning' : ''}`}
+            className={`${field} ${pickClass(!!warehouseId, !!branch)}`}
             value={warehouseId}
             disabled={!branch || someSaved}
             onChange={(e) => {
@@ -736,11 +780,7 @@ export function AddItemsPage() {
         {label(
           t('invoice.department'),
           <select
-            className={`${field} ${
-              warehouseId && !departmentId && rows.some((r) => !r.l.existing && !r.l.departmentId)
-                ? 'border-warning'
-                : ''
-            }`}
+            className={`${field} ${pickClass(!!departmentId, !!warehouseId)}`}
             value={departmentId}
             disabled={!warehouseId || someSaved}
             onChange={(e) => setDepartment(e.target.value)}
@@ -783,7 +823,7 @@ export function AddItemsPage() {
             kind="purchase"
             disabled={!warehouseId}
             onResult={fromScan}
-            onPhoto={setInvoicePhoto}
+            onPhoto={(photo) => setInvoicePhotos((cur) => [...cur, photo].slice(0, 10))}
           />
           <Button
             variant="secondary"
@@ -1032,32 +1072,33 @@ export function AddItemsPage() {
               t('additems.costBefore'),
               number(entry.costBefore, (v) => set({ costBefore: v })),
             )}
-            {canDiscount &&
-              label(
-                t('additems.discountPct'),
-                number(entry.discountPct, (v) => set({ discountPct: v })),
-              )}
-            {canDiscount &&
-              label(
-                t('additems.discountAmt'),
-                number(entry.discountAmt, (v) => set({ discountAmt: v })),
-              )}
+            {canDiscount && (
+              <AdjButtons
+                label={t('additems.supplierDiscount')}
+                items={entry.discounts}
+                onChange={(discounts) => set({ discounts })}
+              />
+            )}
             {label(
               t('additems.costAfter'),
               <div className={`${field} grid items-center bg-surface-2 tnum`}>
                 {money(f.after)}
               </div>,
             )}
-            {(!entry.existing || canPrices) &&
-              label(
-                t('additems.marginPct'),
-                number(entry.marginPct, (v) => set({ marginPct: v, salePrice: '' })),
-              )}
-            {(!entry.existing || canPrices) &&
-              label(
-                t('additems.marginAmt'),
-                number(entry.marginAmt, (v) => set({ marginAmt: v, salePrice: '' })),
-              )}
+            {/* What this item comes to: pieces × the supplier's price after the discount. */}
+            {label(
+              t('additems.lineTotal'),
+              <div className={`${field} grid items-center bg-surface-2 font-semibold tnum`}>
+                {money(f.pieces * f.after)}
+              </div>,
+            )}
+            {(!entry.existing || canPrices) && (
+              <AdjButtons
+                label={t('additems.margin')}
+                items={entry.margins}
+                onChange={(margins) => set({ margins, salePrice: '' })}
+              />
+            )}
             {(!entry.existing || canPrices) &&
               label(
                 t('item.salePrice'),
@@ -1248,50 +1289,84 @@ export function AddItemsPage() {
           </div>
         )}
         <div className="flex flex-wrap items-end justify-between gap-3">
-          {canDiscount && (
-            <div className="flex flex-wrap items-end gap-2">
-              <span className="w-full text-xs font-medium text-muted">
-                {t('additems.invoiceDiscount')}
-              </span>
-              <span className="w-28">
-                {label(t('additems.invoiceDiscountPct'), number(invPct, setInvPct))}
-              </span>
-              <span className="w-32">
-                {label(t('additems.invoiceDiscountAmt'), number(invAmt, setInvAmt))}
-              </span>
-            </div>
-          )}
-          <PhotoPick
-            label={t('additems.invoicePhoto')}
-            file={invoicePhoto}
-            onFile={setInvoicePhoto}
-          />
+          <div className="grid w-full gap-3 sm:grid-cols-2">
+            {canDiscount && (
+              <AdjButtons
+                label={t('additems.invoiceDiscount')}
+                items={invDiscounts}
+                onChange={setInvDiscounts}
+              />
+            )}
+            {canPrices && (
+              <AdjButtons
+                label={t('additems.invoiceMargin')}
+                items={invMargins}
+                onChange={setInvMargins}
+              />
+            )}
+          </div>
+          <InvoicePhotos files={invoicePhotos} onChange={setInvoicePhotos} />
         </div>
       </Card>
 
-      <div className="sticky bottom-0 z-10 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          {invDiscount > 0 && (
-            <div className="flex items-baseline gap-2 text-sm">
-              <span className="text-muted">{t('additems.subtotal')}</span>
-              <span className="tnum">{money(subtotal)}</span>
-              <span className="text-muted">−</span>
-              <span className="tnum text-positive">{money(invDiscount)}</span>
+      {/* Above the phone's bottom bar, in view while scrolling (owner, 2026-10-19). */}
+      <div className="sticky bottom-[var(--bottom-bar,0px)] z-10 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-x-6">
+          <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-0.5 whitespace-nowrap text-sm sm:flex sm:flex-wrap sm:items-baseline sm:gap-x-6">
+            <div className="flex items-baseline gap-1.5">
+              <dt className="text-muted">{t('additems.pieces')}</dt>
+              <dd className="font-semibold tnum">{pieces}</dd>
             </div>
-          )}
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm text-muted">{t('additems.owed')}</span>
-            <span className="text-xl font-bold tnum">{money(total)}</span>
-          </div>
-          <div className="flex items-baseline gap-2 text-sm">
-            <span className="text-muted">{t('additems.pieces')}</span>
-            <span className="font-semibold tnum">{pieces}</span>
-          </div>
-          {someSaved && (
-            <p className="min-w-0 flex-1 text-xs text-warning">{t('additems.partial')}</p>
-          )}
+            {invDiscount > 0 && (
+              <div className="flex items-baseline gap-1.5">
+                <dt className="text-muted">{t('additems.subtotal')}</dt>
+                <dd className="tnum">{money(subtotal)}</dd>
+              </div>
+            )}
+            {invDiscount > 0 && (
+              <div className="col-span-2 flex flex-wrap items-baseline gap-1.5">
+                <dt className="text-muted">{t('additems.invoiceDiscount')}</dt>
+                <dd className="tnum text-positive">
+                  − {money(invDiscount)}
+                  <span className="ms-1 text-xs text-muted">({adjText(invDiscounts)})</span>
+                </dd>
+              </div>
+            )}
+            {invMargins.length > 0 && canPrices && (
+              <div className="col-span-2 flex flex-wrap items-baseline gap-1.5">
+                <dt className="text-muted">{t('additems.invoiceMargin')}</dt>
+                <dd className="tnum">{adjText(invMargins)}</dd>
+              </div>
+            )}
+            {seeProfit && rows.length > 0 && (
+              <div className="flex items-baseline gap-1.5">
+                <dt className="text-muted">{t('additems.saleTotal')}</dt>
+                <dd className="tnum">{money(saleTotal)}</dd>
+              </div>
+            )}
+            {seeProfit && rows.length > 0 && (
+              <div className="flex items-baseline gap-1.5">
+                <dt className="text-muted">{t('additems.profit')}</dt>
+                <dd
+                  className={`font-semibold tnum ${profit < 0 ? 'text-destructive' : 'text-positive'}`}
+                >
+                  {money(profit)}
+                  {total > 0 && (
+                    <span className="ms-1 text-xs text-muted">
+                      ({formatNumber(Math.round((profit / total) * 1000) / 10, locale)}%)
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
+            <div className="col-span-2 flex items-baseline gap-2">
+              <dt className="text-muted">{t('additems.owed')}</dt>
+              <dd className="text-xl font-bold tnum">{money(total)}</dd>
+            </div>
+          </dl>
+          {someSaved && <p className="w-full text-xs text-warning">{t('additems.partial')}</p>}
           <Button
-            className="ms-auto"
+            className="w-full sm:ms-auto sm:w-auto"
             icon="check"
             loading={saving}
             disabled={!ready || saving}
@@ -1359,6 +1434,132 @@ function PhotoPick({
       {file && (
         <Button size="sm" variant="dangerGhost" onClick={() => onFile(null)}>
           {t('additems.removePhoto')}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A discount or margin as buttons (owner, 2026-10-19): pressing one adds a box with % or the
+ * currency to pick; a second can be added the same way; × takes one away.
+ */
+function AdjButtons({
+  label,
+  items,
+  onChange,
+  max = 2,
+}: {
+  label: string;
+  items: Adj[];
+  onChange: (items: Adj[]) => void;
+  max?: number;
+}) {
+  const { t } = useT();
+  const set = (i: number, patch: Partial<Adj>) =>
+    onChange(items.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  return (
+    <div className="space-y-1.5 sm:col-span-2">
+      <span className="block text-xs text-muted">{label}</span>
+      {items.map((x, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            autoFocus={!x.value}
+            className="h-9 w-full min-w-0 flex-1 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none tnum focus:border-brand"
+            value={x.value}
+            aria-label={label}
+            onChange={(e) => set(i, { value: e.target.value })}
+          />
+          <span className="flex shrink-0 overflow-hidden rounded-[var(--radius-app)] border border-line text-sm">
+            {(['pct', 'amt'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={x.kind === k}
+                className={`h-9 px-3 ${x.kind === k ? 'bg-brand text-white' : 'bg-surface text-muted hover:bg-surface-2'}`}
+                onClick={() => set(i, { kind: k })}
+              >
+                {k === 'pct' ? '%' : t('additems.pounds')}
+              </button>
+            ))}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            icon="close"
+            aria-label={t('common.remove')}
+            onClick={() => onChange(items.filter((_, j) => j !== i))}
+          />
+        </div>
+      ))}
+      {items.length < max && (
+        <button
+          type="button"
+          className="inline-flex h-9 items-center gap-1 rounded-[var(--radius-app)] border border-dashed border-line px-3 text-sm text-brand hover:bg-surface-2"
+          onClick={() => onChange([...items, { kind: 'pct', value: '' }])}
+        >
+          <Icon name="plus" size={14} />
+          {items.length ? t('additems.addAnother').replace('{x}', label) : label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The supplier invoice's photos, a page each (owner, 2026-10-19: an invoice can run to several
+ * pages): add pages, see them, take one away. Kept on this device until the invoice is saved.
+ */
+function InvoicePhotos({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
+  const { t } = useT();
+  const picker = useRef<HTMLInputElement>(null);
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const made = files.map((f) => URL.createObjectURL(f));
+    setUrls(made);
+    return () => made.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/webp"
+        className="sr-only"
+        onChange={(e) => {
+          const picked = [...(e.target.files ?? [])];
+          e.target.value = '';
+          if (picked.length) onChange([...files, ...picked].slice(0, 10));
+        }}
+      />
+      <span className="text-xs text-muted">{t('additems.invoicePhoto')}</span>
+      {urls.map((u, i) => (
+        <span key={u} className="relative">
+          <a href={u} target="_blank" rel="noreferrer" title={`${t('additems.page')} ${i + 1}`}>
+            <img src={u} alt="" className="h-16 w-16 rounded-md border border-line object-cover" />
+          </a>
+          <span className="absolute bottom-0.5 start-0.5 rounded bg-black/60 px-1 text-[10px] text-white tnum">
+            {i + 1}
+          </span>
+          <button
+            type="button"
+            aria-label={t('additems.removePhoto')}
+            className="absolute -end-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-destructive text-white"
+            onClick={() => onChange(files.filter((_, j) => j !== i))}
+          >
+            <Icon name="close" size={11} />
+          </button>
+        </span>
+      ))}
+      {files.length < 10 && (
+        <Button size="sm" variant="ghost" icon="upload" onClick={() => picker.current?.click()}>
+          {files.length ? t('additems.addPage') : t('additems.uploadPhoto')}
         </Button>
       )}
     </div>

@@ -713,6 +713,8 @@ export interface SalesDocument {
   createdAt: string;
   /** A purchase invoice with a photo of the supplier's own invoice (owner, 2026-10-17). */
   hasImage?: boolean;
+  /** How many pages of it were photographed (owner, 2026-10-19). */
+  imagePages?: number;
 }
 
 // ---------------------------------------------------------------------------

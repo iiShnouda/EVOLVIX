@@ -122,13 +122,21 @@ function PhoneShell() {
 
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(56);
+  // The bottom bar's height too: a page's own bar (e.g. an invoice's totals) sits just above it.
+  const tabBarRef = useRef<HTMLElement>(null);
+  const [tabBarHeight, setTabBarHeight] = useState(64);
   useLayoutEffect(() => {
     const el = headerRef.current;
+    const bar = tabBarRef.current;
     if (!el) return;
-    const measure = () => setHeaderHeight(el.offsetHeight);
+    const measure = () => {
+      setHeaderHeight(el.offsetHeight);
+      if (bar) setTabBarHeight(bar.offsetHeight);
+    };
     measure();
     const watch = new ResizeObserver(measure);
     watch.observe(el);
+    if (bar) watch.observe(bar);
     return () => watch.disconnect();
   }, []);
   const primary = items.filter((i) => i.primaryOnPhone).slice(0, 4);
@@ -138,7 +146,11 @@ function PhoneShell() {
     <div
       className="flex min-h-screen flex-col bg-canvas"
       // The open pages' strip sticks right under this bar (see Tabs).
-      style={{ ...backdrop, ['--top-bar' as string]: `${headerHeight}px` }}
+      style={{
+        ...backdrop,
+        ['--top-bar' as string]: `${headerHeight}px`,
+        ['--bottom-bar' as string]: `${tabBarHeight}px`,
+      }}
     >
       {/* Fixed, solid and under the status bar (owner, 2026-10-19: a blur at the very top on the
           phone): Safari colours the status bar from a fixed bar at the top instead of blurring
@@ -172,7 +184,10 @@ function PhoneShell() {
         <TabsView />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface pb-safe">
+      <nav
+        ref={tabBarRef}
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface pb-safe"
+      >
         {primary.map((item) => (
           <PhoneTab key={item.key} item={item} label={t(item.labelKey)} />
         ))}

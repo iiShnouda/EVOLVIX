@@ -55,6 +55,9 @@ public sealed class PurchasesController : ControllerBase
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
+        // Invoices with items of this department (owner, 2026-10-19: a purchase isn't of one department).
+        if (Guid.TryParse(Request.Query["departmentId"], out var dep))
+            q = q.Where(d => d.Lines.Any(l => l.Product != null && l.Product.Category != null && l.Product.Category.DepartmentId == dep));
         return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment, Request.Query["state"]));
     }
 
@@ -82,22 +85,27 @@ public sealed class PurchasesController : ControllerBase
         if (doc.Type == DocumentType.PURCHASE_INVOICE
             && (await DocumentLists.StatesAsync(_db, new[] { doc.Id })).TryGetValue(doc.Id, out var st))
             dto = dto with { State = st.State, Owed = st.Owed };
-        if (await _db.DocumentImages.AnyAsync(x => x.DocumentId == doc.Id)) dto = dto with { HasImage = true };
+        var pages = await _db.DocumentImages.CountAsync(x => x.DocumentId == doc.Id);
+        if (pages > 0) dto = dto with { HasImage = true, ImagePages = pages };
         return Ok(dto);
     }
 
     private const long MaxImageBytes = 5 * 1024 * 1024;
 
+    private const int MaxImagePages = 10;
+
     /// <summary>
     /// Keep a photo of the supplier's own invoice with the purchase invoice (owner, 2026-10-17),
-    /// replacing the one before. Only a real JPEG, PNG or WebP up to 5 MB (its first bytes are
+    /// one per page (`page` from 0, up to 10 pages), replacing that page's photo. Only a real JPEG, PNG or WebP up to 5 MB (its first bytes are
     /// checked); stored in the database, never on the server's disk.
     /// </summary>
     [HttpPut("invoices/{id:guid}/image")]
     [Authorize(Policy = Permissions.PurchasesCreate)]
     [RequestSizeLimit(MaxImageBytes + 64 * 1024)]
-    public async Task<ActionResult> PutImage(Guid id, IFormFile? file)
+    public async Task<ActionResult> PutImage(Guid id, IFormFile? file, [FromQuery] int page = 0)
     {
+        if (page is < 0 or >= MaxImagePages)
+            return BadRequest(new { message = $"Up to {MaxImagePages} pages.", code = "bad_photo" });
         var doc = await _db.SalesDocuments.InBranches(User, d => d.BranchId)
             .FirstOrDefaultAsync(d => d.Id == id && d.Type == DocumentType.PURCHASE_INVOICE);
         if (doc is null) return NotFound(new { message = "Document not found", code = "not_found" });
@@ -109,8 +117,8 @@ public sealed class PurchasesController : ControllerBase
         var type = Pictures.TypeOf(data);
         if (type is null) return BadRequest(new { message = "Only JPEG, PNG or WebP photos.", code = "bad_photo" });
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        var image = await _db.DocumentImages.FirstOrDefaultAsync(x => x.DocumentId == id);
-        if (image is null) _db.DocumentImages.Add(image = new DocumentImage { DocumentId = id });
+        var image = await _db.DocumentImages.FirstOrDefaultAsync(x => x.DocumentId == id && x.Page == page);
+        if (image is null) _db.DocumentImages.Add(image = new DocumentImage { DocumentId = id, Page = page });
         image.ContentType = type;
         image.Data = data;
         image.UploadedAt = DateTime.UtcNow;
@@ -122,13 +130,13 @@ public sealed class PurchasesController : ControllerBase
         return Ok(new { hasImage = true });
     }
 
-    /// <summary>The supplier invoice's photo, never cached.</summary>
+    /// <summary>A page of the supplier invoice's photos, never cached.</summary>
     [HttpGet("invoices/{id:guid}/image")]
-    public async Task<IActionResult> GetImage(Guid id)
+    public async Task<IActionResult> GetImage(Guid id, [FromQuery] int page = 0)
     {
         var mine = await _db.SalesDocuments.InBranches(User, d => d.BranchId).AnyAsync(d => d.Id == id);
         if (!mine) return NotFound(new { message = "Not found.", code = "not_found" });
-        var image = await _db.DocumentImages.AsNoTracking().FirstOrDefaultAsync(x => x.DocumentId == id);
+        var image = await _db.DocumentImages.AsNoTracking().FirstOrDefaultAsync(x => x.DocumentId == id && x.Page == page);
         if (image is null) return NotFound(new { message = "Not found.", code = "not_found" });
         Response.Headers.CacheControl = "no-store";
         Response.Headers["X-Content-Type-Options"] = "nosniff";

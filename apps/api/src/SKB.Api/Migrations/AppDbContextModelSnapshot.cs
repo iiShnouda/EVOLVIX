@@ -704,6 +704,9 @@ namespace SKB.Api.Migrations
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Page")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -719,7 +722,7 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("UploadedBy")
                         .HasColumnType("uuid");
 
-                    b.HasKey("DocumentId");
+                    b.HasKey("DocumentId", "Page");
 
                     b.ToTable("DocumentImages");
                 });
@@ -3532,8 +3535,8 @@ namespace SKB.Api.Migrations
             modelBuilder.Entity("SKB.Api.Data.DocumentImage", b =>
                 {
                     b.HasOne("SKB.Api.Data.SalesDocument", null)
-                        .WithOne()
-                        .HasForeignKey("SKB.Api.Data.DocumentImage", "DocumentId")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

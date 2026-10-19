@@ -66,8 +66,18 @@ public sealed class PartiesController : ControllerBase
         }
 
         var total = await q.CountAsync();
-        var rows = await q.OrderBy(p => p.Name)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        // By name; while searching, the exact code and names that start with what was typed come
+        // first, so the box can complete the name with the best match (owner, 2026-10-19).
+        var ordered = q.OrderBy(p => p.Name);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            var asCode = int.TryParse(s, out var n) ? n : -1;
+            ordered = q.OrderByDescending(p => p.Code == asCode)
+                .ThenByDescending(p => p.Name.ToLower().StartsWith(s))
+                .ThenBy(p => p.Name);
+        }
+        var rows = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
         return Ok(new PaginatedDto<PartyDto>(rows.Select(p => Mapper.ToParty(p, User)).ToArray(), total, page, pageSize));
     }

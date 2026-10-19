@@ -2879,4 +2879,13 @@ export const ar: TranslationDictionary = {
   'error.one_type': 'اختر نوعًا واحدًا: عميل أو مورد أو شركة شحن.',
   'parties.mainPhoneLabel': 'اسم الرقم',
   'perm.parties:contact': 'رؤية بيانات الاتصال للعملاء والموردين وشركات الشحن',
+  'additems.lineTotal': 'إجمالي الصنف',
+  'additems.invoiceMargin': 'هامش ربح على الفاتورة كلها',
+  'additems.saleTotal': 'إجمالي سعر البيع',
+  'additems.profit': 'المكسب',
+  'additems.pounds': 'جنيه',
+  'common.remove': 'إزالة',
+  'additems.addAnother': '{x} آخر',
+  'additems.page': 'صفحة',
+  'additems.addPage': 'إضافة صفحة',
 };

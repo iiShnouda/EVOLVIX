@@ -32,38 +32,55 @@ export function ScanButton<T>({
   const [waited, setWaited] = useState(0);
   const [error, setError] = useState<string | null>(null);
   if (!can('ai:scan')) return null;
+  // Several pages of one invoice can be picked together (owner, 2026-10-19): each is read in turn
+  // and its lines added to the same form.
+  const [pageOf, setPageOf] = useState<[number, number] | null>(null);
   const read = async (e: ChangeEvent<HTMLInputElement>) => {
-    const picked = e.target.files?.[0];
+    const picked = [...(e.target.files ?? [])].slice(0, 10);
     e.target.value = '';
-    if (!picked) return;
+    if (!picked.length) return;
     setBusy(true);
-    setWaited(0);
     setError(null);
     try {
-      // The photo kept with the invoice (at most 1600 px), and a smaller one for the model (1280 px):
-      // the model's time grows with the photo's size, and the writing still reads at that size.
-      const small = await shrinkPhoto(picked).catch(() => picked);
-      const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
-      onPhoto?.(photo);
-      const forModel = await shrinkPhoto(picked, 1280).catch(() => small);
-      let result: T;
-      try {
-        result = await scanPhoto<T>(
-          kind,
-          new File([forModel], 'scan.jpg', { type: forModel.type || 'image/jpeg' }),
-          setWaited,
-        );
-      } catch (err) {
-        // A gateway in front of the server that gave up waiting answers without our code.
-        const gaveUp = err instanceof ApiError && !err.code && [502, 504, 524].includes(err.status);
-        setError(gaveUp ? t('error.assistant_timeout') : errorText(t, err));
-        return;
+      for (const [i, one] of picked.entries()) {
+        setPageOf(picked.length > 1 ? [i + 1, picked.length] : null);
+        setWaited(0);
+        if (!(await readOne(one))) break;
       }
-      // Told apart from the reading itself: the photo was read, filling the form failed.
-      await Promise.resolve(onResult(result)).catch(() => setError(t('assistant.fillFailed')));
     } finally {
       setBusy(false);
+      setPageOf(null);
     }
+  };
+  /** Read one photo; false when it failed (the error is shown). */
+  const readOne = async (picked: File): Promise<boolean> => {
+    // The photo kept with the invoice (at most 1600 px), and a smaller one for the model (1280 px):
+    // the model's time grows with the photo's size, and the writing still reads at that size.
+    const small = await shrinkPhoto(picked).catch(() => picked);
+    const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
+    onPhoto?.(photo);
+    const forModel = await shrinkPhoto(picked, 1280).catch(() => small);
+    let result: T;
+    try {
+      result = await scanPhoto<T>(
+        kind,
+        new File([forModel], 'scan.jpg', { type: forModel.type || 'image/jpeg' }),
+        setWaited,
+      );
+    } catch (err) {
+      // A gateway in front of the server that gave up waiting answers without our code.
+      const gaveUp = err instanceof ApiError && !err.code && [502, 504, 524].includes(err.status);
+      setError(gaveUp ? t('error.assistant_timeout') : errorText(t, err));
+      return false;
+    }
+    // Told apart from the reading itself: the photo was read, filling the form failed.
+    return Promise.resolve(onResult(result)).then(
+      () => true,
+      () => {
+        setError(t('assistant.fillFailed'));
+        return false;
+      },
+    );
   };
   // One button (owner, 2026-10-19): the phone itself offers the camera or a photo already on it.
   return (
@@ -71,6 +88,7 @@ export function ScanButton<T>({
       <input
         ref={file}
         type="file"
+        multiple
         accept="image/jpeg,image/png,image/webp"
         className="sr-only"
         onChange={read}
@@ -83,7 +101,7 @@ export function ScanButton<T>({
         onClick={() => file.current?.click()}
       >
         {busy
-          ? `${t('assistant.reading')} ${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`
+          ? `${t('assistant.reading')}${pageOf ? ` ${pageOf[0]}/${pageOf[1]}` : ''} ${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`
           : t(kind === 'purchase' ? 'assistant.scanUpload' : 'assistant.scanCheques')}
       </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}

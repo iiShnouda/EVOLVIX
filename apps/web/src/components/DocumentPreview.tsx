@@ -159,7 +159,15 @@ export function DocumentPreview({
             {!isReturn && !doc.type.startsWith('PURCHASE') && (
               <Badge tone={status.tone}>{t(status.key as TranslationKey)}</Badge>
             )}
-            {doc.hasImage && <InvoicePhotoButton id={doc.id} />}
+            {doc.hasImage &&
+              Array.from({ length: Math.max(1, doc.imagePages ?? 1) }, (_, page) => (
+                <InvoicePhotoButton
+                  key={page}
+                  id={doc.id}
+                  page={page}
+                  pages={Math.max(1, doc.imagePages ?? 1)}
+                />
+              ))}
             {doc.edited && doc.status !== 'CANCELLED' && (
               <Badge tone="info">{t('state.EDITED')}</Badge>
             )}
@@ -693,8 +701,11 @@ export function PrintSetupSheet({
   );
 }
 
-/** Opens the photo of the supplier's own invoice kept with a purchase invoice (owner, 2026-10-17). */
-function InvoicePhotoButton({ id }: { id: string }) {
+/**
+ * Opens a page of the photos of the supplier's own invoice kept with a purchase invoice (owner,
+ * 2026-10-17; several pages 2026-10-19).
+ */
+function InvoicePhotoButton({ id, page, pages }: { id: string; page: number; pages: number }) {
   const { t } = useT();
   const [busy, setBusy] = useState(false);
   return (
@@ -705,7 +716,7 @@ function InvoicePhotoButton({ id }: { id: string }) {
       onClick={async () => {
         setBusy(true);
         try {
-          const file = await api.download(`/purchases/invoices/${id}/image`);
+          const file = await api.download(`/purchases/invoices/${id}/image?page=${page}`);
           const url = URL.createObjectURL(new Blob([file.bytes as BlobPart], { type: file.type }));
           window.open(url, '_blank', 'noopener');
           setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -716,6 +727,7 @@ function InvoicePhotoButton({ id }: { id: string }) {
     >
       <Icon name="camera" size={12} />
       {t('additems.invoicePhoto')}
+      {pages > 1 ? ` ${page + 1}` : ''}
     </button>
   );
 }
