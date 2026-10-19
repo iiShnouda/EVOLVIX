@@ -211,6 +211,10 @@
           "en": "Branch, warehouse and department boxes show whether they are chosen, and dates show in the right order on every device."
         },
         {
+          "ar": "مرتجع المشتريات: خانة الكمية مابقتش بتكتب صفر قبل الرقم، وسعر القطعة بقى بالصافي بعد الخصم علشان يطابق قيمة المرتجع، واتشال سطر \"التكلفة الخارجة من المخزون\" المكرر والملاحظة اللي تحت.",
+          "en": "Purchase returns: the quantity box no longer puts a 0 before the number, the piece price is net of discounts so it matches the return's value, and the repeated \"cost leaving stock\" line and the note below are gone."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

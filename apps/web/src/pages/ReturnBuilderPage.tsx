@@ -123,7 +123,25 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
     const discount = share(l.discount) + share(l.docDiscount);
     const value = share(l.lineTotal + l.discount) - discount;
     const cost = share(l.lineCost);
-    return { line: l, remaining, factor, base, step, typed, q, value, cost, profit: value - cost };
+    // What one of the line's units comes back at, after its discounts (owner, 2026-10-19: the
+    // price before the discount beside a value after it didn't add up).
+    const unitNet =
+      l.quantity > 0
+        ? Math.round(((l.lineTotal - l.docDiscount) * factor) / l.quantity)
+        : l.unitPrice;
+    return {
+      line: l,
+      remaining,
+      factor,
+      base,
+      step,
+      typed,
+      q,
+      value,
+      cost,
+      unitNet,
+      profit: value - cost,
+    };
   });
   const nothingLeft = rows.every((r) => r.remaining === 0);
 
@@ -138,7 +156,9 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
       max={Math.floor(r.remaining / r.step)}
       disabled={r.remaining === 0}
       className={className}
-      value={r.typed}
+      // Empty rather than 0, or typing after the 0 shows "0100" (owner, 2026-10-19).
+      value={r.typed || ''}
+      placeholder="0"
       onChange={(e) =>
         setQty((prev) => ({
           ...prev,
@@ -338,7 +358,8 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
-                            {formatMoney(r.line.unitPrice, currency, locale)} / {r.line.unitName}
+                            {formatMoney(isSale ? r.line.unitPrice : r.unitNet, currency, locale)} /{' '}
+                            {r.line.unitName}
                           </td>
                           <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
                             {r.q > 0 ? formatMoney(r.value, currency, locale) : ''}
@@ -376,7 +397,8 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
                         </p>
                         <p className="text-xs text-muted tnum">
                           {isSale ? t('invoice.price') : t('invoice.receiveCost')}{' '}
-                          {formatMoney(r.line.unitPrice, currency, locale)} / {r.line.unitName}
+                          {formatMoney(isSale ? r.line.unitPrice : r.unitNet, currency, locale)} /{' '}
+                          {r.line.unitName}
                         </p>
                       </div>
                       <div className="flex items-end gap-2">
@@ -422,11 +444,9 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
           <dl className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <Row label={t('return.value')} value={formatMoney(value, currency, locale)} />
             {tax > 0 && <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />}
-            {(!isSale || seeCosts) && (
-              <Row
-                label={isSale ? t('return.costBack') : t('return.costOut')}
-                value={formatMoney(cost, currency, locale)}
-              />
+            {/* A purchase return's value is its cost: shown once (owner, 2026-10-19). */}
+            {isSale && seeCosts && (
+              <Row label={t('return.costBack')} value={formatMoney(cost, currency, locale)} />
             )}
             {isSale && seeProfit && (
               <div className="flex items-center justify-between">
@@ -450,7 +470,6 @@ function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
 
       <ReturnBar
         total={formatMoney(total, currency, locale)}
-        note={t(isSale ? 'return.onAccountNote' : 'return.supplierOnAccountNote')}
         error={errorText(t, serverError)}
         saving={create.isPending}
         disabled={!canSave}

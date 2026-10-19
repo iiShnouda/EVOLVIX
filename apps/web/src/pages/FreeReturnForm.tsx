@@ -477,7 +477,6 @@ export function FreeReturnForm({
 
       <ReturnBar
         total={formatMoney(total, currency, locale)}
-        note={t(isSale ? 'return.onAccountNote' : 'return.supplierOnAccountNote')}
         error={errorText(t, create.error)}
         saving={create.isPending}
         disabled={!ready || create.isPending}
