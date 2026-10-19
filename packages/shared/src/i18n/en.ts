@@ -2919,4 +2919,5 @@ export const en = {
   'statement.pickAccount': 'Account',
   'invoice.view': 'Invoice',
   'invoice.activity': 'Activity log',
+  'invoice.open': 'Open invoice',
 } as const;

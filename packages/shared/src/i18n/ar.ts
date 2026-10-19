@@ -2903,4 +2903,5 @@ export const ar: TranslationDictionary = {
   'statement.pickAccount': 'الحساب',
   'invoice.view': 'الفاتورة',
   'invoice.activity': 'سجل النشاط',
+  'invoice.open': 'فتح الفاتورة',
 };

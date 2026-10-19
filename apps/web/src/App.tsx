@@ -253,6 +253,15 @@ function LoginRoute() {
   );
 }
 
+/**
+ * A saved sales invoice opens on the invoice screen with every line, read-only until "Edit invoice"
+ * (owner, 2026-10-19).
+ */
+function ViewSalesInvoiceRoute() {
+  const { id } = useParams();
+  return <InvoiceBuilderPage key={`view-${id}`} mode="sale" editId={id} readOnly />;
+}
+
 /** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
 function EditSalesInvoiceRoute() {
   const { id } = useParams();
@@ -268,6 +277,7 @@ const routes = createRoutesFromElements(
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
       <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
+      <Route path="/sales/invoices/:id" element={<ViewSalesInvoiceRoute />} />
       <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
       <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
       <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />

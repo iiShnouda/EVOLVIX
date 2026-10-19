@@ -25,7 +25,7 @@ public sealed class AuditController : ControllerBase
     public async Task<ActionResult<PaginatedDto<AuditEntryDto>>> List(
         [FromQuery] string? actorId = null, [FromQuery] string? resource = null, [FromQuery] string? action = null,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50)
+        [FromQuery] int pageSize = 50, [FromQuery] string? resourceId = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -33,6 +33,8 @@ public sealed class AuditController : ControllerBase
         if (!string.IsNullOrWhiteSpace(actorId)) q = q.Where(a => a.ActorId == actorId);
         if (!string.IsNullOrWhiteSpace(resource)) q = q.Where(a => a.Resource == resource);
         if (!string.IsNullOrWhiteSpace(action)) q = q.Where(a => a.Action == action);
+        // One record's own history (owner, 2026-10-19: an invoice shows its activity log).
+        if (!string.IsNullOrWhiteSpace(resourceId)) q = q.Where(a => a.ResourceId == resourceId);
         if (CompanyClock.ParseDay(from) is DateOnly f)
         {
             var start = CompanyClock.StartOf(f);

@@ -464,3 +464,8 @@ input::-ms-clear {
     transform: translate(-50%, -50%) scale(1);
   }
 }
+
+/* A saved invoice shown read-only (owner, 2026-10-19): what only changes it is not shown. */
+fieldset:disabled .ro-hide {
+  display: none;
+}

@@ -18,6 +18,8 @@ import {
   companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
+import { PrintSetupSheet } from '../components/DocumentPreview';
+import { DocumentActivity } from '../components/DocumentActivity';
 import { Icon } from '../components/Icon';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
@@ -148,10 +150,16 @@ let nextKey = 0;
 export function InvoiceBuilderPage({
   mode,
   editId,
+  readOnly = false,
 }: {
   mode: 'sale' | 'purchase' | 'quote';
   /** A saved sales invoice being changed (sales:edit); it is posted again under its number. */
   editId?: string;
+  /**
+   * The saved invoice `editId` shown on this screen with every line, nothing changeable until
+   * "Edit invoice" (owner, 2026-10-19); with its activity log.
+   */
+  readOnly?: boolean;
 }) {
   const isQuote = mode === 'quote';
   const isSale = mode !== 'purchase';
@@ -759,7 +767,7 @@ export function InvoiceBuilderPage({
   const work = useWorkDraft<InvoiceDraft>(
     2,
     () =>
-      !party && lines.length === 0 && staged.length === 0 && !notes
+      readOnly || (!party && lines.length === 0 && staged.length === 0 && !notes)
         ? null
         : {
             partyId: party?.id ?? null,
@@ -863,6 +871,8 @@ export function InvoiceBuilderPage({
   // Changing a saved invoice: its customer, choices, lines and discounts fill the screen.
   const [loadingEdit, setLoadingEdit] = useState(!!editId);
   const [editedNumber, setEditedNumber] = useState('');
+  const [viewed, setViewed] = useState<SalesDocument | null>(null);
+  const [printing, setPrinting] = useState(false);
   useEffect(() => {
     if (!editId) return;
     let gone = false;
@@ -889,6 +899,7 @@ export function InvoiceBuilderPage({
       if (gone) return;
       const byId = new Map(items.filter((x): x is Product => !!x).map((x) => [x.id, x]));
       setEditedNumber(doc.number);
+      setViewed(doc);
       setEditPaid({ amount: doc.paidAmount, accountId: doc.paidAccountId ?? '' });
       if (who) setParty(who);
       setPickedBranch(doc.branchId);
@@ -1429,21 +1440,22 @@ export function InvoiceBuilderPage({
       )}
     </>
   );
-  const lineWarning = (r: Row, className = 'mt-2') => (
-    <>
-      {(r.belowCost || r.belowFloor || r.overStock) && (
-        <p
-          className={`${className} text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
-        >
-          {r.overStock
-            ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
-            : r.belowCost
-              ? t('invoice.belowCost')
-              : t('invoice.belowFloor')}
-        </p>
-      )}
-    </>
-  );
+  const lineWarning = (r: Row, className = 'mt-2') =>
+    readOnly ? null : (
+      <>
+        {(r.belowCost || r.belowFloor || r.overStock) && (
+          <p
+            className={`${className} text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
+          >
+            {r.overStock
+              ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
+              : r.belowCost
+                ? t('invoice.belowCost')
+                : t('invoice.belowFloor')}
+          </p>
+        )}
+      </>
+    );
 
   /** A line's own discount: hidden behind "Add discount" until asked for (owner, 2026-10-01). */
   const lineDiscountCell = (r: Row) => {
@@ -1657,787 +1669,829 @@ export function InvoiceBuilderPage({
     <div className="space-y-5">
       <PageHeader
         title={
-          editId
-            ? `${t('invoice.editTitle')} ${editedNumber}`
-            : t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')
+          readOnly
+            ? `${t('invoice.view')} ${editedNumber}`
+            : editId
+              ? `${t('invoice.editTitle')} ${editedNumber}`
+              : t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')
         }
         action={
-          <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
-            {t('invoice.back')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {readOnly && viewed && (
+              <Button variant="secondary" size="sm" icon="print" onClick={() => setPrinting(true)}>
+                {t('common.printPdf')}
+              </Button>
+            )}
+            {readOnly && viewed?.status !== 'CANCELLED' && can('sales:edit') && (
+              <Button size="sm" onClick={() => navigate(`/sales/invoices/${editId}/edit`)}>
+                {t('invoice.edit')}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
+              {t('invoice.back')}
+            </Button>
+          </div>
         }
       />
+      {printing && viewed && <PrintSetupSheet doc={viewed} onClose={() => setPrinting(false)} />}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        {/* Left: builder */}
-        <div className="min-w-0 space-y-4">
-          {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
-          <Card className="grid gap-4 sm:grid-cols-2">
-            <PartyPicker
-              type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
-              withCode
-              value={party}
-              onChange={(p) => {
-                setParty(p);
-                setPickedLevel('');
-              }}
-              label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
-              placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
-            />
-            {isSale ? (
-              // Branch, then its warehouses, then that warehouse's departments (owner, 2026-10-01).
-              <>
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-                  <select
-                    className={`${field} ${!pickedBranch ? 'border-warning' : ''}`}
-                    value={pickedBranch}
-                    disabled={!!editId}
-                    aria-invalid={!pickedBranch}
-                    onChange={(e) => {
-                      setPickedBranch(e.target.value);
-                      setPickedWarehouse('');
-                      setPickedDepartment('');
-                      setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
-                    }}
-                  >
-                    <option value="" disabled>
-                      {t('invoice.chooseBranch')}
-                    </option>
-                    {myBranches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
-                  <select
-                    className={`${field} ${pickedBranch && !warehouseId ? 'border-warning' : ''}`}
-                    value={warehouseId}
-                    disabled={!pickedBranch}
-                    aria-invalid={!warehouseId}
-                    onChange={(e) => {
-                      setPickedWarehouse(e.target.value);
-                      setPickedDepartment('');
-                      setPlace({
-                        branchId: pickedBranch,
-                        warehouseId: e.target.value,
-                        departmentId: '',
-                      });
-                    }}
-                  >
-                    <option value="" disabled>
-                      {t('invoice.chooseWarehouse')}
-                    </option>
-                    {branchWarehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {departments.length > 0 && (
+      <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+          {/* Left: builder */}
+          <div className="min-w-0 space-y-4">
+            {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
+            <Card className="grid gap-4 sm:grid-cols-2">
+              <PartyPicker
+                type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+                withCode
+                value={party}
+                onChange={(p) => {
+                  setParty(p);
+                  setPickedLevel('');
+                }}
+                label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
+                placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+              />
+              {isSale ? (
+                // Branch, then its warehouses, then that warehouse's departments (owner, 2026-10-01).
+                <>
                   <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">
-                      {t('invoice.department')}
-                    </span>
+                    <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
                     <select
-                      className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
-                      value={departmentOk ? departmentId : ''}
-                      required={departmentRequired}
-                      disabled={!warehouseId}
-                      aria-invalid={departmentRequired && !departmentId}
+                      className={`${field} ${!pickedBranch ? 'border-warning' : ''}`}
+                      value={pickedBranch}
+                      disabled={!!editId}
+                      aria-invalid={!pickedBranch}
                       onChange={(e) => {
-                        setPickedDepartment(e.target.value);
-                        setPlace({ departmentId: e.target.value });
+                        setPickedBranch(e.target.value);
+                        setPickedWarehouse('');
+                        setPickedDepartment('');
+                        setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
                       }}
                     >
-                      <option value="" disabled={departmentRequired}>
-                        {departmentRequired
-                          ? t('invoice.chooseDepartment')
-                          : t('invoice.noDepartment')}
+                      <option value="" disabled>
+                        {t('invoice.chooseBranch')}
                       </option>
-                      {shownDepartments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
+                      {myBranches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
                         </option>
                       ))}
                     </select>
                   </label>
-                )}
-              </>
-            ) : (
-              <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
-            )}
-            {isSale && (
-              // The rep by code or by name, like the customer (owner, 2026-10-01).
-              <div className="flex items-start gap-2">
-                <label className="block w-24 shrink-0">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
-                  <input
-                    className={`${field} tnum ${repCodeMissing ? 'border-destructive' : ''}`}
-                    inputMode="numeric"
-                    aria-label={`${t('invoice.rep')} — ${t('invoice.code')}`}
-                    aria-invalid={repCodeMissing}
-                    value={repCode ?? String(reps.data?.find((r) => r.id === repId)?.code ?? '')}
-                    onChange={(e) => {
-                      const text = e.target.value.replace(/[^\d]/g, '');
-                      setRepCode(text);
-                      const hit = (reps.data ?? []).find((r) => String(r.code) === text);
-                      if (hit) setPickedRep(hit.id);
-                    }}
-                    onBlur={() => setRepCode(null)}
-                  />
-                  {repCodeMissing && (
-                    <span className="mt-0.5 block text-xs text-destructive">
-                      {t('invoice.codeNotFound')}
-                    </span>
-                  )}
-                </label>
-                <label className="block min-w-0 flex-1">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
-                  <select
-                    className={field}
-                    value={repId}
-                    aria-invalid={!repId}
-                    onChange={(e) => setPickedRep(e.target.value)}
-                  >
-                    {!repId && <option value="">{t('invoice.chooseRep')}</option>}
-                    {(reps.data ?? []).map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {codeName(r.code, r.name)}
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+                    <select
+                      className={`${field} ${pickedBranch && !warehouseId ? 'border-warning' : ''}`}
+                      value={warehouseId}
+                      disabled={!pickedBranch}
+                      aria-invalid={!warehouseId}
+                      onChange={(e) => {
+                        setPickedWarehouse(e.target.value);
+                        setPickedDepartment('');
+                        setPlace({
+                          branchId: pickedBranch,
+                          warehouseId: e.target.value,
+                          departmentId: '',
+                        });
+                      }}
+                    >
+                      <option value="" disabled>
+                        {t('invoice.chooseWarehouse')}
                       </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
-            {!isQuote && !editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
-            {isSale && !isQuote && (
-              // When a sale on account should be paid (تاريخ الاستحقاق); empty = no date.
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
-                <input
-                  type="date"
-                  className={`${field} tnum`}
-                  min={editId ? undefined : companyToday()}
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </label>
-            )}
-          </Card>
-
-          {isSale && !isQuote && (
-            <DeliveryCard
-              value={delivery}
-              onChange={setDelivery}
-              party={party ?? undefined}
-              carriers={carriers.data?.items ?? []}
-              lockCarrier={!canChangeShipping && !!fileCarrier}
-              lockAddress={!canChangeShipping && !!fileAddress}
-            />
-          )}
-
-          {/* Product search */}
-          <Card>
-            <label className="mb-1.5 block text-sm font-medium text-muted">
-              {t('invoice.addItems')}
-            </label>
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <select
-                className={filterSelect}
-                aria-label={t('catalog.supplier')}
-                value={supplierFilter}
-                onChange={(e) => {
-                  setSupplierFilter(e.target.value);
-                  searchBox.current?.focus();
-                }}
-              >
-                <option value="">{t('invoice.filterSupplier')}</option>
-                {(suppliers.data?.items ?? []).map((sp) => (
-                  <option key={sp.id} value={sp.id}>
-                    {codeName(sp.code, sp.name)}
-                  </option>
-                ))}
-              </select>
-
-              <label className="flex items-center gap-1.5 text-sm text-muted">
-                <input
-                  type="checkbox"
-                  checked={inStockOnly}
-                  onChange={(e) => setInStockOnly(e.target.checked)}
-                />
-                {t('invoice.inStockOnly')}
-              </label>
-            </div>
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <span className="mb-0.5 block text-xs text-muted">{t('col.item')}</span>
-                <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
-                    <Icon name="search" size={16} />
-                  </span>
-                  <input
-                    ref={searchBox}
-                    className={`${field} ps-8`}
-                    placeholder={t('invoice.searchHint')}
-                    aria-label={t('invoice.searchProduct')}
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setListOpen(true);
-                    }}
-                    onClick={() => setListOpen(true)}
-                    // Later than a click on a result, so the click still lands.
-                    onBlur={() => setTimeout(() => setListOpen(false), 150)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void addFromSearch();
-                      } else if (e.key === 'Escape') {
-                        setSearch('');
-                        setListOpen(false);
-                      }
-                    }}
-                  />
-                  {listOpen && (
-                    <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
-                      {productList.isLoading ? (
-                        <div className="grid place-items-center py-6 text-muted">
-                          <Spinner size={18} />
-                        </div>
-                      ) : products.length === 0 ? (
-                        <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-                      ) : (
-                        products.map((p) => (
-                          <button
-                            key={p.id}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => addProduct(p)}
-                            className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{p.name}</span>
-                              <span className="text-xs text-muted tnum">
-                                {p.sku}
-                                {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
-                                {formatQuantity(available(p), p.units, locale)}{' '}
-                                {t('invoice.inStock')}
-                                {seeCosts &&
-                                  ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
-                              </span>
-                            </span>
-                            <Icon name="plus" size={16} className="text-brand" />
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <label className="block w-20 shrink-0">
-                <span className="mb-0.5 block text-xs text-muted">{t('col.qty')}</span>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  inputMode="numeric"
-                  className={`${field} text-center tnum`}
-                  value={addQty}
-                  onChange={(e) => setAddQty(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      searchBox.current?.focus();
-                    }
-                  }}
-                />
-              </label>
-              <Button
-                variant="secondary"
-                icon="scan"
-                aria-label={t('scan.title')}
-                onClick={() => setScanning(true)}
-              >
-                <span className="hidden sm:inline">{t('scan.button')}</span>
-              </Button>
-              <Button
-                variant="secondary"
-                icon="search"
-                aria-label={t('finder.button')}
-                onClick={() => setFinding(true)}
-              >
-                <span className="hidden lg:inline">{t('finder.button')}</span>
-              </Button>
-            </div>
-            {scanning && <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />}
-            {finding && (
-              <ItemFinderSheet
-                departmentId={departmentId || undefined}
-                warehouseId={warehouseId || undefined}
-                branchId={pickedBranch || undefined}
-                lockPlace={isSale && !!warehouseId}
-                inStockFirst={isSale && !isQuote}
-                checkStock={isSale && !isQuote}
-                onInvoice={onInvoice}
-                onClose={() => setFinding(false)}
-                onAdd={(items, close) => {
-                  items.forEach((i) => addProduct(i.product, i.unitId, false, i.quantity));
-                  if (close) setFinding(false);
-                }}
-              />
-            )}
-
-            {cardOf && <ItemLifeSheet productId={cardOf} onClose={() => setCardOf(null)} />}
-
-            {/* Items being prepared (owner, 2026-10-01): set them up, compare prices, then add. */}
-            {staged.length > 0 && renderStaging()}
-
-            {/* Clear every item at once (owner, 2026-10-02). */}
-            {rows.length > 0 && (
-              <div className="mt-3 flex justify-end">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon="close"
-                  onClick={async () => {
-                    if (!(await confirm({ message: t('invoice.clearLinesAsk'), danger: true })))
-                      return;
-                    setLines([]);
-                    setSecond(new Set());
-                  }}
-                >
-                  {t('invoice.clearLines')}
-                </Button>
-              </div>
-            )}
-
-            {/* Lines */}
-            {rows.length === 0 ? (
-              <p className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
-                {t('invoice.noItems')}
-              </p>
-            ) : !isPhone ? (
-              // Wide screens: the lines as a table, like the old program's grid.
-              <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                <TableColumns id={`invoice.${mode}`} onMove={moveColumn} onDrop={dropColumn}>
-                  <table className="w-full text-[13px]">
-                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                      <tr className="whitespace-nowrap">
-                        <th className="w-8" aria-label={t('col.delete')} />
-                        {columns.map((c) => (
-                          <th
-                            key={c.key}
-                            className={`px-1.5 py-2 font-medium ${c.end ? 'text-end' : 'text-start'}`}
-                          >
-                            {c.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--c-line)]">
-                      {rows.map((r, i) => (
-                        <tr key={r.line.key} className="align-top">
-                          <td className="px-1 py-2">
-                            <span className="flex gap-0.5">
-                              <button
-                                onClick={() => removeLine(r.line.key)}
-                                className="grid h-7 w-7 place-items-center rounded text-faint hover:bg-destructive-soft hover:text-destructive"
-                                aria-label={t('invoice.remove')}
-                                title={t('invoice.remove')}
-                              >
-                                <Icon name="close" size={16} />
-                              </button>
-                              <button
-                                onClick={() => toggleLine(r.line.key)}
-                                className={`grid h-7 w-7 place-items-center rounded hover:bg-surface-2 ${isOpen(r.line.key) ? 'bg-brand-soft text-brand' : 'text-faint'}`}
-                                aria-label={t(
-                                  isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
-                                )}
-                                title={t(
-                                  isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
-                                )}
-                                aria-pressed={isOpen(r.line.key)}
-                              >
-                                <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={15} />
-                              </button>
-                            </span>
-                          </td>
-                          {columns.map((c) => (
-                            <td
-                              key={c.key}
-                              className={`px-1.5 py-1.5 ${c.end ? 'whitespace-nowrap pt-2.5 text-end tnum' : ''} ${c.className ?? ''}`}
-                            >
-                              {c.cell(r, i)}
-                            </td>
-                          ))}
-                        </tr>
+                      {branchWarehouses.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
-                </TableColumns>
-              </div>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {rows.map((r) => (
-                  <li
-                    key={r.line.key}
-                    className="rounded-[var(--radius-app)] border border-line p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{r.line.product.name}</p>
-                        <p className="text-xs text-muted tnum">
-                          {seeCosts && (
-                            <>
-                              {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
-                              {r.unit && ` / ${r.unit.name}`}
-                            </>
-                          )}
-                          {isSale && (
-                            <>
-                              {seeCosts && ' · '}
-                              {t('inventory.stock')}:{' '}
-                              {formatQuantity(
-                                available(r.line.product),
-                                r.line.product.units,
-                                locale,
-                              )}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <span className="flex shrink-0 gap-2">
-                        <button
-                          onClick={() => toggleLine(r.line.key)}
-                          className={isOpen(r.line.key) ? 'text-brand' : 'text-faint hover:text-fg'}
-                          aria-label={t(
-                            isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
-                          )}
-                          aria-pressed={isOpen(r.line.key)}
-                        >
-                          <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={16} />
-                        </button>
-                        <button
-                          onClick={() => removeLine(r.line.key)}
-                          className="text-faint hover:text-destructive"
-                          aria-label={t('invoice.remove')}
-                        >
-                          <Icon name="close" size={16} />
-                        </button>
+                    </select>
+                  </label>
+                  {departments.length > 0 && (
+                    <label className="block">
+                      <span className="mb-0.5 block text-xs text-muted">
+                        {t('invoice.department')}
                       </span>
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                      <label className="block">
-                        <span className="mb-0.5 block text-xs text-muted">{t('invoice.unit')}</span>
-                        {unitSelect(r)}
-                      </label>
-                      <label className="block">
-                        <span className="mb-0.5 block text-xs text-muted">{t('invoice.qty')}</span>
-                        {qtyInput(r)}
-                      </label>
-                      <label className="block">
-                        <span className="mb-0.5 block text-xs text-muted">
-                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}
-                        </span>
-                        {priceInput(r)}
-                      </label>
-                      {isSale && seeCosts && (
-                        <div className="block">
-                          <span className="mb-0.5 block text-xs text-muted">
-                            {t('invoice.markup')}
-                          </span>
-                          <div
-                            className={`${field} grid items-center tnum ${r.markupPct < 0 ? 'text-destructive' : ''}`}
-                          >
-                            {r.markupPct.toFixed(1)}%
-                          </div>
-                        </div>
-                      )}
-                      <div className="block">
-                        <span className="mb-0.5 block text-xs text-muted">
-                          {isSale && seeProfit ? t('invoice.lineProfit') : t('common.total')}
-                        </span>
-                        <div
-                          className={`${field} grid items-center tnum ${isSale && seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
-                        >
-                          {formatMoney(
-                            isSale && seeProfit ? r.lineProfit : r.lineTotal,
-                            currency,
-                            locale,
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
-                      {lineNotes(r)}
-                      {lineDiscountCell(r)}
-                    </div>
-
-                    {lineWarning(r)}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        {/* Right: summary */}
-        <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-          <Card>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-              {t('common.total')}
-            </h2>
-            <dl className="space-y-1.5 text-sm">
-              <Row label={t('invoice.subtotal')} value={formatMoney(subtotal, currency, locale)} />
-              {/* Discounts only when asked for (owner, 2026-10-01). */}
-              {(showDiscount1 || discount1.value) && (
-                <DiscountField
-                  label={t('charge.DISCOUNT')}
-                  value={discount1}
-                  onChange={setDiscount1}
-                  disabled={!canDiscount}
-                  amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
-                  currency={currency}
-                  onRemove={
-                    canDiscount
-                      ? () => {
-                          setDiscount1({ ...discount1, value: '' });
-                          setShowDiscount1(false);
-                        }
-                      : undefined
-                  }
-                />
-              )}
-              {(showDiscount2 || discount2.value) && (
-                <DiscountField
-                  label={t('charge.EXTRA_DISCOUNT')}
-                  value={discount2}
-                  onChange={setDiscount2}
-                  disabled={!canDiscount}
-                  amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
-                  currency={currency}
-                  onRemove={
-                    canDiscount
-                      ? () => {
-                          setDiscount2({ ...discount2, value: '' });
-                          setShowDiscount2(false);
-                        }
-                      : undefined
-                  }
-                />
-              )}
-              {canDiscount && (!showDiscount1 || !showDiscount2) && (
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {!showDiscount1 && !discount1.value && (
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-brand hover:underline"
-                      onClick={() => setShowDiscount1(true)}
-                    >
-                      + {t('invoice.addDiscount')}
-                    </button>
+                      <select
+                        className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
+                        value={departmentOk ? departmentId : ''}
+                        required={departmentRequired}
+                        disabled={!warehouseId}
+                        aria-invalid={departmentRequired && !departmentId}
+                        onChange={(e) => {
+                          setPickedDepartment(e.target.value);
+                          setPlace({ departmentId: e.target.value });
+                        }}
+                      >
+                        <option value="" disabled={departmentRequired}>
+                          {departmentRequired
+                            ? t('invoice.chooseDepartment')
+                            : t('invoice.noDepartment')}
+                        </option>
+                        {shownDepartments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   )}
-                  {/* Two discounts, each a percent or an amount; the second once the first has
-                      a value (owner, 2026-10-02). */}
-                  {!showDiscount2 && !discount2.value && !!discount1.value && (
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-brand hover:underline"
-                      onClick={() => setShowDiscount2(true)}
+                </>
+              ) : (
+                <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
+              )}
+              {isSale && (
+                // The rep by code or by name, like the customer (owner, 2026-10-01).
+                <div className="flex items-start gap-2">
+                  <label className="block w-24 shrink-0">
+                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
+                    <input
+                      className={`${field} tnum ${repCodeMissing ? 'border-destructive' : ''}`}
+                      inputMode="numeric"
+                      aria-label={`${t('invoice.rep')} — ${t('invoice.code')}`}
+                      aria-invalid={repCodeMissing}
+                      value={repCode ?? String(reps.data?.find((r) => r.id === repId)?.code ?? '')}
+                      onChange={(e) => {
+                        const text = e.target.value.replace(/[^\d]/g, '');
+                        setRepCode(text);
+                        const hit = (reps.data ?? []).find((r) => String(r.code) === text);
+                        if (hit) setPickedRep(hit.id);
+                      }}
+                      onBlur={() => setRepCode(null)}
+                    />
+                    {repCodeMissing && (
+                      <span className="mt-0.5 block text-xs text-destructive">
+                        {t('invoice.codeNotFound')}
+                      </span>
+                    )}
+                  </label>
+                  <label className="block min-w-0 flex-1">
+                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
+                    <select
+                      className={field}
+                      value={repId}
+                      aria-invalid={!repId}
+                      onChange={(e) => setPickedRep(e.target.value)}
                     >
-                      + {t('invoice.addExtraDiscount')}
-                    </button>
-                  )}
+                      {!repId && <option value="">{t('invoice.chooseRep')}</option>}
+                      {(reps.data ?? []).map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {codeName(r.code, r.name)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
-              {outcome.discount > 0 && (
-                <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+              {!isQuote && !editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
+              {isSale && !isQuote && (
+                // When a sale on account should be paid (تاريخ الاستحقاق); empty = no date.
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
+                  <input
+                    type="date"
+                    className={`${field} tnum`}
+                    min={editId ? undefined : companyToday()}
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </label>
               )}
-              {isSale &&
-                canDiscount &&
-                maxDiscount !== null &&
-                (showDiscount1 || showDiscount2) && (
-                  <p className="text-xs text-faint">
-                    {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
-                  </p>
-                )}
-              {tax > 0 && (
-                <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
-              )}
-              {outcome.error && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
-              <div className="my-1 border-t border-line" />
-              <Row
-                label={t('invoice.grandTotal')}
-                value={formatMoney(grand, currency, locale)}
-                strong
+            </Card>
+
+            {isSale && !isQuote && (
+              <DeliveryCard
+                value={delivery}
+                onChange={setDelivery}
+                party={party ?? undefined}
+                carriers={carriers.data?.items ?? []}
+                lockCarrier={!canChangeShipping && !!fileCarrier}
+                lockAddress={!canChangeShipping && !!fileAddress}
               />
-              {isSale && (seeCosts || seeProfit) && (
+            )}
+
+            {/* Product search */}
+            <Card>
+              {!readOnly && (
                 <>
-                  <div className="my-1 border-t border-line" />
-                  {seeCosts && (
-                    <Row
-                      label={t('invoice.totalCost')}
-                      value={formatMoney(costTotal, currency, locale)}
-                    />
-                  )}
-                  {seeProfit && (
-                    <div className="flex items-center justify-between">
-                      <dt className="text-muted">{t('invoice.totalProfit')}</dt>
-                      <dd
-                        className={`font-semibold tnum ${profitTotal < 0 ? 'text-destructive' : 'text-positive'}`}
-                      >
-                        {formatMoney(profitTotal, currency, locale)}{' '}
-                        <span className="text-xs font-normal">({marginPct.toFixed(1)}%)</span>
-                      </dd>
+                  <label className="mb-1.5 block text-sm font-medium text-muted">
+                    {t('invoice.addItems')}
+                  </label>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <select
+                      className={filterSelect}
+                      aria-label={t('catalog.supplier')}
+                      value={supplierFilter}
+                      onChange={(e) => {
+                        setSupplierFilter(e.target.value);
+                        searchBox.current?.focus();
+                      }}
+                    >
+                      <option value="">{t('invoice.filterSupplier')}</option>
+                      {(suppliers.data?.items ?? []).map((sp) => (
+                        <option key={sp.id} value={sp.id}>
+                          {codeName(sp.code, sp.name)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label className="flex items-center gap-1.5 text-sm text-muted">
+                      <input
+                        type="checkbox"
+                        checked={inStockOnly}
+                        onChange={(e) => setInStockOnly(e.target.checked)}
+                      />
+                      {t('invoice.inStockOnly')}
+                    </label>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="mb-0.5 block text-xs text-muted">{t('col.item')}</span>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+                          <Icon name="search" size={16} />
+                        </span>
+                        <input
+                          ref={searchBox}
+                          className={`${field} ps-8`}
+                          placeholder={t('invoice.searchHint')}
+                          aria-label={t('invoice.searchProduct')}
+                          value={search}
+                          onChange={(e) => {
+                            setSearch(e.target.value);
+                            setListOpen(true);
+                          }}
+                          onClick={() => setListOpen(true)}
+                          // Later than a click on a result, so the click still lands.
+                          onBlur={() => setTimeout(() => setListOpen(false), 150)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void addFromSearch();
+                            } else if (e.key === 'Escape') {
+                              setSearch('');
+                              setListOpen(false);
+                            }
+                          }}
+                        />
+                        {listOpen && (
+                          <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+                            {productList.isLoading ? (
+                              <div className="grid place-items-center py-6 text-muted">
+                                <Spinner size={18} />
+                              </div>
+                            ) : products.length === 0 ? (
+                              <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+                            ) : (
+                              products.map((p) => (
+                                <button
+                                  key={p.id}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => addProduct(p)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                                >
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate font-medium">{p.name}</span>
+                                    <span className="text-xs text-muted tnum">
+                                      {p.sku}
+                                      {p.supplierCode && ` · ${p.supplierCode}`} ·{' '}
+                                      {formatQuantity(available(p), p.units, locale)}{' '}
+                                      {t('invoice.inStock')}
+                                      {seeCosts &&
+                                        ` · ${t('invoice.cost')} ${formatMoney(costOf(p), currency, locale)}`}
+                                    </span>
+                                  </span>
+                                  <Icon name="plus" size={16} className="text-brand" />
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    <label className="block w-20 shrink-0">
+                      <span className="mb-0.5 block text-xs text-muted">{t('col.qty')}</span>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        className={`${field} text-center tnum`}
+                        value={addQty}
+                        onChange={(e) => setAddQty(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchBox.current?.focus();
+                          }
+                        }}
+                      />
+                    </label>
+                    <Button
+                      variant="secondary"
+                      icon="scan"
+                      aria-label={t('scan.title')}
+                      onClick={() => setScanning(true)}
+                    >
+                      <span className="hidden sm:inline">{t('scan.button')}</span>
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      icon="search"
+                      aria-label={t('finder.button')}
+                      onClick={() => setFinding(true)}
+                    >
+                      <span className="hidden lg:inline">{t('finder.button')}</span>
+                    </Button>
+                  </div>
+                  {scanning && (
+                    <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />
+                  )}
+                  {finding && (
+                    <ItemFinderSheet
+                      departmentId={departmentId || undefined}
+                      warehouseId={warehouseId || undefined}
+                      branchId={pickedBranch || undefined}
+                      lockPlace={isSale && !!warehouseId}
+                      inStockFirst={isSale && !isQuote}
+                      checkStock={isSale && !isQuote}
+                      onInvoice={onInvoice}
+                      onClose={() => setFinding(false)}
+                      onAdd={(items, close) => {
+                        items.forEach((i) => addProduct(i.product, i.unitId, false, i.quantity));
+                        if (close) setFinding(false);
+                      }}
+                    />
                   )}
                 </>
               )}
-            </dl>
+              {cardOf && <ItemLifeSheet productId={cardOf} onClose={() => setCardOf(null)} />}
 
-            <div className="mt-4 space-y-3">
-              {cashCustomer && (
-                <div className="space-y-2 rounded-[var(--radius-app)] bg-positive-soft p-2.5">
-                  <Row
-                    label={`${t('parties.cashCustomer')} — ${t('invoice.paidNow')}`}
-                    value={formatMoney(grand, currency, locale)}
-                    strong
+              {/* Items being prepared (owner, 2026-10-01): set them up, compare prices, then add. */}
+              {staged.length > 0 && renderStaging()}
+
+              {/* Clear every item at once (owner, 2026-10-02). */}
+              {rows.length > 0 && (
+                <div className="ro-hide mt-3 flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon="close"
+                    onClick={async () => {
+                      if (!(await confirm({ message: t('invoice.clearLinesAsk'), danger: true })))
+                        return;
+                      setLines([]);
+                      setSecond(new Set());
+                    }}
+                  >
+                    {t('invoice.clearLines')}
+                  </Button>
+                </div>
+              )}
+
+              {/* Lines */}
+              {rows.length === 0 ? (
+                <p className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
+                  {t('invoice.noItems')}
+                </p>
+              ) : !isPhone ? (
+                // Wide screens: the lines as a table, like the old program's grid.
+                <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
+                  <TableColumns id={`invoice.${mode}`} onMove={moveColumn} onDrop={dropColumn}>
+                    <table className="w-full text-[13px]">
+                      <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                        <tr className="whitespace-nowrap">
+                          <th className="w-8" aria-label={t('col.delete')} />
+                          {columns.map((c) => (
+                            <th
+                              key={c.key}
+                              className={`px-1.5 py-2 font-medium ${c.end ? 'text-end' : 'text-start'}`}
+                            >
+                              {c.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--c-line)]">
+                        {rows.map((r, i) => (
+                          <tr key={r.line.key} className="align-top">
+                            <td className="px-1 py-2">
+                              <span className="ro-hide flex gap-0.5">
+                                <button
+                                  onClick={() => removeLine(r.line.key)}
+                                  className="grid h-7 w-7 place-items-center rounded text-faint hover:bg-destructive-soft hover:text-destructive"
+                                  aria-label={t('invoice.remove')}
+                                  title={t('invoice.remove')}
+                                >
+                                  <Icon name="close" size={16} />
+                                </button>
+                                <button
+                                  onClick={() => toggleLine(r.line.key)}
+                                  className={`grid h-7 w-7 place-items-center rounded hover:bg-surface-2 ${isOpen(r.line.key) ? 'bg-brand-soft text-brand' : 'text-faint'}`}
+                                  aria-label={t(
+                                    isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                                  )}
+                                  title={t(
+                                    isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                                  )}
+                                  aria-pressed={isOpen(r.line.key)}
+                                >
+                                  <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={15} />
+                                </button>
+                              </span>
+                            </td>
+                            {columns.map((c) => (
+                              <td
+                                key={c.key}
+                                className={`px-1.5 py-1.5 ${c.end ? 'whitespace-nowrap pt-2.5 text-end tnum' : ''} ${c.className ?? ''}`}
+                              >
+                                {c.cell(r, i)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableColumns>
+                </div>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {rows.map((r) => (
+                    <li
+                      key={r.line.key}
+                      className="rounded-[var(--radius-app)] border border-line p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{r.line.product.name}</p>
+                          <p className="text-xs text-muted tnum">
+                            {seeCosts && (
+                              <>
+                                {t('invoice.cost')} {formatMoney(r.cost, currency, locale)}
+                                {r.unit && ` / ${r.unit.name}`}
+                              </>
+                            )}
+                            {isSale && (
+                              <>
+                                {seeCosts && ' · '}
+                                {t('inventory.stock')}:{' '}
+                                {formatQuantity(
+                                  available(r.line.product),
+                                  r.line.product.units,
+                                  locale,
+                                )}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                        <span className="ro-hide flex shrink-0 gap-2">
+                          <button
+                            onClick={() => toggleLine(r.line.key)}
+                            className={
+                              isOpen(r.line.key) ? 'text-brand' : 'text-faint hover:text-fg'
+                            }
+                            aria-label={t(
+                              isOpen(r.line.key) ? 'invoice.lineDone' : 'invoice.lineEdit',
+                            )}
+                            aria-pressed={isOpen(r.line.key)}
+                          >
+                            <Icon name={isOpen(r.line.key) ? 'check' : 'edit'} size={16} />
+                          </button>
+                          <button
+                            onClick={() => removeLine(r.line.key)}
+                            className="text-faint hover:text-destructive"
+                            aria-label={t('invoice.remove')}
+                          >
+                            <Icon name="close" size={16} />
+                          </button>
+                        </span>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        <label className="block">
+                          <span className="mb-0.5 block text-xs text-muted">
+                            {t('invoice.unit')}
+                          </span>
+                          {unitSelect(r)}
+                        </label>
+                        <label className="block">
+                          <span className="mb-0.5 block text-xs text-muted">
+                            {t('invoice.qty')}
+                          </span>
+                          {qtyInput(r)}
+                        </label>
+                        <label className="block">
+                          <span className="mb-0.5 block text-xs text-muted">
+                            {isSale ? t('invoice.price') : t('invoice.receiveCost')}
+                          </span>
+                          {priceInput(r)}
+                        </label>
+                        {isSale && seeCosts && (
+                          <div className="block">
+                            <span className="mb-0.5 block text-xs text-muted">
+                              {t('invoice.markup')}
+                            </span>
+                            <div
+                              className={`${field} grid items-center tnum ${r.markupPct < 0 ? 'text-destructive' : ''}`}
+                            >
+                              {r.markupPct.toFixed(1)}%
+                            </div>
+                          </div>
+                        )}
+                        <div className="block">
+                          <span className="mb-0.5 block text-xs text-muted">
+                            {isSale && seeProfit ? t('invoice.lineProfit') : t('common.total')}
+                          </span>
+                          <div
+                            className={`${field} grid items-center tnum ${isSale && seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
+                          >
+                            {formatMoney(
+                              isSale && seeProfit ? r.lineProfit : r.lineTotal,
+                              currency,
+                              locale,
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
+                        {lineNotes(r)}
+                        {lineDiscountCell(r)}
+                      </div>
+
+                      {lineWarning(r)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
+
+          {/* Right: summary */}
+          <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+            <Card>
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+                {t('common.total')}
+              </h2>
+              <dl className="space-y-1.5 text-sm">
+                <Row
+                  label={t('invoice.subtotal')}
+                  value={formatMoney(subtotal, currency, locale)}
+                />
+                {/* Discounts only when asked for (owner, 2026-10-01). */}
+                {(showDiscount1 || discount1.value) && (
+                  <DiscountField
+                    label={t('charge.DISCOUNT')}
+                    value={discount1}
+                    onChange={setDiscount1}
+                    disabled={!canDiscount}
+                    amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
+                    currency={currency}
+                    onRemove={
+                      canDiscount
+                        ? () => {
+                            setDiscount1({ ...discount1, value: '' });
+                            setShowDiscount1(false);
+                          }
+                        : undefined
+                    }
                   />
+                )}
+                {(showDiscount2 || discount2.value) && (
+                  <DiscountField
+                    label={t('charge.EXTRA_DISCOUNT')}
+                    value={discount2}
+                    onChange={setDiscount2}
+                    disabled={!canDiscount}
+                    amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
+                    currency={currency}
+                    onRemove={
+                      canDiscount
+                        ? () => {
+                            setDiscount2({ ...discount2, value: '' });
+                            setShowDiscount2(false);
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                {canDiscount && (!showDiscount1 || !showDiscount2) && (
+                  <div className="ro-hide flex flex-wrap gap-x-3 gap-y-1">
+                    {!showDiscount1 && !discount1.value && (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-brand hover:underline"
+                        onClick={() => setShowDiscount1(true)}
+                      >
+                        + {t('invoice.addDiscount')}
+                      </button>
+                    )}
+                    {/* Two discounts, each a percent or an amount; the second once the first has
+                      a value (owner, 2026-10-02). */}
+                    {!showDiscount2 && !discount2.value && !!discount1.value && (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-brand hover:underline"
+                        onClick={() => setShowDiscount2(true)}
+                      >
+                        + {t('invoice.addExtraDiscount')}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {outcome.discount > 0 && (
+                  <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
+                )}
+                {isSale &&
+                  canDiscount &&
+                  maxDiscount !== null &&
+                  (showDiscount1 || showDiscount2) && (
+                    <p className="text-xs text-faint">
+                      {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
+                    </p>
+                  )}
+                {tax > 0 && (
+                  <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
+                )}
+                {outcome.error && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
+                <div className="my-1 border-t border-line" />
+                <Row
+                  label={t('invoice.grandTotal')}
+                  value={formatMoney(grand, currency, locale)}
+                  strong
+                />
+                {isSale && (seeCosts || seeProfit) && (
+                  <>
+                    <div className="my-1 border-t border-line" />
+                    {seeCosts && (
+                      <Row
+                        label={t('invoice.totalCost')}
+                        value={formatMoney(costTotal, currency, locale)}
+                      />
+                    )}
+                    {seeProfit && (
+                      <div className="flex items-center justify-between">
+                        <dt className="text-muted">{t('invoice.totalProfit')}</dt>
+                        <dd
+                          className={`font-semibold tnum ${profitTotal < 0 ? 'text-destructive' : 'text-positive'}`}
+                        >
+                          {formatMoney(profitTotal, currency, locale)}{' '}
+                          <span className="text-xs font-normal">({marginPct.toFixed(1)}%)</span>
+                        </dd>
+                      </div>
+                    )}
+                  </>
+                )}
+              </dl>
+
+              <div className="mt-4 space-y-3">
+                {cashCustomer && (
+                  <div className="space-y-2 rounded-[var(--radius-app)] bg-positive-soft p-2.5">
+                    <Row
+                      label={`${t('parties.cashCustomer')} — ${t('invoice.paidNow')}`}
+                      value={formatMoney(grand, currency, locale)}
+                      strong
+                    />
+                    <MoneyAccountPicker
+                      className={field}
+                      label={t('money.paidInto')}
+                      value={cashAccountId}
+                      onChange={setCashAccountId}
+                    />
+                  </div>
+                )}
+                {isSale ? null : (
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className={`${field} tnum`}
+                      value={paidNow}
+                      onChange={(e) => setPaidNow(e.target.value)}
+                    />
+                  </label>
+                )}
+                {!isSale && Number(paidNow) > 0 && (
                   <MoneyAccountPicker
                     className={field}
                     label={t('money.paidInto')}
-                    value={cashAccountId}
-                    onChange={setCashAccountId}
+                    value={paidAccountId}
+                    onChange={setPaidAccountId}
                   />
+                )}
+                {!isSale && (
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">
+                      {t('invoice.shippingCost')}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className={`${field} tnum`}
+                      value={shippingCost}
+                      onChange={(e) => setShippingCost(e.target.value)}
+                    />
+                  </label>
+                )}
+                {!isSale && Number(shippingCost) > 0 && (
+                  <MoneyAccountPicker
+                    className={field}
+                    label={t('money.paidInto')}
+                    value={shippingAccountId}
+                    onChange={setShippingAccountId}
+                  />
+                )}
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
+                  <input
+                    className={field}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              {isSale && rows.some((r) => r.belowFloor) && canOverride && (
+                <label className="mt-3 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={overrideFloor}
+                    onChange={(e) => setOverrideFloor(e.target.checked)}
+                  />
+                  {t('invoice.overrideFloor')}
+                </label>
+              )}
+
+              {overCredit && (
+                <p className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning">
+                  {t('invoice.overCredit')}
+                </p>
+              )}
+              {hasBelowCost && (
+                <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
+                  {t('invoice.belowCost')}
+                </p>
+              )}
+              {serverError && (
+                <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
+                  {errorText(t, serverError)}
+                </p>
+              )}
+              {showMissing && !canSave && missing.length > 0 && (
+                <div
+                  role="alert"
+                  className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning"
+                >
+                  <p className="font-semibold">{t('invoice.notReady')}</p>
+                  <ul className="mt-1 list-inside list-disc space-y-0.5">
+                    {missing.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              {isSale ? null : (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={paidNow}
-                    onChange={(e) => setPaidNow(e.target.value)}
-                  />
-                </label>
-              )}
-              {!isSale && Number(paidNow) > 0 && (
-                <MoneyAccountPicker
-                  className={field}
-                  label={t('money.paidInto')}
-                  value={paidAccountId}
-                  onChange={setPaidAccountId}
-                />
-              )}
-              {!isSale && (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">
-                    {t('invoice.shippingCost')}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={shippingCost}
-                    onChange={(e) => setShippingCost(e.target.value)}
-                  />
-                </label>
-              )}
-              {!isSale && Number(shippingCost) > 0 && (
-                <MoneyAccountPicker
-                  className={field}
-                  label={t('money.paidInto')}
-                  value={shippingAccountId}
-                  onChange={setShippingAccountId}
-                />
-              )}
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
-                <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />
-              </label>
-            </div>
 
-            {isSale && rows.some((r) => r.belowFloor) && canOverride && (
-              <label className="mt-3 flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={overrideFloor}
-                  onChange={(e) => setOverrideFloor(e.target.checked)}
-                />
-                {t('invoice.overrideFloor')}
-              </label>
-            )}
-
-            {overCredit && (
-              <p className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning">
-                {t('invoice.overCredit')}
-              </p>
-            )}
-            {hasBelowCost && (
-              <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-                {t('invoice.belowCost')}
-              </p>
-            )}
-            {serverError && (
-              <p className="mt-3 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
-                {errorText(t, serverError)}
-              </p>
-            )}
-            {showMissing && !canSave && missing.length > 0 && (
-              <div
-                role="alert"
-                className="mt-3 rounded-[var(--radius-app)] bg-warning-soft p-2 text-xs text-warning"
-              >
-                <p className="font-semibold">{t('invoice.notReady')}</p>
-                <ul className="mt-1 list-inside list-disc space-y-0.5">
-                  {missing.map((m) => (
-                    <li key={m}>{m}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="mt-4 grid gap-2">
-              <Button
-                className="w-full"
-                icon="check"
-                loading={pending}
-                disabled={pending}
-                onClick={() => void save()}
-              >
-                {pending
-                  ? t('invoice.saving')
-                  : isQuote
-                    ? t('quote.save')
-                    : editId
-                      ? t('invoice.saveChanges')
-                      : t('invoice.save')}
-              </Button>
-              {isSale && !isQuote && !asOrder && (
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  icon="print"
-                  disabled={pending}
-                  onClick={() => void save(true)}
-                >
-                  {t('invoice.saveAndPrint')}
-                </Button>
+              {!readOnly && (
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    className="w-full"
+                    icon="check"
+                    loading={pending}
+                    disabled={pending}
+                    onClick={() => void save()}
+                  >
+                    {pending
+                      ? t('invoice.saving')
+                      : isQuote
+                        ? t('quote.save')
+                        : editId
+                          ? t('invoice.saveChanges')
+                          : t('invoice.save')}
+                  </Button>
+                  {isSale && !isQuote && !asOrder && (
+                    <Button
+                      className="w-full"
+                      variant="secondary"
+                      icon="print"
+                      disabled={pending}
+                      onClick={() => void save(true)}
+                    >
+                      {t('invoice.saveAndPrint')}
+                    </Button>
+                  )}
+                </div>
               )}
-            </div>
-          </Card>
+            </Card>
+          </div>
         </div>
-      </div>
+      </fieldset>
+      {readOnly && editId && (
+        <Card>
+          <DocumentActivity id={editId} />
+        </Card>
+      )}
     </div>
   );
 }

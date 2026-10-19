@@ -1971,16 +1971,19 @@ export interface AuditFilter {
   action?: string;
   from?: string;
   to?: string;
+  /** One record's own history (an invoice's activity log). */
+  resourceId?: string;
   page: number;
 }
 
-export function useAuditLog(f: AuditFilter) {
+export function useAuditLog(f: AuditFilter, enabled = true) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') q.set(k, String(v));
   return useQuery({
     queryKey: ['audit', f],
     queryFn: () => api.get<Paginated<AuditEntry>>(`/audit?${q.toString()}`),
     placeholderData: (prev) => prev,
+    enabled,
   });
 }
 

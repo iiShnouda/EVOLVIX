@@ -1,5 +1,6 @@
 import { CompanyMark } from './CompanyBadge';
 import { ItemLink } from './ItemLink';
+import { DocumentActivity } from './DocumentActivity';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   formatDate,
@@ -178,6 +179,17 @@ export function DocumentPreview({
             <span className="truncate text-sm font-semibold tnum">{doc.number}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {/* The invoice on its own screen, every line, read-only until edited (owner, 2026-10-19). */}
+            {doc.type === 'SALES_INVOICE' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="eye"
+                aria-label={t('invoice.open')}
+                title={t('invoice.open')}
+                onClick={() => navigate(`/sales/invoices/${doc.id}`)}
+              />
+            )}
             <PrintOptions options={options} onChange={setOptions} />
             {doc.type === 'PURCHASE_INVOICE' && can('labels:print') && (
               <Button
@@ -213,6 +225,9 @@ export function DocumentPreview({
       </div>
       <div className="flex-1 overflow-y-auto">
         <InvoicePaper ref={paper} doc={doc} options={options} />
+        <div className="px-4 pb-4 sm:px-5">
+          <DocumentActivity id={doc.id} />
+        </div>
       </div>
       {setup && (
         <PrintSetupSheet
