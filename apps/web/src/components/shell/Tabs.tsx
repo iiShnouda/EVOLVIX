@@ -214,7 +214,9 @@ export function TabsView() {
       <div
         role="tablist"
         aria-label={t('tabs.title')}
-        className="mb-4 flex items-center gap-1 overflow-x-auto border-b border-line pb-1"
+        // Stays in view while the page scrolls (owner, 2026-10-19: the open pages go down with me),
+        // under the phone's fixed top bar, or at the top of the computer's scroll area.
+        className="sticky top-[var(--top-bar,0px)] z-10 mb-4 flex items-center gap-1 overflow-x-auto border-b border-line bg-canvas py-1"
       >
         {tabs.map((tab) => (
           <TabButton

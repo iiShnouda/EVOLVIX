@@ -124,7 +124,10 @@ export function TransfersPage() {
         </Card>
 
         {!isPhone && (
-          <Card padded={false} className="sticky top-20 h-fit overflow-hidden">
+          <Card
+            padded={false}
+            className="sticky top-[max(5rem,calc(var(--top-bar,0px)+3.5rem))] h-fit overflow-hidden"
+          >
             <TransferDetail id={selectedId} currency={currency} />
           </Card>
         )}

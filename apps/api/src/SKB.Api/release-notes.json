@@ -135,6 +135,10 @@
           "en": "Reading an invoice photo no longer fails with \"the operation failed\" when the model answers in a different shape: what can be read is added, and if the model itself refuses (e.g. not enough memory) it says so."
         },
         {
+          "ar": "شريط الصفحات المفتوحة بقى ثابت فوق وانت بتنزل في الصفحة، على الكمبيوتر والموبايل.",
+          "en": "The open pages' strip stays at the top while you scroll, on the computer and the phone."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

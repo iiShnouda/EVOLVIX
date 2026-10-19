@@ -135,7 +135,11 @@ function PhoneShell() {
   const rest = items.filter((i) => !primary.includes(i));
 
   return (
-    <div className="flex min-h-screen flex-col bg-canvas" style={backdrop}>
+    <div
+      className="flex min-h-screen flex-col bg-canvas"
+      // The open pages' strip sticks right under this bar (see Tabs).
+      style={{ ...backdrop, ['--top-bar' as string]: `${headerHeight}px` }}
+    >
       {/* Fixed, solid and under the status bar (owner, 2026-10-19: a blur at the very top on the
           phone): Safari colours the status bar from a fixed bar at the top instead of blurring
           the page scrolling under it. The spacer keeps the page below it. */}
@@ -319,7 +323,11 @@ function MainArea(): ReactNode {
   // scrolls inside here, not the window (owner, 2026-10-14: one scroll on the inside, none outside);
   // the builder pages' sticky side columns stick under the top bar against this scroll box.
   return (
-    <main data-scroll-root className="min-w-0 flex-1 overflow-y-auto overflow-x-clip p-5 lg:p-6">
+    // --top-bar: the open pages' strip sticks at this box's very top edge, over its padding.
+    <main
+      data-scroll-root
+      className="min-w-0 flex-1 overflow-y-auto overflow-x-clip p-5 [--top-bar:-1.25rem] lg:p-6 lg:[--top-bar:-1.5rem]"
+    >
       <LicenseBanner />
       <TabsView />
     </main>
