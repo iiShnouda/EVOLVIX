@@ -274,6 +274,8 @@ public class Party
     /// "" = no name.
     /// </summary>
     public List<string> OtherPhoneLabels { get; set; } = new();
+    /// <summary>What the main phone is (e.g. "WhatsApp"), optional (owner, 2026-10-19).</summary>
+    public string? PhoneLabel { get; set; }
     /// <summary>A second address and what it is called (e.g. "the shop"), both optional.</summary>
     public string? ExtraAddress { get; set; }
     public string? ExtraAddressLabel { get; set; }

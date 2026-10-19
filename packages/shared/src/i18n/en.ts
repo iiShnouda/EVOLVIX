@@ -2893,4 +2893,5 @@ export const en = {
   'settings.currentSeason': 'Current season',
   'settings.seasonAuto': 'Automatic ({s})',
   'error.one_type': 'Choose one: customer, supplier or shipping company.',
+  'parties.mainPhoneLabel': 'Number name',
 } as const;

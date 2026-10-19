@@ -1756,6 +1756,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
+                    b.Property<string>("PhoneLabel")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("PurchasePriceLevelId")
                         .HasColumnType("uuid");
 

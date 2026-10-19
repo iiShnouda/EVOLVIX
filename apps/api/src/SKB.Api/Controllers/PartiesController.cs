@@ -105,7 +105,7 @@ public sealed class PartiesController : ControllerBase
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
-            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId), isNew: true);
+            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId, req.PhoneLabel), isNew: true);
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
@@ -128,7 +128,7 @@ public sealed class PartiesController : ControllerBase
         var error = await ApplyAsync(party, new Fields(req.Name, req.Types, req.Phone, req.Email, req.TaxNumber,
             req.Address, req.OtherPhones, req.ContactName, req.ShippingAddress, req.Notes,
             req.DefaultCarrierId, req.IsCashCustomer, req.OtherPhoneLabels, req.ExtraAddress,
-            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId), isNew: false);
+            req.ExtraAddressLabel, req.TempCarrierName, req.NationalId, req.PhoneLabel), isNew: false);
         if (error is not null) return error;
         // The walk-in cash customer stays a cash customer, and stays open.
         if (party.IsSystem && (req.IsActive == false || !party.IsCashCustomer
@@ -162,7 +162,7 @@ public sealed class PartiesController : ControllerBase
         string[]? OtherPhones, string? ContactName, string? ShippingAddress, string? Notes,
         string? DefaultCarrierId = null, bool? IsCashCustomer = null, string[]? OtherPhoneLabels = null,
         string? ExtraAddress = null, string? ExtraAddressLabel = null, string? TempCarrierName = null,
-        string? NationalId = null);
+        string? NationalId = null, string? PhoneLabel = null);
 
     private const int MaxOtherPhones = 5;
 
@@ -206,6 +206,7 @@ public sealed class PartiesController : ControllerBase
                 return BadRequest(new { message = IdRules.Message(bad), code = bad });
             party.Phone = Text(f.Phone, 40);
         }
+        if (f.PhoneLabel is not null) party.PhoneLabel = Text(f.PhoneLabel, 60);
         if (f.OtherPhones is not null)
         {
             // Each extra phone may name whose it is (by position); a number is kept once.

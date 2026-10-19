@@ -358,6 +358,8 @@ export function PartySheet({
     party?.types ?? startTypes ?? (addable.length ? [addable[0]!] : []),
   );
   const [phone, setPhone] = useState(party?.phone ?? '');
+  // What the main number is, like the others have (owner, 2026-10-19).
+  const [phoneLabel, setPhoneLabel] = useState(party?.phoneLabel ?? '');
   const [nationalId, setNationalId] = useState(party?.nationalId ?? '');
   const country = useCompanyCountry();
   const [email, setEmail] = useState(party?.email ?? '');
@@ -371,7 +373,7 @@ export function PartySheet({
     })),
   );
   const [extraAddress, setExtraAddress] = useState(party?.extraAddress ?? '');
-  const [extraAddressLabel, setExtraAddressLabel] = useState(party?.extraAddressLabel ?? '');
+  const [extraAddressLabel] = useState(party?.extraAddressLabel ?? '');
   const [contactName, setContactName] = useState(party?.contactName ?? '');
   const [shippingAddress, setShippingAddress] = useState(party?.shippingAddress ?? '');
   const [notes, setNotes] = useState(party?.notes ?? '');
@@ -393,6 +395,7 @@ export function PartySheet({
     name: name.trim(),
     types,
     phone: phone.trim(),
+    phoneLabel: phone.trim() ? phoneLabel.trim() : '',
     email: carrierOnly ? '' : email.trim(),
     taxNumber: carrierOnly ? '' : taxNumber.trim(),
     address: address.trim(),
@@ -516,7 +519,8 @@ export function PartySheet({
           />
         </label>
 
-        {(factory || contactName) && (
+        {/* A factory's owner; a customer has no "person in charge" (owner, 2026-10-19). */}
+        {(factory || (contactName && !customer)) && (
           <label className="block">
             <span className="mb-1 block text-xs text-muted">
               {t(factory ? 'parties.ownerName' : 'parties.contactName')}
@@ -531,7 +535,28 @@ export function PartySheet({
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <PhoneInput value={phone} onChange={setPhone} label={t('parties.phone')} />
+          {/* The main number and what it is, then the other numbers right under it (owner, 2026-10-19). */}
+          <div className="flex items-start gap-2 sm:col-span-2">
+            <div className="min-w-0 flex-1">
+              <PhoneInput value={phone} onChange={setPhone} label={t('parties.phone')} />
+            </div>
+            <label className="block w-36 shrink-0 sm:w-48">
+              <span className="mb-1 block text-xs text-muted">{t('parties.mainPhoneLabel')}</span>
+              <input
+                className={input}
+                list="party-phone-kinds"
+                value={phoneLabel}
+                maxLength={60}
+                onChange={(e) => setPhoneLabel(e.target.value)}
+              />
+            </label>
+          </div>
+          <PhoneList
+            value={otherPhones}
+            onChange={setOtherPhones}
+            max={MAX_OTHER_PHONES}
+            listId="party-phone-kinds"
+          />
           {!carrierOnly && (
             <label className="block">
               <span className="mb-1 block text-xs text-muted">{t('parties.email')}</span>
@@ -546,12 +571,6 @@ export function PartySheet({
               />
             </label>
           )}
-          <PhoneList
-            value={otherPhones}
-            onChange={setOtherPhones}
-            max={MAX_OTHER_PHONES}
-            listId="party-phone-kinds"
-          />
           {(customer || types.includes('CARRIER')) && (
             <NationalIdInput
               value={nationalId}
@@ -591,16 +610,7 @@ export function PartySheet({
               </span>
             )}
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted">{t('parties.extraAddressLabel')}</span>
-            <input
-              className={input}
-              value={extraAddressLabel}
-              maxLength={60}
-              onChange={(e) => setExtraAddressLabel(e.target.value)}
-            />
-          </label>
-          <label className="block">
+          <label className="block sm:col-span-2">
             <span className="mb-1 block text-xs text-muted">{t('parties.extraAddress')}</span>
             <input
               className={input}

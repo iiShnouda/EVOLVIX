@@ -519,6 +519,8 @@ export const partySchema = z.object({
   isCashCustomer: z.boolean().optional(),
   /** Whose each extra phone is, by position ("" = no name). */
   otherPhoneLabels: z.array(z.string().trim().max(60)).max(5).optional(),
+  /** What the main phone is; "" clears it. */
+  phoneLabel: z.string().trim().max(60).optional(),
   /** Checked against the company's country (owner, 2026-10-02). */
   nationalId: z.string().trim().max(30).optional(),
   extraAddress: z.string().max(300).optional(),

@@ -273,6 +273,8 @@ export interface Party {
   isCashCustomer?: boolean;
   /** Whose each of `otherPhones` is, by position ("" = no name). */
   otherPhoneLabels?: string[];
+  /** What the main phone is (e.g. WhatsApp), optional. */
+  phoneLabel?: string | null;
   /** The national ID, checked against the company's country (owner, 2026-10-02). */
   nationalId?: string | null;
   /** A second address and what it is called, both optional. */

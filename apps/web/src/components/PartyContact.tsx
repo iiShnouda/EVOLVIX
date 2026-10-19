@@ -73,7 +73,7 @@ export function PartyDirectory({ id, onClose }: { id: string; onClose: () => voi
     if (p.contactName)
       rows.push([t(factory ? 'parties.ownerName' : 'parties.contactName'), p.contactName]);
     const phones = [
-      ...(p.phone ? [{ phone: p.phone, label: '' }] : []),
+      ...(p.phone ? [{ phone: p.phone, label: p.phoneLabel ?? '' }] : []),
       ...(p.otherPhones ?? []).map((phone, i) => ({ phone, label: p.otherPhoneLabels?.[i] ?? '' })),
     ];
     if (phones.length)

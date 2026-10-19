@@ -2877,4 +2877,5 @@ export const ar: TranslationDictionary = {
   'settings.currentSeason': 'الموسم الحالي',
   'settings.seasonAuto': 'تلقائي ({s})',
   'error.one_type': 'اختر نوعًا واحدًا: عميل أو مورد أو شركة شحن.',
+  'parties.mainPhoneLabel': 'اسم الرقم',
 };

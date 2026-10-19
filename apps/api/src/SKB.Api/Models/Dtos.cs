@@ -496,7 +496,7 @@ public record PartyDto(
     string? DefaultCarrierId = null, bool IsCashCustomer = false,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
     string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false, bool IsSystem = false,
-    string? NationalId = null);
+    string? NationalId = null, string? PhoneLabel = null);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -509,7 +509,7 @@ public record CreatePartyRequest(
     string? Address = null, string[]? OtherPhones = null, string? ContactName = null,
     string? ShippingAddress = null, string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null, string? NationalId = null);
+    string? TempCarrierName = null, string? NationalId = null, string? PhoneLabel = null);
 
 /// <summary>Any field left null is unchanged; "" (or an empty phone list) clears it.</summary>
 public record UpdatePartyRequest(
@@ -518,7 +518,7 @@ public record UpdatePartyRequest(
     string[]? OtherPhones = null, string? ContactName = null, string? ShippingAddress = null,
     string? Notes = null, string? DefaultCarrierId = null, bool? IsCashCustomer = null,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
-    string? TempCarrierName = null, string? NationalId = null);
+    string? TempCarrierName = null, string? NationalId = null, string? PhoneLabel = null);
 
 /// <summary>A party's own price levels and lists. Null leaves one unchanged; "" clears it (back to the default / none).</summary>
 public record SetPartyPriceLevelsRequest(

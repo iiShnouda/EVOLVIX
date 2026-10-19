@@ -179,6 +179,10 @@
           "en": "A new account is one kind only: a customer, a supplier or a shipping company, picked as one choice."
         },
         {
+          "ar": "فورم الحساب: رقم التليفون بقى ليه اسم، و\"إضافة رقم\" بقت تحته على طول، واتشالت خانة \"اسمه\" بتاعة العنوان الإضافي وخانة \"اسم المسؤول\" من العميل.",
+          "en": "Account form: the phone number has a name of its own, \"Add number\" sits right under it, and the extra address's \"name\" box and the customer's \"person in charge\" box are gone."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },
