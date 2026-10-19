@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LicenseBanner } from '../LicenseBanner';
 import { NavLink, useLocation, type NavLinkProps } from 'react-router-dom';
 import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
@@ -120,12 +120,30 @@ function PhoneShell() {
   const items = useVisibleNav();
   const [moreOpen, setMoreOpen] = useState(false);
 
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(56);
+  useLayoutEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const measure = () => setHeaderHeight(el.offsetHeight);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   const primary = items.filter((i) => i.primaryOnPhone).slice(0, 4);
   const rest = items.filter((i) => !primary.includes(i));
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas" style={backdrop}>
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top">
+      {/* Fixed, solid and under the status bar (owner, 2026-10-19: a blur at the very top on the
+          phone): Safari colours the status bar from a fixed bar at the top instead of blurring
+          the page scrolling under it. The spacer keeps the page below it. */}
+      <div aria-hidden style={{ height: headerHeight }} />
+      <header
+        ref={headerRef}
+        className="fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top"
+      >
         {/* The Evolvix mark, then the company's own logo and name (owner, 2026-10-15: the
             company's logo had no place on the phone). */}
         <span className="flex min-w-0 items-center gap-2">

@@ -127,6 +127,10 @@
       ],
       "fixes": [
         {
+          "ar": "الشريط اللي فوق في الموبايل بقى ثابت ولونه سادة، فمبقاش فيه blur أعلى الشاشة وإنت بتنزل في الصفحة.",
+          "en": "On the phone the top bar is fixed and solid, so there is no blur at the very top while scrolling."
+        },
+        {
           "ar": "خانة العميل/المورد بقت تتعدل حرف حرف من غير ما الاسم كله يتمسح، والتابات بقت تستجيب من أول ضغطة، والقسم بيتغير جوه فلتر البحث عن صنف.",
           "en": "The customer/supplier box can be edited letter by letter without wiping the name; tabs answer the first press; the department can be changed inside the item search."
         },
