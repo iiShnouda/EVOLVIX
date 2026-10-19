@@ -148,7 +148,7 @@ import type {
   PayrollRun,
 } from '@skb/shared';
 import { useEffect } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { setPrintPaper } from './print';
 
 /**
@@ -2426,8 +2426,38 @@ export async function transcribe(audio: Blob, language: 'ar' | 'en'): Promise<st
 }
 
 /** Send a photo to be read by the assistant (purchase invoice or cheques). */
-export async function scanPhoto<T>(kind: 'purchase' | 'cheques', file: File): Promise<T> {
-  return api.upload<T>(`/assistant/scan/${kind}`, file, false, 'POST');
+/**
+ * Read a photo with the server's assistant. The server reads on in the background (owner,
+ * 2026-10-19: a slow server took longer than the connection would wait), so this starts the read
+ * and asks for it every few seconds, telling `onWait` how long it has been.
+ */
+export async function scanPhoto<T>(
+  kind: 'purchase' | 'cheques',
+  file: File,
+  onWait?: (seconds: number) => void,
+): Promise<T> {
+  const { jobId } = await api.upload<{ jobId: string }>(
+    `/assistant/scan/${kind}`,
+    file,
+    false,
+    'POST',
+  );
+  const started = Date.now();
+  let missed = 0;
+  // At most 35 minutes: the server itself gives up after 30.
+  while (Date.now() - started < 35 * 60_000) {
+    await new Promise((r) => setTimeout(r, 3000));
+    onWait?.(Math.round((Date.now() - started) / 1000));
+    try {
+      const done = await api.get<T | undefined>(`/assistant/scan/jobs/${jobId}`);
+      missed = 0;
+      if (done !== undefined) return done;
+    } catch (e) {
+      // A dropped connection (the phone asleep, the network changing) is tried again a while.
+      if (e instanceof ApiError || ++missed > 20) throw e;
+    }
+  }
+  throw new ApiError(504, 'Reading the photo took too long.', 'assistant_timeout');
 }
 
 // ---------------------------------------------------------------- profit and loss

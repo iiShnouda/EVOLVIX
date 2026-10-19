@@ -2868,4 +2868,5 @@ export const ar: TranslationDictionary = {
   'error.scan_failed': 'تعذّرت قراءة الصورة. جرّب صورة أوضح.',
   'assistant.fillFailed': 'قُرئت الصورة، ولكن تعذّرت إضافة أصنافها. أعد المحاولة.',
   'additems.modelWord': 'موديل',
+  'error.scan_busy': 'ما زالت صورة أخرى قيد القراءة. انتظر حتى تنتهي.',
 };

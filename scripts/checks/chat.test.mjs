@@ -172,7 +172,17 @@ if (st.speechReady) {
   eq('an empty recording', (await (await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${o.token}` }, body: fe })).json()).code, 'empty_audio');
 } else console.log('  (speech service not configured: start the API with Assistant__SpeechEndpoint=http://127.0.0.1:11434)');
 eq('karim may not transcribe', (await fetch(`${BASE}/assistant/transcribe`, { method: 'POST', headers: { authorization: `Bearer ${karim.token}` } })).status, 403);
-// scans
+// scans: a read starts and is then asked for until it is done (it reads on in the background)
+async function readScan(res) {
+  if (res.status !== 202) return { status: res.status, body: await res.json() };
+  const { jobId } = await res.json();
+  for (let i = 0; i < 100; i++) {
+    const r = await fetch(`${BASE}/assistant/scan/jobs/${jobId}`, { headers: { authorization: `Bearer ${o.token}` } });
+    if (r.status !== 202) return { status: r.status, body: await r.json(), jobId };
+    await new Promise((ok) => setTimeout(ok, 200));
+  }
+  return { status: 0, body: null };
+}
 const fd = new FormData();
 fd.append('file', new Blob([TINY], { type: 'image/png' }), 'p.png');
 const r1 = await fetch(`${BASE}/assistant/scan/purchase`, {
@@ -180,10 +190,11 @@ const r1 = await fetch(`${BASE}/assistant/scan/purchase`, {
   headers: { authorization: `Bearer ${o.token}` },
   body: fd,
 });
-const p1 = await r1.json();
+const s1 = await readScan(r1);
+const p1 = s1.body;
 check(
   'purchase scan',
-  r1.status === 200 &&
+  s1.status === 200 &&
     p1.lines.length === 2 &&
     p1.lines[0].unitPrice === 45 &&
     p1.lines[0].quantity === 12 &&
@@ -198,10 +209,12 @@ const r2 = await fetch(`${BASE}/assistant/scan/cheques`, {
   headers: { authorization: `Bearer ${o.token}` },
   body: fd2,
 });
-const c2 = await r2.json();
+const s2 = await readScan(r2);
+const c2 = s2.body;
+eq('only its owner may ask for a read', (await fetch(`${BASE}/assistant/scan/jobs/${s2.jobId}`, { headers: { authorization: `Bearer ${karim.token}` } })).status, 403);
 check(
   'cheque scan',
-  r2.status === 200 && c2.length === 2 && c2[0].amount === 5000 && c2[0].dueDate === '2026-11-01',
+  s2.status === 200 && c2.length === 2 && c2[0].amount === 5000 && c2[0].dueDate === '2026-11-01',
   c2,
 );
 const fd3 = new FormData();

@@ -37,7 +37,7 @@ http
       const last = b.messages[b.messages.length - 1];
       if (b.format === 'json') {
         const p = b.messages[0].content;
-        if (p.includes('supplier invoice'))
+        if (p.includes("supplier's invoice"))
           return send({
             message: {
               role: 'assistant',

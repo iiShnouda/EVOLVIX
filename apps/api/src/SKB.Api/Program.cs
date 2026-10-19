@@ -48,6 +48,7 @@ builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<WarehouseService>();
 // The offline assistant: a model server (Ollama) on the company's own machine (Assistant:* settings).
 builder.Services.AddHttpClient<AssistantService>();
+builder.Services.AddSingleton<PhotoJobs>();
 builder.Services.AddScoped<AssistantTools>();
 builder.Services.AddScoped<SystemMonitor>();
 builder.Services.AddSingleton<UpdateService>();

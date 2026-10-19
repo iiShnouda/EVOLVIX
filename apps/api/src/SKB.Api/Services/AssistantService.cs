@@ -32,7 +32,8 @@ public sealed class AssistantService
         _http = http;
         _config = config;
         _log = log;
-        _http.Timeout = TimeSpan.FromMinutes(10); // a photo on a small server can take minutes
+        // A photo on a small server can take many minutes; it is read on in the background (PhotoJobs).
+        _http.Timeout = TimeSpan.FromMinutes(30);
     }
 
     public bool Enabled => _config.GetValue("Assistant:Enabled", true);

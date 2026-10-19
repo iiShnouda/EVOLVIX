@@ -31,11 +31,13 @@ public sealed class AssistantController : ControllerBase
     private readonly AssistantService _ai;
     private readonly AssistantTools _tools;
     private readonly ILogger<AssistantController> _log;
+    private readonly PhotoJobs _jobs;
 
     public AssistantController(AppDbContext db, AuditService audit, AssistantService ai, AssistantTools tools,
-        ILogger<AssistantController> log)
+        ILogger<AssistantController> log, PhotoJobs jobs)
     {
         _log = log;
+        _jobs = jobs;
         _db = db;
         _audit = audit;
         _ai = ai;
@@ -256,49 +258,70 @@ public sealed class AssistantController : ControllerBase
     private NotFoundObjectResult NotFoundConversation() =>
         NotFound(new { message = "Conversation not found.", code = "not_found" });
 
-    /// <summary>Read a supplier's invoice from a photo into a draft for the purchase screen.</summary>
+    /// <summary>
+    /// Read a supplier's invoice from a photo into a draft for the purchase screen. The read goes on
+    /// after this answers (<see cref="PhotoJobs"/>): the reply is the read's id, to ask for with
+    /// <see cref="ScanJob"/>.
+    /// </summary>
     [HttpPost("scan/purchase")]
     [Authorize(Policy = Permissions.AiScan)]
     [RequestSizeLimit(MaxImage + 64 * 1024)]
-    public async Task<ActionResult<AssistantService.PurchaseScan>> ScanPurchase(IFormFile? file, CancellationToken ct)
+    public async Task<IActionResult> ScanPurchase(IFormFile? file, CancellationToken ct)
     {
         if (!Can(Permissions.PurchasesCreate)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
         if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
-        try
-        {
-            var scan = await _ai.ReadPurchaseAsync(image!, ct);
-            await AuditAsync("scan", "purchase_photo", Me);
-            return Ok(scan);
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
-        {
-            return PhotoFailed(e, ct);
-        }
+        return StartRead("purchase_photo", async (ai, c) => await ai.ReadPurchaseAsync(image!, c));
     }
 
-    /// <summary>Read cheques from a photo into rows for the notes screen.</summary>
+    /// <summary>Read cheques from a photo into rows for the notes screen (read on like an invoice).</summary>
     [HttpPost("scan/cheques")]
     [Authorize(Policy = Permissions.AiScan)]
     [RequestSizeLimit(MaxImage + 64 * 1024)]
-    public async Task<ActionResult<List<AssistantService.ChequeScan>>> ScanCheques(IFormFile? file, CancellationToken ct)
+    public async Task<IActionResult> ScanCheques(IFormFile? file, CancellationToken ct)
     {
         if (!Can(Permissions.NotesReceive) && !Can(Permissions.NotesIssue))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
         if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
-        try
+        return StartRead("cheque_photo", async (ai, c) => await ai.ReadChequesAsync(image!, c));
+    }
+
+    /// <summary>
+    /// A photo read started earlier, only by the person who started it: 202 while it is still being
+    /// read, then what it read, or why it couldn't be.
+    /// </summary>
+    [HttpGet("scan/jobs/{id:guid}")]
+    [Authorize(Policy = Permissions.AiScan)]
+    public IActionResult ScanJob(Guid id)
+    {
+        var job = _jobs.Find(id, CurrentUser.Id(User));
+        if (job?.Work is null) return NotFound(new { message = "Not found.", code = "not_found" });
+        if (!job.Work.IsCompleted)
+            return Accepted(new { seconds = (int)(DateTime.UtcNow - job.Started).TotalSeconds });
+        if (job.Work.IsCompletedSuccessfully) return Ok(job.Work.Result);
+        var e = job.Work.Exception?.InnerException ?? (Exception?)job.Work.Exception ?? new TaskCanceledException();
+        return PhotoFailed(e, CancellationToken.None);
+    }
+
+    private IActionResult StartRead(string resource, Func<AssistantService, CancellationToken, Task<object>> read)
+    {
+        var me = CurrentUser.Id(User);
+        if (_jobs.Busy(me)) return Conflict(new { message = "A photo is still being read.", code = "scan_busy" });
+        // What the audit needs, taken now: the request is gone when the read ends.
+        var name = CurrentUser.Name(User);
+        var branch = CurrentUser.BranchId(User);
+        var ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString();
+        var agent = Request.Headers.UserAgent.ToString();
+        var id = _jobs.Start(me, async (services, ct) =>
         {
-            var scan = await _ai.ReadChequesAsync(image!, ct);
-            await AuditAsync("scan", "cheque_photo", Me);
-            return Ok(scan);
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
-        {
-            return PhotoFailed(e, ct);
-        }
+            var result = await read(services.GetRequiredService<AssistantService>(), ct);
+            await services.GetRequiredService<AuditService>().RecordAsync(me, name, "scan", resource, branch, ip, agent, me);
+            return result;
+        });
+        return Accepted(new { jobId = id });
     }
 
     /// <summary>The uploaded photo (a JPEG, PNG or WebP image up to 10 MB), read into memory only.</summary>

@@ -13,9 +13,9 @@ export type IdSide = 'front' | 'back';
  * A photo made smaller before it is sent (at most 1600 px, JPEG): ID cards stay readable and small.
  * Nothing is kept on the device.
  */
-export async function shrinkPhoto(file: Blob): Promise<Blob> {
+export async function shrinkPhoto(file: Blob, longest = 1600): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, longest / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);

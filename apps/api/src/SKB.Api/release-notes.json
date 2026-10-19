@@ -155,6 +155,10 @@
           "en": "A long invoice's answer is no longer cut off half way: the model has more room, a cut-off answer still gives the lines that came through whole, and each read is noted in the server log."
         },
         {
+          "ar": "قراءة الفاتورة مابقتش بتقف بـ\"استغرقت وقتًا طويلًا\": السيرفر بيكمّل القراية في الخلفية لحد 30 دقيقة، والزرار بيعدّ الوقت لحد ما تخلص، والصورة اللي بتروح للموديل أصغر فبتتقري أسرع.",
+          "en": "Reading an invoice photo no longer stops with \"took too long\": the server reads on in the background for up to 30 minutes, the button counts the time until it is done, and the photo sent to the model is smaller so it reads faster."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

@@ -2884,4 +2884,5 @@ export const en = {
   'error.scan_failed': "The photo couldn't be read. Try a clearer photo.",
   'assistant.fillFailed': "The photo was read, but its items couldn't be added. Try again.",
   'additems.modelWord': 'Model',
+  'error.scan_busy': 'A photo is still being read. Wait for it to finish.',
 } as const;

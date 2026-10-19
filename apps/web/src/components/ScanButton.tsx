@@ -28,6 +28,8 @@ export function ScanButton<T>({
   const can = useCan();
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  /** How long the server has been reading, shown on the button (a slow server takes minutes). */
+  const [waited, setWaited] = useState(0);
   const [error, setError] = useState<string | null>(null);
   if (!can('ai:scan')) return null;
   const read = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -35,15 +37,22 @@ export function ScanButton<T>({
     e.target.value = '';
     if (!picked) return;
     setBusy(true);
+    setWaited(0);
     setError(null);
     try {
-      // Made smaller first (at most 1600 px): a full phone photo takes the server's model minutes.
+      // The photo kept with the invoice (at most 1600 px), and a smaller one for the model (1280 px):
+      // the model's time grows with the photo's size, and the writing still reads at that size.
       const small = await shrinkPhoto(picked).catch(() => picked);
       const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
       onPhoto?.(photo);
+      const forModel = await shrinkPhoto(picked, 1280).catch(() => small);
       let result: T;
       try {
-        result = await scanPhoto<T>(kind, photo);
+        result = await scanPhoto<T>(
+          kind,
+          new File([forModel], 'scan.jpg', { type: forModel.type || 'image/jpeg' }),
+          setWaited,
+        );
       } catch (err) {
         // A gateway in front of the server that gave up waiting answers without our code.
         const gaveUp = err instanceof ApiError && !err.code && [502, 504, 524].includes(err.status);
@@ -74,7 +83,7 @@ export function ScanButton<T>({
         onClick={() => file.current?.click()}
       >
         {busy
-          ? t('assistant.reading')
+          ? `${t('assistant.reading')} ${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`
           : t(kind === 'purchase' ? 'assistant.scanUpload' : 'assistant.scanCheques')}
       </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}
