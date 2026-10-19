@@ -131,6 +131,10 @@
         {
           "ar": "فاتورة البيع بتفتح في شاشة الفاتورة نفسها بكل أصنافها للعرض بس (زرار العين في معاينة الفاتورة)، ومفيش حاجة تتغير غير بزرار \"تعديل الفاتورة\" لصاحب الصلاحية، وفيها طباعة. وكل فاتورة (بيع، شراء، مرتجع) بيظهر تحتها سجل النشاط بتاعها: مين عملها أو عدّلها أو ألغاها وإمتى.",
           "en": "A sales invoice opens on the invoice screen itself with all its items, view only (the eye button on the invoice preview); nothing changes until \"Edit invoice\", for those allowed, and it prints from there. Every invoice (sales, purchase, return) shows its own activity log: who made, changed or cancelled it, and when."
+        },
+        {
+          "ar": "التحويل بين المخازن: لما تدوس على أي تحويل بيفتح في صفحته، وفيها طباعة وسجل النشاط، وزرار \"تعديل التحويل\" (بصلاحية جديدة: تعديل التحويل بين المخازن) يفتح التحويل بأصنافه تعدّل الكميات أو الأصناف أو المخزن المستلم، وبعد الحفظ يرجعك للتحويل تطبعه.",
+          "en": "Warehouse transfers: tapping a transfer opens it on its own page, with print and its activity log, and \"Edit transfer\" (a new permission) reopens it with its items to change quantities, items or the receiving warehouse; saving brings you back to it to print."
         }
       ],
       "fixes": [

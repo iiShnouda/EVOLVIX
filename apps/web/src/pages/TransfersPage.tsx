@@ -1,7 +1,8 @@
 import { confirm } from '../lib/confirm';
 import { ItemLink } from '../components/ItemLink';
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { DocumentActivity } from '../components/DocumentActivity';
 import {
   formatDateTime,
   formatMoney,
@@ -13,7 +14,6 @@ import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from 
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
-import { useDeviceInfo } from '../lib/device';
 import { useAuth } from '../stores/auth';
 import { useCompanySettings, useFinishTransfer, useTransfer, useTransfers } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
@@ -37,8 +37,6 @@ const STATUS_TONE: Record<TransferStatus, Tone> = {
 export function TransfersPage() {
   const { t } = useT();
   const navigate = useNavigate();
-  const { deviceClass } = useDeviceInfo();
-  const isPhone = deviceClass === 'phone';
   const [params, setParams] = useSearchParams();
   // No goods "in transit" (owner decision 2026-10-01): every permit is listed; the list of permits
   // still on the way shows only while older ones wait to be received.
@@ -49,15 +47,14 @@ export function TransfersPage() {
   const currency = useCompanySettings().data?.currency ?? 'EGP';
 
   const list = useTransfers({ page: 1, status: tab === 'open' ? 'SENT' : undefined });
+  // A transfer opens on its own page (owner, 2026-10-19); old `?doc=` links still land there.
   const linkedId = params.get('doc');
-  const [selectedId, setSelectedId] = useState<string | null>(linkedId);
   useEffect(() => {
-    if (linkedId) setSelectedId(linkedId);
-  }, [linkedId]);
+    if (linkedId) navigate(`/inventory/transfers/${linkedId}`, { replace: true });
+  }, [linkedId, navigate]);
   const rows = list.data?.items ?? [];
 
   function switchTab(next: Tab) {
-    setSelectedId(null);
     setParams(next === 'open' ? { tab: 'open' } : {}, { replace: true });
   }
 
@@ -100,7 +97,7 @@ export function TransfersPage() {
         </div>
       )}
 
-      <div className={isPhone ? '' : 'grid gap-4 lg:grid-cols-[1fr_minmax(340px,420px)]'}>
+      <div>
         <Card padded={false} className="h-fit overflow-hidden">
           {list.isLoading ? (
             <div className="grid place-items-center py-16 text-muted">
@@ -115,29 +112,49 @@ export function TransfersPage() {
                   <TransferRow
                     transfer={tr}
                     currency={currency}
-                    selected={tr.id === selectedId}
-                    onSelect={() => setSelectedId(tr.id)}
+                    onSelect={() => navigate(`/inventory/transfers/${tr.id}`)}
                   />
                 </li>
               ))}
             </ul>
           )}
         </Card>
-
-        {!isPhone && (
-          <Card
-            padded={false}
-            className="sticky top-[max(5rem,calc(var(--top-bar,0px)+3.5rem))] h-fit overflow-hidden"
-          >
-            <TransferDetail id={selectedId} currency={currency} />
-          </Card>
-        )}
       </div>
+    </div>
+  );
+}
 
-      {isPhone && selectedId && (
-        <div className="fixed inset-0 z-40 overflow-auto bg-canvas">
-          <TransferDetail id={selectedId} currency={currency} onClose={() => setSelectedId(null)} />
-        </div>
+/**
+ * One transfer on its own page (owner, 2026-10-19): what moved, from where to where, with print,
+ * "Edit transfer" for whoever may (inventory:transfer_edit), receive or call back, and its activity log.
+ */
+export function TransferPage() {
+  const { t } = useT();
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const currency = useCompanySettings().data?.currency ?? 'EGP';
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title={t('transfer.permit')}
+        action={
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="close"
+            onClick={() => navigate('/inventory/transfers')}
+          >
+            {t('transfer.back')}
+          </Button>
+        }
+      />
+      <Card padded={false} className="overflow-hidden">
+        <TransferDetail id={id ?? null} currency={currency} />
+      </Card>
+      {id && (
+        <Card>
+          <DocumentActivity id={id} />
+        </Card>
       )}
     </div>
   );
@@ -146,12 +163,10 @@ export function TransfersPage() {
 function TransferRow({
   transfer: tr,
   currency,
-  selected,
   onSelect,
 }: {
   transfer: StockTransfer;
   currency: string;
-  selected: boolean;
   onSelect: () => void;
 }) {
   const { t, locale } = useT();
@@ -159,9 +174,7 @@ function TransferRow({
   return (
     <button
       onClick={onSelect}
-      className={`flex w-full items-center gap-3 p-4 text-start transition-colors hover:bg-surface-2 ${
-        selected ? 'bg-brand-soft' : ''
-      }`}
+      className="flex w-full items-center gap-3 p-4 text-start transition-colors hover:bg-surface-2"
     >
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-2">
@@ -194,7 +207,9 @@ function TransferDetail({
   onClose?: () => void;
 }) {
   const { t, locale } = useT();
-  const seeCosts = useCan()('costs:view');
+  const can = useCan();
+  const navigate = useNavigate();
+  const seeCosts = can('costs:view');
   const detail = useTransfer(id);
   const finish = useFinishTransfer();
   const error = finish.error as ApiError | null;
@@ -232,7 +247,17 @@ function TransferDetail({
           <p className="text-lg font-semibold tnum">{tr.number}</p>
           <Badge tone={STATUS_TONE[tr.status]}>{t(`transfer.status.${tr.status}`)}</Badge>
         </div>
-        <div data-noprint className="flex items-center gap-1">
+        <div data-noprint className="flex flex-wrap items-center justify-end gap-1">
+          {tr.status !== 'CANCELLED' && can('inventory:transfer_edit') && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="edit"
+              onClick={() => navigate(`/inventory/transfers/${tr.id}/edit`)}
+            >
+              {t('transfer.edit')}
+            </Button>
+          )}
           <ReportActions
             onPrint={() =>
               report.print(

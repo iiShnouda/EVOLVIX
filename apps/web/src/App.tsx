@@ -41,7 +41,7 @@ import { InventoryPage } from './pages/InventoryPage';
 import { ItemCardPage } from './pages/ItemCardPage';
 import { StocktakePage } from './pages/StocktakePage';
 import { BranchesPage } from './pages/BranchesPage';
-import { TransfersPage } from './pages/TransfersPage';
+import { TransferPage, TransfersPage } from './pages/TransfersPage';
 import { TransferBuilderPage } from './pages/TransferBuilderPage';
 import { CatalogSetupPage } from './pages/CatalogSetupPage';
 import { LabelsPage } from './pages/LabelsPage';
@@ -262,6 +262,16 @@ function ViewSalesInvoiceRoute() {
   return <InvoiceBuilderPage key={`view-${id}`} mode="sale" editId={id} readOnly />;
 }
 
+/** One transfer on its own page; changing it reopens the transfer screen on it (owner, 2026-10-19). */
+function TransferRoute() {
+  const { id } = useParams();
+  return <TransferPage key={id} />;
+}
+function EditTransferRoute() {
+  const { id } = useParams();
+  return <TransferBuilderPage key={`edit-${id}`} editId={id} />;
+}
+
 /** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
 function EditSalesInvoiceRoute() {
   const { id } = useParams();
@@ -292,6 +302,8 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/stocktake" element={<StocktakePage />} />
       <Route path="/inventory/transfers" element={<TransfersPage />} />
       <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
+      <Route path="/inventory/transfers/:id" element={<TransferRoute />} />
+      <Route path="/inventory/transfers/:id/edit" element={<EditTransferRoute />} />
       <Route path="/inventory/setup" element={<CatalogSetupPage />} />
       <Route path="/inventory/labels" element={<LabelsPage />} />
       <Route path="/chat" element={<ChatPage />} />

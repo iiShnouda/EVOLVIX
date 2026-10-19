@@ -39,6 +39,7 @@ const ALL: Permission[] = [
   'inventory:edit',
   'inventory:stocktake',
   'inventory:transfer',
+  'inventory:transfer_edit',
   'staff:view',
   'staff:manage',
   'roles:manage',

@@ -174,6 +174,116 @@ public sealed class TransfersController : ControllerBase
         return Created($"/api/transfers/{transfer.Id}", await LoadDtoAsync(transfer.Id));
     }
 
+    /// <summary>
+    /// Change a transfer already sent (owner, 2026-10-19), with <c>inventory:transfer_edit</c>: its goods
+    /// go back to the sending warehouse at the cost they left with (from transit, or from the
+    /// destination once received), then the new lines leave again as on a new transfer, under the same
+    /// number. A received transfer stays received. Not once it was cancelled, or when goods it brought
+    /// were already used at the destination.
+    /// </summary>
+    [HttpPut("{id:guid}")]
+    [Authorize(Policy = Permissions.InventoryTransferEdit)]
+    public async Task<ActionResult<StockTransferDto>> Update(Guid id, [FromBody] CreateTransferRequest req)
+    {
+        if (req.Lines is null || req.Lines.Length == 0)
+            return BadRequest(new { message = "Add at least one item.", code = "no_lines" });
+        if (req.Lines.Length > MaxLines)
+            return BadRequest(new { message = $"At most {MaxLines} items per transfer.", code = "too_many_lines" });
+        var wanted = new Dictionary<Guid, int>();
+        foreach (var line in req.Lines)
+        {
+            if (!Guid.TryParse(line.ProductId, out var pid))
+                return BadRequest(new { message = "An item on the transfer was not found.", code = "product_not_found" });
+            if (line.Quantity <= 0)
+                return BadRequest(new { message = "Quantities must be positive.", code = "bad_qty" });
+            if (!wanted.TryAdd(pid, line.Quantity))
+                return BadRequest(new { message = "An item is listed twice.", code = "duplicate_line" });
+        }
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"StockTransfers\" WHERE \"Id\" = {id} FOR UPDATE");
+        var transfer = await _db.StockTransfers.Include(t => t.Lines)
+            .Include(t => t.FromWarehouse).Include(t => t.ToWarehouse)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        // Changed from the sending side, like calling it back.
+        if (transfer is null || !await _warehouses.Visible(User).AnyAsync(w => w.Id == transfer.FromWarehouseId))
+            return NotFound(new { message = "Transfer not found.", code = "not_found" });
+        if (transfer.Status == TransferStatus.CANCELLED)
+            return BadRequest(new { message = $"{transfer.Number} was cancelled.", code = "not_in_transit" });
+
+        var destination = transfer.ToWarehouse!;
+        if (Guid.TryParse(req.ToWarehouseId, out var toId) && toId != transfer.ToWarehouseId)
+        {
+            var other = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == toId && w.Kind == WarehouseKind.STORE);
+            if (other is null)
+                return BadRequest(new { message = "Choose where the goods are going.", code = "destination_not_found" });
+            if (!other.IsActive)
+                return BadRequest(new { message = $"{Loc.Name(other)} is closed.", code = "warehouse_inactive" });
+            if (other.Id == transfer.FromWarehouseId)
+                return BadRequest(new { message = "Source and destination must be different warehouses.", code = "same_warehouse" });
+            destination = other;
+        }
+
+        var source = transfer.FromWarehouse!;
+        var received = transfer.Status == TransferStatus.RECEIVED;
+        var transit = await _warehouses.TransitAsync();
+        var oldLines = transfer.Lines.OrderBy(l => l.LineNo).ToList();
+        var products = await _inventory.LockProductsAsync(oldLines.Select(l => l.ProductId).Concat(wanted.Keys));
+
+        // What it moved comes back to the sending warehouse first.
+        var holder = received ? transfer.ToWarehouse! : transit;
+        foreach (var line in oldLines)
+            if (_inventory.Available(line.ProductId, holder.Id) < line.Quantity)
+                return BadRequest(new
+                {
+                    message = $"{Loc.Name(products[line.ProductId])} was already used in {Loc.Name(holder)}.",
+                    code = "not_enough_back",
+                });
+        foreach (var line in oldLines)
+            _inventory.Relocate(products[line.ProductId], holder, source, line.Quantity, transfer.Id, transfer.Number,
+                line.UnitCost, "Edited");
+
+        foreach (var (pid, qty) in wanted)
+        {
+            if (!products.TryGetValue(pid, out var product) || !product.IsActive)
+                return BadRequest(new { message = "An item on the transfer was not found.", code = "product_not_found" });
+            var available = _inventory.Available(pid, source.Id);
+            if (qty > available)
+                return BadRequest(new
+                {
+                    message = $"Not enough {Loc.Name(product)} in {Loc.Name(source)}: {available} left, {qty} requested.",
+                    code = "insufficient_stock",
+                });
+        }
+
+        _db.StockTransferLines.RemoveRange(oldLines);
+        transfer.Lines.Clear();
+        transfer.ToWarehouseId = destination.Id;
+        var notes = req.Notes?.Trim();
+        transfer.Notes = string.IsNullOrEmpty(notes) ? null : notes[..Math.Min(1000, notes.Length)];
+        foreach (var line in req.Lines)
+        {
+            var product = products[Guid.Parse(line.ProductId)];
+            var unitCost = _inventory.Relocate(product, source, transit, line.Quantity, transfer.Id, transfer.Number);
+            // Added outright: a line with its key already set would otherwise be taken as an old one.
+            var added = new StockTransferLine
+            {
+                TransferId = transfer.Id, LineNo = transfer.Lines.Count + 1, ProductId = product.Id,
+                ProductName = product.Name, Quantity = line.Quantity, UnitCost = unitCost,
+            };
+            _db.StockTransferLines.Add(added);
+            transfer.Lines.Add(added);
+            if (received)
+                _inventory.Relocate(product, transit, destination, line.Quantity, transfer.Id, transfer.Number, unitCost);
+        }
+
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        await AuditAsync("update", transfer, source.BranchId);
+        return Ok(await LoadDtoAsync(transfer.Id));
+    }
+
     /// <summary>The destination confirms the goods arrived: from transit into the destination warehouse.</summary>
     [HttpPost("{id:guid}/receive")]
     [Authorize(Policy = Permissions.InventoryTransfer)]

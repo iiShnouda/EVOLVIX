@@ -774,6 +774,19 @@ export function useCreateTransfer() {
   });
 }
 
+/** Change a transfer already sent (inventory:transfer_edit). */
+export function useUpdateTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CreateTransferInput }) =>
+      api.put<StockTransfer>(`/transfers/${id}`, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inventory'] });
+      void qc.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
 /** Confirm receipt (`receive`) or call it back (`cancel`). */
 export function useFinishTransfer() {
   const qc = useQueryClient();
@@ -1984,6 +1997,8 @@ export function useAuditLog(f: AuditFilter, enabled = true) {
     queryFn: () => api.get<Paginated<AuditEntry>>(`/audit?${q.toString()}`),
     placeholderData: (prev) => prev,
     enabled,
+    // Fresh each time it shows: a document's log right after it was changed.
+    refetchOnMount: 'always',
   });
 }
 

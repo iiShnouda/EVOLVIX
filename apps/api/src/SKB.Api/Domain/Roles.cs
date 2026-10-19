@@ -144,6 +144,8 @@ public static class Permissions
     public const string InventoryStocktake = "inventory:stocktake";
     /// <summary>Send goods to another warehouse, receive them, or call a transfer back.</summary>
     public const string InventoryTransfer = "inventory:transfer";
+    /// <summary>Change a transfer already sent: its items, quantities, destination or notes (owner, 2026-10-19).</summary>
+    public const string InventoryTransferEdit = "inventory:transfer_edit";
     public const string StaffView = "staff:view";
     /// <summary>Add staff, change their role, branch or password, and deactivate them.</summary>
     public const string StaffManage = "staff:manage";
@@ -294,7 +296,7 @@ public static class Permissions
         PartiesCashCustomer, SalesChangesReport, SalesOverrideFloor, SalesReturn, SalesQuote,
         SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
-        PartiesView, PartiesContact, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer,
+        PartiesView, PartiesContact, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer, InventoryTransferEdit,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,

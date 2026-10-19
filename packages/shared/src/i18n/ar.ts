@@ -2906,4 +2906,10 @@ export const ar: TranslationDictionary = {
   'invoice.open': 'فتح الفاتورة',
   'statement.fromTo': 'من / إلى',
   'statement.movement': 'البيان',
+  'perm.inventory:transfer_edit': 'تعديل التحويل بين المخازن',
+  'transfer.edit': 'تعديل التحويل',
+  'transfer.editTitle': 'تعديل التحويل',
+  'transfer.saveChanges': 'حفظ التعديل',
+  'transfer.saved': 'تم حفظ التحويل',
+  'error.not_enough_back': 'جزء من البضاعة اتصرف من المخزن المستلم، لا يمكن تعديل التحويل.',
 };

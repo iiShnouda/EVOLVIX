@@ -12,7 +12,9 @@ import {
   useCompanySettings,
   useCreateTransfer,
   useInventory,
+  useTransfer,
   useTransferDestinations,
+  useUpdateTransfer,
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
 
@@ -37,7 +39,7 @@ interface TransferDraft {
  * destination (any open store, any branch), then the items and quantities — never more than the
  * sending warehouse holds.
  */
-export function TransferBuilderPage() {
+export function TransferBuilderPage({ editId }: { editId?: string } = {}) {
   const { t, locale } = useT();
   // Goods move at cost; that value is the owner's unless given (costs:view).
   const seeCosts = useCan()('costs:view');
@@ -57,14 +59,29 @@ export function TransferBuilderPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState('');
   const create = useCreateTransfer();
-  const error = create.error as ApiError | null;
+  const update = useUpdateTransfer();
+  const error = (editId ? update.error : create.error) as ApiError | null;
+  // Changing a sent transfer (owner, 2026-10-19): its lines fill the screen; what it already took
+  // from the sending warehouse counts as available again, since it goes back before it leaves anew.
+  const editing = useTransfer(editId ?? null);
+  const [loadedEdit, setLoadedEdit] = useState(false);
+  const before = new Map((editing.data?.lines ?? []).map((l) => [l.productId, l.quantity]));
+  const canHave = (item: InventoryItem) => item.stockOnHand + (before.get(item.id) ?? 0);
+  useEffect(() => {
+    if (!editId || loadedEdit || !editing.data) return;
+    setLoadedEdit(true);
+    setPickedFrom(editing.data.fromWarehouseId);
+    setToId(editing.data.toWarehouseId);
+    setNotes(editing.data.notes ?? '');
+    setPending(editing.data.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })));
+  }, [editId, loadedEdit, editing.data]);
 
   // Kept on the server while it is written, brought back after a crash or on another device.
   const [pending, setPending] = useState<TransferDraft['lines'] | null>(null);
   const work = useWorkDraft<TransferDraft>(
     1,
     () =>
-      lines.length === 0 && !notes.trim() && !toId
+      editId || (lines.length === 0 && !notes.trim() && !toId)
         ? null
         : {
             fromId,
@@ -97,8 +114,7 @@ export function TransferBuilderPage() {
     ? (stock.data?.items ?? [])
         .filter(
           (i) =>
-            i.stockOnHand > 0 &&
-            (i.name.toLowerCase().includes(s) || i.sku.toLowerCase().includes(s)),
+            canHave(i) > 0 && (i.name.toLowerCase().includes(s) || i.sku.toLowerCase().includes(s)),
         )
         .slice(0, 30)
     : [];
@@ -113,9 +129,7 @@ export function TransferBuilderPage() {
     setLines((prev) =>
       prev.some((l) => l.item.id === item.id)
         ? prev.map((l) =>
-            l.item.id === item.id
-              ? { ...l, quantity: Math.min(item.stockOnHand, l.quantity + 1) }
-              : l,
+            l.item.id === item.id ? { ...l, quantity: Math.min(canHave(item), l.quantity + 1) } : l,
           )
         : [...prev, { item, quantity: 1 }],
     );
@@ -125,7 +139,7 @@ export function TransferBuilderPage() {
     setLines((prev) => prev.map((l) => (l.item.id === id ? { ...l, quantity: qty } : l)));
   const remove = (id: string) => setLines((prev) => prev.filter((l) => l.item.id !== id));
 
-  const overStock = lines.some((l) => l.quantity > l.item.stockOnHand);
+  const overStock = lines.some((l) => l.quantity > canHave(l.item));
   const totalQty = lines.reduce((sum, l) => sum + l.quantity, 0);
   const totalValue = lines.reduce((sum, l) => sum + l.quantity * l.item.avgCost, 0);
   const canSend =
@@ -133,14 +147,18 @@ export function TransferBuilderPage() {
 
   async function send() {
     try {
-      const res = await create.mutateAsync({
+      const input = {
         fromWarehouseId: fromId,
         toWarehouseId: toId,
         lines: lines.map((l) => ({ productId: l.item.id, quantity: l.quantity })),
         notes: notes.trim() || undefined,
-      });
+      };
+      const res = editId
+        ? await update.mutateAsync({ id: editId, input })
+        : await create.mutateAsync(input);
       work.finished();
-      navigate(`/inventory/transfers?tab=all&doc=${res.id}`);
+      // Back on the transfer itself, where it prints (owner, 2026-10-19).
+      navigate(`/inventory/transfers/${res.id}`, { replace: !!editId });
     } catch {
       /* shown below */
     }
@@ -149,14 +167,18 @@ export function TransferBuilderPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={t('transfer.new')}
-        subtitle={t(requireReceipt ? 'transfer.hint' : 'transfer.hintInstant')}
+        title={
+          editId ? `${t('transfer.editTitle')} ${editing.data?.number ?? ''}` : t('transfer.new')
+        }
+        subtitle={editId ? undefined : t(requireReceipt ? 'transfer.hint' : 'transfer.hintInstant')}
         action={
           <Button
             variant="ghost"
             size="sm"
             icon="close"
-            onClick={() => navigate('/inventory/transfers')}
+            onClick={() =>
+              navigate(editId ? `/inventory/transfers/${editId}` : '/inventory/transfers')
+            }
           >
             {t('transfer.back')}
           </Button>
@@ -166,7 +188,15 @@ export function TransferBuilderPage() {
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,340px)]">
         <div className="space-y-4">
           <Card className="grid gap-3 sm:grid-cols-2">
-            <WarehouseSelect label={t('transfer.from')} value={fromId} onChange={changeFrom} />
+            {editId ? (
+              // The goods come from where they left; only what and where to changes.
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('transfer.from')}</span>
+                <input className={field} disabled value={editing.data?.fromWarehouseName ?? ''} />
+              </label>
+            ) : (
+              <WarehouseSelect label={t('transfer.from')} value={fromId} onChange={changeFrom} />
+            )}
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('transfer.to')}</span>
               <select className={field} value={toId} onChange={(e) => setToId(e.target.value)}>
@@ -212,8 +242,8 @@ export function TransferBuilderPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{i.name}</span>
                           <span className="text-xs text-muted tnum">
-                            {i.sku} · {t('transfer.available')}:{' '}
-                            {formatNumber(i.stockOnHand, locale)} {i.unit}
+                            {i.sku} · {t('transfer.available')}: {formatNumber(canHave(i), locale)}{' '}
+                            {i.unit}
                           </span>
                         </span>
                         <Icon name="plus" size={16} className="text-brand" />
@@ -231,7 +261,7 @@ export function TransferBuilderPage() {
             ) : (
               <ul className="mt-3 space-y-2">
                 {lines.map((l) => {
-                  const over = l.quantity > l.item.stockOnHand;
+                  const over = l.quantity > canHave(l.item);
                   return (
                     <li
                       key={l.item.id}
@@ -240,14 +270,14 @@ export function TransferBuilderPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{l.item.name}</p>
                         <p className={`text-xs tnum ${over ? 'text-destructive' : 'text-muted'}`}>
-                          {t('transfer.available')}: {formatNumber(l.item.stockOnHand, locale)}{' '}
+                          {t('transfer.available')}: {formatNumber(canHave(l.item), locale)}{' '}
                           {l.item.unit}
                         </p>
                       </div>
                       <input
                         type="number"
                         min={1}
-                        max={l.item.stockOnHand}
+                        max={canHave(l.item)}
                         aria-label={t('inventory.qty')}
                         className={`${field} !w-24 tnum ${over ? 'border-destructive' : ''}`}
                         value={l.quantity}
@@ -298,11 +328,15 @@ export function TransferBuilderPage() {
             <Button
               className="mt-4 w-full"
               icon="check"
-              loading={create.isPending}
+              loading={create.isPending || update.isPending}
               disabled={!canSend}
               onClick={send}
             >
-              {create.isPending ? t('transfer.sending') : t('transfer.send')}
+              {editId
+                ? t('transfer.saveChanges')
+                : create.isPending
+                  ? t('transfer.sending')
+                  : t('transfer.send')}
             </Button>
           </Card>
         </div>

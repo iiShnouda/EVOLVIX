@@ -2922,4 +2922,10 @@ export const en = {
   'invoice.open': 'Open invoice',
   'statement.fromTo': 'From / to',
   'statement.movement': 'Movement',
+  'perm.inventory:transfer_edit': 'Edit a transfer',
+  'transfer.edit': 'Edit transfer',
+  'transfer.editTitle': 'Edit transfer',
+  'transfer.saveChanges': 'Save changes',
+  'transfer.saved': 'Transfer saved',
+  'error.not_enough_back': 'Some of the goods were already used in the receiving warehouse; the transfer can\'t be changed.',
 } as const;
