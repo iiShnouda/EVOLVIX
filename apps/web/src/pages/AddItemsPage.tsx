@@ -51,6 +51,13 @@ import {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
+/** A factory's short name from how it is written: "مصنع JK" → "JK". */
+function factoryName(name: string): string {
+  return name
+    .replace(/^\s*(مصنع|مصانع|شركة|شركه|معرض|مؤسسة|مؤسسه|محل|محلات|factory|company)\s+/i, '')
+    .trim();
+}
+
 /** One item on the supplier's invoice, as typed; prices are per piece. */
 interface NewLine {
   key: string;
@@ -84,6 +91,8 @@ interface NewLine {
   picked?: ('place' | 'size' | 'color')[];
   /** Set once the item exists, so saving again doesn't make it twice. */
   productId?: string;
+  /** The factory's model number read from its invoice, kept as the supplier's code for the item. */
+  supplierCode?: string;
   /**
    * An item already in the catalog, bought again (owner, 2026-10-06: one purchase screen): only
    * its quantity, cost and discount are typed; its unit holds `perUnit` pieces and it keeps its
@@ -322,21 +331,49 @@ export function AddItemsPage() {
    * person checks every line before saving.
    */
   const [scanNote, setScanNote] = useState<string | null>(null);
+  /**
+   * An item already bought: by the factory's model number (its supplier code) from this supplier,
+   * else by exactly the same name. A near match isn't taken: it could be another model.
+   */
+  async function findBought(model: string | null, name: string, supplierId?: string) {
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const search = (text: string) =>
+      api.get<Product[]>(`/products?limit=10&search=${encodeURIComponent(text)}`);
+    if (model) {
+      const hit = (await search(model)).find(
+        (p) =>
+          !!p.supplierCode &&
+          same(p.supplierCode, model) &&
+          (!supplierId || !p.supplierId || p.supplierId === supplierId),
+      );
+      if (hit) return hit;
+    }
+    return (await search(name)).find((p) => same(p.name, name));
+  }
+
   async function fromScan(scan: PurchaseScan) {
-    if (!supplier && scan.supplierName) {
+    let from = supplier;
+    if (!from && scan.supplierName) {
       const found = await api.get<Paginated<Party>>(
         `/parties?page=1&pageSize=5&search=${encodeURIComponent(scan.supplierName)}`,
       );
       const match = found.items.find((p) => p.types.includes('SUPPLIER'));
-      if (match) setSupplier(match);
+      if (match) {
+        setSupplier(match);
+        from = match;
+      }
     }
+    // A handwritten invoice often leaves the item blank and gives the model number (owner,
+    // 2026-10-19): the item is named from the factory and the model, e.g. "JK موديل 255".
+    const brand = factoryName(from?.name ?? scan.supplierName ?? '');
     const picks: FinderPick[] = [];
     const fresh: NewLine[] = [];
     for (const [n, l] of scan.lines.entries()) {
-      const hits = await api.get<Product[]>(
-        `/products?limit=1&search=${encodeURIComponent(l.name)}`,
-      );
-      const hit = hits[0];
+      const name =
+        l.name.trim() ||
+        [brand, l.model ? `${t('additems.modelWord')} ${l.model}` : ''].filter(Boolean).join(' ');
+      if (!name) continue;
+      const hit = await findBought(l.model, name, from?.id);
       const qty = Math.max(1, Math.round(l.quantity));
       if (hit) {
         picks.push({
@@ -345,11 +382,12 @@ export function AddItemsPage() {
           quantity: qty,
         });
       } else if (canNewItems && pieceUnit) {
-        const read = readItemName(l.name, { departments, groups, sizes, colors });
+        const read = readItemName(name, { departments, groups, sizes, colors });
         fresh.push({
           ...blank(pieceUnit.id),
           key: `${Date.now()}-scan-${n}`,
-          name: l.name,
+          name,
+          supplierCode: l.model ?? undefined,
           qty: String(qty),
           costBefore: l.unitPrice ? String(l.unitPrice) : '',
           discountAmt: l.discount ? String(l.discount) : '',
@@ -360,6 +398,8 @@ export function AddItemsPage() {
     }
     if (picks.length) addExisting(picks);
     if (fresh.length) setLines((prev) => [...prev, ...fresh]);
+    // The discount written under the total goes on the whole invoice.
+    if (canDiscount && scan.discount > 0 && !minor(invAmt)) setInvAmt(String(scan.discount));
     setScanNote(t('assistant.scanned').replace('{n}', String(picks.length + fresh.length)));
   }
 
@@ -424,6 +464,7 @@ export function AddItemsPage() {
           colorId: (r.l.withVariant && r.l.colorId) || undefined,
           warehouseId,
           supplierId: supplier.id,
+          supplierCode: r.l.supplierCode || undefined,
           reorderLevel: Math.max(0, Math.floor(Number(r.l.reorder) || 0)),
           // The barcode is made by the server (owner, 2026-10-17: "automatic, no box for it").
           autoBarcode: true,

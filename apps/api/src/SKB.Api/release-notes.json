@@ -147,6 +147,10 @@
           "en": "An account with only one branch, warehouse or department has it picked for it on invoices, adding items and returns."
         },
         {
+          "ar": "قراءة الفاتورة المكتوبة بخط اليد بقت أحسن: بيقرا رقم الموديل والسعر والعدد ويراجعهم على الإجمالي، ولو اسم الصنف فاضي بيسميه من المصنع والموديل (زي \"JK موديل 255\")، ورقم الموديل بيتحفظ كود المورد، والخصم اللي تحت الإجمالي بيتحط خصم على الفاتورة. والصنف اللي اتشرى قبل كده بيتعرف برقم الموديل بالظبط مش بالتقريب.",
+          "en": "Reading handwritten invoices is better: the model number, price and count are read and checked against the line total; a blank item is named from the factory and model (e.g. \"JK Model 255\"), the model number is kept as the supplier's code, and the discount under the total goes on the invoice. An item bought before is found by its exact model number, not a near match."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

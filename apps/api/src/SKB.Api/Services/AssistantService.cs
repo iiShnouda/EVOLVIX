@@ -348,15 +348,27 @@ public sealed class AssistantService
 
     // ------------------------------------------------------------------ reading photos
 
-    public sealed record PurchaseLine(string Name, decimal Quantity, decimal UnitPrice, decimal Discount);
-    public sealed record PurchaseScan(string? SupplierName, string? Number, string? Date, List<PurchaseLine> Lines);
+    /// <summary>One printed line: its name (often left blank), the factory's model number, and figures.</summary>
+    public sealed record PurchaseLine(string Name, string? Model, decimal Quantity, decimal UnitPrice, decimal Discount);
+    /// <summary>The invoice; <c>Discount</c> is one amount off the whole invoice (the "خصم" under the total).</summary>
+    public sealed record PurchaseScan(string? SupplierName, string? Number, string? Date, decimal Discount, List<PurchaseLine> Lines);
     public sealed record ChequeScan(string? Serial, decimal Amount, string? DueDate, string? Bank, string? Drawer);
 
+    // The owner's suppliers write invoices by hand (owner, 2026-10-19): the factory's name at the
+    // top, a table of model number (رقم الموديل), item (often blank), price (السعر), count (عدد) and
+    // line total (الإجمالي), then the total, a discount (خصم) and what is due; figures in
+    // Arabic-Indic digits.
     private const string PurchasePrompt =
-        "Read this supplier invoice. Reply with JSON only: {\"supplierName\": string|null, \"number\": string|null, " +
-        "\"date\": \"YYYY-MM-DD\"|null, \"lines\": [{\"name\": string, \"quantity\": number, \"unitPrice\": number, " +
-        "\"discount\": number}]}. One entry per printed line, names exactly as printed, prices per unit before " +
-        "discount, discount as an amount per unit (0 if none). Use 0 for anything unreadable.";
+        "This is a supplier's invoice, often handwritten in Arabic. Reply with JSON only: " +
+        "{\"supplierName\": string|null, \"number\": string|null, \"date\": \"YYYY-MM-DD\"|null, " +
+        "\"discount\": number, \"lines\": [{\"model\": string|null, \"name\": string|null, " +
+        "\"quantity\": number, \"unitPrice\": number, \"total\": number}]}. " +
+        "supplierName: the shop or factory name printed at the top (e.g. after the word مصنع). " +
+        "Each table row is one line: model is the model number column (رقم الموديل), name is the item " +
+        "column (الصنف) or null when it is blank, unitPrice the price column (السعر), quantity the count " +
+        "column (عدد), total the row's total column (الإجمالي). Read Arabic-Indic digits " +
+        "(٠١٢٣٤٥٦٧٨٩) as numbers. Do not make lines from the total, discount or due rows under the table. " +
+        "discount: the amount written next to خصم under the table, else 0. Use 0 for anything unreadable.";
 
     private const string ChequePrompt =
         "Read the cheque(s) in this photo. Reply with JSON only: {\"cheques\": [{\"serial\": string|null, " +
@@ -369,21 +381,53 @@ public sealed class AssistantService
         var lines = new List<PurchaseLine>();
         // The model doesn't always keep to the shape asked (a line as plain text, a list under another
         // name): what can't be read is skipped rather than failing the whole photo.
-        foreach (var l in Field(json, "lines", "items") as JsonArray ?? new JsonArray())
+        var rows = Field(json, "lines", "items") as JsonArray ?? new JsonArray();
+        // The count most lines share (a wholesale invoice is often a dozen of each).
+        var usual = rows.OfType<JsonObject>().Select(o => Num(Field(o, "quantity", "qty", "count")))
+            .Where(q => q > 0).GroupBy(q => q).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
+        foreach (var l in rows)
         {
             if (l is JsonValue && Str(l) is { } text)
             {
-                lines.Add(new PurchaseLine(text, 1, 0, 0));
+                lines.Add(new PurchaseLine(text, null, 1, 0, 0));
                 continue;
             }
             if (l is not JsonObject o) continue;
-            var name = Str(Field(o, "name", "item", "description"));
-            if (string.IsNullOrWhiteSpace(name)) continue;
-            lines.Add(new PurchaseLine(name.Trim()[..Math.Min(200, name.Trim().Length)],
-                Math.Max(0, Num(Field(o, "quantity", "qty"))), Math.Max(0, Num(Field(o, "unitPrice", "price"))),
-                Math.Max(0, Num(o["discount"]))));
+            var name = Str(Field(o, "name", "item", "description"))?.Trim() ?? "";
+            var model = Str(Field(o, "model", "modelNumber", "code"))?.Trim();
+            if (model is not null) model = Digits(model);
+            if (name.Length == 0 && string.IsNullOrEmpty(model)) continue;
+            var (qty, price) = Checked(Math.Max(0, Num(Field(o, "quantity", "qty", "count"))),
+                Math.Max(0, Num(Field(o, "unitPrice", "price"))), Math.Max(0, Num(o["total"])), usual);
+            lines.Add(new PurchaseLine(name[..Math.Min(200, name.Length)], string.IsNullOrEmpty(model) ? null : model[..Math.Min(60, model.Length)],
+                qty, price, Math.Max(0, Num(o["discount"]))));
         }
-        return new PurchaseScan(Str(json["supplierName"]), Str(json["number"]), Day(Str(json["date"])), lines.Take(300).ToList());
+        return new PurchaseScan(Str(json["supplierName"]), Str(json["number"]), Day(Str(json["date"])),
+            Math.Max(0, Num(json["discount"])), lines.Take(300).ToList());
+    }
+
+    /// <summary>
+    /// A line's count and price, checked against its total (owner, 2026-10-19: handwritten digits are
+    /// easy to misread): when they don't multiply to it, the one that divides it evenly is trusted.
+    /// </summary>
+    private static (decimal Qty, decimal Price) Checked(decimal qty, decimal price, decimal total, decimal usual)
+    {
+        if (total <= 0 || Math.Abs(qty * price - total) < 0.01m) return (qty, price);
+        // Either could be the misread one: the invoice's usual count settles it when it fits.
+        if (usual > 0 && price > 0 && total / price == usual) return (usual, price);
+        if (qty > 0 && total % qty == 0) return (qty, total / qty);
+        if (price > 0 && total % price == 0) return (total / price, price);
+        return (qty, price);
+    }
+
+    /// <summary>Arabic-Indic digits as Western ones ("٢٥٥" → "255"); other characters kept.</summary>
+    private static string Digits(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s)
+            sb.Append(ch is >= '٠' and <= '٩' ? (char)('0' + (ch - '٠'))
+                : ch is >= '۰' and <= '۹' ? (char)('0' + (ch - '۰')) : ch);
+        return sb.ToString().Trim();
     }
 
     public async Task<List<ChequeScan>> ReadChequesAsync(byte[] image, CancellationToken ct = default)

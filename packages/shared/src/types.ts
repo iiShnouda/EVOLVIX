@@ -2603,7 +2603,16 @@ export interface PurchaseScan {
   supplierName: string | null;
   number: string | null;
   date: string | null;
-  lines: { name: string; quantity: number; unitPrice: number; discount: number }[];
+  /** One amount off the whole invoice (the "خصم" under the total). */
+  discount: number;
+  /** `name` is often blank on a handwritten invoice; `model` is the factory's model number. */
+  lines: {
+    name: string;
+    model: string | null;
+    quantity: number;
+    unitPrice: number;
+    discount: number;
+  }[];
 }
 
 /** One cheque read from a photo (amount in major units). */
