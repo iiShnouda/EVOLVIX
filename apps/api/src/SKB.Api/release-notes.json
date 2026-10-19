@@ -171,6 +171,10 @@
           "en": "The current season is worked out right (October 2026 to March 2027 = Winter 2027), and can be set by hand in Settings when it is wrong."
         },
         {
+          "ar": "التاريخ على الآيفون بقى بيظهر بالترتيب الصح (19 Oct 2026) بدل ما كان متلخبط.",
+          "en": "Dates on the iPhone show in the right order (19 Oct 2026) instead of jumbled."
+        },
+        {
           "ar": "على الآيفون خانات التاريخ مبقتش بتطلع برا مكانها وتلزق في الخانة اللي جنبها (زي الحالة في المبيعات).",
           "en": "On the iPhone, date boxes no longer spill over the field next to them (like the status filter in sales)."
         },

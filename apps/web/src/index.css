@@ -139,6 +139,21 @@ input[type='number'] {
   input[type='datetime-local']::-webkit-date-and-time-value {
     text-align: start;
   }
+  /* On an Arabic screen the date's own text ("19 Oct 2026") came out jumbled as "Oct 2026 19"
+     (owner, 2026-10-19): it reads left to right, kept at the box's right edge. */
+  [dir='rtl'] input[type='date'],
+  [dir='rtl'] input[type='datetime-local'],
+  [dir='rtl'] input[type='month'],
+  [dir='rtl'] input[type='time'] {
+    direction: ltr;
+    text-align: right;
+  }
+  [dir='rtl'] input[type='date']::-webkit-date-and-time-value,
+  [dir='rtl'] input[type='datetime-local']::-webkit-date-and-time-value,
+  [dir='rtl'] input[type='month']::-webkit-date-and-time-value,
+  [dir='rtl'] input[type='time']::-webkit-date-and-time-value {
+    text-align: right;
+  }
 }
 
 /* Safe-area helpers for notched iPhones / Android. */
