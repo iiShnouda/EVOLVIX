@@ -16,6 +16,7 @@ import {
   useDocument,
   useHiddenColumns,
   useLedgerStatement,
+  usePageSize,
   useWarehouses,
 } from '../lib/queries';
 import { useDeviceInfo } from '../lib/device';
@@ -24,6 +25,7 @@ import { useAuth } from '../stores/auth';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from './ReportActions';
 import { TableColumns } from './TableColumns';
+import { Pager } from './Pager';
 
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -553,6 +555,66 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   const doc = useDocument(open?.scope ?? 'sales', open?.id ?? null);
   const cell = 'p-2 align-top';
 
+  // Rows per page and the order, as on the other lists (owner, 2026-10-21): any column, biggest
+  // first then smallest; the entry number stays the line's own. Every line still prints.
+  const [size, setSize] = usePageSize('statement.lines', 50);
+  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ key: ColKey; dir: 1 | -1 } | null>(null);
+  const sortValue = (k: ColKey, l: LedgerLine, i: number): string | number => {
+    switch (k) {
+      case 'seq':
+        return i;
+      case 'date':
+        return l.date;
+      case 'kind':
+        return lineKind(t, l);
+      case 'doc':
+        return l.documentNumber ?? l.number ?? '';
+      case 'branch':
+        return l.branchName ?? '';
+      case 'department':
+        return l.departmentName ?? '';
+      case 'warehouse':
+        return l.warehouseName ?? '';
+      case 'note':
+        return l.note ?? '';
+      case 'debit':
+        return l.debit;
+      case 'credit':
+        return l.credit;
+      case 'balance':
+        return l.balance;
+    }
+  };
+  const rows = data.lines.map((l, i) => ({ l, i }));
+  if (sort)
+    rows.sort((a, b) => {
+      const x = sortValue(sort.key, a.l, a.i);
+      const y = sortValue(sort.key, b.l, b.i);
+      const c =
+        typeof x === 'number' && typeof y === 'number'
+          ? x - y
+          : String(x).localeCompare(String(y), locale);
+      return c * sort.dir || a.i - b.i;
+    });
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  const at = Math.min(page, pages);
+  const shown = (n: number) => n >= (at - 1) * size && n < at * size;
+  const pager = rows.length > 10 && (
+    <div data-noprint className="flex justify-end">
+      <Pager
+        page={at}
+        size={size}
+        pages={pages}
+        onPage={setPage}
+        onSize={(n) => {
+          setSize(n);
+          setPage(1);
+        }}
+      />
+    </div>
+  );
+
   const docLink = (l: LedgerLine) => {
     // An opening balance has no document of its own.
     const number = l.documentNumber ?? (l.sourceType === 'OPENING' ? '' : l.number);
@@ -621,6 +683,32 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   if (deviceClass !== 'desktop')
     return (
       <div className="mt-3 space-y-2">
+        {rows.length > 1 && (
+          <div data-noprint className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted">
+              {t('list.sortBy')}
+              <select
+                className="h-8 rounded-lg border border-line bg-surface px-1.5 text-xs outline-none focus:border-brand"
+                value={sort ? `${sort.key}:${sort.dir}` : ''}
+                onChange={(e) => {
+                  const [k, d] = e.target.value.split(':');
+                  setSort(k ? { key: k as ColKey, dir: Number(d) as 1 | -1 } : null);
+                  setPage(1);
+                }}
+              >
+                <option value="">{t('ledger.entryNumber')}</option>
+                {(['date', 'debit', 'credit', 'balance'] as const).flatMap((k) =>
+                  ([-1, 1] as const).map((d) => (
+                    <option key={`${k}:${d}`} value={`${k}:${d}`}>
+                      {t(COL_LABEL[k])} {d === -1 ? '↓' : '↑'}
+                    </option>
+                  )),
+                )}
+              </select>
+            </label>
+            {pager}
+          </div>
+        )}
         <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
           <span>
             {t('ledger.previousBalance')} · <span className="tnum">{formatDate(from, locale)}</span>
@@ -628,10 +716,10 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
           <SidedMoney value={data.opening} currency={data.currency} />
         </div>
         {data.lines.length === 0 && <p className="p-3 text-sm text-muted">{t('ledger.noLines')}</p>}
-        {data.lines.map((l, i) => (
+        {rows.map(({ l, i }, n) => (
           <div
             key={`${l.entryId}-${i}`}
-            className="rounded-[var(--radius-app)] border border-line p-3 text-sm"
+            className={`rounded-[var(--radius-app)] border border-line p-3 text-sm ${shown(n) ? '' : 'screen-hidden'}`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -689,7 +777,19 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
 
   return (
     <div className="rounded-[var(--radius-app)] border border-line">
-      <TableColumns id="statement.v2" className="pt-2" onMove={move} onDrop={drop}>
+      <TableColumns
+        id="statement.v2"
+        className="pt-2"
+        onMove={move}
+        onDrop={drop}
+        toolbar={pager}
+        sorted={sort ? { label: t(COL_LABEL[sort.key]), dir: sort.dir } : null}
+        onSort={(label, dir) => {
+          const k = keyOf(label);
+          setSort(k ? { key: k, dir } : null);
+          setPage(1);
+        }}
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
@@ -718,9 +818,9 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                   </td>
                 ))}
               </tr>
-              {data.lines.map((l, i) => (
+              {rows.map(({ l, i }, n) => (
                 <Fragment key={`${l.entryId}-${i}`}>
-                  <tr className="hover:bg-surface-2/60">
+                  <tr className={`hover:bg-surface-2/60 ${shown(n) ? '' : 'screen-hidden'}`}>
                     {order.map((k) => (
                       <td
                         key={k}
@@ -733,7 +833,10 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                     ))}
                   </tr>
                   {(l.items ?? []).length > 0 && (
-                    <tr data-span className="text-xs text-muted">
+                    <tr
+                      data-span
+                      className={`text-xs text-muted ${shown(n) ? '' : 'screen-hidden'}`}
+                    >
                       <td colSpan={order.length} className="px-2 py-1">
                         <ul className="space-y-0.5 ps-8">
                           {(l.items ?? []).map((it, j) => (

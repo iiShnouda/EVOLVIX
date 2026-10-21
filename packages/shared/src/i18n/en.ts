@@ -2945,4 +2945,5 @@ export const en = {
   'valuation.clearPicked': 'Show all',
   'valuation.reorder': 'Reorder level',
   'transfer.finder': 'Detailed search',
+  'list.sortBy': 'Sort by',
 } as const;

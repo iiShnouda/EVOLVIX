@@ -2929,4 +2929,5 @@ export const ar: TranslationDictionary = {
   'valuation.clearPicked': 'عرض الكل',
   'valuation.reorder': 'حد الطلب',
   'transfer.finder': 'بحث تفصيلي',
+  'list.sortBy': 'ترتيب حسب',
 };

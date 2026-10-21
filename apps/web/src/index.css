@@ -469,3 +469,10 @@ input::-ms-clear {
 fieldset:disabled .ro-hide {
   display: none;
 }
+
+/* Lines on other pages of a paged list: off the screen, but every one prints. */
+@media screen {
+  .screen-hidden {
+    display: none !important;
+  }
+}

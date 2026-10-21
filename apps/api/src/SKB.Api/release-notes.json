@@ -139,6 +139,10 @@
         {
           "ar": "تقييم المخزن: اختيار القسم، والمورد بالاسم أو الكود، واسم الصنف أو كوده، والبحث التفصيلي زي فاتورة المبيعات، وعلامة للأصناف اللي وصلت لحد الطلب وعلامة للي رصيدها خلص، وعداد (كام صنف من الكل) وعدد الأصناف في كل قسم ومخزن، وفواتير المشتريات بتتفلتر بنفس القسم والمورد. وكل جزء (حسب القسم، حسب المخزن، حسب الأصناف) وكل عمود (سعر البيع، المورد، والقيمة بصلاحية التكلفة) ليه صلاحيته. وفي إذن التحويل زرار بحث تفصيلي تختار منه الأصناف اللي هتتنقل.",
           "en": "Stock valuation: pick a department, a supplier by name or code, an item's name or code, or use the detailed search as on a sale; tick items at their reorder level or out of stock; a counter (how many items of all) and the item count per department and warehouse; the purchase invoices follow the same department and supplier. Each part (by department, warehouse, item) and column (sale price, supplier; values with costs) has its own permission. The transfer screen has a detailed search to pick what moves."
+        },
+        {
+          "ar": "كشف الحساب: حركات الحساب بتتعرض صفحة صفحة (10 أو 25 أو 50 أو 100 أو 200 حركة) زي باقي الصفحات، وتقدر ترتب بأي عمود من الكبير للصغير ودوسة تانية من الصغير للكبير، وعلى الموبايل من قايمة \"ترتيب حسب\". والطباعة بتطبع كل الحركات.",
+          "en": "Account statement: transactions show a page at a time (10, 25, 50, 100 or 200) like the other lists, and sort by any column, biggest first then smallest on a second click (on a phone from \"Sort by\"). Printing still prints every line."
         }
       ],
       "fixes": [
