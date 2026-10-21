@@ -2931,4 +2931,10 @@ export const ar: TranslationDictionary = {
   'transfer.finder': 'بحث تفصيلي',
   'list.sortBy': 'ترتيب حسب',
   'valuation.model': 'الموديل',
+  'valuation.status': 'حالة المخزون',
+  'valuation.status.in': 'متوفر',
+  'valuation.status.out': 'نفد من المخزون',
+  'valuation.status.low': 'عند حد الطلب',
+  'valuation.itemsTitle': 'أرصدة الأصناف',
+  'valuation.showPicked': 'عرض',
 };

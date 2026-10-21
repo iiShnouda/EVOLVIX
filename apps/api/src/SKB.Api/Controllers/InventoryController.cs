@@ -359,9 +359,9 @@ public sealed class InventoryController : ControllerBase
     [Authorize(Policy = Permissions.InventoryValuation)]
     public async Task<ActionResult<ValuationDto>> Valuation(
         [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? supplierId = null,
-        [FromQuery] string? search = null, [FromQuery] string? productIds = null,
-        [FromQuery] bool low = false, [FromQuery] bool empty = false)
+        [FromQuery] string? branchId = null, [FromQuery] string? departmentId = null,
+        [FromQuery] string? supplierId = null, [FromQuery] string? search = null,
+        [FromQuery] string? productIds = null, [FromQuery] string? status = null)
     {
         // Each part and column has its own permission (owner, 2026-10-19); values need costs:view.
         bool Has(string p) => User.HasClaim("permission", p);
@@ -370,27 +370,32 @@ public sealed class InventoryController : ControllerBase
         var seeSuppliers = Has(Permissions.ValuationSuppliers);
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
+        Guid? branch = Guid.TryParse(branchId, out var br) ? br : null;
 
         var today = CompanyClock.Today;
         var date = CompanyClock.ParseDay(asOf) ?? today;
         var products = await _db.Products.AsNoTracking().Include(p => p.Category).ThenInclude(c => c!.Department)
             .Include(p => p.Model).Include(p => p.Supplier)
             .ToDictionaryAsync(p => p.Id);
-        var warehouses = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => Loc.Name(w));
+        var warehouses = await _db.Warehouses.AsNoTracking().Include(w => w.Branch).ToDictionaryAsync(w => w.Id);
         var state = date >= today ? await _valuation.CurrentAsync() : await _valuation.AtAsync(CompanyClock.StartOf(date.AddDays(1)));
         var mine = await _warehouses.LimitAsync(User);
 
         var all = state.Quantity
             .Where(kv => products.TryGetValue(kv.Key.Product, out var p) && (date < today || p.IsActive)
-                         && (wid is null || kv.Key.Warehouse == wid) && (mine is null || mine.Contains(kv.Key.Warehouse)))
+                         && warehouses.TryGetValue(kv.Key.Warehouse, out var w) && w.Kind == WarehouseKind.STORE
+                         && (wid is null || kv.Key.Warehouse == wid)
+                         && (branch is null || w.BranchId == branch)
+                         && (mine is null || mine.Contains(kv.Key.Warehouse)))
             .Select(kv => new
             {
                 kv.Key.Product, kv.Key.Warehouse, Qty = kv.Value,
                 Value = state.ValueOf(kv.Key.Product, kv.Key.Warehouse),
             })
             .ToList();
-        // Every item in stock here, before the filters: the counter's "of".
-        var totalItems = all.GroupBy(l => l.Product).Count(g => g.Sum(l => l.Qty) != 0);
+        // Every item, in stock here or run out, before the filters: the counter's "of".
+        var totalItems = products.Values.Where(p => p.IsActive).Select(p => p.Id)
+            .Union(all.Where(l => l.Qty != 0).Select(l => l.Product)).Count();
 
         // The filters: department, supplier (name or code typed, or picked), name/code, chosen items.
         Guid? dept = Guid.TryParse(departmentId, out var d) ? d : null;
@@ -409,24 +414,28 @@ public sealed class InventoryController : ControllerBase
                 || (seeSuppliers && p.Supplier is not null
                     && (p.Supplier.Name.Contains(text, StringComparison.OrdinalIgnoreCase) || p.Supplier.Code.ToString() == text)));
 
-        var lines = all.Where(l => Passes(products[l.Product])).ToList();
-        var qtyOf = lines.GroupBy(l => l.Product).ToDictionary(g => g.Key, g => g.Sum(l => l.Qty));
-        // Reached the reorder level, and run out (owner, 2026-10-19): ticked, only those (either).
+        var scoped = all.Where(l => Passes(products[l.Product])).ToList();
+        var qtyOf = scoped.GroupBy(l => l.Product).ToDictionary(g => g.Key, g => g.Sum(l => l.Qty));
+        // The status (owner, 2026-10-21): all (in stock and run out together), in stock, run out, or at
+        // the reorder level; run out also takes items with nothing here at all.
         bool IsLow(Product p, int q) => p.ReorderLevel > 0 && q > 0 && q <= p.ReorderLevel;
-        IEnumerable<Guid> chosen = qtyOf.Where(kv => kv.Value != 0).Select(kv => kv.Key);
-        if (low || empty)
+        var withOut = status is null or "" or "all" or "out";
+        var candidates = withOut
+            ? products.Values.Where(p => p.IsActive && Passes(p)).Select(p => p.Id).Union(qtyOf.Keys)
+            : qtyOf.Keys;
+        var keep = candidates.Where(id =>
         {
-            var candidates = empty
-                ? products.Values.Where(p => p.IsActive && Passes(p)).Select(p => p.Id).Union(qtyOf.Keys)
-                : qtyOf.Keys;
-            chosen = candidates.Where(id =>
+            var q = qtyOf.GetValueOrDefault(id);
+            return status switch
             {
-                var q = qtyOf.GetValueOrDefault(id);
-                return (low && IsLow(products[id], q)) || (empty && q <= 0);
-            });
-        }
-        var keep = chosen.ToHashSet();
-        lines = lines.Where(l => keep.Contains(l.Product)).ToList();
+                "in" => q > 0,
+                "out" => q <= 0,
+                "low" => IsLow(products[id], q),
+                _ => true,
+            };
+        }).ToHashSet();
+        // A place shows where the item is; one run out shows where it ran out (or nowhere).
+        var lines = scoped.Where(l => keep.Contains(l.Product) && (l.Qty != 0 || qtyOf[l.Product] <= 0)).ToList();
 
         long? Money(long v) => seeCosts ? v : null;
         // The supply price (سعر التوريد, owner 2026-10-21): what a piece cost on its latest purchase,
@@ -438,25 +447,25 @@ public sealed class InventoryController : ControllerBase
                 .Select(g => new { g.Key, Cost = g.OrderByDescending(m => m.CreatedAt).Select(m => m.UnitCost).First() })
                 .ToDictionaryAsync(x => x.Key, x => x.Cost)
             : new Dictionary<Guid, long>();
-        var itemRows = Has(Permissions.ValuationItems)
-            ? keep.Select(id =>
-                {
-                    var p = products[id];
-                    var mineLines = lines.Where(l => l.Product == id).ToList();
-                    var q = mineLines.Sum(l => l.Qty);
-                    var v = mineLines.Sum(l => l.Value);
-                    return new ValuationItemDto(id.ToString(), p.Sku, Loc.Name(p),
-                        seeSuppliers ? p.Supplier?.Name : null, seeSuppliers ? p.Supplier?.Code : null,
-                        q, Money(v), seeCosts ? supply.TryGetValue(id, out var sc) ? sc : q != 0 ? v / q : p.CostPrice : null,
-                        seePrices ? p.SalePrice : null,
-                        p.ReorderLevel, IsLow(p, q), q <= 0);
-                })
-                .OrderByDescending(r => r.Value ?? 0).ThenBy(r => r.Label).ToArray()
-            : Array.Empty<ValuationItemDto>();
-        // By department, the top of the tree (owner, 2026-10-19: "it's men's, not polo"); an item in no
-        // department shows its group. With how many items each holds.
         string DepartmentOf(Guid id) => products[id].Category?.Department is { } dd
             ? Loc.Name(dd) : Loc.Name(products[id].Category);
+        ValuationItemDto Item(Guid id, Warehouse? w, int q, long v)
+        {
+            var p = products[id];
+            return new ValuationItemDto($"{id}:{w?.Id}", id.ToString(), p.Sku, Loc.Name(p),
+                seeSuppliers ? p.Supplier?.Name : null, DepartmentOf(id),
+                w?.Branch is null ? null : Loc.Name(w.Branch), w is null ? null : Loc.Name(w),
+                q, Money(v), seeCosts ? supply.TryGetValue(id, out var sc) ? sc : q != 0 ? v / q : p.CostPrice : null,
+                seePrices ? p.SalePrice : null, p.ReorderLevel, IsLow(p, qtyOf.GetValueOrDefault(id)), qtyOf.GetValueOrDefault(id) <= 0);
+        }
+        // Item by item and place by place (owner, 2026-10-21: the branch, department and warehouse of
+        // each, in one list instead of the department and warehouse tables).
+        var placed = lines.Select(l => l.Product).ToHashSet();
+        var itemRows = Has(Permissions.ValuationItems)
+            ? lines.Select(l => Item(l.Product, warehouses[l.Warehouse], l.Qty, l.Value))
+                .Concat(keep.Where(id => !placed.Contains(id)).Select(id => Item(id, null, 0, 0)))
+                .OrderByDescending(r => r.Value ?? 0).ThenByDescending(r => r.Quantity).ThenBy(r => r.Label).ToArray()
+            : Array.Empty<ValuationItemDto>();
         var categoryRows = Has(Permissions.ValuationDepartments)
             ? keep.GroupBy(DepartmentOf)
                 .Select(g => new ValuationRowDto(g.Key, g.Key,
@@ -466,11 +475,10 @@ public sealed class InventoryController : ControllerBase
             : Array.Empty<ValuationRowDto>();
         var warehouseRows = Has(Permissions.ValuationWarehouses)
             ? lines.GroupBy(l => l.Warehouse)
-                .Select(g => new ValuationRowDto(g.Key.ToString(), warehouses.GetValueOrDefault(g.Key, ""),
+                .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(warehouses[g.Key]),
                     g.Sum(l => l.Qty), Money(g.Sum(l => l.Value)), g.Where(l => l.Qty != 0).Select(l => l.Product).Distinct().Count()))
                 .OrderByDescending(r => r.Value ?? 0).ToArray()
             : Array.Empty<ValuationRowDto>();
-        // Variants rolled up to their model (only items made in sizes/colors).
         var modelRows = Has(Permissions.ValuationItems)
             ? lines.Where(l => products[l.Product].Model is not null)
                 .GroupBy(l => products[l.Product].ModelId!.Value)

@@ -2947,4 +2947,10 @@ export const en = {
   'transfer.finder': 'Detailed search',
   'list.sortBy': 'Sort by',
   'valuation.model': 'Model',
+  'valuation.status': 'Stock status',
+  'valuation.status.in': 'In stock',
+  'valuation.status.out': 'Out of stock',
+  'valuation.status.low': 'At reorder level',
+  'valuation.itemsTitle': 'Item balances',
+  'valuation.showPicked': 'Show',
 } as const;

@@ -8,9 +8,9 @@ import {
   formatQuantity,
   type InventoryItem,
   type Party,
+  type TranslationKey,
   type Valuation,
   type ValuationItem,
-  type ValuationRow,
   companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -299,7 +299,7 @@ export function InventoryPage() {
           }
         />
       ) : (
-        <ValuationTab warehouseId={warehouseId} />
+        <ValuationTab warehouseId={warehouseId} branchId={branchId} />
       )}
       {tab === 'items' && (
         <div className="flex justify-end">
@@ -654,28 +654,29 @@ function MenuItem({ icon, label, onClick }: { icon: string; label: string; onCli
   );
 }
 
-function ValuationTab({ warehouseId }: { warehouseId: string }) {
+function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId: string }) {
   const { t, locale } = useT();
   const can = useCan();
   const seeSuppliers = can('inventory:valuation_suppliers');
   const [asOf, setAsOf] = useState(today());
-  // What to look at (owner, 2026-10-19): a department, a supplier (by name or code), an item's
-  // name or code, items picked in the detailed search, and only those run out (no reorder-level box:
-  // owner, same day).
+  // What to look at (owner, 2026-10-19/21): the branch and warehouse above, a department, a
+  // supplier, an item's name or code, items picked in the detailed search, and a stock status.
+  // Everything starts at "all".
   const [departmentId, setDepartmentId] = useState('');
   const [supplier, setSupplier] = useState<Party | null>(null);
   const [search, setSearch] = useState('');
   const settled = useDeferredValue(search.trim());
   const [picked, setPicked] = useState<string[]>([]);
-  const [empty, setEmpty] = useState(false);
+  const [status, setStatus] = useState<'' | 'in' | 'out' | 'low'>('');
   const [finding, setFinding] = useState(false);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   const valuation = useValuation(asOf, warehouseId || undefined, {
+    branchId: branchId || undefined,
     departmentId: departmentId || undefined,
     supplierId: supplier?.id,
     search: settled || undefined,
     productIds: picked,
-    empty,
+    status,
   });
   const data = valuation.data;
   const currency = data?.currency ?? 'EGP';
@@ -721,7 +722,7 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             </p>
           </div>
         </div>
-        <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('valuation.department')}</span>
             <select
@@ -737,13 +738,26 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
               ))}
             </select>
           </label>
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('valuation.status')}</span>
+            <select
+              className={`${field} w-full`}
+              value={status}
+              onChange={(e) => setStatus(e.target.value as typeof status)}
+            >
+              <option value="">{t('common.all')}</option>
+              <option value="in">{t('valuation.status.in')}</option>
+              <option value="out">{t('valuation.status.out')}</option>
+              <option value="low">{t('valuation.status.low')}</option>
+            </select>
+          </label>
           {seeSuppliers && (
             <PartyPicker
               type="SUPPLIER"
               withCode
               value={supplier}
               onChange={setSupplier}
-              label={t('valuation.supplier')}
+              label={t('inventory.supplier')}
               placeholder={t('common.all')}
             />
           )}
@@ -761,44 +775,34 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             </Button>
           </div>
         </div>
-        <div data-noprint className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={empty} onChange={(e) => setEmpty(e.target.checked)} />
-            {t('valuation.empty')}
-          </label>
-          {picked.length > 0 && (
-            <span className="inline-flex items-center gap-2">
-              <Badge tone="brand">
-                {t('valuation.picked').replace('{n}', formatNumber(picked.length, locale))}
-              </Badge>
-              <button
-                type="button"
-                className="text-xs font-medium text-brand hover:underline"
-                onClick={() => setPicked([])}
-              >
-                {t('valuation.clearPicked')}
-              </button>
-            </span>
-          )}
-        </div>
+        {picked.length > 0 && (
+          <div data-noprint className="flex items-center gap-2 text-sm">
+            <Badge tone="brand">
+              {t('valuation.picked').replace('{n}', formatNumber(picked.length, locale))}
+            </Badge>
+            <button
+              type="button"
+              className="text-xs font-medium text-brand hover:underline"
+              onClick={() => setPicked([])}
+            >
+              {t('valuation.clearPicked')}
+            </button>
+          </div>
+        )}
       </Card>
       {finding && (
         <ItemFinderSheet
+          browse
+          branchId={branchId || undefined}
           warehouseId={warehouseId || undefined}
           departmentId={departmentId || undefined}
           onClose={() => setFinding(false)}
-          onAdd={(items, close) => {
-            setPicked((prev) => [...new Set([...prev, ...items.map((i) => i.product.id)])]);
-            if (close) setFinding(false);
+          onAdd={(items) => {
+            setPicked(items.map((i) => i.product.id));
+            setFinding(false);
           }}
         />
       )}
-
-      <PurchasesOfDay
-        day={asOf}
-        departmentId={departmentId}
-        supplierCode={supplier ? String(supplier.code) : ''}
-      />
 
       {valuation.isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
@@ -809,98 +813,26 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
           <EmptyState title={t('common.empty')} icon="inventory" />
         </Card>
       ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-            {data.categories.length > 0 && (
-              <ValuationTable
-                id="inventory.valuation.departments"
-                nameLabel={t('valuation.department')}
-                title={t('inventory.byCategory')}
-                rows={data.categories}
-                money={money}
-                seeValue={seeValue}
-              />
-            )}
-            {!warehouseId && data.warehouses.length > 1 && (
-              <ValuationTable
-                id="inventory.valuation.warehouses"
-                nameLabel={t('warehouse.label')}
-                title={t('warehouse.byWarehouse')}
-                rows={data.warehouses}
-                money={money}
-                seeValue={seeValue}
-              />
-            )}
-            {data.models.length > 0 && (
-              <ValuationTable
-                id="inventory.valuation.models"
-                nameLabel={t('valuation.model')}
-                title={t('inventory.byModel')}
-                rows={data.models}
-                money={money}
-                seeValue={seeValue}
-              />
-            )}
-          </div>
-          {can('inventory:valuation_items') && (
-            <ValuationItems data={data} money={money} seeSuppliers={seeSuppliers} />
-          )}
-        </div>
+        can('inventory:valuation_items') && (
+          <ValuationItems data={data} money={money} seeSuppliers={seeSuppliers} />
+        )
       )}
+
+      <PurchasesOfDay
+        day={asOf}
+        departmentId={departmentId}
+        supplierCode={supplier ? String(supplier.code) : ''}
+      />
     </div>
   );
 }
 
-function ValuationTable({
-  id,
-  title,
-  nameLabel,
-  rows,
-  money,
-  seeValue,
-}: {
-  /** Each table keeps its own columns (owner, 2026-10-21: they were shared and came out wrong). */
-  id: string;
-  title: string;
-  /** The first column's title: department, warehouse or model. */
-  nameLabel: string;
-  rows: ValuationRow[];
-  money: (v: number | null) => string;
-  seeValue: boolean;
-}) {
-  const { t, locale } = useT();
-  return (
-    <Card padded={false} className="h-fit overflow-hidden">
-      <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        {title}
-      </h2>
-      <TableColumns id={id}>
-        <table className="w-full text-sm">
-          <thead className="bg-surface-2 text-xs text-muted">
-            <tr>
-              <th className="p-3 text-start font-medium">{nameLabel}</th>
-              <th className="p-3 text-end font-medium">{t('valuation.count')}</th>
-              <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
-              {seeValue && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {rows.map((r) => (
-              <tr key={r.key}>
-                <td className="p-3">{r.label}</td>
-                <td className="p-3 text-end tnum">{formatNumber(r.count, locale)}</td>
-                <td className="p-3 text-end tnum">{formatNumber(r.quantity, locale)}</td>
-                {seeValue && <td className="p-3 text-end font-medium tnum">{money(r.value)}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </TableColumns>
-    </Card>
-  );
-}
+type ItemSort = 'quantity' | 'value' | 'salePrice' | 'supplyPrice' | 'label';
 
-/** The valuation item by item; each column shows only for whoever may see it. */
+/**
+ * Item balances (أرصدة الأصناف): each item where it is — branch, department and warehouse — with
+ * its quantity and, for whoever may see them, its prices and value (owner, 2026-10-21).
+ */
 function ValuationItems({
   data,
   money,
@@ -916,30 +848,76 @@ function ValuationItems({
   const seePrice = data.items.some((i) => i.salePrice != null);
   const qtyTone = (r: ValuationItem) =>
     r.empty ? 'text-destructive' : r.low ? 'text-warning' : '';
-  const supplier = (r: ValuationItem) =>
-    r.supplier ? `${r.supplierCode ?? ''} ${r.supplier}`.trim() : '';
+  const place = (r: ValuationItem) =>
+    [r.branch, r.department, r.warehouse].filter(Boolean).join(' · ');
+  const [sort, setSort] = useState<{ key: ItemSort; dir: 1 | -1 } | null>(null);
+  const items = sort
+    ? [...data.items].sort((a, b) => {
+        const x = a[sort.key] ?? 0;
+        const y = b[sort.key] ?? 0;
+        const c =
+          typeof x === 'number' && typeof y === 'number'
+            ? x - y
+            : String(x).localeCompare(String(y), locale);
+        return c * sort.dir;
+      })
+    : data.items;
   const heading = (
     <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
-      {t('inventory.byItem')}
+      {t('valuation.itemsTitle')}
     </h2>
   );
-  // A phone (owner, 2026-10-21: the table was squeezed): one card per item, nothing cut off.
+  // A phone (owner, 2026-10-21: the table was squeezed): one card per item, nothing cut off,
+  // ordered from a list instead of the column titles.
   if (isPhone)
     return (
       <Card padded={false} className="overflow-hidden">
         {heading}
+        <div data-noprint className="flex justify-end border-b border-line px-3 py-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            {t('list.sortBy')}
+            <select
+              className="h-8 rounded-lg border border-line bg-surface px-1.5 text-xs outline-none focus:border-brand"
+              value={sort ? `${sort.key}:${sort.dir}` : ''}
+              onChange={(e) => {
+                const [k, d] = e.target.value.split(':');
+                setSort(k ? { key: k as ItemSort, dir: Number(d) as 1 | -1 } : null);
+              }}
+            >
+              <option value="">{t('common.all')}</option>
+              {(
+                [
+                  ['quantity', 'inventory.qty'],
+                  ['label', 'inventory.itemName'],
+                  ...(seePrice ? [['salePrice', 'item.salePrice']] : []),
+                  ...(seeValue
+                    ? [
+                        ['supplyPrice', 'finder.costPrice'],
+                        ['value', 'inventory.value'],
+                      ]
+                    : []),
+                ] as [ItemSort, TranslationKey][]
+              ).flatMap(([k, label]) =>
+                ([-1, 1] as const).map((d) => (
+                  <option key={`${k}:${d}`} value={`${k}:${d}`}>
+                    {t(label)} {d === -1 ? '↓' : '↑'}
+                  </option>
+                )),
+              )}
+            </select>
+          </label>
+        </div>
         <ul className="divide-y divide-[var(--c-line)]">
-          {data.items.map((r) => (
+          {items.map((r) => (
             <li key={r.key} className="space-y-1 p-3 text-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <ItemLink id={r.key} name={r.label} className="font-medium" />
+                  <ItemLink id={r.productId} name={r.label} className="font-medium" />
                   <p className="text-xs text-muted tnum" dir="ltr">
                     {r.code}
                   </p>
-                  {seeSuppliers && supplier(r) && (
-                    <p className="text-xs text-muted">{supplier(r)}</p>
-                  )}
+                  {place(r) && <p className="text-xs text-muted">{place(r)}</p>}
+                  {seeSuppliers && r.supplier && <p className="text-xs text-muted">{r.supplier}</p>}
                 </div>
                 <div className="shrink-0 text-end">
                   <p className={`font-semibold tnum ${qtyTone(r)}`}>
@@ -982,9 +960,9 @@ function ValuationItems({
   return (
     <Card padded={false} className="overflow-hidden">
       {heading}
-      <TableColumns id="inventory.valuation.items">
+      <TableColumns id="inventory.valuation.balances">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
@@ -992,6 +970,9 @@ function ValuationItems({
                 {seeSuppliers && (
                   <th className="p-2 text-start font-medium">{t('inventory.supplier')}</th>
                 )}
+                <th className="p-2 text-start font-medium">{t('list.branch')}</th>
+                <th className="p-2 text-start font-medium">{t('valuation.department')}</th>
+                <th className="p-2 text-start font-medium">{t('list.warehouse')}</th>
                 <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
                 <th className="p-2 text-end font-medium">{t('valuation.reorder')}</th>
                 {seePrice && <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>}
@@ -1000,15 +981,18 @@ function ValuationItems({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-line)]">
-              {data.items.map((r) => (
+              {items.map((r) => (
                 <tr key={r.key}>
                   <td className="whitespace-nowrap p-2 text-muted tnum" dir="ltr">
                     {r.code}
                   </td>
                   <td className="p-2">
-                    <ItemLink id={r.key} name={r.label} />
+                    <ItemLink id={r.productId} name={r.label} />
                   </td>
-                  {seeSuppliers && <td className="p-2 text-muted">{supplier(r)}</td>}
+                  {seeSuppliers && <td className="p-2 text-muted">{r.supplier ?? ''}</td>}
+                  <td className="p-2 text-muted">{r.branch ?? ''}</td>
+                  <td className="p-2 text-muted">{r.department ?? ''}</td>
+                  <td className="p-2 text-muted">{r.warehouse ?? ''}</td>
                   <td className={`whitespace-nowrap p-2 text-end tnum ${qtyTone(r)}`}>
                     {formatNumber(r.quantity, locale)}
                   </td>

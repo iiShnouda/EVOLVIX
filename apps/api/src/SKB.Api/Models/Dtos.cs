@@ -344,7 +344,8 @@ public record ItemLifeDto(
 public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count);
 
 /// <summary>One item of the valuation; each column only for whoever may see it (owner, 2026-10-19).</summary>
-public record ValuationItemDto(string Key, string Code, string Label, string? Supplier, int? SupplierCode,
+public record ValuationItemDto(string Key, string ProductId, string Code, string Label, string? Supplier,
+    string? Department, string? Branch, string? Warehouse,
     int Quantity, long? Value, long? SupplyPrice, long? SalePrice, int ReorderLevel, bool Low, bool Empty);
 
 /// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>

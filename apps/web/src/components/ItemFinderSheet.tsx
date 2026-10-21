@@ -117,6 +117,7 @@ export function ItemFinderSheet({
   onInvoice,
   branchId,
   lockPlace,
+  browse,
 }: {
   /** `close`: the person is done (Add selected), else the sheet stays open for more. */
   onAdd: (items: FinderPick[], close: boolean) => void;
@@ -135,6 +136,11 @@ export function ItemFinderSheet({
   branchId?: string;
   /** A sale's branch, warehouse and department are the invoice's: shown, not changed. */
   lockPlace?: boolean;
+  /**
+   * Only to look (owner, 2026-10-21, the stock valuation): no units, quantities or adding; the
+   * ticked items are shown where they are, with their prices.
+   */
+  browse?: boolean;
 }) {
   const { t, locale } = useT();
   const departments = useDepartments();
@@ -484,15 +490,23 @@ export function ItemFinderSheet({
                       </th>
                       <th className="px-2 py-2 text-start font-medium">{t('common.code')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('finder.unit')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('finder.qty')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('finder.addOne')}</th>
+                      {!browse && (
+                        <th className="px-2 py-2 text-start font-medium">{t('finder.unit')}</th>
+                      )}
+                      {!browse && (
+                        <th className="px-2 py-2 text-start font-medium">{t('finder.qty')}</th>
+                      )}
+                      {!browse && (
+                        <th className="px-2 py-2 text-start font-medium">{t('finder.addOne')}</th>
+                      )}
                       <th className="px-2 py-2 text-end font-medium">{t('invoice.price')}</th>
                       {seeCosts && (
                         <th className="px-2 py-2 text-end font-medium">{t('finder.costPrice')}</th>
                       )}
                       <th className="px-2 py-2 text-end font-medium">{t('invoice.balance')}</th>
-                      <th className="px-2 py-2 text-end font-medium">{t('finder.onInvoice')}</th>
+                      {!browse && (
+                        <th className="px-2 py-2 text-end font-medium">{t('finder.onInvoice')}</th>
+                      )}
                       <th className="px-2 py-2 text-start font-medium">{t('finder.supplier')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('finder.category')}</th>
                       <th className="px-2 py-2 text-start font-medium">{t('item.season')}</th>
@@ -525,57 +539,63 @@ export function ItemFinderSheet({
                           >
                             {p.name}
                           </td>
-                          <td className="px-2 py-1">
-                            <select
-                              className={`${cell} w-24`}
-                              value={unitOf(p)}
-                              disabled={p.units.length < 2}
-                              aria-label={t('finder.unit')}
-                              onChange={(e) => setUnit((u) => ({ ...u, [p.id]: e.target.value }))}
-                            >
-                              {p.units.map((u) => (
-                                <option key={u.unitId} value={u.unitId}>
-                                  {u.name}
-                                  {u.factor > 1 ? ` (${u.factor})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-2 py-1">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              inputMode="numeric"
-                              data-qty={i}
-                              aria-label={t('finder.qty')}
-                              title={over ? t('finder.overStock') : undefined}
-                              disabled={empty}
-                              className={`${cell} w-20 tnum ${over ? 'border-destructive text-destructive' : ''}`}
-                              value={qty[p.id] ?? ''}
-                              onChange={(e) => setRowQty(p.id, e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  addNow(p, i);
-                                }
-                              }}
-                            />
-                          </td>
-                          <td className="px-2 py-1">
-                            <button
-                              type="button"
-                              title={t('finder.addOne')}
-                              aria-label={`${t('finder.addOne')} ${p.name}`}
-                              disabled={empty || over}
-                              onClick={() => addNow(p, i)}
-                              className={`flex h-8 items-center gap-1 rounded-[var(--radius-app)] px-2.5 text-xs font-semibold disabled:opacity-40 ${added.has(p.id) ? 'bg-positive text-white' : 'bg-brand text-brand-fg hover:opacity-90'}`}
-                            >
-                              <Icon name={added.has(p.id) ? 'check' : 'plus'} size={15} />
-                              {t('finder.addShort')}
-                            </button>
-                          </td>
+                          {!browse && (
+                            <td className="px-2 py-1">
+                              <select
+                                className={`${cell} w-24`}
+                                value={unitOf(p)}
+                                disabled={p.units.length < 2}
+                                aria-label={t('finder.unit')}
+                                onChange={(e) => setUnit((u) => ({ ...u, [p.id]: e.target.value }))}
+                              >
+                                {p.units.map((u) => (
+                                  <option key={u.unitId} value={u.unitId}>
+                                    {u.name}
+                                    {u.factor > 1 ? ` (${u.factor})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )}
+                          {!browse && (
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                inputMode="numeric"
+                                data-qty={i}
+                                aria-label={t('finder.qty')}
+                                title={over ? t('finder.overStock') : undefined}
+                                disabled={empty}
+                                className={`${cell} w-20 tnum ${over ? 'border-destructive text-destructive' : ''}`}
+                                value={qty[p.id] ?? ''}
+                                onChange={(e) => setRowQty(p.id, e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addNow(p, i);
+                                  }
+                                }}
+                              />
+                            </td>
+                          )}
+                          {!browse && (
+                            <td className="px-2 py-1">
+                              <button
+                                type="button"
+                                title={t('finder.addOne')}
+                                aria-label={`${t('finder.addOne')} ${p.name}`}
+                                disabled={empty || over}
+                                onClick={() => addNow(p, i)}
+                                className={`flex h-8 items-center gap-1 rounded-[var(--radius-app)] px-2.5 text-xs font-semibold disabled:opacity-40 ${added.has(p.id) ? 'bg-positive text-white' : 'bg-brand text-brand-fg hover:opacity-90'}`}
+                              >
+                                <Icon name={added.has(p.id) ? 'check' : 'plus'} size={15} />
+                                {t('finder.addShort')}
+                              </button>
+                            </td>
+                          )}
                           <td className="px-2 py-1 text-end tnum">
                             {formatMoney(p.salePrice, p.currency, locale)}
                           </td>
@@ -589,9 +609,11 @@ export function ItemFinderSheet({
                           >
                             {formatQuantity(p.stockOnHand, p.units, locale)}
                           </td>
-                          <td className="px-2 py-1 text-end tnum text-brand">
-                            {already > 0 ? formatQuantity(already, p.units, locale) : ''}
-                          </td>
+                          {!browse && (
+                            <td className="px-2 py-1 text-end tnum text-brand">
+                              {already > 0 ? formatQuantity(already, p.units, locale) : ''}
+                            </td>
+                          )}
                           <td className="px-2 py-1 text-muted">{p.supplierName ?? ''}</td>
                           <td className="px-2 py-1 text-muted">{p.departmentName ?? ''}</td>
                           <td className="px-2 py-1 text-muted">{p.seasonName ?? ''}</td>
@@ -622,7 +644,8 @@ export function ItemFinderSheet({
             {picked.length > 0 && (
               <>
                 {' '}
-                · {picked.length} {t('finder.selected')} · {t('finder.qty')} {pickedQty}
+                · {picked.length} {t('finder.selected')}
+                {!browse && ` · ${t('finder.qty')} ${pickedQty}`}
               </>
             )}
             {found.isFetching && <Spinner size={12} />}
@@ -631,8 +654,12 @@ export function ItemFinderSheet({
             <Button variant="ghost" onClick={onClose}>
               {t('common.close')}
             </Button>
-            <Button icon="check" disabled={picked.length === 0} onClick={addPicked}>
-              {t('finder.add')}
+            <Button
+              icon={browse ? 'eye' : 'check'}
+              disabled={picked.length === 0}
+              onClick={addPicked}
+            >
+              {t(browse ? 'valuation.showPicked' : 'finder.add')}
               {picked.length > 0 && <span className="tnum"> ({picked.length})</span>}
             </Button>
           </div>

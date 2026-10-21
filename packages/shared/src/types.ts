@@ -1405,13 +1405,16 @@ export interface ValuationRow {
   count: number;
 }
 
-/** One item of the valuation; each column only for whoever may see it. */
+/** One item in one place (branch / warehouse) of the valuation; each column only for whoever may see it. */
 export interface ValuationItem {
   key: string;
+  productId: string;
   code: string;
   label: string;
   supplier: string | null;
-  supplierCode: number | null;
+  department: string | null;
+  branch: string | null;
+  warehouse: string | null;
   quantity: number;
   value: number | null;
   /** What a piece cost on its latest purchase (سعر التوريد). */

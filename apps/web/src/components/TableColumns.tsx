@@ -180,12 +180,15 @@ export function TableColumns({
   }, [reorder]);
 
   const sortAt = sort ? headers.indexOf(sort.label) : -1;
+  // Every title shows it sorts (owner, 2026-10-21: the arrows on each column); the one in use
+  // shows which way.
   const sortCss =
-    sortAt >= 0
-      ? `${w} thead tr:first-child > :nth-child(${sortAt + 1})::after{content:"${
+    `${w} thead tr:first-child > th:not(:empty):not(:has(input))::after{content:" \\21C5";font-size:9px;opacity:.35}` +
+    (sortAt >= 0
+      ? `${w} thead tr:first-child > th:nth-child(${sortAt + 1})::after{content:"${
           sort!.dir === -1 ? ' \\25BC' : ' \\25B2'
-        }";font-size:9px;opacity:.75}`
-      : '';
+        }";font-size:9px;opacity:.8}`
+      : '');
 
   // The rows on the screen in the chosen order, kept so as rows come and go.
   useLayoutEffect(() => {
