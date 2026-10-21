@@ -321,6 +321,10 @@
         {
           "ar": "تقييم المخزن: اتشالت علامة \"وصل لحد الطلب\"، وفضلت علامة \"رصيده خلص\" تعرض الأصناف اللي ملهاش رصيد بس.",
           "en": "Stock valuation: the \"reached the reorder level\" tick is gone; \"out of stock\" shows only the items with nothing left."
+        },
+        {
+          "ar": "سحب / إيداع نقدي: لما تكتب مبلغ جنب فاتورة مورد أو عميل، خانة المبلغ بتتملي لوحدها بمجموعهم، والحفظ بيسدد الفاتورة كلها أو جزء منها ويخصم أو يضيف الفلوس في الخزينة.",
+          "en": "Cash move: typing an amount beside a supplier's or customer's invoice fills the amount with their total, and saving pays all or part of each invoice and moves the money in the cash box."
         }
       ]
     },

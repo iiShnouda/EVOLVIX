@@ -101,7 +101,20 @@ export function CashMovePage() {
   // The deposit side starts at the main cash box.
   const toAccountId = to.accountId || (to.kind === 'MONEY' ? (mainBox?.id ?? '') : '');
   const [amount, setAmount] = useState('');
-  const [alloc, setAlloc] = useState<Record<string, string>>({});
+  const [alloc, setAllocRaw] = useState<Record<string, string>>({});
+  // The amount follows what is typed beside the invoices (owner, 2026-10-21: paying part of an
+  // invoice did nothing), unless it was typed by hand.
+  const [amountByHand, setAmountByHand] = useState(false);
+  function setAlloc(next: Record<string, string>) {
+    setAllocRaw(next);
+    setDone(null);
+    if (amountByHand) return;
+    const sum = Object.values(next).reduce(
+      (s, v) => s + (v.trim() && Number(v) > 0 ? toMinor(Number(v)) : 0),
+      0,
+    );
+    setAmount(sum > 0 ? String(toMajor(sum)) : '');
+  }
   const [notes, setNotes] = useState('');
   const [docDate, setDocDate] = useState(companyToday);
   const [done, setDone] = useState<string | null>(null);
@@ -127,7 +140,7 @@ export function CashMovePage() {
       if (d.from) setFrom(await side(d.from));
       if (d.to) setTo(await side(d.to));
       if (typeof d.amount === 'string') setAmount(d.amount);
-      if (d.alloc && typeof d.alloc === 'object') setAlloc(d.alloc);
+      if (d.alloc && typeof d.alloc === 'object') setAllocRaw(d.alloc);
       if (typeof d.notes === 'string') setNotes(d.notes);
     },
   );
@@ -253,7 +266,8 @@ export function CashMovePage() {
               });
       setDone(saved.number);
       setAmount('');
-      setAlloc({});
+      setAmountByHand(false);
+      setAllocRaw({});
       setNotes('');
       setFrom((s) => ({ ...s, party: null }));
       setTo((s) => ({ ...s, party: null }));
@@ -353,6 +367,7 @@ export function CashMovePage() {
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);
+              setAmountByHand(e.target.value.trim() !== '');
               setDone(null);
             }}
           />
