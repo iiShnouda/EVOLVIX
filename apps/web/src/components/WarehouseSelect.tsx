@@ -34,6 +34,7 @@ export function WarehouseSelect({
   includeClosed,
   className,
   label,
+  branchId,
 }: {
   value: string;
   onChange: (id: string) => void;
@@ -41,10 +42,12 @@ export function WarehouseSelect({
   includeClosed?: boolean;
   className?: string;
   label?: string;
+  /** Only this branch's warehouses. */
+  branchId?: string;
 }) {
   const { t } = useT();
   const list = useWarehouses(!includeClosed);
-  const rows = list.data ?? [];
+  const rows = (list.data ?? []).filter((w) => !branchId || w.branchId === branchId);
   const showBranch = new Set(rows.map((w) => w.branchId)).size > 1;
 
   return (

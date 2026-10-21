@@ -39,15 +39,12 @@ import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ItemCardPage } from './pages/ItemCardPage';
-import { StocktakePage } from './pages/StocktakePage';
 import { BranchesPage } from './pages/BranchesPage';
-import { TransferPage, TransfersPage } from './pages/TransfersPage';
+import { TransferPage } from './pages/TransfersPage';
 import { TransferBuilderPage } from './pages/TransferBuilderPage';
 import { CatalogSetupPage } from './pages/CatalogSetupPage';
-import { LabelsPage } from './pages/LabelsPage';
 import { ChatPage } from './pages/ChatPage';
 import { AssistantPage } from './pages/AssistantPage';
-import { PriceListsPage } from './pages/PriceListsPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
 import { AddItemsPage } from './pages/AddItemsPage';
 import { useCan } from './lib/can';
@@ -262,6 +259,17 @@ function ViewSalesInvoiceRoute() {
   return <InvoiceBuilderPage key={`view-${id}`} mode="sale" editId={id} readOnly />;
 }
 
+/**
+ * The store's screens that open as tabs of the inventory page (owner, 2026-10-21); their old
+ * addresses still lead there, with what they carried (e.g. `?doc=` for labels).
+ */
+function InventoryTabRoute({ tab }: { tab: string }) {
+  const { search } = useLocation();
+  const q = new URLSearchParams(search);
+  q.set('tab', tab);
+  return <Navigate to={`/inventory?${q.toString()}`} replace />;
+}
+
 /** One transfer on its own page; changing it reopens the transfer screen on it (owner, 2026-10-19). */
 function TransferRoute() {
   const { id } = useParams();
@@ -299,16 +307,16 @@ const routes = createRoutesFromElements(
       <Route path="/deliveries" element={<DeliveriesPage />} />
       <Route path="/inventory" element={<InventoryPage />} />
       <Route path="/inventory/items/:id" element={<ItemCardPage />} />
-      <Route path="/inventory/stocktake" element={<StocktakePage />} />
-      <Route path="/inventory/transfers" element={<TransfersPage />} />
+      <Route path="/inventory/stocktake" element={<InventoryTabRoute tab="stocktake" />} />
+      <Route path="/inventory/transfers" element={<InventoryTabRoute tab="transfers" />} />
       <Route path="/inventory/transfers/new" element={<TransferBuilderPage />} />
       <Route path="/inventory/transfers/:id" element={<TransferRoute />} />
       <Route path="/inventory/transfers/:id/edit" element={<EditTransferRoute />} />
       <Route path="/inventory/setup" element={<CatalogSetupPage />} />
-      <Route path="/inventory/labels" element={<LabelsPage />} />
+      <Route path="/inventory/labels" element={<InventoryTabRoute tab="labels" />} />
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/assistant" element={<AssistantPage />} />
-      <Route path="/inventory/price-lists" element={<PriceListsPage />} />
+      <Route path="/inventory/price-lists" element={<InventoryTabRoute tab="pricelists" />} />
       <Route path="/inventory/products/new" element={<NewItemsRoute />} />
       <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
       <Route path="/inventory/models" element={<ModelsPage />} />

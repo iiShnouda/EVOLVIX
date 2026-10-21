@@ -305,7 +305,7 @@ function Sheet({
  * piece — pick the label size (a label printer's roll or an A4 sticker sheet) and what each label
  * shows, then print. Items with no barcode get the company's own (EAN-13 from 20…) first.
  */
-export function LabelsPage() {
+export function LabelsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
@@ -427,14 +427,16 @@ export function LabelsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title={t('labels.title')}
-        action={
-          <Button variant="ghost" size="sm" icon="close" onClick={() => navigate('/inventory')}>
-            {t('itemCard.back')}
-          </Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title={t('labels.title')}
+          action={
+            <Button variant="ghost" size="sm" icon="close" onClick={() => navigate('/inventory')}>
+              {t('itemCard.back')}
+            </Button>
+          }
+        />
+      )}
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-end gap-3">

@@ -19,6 +19,10 @@ import { WarehouseSelect } from '../components/WarehouseSelect';
 import { PartyPicker } from '../components/PartyPicker';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import { ItemLink } from '../components/ItemLink';
+import { StocktakePage } from './StocktakePage';
+import { TransfersPage } from './TransfersPage';
+import { LabelsPage } from './LabelsPage';
+import { PriceListsPage } from './PriceListsPage';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
@@ -44,7 +48,7 @@ const field =
 
 const today = companyToday;
 
-type Tab = 'items' | 'valuation';
+type Tab = 'items' | 'valuation' | 'stocktake' | 'transfers' | 'labels' | 'pricelists';
 
 /**
  * Inventory (المخزون): every item with stock, average cost, value and reorder status,
@@ -61,7 +65,18 @@ export function InventoryPage() {
   const seeCosts = can('costs:view');
   // The valuation has its own permission, and each part and column another (owner, 2026-10-19).
   const canValuation = can('inventory:valuation');
-  const tab: Tab = canValuation && params.get('tab') === 'valuation' ? 'valuation' : 'items';
+  // The store's other screens open here, as tabs (owner, 2026-10-21: not on pages of their own).
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'items', label: t('inventory.items') },
+    ...(canValuation ? [{ key: 'valuation' as Tab, label: t('inventory.valuation') }] : []),
+    ...(canEdit ? [{ key: 'stocktake' as Tab, label: t('stocktake.action') }] : []),
+    { key: 'transfers', label: t('transfer.title') },
+    ...(can('labels:print') ? [{ key: 'labels' as Tab, label: t('labels.title') }] : []),
+    { key: 'pricelists', label: t('pl.short') },
+  ];
+  const asked = params.get('tab');
+  const tab: Tab = tabs.find((x) => x.key === asked)?.key ?? 'items';
+  const ownFilters = tab === 'items' || tab === 'valuation';
   const lowOnly = params.get('low') === '1';
   const warehouseId = params.get('wh') ?? '';
   // Branch, warehouse and department in every search (owner, 2026-10-01).
@@ -130,8 +145,13 @@ export function InventoryPage() {
     }
     setParams(next, { replace: true });
   }
-  const setTab = (next: Tab) =>
-    update({ tab: next === 'valuation' ? 'valuation' : null, low: null });
+  const setTab = (next: Tab) => {
+    // A tab's own choices (a transfer list's view, a price list's part) don't follow it out.
+    const q = new URLSearchParams(params);
+    for (const k of ['tab', 'low', 'tt', 'pl', 'doc', 'ids']) q.delete(k);
+    if (next !== 'items') q.set('tab', next);
+    setParams(q, { replace: true });
+  };
   const setLowOnly = (on: boolean) => update({ low: on ? '1' : null });
 
   return (
@@ -179,40 +199,32 @@ export function InventoryPage() {
           role="tablist"
           className="flex max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
-          {(canValuation ? (['items', 'valuation'] as const) : (['items'] as const)).map((k) => (
+          {tabs.map((x) => (
             <button
-              key={k}
+              key={x.key}
               role="tab"
-              aria-selected={tab === k}
-              onClick={() => setTab(k)}
+              aria-selected={tab === x.key}
+              onClick={() => setTab(x.key)}
               className={`h-8 shrink-0 rounded-lg px-3 text-sm font-medium transition-colors ${
-                tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+                tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
               }`}
             >
-              {t(k === 'items' ? 'inventory.items' : 'inventory.valuation')}
+              {x.label}
             </button>
           ))}
-          {/* The store's other screens, beside its tabs (owner, 2026-10-19). */}
-          {[
-            canEdit && { path: '/inventory/stocktake', label: t('stocktake.action') },
-            { path: '/inventory/transfers', label: t('transfer.title') },
-            can('labels:print') && { path: '/inventory/labels', label: t('labels.title') },
-            { path: '/inventory/price-lists', label: t('pl.short') },
-            { path: '/inventory/setup', label: t('catalog.setup') },
-          ]
-            .filter((x): x is { path: string; label: string } => !!x)
-            .map((x) => (
-              <button
-                key={x.path}
-                type="button"
-                onClick={() => navigate(x.path)}
-                className="h-8 shrink-0 rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-              >
-                {x.label}
-              </button>
-            ))}
+          {/* Setting up the catalogue stays a screen of its own. */}
+          {[{ path: '/inventory/setup', label: t('catalog.setup') }].map((x) => (
+            <button
+              key={x.path}
+              type="button"
+              onClick={() => navigate(x.path)}
+              className="h-8 shrink-0 rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+            >
+              {x.label}
+            </button>
+          ))}
         </div>
-        {myBranches.length > 0 && (
+        {ownFilters && myBranches.length > 0 && (
           <select
             className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
             aria-label={t('list.branch')}
@@ -232,16 +244,18 @@ export function InventoryPage() {
             ))}
           </select>
         )}
-        <WarehouseSelect
-          className="w-full sm:w-64"
-          value={warehouseId}
-          onChange={(id) => {
-            update({ wh: id || null });
-            if (id) setPlace({ warehouseId: id });
-          }}
-          allowAll
-          includeClosed
-        />
+        {ownFilters && (
+          <WarehouseSelect
+            className="w-full sm:w-64"
+            value={warehouseId}
+            onChange={(id) => {
+              update({ wh: id || null });
+              if (id) setPlace({ warehouseId: id });
+            }}
+            allowAll
+            includeClosed
+          />
+        )}
         {tab === 'items' && departments.length > 0 && (
           <select
             className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
@@ -298,8 +312,16 @@ export function InventoryPage() {
             navigate(`/inventory/items/${id}${warehouseId ? `?wh=${warehouseId}` : ''}`)
           }
         />
-      ) : (
+      ) : tab === 'valuation' ? (
         <ValuationTab warehouseId={warehouseId} branchId={branchId} />
+      ) : tab === 'stocktake' ? (
+        <StocktakePage embedded />
+      ) : tab === 'transfers' ? (
+        <TransfersPage embedded />
+      ) : tab === 'labels' ? (
+        <LabelsPage embedded />
+      ) : (
+        <PriceListsPage embedded />
       )}
       {tab === 'items' && (
         <div className="flex justify-end">

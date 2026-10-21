@@ -37,6 +37,20 @@ http
       const last = b.messages[b.messages.length - 1];
       if (b.format === 'json') {
         const p = b.messages[0].content;
+        // A stocktake sheet: counts beside printed codes, one in Arabic-Indic digits, one unknown code.
+        if (p.includes('stock count sheet'))
+          return send({
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                lines: [
+                  { code: 'PKG-001', counted: 200 },
+                  { code: 'CLN-001', counted: '١٠٠' },
+                  { code: 'ZZZ-999', counted: 3 },
+                ],
+              }),
+            },
+          });
         if (p.includes("supplier's invoice"))
           return send({
             message: {

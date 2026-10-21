@@ -147,6 +147,10 @@
         {
           "ar": "تقييم المخزن: قايمة واحدة \"أرصدة الأصناف\" في أول الصفحة فيها كل صنف في كل مكان (الفرع والقسم والمخزن) بدل جداول القسم والمخزن، وتتفلتر بالفرع والمخزن اللي فوق والقسم (الافتراضي الكل). خانة \"حالة المخزون\": الكل، متوفر، نفد من المخزون، عند حد الطلب. البحث التفصيلي هنا للعرض بس: تختار الأصناف وتدوس \"عرض\" تشوف كمياتها وأسعارها في كل مكان. وأسهم الترتيب ظاهرة على كل عمود في كل الجداول.",
           "en": "Stock valuation: one \"Item balances\" list at the top with each item in each place (branch, department, warehouse) instead of the department and warehouse tables, filtered by the branch and warehouse above and the department (all by default). A \"stock status\" choice: all, in stock, out of stock, at reorder level. The detailed search here only shows: pick items and \"Show\" to see their quantities and prices everywhere. Sort arrows show on every column of every table."
+        },
+        {
+          "ar": "الجرد: فلتر بالفرع والمخزن والقسم، وعدد الصفوف في الصفحة، وطباعة ورقة جرد فيها الكود واسم الصنف وخانة فاضية للعدد الفعلي. صوّر الورقة بعد ما تتملي وارفعها، والسيرفر بيقراها ويملا الأعداد لوحده ويقولك الأكواد اللي ملقاهاش. بيظهر العجز والزيادة لكل صنف بالكمية والمبلغ، ومجموعهم لكل مورد (مصنع) والإجمالي، وقايمة بالفروق تشيل منها اللي مش عاوز تسويه قبل الترحيل، وبعد الترحيل يقولك اللي اتعمل. والجرد والتحويلات وطباعة الباركود وقوائم الأسعار بقوا تابات في صفحة المخزون نفسها.",
+          "en": "Stocktake: filter by branch, warehouse and department, rows per page, and print a count sheet with code, item and an empty counted column. Photograph the filled sheet and upload it: the server reads it, fills the counts and lists codes it couldn't find. Each item's shortage or surplus shows in quantity and money, with totals per supplier (factory) and overall, and a list of differences to drop any before posting; after posting it says what was done. Stocktake, transfers, barcode labels and price lists are now tabs of the inventory page."
         }
       ],
       "fixes": [

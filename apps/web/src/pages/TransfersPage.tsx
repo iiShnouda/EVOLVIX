@@ -34,13 +34,14 @@ const STATUS_TONE: Record<TransferStatus, Tone> = {
  * every transfer. The receiving side confirms receipt; the sending side may cancel while the goods
  * are still on the way. `?tab=all` shows every permit; `?doc=<id>` opens one.
  */
-export function TransfersPage() {
+export function TransfersPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useT();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // No goods "in transit" (owner decision 2026-10-01): every permit is listed; the list of permits
   // still on the way shows only while older ones wait to be received.
-  const tab: Tab = params.get('tab') === 'open' ? 'open' : 'all';
+  // Its own key (the inventory page's tabs use `tab`).
+  const tab: Tab = params.get('tt') === 'open' ? 'open' : 'all';
   const waiting = useTransfers({ page: 1, status: 'SENT' });
   const anyWaiting = (waiting.data?.total ?? 0) > 0;
   const canSend = useAuth((s) => s.user?.permissions ?? []).includes('inventory:transfer');
@@ -55,26 +56,39 @@ export function TransfersPage() {
   const rows = list.data?.items ?? [];
 
   function switchTab(next: Tab) {
-    setParams(next === 'open' ? { tab: 'open' } : {}, { replace: true });
+    const q = new URLSearchParams(params);
+    if (next === 'open') q.set('tt', 'open');
+    else q.delete('tt');
+    setParams(q, { replace: true });
   }
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title={t('transfer.title')}
-        action={
-          <div className="flex gap-2">
-            <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/inventory')}>
-              {t('itemCard.back')}
+      {embedded ? (
+        canSend && (
+          <div className="flex justify-end">
+            <Button size="sm" icon="plus" onClick={() => navigate('/inventory/transfers/new')}>
+              {t('transfer.new')}
             </Button>
-            {canSend && (
-              <Button size="sm" icon="plus" onClick={() => navigate('/inventory/transfers/new')}>
-                {t('transfer.new')}
-              </Button>
-            )}
           </div>
-        }
-      />
+        )
+      ) : (
+        <PageHeader
+          title={t('transfer.title')}
+          action={
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/inventory')}>
+                {t('itemCard.back')}
+              </Button>
+              {canSend && (
+                <Button size="sm" icon="plus" onClick={() => navigate('/inventory/transfers/new')}>
+                  {t('transfer.new')}
+                </Button>
+              )}
+            </div>
+          }
+        />
+      )}
 
       {anyWaiting && (
         <div

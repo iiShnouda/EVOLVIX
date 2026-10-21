@@ -39,22 +39,25 @@ type Tab = 'lists' | 'breaks';
  * they run) and quantity discounts (a percent off from a quantity) — DOMAIN.md §2.2. Anyone who sees
  * stock can look; changing them needs price_lists:manage. Invoices use them on their own.
  */
-export function PriceListsPage() {
+export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useT();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'breaks' ? 'breaks' : 'lists';
+  // Its own key (the inventory page's tabs use `tab`).
+  const tab: Tab = params.get('pl') === 'breaks' ? 'breaks' : 'lists';
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title={t('pl.title')}
-        action={
-          <Button variant="ghost" size="sm" icon="close" onClick={() => navigate('/inventory')}>
-            {t('itemCard.back')}
-          </Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title={t('pl.title')}
+          action={
+            <Button variant="ghost" size="sm" icon="close" onClick={() => navigate('/inventory')}>
+              {t('itemCard.back')}
+            </Button>
+          }
+        />
+      )}
       <div
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
@@ -64,7 +67,12 @@ export function PriceListsPage() {
             key={x}
             role="tab"
             aria-selected={tab === x}
-            onClick={() => setParams(x === 'lists' ? {} : { tab: x }, { replace: true })}
+            onClick={() => {
+              const q = new URLSearchParams(params);
+              if (x === 'lists') q.delete('pl');
+              else q.set('pl', x);
+              setParams(q, { replace: true });
+            }}
             className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
               tab === x ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
             }`}

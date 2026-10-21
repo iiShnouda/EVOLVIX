@@ -275,6 +275,23 @@ public sealed class AssistantController : ControllerBase
         return StartRead("purchase_photo", async (ai, c) => await ai.ReadPurchaseAsync(image!, c));
     }
 
+    /// <summary>
+    /// Read a filled-in stocktake sheet from a photo (owner, 2026-10-21): each item code and the count
+    /// written beside it, for the stocktake screen to fill in. Nothing is posted: whoever reviews the
+    /// count decides (read on like an invoice).
+    /// </summary>
+    [HttpPost("scan/stocktake")]
+    [Authorize(Policy = Permissions.AiScan)]
+    [RequestSizeLimit(MaxImage + 64 * 1024)]
+    public async Task<IActionResult> ScanStocktake(IFormFile? file, CancellationToken ct)
+    {
+        if (!Can(Permissions.InventoryStocktake)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        var (image, error) = await ImageAsync(file, ct);
+        if (error is not null) return error;
+        if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
+        return StartRead("stocktake_photo", async (ai, c) => await ai.ReadCountSheetAsync(image!, c));
+    }
+
     /// <summary>Read cheques from a photo into rows for the notes screen (read on like an invoice).</summary>
     [HttpPost("scan/cheques")]
     [Authorize(Policy = Permissions.AiScan)]

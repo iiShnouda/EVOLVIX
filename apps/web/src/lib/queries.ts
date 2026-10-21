@@ -2469,7 +2469,7 @@ export async function transcribe(audio: Blob, language: 'ar' | 'en'): Promise<st
  * and asks for it every few seconds, telling `onWait` how long it has been.
  */
 export async function scanPhoto<T>(
-  kind: 'purchase' | 'cheques',
+  kind: 'purchase' | 'cheques' | 'stocktake',
   file: File,
   onWait?: (seconds: number) => void,
 ): Promise<T> {

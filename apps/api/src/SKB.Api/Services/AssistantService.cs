@@ -376,6 +376,28 @@ public sealed class AssistantService
         "\"amount\": number, \"dueDate\": \"YYYY-MM-DD\"|null, \"bank\": string|null, \"drawer\": string|null}]}. " +
         "One entry per cheque; amount as a number; the due date as printed on the cheque.";
 
+    /// <summary>A counted line of a stocktake sheet: the item's code as printed and the count written beside it.</summary>
+    public sealed record CountScan(string Code, decimal Counted);
+
+    // The stocktake sheet the app prints (owner, 2026-10-21): a table of #, item code (كود), item
+    // name and unit, then an empty "counted" (العدد الفعلي) column the storekeeper fills in by hand.
+    private const string CountPrompt =
+        "This photo is a printed stock count sheet. Each row has a row number, an item code, the item's " +
+        "name and unit, and a handwritten counted quantity in the last column (it may be blank). " +
+        "Handwritten digits may be Arabic-Indic (٠١٢٣٤٥٦٧٨٩). Reply with JSON only: " +
+        "{\"lines\": [{\"code\": string, \"counted\": number}]}. One entry per row that has a counted " +
+        "quantity written; copy the item code exactly as printed; skip rows left blank.";
+
+    public async Task<List<CountScan>> ReadCountSheetAsync(byte[] image, CancellationToken ct = default)
+    {
+        var json = await VisionAsync(CountPrompt, image, ct);
+        var rows = Field(json, "lines", "items", "rows") as JsonArray ?? new JsonArray();
+        return rows.OfType<JsonObject>()
+            .Select(o => new CountScan(Digits(Str(Field(o, "code", "sku", "itemCode")) ?? ""),
+                Num(Field(o, "counted", "count", "quantity", "qty"))))
+            .Where(c => c.Code.Length > 0 && c.Counted >= 0).Take(2000).ToList();
+    }
+
     public async Task<PurchaseScan> ReadPurchaseAsync(byte[] image, CancellationToken ct = default)
     {
         var json = await VisionAsync(PurchasePrompt, image, ct);
