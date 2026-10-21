@@ -11,7 +11,7 @@ import { ApiError } from '../lib/api';
 import {
   useCreateCatalogEntry,
   useCreateSeason,
-  useDeleteDepartment,
+  useDeleteCatalogEntry,
   useDepartments,
   useGroups,
   useSeasons,
@@ -52,6 +52,8 @@ interface Entry {
   hex?: string | null;
   warehouseIds?: string[];
   isCurrent?: boolean;
+  /** A season's kind: only one added by hand (CUSTOM) is renamed; "no season" stays. */
+  kind?: string;
 }
 
 const field =
@@ -75,7 +77,13 @@ export function CatalogSetupPage() {
   const current = TABS.find((x) => x.key === tab)!;
   const canManage = can(current.permission);
   const list: CatalogList =
-    tab === 'units' ? 'units' : tab === 'departments' ? 'departments' : 'variant-options';
+    tab === 'units'
+      ? 'units'
+      : tab === 'departments'
+        ? 'departments'
+        : tab === 'seasons'
+          ? 'seasons'
+          : 'variant-options';
   const loading =
     (tab === 'units' && units.isLoading) ||
     (tab === 'departments' && departments.isLoading) ||
@@ -156,7 +164,7 @@ export function CatalogSetupPage() {
                     entry={e}
                     tab={tab}
                     list={list}
-                    canManage={canManage && tab !== 'seasons'}
+                    canManage={canManage}
                     stores={stores}
                   />
                 ))}
@@ -400,18 +408,24 @@ function EntryRow({
   const { t, locale } = useT();
   const can = useCan();
   const update = useUpdateCatalogEntry(list);
-  const remove = useDeleteDepartment();
+  const remove = useDeleteCatalogEntry(list);
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(entry.name));
   const [prefix, setPrefix] = useState(entry.prefix ?? '');
   const [pieces, setPieces] = useState(String(entry.pieces ?? 1));
   const isDepartment = tab === 'departments';
+  const isSeason = tab === 'seasons';
+  const canRename = !isSeason || entry.kind === 'CUSTOM';
+  const canDelete = isDepartment
+    ? can('departments:delete')
+    : can('setup:delete') && !(isSeason && entry.kind === 'NONE');
   const where = isDepartment ? placesOf(entry.id, stores) : [];
   const [places, setPlaces] = useState<string[]>(where);
   const error = (update.error ?? remove.error) as ApiError | null;
 
   async function del() {
-    if (!(await confirm({ message: t('setup.deleteDepartmentAsk'), danger: true }))) return;
+    const ask = isDepartment ? t('setup.deleteDepartmentAsk') : t('setup.deleteEntryAsk');
+    if (!(await confirm({ message: ask, danger: true }))) return;
     try {
       await remove.mutateAsync(entry.id);
     } catch {
@@ -534,19 +548,22 @@ function EntryRow({
             </>
           ) : (
             <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setNames(namesFrom(entry.name));
-                  setPrefix(entry.prefix ?? '');
-                  setPieces(String(entry.pieces ?? 1));
-                  setPlaces(where);
-                  setEditing(true);
-                }}
-              >
-                {t('setup.rename')}
-              </Button>
+              {canRename && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="edit"
+                  onClick={() => {
+                    setNames(namesFrom(entry.name));
+                    setPrefix(entry.prefix ?? '');
+                    setPieces(String(entry.pieces ?? 1));
+                    setPlaces(where);
+                    setEditing(true);
+                  }}
+                >
+                  {t('common.edit')}
+                </Button>
+              )}
               {tab === 'colors' && (
                 <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2 text-xs">
                   {t('setup.swatch')}
@@ -558,7 +575,7 @@ function EntryRow({
                   />
                 </label>
               )}
-              {entry.isActive && (
+              {entry.isActive && !isSeason && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -578,7 +595,7 @@ function EntryRow({
                   {t('setup.reopen')}
                 </Button>
               )}
-              {isDepartment && can('departments:delete') && (
+              {canDelete && (
                 <Button
                   size="sm"
                   variant="dangerGhost"

@@ -81,7 +81,8 @@ eq('before any list: the level', [(await one(c1, A.id)).unitPrice, (await one(c1
 
 // ------------------------------------------------------------------ a party's list
 console.log('== a party’s list');
-eq('side required', (await owner.post('/price-lists', { name: `x ${tag}` })).data?.code, 'bad_side');
+const anyList = ok('customers only: no side needed', await owner.post('/price-lists', { name: `x ${tag}` }));
+eq('…a sales list', anyList.list.side, 'SALE');
 let L1 = ok('list "Friends"', await owner.post('/price-lists', { name: `Friends ${tag}`, side: 'SALE' }));
 eq('empty and current', [L1.list.items, L1.list.current, L1.list.forEveryone], [0, true, false]);
 eq('names are unique', (await owner.post('/price-lists', { name: `friends ${tag}`, side: 'SALE' })).data?.code, 'duplicate_name');
@@ -217,25 +218,77 @@ eq('the item card lists both', (await karim.get(`/quantity-breaks?productId=${tM
 ok('steps removed', await steps({ productId: tM }, []));
 eq('…so the model’s again', (await priceFor(karim, c2, [[tS, 3], [tM, 3]])).lines.map((l) => l.discount), [270, 270]);
 
-// ------------------------------------------------------------------ a supplier's list
-console.log('== a supplier’s list');
-const buyer = ok(
-  'a buyer (may buy, may not change costs)',
-  await owner.post('/staff', { fullName: `Buyer ${tag}`, email: `buyer-${tag}@skb.local`, password: PASSWORD, role: 'SALES', branchId: karim.user.branchId }),
-);
-ok('may buy', await owner.put(`/staff/${buyer.id}/permissions`, { granted: ['purchases:view', 'purchases:create'], revoked: [] }));
-const b = await login(buyer.email, PASSWORD);
-const PL = ok('supplier list', await owner.post('/price-lists', { name: `Supplier ${tag}`, side: 'PURCHASE' }));
-ok('A at 7.00', await owner.put(`/price-lists/${PL.list.id}/items`, { items: [{ productId: A.id, unitId: piece.id, price: 700 }] }));
-eq('a sales list can’t be a supplier’s', (await owner.put(`/parties/${s1.id}/price-levels`, { purchasePriceListId: L1.list.id })).data?.code, 'price_list_not_found');
-ok('given to the supplier', await owner.put(`/parties/${s1.id}/price-levels`, { purchasePriceListId: PL.list.id }));
-const cost = (await priceFor(b, s1, [[A.id, 100]], 'purchase')).lines[0];
-eq('the supplier’s price, no quantity discount on purchases', [cost.unitPrice, cost.source, cost.discount], [700, 'LIST', 0]);
-eq('another supplier: the level', (await priceFor(b, c2, [[A.id, 1]], 'purchase')).lines[0].unitPrice, 600);
-const buy = (lines) => b.post('/purchases/invoices', { partyId: s1.id, warehouseId: wh.id, taxPercent: 0, lines });
-ok('bought at the list cost', await buy([{ productId: A.id, quantity: 5, unitCost: 700 }]));
-eq('…not at the level’s', (await buy([{ productId: A.id, quantity: 5, unitCost: 600 }])).data?.code, 'price_not_allowed');
+// ------------------------------------------------------------------ customers only (owner, 2026-10-21)
+console.log('== customers only');
+const PL = ok('asked for a supplier’s list', await owner.post('/price-lists', { name: `Supplier ${tag}`, side: 'PURCHASE' }));
+eq('…it is a customers’ list', PL.list.side, 'SALE');
+eq('…so not a supplier’s', (await owner.put(`/parties/${s1.id}/price-levels`, { purchasePriceListId: PL.list.id })).data?.code, 'price_list_not_found');
 eq('sales can’t ask purchase costs', (await karim.post('/pricing/purchase', { lines: [] })).status, 403);
+
+// ------------------------------------------------------------------ a department's percent, from an amount
+console.log('== a department’s percent');
+const dep = ok('a department', await owner.post('/departments', { name: `Dep ${tag}` }));
+const g1 = ok('its sub-group', await owner.post('/groups', { departmentId: dep.id, name: `G1 ${tag}` }));
+const g2 = ok('another sub-group', await owner.post('/groups', { departmentId: dep.id, name: `G2 ${tag}` }));
+const D = ok('item D in G1 (piece 10.00)', await owner.post('/products', {
+  name: `D ${tag}`, categoryId: g1.id, units: [{ unitId: piece.id, factor: 1 }],
+  prices: [{ unitId: piece.id, priceLevelId: sale.id, price: 1000 }, { unitId: piece.id, priceLevelId: supply.id, price: 600 }],
+}));
+ok('D in stock', await owner.post('/purchases/invoices', { partyId: s1.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: D.id, quantity: 100, unitCost: 600 }] }));
+const c3 = ok('customer 3', await party('PCust3', ['CUSTOMER']));
+const DL = ok('list: 10% off the department from 50.00', await owner.post('/price-lists', { name: `Dep10 ${tag}`, departmentId: dep.id, percent: 10, minAmount: 5000 }));
+eq('kept', [DL.list.departmentId, DL.list.percentBp, DL.list.minAmount], [dep.id, 1000, 5000]);
+eq('a sub-group of another department', (await owner.put(`/price-lists/${DL.list.id}`, { groupId: (await owner.get('/groups')).data.find((g) => g.departmentId !== dep.id)?.id ?? 'x' })).data?.code, 'group_not_found');
+eq('at most 90%', (await owner.put(`/price-lists/${DL.list.id}`, { percent: 95 })).data?.code, 'bad_percent');
+eq('only customers get it', (await owner.put(`/price-lists/${DL.list.id}/parties`, { partyIds: [s1.id] })).data?.code, 'party_not_found');
+eq('sales can’t give it', (await karim.put(`/price-lists/${DL.list.id}/parties`, { partyIds: [c3.id] })).status, 403);
+const toC3 = ok('given to customer 3', await owner.put(`/price-lists/${DL.list.id}/parties`, { partyIds: [c3.id] }));
+eq('…named on the list', toC3.parties.map((x) => x.id), [c3.id]);
+p = await one(c3, D.id, 4);
+eq('40.00 of the department: under the minimum', [p.unitPrice, p.source], [1000, 'LEVEL']);
+p = await one(c3, D.id, 5);
+eq('50.00: 10% off', [p.unitPrice, p.source], [900, 'LIST']);
+const outside = await priceFor(karim, c3, [[D.id, 5], [B.id, 1]]);
+const bAlone = await one(c2, B.id, 1);
+eq('an item of another department keeps its price', outside.lines.map((l) => [l.unitPrice, l.source]), [[900, 'LIST'], [bAlone.unitPrice, bAlone.source]]);
+eq('another customer: none', (await one(c2, D.id, 5)).unitPrice, 1000);
+ok('sold at the list price', await sell(karim, c3, [[D.id, 5, 900, 0]]));
+ok('only sub-group G2', await owner.put(`/price-lists/${DL.list.id}`, { groupId: g2.id }));
+eq('D is in G1: not covered', (await one(c3, D.id, 5)).unitPrice, 1000);
+ok('sub-group G1', await owner.put(`/price-lists/${DL.list.id}`, { groupId: g1.id }));
+eq('covered again', (await one(c3, D.id, 5)).unitPrice, 900);
+ok('taken from customer 3', await owner.put(`/price-lists/${DL.list.id}/parties`, { partyIds: [] }));
+eq('…back to the level', (await one(c3, D.id, 5)).unitPrice, 1000);
+
+// ------------------------------------------------------------------ quantity discounts by amount
+console.log('== steps by amount');
+eq('all by quantity or all by amount', (await steps({ productId: B.id }, [{ minQuantity: 0, minAmount: 5000, percent: 2 }, { minQuantity: 10, percent: 5 }])).data?.code, 'bad_steps');
+const bSteps = ok('B: from 100.00 → 5%', await steps({ productId: B.id }, [{ minQuantity: 0, minAmount: 10000, percent: 5 }]));
+eq('kept by amount', bSteps.map((x) => [x.minQuantity, x.minAmount, x.percentBp]), [[0, 10000, 500]]);
+const bPrice = (await one(c2, B.id, 1)).unitPrice;
+const under = Math.floor((10000 - 1) / bPrice);
+eq('under 100.00: none', (await one(c2, B.id, under)).discount, 0);
+eq('from 100.00: 5%', (await one(c2, B.id, under + 1)).discount, Math.round((under + 1) * bPrice * 0.05));
+ok('B: no steps', await steps({ productId: B.id }, []));
+
+// ------------------------------------------------------------------ deleting setup entries (owner, 2026-10-21)
+console.log('== deleting units, sizes, seasons, sub-groups');
+eq('sales can’t delete a unit', (await karim.del(`/units/${carton.id}`)).status, 403);
+eq('a unit items use', (await owner.del(`/units/${carton.id}`)).data?.code, 'in_use');
+const spare = ok('a spare unit', await owner.post('/units', { name: `Spare ${tag}` }));
+eq('deleted', (await owner.del(`/units/${spare.id}`)).status, 204);
+eq('gone', (await owner.get('/units')).data.some((u) => u.id === spare.id), false);
+eq('a size items use', (await owner.del(`/variant-options/${S.id}`)).data?.code, 'in_use');
+const XL = ok('a spare size', await owner.post('/variant-options', { kind: 'SIZE', name: `XL${tag}` }));
+eq('deleted', (await owner.del(`/variant-options/${XL.id}`)).status, 204);
+eq('a sub-group with items', (await owner.del(`/groups/${g1.id}`)).data?.code, 'in_use');
+eq('an empty sub-group', (await owner.del(`/groups/${g2.id}`)).status, 204);
+const season = ok('a season', await owner.post('/seasons', { name: `Eid ${tag}` }));
+eq('renamed', (await owner.put(`/seasons/${season.id}`, { name: `Eid2 ${tag}` })).data?.name, `Eid2 ${tag}`);
+const summer = (await owner.get('/seasons')).data.find((x) => x.kind === 'SUMMER');
+eq('summer keeps its name', (await owner.put(`/seasons/${summer.id}`, { name: 'x' })).data?.code, 'system_season');
+eq('the season deleted', (await owner.del(`/seasons/${season.id}`)).status, 204);
+eq('…gone', (await owner.get('/seasons')).data.some((x) => x.id === season.id), false);
 
 // ------------------------------------------------------------------ validation and deleting
 console.log('== validation');

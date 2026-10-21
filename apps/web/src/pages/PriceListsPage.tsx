@@ -7,11 +7,17 @@ import {
   formatNumber,
   toMajor,
   toMinor,
+  type Party,
   type PriceList,
   type PriceListItem,
+  type PriceListParty,
   type Product,
   type QuantityBreak,
 } from '@skb/shared';
+import { api } from '../lib/api';
+import { Icon } from '../components/Icon';
+import { PartyPicker } from '../components/PartyPicker';
+import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -19,6 +25,8 @@ import { errorText } from '../lib/errors';
 import {
   useCompanySettings,
   useDeletePriceList,
+  useDepartments,
+  useGroups,
   usePriceLevels,
   usePriceList,
   usePriceLists,
@@ -26,6 +34,7 @@ import {
   useQuantityBreaks,
   useSavePriceList,
   useSetPriceListItems,
+  useSetPriceListParties,
   useSetQuantityBreaks,
 } from '../lib/queries';
 
@@ -35,9 +44,11 @@ const field =
 type Tab = 'lists' | 'breaks';
 
 /**
- * Price lists (special prices for chosen items, for the parties given them or for everyone while
- * they run) and quantity discounts (a percent off from a quantity) — DOMAIN.md §2.2. Anyone who sees
- * stock can look; changing them needs price_lists:manage. Invoices use them on their own.
+ * Price lists (special prices for chosen items — or a percent off a department's items — for the
+ * customers given them or for everyone while they run, optionally only from an invoice amount) and
+ * quantity discounts (a percent off from a quantity or an amount) — DOMAIN.md §2.2. Customers only
+ * (owner, 2026-10-21). Anyone who sees stock can look; changing them needs price_lists:manage.
+ * Invoices use them on their own.
  */
 export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useT();
@@ -131,9 +142,12 @@ function ListsTab() {
                   >
                     <span className="flex flex-wrap items-center gap-2">
                       <bdi className="font-medium">{l.name}</bdi>
-                      <Badge tone="brand">
-                        {t(l.side === 'SALE' ? 'pl.sideSale' : 'pl.sidePurchase')}
-                      </Badge>
+                      {l.side === 'PURCHASE' && <Badge tone="brand">{t('pl.sidePurchase')}</Badge>}
+                      {l.percentBp > 0 && (
+                        <Badge tone="info">
+                          <span className="tnum">{formatNumber(l.percentBp / 100, locale)}%</span>
+                        </Badge>
+                      )}
                       {l.forEveryone && <Badge tone="info">{t('pl.forEveryone')}</Badge>}
                       <Badge tone={l.current ? 'positive' : 'neutral'}>
                         {t(!l.isActive ? 'pl.closed' : l.current ? 'pl.current' : 'pl.notCurrent')}
@@ -162,21 +176,35 @@ function ListsTab() {
   );
 }
 
-/** A new list, or a list's name, side, dates and whether it's for everyone. */
+/**
+ * A new list, or a list's settings: name, first and last day, who gets it, which department or
+ * sub-group, a percent off, and the invoice amount it starts from (owner, 2026-10-21).
+ */
 function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string) => void }) {
   const { t } = useT();
   const can = useCan();
   const save = useSavePriceList();
+  const departments = useDepartments();
+  const groups = useGroups();
   const [f, setF] = useState({
     name: list?.name ?? '',
-    side: list?.side ?? ('SALE' as 'SALE' | 'PURCHASE'),
     forEveryone: list?.forEveryone ?? false,
     validFrom: list ? (list.validFrom ?? '') : companyToday(),
     validTo: list?.validTo ?? '',
     isActive: list?.isActive ?? true,
     notes: list?.notes ?? '',
+    departmentId: list?.departmentId ?? '',
+    groupId: list?.groupId ?? '',
+    percent: list?.percentBp ? String(list.percentBp / 100) : '',
+    minAmount: list?.minAmount ? String(toMajor(list.minAmount)) : '',
   });
   const disabled = !can('price_lists:manage');
+  const deptGroups = (groups.data ?? []).filter(
+    (g) => g.departmentId === f.departmentId && g.isActive,
+  );
+  const badNumber =
+    (f.percent.trim() !== '' && !(Number(f.percent) >= 0 && Number(f.percent) <= 90)) ||
+    (f.minAmount.trim() !== '' && !(Number(f.minAmount) >= 0));
 
   async function submit() {
     try {
@@ -184,12 +212,16 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
         id: list?.id,
         input: {
           name: f.name,
-          ...(list ? {} : { side: f.side }),
+          ...(list ? {} : { side: 'SALE' as const }),
           forEveryone: f.forEveryone,
           validFrom: f.validFrom,
           validTo: f.validTo,
           isActive: f.isActive,
           notes: f.notes,
+          departmentId: f.departmentId,
+          groupId: f.departmentId ? f.groupId : '',
+          percent: Number(f.percent || 0),
+          minAmount: toMinor(Number(f.minAmount || 0)),
         },
       });
       onDone(saved.list.id);
@@ -212,19 +244,28 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
           />
         </label>
         <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('pl.side')}</span>
-          <select
-            className={field}
-            disabled={disabled || !!list}
-            value={f.side}
-            onChange={(e) => setF({ ...f, side: e.target.value as 'SALE' | 'PURCHASE' })}
-          >
-            <option value="SALE">{t('pl.sideSale')}</option>
-            <option value="PURCHASE">{t('pl.sidePurchase')}</option>
-          </select>
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.startDate')}</span>
+          <input
+            type="date"
+            className={`${field} tnum`}
+            disabled={disabled}
+            value={f.validFrom}
+            onChange={(e) => setF({ ...f, validFrom: e.target.value })}
+          />
         </label>
         <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">&nbsp;</span>
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.endDate')}</span>
+          <input
+            type="date"
+            className={`${field} tnum`}
+            disabled={disabled}
+            value={f.validTo}
+            min={f.validFrom || undefined}
+            onChange={(e) => setF({ ...f, validTo: e.target.value })}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.customers')}</span>
           <select
             className={field}
             disabled={disabled}
@@ -236,24 +277,61 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
           </select>
         </label>
         <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('pl.from')}</span>
-          <input
-            type="date"
-            className={`${field} tnum`}
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.department')}</span>
+          <select
+            className={field}
             disabled={disabled}
-            value={f.validFrom}
-            onChange={(e) => setF({ ...f, validFrom: e.target.value })}
+            value={f.departmentId}
+            onChange={(e) => setF({ ...f, departmentId: e.target.value, groupId: '' })}
+          >
+            <option value="">{t('common.all')}</option>
+            {(departments.data ?? [])
+              .filter((d) => d.isActive || d.id === f.departmentId)
+              .map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        {f.departmentId && (
+          <label className="block">
+            <span className="mb-0.5 block text-xs text-muted">{t('pl.group')}</span>
+            <select
+              className={field}
+              disabled={disabled}
+              value={f.groupId}
+              onChange={(e) => setF({ ...f, groupId: e.target.value })}
+            >
+              <option value="">{t('common.all')}</option>
+              {deptGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.listPercent')}</span>
+          <input
+            className={`${field} tnum`}
+            inputMode="decimal"
+            disabled={disabled}
+            value={f.percent}
+            placeholder="0"
+            onChange={(e) => setF({ ...f, percent: e.target.value })}
           />
         </label>
         <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('pl.to')}</span>
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.minAmount')}</span>
           <input
-            type="date"
             className={`${field} tnum`}
+            inputMode="decimal"
             disabled={disabled}
-            value={f.validTo}
-            min={f.validFrom || undefined}
-            onChange={(e) => setF({ ...f, validTo: e.target.value })}
+            value={f.minAmount}
+            placeholder="0"
+            onChange={(e) => setF({ ...f, minAmount: e.target.value })}
           />
         </label>
         {list && (
@@ -274,7 +352,7 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
             size="sm"
             icon="check"
             loading={save.isPending}
-            disabled={!f.name.trim()}
+            disabled={!f.name.trim() || badNumber}
             onClick={submit}
           >
             {t('common.save')}
@@ -285,6 +363,77 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
             </Button>
           )}
         </div>
+      )}
+      {save.error && <p className="text-xs text-destructive">{errorText(t, save.error)}</p>}
+    </Card>
+  );
+}
+
+/** The customers a list is given to: picked by code or name, each removable. */
+function ListCustomers({ id, parties }: { id: string; parties: PriceListParty[] }) {
+  const { t } = useT();
+  const canManage = useCan()('price_lists:manage');
+  const save = useSetPriceListParties();
+  const [chosen, setChosen] = useState<PriceListParty[]>(parties);
+  const [picker, setPicker] = useState<Party | null>(null);
+  const dirty =
+    JSON.stringify(chosen.map((p) => p.id).sort()) !==
+    JSON.stringify(parties.map((p) => p.id).sort());
+
+  return (
+    <Card className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+        {t('pl.customers')}
+      </h2>
+      {canManage && (
+        <PartyPicker
+          type="CUSTOMER"
+          withCode
+          value={picker}
+          label={t('pl.addCustomer')}
+          placeholder={t('pl.addCustomer')}
+          onChange={(p) => {
+            if (p && !chosen.some((c) => c.id === p.id))
+              setChosen([...chosen, { id: p.id, name: p.name, code: String(p.code) }]);
+            setPicker(null);
+          }}
+        />
+      )}
+      {chosen.length === 0 ? (
+        <p className="text-sm text-muted">{t('pl.noCustomers')}</p>
+      ) : (
+        <ul className="flex flex-wrap gap-2">
+          {chosen.map((p) => (
+            <li
+              key={p.id}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-1 ps-3 pe-1 text-sm"
+            >
+              {p.code && <span className="text-xs text-muted tnum">{p.code}</span>}
+              <bdi>{p.name}</bdi>
+              {canManage && (
+                <button
+                  type="button"
+                  aria-label={t('common.delete')}
+                  className="grid h-6 w-6 place-items-center rounded-full text-muted hover:bg-surface hover:text-destructive"
+                  onClick={() => setChosen(chosen.filter((c) => c.id !== p.id))}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canManage && (
+        <Button
+          size="sm"
+          icon="check"
+          loading={save.isPending}
+          disabled={!dirty}
+          onClick={() => save.mutate({ id, partyIds: chosen.map((p) => p.id) })}
+        >
+          {t('pl.saveCustomers')}
+        </Button>
       )}
       {save.error && <p className="text-xs text-destructive">{errorText(t, save.error)}</p>}
     </Card>
@@ -372,10 +521,28 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
   return (
     <div className="space-y-4">
       <ListSettings
-        key={`${list.id}:${list.name}:${list.validFrom}:${list.validTo}:${list.isActive}`}
+        key={[
+          list.id,
+          list.name,
+          list.validFrom,
+          list.validTo,
+          list.isActive,
+          list.forEveryone,
+          list.departmentId,
+          list.groupId,
+          list.percentBp,
+          list.minAmount,
+        ].join(':')}
         list={list}
         onDone={() => undefined}
       />
+      {list.side === 'SALE' && !list.forEveryone && (
+        <ListCustomers
+          key={(detail.data.parties ?? []).map((p) => p.id).join()}
+          id={list.id}
+          parties={detail.data.parties ?? []}
+        />
+      )}
       <Card className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
           {t('pl.items')}
@@ -478,52 +645,136 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
   );
 }
 
-/** Search the catalog and pick an item (in one of its units). */
+/**
+ * Pick an item (in one of its units) the way the invoice does (owner, 2026-10-21): its code in a
+ * box of its own (Enter), a search by name, or the detailed search.
+ */
 function ItemPicker({ onPick }: { onPick: (p: Product, unitId: string) => void }) {
   const { t, locale } = useT();
+  const currency = useCompanySettings().data?.currency ?? 'EGP';
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
+  const [code, setCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
+  const [finding, setFinding] = useState(false);
   useEffect(() => {
     const id = setTimeout(() => setDebounced(search.trim()), 250);
     return () => clearTimeout(id);
   }, [search]);
   const found = useProductSearch(debounced);
-  const results = debounced ? (found.data ?? []).slice(0, 8) : [];
+  const results = debounced ? (found.data ?? []).slice(0, 10) : [];
+
+  async function byCode() {
+    const c = code.trim();
+    if (!c) return;
+    try {
+      const list = await api.get<Product[]>(`/products?search=${encodeURIComponent(c)}`);
+      const lower = c.toLowerCase();
+      const p = list.find(
+        (x) => x.sku.toLowerCase() === lower || (x.barcode ?? '').toLowerCase() === lower,
+      );
+      if (!p) {
+        setCodeNote(`${c}: ${t('invoice.codeNotFound')}`);
+        return;
+      }
+      const base = p.units.find((u) => u.factor === 1) ?? p.units[0];
+      onPick(p, base?.unitId ?? '');
+      setCode('');
+    } catch {
+      setCodeNote(`${c}: ${t('invoice.codeNotFound')}`);
+    }
+  }
 
   return (
-    <div className="space-y-1">
-      <input
-        className={field}
-        dir="auto"
-        placeholder={t('pl.pickItem')}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-      {results.length > 0 && (
-        <ul className="max-h-60 overflow-auto rounded-[var(--radius-app)] border border-line">
-          {results.map((p) => (
-            <li
-              key={p.id}
-              className="flex flex-wrap items-center gap-1 border-b border-line p-2 last:border-0"
-            >
-              <bdi className="min-w-0 flex-1 truncate text-sm">{p.name}</bdi>
-              {p.units.map((u) => (
-                <Button
-                  key={u.unitId}
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    onPick(p, u.unitId);
-                    setSearch('');
-                  }}
-                >
-                  <bdi>{u.name}</bdi>
-                  {u.factor > 1 ? ` × ${formatNumber(u.factor, locale)}` : ''}
-                </Button>
-              ))}
-            </li>
-          ))}
-        </ul>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-start gap-2">
+        <label className="block w-28 shrink-0 sm:w-36">
+          <span className="sr-only">{t('invoice.itemCode')}</span>
+          <input
+            className={`${field} tnum`}
+            dir="ltr"
+            placeholder={t('invoice.itemCode')}
+            aria-label={t('invoice.itemCode')}
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+              setCodeNote('');
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              void byCode();
+            }}
+          />
+          {codeNote && <span className="mt-1 block text-xs text-destructive">{codeNote}</span>}
+        </label>
+        <div className="relative min-w-0 flex-1 basis-48">
+          <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            className={`${field} ps-8`}
+            dir="auto"
+            placeholder={t('pl.pickItem')}
+            aria-label={t('pl.pickItem')}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {debounced && (
+            <div className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+              {found.isLoading ? (
+                <div className="grid place-items-center py-6 text-muted">
+                  <Spinner size={18} />
+                </div>
+              ) : results.length === 0 ? (
+                <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+              ) : (
+                results.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 last:border-0"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <bdi className="block truncate text-sm font-medium">{p.name}</bdi>
+                      <span className="text-xs text-muted tnum">
+                        {p.sku} · {formatMoney(p.salePrice, currency, locale)}
+                      </span>
+                    </span>
+                    <span className="flex flex-wrap gap-1">
+                      {p.units.map((u) => (
+                        <Button
+                          key={u.unitId}
+                          size="sm"
+                          variant="secondary"
+                          icon="plus"
+                          onClick={() => {
+                            onPick(p, u.unitId);
+                            setSearch('');
+                          }}
+                        >
+                          <bdi>{u.name}</bdi>
+                          {u.factor > 1 ? ` × ${formatNumber(u.factor, locale)}` : ''}
+                        </Button>
+                      ))}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+        <Button variant="secondary" icon="search" onClick={() => setFinding(true)}>
+          {t('finder.button')}
+        </Button>
+      </div>
+      {finding && (
+        <ItemFinderSheet
+          onClose={() => setFinding(false)}
+          onAdd={(picks, close) => {
+            for (const p of picks) onPick(p.product, p.unitId);
+            if (close) setFinding(false);
+          }}
+        />
       )}
     </div>
   );
@@ -537,6 +788,7 @@ function BreaksTab() {
   const { t, locale } = useT();
   const can = useCan();
   const breaks = useQuantityBreaks();
+  const currency = useCompanySettings().data?.currency ?? 'EGP';
   const [target, setTarget] = useState<Target | null>(null);
   const [wholeModel, setWholeModel] = useState(false);
   const canManage = can('price_lists:manage');
@@ -609,7 +861,11 @@ function BreaksTab() {
                       {g.steps
                         .map(
                           (s) =>
-                            `${formatNumber(s.minQuantity, locale)}+ → ${formatNumber(s.percentBp / 100, locale)}%`,
+                            `${
+                              s.minAmount > 0
+                                ? formatMoney(s.minAmount, currency, locale)
+                                : formatNumber(s.minQuantity, locale)
+                            }+ → ${formatNumber(s.percentBp / 100, locale)}%`,
                         )
                         .join(' · ')}
                     </span>
@@ -637,32 +893,57 @@ function BreaksTab() {
   );
 }
 
+/** An item's steps: all by quantity (in its base unit) or all by money at the selling price (owner, 2026-10-21). */
 function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[] }) {
   const { t } = useT();
   const can = useCan();
   const save = useSetQuantityBreaks();
+  const currency = useCompanySettings().data?.currency ?? 'EGP';
+  const [byAmount, setByAmount] = useState(steps.some((s) => s.minAmount > 0));
   const initial = () =>
-    steps.map((s) => ({ min: String(s.minQuantity), percent: String(s.percentBp / 100) }));
+    steps.map((s) => ({
+      min: String(s.minAmount > 0 ? toMajor(s.minAmount) : s.minQuantity),
+      percent: String(s.percentBp / 100),
+    }));
   const [rows, setRows] = useState(initial);
   const canManage = can('price_lists:manage');
-  const bad = rows.some((r) => !(Number(r.min) >= 2) || !(Number(r.percent) > 0));
+  const bad = rows.some(
+    (r) => !(Number(r.min) >= (byAmount ? 0.01 : 2)) || !(Number(r.percent) > 0),
+  );
 
   return (
     <Card className="space-y-3">
       <h2 className="text-sm font-semibold">
         <bdi>{target.name}</bdi>
       </h2>
-      {/* One step a row, each box with its name over it (owner, 2026-10-21: the boxes ran full
-          width and the names stood over the wrong ones). */}
+      <label className="block w-56">
+        <span className="mb-0.5 block text-xs text-muted">{t('pl.breakBasis')}</span>
+        <select
+          className={field}
+          disabled={!canManage}
+          value={byAmount ? 'amount' : 'qty'}
+          onChange={(e) => setByAmount(e.target.value === 'amount')}
+        >
+          <option value="qty">{t('pl.byQuantity')}</option>
+          <option value="amount">{t('pl.byAmount')}</option>
+        </select>
+      </label>
+      {/* One step a row, each box with its name over it (owner, 2026-10-21). */}
       {rows.map((r, i) => (
         <div key={i} className="flex flex-wrap items-end gap-3 text-sm">
-          <label className="block w-36">
+          <label className="block w-40">
             <span className="mb-0.5 block text-xs text-muted">
-              {t('pl.fromQty')} (<bdi>{target.baseUnitName}</bdi>)
+              {byAmount ? (
+                `${t('pl.fromAmount')} (${currency})`
+              ) : (
+                <>
+                  {t('pl.fromQty')} (<bdi>{target.baseUnitName}</bdi>)
+                </>
+              )}
             </span>
             <input
               className={`${field} tnum`}
-              inputMode="numeric"
+              inputMode={byAmount ? 'decimal' : 'numeric'}
               disabled={!canManage}
               value={r.min}
               onChange={(e) =>
@@ -712,10 +993,15 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
               save.mutate({
                 productId: target.productId,
                 modelId: target.modelId,
-                steps: rows.map((r) => ({
-                  minQuantity: Number(r.min),
-                  percent: Number(r.percent),
-                })),
+                steps: rows.map((r) =>
+                  byAmount
+                    ? {
+                        minQuantity: 0,
+                        minAmount: toMinor(Number(r.min)),
+                        percent: Number(r.percent),
+                      }
+                    : { minQuantity: Number(r.min), percent: Number(r.percent) },
+                ),
               })
             }
           >

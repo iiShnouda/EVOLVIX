@@ -155,6 +155,22 @@
         {
           "ar": "المخزون: الكروت اللي فوق بقت تتغير مع الفلاتر: إجمالي الأصناف الموجودة، إجمالي الكمية، إجمالي سعر البيع، إجمالي سعر التوريد، إجمالي المباع، وكل واحد بصلاحية لوحده. وخانة \"حالة المخزون\" (متوفر، نفد من المخزون، عند حد الطلب) تختار منها أكتر من حالة، في الأصناف وتقييم المخزن، بدل علامة حد الطلب. وكل قائمة فيها اختيار عدد الصفوف (سجل النشاط، التحويلات، الحسابات، أرصدة الأصناف)، وكل خانة اختيار مكتوب فوقها اسمها (الفرع، المخزن، القسم، النوع، الحالة)، وخانة كود الصنف قبل البحث في فاتورة البيع والتحويل والمرتجع، والمورد في فاتورة البيع بقى بالكود أو الاسم.",
           "en": "Inventory: the cards at the top follow the filters: items in stock, total quantity, total at sale price, total at supply price, total sold, each with its own permission. A \"stock status\" choice (in stock, out of stock, at reorder level) takes several at once, on items and the valuation, instead of the reorder tick. Every list has rows per page (activity log, transfers, staff, item balances), every drop-down shows its name above it (branch, warehouse, department, type, status), an item-code box comes before the item search on sales, transfers and returns, and the sale's supplier filter takes a code or name."
+        },
+        {
+          "ar": "إعداد الأصناف: تعديل وحذف المواسم والوحدات والمقاسات والألوان والتفريعات (الحذف لما ميكونش مستخدم، وبصلاحية خاصة)، والزر اسمه «تعديل».",
+          "en": "Item setup: edit and delete seasons, units, sizes, colors and sub-groups (delete when unused, with its own permission); the button is named Edit."
+        },
+        {
+          "ar": "قوائم الأسعار للعملاء فقط: تاريخ البداية والنهاية، اختيار العملاء بالكود أو الاسم، قصرها على قسم أو تفريعة بنسبة خصم، وتبدأ من قيمة فاتورة معينة؛ واختيار الأصناف بالكود والبحث والبحث التفصيلي.",
+          "en": "Price lists are for customers only: start and end dates, choose the customers by code or name, limit to a department or sub-group with a percent off, starting from an invoice amount; pick items by code, search or detailed search."
+        },
+        {
+          "ar": "خصم الكميات: الدرجات بالكمية أو بقيمة المشتريات.",
+          "en": "Quantity discounts: steps by quantity or by amount bought."
+        },
+        {
+          "ar": "كل صفحة فيها «من / إلى» تفتح على تاريخ اليوم.",
+          "en": "Every page with a from/to date opens on today."
         }
       ],
       "fixes": [

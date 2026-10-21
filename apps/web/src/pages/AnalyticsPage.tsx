@@ -6,7 +6,6 @@ import {
   formatMoney,
   formatNumber,
   type TranslationKey,
-  addDays,
   companyToday,
 } from '@skb/shared';
 import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
@@ -43,7 +42,6 @@ const TABS: { key: Tab; label: TranslationKey }[] = [
 ];
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
-const daysAgo = (n: number) => addDays(companyToday(), -n);
 
 /**
  * Analytics & reports (التحليلات والتقارير): profitability, monthly sales, top parties, aging of
@@ -329,7 +327,7 @@ function PerformanceTab() {
   const seeCosts = useCan()('profit:view');
   /** Drop the profit column (index 3) for people who may not see profit. */
   const cols = <T,>(row: T[]) => (seeCosts ? row : row.filter((_, i) => i !== 3));
-  const [from, setFrom] = useState(daysAgo(29));
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const [by, setBy] = useState<'rep' | 'branch' | 'department'>('rep');
   const { data, isLoading } = usePerformance(from, to, by);
@@ -667,7 +665,7 @@ function AgingTab() {
 
 function PartiesTab() {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(daysAgo(89));
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
@@ -737,7 +735,7 @@ function TopList({
 function ItemsTab() {
   const { t, locale } = useT();
   const seeCosts = useCan()('costs:view'); // dead stock's value is at cost
-  const [from, setFrom] = useState(daysAgo(89));
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const { data, isLoading } = useItemMovement(from, to);
   const m = (v: number) => formatMoney(v, data?.currency ?? 'EGP', locale);
@@ -846,7 +844,7 @@ function ItemsTab() {
 /** Cancelled and changed sales invoices (owner, 2026-10-01): who, when, why, and the totals. */
 function ChangesTab() {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(daysAgo(29));
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const [kind, setKind] = useState<'' | 'EDIT' | 'CANCEL'>('');
   const { data, isLoading } = useInvoiceChanges(from, to, kind);

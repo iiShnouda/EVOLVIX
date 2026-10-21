@@ -108,7 +108,7 @@ export function StatementBody({
   after?: ReactNode;
 }) {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(() => `${companyToday().slice(0, 4)}-01-01`);
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const isParty = kind === 'parties';
   const [branchId, setBranchId] = useState('');

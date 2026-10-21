@@ -1043,7 +1043,13 @@ export function useCreateSeason() {
 
 /** The lists edited on the catalog setup page, keyed by their API path. */
 export type CatalogList =
-  'units' | 'categories' | 'departments' | 'price-levels' | 'variant-options';
+  | 'units'
+  | 'categories'
+  | 'departments'
+  | 'price-levels'
+  | 'variant-options'
+  | 'seasons'
+  | 'groups';
 
 /** A category's department: an id, or '' for none (every department). */
 type DepartmentChoice = { departmentId?: string };
@@ -1063,9 +1069,14 @@ export function useCreateCatalogEntry(list: CatalogList) {
 
 /** Delete a department that has nothing recorded under it (departments:delete). */
 export function useDeleteDepartment() {
+  return useDeleteCatalogEntry('departments');
+}
+
+/** Delete an entry nothing uses (owner, 2026-10-21: units, sizes, colors, seasons, sub-groups). */
+export function useDeleteCatalogEntry(list: CatalogList) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.del<void>(`/departments/${id}`),
+    mutationFn: (id: string) => api.del<void>(`/${list}/${id}`),
     onSuccess: () => invalidateCatalog(qc),
   });
 }
@@ -1233,6 +1244,19 @@ export function useSetPriceListItems() {
     mutationFn: ({ id, items }: { id: string; items: PriceListItemInput[] }) =>
       api.put<PriceListDetail>(`/price-lists/${id}/items`, { items }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['priceLists'] }),
+  });
+}
+
+/** The customers a sales list is given to (owner, 2026-10-21). */
+export function useSetPriceListParties() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, partyIds }: { id: string; partyIds: string[] }) =>
+      api.put<PriceListDetail>(`/price-lists/${id}/parties`, { partyIds }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['priceLists'] });
+      void qc.invalidateQueries({ queryKey: ['parties'] });
+    },
   });
 }
 

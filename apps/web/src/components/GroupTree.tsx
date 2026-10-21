@@ -5,7 +5,9 @@ import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
-import { useSaveGroup } from '../lib/queries';
+import { useDeleteCatalogEntry, useSaveGroup } from '../lib/queries';
+import { useCan } from '../lib/can';
+import { confirm } from '../lib/confirm';
 
 const select =
   'h-9 min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -224,6 +226,8 @@ function GroupNode({
 }) {
   const { t, locale } = useT();
   const save = useSaveGroup();
+  const remove = useDeleteCatalogEntry('groups');
+  const can = useCan();
   const [mode, setMode] = useState<'view' | 'edit' | 'add'>('view');
   const [open, setOpen] = useState(true);
   const kids = childrenOf(groups, group.departmentId, group.id);
@@ -262,7 +266,7 @@ function GroupNode({
               {t('groups.addUnder')}
             </Button>
             <Button size="sm" variant="ghost" icon="edit" onClick={() => setMode('edit')}>
-              {t('setup.rename')}
+              {t('common.edit')}
             </Button>
             <Button
               size="sm"
@@ -272,9 +276,32 @@ function GroupNode({
             >
               {t(group.isActive ? 'setup.close' : 'setup.reopen')}
             </Button>
+            {can('setup:delete') && (
+              <Button
+                size="sm"
+                variant="dangerGhost"
+                icon="trash"
+                loading={remove.isPending}
+                onClick={async () => {
+                  if (!(await confirm({ message: t('setup.deleteEntryAsk'), danger: true })))
+                    return;
+                  remove.mutate(group.id);
+                }}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
           </span>
         )}
       </div>
+      {remove.error && (
+        <p
+          className="pb-2 text-xs text-destructive"
+          style={{ paddingInlineStart: `${depth * 1.5 + 2.25}rem` }}
+        >
+          {errorText(t, remove.error)}
+        </p>
+      )}
       {mode !== 'view' && (
         <div className="pb-2 pe-2" style={{ paddingInlineStart: `${(depth + 1) * 1.5 + 0.75}rem` }}>
           <GroupForm

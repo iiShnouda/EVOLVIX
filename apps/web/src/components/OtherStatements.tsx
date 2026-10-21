@@ -123,12 +123,11 @@ function Period({
   );
 }
 
-const firstOfYear = () => `${companyToday().slice(0, 4)}-01-01`;
 
 /** An expense item's statement (owner, 2026-10-19): every expense under it between two days. */
 export function ExpenseStatementBody({ id, title }: { id: string; title: string }) {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(firstOfYear);
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const q = useQuery({
     queryKey: ['statement', 'expense', id, from, to],
@@ -191,7 +190,7 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
  */
 export function WarehouseStatementBody({ id, title }: { id: string; title: string }) {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(firstOfYear);
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const q = useQuery({
     queryKey: ['statement', 'warehouse', id, from, to],

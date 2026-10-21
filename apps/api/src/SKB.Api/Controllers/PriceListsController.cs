@@ -61,8 +61,8 @@ public sealed class PriceListsController : ControllerBase
     [Authorize(Policy = Permissions.PriceListsManage)]
     public async Task<ActionResult<PriceListDetailDto>> Create([FromBody] SavePriceListRequest req)
     {
-        if (!Enum.TryParse<PriceSide>(req.Side, true, out var side)) return Bad("bad_side", "Choose sales or purchases.");
-        var list = new PriceList { Side = side };
+        // Price lists are for customers only (owner, 2026-10-21); purchase lists made before still work.
+        var list = new PriceList { Side = PriceSide.SALE };
         var error = await ApplyAsync(list, req with { Side = null }, creating: true);
         if (error is not null) return error;
         _db.PriceLists.Add(list);
@@ -152,6 +152,29 @@ public sealed class PriceListsController : ControllerBase
         return Ok(await DetailAsync(await _db.PriceLists.AsNoTracking().FirstAsync(l => l.Id == id)));
     }
 
+    /// <summary>The customers a sales list is given to (owner, 2026-10-21): those named get it, the others it had lose it.</summary>
+    [HttpPut("price-lists/{id:guid}/parties")]
+    [Authorize(Policy = Permissions.PriceListsManage)]
+    public async Task<ActionResult<PriceListDetailDto>> SetParties(Guid id, [FromBody] SetPriceListPartiesRequest req)
+    {
+        var list = await _db.PriceLists.FirstOrDefaultAsync(l => l.Id == id);
+        if (list is null) return NotFound(new { message = "Price list not found.", code = "not_found" });
+        if (list.Side != PriceSide.SALE) return Bad("bad_side", "Only a sales list is given to customers.");
+        var ids = (req.PartyIds ?? Array.Empty<string>()).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Distinct().ToList();
+        if (ids.Contains(Guid.Empty)) return Bad("party_not_found", "Customer not found.");
+        if (ids.Count > MaxItems) return Bad("too_many", $"At most {MaxItems:N0} customers.");
+        var found = await _db.Parties.Where(p => ids.Contains(p.Id) && p.Types.Contains("CUSTOMER")).CountAsync();
+        if (found != ids.Count) return Bad("party_not_found", "Choose customers only.");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Parties.Where(p => p.SalesPriceListId == id && !ids.Contains(p.Id))
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.SalesPriceListId, (Guid?)null));
+        await _db.Parties.Where(p => ids.Contains(p.Id))
+            .ExecuteUpdateAsync(x => x.SetProperty(p => p.SalesPriceListId, (Guid?)id));
+        await tx.CommitAsync();
+        await AuditAsync("parties", "price_list", id);
+        return Ok(await DetailAsync(await _db.PriceLists.AsNoTracking().FirstAsync(l => l.Id == id)));
+    }
+
     // ------------------------------------------------------------------ quantity discounts
 
     [HttpGet("quantity-breaks")]
@@ -186,15 +209,20 @@ public sealed class PriceListsController : ControllerBase
 
         var steps = (req.Steps ?? Array.Empty<QuantityBreakStepRequest>()).ToList();
         if (steps.Count > MaxSteps) return Bad("bad_steps", $"At most {MaxSteps} steps.");
-        var parsed = new List<(int Min, int Bp)>();
+        // Every step of an item is by quantity, or every one by money (owner, 2026-10-21).
+        var byAmount = steps.Count > 0 && steps[0].MinAmount > 0;
+        var parsed = new List<(long Min, int Bp)>();
         foreach (var s in steps)
         {
             var bp = (int)decimal.Round(s.Percent * 100m, MidpointRounding.AwayFromZero);
-            if (s.MinQuantity < 2 || s.MinQuantity > InvoiceLines.MaxQuantity)
+            if (byAmount != (s.MinAmount > 0)) return Bad("bad_steps", "Make every step by quantity or every step by amount.");
+            if (byAmount && s.MinAmount > InvoiceLines.MaxPrice)
+                return Bad("bad_amount", "The amount is too large.");
+            if (!byAmount && (s.MinQuantity < 2 || s.MinQuantity > InvoiceLines.MaxQuantity))
                 return Bad("bad_quantity", "A step starts at 2 or more.");
             if (bp <= 0 || bp > MaxBreakBp || s.Percent * 100m != bp)
                 return Bad("bad_percent", "A discount is above 0% and at most 90%, to two decimals.");
-            parsed.Add((s.MinQuantity, bp));
+            parsed.Add((byAmount ? s.MinAmount : s.MinQuantity, bp));
         }
         parsed = parsed.OrderBy(x => x.Min).ToList();
         for (var i = 1; i < parsed.Count; i++)
@@ -205,7 +233,11 @@ public sealed class PriceListsController : ControllerBase
         {
             await _db.QuantityBreaks.Where(b => b.ProductId == product && b.ModelId == model).ExecuteDeleteAsync();
             foreach (var (min, bp) in parsed)
-                _db.QuantityBreaks.Add(new QuantityBreak { ProductId = product, ModelId = model, MinQuantity = min, PercentBp = bp });
+                _db.QuantityBreaks.Add(new QuantityBreak
+                {
+                    ProductId = product, ModelId = model, PercentBp = bp,
+                    MinQuantity = byAmount ? 0 : (int)min, MinAmount = byAmount ? min : 0,
+                });
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
         }
@@ -330,6 +362,34 @@ public sealed class PriceListsController : ControllerBase
             else if (CompanyClock.ParseDay(req.ValidTo) is DateOnly d) list.ValidTo = CompanyClock.AsDate(d);
             else return Bad("bad_date", "Enter the last day as a date.");
         }
+        if (req.DepartmentId is not null)
+        {
+            if (req.DepartmentId == "") list.DepartmentId = null;
+            else if (Guid.TryParse(req.DepartmentId, out var did) && await _db.Departments.AnyAsync(d => d.Id == did)) list.DepartmentId = did;
+            else return Bad("department_not_found", "Department not found.");
+            if (list.DepartmentId is null) list.GroupId = null;
+        }
+        if (req.GroupId is not null)
+        {
+            if (req.GroupId == "") list.GroupId = null;
+            else if (Guid.TryParse(req.GroupId, out var gid)
+                     && await _db.Categories.FirstOrDefaultAsync(c => c.Id == gid && !c.IsRoot) is { } group
+                     && group.DepartmentId != null && group.DepartmentId == list.DepartmentId)
+                list.GroupId = gid;
+            else return Bad("group_not_found", "Choose a sub-group of the list's department.");
+        }
+        if (req.Percent is decimal percent)
+        {
+            var bp = (int)decimal.Round(percent * 100m, MidpointRounding.AwayFromZero);
+            if (bp < 0 || bp > MaxBreakBp || percent * 100m != bp)
+                return Bad("bad_percent", "A discount is 0% to 90%, to two decimals.");
+            list.PercentBp = bp;
+        }
+        if (req.MinAmount is long min)
+        {
+            if (min < 0 || min > InvoiceLines.MaxPrice) return Bad("bad_amount", "Enter the amount as a positive number.");
+            list.MinAmount = min;
+        }
         if (list.ValidFrom is DateTime from && list.ValidTo is DateTime to && to < from)
             return Bad("bad_range", "The last day is before the first.");
         return null;
@@ -350,7 +410,8 @@ public sealed class PriceListsController : ControllerBase
             l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.ForEveryone, l.ValidFrom?.ToString("yyyy-MM-dd"),
             l.ValidTo?.ToString("yyyy-MM-dd"), l.IsActive, l.Notes, items.GetValueOrDefault(l.Id),
             parties.GetValueOrDefault(l.Id),
-            l.IsActive && (l.ValidFrom == null || l.ValidFrom <= today) && (l.ValidTo == null || l.ValidTo >= today))).ToList();
+            l.IsActive && (l.ValidFrom == null || l.ValidFrom <= today) && (l.ValidTo == null || l.ValidTo >= today),
+            l.DepartmentId?.ToString(), l.GroupId?.ToString(), l.PercentBp, l.MinAmount)).ToList();
     }
 
     private async Task<PriceListDetailDto> DetailAsync(PriceList list)
@@ -382,7 +443,11 @@ public sealed class PriceListsController : ControllerBase
                 i.Product is not null ? Loc.Name(i.Product) : Loc.Name(i.Model), i.Product?.Sku ?? i.Model?.Code ?? "",
                 i.UnitId.ToString(), Loc.Name(i.Unit), Math.Max(1, factor), i.Price, levelPrice);
         }).OrderBy(x => x.Name).ThenBy(x => x.Factor).ToArray();
-        return new PriceListDetailDto((await ToDtosAsync(new List<PriceList> { list }))[0], dtos);
+        var parties = await _db.Parties.AsNoTracking()
+            .Where(p => list.Side == PriceSide.SALE ? p.SalesPriceListId == list.Id : p.PurchasePriceListId == list.Id)
+            .OrderBy(p => p.Name).Select(p => new { p.Id, p.Name, p.Code }).ToListAsync();
+        return new PriceListDetailDto((await ToDtosAsync(new List<PriceList> { list }))[0], dtos,
+            parties.Select(p => new PriceListPartyDto(p.Id.ToString(), p.Name, p.Code.ToString())).ToArray());
     }
 
     private async Task<List<QuantityBreakDto>> ToBreakDtosAsync(List<QuantityBreak> rows)
@@ -396,8 +461,8 @@ public sealed class PriceListsController : ControllerBase
         return rows.Select(b => new QuantityBreakDto(b.Id.ToString(), b.ProductId?.ToString(), b.ModelId?.ToString(),
                 b.Product is not null ? Loc.Name(b.Product) : Loc.Name(b.Model), b.Product?.Sku ?? b.Model?.Code ?? "",
                 b.ProductId is Guid pid ? itemBase.GetValueOrDefault(pid, "") : modelBase.GetValueOrDefault(b.ModelId!.Value, ""),
-                b.MinQuantity, b.PercentBp))
-            .OrderBy(b => b.Name).ThenBy(b => b.MinQuantity).ToList();
+                b.MinQuantity, b.PercentBp, b.MinAmount))
+            .OrderBy(b => b.Name).ThenBy(b => b.MinQuantity).ThenBy(b => b.MinAmount).ToList();
     }
 
     private BadRequestObjectResult Bad(string code, string message) => BadRequest(new { message, code });

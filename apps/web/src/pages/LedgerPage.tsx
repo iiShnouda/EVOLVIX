@@ -71,7 +71,6 @@ const input =
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
 const today = companyToday;
-const yearStart = () => `${today().slice(0, 4)}-01-01`;
 
 /** The general ledger: chart of accounts with balances, the journal and the trial balance. */
 export function LedgerPage() {
@@ -374,7 +373,7 @@ function AccountSheet({
 function JournalTab() {
   const { t, locale } = useT();
   const can = useCan();
-  const [from, setFrom] = useState(yearStart());
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(today());
   const [source, setSource] = useState('');
   const { data, isLoading } = useJournal({ from, to, source: source || undefined });
@@ -707,7 +706,7 @@ function NewEntrySheet({ onClose }: { onClose: () => void }) {
 function TrialTab() {
   const { t, locale } = useT();
   const can = useCan();
-  const [from, setFrom] = useState(yearStart());
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(today());
   const { data, isLoading, error } = useTrialBalance(from, to);
   const lock = useLockDate();
@@ -1053,7 +1052,7 @@ function TotalLine({
 /** Income statement (قائمة الدخل): revenue − cost of sales = gross profit; − expenses = net profit. */
 function IncomeTab() {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(yearStart());
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(today());
   const { data, isLoading, error } = useIncomeStatement(from, to);
   const report = useReportTools();

@@ -66,6 +66,21 @@ public sealed class CatalogController : ControllerBase
         return Ok(ToDto(unit, await _db.ItemUnits.CountAsync(u => u.UnitId == id)));
     }
 
+
+    /// <summary>Delete a unit no item, model, price or invoice uses (owner, 2026-10-21); else close it.</summary>
+    [HttpDelete("units/{id:guid}")]
+    [Authorize(Policy = Permissions.SetupDelete)]
+    public async Task<IActionResult> DeleteUnit(Guid id)
+    {
+        var unit = await _db.Units.FirstOrDefaultAsync(u => u.Id == id);
+        if (unit is null) return NotFound(new { message = "Unit not found.", code = "unit_not_found" });
+        if (await _db.ItemUnits.AnyAsync(u => u.UnitId == id) || await _db.ModelUnits.AnyAsync(u => u.UnitId == id)
+            || await _db.PriceListItems.AnyAsync(u => u.UnitId == id) || await _db.DocumentLines.AnyAsync(l => l.UnitId == id))
+            return InUse();
+        _db.Units.Remove(unit);
+        return await RemoveAsync("unit", id, Loc.Name(unit));
+    }
+
     // ------------------------------------------------------------------ categories
 
     [HttpGet("categories")]
@@ -180,6 +195,20 @@ public sealed class CatalogController : ControllerBase
         var all = await _db.Categories.AsNoTracking().ToListAsync();
         var under = Catalog.Subtree(id, all);
         return Ok(ToGroupDto(group, await _db.Products.CountAsync(p => p.IsActive && under.Contains(p.CategoryId))));
+    }
+
+    /// <summary>Delete a sub-group with no items and no sub-groups under it (owner, 2026-10-21).</summary>
+    [HttpDelete("groups/{id:guid}")]
+    [Authorize(Policy = Permissions.SetupDelete)]
+    public async Task<IActionResult> DeleteGroup(Guid id)
+    {
+        var group = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsRoot && c.DepartmentId != null);
+        if (group is null) return NotFound(new { message = "Group not found.", code = "group_not_found" });
+        if (await _db.Categories.AnyAsync(c => c.ParentId == id) || await _db.Products.AnyAsync(p => p.CategoryId == id)
+            || await _db.ProductModels.AnyAsync(m => m.CategoryId == id))
+            return InUse();
+        _db.Categories.Remove(group);
+        return await RemoveAsync("group", id, Loc.Name(group));
     }
 
     /// <summary>Put a group under another of the same department ("" = straight under the department), never under itself.</summary>
@@ -547,7 +576,36 @@ public sealed class CatalogController : ControllerBase
         return Ok(Mapper.ToVariantOption(option));
     }
 
+    /// <summary>Delete a size or color no item uses (owner, 2026-10-21); else close it.</summary>
+    [HttpDelete("variant-options/{id:guid}")]
+    [Authorize(Policy = Permissions.SetupDelete)]
+    public async Task<IActionResult> DeleteVariantOption(Guid id)
+    {
+        var option = await _db.VariantOptions.FirstOrDefaultAsync(o => o.Id == id);
+        if (option is null) return NotFound(new { message = "Size or color not found.", code = "variant_option_not_found" });
+        if (await _db.Products.AnyAsync(p => p.SizeId == id || p.ColorId == id)) return InUse();
+        _db.VariantOptions.Remove(option);
+        return await RemoveAsync("variant_option", id, Loc.Name(option));
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>Save a removal; something still pointing at it (a foreign key) refuses it.</summary>
+    private async Task<IActionResult> RemoveAsync(string resource, Guid id, string name)
+    {
+        try
+        {
+            await SaveAsync("delete", resource, id, name);
+        }
+        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23503" })
+        {
+            _db.ChangeTracker.Clear();
+            return InUse();
+        }
+        return NoContent();
+    }
+
+    private ObjectResult InUse() => Conflict(new { message = "It is in use; close it instead.", code = "in_use" });
 
     /// <summary>A color swatch "#rrggbb": null = none, "" = not a color.</summary>
     private static string? HexOf(string? raw)

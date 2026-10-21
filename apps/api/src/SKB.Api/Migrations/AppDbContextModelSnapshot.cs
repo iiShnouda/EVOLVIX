@@ -2105,11 +2105,20 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("ForEveryone")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<long>("MinAmount")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2117,6 +2126,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
+
+                    b.Property<int>("PercentBp")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Side")
                         .IsRequired()
@@ -2345,6 +2357,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("MinAmount")
+                        .HasColumnType("bigint");
 
                     b.Property<int>("MinQuantity")
                         .HasColumnType("integer");

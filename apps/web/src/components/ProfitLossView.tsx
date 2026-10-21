@@ -92,7 +92,7 @@ export function PlTiles({ f, currency }: { f: PlFigures; currency: string }) {
 export function ProfitLossTab() {
   const { t, locale } = useT();
   const today = companyToday();
-  const [from, setFrom] = useState(`${today.slice(0, 8)}01`);
+  const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
   const [share, setShare] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());

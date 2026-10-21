@@ -524,6 +524,14 @@ public class PriceList : INamed
     /// <summary>First and last day it applies (calendar days; null = open-ended).</summary>
     public DateTime? ValidFrom { get; set; }
     public DateTime? ValidTo { get; set; }
+    /// <summary>Only items of this department (owner, 2026-10-21); null = every department.</summary>
+    public Guid? DepartmentId { get; set; }
+    /// <summary>Only items of this sub-group and those under it; null = the whole department.</summary>
+    public Guid? GroupId { get; set; }
+    /// <summary>A percent off the selling price of every item it covers that has no price of its own on it (hundredths of a percent).</summary>
+    public int PercentBp { get; set; }
+    /// <summary>It applies only once the invoice's covered items come to this much at the selling price (minor units; 0 = always).</summary>
+    public long MinAmount { get; set; }
     public bool IsActive { get; set; } = true;
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -563,6 +571,8 @@ public class QuantityBreak
     public Guid? ModelId { get; set; }
     public ProductModel? Model { get; set; }
     public int MinQuantity { get; set; }
+    /// <summary>A step by money instead (owner, 2026-10-21): from this much of the item at the selling price (minor units; 0 = by quantity).</summary>
+    public long MinAmount { get; set; }
     /// <summary>The discount in hundredths of a percent (250 = 2.5%).</summary>
     public int PercentBp { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

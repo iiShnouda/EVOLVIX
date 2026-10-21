@@ -9,7 +9,6 @@ import {
   type StockMovement,
   type WarehouseStock,
   formatQuantity,
-  addDays,
   companyToday,
 } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -28,7 +27,6 @@ import { errorText } from '../lib/errors';
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-const daysAgo = (n: number) => addDays(companyToday(), -n);
 
 /** Where a movement's source document lives in the app, and who may open it. */
 function documentLink(m: StockMovement): { to: string; permission: Permission } | null {
@@ -61,7 +59,7 @@ export function ItemCardPage() {
 
   const [params, setParams] = useSearchParams();
   const warehouseId = params.get('wh') ?? '';
-  const [from, setFrom] = useState(daysAgo(29));
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const card = useItemCard(id, from, to, warehouseId || undefined);
   const data = card.data;

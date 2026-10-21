@@ -13,7 +13,6 @@ import { TableColumns } from '../components/TableColumns';
 import { ReportActions } from '../components/ReportActions';
 import { useReportTools } from '../lib/report';
 
-const startOfMonth = () => `${companyToday().slice(0, 7)}-01`;
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -21,7 +20,7 @@ const field =
 /** The profitability report; `embedded` drops its own page title (it sits in a tab of Analytics). */
 export function ProfitabilityPage({ embedded = false }: { embedded?: boolean }) {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(startOfMonth());
+  const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const [by, setBy] = useState<ProfitGroupBy>('customer');
   const tools = useReportTools();

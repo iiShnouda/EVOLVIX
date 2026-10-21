@@ -543,19 +543,26 @@ public record SetPartyPriceLevelsRequest(
 /// <param name="Parties">How many parties it's given to.</param>
 public record PriceListDto(
     string Id, string Name, string Side, bool ForEveryone, string? ValidFrom, string? ValidTo, bool IsActive,
-    string? Notes, int Items, int Parties, bool Current);
+    string? Notes, int Items, int Parties, bool Current, string? DepartmentId = null, string? GroupId = null,
+    int PercentBp = 0, long MinAmount = 0);
+
+public record PriceListPartyDto(string Id, string Name, string? Code);
 
 /// <param name="LevelPrice">The same unit's price at the side's default level, to compare.</param>
 public record PriceListItemDto(
     string Id, string? ProductId, string? ModelId, string Name, string Sku, string UnitId, string UnitName, int Factor,
     long Price, long? LevelPrice);
 
-public record PriceListDetailDto(PriceListDto List, PriceListItemDto[] Items);
+public record PriceListDetailDto(PriceListDto List, PriceListItemDto[] Items, PriceListPartyDto[]? Parties = null);
+
+/// <summary>The customers a sales list is given to; they replace those it had.</summary>
+public record SetPriceListPartiesRequest(string[]? PartyIds);
 
 /// <summary>A new list, or changes to one (a field left null is unchanged; "" clears a date).</summary>
 public record SavePriceListRequest(
     string? Name = null, string? Side = null, bool? ForEveryone = null, string? ValidFrom = null, string? ValidTo = null,
-    bool? IsActive = null, string? Notes = null);
+    bool? IsActive = null, string? Notes = null, string? DepartmentId = null, string? GroupId = null,
+    decimal? Percent = null, long? MinAmount = null);
 
 /// <summary>One price on a list: an item or a whole model (every size and color), one unit.</summary>
 public record PriceListItemRequest(string? ProductId, string? ModelId, string? UnitId, long Price);
@@ -565,9 +572,10 @@ public record SetPriceListItemsRequest(PriceListItemRequest[]? Items);
 /// <param name="PercentBp">Hundredths of a percent (250 = 2.5%).</param>
 public record QuantityBreakDto(
     string Id, string? ProductId, string? ModelId, string Name, string Sku, string BaseUnitName, int MinQuantity,
-    int PercentBp);
+    int PercentBp, long MinAmount = 0);
 
-public record QuantityBreakStepRequest(int MinQuantity, decimal Percent);
+/// <param name="MinAmount">A step by money (minor units at the selling price) instead of by quantity.</param>
+public record QuantityBreakStepRequest(int MinQuantity, decimal Percent, long MinAmount = 0);
 
 /// <summary>An item's (or a model's) quantity discount steps; they replace what it had (none = no discount).</summary>
 public record SetQuantityBreaksRequest(string? ProductId, string? ModelId, QuantityBreakStepRequest[]? Steps);

@@ -136,6 +136,7 @@ export type Permission =
   | 'branches:delete'
   | 'warehouses:delete'
   | 'units:manage'
+  | 'setup:delete'
   | 'variant_options:manage'
   | 'seasons:manage'
   | 'sales:change_price'
@@ -410,6 +411,19 @@ export interface PriceList {
   parties: number;
   /** It applies today. */
   current: boolean;
+  /** Only items of this department / sub-group (owner, 2026-10-21). */
+  departmentId?: string | null;
+  groupId?: string | null;
+  /** Percent off the selling price of every item it covers (hundredths of a percent). */
+  percentBp: number;
+  /** It applies once the covered items come to this much at the selling price (minor units; 0 = always). */
+  minAmount: number;
+}
+
+export interface PriceListParty {
+  id: string;
+  name: string;
+  code?: string | null;
 }
 
 export interface PriceListItem {
@@ -430,6 +444,8 @@ export interface PriceListItem {
 export interface PriceListDetail {
   list: PriceList;
   items: PriceListItem[];
+  /** The customers it is given to. */
+  parties?: PriceListParty[] | null;
 }
 
 export interface SavePriceListInput {
@@ -441,6 +457,11 @@ export interface SavePriceListInput {
   validTo?: string;
   isActive?: boolean;
   notes?: string;
+  /** "" clears it. */
+  departmentId?: string;
+  groupId?: string;
+  percent?: number;
+  minAmount?: number;
 }
 
 export interface PriceListItemInput {
@@ -461,12 +482,14 @@ export interface QuantityBreak {
   minQuantity: number;
   /** Hundredths of a percent (250 = 2.5%). */
   percentBp: number;
+  /** A step by money (minor units at the selling price) instead of quantity; 0 = by quantity. */
+  minAmount: number;
 }
 
 export interface SetQuantityBreaksInput {
   productId?: string | null;
   modelId?: string | null;
-  steps: { minQuantity: number; percent: number }[];
+  steps: { minQuantity: number; percent: number; minAmount?: number }[];
 }
 
 export interface PricingLineInput {
