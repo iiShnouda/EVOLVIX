@@ -329,6 +329,10 @@
         {
           "ar": "سحب / إيداع نقدي: لما تكتب مبلغ جنب فاتورة مورد أو عميل، خانة المبلغ بتتملي لوحدها بمجموعهم، والحفظ بيسدد الفاتورة كلها أو جزء منها ويخصم أو يضيف الفلوس في الخزينة.",
           "en": "Cash move: typing an amount beside a supplier's or customer's invoice fills the amount with their total, and saving pays all or part of each invoice and moves the money in the cash box."
+        },
+        {
+          "ar": "تقييم المخزن: \"متوسط التكلفة\" اتشال وبقى مكانه \"سعر التوريد\" (سعر القطعة في آخر فاتورة شراء). وجدول القسم بقى أول عمود فيه اسمه \"القسم\"، وكل جدول ليه إعداد أعمدة لوحده، وعلى الموبايل كل صنف بقى في كارت لوحده بكل بياناته من غير ما حاجة تتقطع.",
+          "en": "Stock valuation: \"average cost\" is replaced by \"supply price\" (a piece's price on its latest purchase). The department table's first column is now \"Department\", each table keeps its own columns, and on a phone each item is its own card with nothing cut off."
         }
       ]
     },

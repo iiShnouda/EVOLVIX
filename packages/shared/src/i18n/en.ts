@@ -2946,4 +2946,5 @@ export const en = {
   'valuation.reorder': 'Reorder level',
   'transfer.finder': 'Detailed search',
   'list.sortBy': 'Sort by',
+  'valuation.model': 'Model',
 } as const;

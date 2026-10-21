@@ -9,6 +9,7 @@ import {
   type InventoryItem,
   type Party,
   type Valuation,
+  type ValuationItem,
   type ValuationRow,
   companyToday,
 } from '@skb/shared';
@@ -812,6 +813,8 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
             {data.categories.length > 0 && (
               <ValuationTable
+                id="inventory.valuation.departments"
+                nameLabel={t('valuation.department')}
                 title={t('inventory.byCategory')}
                 rows={data.categories}
                 money={money}
@@ -820,6 +823,8 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             )}
             {!warehouseId && data.warehouses.length > 1 && (
               <ValuationTable
+                id="inventory.valuation.warehouses"
+                nameLabel={t('warehouse.label')}
                 title={t('warehouse.byWarehouse')}
                 rows={data.warehouses}
                 money={money}
@@ -828,6 +833,8 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
             )}
             {data.models.length > 0 && (
               <ValuationTable
+                id="inventory.valuation.models"
+                nameLabel={t('valuation.model')}
                 title={t('inventory.byModel')}
                 rows={data.models}
                 money={money}
@@ -845,12 +852,18 @@ function ValuationTab({ warehouseId }: { warehouseId: string }) {
 }
 
 function ValuationTable({
+  id,
   title,
+  nameLabel,
   rows,
   money,
   seeValue,
 }: {
+  /** Each table keeps its own columns (owner, 2026-10-21: they were shared and came out wrong). */
+  id: string;
   title: string;
+  /** The first column's title: department, warehouse or model. */
+  nameLabel: string;
   rows: ValuationRow[];
   money: (v: number | null) => string;
   seeValue: boolean;
@@ -861,11 +874,11 @@ function ValuationTable({
       <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
         {title}
       </h2>
-      <TableColumns id="inventory.valuation">
+      <TableColumns id={id}>
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs text-muted">
             <tr>
-              <th className="p-3 text-start font-medium">{title}</th>
+              <th className="p-3 text-start font-medium">{nameLabel}</th>
               <th className="p-3 text-end font-medium">{t('valuation.count')}</th>
               <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
               {seeValue && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
@@ -898,16 +911,80 @@ function ValuationItems({
   seeSuppliers: boolean;
 }) {
   const { t, locale } = useT();
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const seeValue = data.value != null;
   const seePrice = data.items.some((i) => i.salePrice != null);
+  const qtyTone = (r: ValuationItem) =>
+    r.empty ? 'text-destructive' : r.low ? 'text-warning' : '';
+  const supplier = (r: ValuationItem) =>
+    r.supplier ? `${r.supplierCode ?? ''} ${r.supplier}`.trim() : '';
+  const heading = (
+    <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
+      {t('inventory.byItem')}
+    </h2>
+  );
+  // A phone (owner, 2026-10-21: the table was squeezed): one card per item, nothing cut off.
+  if (isPhone)
+    return (
+      <Card padded={false} className="overflow-hidden">
+        {heading}
+        <ul className="divide-y divide-[var(--c-line)]">
+          {data.items.map((r) => (
+            <li key={r.key} className="space-y-1 p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <ItemLink id={r.key} name={r.label} className="font-medium" />
+                  <p className="text-xs text-muted tnum" dir="ltr">
+                    {r.code}
+                  </p>
+                  {seeSuppliers && supplier(r) && (
+                    <p className="text-xs text-muted">{supplier(r)}</p>
+                  )}
+                </div>
+                <div className="shrink-0 text-end">
+                  <p className={`font-semibold tnum ${qtyTone(r)}`}>
+                    {formatNumber(r.quantity, locale)}
+                  </p>
+                  {r.reorderLevel > 0 && (
+                    <p className="text-xs text-muted tnum">
+                      {t('valuation.reorder')} {formatNumber(r.reorderLevel, locale)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {(seePrice || seeValue) && (
+                <dl className="grid grid-cols-3 gap-2 rounded-[var(--radius-app)] bg-surface-2 px-2 py-1.5 text-xs">
+                  {seePrice && (
+                    <div>
+                      <dt className="text-muted">{t('item.salePrice')}</dt>
+                      <dd className="tnum">{money(r.salePrice)}</dd>
+                    </div>
+                  )}
+                  {seeValue && (
+                    <div>
+                      <dt className="text-muted">{t('finder.costPrice')}</dt>
+                      <dd className="tnum">{money(r.supplyPrice)}</dd>
+                    </div>
+                  )}
+                  {seeValue && (
+                    <div>
+                      <dt className="text-muted">{t('inventory.value')}</dt>
+                      <dd className="font-medium tnum">{money(r.value)}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+            </li>
+          ))}
+        </ul>
+      </Card>
+    );
   return (
     <Card padded={false} className="overflow-hidden">
-      <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
-        {t('inventory.byItem')}
-      </h2>
+      {heading}
       <TableColumns id="inventory.valuation.items">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
@@ -918,7 +995,7 @@ function ValuationItems({
                 <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
                 <th className="p-2 text-end font-medium">{t('valuation.reorder')}</th>
                 {seePrice && <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>}
-                {seeValue && <th className="p-2 text-end font-medium">{t('inventory.avgCost')}</th>}
+                {seeValue && <th className="p-2 text-end font-medium">{t('finder.costPrice')}</th>}
                 {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
               </tr>
             </thead>
@@ -931,22 +1008,24 @@ function ValuationItems({
                   <td className="p-2">
                     <ItemLink id={r.key} name={r.label} />
                   </td>
-                  {seeSuppliers && (
-                    <td className="p-2 text-muted">
-                      {r.supplier ? `${r.supplierCode ?? ''} ${r.supplier}`.trim() : ''}
-                    </td>
-                  )}
-                  <td
-                    className={`p-2 text-end tnum ${r.empty ? 'text-destructive' : r.low ? 'text-warning' : ''}`}
-                  >
+                  {seeSuppliers && <td className="p-2 text-muted">{supplier(r)}</td>}
+                  <td className={`whitespace-nowrap p-2 text-end tnum ${qtyTone(r)}`}>
                     {formatNumber(r.quantity, locale)}
                   </td>
-                  <td className="p-2 text-end text-muted tnum">
+                  <td className="whitespace-nowrap p-2 text-end text-muted tnum">
                     {r.reorderLevel > 0 ? formatNumber(r.reorderLevel, locale) : ''}
                   </td>
-                  {seePrice && <td className="p-2 text-end tnum">{money(r.salePrice)}</td>}
-                  {seeValue && <td className="p-2 text-end tnum">{money(r.avgCost)}</td>}
-                  {seeValue && <td className="p-2 text-end font-medium tnum">{money(r.value)}</td>}
+                  {seePrice && (
+                    <td className="whitespace-nowrap p-2 text-end tnum">{money(r.salePrice)}</td>
+                  )}
+                  {seeValue && (
+                    <td className="whitespace-nowrap p-2 text-end tnum">{money(r.supplyPrice)}</td>
+                  )}
+                  {seeValue && (
+                    <td className="whitespace-nowrap p-2 text-end font-medium tnum">
+                      {money(r.value)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

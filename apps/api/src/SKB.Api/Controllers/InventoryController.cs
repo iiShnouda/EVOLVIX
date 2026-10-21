@@ -429,6 +429,15 @@ public sealed class InventoryController : ControllerBase
         lines = lines.Where(l => keep.Contains(l.Product)).ToList();
 
         long? Money(long v) => seeCosts ? v : null;
+        // The supply price (سعر التوريد, owner 2026-10-21): what a piece cost on its latest purchase,
+        // instead of the average; an item never bought shows its average.
+        var supply = seeCosts && Has(Permissions.ValuationItems) && keep.Count > 0
+            ? await _db.StockMovements.AsNoTracking()
+                .Where(m => m.Type == StockMovementType.PURCHASE_IN && keep.Contains(m.ProductId))
+                .GroupBy(m => m.ProductId)
+                .Select(g => new { g.Key, Cost = g.OrderByDescending(m => m.CreatedAt).Select(m => m.UnitCost).First() })
+                .ToDictionaryAsync(x => x.Key, x => x.Cost)
+            : new Dictionary<Guid, long>();
         var itemRows = Has(Permissions.ValuationItems)
             ? keep.Select(id =>
                 {
@@ -438,7 +447,8 @@ public sealed class InventoryController : ControllerBase
                     var v = mineLines.Sum(l => l.Value);
                     return new ValuationItemDto(id.ToString(), p.Sku, Loc.Name(p),
                         seeSuppliers ? p.Supplier?.Name : null, seeSuppliers ? p.Supplier?.Code : null,
-                        q, Money(v), seeCosts && q != 0 ? v / q : null, seePrices ? p.SalePrice : null,
+                        q, Money(v), seeCosts ? supply.TryGetValue(id, out var sc) ? sc : q != 0 ? v / q : p.CostPrice : null,
+                        seePrices ? p.SalePrice : null,
                         p.ReorderLevel, IsLow(p, q), q <= 0);
                 })
                 .OrderByDescending(r => r.Value ?? 0).ThenBy(r => r.Label).ToArray()

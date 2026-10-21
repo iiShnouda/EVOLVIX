@@ -1414,7 +1414,8 @@ export interface ValuationItem {
   supplierCode: number | null;
   quantity: number;
   value: number | null;
-  avgCost: number | null;
+  /** What a piece cost on its latest purchase (سعر التوريد). */
+  supplyPrice: number | null;
   salePrice: number | null;
   reorderLevel: number;
   low: boolean;
