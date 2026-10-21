@@ -2607,7 +2607,7 @@ function DiscountField({
           onChange={(e) => onChange({ ...value, value: e.target.value })}
         />
         <select
-          className={`${field} w-24 px-1.5`}
+          className={`${field} !w-24 px-1.5`}
           disabled={disabled}
           aria-label={label}
           value={value.mode}

@@ -608,7 +608,7 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
                   <td className="px-1.5 py-1.5">
                     <input
                       dir="ltr"
-                      className={`${field} w-28`}
+                      className={`${field} !w-28`}
                       disabled={disabled}
                       placeholder={t('settings.builtIn')}
                       maxLength={20}
@@ -620,7 +620,7 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
                     <input
                       type="number"
                       min={1}
-                      className={`${field} w-24 tnum`}
+                      className={`${field} !w-24 tnum`}
                       disabled={disabled || !e.prefix.trim()}
                       value={e.startAt}
                       onChange={(ev) => set({ startAt: ev.target.value })}
@@ -631,7 +631,7 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
                       type="number"
                       min={1}
                       max={10}
-                      className={`${field} w-16 tnum`}
+                      className={`${field} !w-16 tnum`}
                       disabled={disabled || !e.prefix.trim()}
                       value={e.digits}
                       onChange={(ev) => set({ digits: ev.target.value })}

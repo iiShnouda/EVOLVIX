@@ -2963,4 +2963,5 @@ export const ar: TranslationDictionary = {
   'inventory.totalSold': 'إجمالي المباع',
   'invoice.itemCode': 'كود الصنف',
   'payroll.adjustKind': 'النوع',
+  'pl.fromQty': 'من كمية',
 };

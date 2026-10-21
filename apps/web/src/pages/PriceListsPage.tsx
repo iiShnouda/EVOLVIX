@@ -409,7 +409,7 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
                   </span>
                 </span>
                 <input
-                  className={`${field} tnum w-28`}
+                  className={`${field} tnum !w-28`}
                   inputMode="decimal"
                   aria-label={t('pl.listPrice')}
                   disabled={!canManage}
@@ -652,29 +652,36 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
       <h2 className="text-sm font-semibold">
         <bdi>{target.name}</bdi>
       </h2>
+      {/* One step a row, each box with its name over it (owner, 2026-10-21: the boxes ran full
+          width and the names stood over the wrong ones). */}
       {rows.map((r, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted">{t('pl.from1')}</span>
-          <input
-            className={`${field} tnum w-24`}
-            inputMode="numeric"
-            disabled={!canManage}
-            value={r.min}
-            onChange={(e) =>
-              setRows(rows.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))
-            }
-          />
-          <bdi className="text-muted">{target.baseUnitName}</bdi>
-          <input
-            className={`${field} tnum w-20`}
-            inputMode="decimal"
-            disabled={!canManage}
-            value={r.percent}
-            onChange={(e) =>
-              setRows(rows.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))
-            }
-          />
-          <span className="text-muted">{t('pl.percentOff')}</span>
+        <div key={i} className="flex flex-wrap items-end gap-3 text-sm">
+          <label className="block w-36">
+            <span className="mb-0.5 block text-xs text-muted">
+              {t('pl.fromQty')} (<bdi>{target.baseUnitName}</bdi>)
+            </span>
+            <input
+              className={`${field} tnum`}
+              inputMode="numeric"
+              disabled={!canManage}
+              value={r.min}
+              onChange={(e) =>
+                setRows(rows.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))
+              }
+            />
+          </label>
+          <label className="block w-32">
+            <span className="mb-0.5 block text-xs text-muted">{t('pl.percentOff')}</span>
+            <input
+              className={`${field} tnum`}
+              inputMode="decimal"
+              disabled={!canManage}
+              value={r.percent}
+              onChange={(e) =>
+                setRows(rows.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))
+              }
+            />
+          </label>
           {canManage && (
             <Button
               size="sm"

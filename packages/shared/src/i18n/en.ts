@@ -2979,4 +2979,5 @@ export const en = {
   'inventory.totalSold': 'Total sold',
   'invoice.itemCode': 'Item code',
   'payroll.adjustKind': 'Type',
+  'pl.fromQty': 'From quantity',
 } as const;

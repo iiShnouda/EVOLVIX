@@ -443,7 +443,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   onChange={(e) => setEach(e.target.value)}
                 />
                 <select
-                  className={`${field} w-24 px-1`}
+                  className={`${field} !w-24 px-1`}
                   value={split}
                   onChange={(e) => setSplit(e.target.value as 'each' | 'total')}
                   aria-label={t('cheque.amountEach')}

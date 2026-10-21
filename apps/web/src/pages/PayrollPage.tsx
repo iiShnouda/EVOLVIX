@@ -798,7 +798,7 @@ function AttendanceTab() {
                       </td>
                       <td className="px-2 py-1.5">
                         <select
-                          className={`${field} w-36`}
+                          className={`${field} !w-36`}
                           disabled={disabled}
                           aria-label={t('payroll.status')}
                           value={d.status}
@@ -816,7 +816,7 @@ function AttendanceTab() {
                       </td>
                       <td className="px-2 py-1.5">
                         <input
-                          className={`${field} w-28 tnum`}
+                          className={`${field} !w-28 tnum`}
                           type="time"
                           disabled={disabled || d.status !== 'PRESENT'}
                           aria-label={t('payroll.in')}
@@ -826,7 +826,7 @@ function AttendanceTab() {
                       </td>
                       <td className="px-2 py-1.5">
                         <input
-                          className={`${field} w-28 tnum`}
+                          className={`${field} !w-28 tnum`}
                           type="time"
                           disabled={disabled || d.status !== 'PRESENT'}
                           aria-label={t('payroll.out')}
