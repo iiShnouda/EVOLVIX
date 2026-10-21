@@ -129,10 +129,6 @@ interface DiscountInput {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
-/** A filter above the item search: as wide as its text, not the whole row. */
-const filterSelect =
-  'h-9 min-w-40 max-w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
-
 let nextKey = 0;
 
 /**
@@ -321,6 +317,11 @@ export function InvoiceBuilderPage({
   const [search, setSearch] = useState('');
   /** Only this supplier's items ("" = every supplier). Picking one lists its items at once. */
   const [supplierFilter, setSupplierFilter] = useState('');
+  // The supplier filter as a picker by code or name (owner, 2026-10-21: a code box before every search).
+  const [supplierParty, setSupplierParty] = useState<Party | null>(null);
+  // An item by its code alone, added on Enter (owner, 2026-10-21).
+  const [itemCode, setItemCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
   const [listOpen, setListOpen] = useState(false);
   /** Only this category's items, only items in stock. */
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -329,7 +330,14 @@ export function InvoiceBuilderPage({
   /** How many the next item comes in (كمية), as in the old program; back to 1 after each. */
   const [addQty, setAddQty] = useState('1');
   const [finding, setFinding] = useState(false);
-  const suppliers = useParties({ page: 1, pageSize: 100, type: 'SUPPLIER', active: true });
+  // A supplier brought back with the draft shows in the picker too.
+  useEffect(() => {
+    if (!supplierFilter || supplierParty?.id === supplierFilter) return;
+    void api
+      .get<Party>(`/parties/${supplierFilter}`)
+      .then(setSupplierParty)
+      .catch(() => undefined);
+  }, [supplierFilter, supplierParty?.id]);
   const productList = useProductSearch(
     search,
     inStockOnly,
@@ -515,6 +523,27 @@ export function InvoiceBuilderPage({
     if (!hit) return null;
     addProduct(hit, hit.matchedUnitId);
     return `✓ ${hit.name}`;
+  }
+
+  /** Put the item with this code on the invoice (its own code, the supplier's code or a barcode). */
+  async function addByCode() {
+    const c = itemCode.trim();
+    if (!c) return;
+    const q = new URLSearchParams({ search: c });
+    if (departmentId) q.set('departmentId', departmentId);
+    const found = await api.get<Product[]>(`/products?${q}`).catch(() => [] as Product[]);
+    const low = c.toLowerCase();
+    const hit =
+      found.find((p) => p.sku.toLowerCase() === low) ??
+      found.find((p) => (p.supplierCode ?? '').toLowerCase() === low) ??
+      found.find((p) => p.matchedUnitId);
+    if (!hit) {
+      setCodeNote(`${c}: ${t('invoice.codeNotFound')}`);
+      return;
+    }
+    addProduct(hit, hit.matchedUnitId);
+    setItemCode('');
+    setCodeNote('');
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -1877,22 +1906,20 @@ export function InvoiceBuilderPage({
                     {t('invoice.addItems')}
                   </label>
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <select
-                      className={filterSelect}
-                      aria-label={t('catalog.supplier')}
-                      value={supplierFilter}
-                      onChange={(e) => {
-                        setSupplierFilter(e.target.value);
-                        searchBox.current?.focus();
-                      }}
-                    >
-                      <option value="">{t('invoice.filterSupplier')}</option>
-                      {(suppliers.data?.items ?? []).map((sp) => (
-                        <option key={sp.id} value={sp.id}>
-                          {codeName(sp.code, sp.name)}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="min-w-0 flex-1 basis-72">
+                      <PartyPicker
+                        type="SUPPLIER"
+                        withCode
+                        value={supplierParty}
+                        onChange={(sp) => {
+                          setSupplierParty(sp);
+                          setSupplierFilter(sp?.id ?? '');
+                          searchBox.current?.focus();
+                        }}
+                        label={t('catalog.supplier')}
+                        placeholder={t('invoice.filterSupplier')}
+                      />
+                    </div>
 
                     <label className="flex items-center gap-1.5 text-sm text-muted">
                       <input
@@ -1904,6 +1931,26 @@ export function InvoiceBuilderPage({
                     </label>
                   </div>
                   <div className="flex items-end gap-2">
+                    <label className="block w-28 shrink-0 sm:w-36">
+                      <span className="mb-0.5 block text-xs text-muted">
+                        {t('invoice.itemCode')}
+                      </span>
+                      <input
+                        className={`${field} tnum`}
+                        dir="ltr"
+                        value={itemCode}
+                        onChange={(e) => {
+                          setItemCode(e.target.value);
+                          setCodeNote('');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void addByCode();
+                          }
+                        }}
+                      />
+                    </label>
                     <div className="min-w-0 flex-1">
                       <span className="mb-0.5 block text-xs text-muted">{t('col.item')}</span>
                       <div className="relative">
@@ -2004,6 +2051,7 @@ export function InvoiceBuilderPage({
                       <span className="hidden lg:inline">{t('finder.button')}</span>
                     </Button>
                   </div>
+                  {codeNote && <p className="mt-1 text-xs text-destructive">{codeNote}</p>}
                   {scanning && (
                     <BarcodeScanner onScan={lookUp} onClose={() => setScanning(false)} />
                   )}

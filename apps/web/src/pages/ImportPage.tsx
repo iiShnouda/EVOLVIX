@@ -121,7 +121,9 @@ function ResultView({ result, onAgain }: { result: ImportResult; onAgain: () => 
         {result.groups.map((g) => (
           <div key={g.kind} className="rounded-[var(--radius-app)] border border-line p-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span className="font-medium">{t(`import.kind.${g.kind}` as 'import.kind.items')}</span>
+              <span className="font-medium">
+                {t(`import.kind.${g.kind}` as 'import.kind.items')}
+              </span>
               <span className="text-sm text-positive">
                 {t('import.added')}: <bdi className="font-semibold tnum">{g.added}</bdi>
               </span>

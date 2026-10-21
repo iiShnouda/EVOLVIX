@@ -4,7 +4,8 @@ import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../compone
 import { ReportActions } from '../components/ReportActions';
 import { useT } from '../lib/i18n';
 import { useReportTools } from '../lib/report';
-import { useAuditFacets, useAuditLog, type AuditFilter } from '../lib/queries';
+import { useAuditFacets, useAuditLog, usePageSize, type AuditFilter } from '../lib/queries';
+import { Pager } from '../components/Pager';
 
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -21,12 +22,13 @@ function label(t: (k: TranslationKey) => string, prefix: string, code: string) {
  */
 export function ActivityPage() {
   const { t, locale } = useT();
+  const [size, setSize] = usePageSize('audit', 50);
   const [filter, setFilter] = useState<AuditFilter>(() => ({
     page: 1,
     from: companyToday(),
     to: companyToday(),
   }));
-  const { data, isLoading, isFetching } = useAuditLog(filter);
+  const { data, isLoading, isFetching } = useAuditLog({ ...filter, pageSize: size });
   const facets = useAuditFacets();
   const report = useReportTools();
   const paper = useRef<HTMLUListElement>(null);
@@ -202,26 +204,17 @@ export function ActivityPage() {
       )}
 
       {data && data.total > data.pageSize && (
-        <div className="flex items-center justify-center gap-3 text-sm">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={filter.page <= 1}
-            onClick={() => setFilter((f) => ({ ...f, page: f.page - 1 }))}
-          >
-            {t('audit.newer')}
-          </Button>
-          <span className="text-muted tnum">
-            {formatNumber(filter.page, locale)} / {formatNumber(pages, locale)}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={filter.page >= pages}
-            onClick={() => setFilter((f) => ({ ...f, page: f.page + 1 }))}
-          >
-            {t('audit.older')}
-          </Button>
+        <div className="flex justify-center">
+          <Pager
+            page={filter.page}
+            size={size}
+            pages={pages}
+            onPage={(n) => setFilter((f) => ({ ...f, page: n }))}
+            onSize={(n) => {
+              setSize(n);
+              setFilter((f) => ({ ...f, page: 1 }));
+            }}
+          />
         </div>
       )}
     </div>

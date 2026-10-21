@@ -165,7 +165,11 @@ export function LoginPage() {
               role="status"
               className="flex items-start gap-2 rounded-[var(--radius-app)] border border-warning/40 bg-warning-soft px-3 py-2.5 text-sm text-warning"
             >
-              <Icon name={notice === 'idle' ? 'lock' : 'device'} size={18} className="mt-0.5 shrink-0" />
+              <Icon
+                name={notice === 'idle' ? 'lock' : 'device'}
+                size={18}
+                className="mt-0.5 shrink-0"
+              />
               {t(notice === 'idle' ? 'auth.idleSignedOut' : 'auth.signedInElsewhere')}
             </div>
           )}

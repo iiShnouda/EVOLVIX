@@ -117,19 +117,22 @@ export function PartiesPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 flex-1 basis-72 items-stretch overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface focus-within:border-brand">
-          <select
-            aria-label={t('parties.type')}
-            className="h-10 shrink-0 border-e border-line bg-surface-2 px-2 text-sm outline-none"
-            value={type}
-            onChange={(e) => setType(e.target.value as PartyType | '')}
-          >
-            <option value="">{t('parties.all')}</option>
-            {TYPES.map((x) => (
-              <option key={x} value={x}>
-                {t(TYPE_LABEL[x])}
-              </option>
-            ))}
-          </select>
+          <label className="block shrink-0">
+            <span className="mb-0.5 block text-xs text-muted">{t('parties.type')}</span>
+            <select
+              aria-label={t('parties.type')}
+              className="h-10 shrink-0 border-e border-line bg-surface-2 px-2 text-sm outline-none"
+              value={type}
+              onChange={(e) => setType(e.target.value as PartyType | '')}
+            >
+              <option value="">{t('parties.all')}</option>
+              {TYPES.map((x) => (
+                <option key={x} value={x}>
+                  {t(TYPE_LABEL[x])}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="relative min-w-0 flex-1">
             <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-faint">
               <Icon name="search" size={16} />
@@ -143,19 +146,22 @@ export function PartiesPage() {
             />
           </label>
         </div>
-        <select
-          aria-label={t('parties.status')}
-          className="h-10 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">{t('parties.anyStatus')}</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t(`parties.status.${s}` as TranslationKey)}
-            </option>
-          ))}
-        </select>
+        <label className="block shrink-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('parties.status')}</span>
+          <select
+            aria-label={t('parties.status')}
+            className="h-10 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">{t('parties.anyStatus')}</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {t(`parties.status.${s}` as TranslationKey)}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"

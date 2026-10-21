@@ -869,21 +869,22 @@ function VouchersTab() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1.5">
         {myBranches.length > 1 && (
-          <select
-            className="h-8 rounded-full border border-line bg-surface px-3 text-xs"
-            aria-label={t('list.branch')}
-            value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
-          >
-            <option value="">
-              {t('list.branch')}: {t('common.all')}
-            </option>
-            {myBranches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <label className="block shrink-0">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+            <select
+              className="h-8 rounded-full border border-line bg-surface px-3 text-xs"
+              aria-label={t('list.branch')}
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
+              <option value="">{t('common.all')}</option>
+              {myBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {(['', ...VOUCHER_TYPES] as (VoucherType | '')[]).map((x) => (
           <button

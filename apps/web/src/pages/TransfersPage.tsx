@@ -1,6 +1,6 @@
 import { confirm } from '../lib/confirm';
 import { ItemLink } from '../components/ItemLink';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DocumentActivity } from '../components/DocumentActivity';
 import {
@@ -15,7 +15,14 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
-import { useCompanySettings, useFinishTransfer, useTransfer, useTransfers } from '../lib/queries';
+import {
+  useCompanySettings,
+  useFinishTransfer,
+  usePageSize,
+  useTransfer,
+  useTransfers,
+} from '../lib/queries';
+import { Pager } from '../components/Pager';
 import { TableColumns } from '../components/TableColumns';
 import { errorText } from '../lib/errors';
 import { ReportActions } from '../components/ReportActions';
@@ -47,7 +54,10 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
   const canSend = useAuth((s) => s.user?.permissions ?? []).includes('inventory:transfer');
   const currency = useCompanySettings().data?.currency ?? 'EGP';
 
-  const list = useTransfers({ page: 1, status: tab === 'open' ? 'SENT' : undefined });
+  const [size, setSize] = usePageSize('transfers', 50);
+  const [page, setPage] = useState(1);
+  const list = useTransfers({ page, pageSize: size, status: tab === 'open' ? 'SENT' : undefined });
+  const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / size));
   // A transfer opens on its own page (owner, 2026-10-19); old `?doc=` links still land there.
   const linkedId = params.get('doc');
   useEffect(() => {
@@ -112,6 +122,18 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
       )}
 
       <div>
+        <div className="mb-2 flex justify-end">
+          <Pager
+            page={Math.min(page, pages)}
+            size={size}
+            pages={pages}
+            onPage={setPage}
+            onSize={(n) => {
+              setSize(n);
+              setPage(1);
+            }}
+          />
+        </div>
         <Card padded={false} className="h-fit overflow-hidden">
           {list.isLoading ? (
             <div className="grid place-items-center py-16 text-muted">

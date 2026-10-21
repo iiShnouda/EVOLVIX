@@ -127,7 +127,10 @@ export function ChatPage() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{titleOf(c, me)}</span>
-                    <span className="shrink-0 text-[11px] text-faint tnum" title={formatDateTime(c.lastAt, locale)}>
+                    <span
+                      className="shrink-0 text-[11px] text-faint tnum"
+                      title={formatDateTime(c.lastAt, locale)}
+                    >
                       {listTime(c.lastAt, locale)}
                     </span>
                   </span>

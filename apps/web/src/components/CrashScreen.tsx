@@ -17,9 +17,7 @@ export function CrashScreen() {
         <Logo size={48} />
         <h1 className="text-lg font-semibold text-fg">{t('crash.title')}</h1>
         <div className="flex gap-2">
-          <Button onClick={() => window.location.reload()}>
-            {t('crash.reload')}
-          </Button>
+          <Button onClick={() => window.location.reload()}>{t('crash.reload')}</Button>
           <Button variant="secondary" onClick={() => window.location.assign('/dashboard')}>
             {t('crash.home')}
           </Button>

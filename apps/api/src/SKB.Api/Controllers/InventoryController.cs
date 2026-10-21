@@ -55,7 +55,7 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null,
         [FromQuery] string? code = null, [FromQuery] string? supplierId = null,
         [FromQuery] int page = 1, [FromQuery] int? pageSize = null, [FromQuery] string? sort = null,
-        [FromQuery] string? dir = null, [FromQuery] bool inStock = false)
+        [FromQuery] string? dir = null, [FromQuery] bool inStock = false, [FromQuery] string? status = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -117,6 +117,12 @@ public sealed class InventoryController : ControllerBase
         IEnumerable<InventoryItemDto> rows = all;
         if (lowOnly) rows = rows.Where(i => i.IsLow);
         if (inStock) rows = rows.Where(i => i.StockOnHand > 0);
+        // Any of the stock statuses ticked (owner, 2026-10-21): in stock, run out, at the reorder level.
+        var statuses = Statuses(status);
+        if (statuses.Count > 0)
+            rows = rows.Where(i => (statuses.Contains("in") && i.StockOnHand > 0)
+                                   || (statuses.Contains("out") && i.StockOnHand <= 0)
+                                   || (statuses.Contains("low") && i.IsLow));
         if (Guid.TryParse(modelId, out var model))
             rows = rows.Where(i => i.ModelId == model.ToString());
         if (!string.IsNullOrWhiteSpace(search))
@@ -173,12 +179,37 @@ public sealed class InventoryController : ControllerBase
                 .Select(kv => $"{Loc.Name(names[kv.Key.Warehouse].Branch)} / {Loc.Name(names[kv.Key.Warehouse])} ({kv.Value})")
                 .OrderBy(x => x).ToArray());
 
+        // The totals of what the filters show (owner, 2026-10-21), each for whoever may see it.
+        bool Has(string p) => User.HasClaim("permission", p);
+        long? sold = null;
+        if (Has(Permissions.InventoryTotalSold))
+        {
+            var listed = list.Select(i => Guid.Parse(i.Id)).ToList();
+            var moves = _db.StockMovements.AsNoTracking().Where(m => listed.Contains(m.ProductId)
+                && (m.Type == StockMovementType.SALE_OUT || m.Type == StockMovementType.SALE_CANCELLED
+                    || m.Type == StockMovementType.SALES_RETURN_IN));
+            if (wid is Guid only) moves = moves.Where(m => m.WarehouseId == only);
+            else if (mine is not null) moves = moves.Where(m => mine.Contains(m.WarehouseId));
+            sold = -(await moves.SumAsync(m => (long?)m.Quantity) ?? 0);
+        }
+        var totals = new InventoryTotalsDto(
+            Has(Permissions.InventoryTotalItems) ? list.Count(i => i.StockOnHand > 0) : null,
+            Has(Permissions.InventoryTotalQuantity) ? list.Sum(i => (long)Math.Max(0, i.StockOnHand)) : null,
+            Has(Permissions.InventoryTotalSaleValue) ? list.Sum(i => (long)Math.Max(0, i.StockOnHand) * i.SalePrice) : null,
+            seeCosts && Has(Permissions.InventoryTotalSupplyValue) ? list.Sum(i => i.StockValue) : null,
+            sold);
+
         return Ok(new InventoryListDto(
             pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))
                 .ToArray(),
             seeCosts ? all.Sum(i => i.StockValue) : 0, all.Count, all.Count(i => i.IsLow),
-            await CurrencyAsync(), list.Count, at, size));
+            await CurrencyAsync(), list.Count, at, size, totals));
     }
+
+    /// <summary>The stock statuses asked for, as a set: "in", "out", "low" (comma separated).</summary>
+    private static HashSet<string> Statuses(string? status) =>
+        (status ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s is "in" or "out" or "low").ToHashSet();
 
     /// <summary>
     /// Item card (كارت الصنف): opening balance before <paramref name="from"/>, every movement in the
@@ -419,20 +450,18 @@ public sealed class InventoryController : ControllerBase
         // The status (owner, 2026-10-21): all (in stock and run out together), in stock, run out, or at
         // the reorder level; run out also takes items with nothing here at all.
         bool IsLow(Product p, int q) => p.ReorderLevel > 0 && q > 0 && q <= p.ReorderLevel;
-        var withOut = status is null or "" or "all" or "out";
+        var wanted = Statuses(status);
+        var withOut = wanted.Count == 0 || wanted.Contains("out");
         var candidates = withOut
             ? products.Values.Where(p => p.IsActive && Passes(p)).Select(p => p.Id).Union(qtyOf.Keys)
             : qtyOf.Keys;
         var keep = candidates.Where(id =>
         {
             var q = qtyOf.GetValueOrDefault(id);
-            return status switch
-            {
-                "in" => q > 0,
-                "out" => q <= 0,
-                "low" => IsLow(products[id], q),
-                _ => true,
-            };
+            return wanted.Count == 0
+                   || (wanted.Contains("in") && q > 0)
+                   || (wanted.Contains("out") && q <= 0)
+                   || (wanted.Contains("low") && IsLow(products[id], q));
         }).ToHashSet();
         // A place shows where the item is; one run out shows where it ran out (or nowhere).
         var lines = scoped.Where(l => keep.Contains(l.Product) && (l.Qty != 0 || qtyOf[l.Product] <= 0)).ToList();

@@ -662,8 +662,11 @@ export function useInventory(params: {
   sort?: string;
   dir?: 'asc' | 'desc';
   inStock?: boolean;
+  /** Any of these stock statuses: in, out, low. */
+  status?: string[];
 }) {
   const query = new URLSearchParams();
+  if (params.status?.length) query.set('status', params.status.join(','));
   if (params.inStock) query.set('inStock', 'true');
   if (params.page) query.set('page', String(params.page));
   if (params.pageSize) query.set('pageSize', String(params.pageSize));
@@ -712,8 +715,8 @@ export interface ValuationFilter {
   supplierId?: string;
   search?: string;
   productIds?: string[];
-  /** '' all, 'in' in stock, 'out' run out, 'low' at the reorder level. */
-  status?: '' | 'in' | 'out' | 'low';
+  /** Any of: 'in' in stock, 'out' run out, 'low' at the reorder level; none = all. */
+  status?: string[];
 }
 
 export function useValuation(asOf: string, warehouseId?: string, f: ValuationFilter = {}) {
@@ -724,7 +727,7 @@ export function useValuation(asOf: string, warehouseId?: string, f: ValuationFil
   if (f.supplierId) query.set('supplierId', f.supplierId);
   if (f.search) query.set('search', f.search);
   if (f.productIds?.length) query.set('productIds', f.productIds.join(','));
-  if (f.status) query.set('status', f.status);
+  if (f.status?.length) query.set('status', f.status.join(','));
   return useQuery({
     queryKey: ['inventory', 'valuation', asOf, warehouseId ?? '', f],
     queryFn: () => api.get<Valuation>(`/inventory/valuation?${query}`),
@@ -755,8 +758,11 @@ export function useBranches() {
 // Transfer permits (إذن تحويل)
 // ---------------------------------------------------------------------------
 
-export function useTransfers(params: { page: number; status?: TransferStatus }) {
-  const query = new URLSearchParams({ page: String(params.page), pageSize: '30' });
+export function useTransfers(params: { page: number; pageSize?: number; status?: TransferStatus }) {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize ?? 30),
+  });
   if (params.status) query.set('status', params.status);
   return useQuery({
     queryKey: ['inventory', 'transfers', params],
@@ -2004,6 +2010,7 @@ export interface AuditFilter {
   /** One record's own history (an invoice's activity log). */
   resourceId?: string;
   page: number;
+  pageSize?: number;
 }
 
 export function useAuditLog(f: AuditFilter, enabled = true) {

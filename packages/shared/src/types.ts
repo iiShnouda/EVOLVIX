@@ -75,6 +75,11 @@ export type Permission =
   | 'inventory:transfer'
   | 'inventory:transfer_edit'
   | 'inventory:valuation'
+  | 'inventory:total_items'
+  | 'inventory:total_quantity'
+  | 'inventory:total_sale_value'
+  | 'inventory:total_supply_value'
+  | 'inventory:total_sold'
   | 'inventory:valuation_departments'
   | 'inventory:valuation_warehouses'
   | 'inventory:valuation_items'
@@ -1282,6 +1287,14 @@ export interface InventoryList {
   matched?: number;
   page?: number;
   pageSize?: number;
+  /** The totals of what the filters show; each null without its permission. */
+  totals?: {
+    items: number | null;
+    quantity: number | null;
+    saleValue: number | null;
+    supplyValue: number | null;
+    sold: number | null;
+  } | null;
 }
 
 /** One row of the item card: a physical stock change with the balance after it. */

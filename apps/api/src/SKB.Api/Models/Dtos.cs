@@ -296,7 +296,13 @@ public record UnitOptionDto(string UnitId, string Name, int Factor);
 /// <param name="Matched">Items the filters found (the list holds one page of them).</param>
 public record InventoryListDto(
     InventoryItemDto[] Items, long TotalValue, int TotalItems, int LowStockCount, string Currency,
-    int Matched = 0, int Page = 1, int PageSize = 0);
+    int Matched = 0, int Page = 1, int PageSize = 0, InventoryTotalsDto? Totals = null);
+
+/// <summary>
+/// The totals of what the inventory filters show (owner, 2026-10-21): items in stock, pieces, their
+/// value at sale price and at cost, and pieces sold (net of returns); each null without its permission.
+/// </summary>
+public record InventoryTotalsDto(int? Items, long? Quantity, long? SaleValue, long? SupplyValue, long? Sold);
 
 /// <param name="DocumentType">Type of the source document (for linking), if the movement came from one.</param>
 /// <param name="Balance">Running balance after the movement: in its warehouse when the card is

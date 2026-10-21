@@ -566,29 +566,36 @@ function AdjustmentsCard({
       )}
       {can('payroll:adjust') && (
         <div className="grid gap-2 sm:grid-cols-[1fr_8rem_7rem_1fr_auto] sm:items-end">
-          <select
-            className={field}
-            aria-label={t('payroll.employee')}
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-          >
-            <option value="">{t('payroll.employee')}</option>
-            {staff
-              .filter((e) => e.isActive)
-              .map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-          </select>
-          <select
-            className={field}
-            value={kind}
-            onChange={(e) => setKind(e.target.value as 'BONUS' | 'DEDUCTION')}
-          >
-            <option value="BONUS">{t('payroll.kind.BONUS')}</option>
-            <option value="DEDUCTION">{t('payroll.kind.DEDUCTION')}</option>
-          </select>
+          <label className="block shrink-0">
+            <span className="mb-0.5 block text-xs text-muted">{t('payroll.employee')}</span>
+            <select
+              className={field}
+              aria-label={t('payroll.employee')}
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+            >
+              <option value="">{t('payroll.employee')}</option>
+              {staff
+                .filter((e) => e.isActive)
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="block shrink-0">
+            <span className="mb-0.5 block text-xs text-muted">{t('payroll.adjustKind')}</span>
+            <select
+              className={field}
+              value={kind}
+              aria-label={t('payroll.adjustKind')}
+              onChange={(e) => setKind(e.target.value as 'BONUS' | 'DEDUCTION')}
+            >
+              <option value="BONUS">{t('payroll.kind.BONUS')}</option>
+              <option value="DEDUCTION">{t('payroll.kind.DEDUCTION')}</option>
+            </select>
+          </label>
           <input
             className={`${field} tnum`}
             type="number"

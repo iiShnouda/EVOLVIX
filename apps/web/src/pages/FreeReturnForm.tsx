@@ -11,6 +11,7 @@ import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
 import { useWorkDraft } from '../lib/workDraft';
 import { useWorkPlace } from '../lib/workPlace';
+import { api } from '../lib/api';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
@@ -117,6 +118,8 @@ export function FreeReturnForm({
   const [lines, setLines] = useState<FreeLine[]>([]);
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
+  const [code, setCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
   const found = useProductSearch(search.trim(), false, '', departmentId);
   const last = useLastPrices(
     scope,
@@ -303,57 +306,93 @@ export function FreeReturnForm({
       </Card>
 
       <Card className="space-y-3">
-        <div className="relative">
-          <span className="flex h-10 items-center gap-2 rounded-[var(--radius-app)] border border-line bg-surface px-3 focus-within:border-brand">
-            <Icon name="search" size={16} className="shrink-0 text-muted" />
+        {/* The item's code in its own box first (owner, 2026-10-21): Enter adds it. */}
+        <div className="flex items-start gap-2">
+          <label className="block w-28 shrink-0 sm:w-36">
+            <span className="sr-only">{t('invoice.itemCode')}</span>
             <input
-              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
-              placeholder={t('invoice.searchProduct')}
-              value={search}
+              className="h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm tnum outline-none focus:border-brand"
+              dir="ltr"
+              placeholder={t('invoice.itemCode')}
+              aria-label={t('invoice.itemCode')}
+              value={code}
               disabled={!warehouseId || !party}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {found.isFetching && search.trim() && <Spinner size={14} />}
-            {/* The detailed search with its filters, as on the invoice (owner, 2026-10-02). */}
-            <Button
-              size="sm"
-              variant="ghost"
-              icon="search"
-              disabled={!warehouseId || !party}
-              onClick={() => setFinding(true)}
-            >
-              <span className="hidden sm:inline">{t('finder.button')}</span>
-            </Button>
-          </span>
-          {finding && (
-            <ItemFinderSheet
-              departmentId={departmentId || undefined}
-              warehouseId={warehouseId || undefined}
-              branchId={branch || undefined}
-              lockPlace={!!warehouseId}
-              onClose={() => setFinding(false)}
-              onAdd={(items, close) => {
-                items.forEach((i) => add(i.product, i.unitId, i.quantity));
-                if (close) setFinding(false);
+              onChange={(e) => {
+                setCode(e.target.value);
+                setCodeNote('');
+              }}
+              onKeyDown={async (e) => {
+                if (e.key !== 'Enter' || !code.trim()) return;
+                e.preventDefault();
+                const c = code.trim();
+                const found = await api
+                  .get<Product[]>(`/products?search=${encodeURIComponent(c)}`)
+                  .catch(() => [] as Product[]);
+                const hit =
+                  found.find((p) => p.sku.toLowerCase() === c.toLowerCase()) ??
+                  found.find((p) => p.matchedUnitId);
+                if (!hit) {
+                  setCodeNote(`${c}: ${t('invoice.codeNotFound')}`);
+                  return;
+                }
+                add(hit, hit.matchedUnitId ?? undefined);
+                setCode('');
               }}
             />
-          )}
-          {results.length > 0 && (
-            <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-lg">
-              {results.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                    onClick={() => add(p)}
-                  >
-                    <span className="min-w-0 truncate font-medium">{p.name}</span>
-                    <span className="shrink-0 text-xs text-muted tnum">{p.sku}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+            {codeNote && <span className="mt-1 block text-xs text-destructive">{codeNote}</span>}
+          </label>
+          <div className="relative min-w-0 flex-1">
+            <span className="flex h-10 items-center gap-2 rounded-[var(--radius-app)] border border-line bg-surface px-3 focus-within:border-brand">
+              <Icon name="search" size={16} className="shrink-0 text-muted" />
+              <input
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                placeholder={t('invoice.searchProduct')}
+                value={search}
+                disabled={!warehouseId || !party}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {found.isFetching && search.trim() && <Spinner size={14} />}
+              {/* The detailed search with its filters, as on the invoice (owner, 2026-10-02). */}
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="search"
+                disabled={!warehouseId || !party}
+                onClick={() => setFinding(true)}
+              >
+                <span className="hidden sm:inline">{t('finder.button')}</span>
+              </Button>
+            </span>
+            {finding && (
+              <ItemFinderSheet
+                departmentId={departmentId || undefined}
+                warehouseId={warehouseId || undefined}
+                branchId={branch || undefined}
+                lockPlace={!!warehouseId}
+                onClose={() => setFinding(false)}
+                onAdd={(items, close) => {
+                  items.forEach((i) => add(i.product, i.unitId, i.quantity));
+                  if (close) setFinding(false);
+                }}
+              />
+            )}
+            {results.length > 0 && (
+              <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-lg">
+                {results.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                      onClick={() => add(p)}
+                    >
+                      <span className="min-w-0 truncate font-medium">{p.name}</span>
+                      <span className="shrink-0 text-xs text-muted tnum">{p.sku}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         {rows.length === 0 ? (

@@ -63,21 +63,24 @@ export function GroupPicker({
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className}`}>
       {showDepartment && (
-        <select
-          className={select}
-          value={departmentId}
-          aria-label={t('invoice.department')}
-          onChange={(e) => onChange(e.target.value, '')}
-        >
-          <option value="">{anyLabel ?? t('invoice.chooseDepartment')}</option>
-          {departments
-            .filter((d) => d.isActive || d.id === departmentId)
-            .map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-        </select>
+        <label className="block shrink-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+          <select
+            className={select}
+            value={departmentId}
+            aria-label={t('invoice.department')}
+            onChange={(e) => onChange(e.target.value, '')}
+          >
+            <option value="">{anyLabel ?? t('invoice.chooseDepartment')}</option>
+            {departments
+              .filter((d) => d.isActive || d.id === departmentId)
+              .map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+          </select>
+        </label>
       )}
       {levels.map(({ parentId, value }) => {
         const options = childrenOf(usable, departmentId, parentId);
@@ -87,19 +90,22 @@ export function GroupPicker({
             {(showDepartment || parentId) && (
               <Icon name="chevronRight" size={14} className="text-faint" />
             )}
-            <select
-              className={select}
-              value={value}
-              aria-label={t('groups.level')}
-              onChange={(e) => onChange(departmentId, e.target.value || (parentId ?? ''))}
-            >
-              <option value="">{any}</option>
-              {options.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+            <label className="block shrink-0">
+              <span className="mb-0.5 block text-xs text-muted">{t('groups.level')}</span>
+              <select
+                className={select}
+                value={value}
+                aria-label={t('groups.level')}
+                onChange={(e) => onChange(departmentId, e.target.value || (parentId ?? ''))}
+              >
+                <option value="">{any}</option>
+                {options.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </span>
         );
       })}

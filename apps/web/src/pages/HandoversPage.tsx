@@ -65,19 +65,22 @@ export function HandoversPage() {
             </button>
           ))}
         </div>
-        <select
-          className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
-          value={status}
-          aria-label={t('common.status')}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">{t('hand.all')}</option>
-          {(['SENT', 'RECEIVED', 'CANCELLED'] as const).map((s) => (
-            <option key={s} value={s}>
-              {t(`hand.status.${s}`)}
-            </option>
-          ))}
-        </select>
+        <label className="block shrink-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
+          <select
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
+            value={status}
+            aria-label={t('common.status')}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">{t('hand.all')}</option>
+            {(['SENT', 'RECEIVED', 'CANCELLED'] as const).map((s) => (
+              <option key={s} value={s}>
+                {t(`hand.status.${s}`)}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       {list.isLoading ? (
         <div className="grid place-items-center py-10">

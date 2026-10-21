@@ -19,6 +19,7 @@ import { WarehouseSelect } from '../components/WarehouseSelect';
 import { PartyPicker } from '../components/PartyPicker';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import { ItemLink } from '../components/ItemLink';
+import { MultiSelect } from '../components/MultiSelect';
 import { StocktakePage } from './StocktakePage';
 import { TransfersPage } from './TransfersPage';
 import { LabelsPage } from './LabelsPage';
@@ -77,7 +78,11 @@ export function InventoryPage() {
   const asked = params.get('tab');
   const tab: Tab = tabs.find((x) => x.key === asked)?.key ?? 'items';
   const ownFilters = tab === 'items' || tab === 'valuation';
-  const lowOnly = params.get('low') === '1';
+  // Any of the stock statuses (owner, 2026-10-21: instead of the reorder tick); `?low=1` still opens
+  // those at the reorder level.
+  const statuses = (params.get('st') ?? (params.get('low') === '1' ? 'low' : ''))
+    .split(',')
+    .filter(Boolean);
   const warehouseId = params.get('wh') ?? '';
   // Branch, warehouse and department in every search (owner, 2026-10-01).
   const branchId = params.get('br') ?? '';
@@ -108,26 +113,19 @@ export function InventoryPage() {
     search: search.trim() || undefined,
     code: code.trim() || undefined,
     supplierId: supplier?.id,
-    lowOnly,
+    status: statuses,
     warehouseId: warehouseId || undefined,
     branchId: (!warehouseId && branchId) || undefined,
     departmentId: departmentId || undefined,
     groupId: groupId || undefined,
   });
-  // The cards at the top are the whole stock of the branch or warehouse, not the items the list's
-  // filters happen to show (owner, 2026-10-19: they showed 2 items of 3).
-  const summary = useInventory({
-    page: 1,
-    pageSize: 1,
-    warehouseId: warehouseId || undefined,
-    branchId: (!warehouseId && branchId) || undefined,
-  });
+
   const currency = list.data?.currency ?? 'EGP';
   const filterKey = [
     search,
     code,
     supplier?.id,
-    lowOnly,
+    statuses.join(),
     warehouseId,
     branchId,
     departmentId,
@@ -152,7 +150,8 @@ export function InventoryPage() {
     if (next !== 'items') q.set('tab', next);
     setParams(q, { replace: true });
   };
-  const setLowOnly = (on: boolean) => update({ low: on ? '1' : null });
+  const setStatuses = (next: string[]) => update({ st: next.join(',') || null, low: null });
+  const totals = list.data?.totals;
 
   return (
     <div className="space-y-5">
@@ -171,28 +170,35 @@ export function InventoryPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {seeCosts && (
-          <Kpi
-            label={t('inventory.stockValue')}
-            value={formatMoney(summary.data?.totalValue ?? 0, currency, locale)}
-          />
-        )}
-        <Kpi
-          label={t('inventory.itemCount')}
-          value={formatNumber(summary.data?.totalItems ?? 0, locale)}
-        />
-        <button
-          onClick={() => setLowOnly(!lowOnly)}
-          className="col-span-2 text-start lg:col-span-1"
-        >
-          <Kpi
-            label={t('inventory.lowStock')}
-            value={formatNumber(summary.data?.lowStockCount ?? 0, locale)}
-            tone={(summary.data?.lowStockCount ?? 0) > 0 ? 'warning' : undefined}
-          />
-        </button>
-      </div>
+      {/* The totals of what the filters show, each for whoever may see it (owner, 2026-10-21). */}
+      {tab === 'items' && totals && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {totals.items != null && (
+            <Kpi label={t('inventory.totalItems')} value={formatNumber(totals.items, locale)} />
+          )}
+          {totals.quantity != null && (
+            <Kpi
+              label={t('inventory.totalQuantity')}
+              value={formatNumber(totals.quantity, locale)}
+            />
+          )}
+          {totals.saleValue != null && (
+            <Kpi
+              label={t('inventory.totalSaleValue')}
+              value={formatMoney(totals.saleValue, currency, locale)}
+            />
+          )}
+          {totals.supplyValue != null && (
+            <Kpi
+              label={t('inventory.totalSupplyValue')}
+              value={formatMoney(totals.supplyValue, currency, locale)}
+            />
+          )}
+          {totals.sold != null && (
+            <Kpi label={t('inventory.totalSold')} value={formatNumber(totals.sold, locale)} />
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div
@@ -225,24 +231,25 @@ export function InventoryPage() {
           ))}
         </div>
         {ownFilters && myBranches.length > 0 && (
-          <select
-            className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-            aria-label={t('list.branch')}
-            value={branchId}
-            onChange={(e) => {
-              update({ br: e.target.value || null, wh: null });
-              if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
-            }}
-          >
-            <option value="">
-              {t('list.branch')}: {t('common.all')}
-            </option>
-            {myBranches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <label className="block w-full shrink-0 sm:w-48">
+            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+            <select
+              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+              aria-label={t('list.branch')}
+              value={branchId}
+              onChange={(e) => {
+                update({ br: e.target.value || null, wh: null });
+                if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+              }}
+            >
+              <option value="">{t('common.all')}</option>
+              {myBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {ownFilters && (
           <WarehouseSelect
@@ -257,24 +264,25 @@ export function InventoryPage() {
           />
         )}
         {tab === 'items' && departments.length > 0 && (
-          <select
-            className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-            aria-label={t('invoice.department')}
-            value={departmentId}
-            onChange={(e) => {
-              update({ dept: e.target.value || null, grp: null });
-              if (e.target.value) setPlace({ departmentId: e.target.value });
-            }}
-          >
-            <option value="">
-              {t('invoice.department')}: {t('common.all')}
-            </option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+          <label className="block w-full shrink-0 sm:w-48">
+            <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+            <select
+              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+              aria-label={t('invoice.department')}
+              value={departmentId}
+              onChange={(e) => {
+                update({ dept: e.target.value || null, grp: null });
+                if (e.target.value) setPlace({ departmentId: e.target.value });
+              }}
+            >
+              <option value="">{t('common.all')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {tab === 'items' && departmentId && groups.length > 0 && (
           <GroupPicker
@@ -306,8 +314,8 @@ export function InventoryPage() {
             setSort({ key, dir });
             setPage(1);
           }}
-          lowOnly={lowOnly}
-          onLowOnly={setLowOnly}
+          statuses={statuses}
+          onStatuses={setStatuses}
           onOpen={(id) =>
             navigate(`/inventory/items/${id}${warehouseId ? `?wh=${warehouseId}` : ''}`)
           }
@@ -345,8 +353,8 @@ function ItemsTab({
   onSupplier,
   sort,
   onSort,
-  lowOnly,
-  onLowOnly,
+  statuses,
+  onStatuses,
   onOpen,
 }: {
   items: InventoryItem[];
@@ -361,8 +369,8 @@ function ItemsTab({
   onSupplier: (p: Party | null) => void;
   sort: { key: string; dir: 'asc' | 'desc' } | null;
   onSort: (key: string, dir: 'asc' | 'desc') => void;
-  lowOnly: boolean;
-  onLowOnly: (v: boolean) => void;
+  statuses: string[];
+  onStatuses: (v: string[]) => void;
   onOpen: (id: string) => void;
 }) {
   const { t, locale } = useT();
@@ -511,10 +519,17 @@ function ItemsTab({
             {t('common.clear')}
           </Button>
         )}
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={lowOnly} onChange={(e) => onLowOnly(e.target.checked)} />
-          {t('inventory.lowOnly')}
-        </label>
+        <MultiSelect
+          className="w-full sm:w-56"
+          label={t('valuation.status')}
+          value={statuses}
+          onChange={onStatuses}
+          options={[
+            { value: 'in', label: t('valuation.status.in') },
+            { value: 'out', label: t('valuation.status.out') },
+            { value: 'low', label: t('valuation.status.low') },
+          ]}
+        />
         <ReportActions
           disabled={loading || items.length === 0}
           onPrint={() => report.print(paper.current, t('nav.inventory'))}
@@ -689,7 +704,7 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
   const [search, setSearch] = useState('');
   const settled = useDeferredValue(search.trim());
   const [picked, setPicked] = useState<string[]>([]);
-  const [status, setStatus] = useState<'' | 'in' | 'out' | 'low'>('');
+  const [status, setStatus] = useState<string[]>([]);
   const [finding, setFinding] = useState(false);
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   const valuation = useValuation(asOf, warehouseId || undefined, {
@@ -760,19 +775,16 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('valuation.status')}</span>
-            <select
-              className={`${field} w-full`}
-              value={status}
-              onChange={(e) => setStatus(e.target.value as typeof status)}
-            >
-              <option value="">{t('common.all')}</option>
-              <option value="in">{t('valuation.status.in')}</option>
-              <option value="out">{t('valuation.status.out')}</option>
-              <option value="low">{t('valuation.status.low')}</option>
-            </select>
-          </label>
+          <MultiSelect
+            label={t('valuation.status')}
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'in', label: t('valuation.status.in') },
+              { value: 'out', label: t('valuation.status.out') },
+              { value: 'low', label: t('valuation.status.low') },
+            ]}
+          />
           {seeSuppliers && (
             <PartyPicker
               type="SUPPLIER"
@@ -849,7 +861,18 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
   );
 }
 
-type ItemSort = 'quantity' | 'value' | 'salePrice' | 'supplyPrice' | 'label';
+type ItemSort =
+  | 'quantity'
+  | 'value'
+  | 'salePrice'
+  | 'supplyPrice'
+  | 'label'
+  | 'code'
+  | 'supplier'
+  | 'branch'
+  | 'department'
+  | 'warehouse'
+  | 'reorderLevel';
 
 /**
  * Item balances (أرصدة الأصناف): each item where it is — branch, department and warehouse — with
@@ -884,6 +907,40 @@ function ValuationItems({
         return c * sort.dir;
       })
     : data.items;
+  // Rows per page (owner, 2026-10-21); the other pages' rows are only hidden, so all print.
+  const [size, setSize] = usePageSize('valuation.items', 50);
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const at = Math.min(page, pages);
+  const off = (n: number) => (n < (at - 1) * size || n >= at * size ? 'screen-hidden' : '');
+  const pager = items.length > 10 && (
+    <div data-noprint className="flex justify-end border-b border-line px-3 py-2">
+      <Pager
+        page={at}
+        size={size}
+        pages={pages}
+        onPage={setPage}
+        onSize={(n) => {
+          setSize(n);
+          setPage(1);
+        }}
+      />
+    </div>
+  );
+  // The column titles, to sort by the one clicked (here, so the pages split after sorting).
+  const sortLabel: Record<ItemSort, string> = {
+    code: t('inventory.sku'),
+    label: t('inventory.itemName'),
+    supplier: t('inventory.supplier'),
+    branch: t('list.branch'),
+    department: t('valuation.department'),
+    warehouse: t('list.warehouse'),
+    quantity: t('inventory.qty'),
+    reorderLevel: t('valuation.reorder'),
+    salePrice: t('item.salePrice'),
+    supplyPrice: t('finder.costPrice'),
+    value: t('inventory.value'),
+  };
   const heading = (
     <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
       {t('valuation.itemsTitle')}
@@ -895,6 +952,7 @@ function ValuationItems({
     return (
       <Card padded={false} className="overflow-hidden">
         {heading}
+        {pager}
         <div data-noprint className="flex justify-end border-b border-line px-3 py-2">
           <label className="flex items-center gap-1.5 text-xs text-muted">
             {t('list.sortBy')}
@@ -930,8 +988,8 @@ function ValuationItems({
           </label>
         </div>
         <ul className="divide-y divide-[var(--c-line)]">
-          {items.map((r) => (
-            <li key={r.key} className="space-y-1 p-3 text-sm">
+          {items.map((r, n) => (
+            <li key={r.key} className={`space-y-1 p-3 text-sm ${off(n)}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <ItemLink id={r.productId} name={r.label} className="font-medium" />
@@ -982,7 +1040,16 @@ function ValuationItems({
   return (
     <Card padded={false} className="overflow-hidden">
       {heading}
-      <TableColumns id="inventory.valuation.balances">
+      {pager}
+      <TableColumns
+        id="inventory.valuation.balances"
+        sorted={sort ? { label: sortLabel[sort.key], dir: sort.dir } : null}
+        onSort={(label, dir) => {
+          const key = (Object.keys(sortLabel) as ItemSort[]).find((k) => sortLabel[k] === label);
+          setSort(key ? { key, dir } : null);
+          setPage(1);
+        }}
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
@@ -1003,8 +1070,8 @@ function ValuationItems({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-line)]">
-              {items.map((r) => (
-                <tr key={r.key}>
+              {items.map((r, n) => (
+                <tr key={r.key} className={off(n)}>
                   <td className="whitespace-nowrap p-2 text-muted tnum" dir="ltr">
                     {r.code}
                   </td>

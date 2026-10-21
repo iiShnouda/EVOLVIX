@@ -114,7 +114,9 @@ function QuickShapePicker() {
               aria-pressed={on}
               onClick={() => setQuickShape(shape)}
               className={`rounded-[var(--radius-app)] border p-2 text-start transition-colors ${
-                on ? 'border-brand ring-4 ring-brand/30 bg-brand-soft' : 'border-line hover:border-brand/50'
+                on
+                  ? 'border-brand ring-4 ring-brand/30 bg-brand-soft'
+                  : 'border-line hover:border-brand/50'
               }`}
             >
               <span className="relative block h-24 overflow-hidden rounded-lg border border-line bg-surface-2">

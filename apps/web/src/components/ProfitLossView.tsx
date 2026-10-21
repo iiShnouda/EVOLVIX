@@ -47,7 +47,11 @@ function Tile({
     >
       <p className="truncate text-xs text-muted">{label}</p>
       {/* Never cut an amount: smaller on a phone, and onto a second line if it must. */}
-      <p className={`mt-0.5 break-words text-base font-bold leading-tight tnum sm:text-lg ${className}`}>{value}</p>
+      <p
+        className={`mt-0.5 break-words text-base font-bold leading-tight tnum sm:text-lg ${className}`}
+      >
+        {value}
+      </p>
       {sub && <p className="truncate text-[11px] text-faint tnum">{sub}</p>}
     </div>
   );

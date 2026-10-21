@@ -148,6 +148,13 @@ public static class Permissions
     public const string InventoryTransferEdit = "inventory:transfer_edit";
     /// <summary>Open the stock valuation (تقييم المخزن); its values need costs:view besides (owner, 2026-10-19).</summary>
     public const string InventoryValuation = "inventory:valuation";
+    /// <summary>The inventory's totals, each its own (owner, 2026-10-21): items in stock, pieces, value at
+    /// sale price, value at cost (also needs costs:view) and pieces sold.</summary>
+    public const string InventoryTotalItems = "inventory:total_items";
+    public const string InventoryTotalQuantity = "inventory:total_quantity";
+    public const string InventoryTotalSaleValue = "inventory:total_sale_value";
+    public const string InventoryTotalSupplyValue = "inventory:total_supply_value";
+    public const string InventoryTotalSold = "inventory:total_sold";
     /// <summary>The valuation by department.</summary>
     public const string ValuationDepartments = "inventory:valuation_departments";
     /// <summary>The valuation by warehouse.</summary>
@@ -309,7 +316,8 @@ public static class Permissions
         SalesOrder, SalesApprove, PartiesCreditLimit, SalesRaisePrice, SalesInvoiceAlerts,
         PurchasesView, PurchasesCreate, PurchasesReturn, ReceiptsView,
         PartiesView, PartiesContact, PartiesEdit, PartiesClose, InventoryView, InventoryEdit, InventoryStocktake, InventoryTransfer, InventoryTransferEdit,
-        InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices, ValuationSuppliers,
+        InventoryValuation, InventoryTotalItems, InventoryTotalQuantity, InventoryTotalSaleValue,
+        InventoryTotalSupplyValue, InventoryTotalSold, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices, ValuationSuppliers,
         ProductsClose, SalesReturnFree, PurchasesReturnFree,
         ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices, DocumentsBackdate,
         StaffPasswordNote, StaffView, StaffManage, RolesManage, StaffAccess,

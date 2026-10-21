@@ -14,6 +14,7 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { useT } from '../lib/i18n';
+import { Pager } from '../components/Pager';
 import {
   PhoneInput,
   PhoneList,
@@ -36,6 +37,7 @@ import {
   useResetRole,
   useRoles,
   useSetStaffPermissions,
+  usePageSize,
   useStaff,
   useCreateRole,
   useDeleteCustomRole,
@@ -147,6 +149,12 @@ function PeopleTab() {
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const person = staff.data?.find((s) => s.id === selected) ?? null;
+  // Rows per page, as on every list (owner, 2026-10-21).
+  const [size, setSize] = usePageSize('staff', 50);
+  const [page, setPage] = useState(1);
+  const people = staff.data ?? [];
+  const pages = Math.max(1, Math.ceil(people.length / size));
+  const at = Math.min(page, pages);
 
   // Where each person works: every branch, or how many; and whether their warehouses or cash boxes are narrowed.
   const accessSummary = (s: StaffMember) =>
@@ -188,35 +196,53 @@ function PeopleTab() {
           ) : (staff.data ?? []).length === 0 ? (
             <EmptyState title={t('common.empty')} icon="staff" />
           ) : (
-            <ul className="divide-y divide-[var(--c-line)]">
-              {(staff.data ?? []).map((s) => (
-                <li key={s.id}>
-                  <button
-                    onClick={() => setSelected(s.id)}
-                    className={`flex w-full items-center gap-3 p-3 text-start hover:bg-surface-2 ${
-                      selected === s.id ? 'bg-brand-soft' : ''
-                    } ${s.isActive ? '' : 'opacity-60'}`}
-                  >
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
-                      <Icon name="staff" size={18} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">
-                        <CodeName code={s.code} name={s.fullName} truncate />
+            <>
+              {people.length > 10 && (
+                <div className="flex justify-end border-b border-line p-2">
+                  <Pager
+                    page={at}
+                    size={size}
+                    pages={pages}
+                    onPage={setPage}
+                    onSize={(n) => {
+                      setSize(n);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+              )}
+              <ul className="divide-y divide-[var(--c-line)]">
+                {people.slice((at - 1) * size, at * size).map((s) => (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => setSelected(s.id)}
+                      className={`flex w-full items-center gap-3 p-3 text-start hover:bg-surface-2 ${
+                        selected === s.id ? 'bg-brand-soft' : ''
+                      } ${s.isActive ? '' : 'opacity-60'}`}
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
+                        <Icon name="staff" size={18} />
                       </span>
-                      <span className="block truncate text-xs text-muted" dir="ltr">
-                        {s.email}
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">
+                          <CodeName code={s.code} name={s.fullName} truncate />
+                        </span>
+                        <span className="block truncate text-xs text-muted" dir="ltr">
+                          {s.email}
+                        </span>
+                        <span className="block truncate text-xs text-faint">
+                          {accessSummary(s)}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-faint">{accessSummary(s)}</span>
-                    </span>
-                    <span className="flex flex-col items-end gap-1">
-                      <Badge tone="brand">{s.customRoleName ?? t(`role.${s.role}`)}</Badge>
-                      {!s.isActive && <Badge>{t('staff.inactive')}</Badge>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                      <span className="flex flex-col items-end gap-1">
+                        <Badge tone="brand">{s.customRoleName ?? t(`role.${s.role}`)}</Badge>
+                        {!s.isActive && <Badge>{t('staff.inactive')}</Badge>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Card>
       </div>

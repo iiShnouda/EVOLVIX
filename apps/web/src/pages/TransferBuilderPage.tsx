@@ -60,6 +60,8 @@ export function TransferBuilderPage({ editId }: { editId?: string } = {}) {
   const [lines, setLines] = useState<Line[]>([]);
   const [notes, setNotes] = useState('');
   const [finding, setFinding] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
   const create = useCreateTransfer();
   const update = useUpdateTransfer();
   const error = (editId ? update.error : create.error) as ApiError | null;
@@ -257,46 +259,77 @@ export function TransferBuilderPage({ editId }: { editId?: string } = {}) {
                 }}
               />
             )}
-            <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
-                <Icon name="search" size={16} />
-              </span>
-              <input
-                className={`${field} ps-8`}
-                placeholder={t('inventory.search')}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {s && (
-                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
-                  {stock.isLoading ? (
-                    <div className="grid place-items-center py-6 text-muted">
-                      <Spinner size={18} />
-                    </div>
-                  ) : matches.length === 0 ? (
-                    <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-                  ) : (
-                    matches.map((i) => (
-                      <button
-                        key={i.id}
-                        onClick={() => add(i)}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{i.name}</span>
-                          <span className="text-xs text-muted tnum">
-                            {i.sku} · {t('transfer.available')}: {formatNumber(canHave(i), locale)}{' '}
-                            {i.unit}
+            {/* The item's code in its own box first (owner, 2026-10-21): Enter adds it. */}
+            <div className="flex items-start gap-2">
+              <label className="block w-28 shrink-0 sm:w-36">
+                <span className="sr-only">{t('invoice.itemCode')}</span>
+                <input
+                  className={`${field} tnum`}
+                  dir="ltr"
+                  placeholder={t('invoice.itemCode')}
+                  aria-label={t('invoice.itemCode')}
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    setCodeNote('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    const c = code.trim().toLowerCase();
+                    const item = (stock.data?.items ?? []).find((i) => i.sku.toLowerCase() === c);
+                    if (!item || canHave(item) <= 0) {
+                      setCodeNote(`${code.trim()}: ${t('invoice.codeNotFound')}`);
+                      return;
+                    }
+                    add(item);
+                    setCode('');
+                  }}
+                />
+                {codeNote && (
+                  <span className="mt-1 block text-xs text-destructive">{codeNote}</span>
+                )}
+              </label>
+              <div className="relative min-w-0 flex-1">
+                <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
+                  <Icon name="search" size={16} />
+                </span>
+                <input
+                  className={`${field} ps-8`}
+                  placeholder={t('inventory.search')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {s && (
+                  <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-card)]">
+                    {stock.isLoading ? (
+                      <div className="grid place-items-center py-6 text-muted">
+                        <Spinner size={18} />
+                      </div>
+                    ) : matches.length === 0 ? (
+                      <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
+                    ) : (
+                      matches.map((i) => (
+                        <button
+                          key={i.id}
+                          onClick={() => add(i)}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{i.name}</span>
+                            <span className="text-xs text-muted tnum">
+                              {i.sku} · {t('transfer.available')}:{' '}
+                              {formatNumber(canHave(i), locale)} {i.unit}
+                            </span>
                           </span>
-                        </span>
-                        <Icon name="plus" size={16} className="text-brand" />
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                          <Icon name="plus" size={16} className="text-brand" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-
             {lines.length === 0 ? (
               <p className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
                 {t('invoice.noItems')}
