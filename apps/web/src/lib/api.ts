@@ -1,4 +1,6 @@
-import type { AuthUser, LoginInput } from '@skb/shared';
+import { createTranslator, type AuthUser, type LoginInput } from '@skb/shared';
+import { confirm } from './confirm';
+import { errorText } from './errors';
 import { getAccessToken, useAuth, type SessionNotice } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
 import { getWorkBranch, useWorkBranchStore } from '../stores/workBranch';
@@ -82,12 +84,38 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, payload.message ?? res.statusText, payload.code);
+    const error = new ApiError(res.status, payload.message ?? res.statusText, payload.code);
+    // A rule the owner may go past (owner, 2026-10-22): warn them what it is, and only if they
+    // choose to go on, send it again saying so. Everyone else just gets the refusal.
+    if (res.headers.get(OWNER_CAN_OVERRIDE) === '1' && !hasOverride(headers)) {
+      const t = createTranslator(usePrefs.getState().locale);
+      const go = await confirm({
+        title: t('owner.warnTitle'),
+        message: `${errorText(t, error)}\n${t('owner.warnAsk')}`,
+        confirmText: t('owner.goOn'),
+        danger: true,
+        warning: true,
+      });
+      if (go)
+        return request<T>(path, {
+          ...options,
+          headers: { ...(headers as Record<string, string> | undefined), [OWNER_OVERRIDE]: '1' },
+        });
+    }
+    throw error;
   }
   // 202/204 and any empty body (e.g. an accepted request) carry nothing to parse.
   if (res.status === 204 || res.status === 202) return undefined as T;
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** The owner confirms going past a rule; the server says when a refusal is one they may pass. */
+const OWNER_OVERRIDE = 'X-Owner-Override';
+const OWNER_CAN_OVERRIDE = 'X-Owner-Can-Override';
+
+function hasOverride(headers: HeadersInit | undefined): boolean {
+  return !!headers && (headers as Record<string, string>)[OWNER_OVERRIDE] === '1';
 }
 
 let refreshInFlight: Promise<boolean> | null = null;

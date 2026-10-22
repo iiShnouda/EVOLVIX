@@ -44,7 +44,7 @@ export function ConfirmHost() {
               current.danger ? 'bg-destructive-soft text-destructive' : 'bg-brand-soft text-brand'
             }`}
           >
-            <Icon name={current.danger ? 'trash' : 'alert'} size={20} />
+            <Icon name={current.danger && !current.warning ? 'trash' : 'alert'} size={20} />
           </span>
           <div className="min-w-0 flex-1 space-y-1">
             <h2 className="text-base font-semibold">{current.title ?? t('common.confirmTitle')}</h2>

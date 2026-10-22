@@ -194,7 +194,7 @@ console.log('== returns post');
 const line = sale.lines[0];
 const ret = ok(
   'sales return of 2 with cash back',
-  await owner.post(`/sales/invoices/${sale.id}/returns`, {
+  await owner.confirmed().post(`/sales/invoices/${sale.id}/returns`, {
     lines: [{ lineId: line.id, quantity: 2 }],
     refundAmount: 1000,
     refundAccountId: box.id,
@@ -620,9 +620,22 @@ eq(
   'period_locked',
 );
 // Nothing stops the owner (owner, 2026-10-22): a locked period too.
+eq(
+  'the owner is warned first',
+  (
+    await M(owner, {
+      date: '2026-01-20',
+      lines: [
+        { accountId: furniture.id, debit: 1 },
+        { accountId: capital.id, credit: 1 },
+      ],
+    })
+  ).canOverride,
+  true,
+);
 ok(
-  'the owner still posts in January',
-  await M(owner, {
+  'the owner, once sure, still posts in January',
+  await M(owner.confirmed(), {
     date: '2026-01-20',
     lines: [
       { accountId: furniture.id, debit: 1 },
@@ -644,7 +657,7 @@ eq(
   (await mona.post(`/vouchers/${px.id}/cancel`)).data?.code,
   'period_locked',
 );
-ok('the owner cancels it all the same', await owner.post(`/vouchers/${px.id}/cancel`));
+ok('the owner, once sure, cancels it all the same', await owner.confirmed().post(`/vouchers/${px.id}/cancel`));
 eq('unlock', (await owner.put('/ledger/lock', { lockDate: startLock })).data?.lockDate, startLock);
 eq('lock visible', (await mona.get('/ledger/lock')).data?.lockDate, startLock);
 

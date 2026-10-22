@@ -533,7 +533,7 @@ const line = (await inv(s3.id)).lines[0];
 const rb = await bal(box.id);
 const ret = ok(
   'sales return with cash back from the box',
-  await owner.post(`/sales/invoices/${s3.id}/returns`, {
+  await owner.confirmed().post(`/sales/invoices/${s3.id}/returns`, {
     lines: [{ lineId: line.id, quantity: 1 }],
     refundAmount: 1000,
     refundAccountId: box.id,
@@ -544,7 +544,7 @@ const empty = ok('an empty cash box', await A({ name: `Empty ${tag}`, kind: 'CAS
 eq(
   'refund from an empty box',
   (
-    await owner.post(`/sales/invoices/${s3.id}/returns`, {
+    await owner.confirmed().post(`/sales/invoices/${s3.id}/returns`, {
       lines: [{ lineId: line.id, quantity: 1 }],
       refundAmount: 1000,
       refundAccountId: empty.id,

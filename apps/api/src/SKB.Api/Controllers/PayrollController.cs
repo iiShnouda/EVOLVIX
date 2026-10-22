@@ -477,7 +477,7 @@ public sealed class PayrollController : ControllerBase
         var (when, code, message) = await Backdate.CheckAsync(_db, User, date);
         if (code is not null) return Bad(code, message!);
         using var dated = Backdate.To(when);
-        return await WithDraftAsync(id, "post", run => _payroll.PostAsync(run, Me(), Access.IsOwner(User)));
+        return await WithDraftAsync(id, "post", run => _payroll.PostAsync(run, Me(), () => Access.OwnerPasses(User)));
     }
 
     [HttpPost("runs/{id:guid}/cancel")]

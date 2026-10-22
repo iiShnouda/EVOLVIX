@@ -17,23 +17,26 @@ export async function login(email, password = email.startsWith('owner') ? 'Chang
   return c;
 }
 /** A signed-in client; `at(branchId)` gives one working in that branch (the X-Branch header). */
-export function client(token, user, lang = 'en', branch = null) {
+export function client(token, user, lang = 'en', branch = null, extra = {}) {
   const call = async (method, path, body) => {
     const r = await fetch(`${BASE}${path}`, {
       method, headers: {
         'content-type': 'application/json', authorization: `Bearer ${token}`, 'accept-language': lang,
         ...(branch ? { 'x-branch': branch } : {}),
+        ...extra,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await r.text();
     let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-    return { status: r.status, data };
+    return { status: r.status, data, canOverride: r.headers.get('x-owner-can-override') === '1' };
   };
   return {
     user, token,
-    lang: (l) => client(token, user, l, branch),
-    at: (b) => client(token, user, lang, b),
+    lang: (l) => client(token, user, l, branch, extra),
+    at: (b) => client(token, user, lang, b, extra),
+    /** The owner, having confirmed going past a rule (owner, 2026-10-22). */
+    confirmed: () => client(token, user, lang, branch, { ...extra, 'x-owner-override': '1' }),
     get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b ?? {}),
     del: (p) => call('DELETE', p),
   };

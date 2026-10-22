@@ -178,7 +178,8 @@ builder.Services.AddAuthorization(options =>
 var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
               ?? new[] { "http://localhost:5173", "http://localhost:4173" };
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+    p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+        .WithExposedHeaders(Access.CanOverrideHeader)));
 
 // --- Rate limiting ----------------------------------------------------------------------
 // Signed-in requests are limited per user, so a whole office sharing one internet address
@@ -207,6 +208,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddControllers();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
@@ -294,6 +296,19 @@ app.UseAuthentication();   // before the limiter, so it can key on the signed-in
 app.Use(Access.PickWorkingBranch);   // the branch picked in the app, when the person may use it
 app.UseRateLimiter();
 app.UseAuthorization();
+// The owner may go past a rule once they confirm (owner, 2026-10-22): a refusal they can go past
+// says so, and the app warns them and asks before resending (Access.OwnerPasses).
+Access.Http = app.Services.GetRequiredService<IHttpContextAccessor>();
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        if (ctx.Response.StatusCode >= 400 && ctx.Items.ContainsKey(Access.OverrideHeader))
+            ctx.Response.Headers[Access.CanOverrideHeader] = "1";
+        return Task.CompletedTask;
+    });
+    await next();
+});
 
 app.MapControllers();
 app.MapHub<PresenceHub>("/hubs/presence");

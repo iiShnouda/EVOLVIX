@@ -139,7 +139,7 @@ const cashInv = ok(
 );
 const r3 = ok(
   'returns 1 against the invoice',
-  await owner.post(`/sales/invoices/${cashInv.id}/returns`, { lines: [{ lineId: cashInv.lines[0].id, quantity: 1 }] }),
+  await owner.confirmed().post(`/sales/invoices/${cashInv.id}/returns`, { lines: [{ lineId: cashInv.lines[0].id, quantity: 1 }] }),
 );
 eq('refunded in full', r3.paidAmount, r3.grandTotal);
 

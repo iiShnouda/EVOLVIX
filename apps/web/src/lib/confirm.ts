@@ -12,6 +12,8 @@ export interface ConfirmOptions {
   cancelText?: string;
   /** A destructive action (delete): the confirm button is red. */
   danger?: boolean;
+  /** A warning rather than a delete: the warning sign instead of the bin. */
+  warning?: boolean;
 }
 
 interface Pending extends ConfirmOptions {

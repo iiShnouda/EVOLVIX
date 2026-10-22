@@ -2992,4 +2992,10 @@ export const ar: TranslationDictionary = {
   'parties.supplierName': 'اسم المورد',
   'parties.carrierName': 'اسم شركة الشحن',
   'parties.name': 'الاسم',
+  'error.invoice_locked': 'هذه الفاتورة مقفولة.',
+  'error.below_cost': 'السعر أقل من التكلفة.',
+  'error.below_floor': 'السعر أقل من الحد الأدنى للربح.',
+  'owner.warnTitle': 'تحذير',
+  'owner.warnAsk': 'البرنامج لا يسمح بهذا لأي حد. بصفتك المالك، هل تريد المتابعة على أي حال؟',
+  'owner.goOn': 'متابعة',
 };

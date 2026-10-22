@@ -476,7 +476,7 @@ public sealed class LedgerController : ControllerBase
 
         await using var tx = await _db.Database.BeginTransactionAsync();
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && day.Value <= DateOnly.FromDateTime(locked) && !Access.IsOwner(User))
+        if (lockDate is DateTime locked && day.Value <= DateOnly.FromDateTime(locked) && !Access.OwnerPasses(User))
             return Bad("period_locked", "That date is in a locked period.");
         var ids = parsed.Select(l => l.AccountId).Distinct().ToList();
         var accounts = await _db.LedgerAccounts.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id);
@@ -522,7 +522,7 @@ public sealed class LedgerController : ControllerBase
             return Bad("already_reversed", "This entry is already reversed.");
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
         if (lockDate is DateTime locked && CompanyClock.DayOf(original.Date) <= DateOnly.FromDateTime(locked)
-            && !Access.IsOwner(User))
+            && !Access.OwnerPasses(User))
             return Bad("period_locked", "That entry is in a locked period.");
 
         var partyIds = original.Lines.Where(l => l.Account!.PartyId != null).Select(l => l.Account!.PartyId!.Value).Distinct().ToArray();

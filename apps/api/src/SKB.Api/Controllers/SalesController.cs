@@ -348,7 +348,7 @@ public sealed class SalesController : ControllerBase
             return BadRequest(new { message = "This invoice is already cancelled.", code = "invoice_cancelled" });
         // The discount is its own permission now (owner, 2026-10-13: a per-kind discount right), so
         // giving one no longer needs the edit right — only that the invoice isn't frozen.
-        if (doc.Type == DocumentType.SALES_INVOICE && doc.EditLocked && !Access.IsOwner(User))
+        if (doc.Type == DocumentType.SALES_INVOICE && doc.EditLocked && !Access.OwnerPasses(User))
             return StatusCode(403, new { message = "This invoice is locked. Reopen it to change a discount.", code = "invoice_locked" });
         return null;
     }
@@ -364,8 +364,7 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     private ActionResult? CheckEditable(Guid makerId, DateTime createdAt, bool editLocked, string permission)
     {
-        if (Access.IsOwner(User)) return null;
-        if (editLocked)
+        if (editLocked && !Access.OwnerPasses(User))
             return StatusCode(403, new { message = "This invoice is locked. Ask the accountant to reopen it.", code = "invoice_locked" });
         if (Can(permission)) return null;
         Guid.TryParse(CurrentUser.Id(User), out var uid);
@@ -453,7 +452,8 @@ public sealed class SalesController : ControllerBase
         var result = await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null);
         // Over the customer's purchase limit (owner decision 2026-10-01): it is not refused; it waits
         // in the sales list for the accountant to accept or turn it down. Nothing was posted.
-        if (ErrorCode(result.Result) != "over_credit_limit") return result;
+        // The owner is asked first instead (owner, 2026-10-22), and once they confirm it is posted.
+        if (ErrorCode(result.Result) != "over_credit_limit" || Access.OwnerMayConfirm()) return result;
         _db.ChangeTracker.Clear();
         return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null,
             overLimit: true);
@@ -542,7 +542,7 @@ public sealed class SalesController : ControllerBase
             return new("invoice_shipped", "This invoice went out for delivery, so it can no longer be changed.");
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
         if (lockDate is DateTime locked && CompanyClock.DayOf(doc.IssueDate) <= DateOnly.FromDateTime(locked)
-            && !Access.IsOwner(User))
+            && !Access.OwnerPasses(User))
             return new("period_locked", "This invoice is in a locked period.");
 
         // Goods back where they left from, at what they cost when they left.
@@ -1197,7 +1197,8 @@ public sealed class SalesController : ControllerBase
                 var gross = (long)line.Quantity * line.UnitPrice;
                 // The quantity discount is the company's own rule: it doesn't count against the limit.
                 var automatic = line.Discount == priced[i].Discount ? priced[i].Discount : 0;
-                if ((line.Discount - automatic + charges!.Allocation[i]) * 100 > gross * maxDiscount)
+                if ((line.Discount - automatic + charges!.Allocation[i]) * 100 > gross * maxDiscount
+                    && !Access.OwnerPasses(User))
                     return InvoiceLines.Refuse(this, new("discount_over_limit",
                         $"{Loc.Name(product)}: the discount is more than your limit of {maxDiscount}%."));
             }
@@ -1207,10 +1208,9 @@ public sealed class SalesController : ControllerBase
         {
             var (line, product, unit, _, _, baseCost) = resolved[i];
             if (line.IsBonus) continue;
-            var floorError = Access.IsOwner(User) ? null : CheckFloor(line.Quantity, line.UnitPrice,
-                line.Discount + charges!.Allocation[i], baseCost * unit.Factor, settings.MinMarkupPercent, canOverride,
-                req.OverrideFloor);
-            if (floorError is not null)
+            var floorError = CheckFloor(line.Quantity, line.UnitPrice, line.Discount + charges!.Allocation[i],
+                baseCost * unit.Factor, settings.MinMarkupPercent, canOverride, req.OverrideFloor);
+            if (floorError is not null && !Access.OwnerPasses(User))
                 return BadRequest(new
                 {
                     message = floorError == "below_cost"
@@ -1367,7 +1367,7 @@ public sealed class SalesController : ControllerBase
         // the invoice waits for the accountant all the same.
         // The owner's own sale goes through over the limit (owner, 2026-10-22).
         var over = party.CreditLimit is long limit && grand > doc.PaidAmount && party.Balance > limit
-                   && !Access.IsOwner(User);
+                   && !Access.OwnerPasses(User);
         if (over && !approved && edited is null)
             return BadRequest(new
             {
@@ -1481,7 +1481,7 @@ public sealed class SalesController : ControllerBase
         var made = await _db.SalesDocuments.Where(d => d.Id == id && d.Type == DocumentType.SALES_INVOICE)
             .Select(d => (DateTime?)d.CreatedAt).FirstOrDefaultAsync();
         if (hours > 0 && made is DateTime createdAt && DateTime.UtcNow < createdAt.AddHours(hours)
-            && !Access.IsOwner(User))
+            && !Access.OwnerPasses(User))
             return BadRequest(new
             {
                 message = $"Goods can be returned on this invoice {hours} hours after it was made " +

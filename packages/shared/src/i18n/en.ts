@@ -3008,4 +3008,10 @@ export const en = {
   'parties.supplierName': 'Supplier name',
   'parties.carrierName': 'Shipping company name',
   'parties.name': 'Name',
+  'error.invoice_locked': 'This invoice is locked.',
+  'error.below_cost': 'The price is below cost.',
+  'error.below_floor': 'The price is below the minimum profit.',
+  'owner.warnTitle': 'Warning',
+  'owner.warnAsk': 'The program doesn\'t allow this to anyone. As the owner, do you want to go on anyway?',
+  'owner.goOn': 'Go on',
 } as const;
