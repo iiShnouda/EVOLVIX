@@ -171,6 +171,18 @@
         {
           "ar": "كل صفحة فيها «من / إلى» تفتح على تاريخ اليوم.",
           "en": "Every page with a from/to date opens on today."
+        },
+        {
+          "ar": "«الأعمدة والطباعة» في كل جدول: اختار لكل عمود يظهر على الشاشة أو لا، ويتطبع أو لا، ويتحفظ لكل شخص.",
+          "en": "“Columns & printing” on every table: choose for each column whether it shows on screen and whether it prints, kept per person."
+        },
+        {
+          "ar": "إضافة عميل أو مورد أو شركة شحن: كل البيانات اختيارية؛ اللي من غير اسم بيتسمى بنوعه وكوده (مثلاً «عميل 27»).",
+          "en": "Adding a customer, supplier or shipping company: every field is optional; one with no name is named by its kind and code (e.g. “Customer 27”)."
+        },
+        {
+          "ar": "خانات الكود والاسم بقت مكتوب جنبها «كود العميل / اسم العميل» أو «كود المورد / اسم المورد» في كل الصفحات.",
+          "en": "Code and name boxes now say “customer code / customer name” or “supplier code / supplier name” on every page."
         }
       ],
       "fixes": [
@@ -365,6 +377,10 @@
         {
           "ar": "خصم الكميات: كل درجة في سطر واحد وفوق كل خانة اسمها (من كمية، % خصم)، والخانات الضيقة في الصفحات الأخرى رجعت تظهر كاملة.",
           "en": "Quantity discounts: each step is one row with a name above every box (from quantity, % off); narrow boxes on other pages show in full again."
+        },
+        {
+          "ar": "صفحة العملاء والموردين على الموبايل: الفلاتر مترتبة كل واحد باسمه، وخانة كود منفصلة، وتقسيم الصفحات.",
+          "en": "Customers & suppliers on a phone: tidy labelled filters, a separate code box, and pages."
         }
       ]
     },

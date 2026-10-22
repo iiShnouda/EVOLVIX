@@ -28,6 +28,7 @@ import {
   useWarehouses,
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -570,39 +571,41 @@ function SupplierTable({
   const n = (v: number) => formatNumber(v, locale);
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-surface-2 text-xs text-muted">
-          <tr>
-            <th className="p-2 text-start font-medium">{t('inventory.supplier')}</th>
-            <th className="p-2 text-end font-medium">{t('stocktake.short')}</th>
-            <th className="p-2 text-end font-medium">{t('stocktake.over')}</th>
-            {seeCosts && <th className="p-2 text-end font-medium">{t('stocktake.net')}</th>}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--c-line)]">
-          {totals.map((r, i) => {
-            const last = i === totals.length - 1;
-            return (
-              <tr key={r.name || '__total'} className={last ? 'bg-surface-2 font-semibold' : ''}>
-                <td className="p-2">{last ? t('common.total') : r.name}</td>
-                <td className="whitespace-nowrap p-2 text-end tnum text-destructive">
-                  {n(r.shortQty)}
-                  {seeCosts && <span className="block text-xs">{money(r.shortValue)}</span>}
-                </td>
-                <td className="whitespace-nowrap p-2 text-end tnum text-positive">
-                  {n(r.overQty)}
-                  {seeCosts && <span className="block text-xs">{money(r.overValue)}</span>}
-                </td>
-                {seeCosts && (
-                  <td className="whitespace-nowrap p-2 text-end tnum">
-                    {money(r.overValue - r.shortValue)}
+      <TableColumns id="stocktake.totals">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th className="p-2 text-start font-medium">{t('inventory.supplier')}</th>
+              <th className="p-2 text-end font-medium">{t('stocktake.short')}</th>
+              <th className="p-2 text-end font-medium">{t('stocktake.over')}</th>
+              {seeCosts && <th className="p-2 text-end font-medium">{t('stocktake.net')}</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {totals.map((r, i) => {
+              const last = i === totals.length - 1;
+              return (
+                <tr key={r.name || '__total'} className={last ? 'bg-surface-2 font-semibold' : ''}>
+                  <td className="p-2">{last ? t('common.total') : r.name}</td>
+                  <td className="whitespace-nowrap p-2 text-end tnum text-destructive">
+                    {n(r.shortQty)}
+                    {seeCosts && <span className="block text-xs">{money(r.shortValue)}</span>}
                   </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <td className="whitespace-nowrap p-2 text-end tnum text-positive">
+                    {n(r.overQty)}
+                    {seeCosts && <span className="block text-xs">{money(r.overValue)}</span>}
+                  </td>
+                  {seeCosts && (
+                    <td className="whitespace-nowrap p-2 text-end tnum">
+                      {money(r.overValue - r.shortValue)}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableColumns>
     </div>
   );
 }

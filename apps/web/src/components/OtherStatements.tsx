@@ -15,6 +15,7 @@ import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useReportTools } from '../lib/report';
+import { TableColumns } from './TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -123,7 +124,6 @@ function Period({
   );
 }
 
-
 /** An expense item's statement (owner, 2026-10-19): every expense under it between two days. */
 export function ExpenseStatementBody({ id, title }: { id: string; title: string }) {
   const { t, locale } = useT();
@@ -230,57 +230,59 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
             <p className="py-4 text-sm text-muted">{t('money.noMovements')}</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-line text-xs text-muted">
-                  <tr>
-                    <th className="p-2 text-start font-medium">{t('common.date')}</th>
-                    <th className="p-2 text-start font-medium">{t('statement.movement')}</th>
-                    <th className="p-2 text-start font-medium">{t('statement.fromTo')}</th>
-                    <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
-                    <th className="p-2 text-end font-medium">{t('money.in')}</th>
-                    <th className="p-2 text-end font-medium">{t('money.out')}</th>
-                    {d.closingValue != null && (
-                      <th className="p-2 text-end font-medium">{t('statement.value')}</th>
-                    )}
-                    <th className="p-2 text-end font-medium">{t('statement.itemBalance')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-line)]">
-                  {d.lines.map((l, i) => (
-                    <tr key={i}>
-                      <td className="whitespace-nowrap p-2 text-xs text-muted">
-                        {formatDateTime(l.date, locale)}
-                      </td>
-                      <td className="whitespace-nowrap p-2 text-xs">
-                        {t(`movement.${l.type}` as TranslationKey)}
-                        {l.reference && (
-                          <span className="block text-muted tnum" dir="ltr">
-                            {l.reference}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-2 text-xs">
-                        {l.counterpart
-                          ? `${t(l.quantity > 0 ? 'money.from' : 'money.to')} ${l.counterpart}`
-                          : (l.note ?? '')}
-                      </td>
-                      <td className="p-2">
-                        <ItemLink id={l.productId} name={l.name} code={l.code} />
-                      </td>
-                      <td className="p-2 text-end tnum text-positive">
-                        {l.quantity > 0 ? n(l.quantity) : ''}
-                      </td>
-                      <td className="p-2 text-end tnum text-destructive">
-                        {l.quantity < 0 ? n(-l.quantity) : ''}
-                      </td>
+              <TableColumns id="statement.warehouse">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-line text-xs text-muted">
+                    <tr>
+                      <th className="p-2 text-start font-medium">{t('common.date')}</th>
+                      <th className="p-2 text-start font-medium">{t('statement.movement')}</th>
+                      <th className="p-2 text-start font-medium">{t('statement.fromTo')}</th>
+                      <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                      <th className="p-2 text-end font-medium">{t('money.in')}</th>
+                      <th className="p-2 text-end font-medium">{t('money.out')}</th>
                       {d.closingValue != null && (
-                        <td className="p-2 text-end tnum">{money(Math.abs(l.value ?? 0))}</td>
+                        <th className="p-2 text-end font-medium">{t('statement.value')}</th>
                       )}
-                      <td className="p-2 text-end tnum">{n(l.balance)}</td>
+                      <th className="p-2 text-end font-medium">{t('statement.itemBalance')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {d.lines.map((l, i) => (
+                      <tr key={i}>
+                        <td className="whitespace-nowrap p-2 text-xs text-muted">
+                          {formatDateTime(l.date, locale)}
+                        </td>
+                        <td className="whitespace-nowrap p-2 text-xs">
+                          {t(`movement.${l.type}` as TranslationKey)}
+                          {l.reference && (
+                            <span className="block text-muted tnum" dir="ltr">
+                              {l.reference}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2 text-xs">
+                          {l.counterpart
+                            ? `${t(l.quantity > 0 ? 'money.from' : 'money.to')} ${l.counterpart}`
+                            : (l.note ?? '')}
+                        </td>
+                        <td className="p-2">
+                          <ItemLink id={l.productId} name={l.name} code={l.code} />
+                        </td>
+                        <td className="p-2 text-end tnum text-positive">
+                          {l.quantity > 0 ? n(l.quantity) : ''}
+                        </td>
+                        <td className="p-2 text-end tnum text-destructive">
+                          {l.quantity < 0 ? n(-l.quantity) : ''}
+                        </td>
+                        {d.closingValue != null && (
+                          <td className="p-2 text-end tnum">{money(Math.abs(l.value ?? 0))}</td>
+                        )}
+                        <td className="p-2 text-end tnum">{n(l.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableColumns>
             </div>
           )}
         </>

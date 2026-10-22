@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Party } from '@skb/shared';
+import type { Party, TranslationKey } from '@skb/shared';
 import { Spinner } from './ui';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
@@ -128,9 +128,28 @@ export function PartyPicker({
     }
   }
 
+  // Each box says what goes in it (owner, 2026-10-22): "customer code", "supplier name"…
+  const codeKey: TranslationKey =
+    type === 'CUSTOMER'
+      ? 'parties.customerCode'
+      : type === 'SUPPLIER'
+        ? 'parties.supplierCode'
+        : 'parties.carrierCode';
+  const nameKey: TranslationKey =
+    type === 'CUSTOMER'
+      ? 'parties.customerName'
+      : type === 'SUPPLIER'
+        ? 'parties.supplierName'
+        : 'parties.carrierName';
+  const generic = [t('invoice.customer'), t('invoice.supplier'), t('inventory.supplier')];
+  const nameLabel = !withCode
+    ? label
+    : generic.includes(label)
+      ? t(nameKey)
+      : `${label} (${t(nameKey)})`;
   const name = (
     <label className="relative block min-w-0 flex-1">
-      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      <span className="mb-0.5 block truncate text-xs text-muted">{nameLabel}</span>
       <span className="pointer-events-none absolute bottom-0 start-2.5 grid h-9 place-items-center text-faint">
         <Icon name="search" size={15} />
       </span>
@@ -222,7 +241,7 @@ export function PartyPicker({
   return (
     <div className="flex items-start gap-2">
       <label className="block w-24 shrink-0">
-        <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
+        <span className="mb-0.5 block truncate text-xs text-muted">{t(codeKey)}</span>
         <input
           className={`${field} tnum disabled:opacity-50 ${codeError ? 'border-destructive' : ''}`}
           disabled={disabled}

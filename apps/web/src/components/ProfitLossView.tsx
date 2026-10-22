@@ -15,6 +15,7 @@ import { useT } from '../lib/i18n';
 import { useReportTools } from '../lib/report';
 import { useProfitLoss } from '../lib/queries';
 import type { Cell } from '../lib/xlsx';
+import { TableColumns } from './TableColumns';
 
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -233,81 +234,83 @@ export function ProfitLossTab() {
               <EmptyState title={t('common.empty')} icon="analytics" />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] whitespace-nowrap text-[13px]">
-                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                    <tr>
-                      {columns.map((c, i) => (
-                        <th
-                          key={c}
-                          className={`px-2 py-2 font-medium ${i === 0 ? 'text-start' : 'text-end'}`}
-                        >
-                          {c}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--c-line)]">
-                    {data.branches.flatMap((b) => {
-                      const expanded = open.has(b.id);
-                      return [
-                        row(
-                          b.id,
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1.5 font-semibold"
-                            onClick={() =>
-                              setOpen((s) => {
-                                const next = new Set(s);
-                                if (next.has(b.id)) next.delete(b.id);
-                                else next.add(b.id);
-                                return next;
-                              })
-                            }
+                <TableColumns id="pnl.places">
+                  <table className="w-full min-w-[860px] whitespace-nowrap text-[13px]">
+                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                      <tr>
+                        {columns.map((c, i) => (
+                          <th
+                            key={c}
+                            className={`px-2 py-2 font-medium ${i === 0 ? 'text-start' : 'text-end'}`}
                           >
-                            <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={14} />
-                            <Icon name="branches" size={14} className="text-brand" />
-                            {b.name}
-                          </button>,
-                          b.figures,
-                          { bold: true, share: data.general ? b.generalShare : null },
-                        ),
-                        ...(expanded
-                          ? (b.children ?? []).map((c) =>
-                              row(
-                                `${b.id}-${c.kind}-${c.id}`,
-                                <span
-                                  className={`inline-flex items-center gap-1.5 ${c.kind === 'BRANCH_REST' ? 'text-muted' : ''}`}
-                                >
-                                  <Icon
-                                    name={c.kind === 'BRANCH_REST' ? 'receipts' : 'inventory'}
-                                    size={13}
-                                  />
-                                  {nameOf(c)}
-                                </span>,
-                                c.figures,
-                                { depth: 1 },
-                              ),
-                            )
-                          : []),
-                      ];
-                    })}
-                    {data.general &&
-                      row(
-                        'general',
-                        <span className="inline-flex items-center gap-1.5 font-semibold">
-                          <Icon name="receipts" size={14} className="text-warning" />
-                          {t('pnl.general')}
-                        </span>,
-                        data.general,
-                        { bold: true, share: share ? null : undefined },
-                      )}
-                  </tbody>
-                  <tfoot className="border-t-2 border-line font-bold">
-                    {row('total', t('ledger.total'), data.total, {
-                      share: share && data.general ? -data.general.netProfit : null,
-                    })}
-                  </tfoot>
-                </table>
+                            {c}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      {data.branches.flatMap((b) => {
+                        const expanded = open.has(b.id);
+                        return [
+                          row(
+                            b.id,
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 font-semibold"
+                              onClick={() =>
+                                setOpen((s) => {
+                                  const next = new Set(s);
+                                  if (next.has(b.id)) next.delete(b.id);
+                                  else next.add(b.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={14} />
+                              <Icon name="branches" size={14} className="text-brand" />
+                              {b.name}
+                            </button>,
+                            b.figures,
+                            { bold: true, share: data.general ? b.generalShare : null },
+                          ),
+                          ...(expanded
+                            ? (b.children ?? []).map((c) =>
+                                row(
+                                  `${b.id}-${c.kind}-${c.id}`,
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 ${c.kind === 'BRANCH_REST' ? 'text-muted' : ''}`}
+                                  >
+                                    <Icon
+                                      name={c.kind === 'BRANCH_REST' ? 'receipts' : 'inventory'}
+                                      size={13}
+                                    />
+                                    {nameOf(c)}
+                                  </span>,
+                                  c.figures,
+                                  { depth: 1 },
+                                ),
+                              )
+                            : []),
+                        ];
+                      })}
+                      {data.general &&
+                        row(
+                          'general',
+                          <span className="inline-flex items-center gap-1.5 font-semibold">
+                            <Icon name="receipts" size={14} className="text-warning" />
+                            {t('pnl.general')}
+                          </span>,
+                          data.general,
+                          { bold: true, share: share ? null : undefined },
+                        )}
+                    </tbody>
+                    <tfoot className="border-t-2 border-line font-bold">
+                      {row('total', t('ledger.total'), data.total, {
+                        share: share && data.general ? -data.general.netProfit : null,
+                      })}
+                    </tfoot>
+                  </table>
+                </TableColumns>
               </div>
             )}
           </Card>

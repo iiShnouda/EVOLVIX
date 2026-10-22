@@ -21,6 +21,7 @@ import { useDashboard, useDashboardMore, useHiddenColumns } from '../lib/queries
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
 import { CodeName } from '../components/CodeName';
+import { TableColumns } from '../components/TableColumns';
 
 const KPI_ICON: Record<string, string> = {
   'kpi.revenue': 'sales',
@@ -645,67 +646,69 @@ function HistoryCard({
         <p className="px-5 pb-5 text-sm text-muted">{t('dash.none')}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-y border-line bg-surface-2 text-xs text-muted">
-                <th className="px-4 py-2 text-start font-medium sm:px-5">{t('dash.doc')}</th>
-                <th className="px-3 py-2 text-start font-medium">{t('dash.party')}</th>
-                <th className="hidden px-3 py-2 text-start font-medium md:table-cell">
-                  {t('dash.date')}
-                </th>
-                <th className="px-3 py-2 text-start font-medium">{t('common.status')}</th>
-                <th className="px-4 py-2 text-end font-medium sm:px-5">{t('common.amount')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {docs.map((doc) => (
-                <tr
-                  key={doc.id}
-                  className="cursor-pointer hover:bg-surface-2"
-                  onClick={() => onOpen(doc)}
-                >
-                  <td className="px-4 py-2.5 sm:px-5">
-                    <span className="flex items-center gap-2">
-                      <span
-                        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
-                          doc.type.endsWith('RETURN')
-                            ? 'bg-warning-soft text-warning'
-                            : doc.type.startsWith('PURCHASE')
-                              ? 'bg-info-soft text-info'
-                              : 'bg-brand-soft text-brand'
-                        }`}
-                      >
-                        <Icon
-                          name={doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}
-                          size={16}
-                        />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-xs font-medium text-muted">
-                          {t(`statement.kind.${doc.type}` as TranslationKey)}
-                        </span>
-                        <span className="block tnum">
-                          <bdi>{doc.number}</bdi>
-                        </span>
-                      </span>
-                    </span>
-                  </td>
-                  <td className="max-w-[12rem] px-3 py-2.5 font-medium">
-                    <CodeName code={doc.partyCode} name={doc.partyName} truncate />
-                  </td>
-                  <td className="hidden px-3 py-2.5 text-muted tnum md:table-cell">
-                    {formatDate(doc.issueDate, locale)}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-end font-semibold tnum sm:px-5">
-                    {formatMoney(doc.grandTotal, doc.currency, locale)}
-                  </td>
+          <TableColumns id="dashboard.recent">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y border-line bg-surface-2 text-xs text-muted">
+                  <th className="px-4 py-2 text-start font-medium sm:px-5">{t('dash.doc')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('dash.party')}</th>
+                  <th className="hidden px-3 py-2 text-start font-medium md:table-cell">
+                    {t('dash.date')}
+                  </th>
+                  <th className="px-3 py-2 text-start font-medium">{t('common.status')}</th>
+                  <th className="px-4 py-2 text-end font-medium sm:px-5">{t('common.amount')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {docs.map((doc) => (
+                  <tr
+                    key={doc.id}
+                    className="cursor-pointer hover:bg-surface-2"
+                    onClick={() => onOpen(doc)}
+                  >
+                    <td className="px-4 py-2.5 sm:px-5">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                            doc.type.endsWith('RETURN')
+                              ? 'bg-warning-soft text-warning'
+                              : doc.type.startsWith('PURCHASE')
+                                ? 'bg-info-soft text-info'
+                                : 'bg-brand-soft text-brand'
+                          }`}
+                        >
+                          <Icon
+                            name={doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}
+                            size={16}
+                          />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-medium text-muted">
+                            {t(`statement.kind.${doc.type}` as TranslationKey)}
+                          </span>
+                          <span className="block tnum">
+                            <bdi>{doc.number}</bdi>
+                          </span>
+                        </span>
+                      </span>
+                    </td>
+                    <td className="max-w-[12rem] px-3 py-2.5 font-medium">
+                      <CodeName code={doc.partyCode} name={doc.partyName} truncate />
+                    </td>
+                    <td className="hidden px-3 py-2.5 text-muted tnum md:table-cell">
+                      {formatDate(doc.issueDate, locale)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-end font-semibold tnum sm:px-5">
+                      {formatMoney(doc.grandTotal, doc.currency, locale)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableColumns>
         </div>
       )}
     </Card>

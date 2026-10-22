@@ -504,7 +504,8 @@ export type StaffPermissionsInput = z.infer<typeof staffPermissionsSchema>;
 export const partyTypeSchema = z.enum(['CUSTOMER', 'SUPPLIER', 'CARRIER']);
 
 export const partySchema = z.object({
-  name: z.string().trim().min(1).max(200),
+  /** Optional on a new account (owner, 2026-10-22): the server names it after its kind and code. */
+  name: z.string().trim().max(200),
   types: z.array(partyTypeSchema).min(1),
   phone: z.string().max(40).optional(),
   email: z.union([z.literal(''), z.string().email().max(200)]).optional(),

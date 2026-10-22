@@ -38,6 +38,7 @@ import {
   useSetInvoiceDiscount,
 } from '../lib/queries';
 import { PartyLink } from '../components/PartyContact';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -585,38 +586,40 @@ function CombinedPaper({
         </span>
       </div>
       {shows('lines') && (
-        <table className="w-full text-xs">
-          <thead className="text-muted">
-            <tr>
-              <th className="px-2 py-1 text-start font-medium">{t('inventory.products')}</th>
-              <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
-              <th className="px-2 py-1 text-end font-medium">{t('sales.unitPrice')}</th>
-              {anyLineDiscount && (
-                <th className="px-2 py-1 text-end font-medium">{t('col.discount')}</th>
-              )}
-              <th className="px-2 py-1 text-end font-medium">{t('common.total')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {doc.lines.map((l) => (
-              <tr key={l.id}>
-                <td className="px-2 py-1">
-                  <ItemLink id={l.productId} name={l.productName} />
-                </td>
-                <td className="px-2 py-1 text-end tnum">
-                  {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
-                </td>
-                <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
+        <TableColumns id="customerInvoices.lines">
+          <table className="w-full text-xs">
+            <thead className="text-muted">
+              <tr>
+                <th className="px-2 py-1 text-start font-medium">{t('inventory.products')}</th>
+                <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
+                <th className="px-2 py-1 text-end font-medium">{t('sales.unitPrice')}</th>
                 {anyLineDiscount && (
-                  <td className="px-2 py-1 text-end tnum">
-                    {l.discount > 0 ? money(l.discount) : ''}
-                  </td>
+                  <th className="px-2 py-1 text-end font-medium">{t('col.discount')}</th>
                 )}
-                <td className="px-2 py-1 text-end tnum">{money(l.lineTotal)}</td>
+                <th className="px-2 py-1 text-end font-medium">{t('common.total')}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {doc.lines.map((l) => (
+                <tr key={l.id}>
+                  <td className="px-2 py-1">
+                    <ItemLink id={l.productId} name={l.productName} />
+                  </td>
+                  <td className="px-2 py-1 text-end tnum">
+                    {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
+                  </td>
+                  <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
+                  {anyLineDiscount && (
+                    <td className="px-2 py-1 text-end tnum">
+                      {l.discount > 0 ? money(l.discount) : ''}
+                    </td>
+                  )}
+                  <td className="px-2 py-1 text-end tnum">{money(l.lineTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableColumns>
       )}
       {doc.charges
         .filter((c) => c.amount !== 0 && (c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT'))

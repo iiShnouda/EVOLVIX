@@ -119,6 +119,18 @@ public sealed class PartiesController : ControllerBase
         if (error is not null) return error;
         _db.Parties.Add(party);
         await _db.SaveChangesAsync();
+        if (party.Name.Length == 0)
+        {
+            // Kept in Arabic (the company's language), like the seasons the system adds.
+            var kind = party.Types.FirstOrDefault() switch
+            {
+                nameof(PartyType.SUPPLIER) => "مورد",
+                nameof(PartyType.CARRIER) => "شركة شحن",
+                _ => "عميل",
+            };
+            party.Name = $"{kind} {party.Code}";
+            await _db.SaveChangesAsync();
+        }
         await AuditAsync("create", party.Id, $"{party.Code} · {party.Name}");
         return Created($"/api/parties/{party.Id}", Mapper.ToParty(party, User));
     }
@@ -191,10 +203,16 @@ public sealed class PartiesController : ControllerBase
         if (f.Name is not null || isNew)
         {
             var clean = Loc.Clean(f.Name);
-            if (clean is null) return BadRequest(new { message = "Enter the name.", code = "bad_name" });
+            // Every field of a new account is optional (owner, 2026-10-22): one with no name is named
+            // after its kind and code once it has one (see Create).
+            if (clean is null && isNew) clean = "";
+            else if (clean is null) return BadRequest(new { message = "Enter the name.", code = "bad_name" });
+            if (clean.Length > 0)
+            {
             var lower = clean.ToLower();
             if (await _db.Parties.AnyAsync(p => p.Id != party.Id && p.IsActive && p.Name.ToLower() == lower))
                 return BadRequest(new { message = $"There is already a party called {clean}.", code = "duplicate_name" });
+            }
             party.Name = clean;
         }
         if (f.Types is not null || isNew)

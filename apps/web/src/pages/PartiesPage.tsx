@@ -29,6 +29,7 @@ import { errorText } from '../lib/errors';
 import {
   useCreateParty,
   useParties,
+  usePageSize,
   usePriceLists,
   useSetCreditLimit,
   useSetPartyPriceLevels,
@@ -36,6 +37,7 @@ import {
 } from '../lib/queries';
 import type { Tone } from '../components/ui';
 import { PartyLink } from '../components/PartyContact';
+import { Pager } from '../components/Pager';
 
 // A factory is a supplier, so there is no separate factory type.
 const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'CARRIER'];
@@ -66,6 +68,31 @@ const input =
 /** How an account stands (owner, 2026-10-02), to filter the list by. */
 const STATUSES = ['OVER_LIMIT', 'NEAR_LIMIT', 'OWES', 'CREDIT', 'SETTLED', 'CLOSED'] as const;
 
+const filterField =
+  'h-10 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+
+/** The code box's name for the kind of account searched (owner, 2026-10-22). */
+function codeLabel(type: PartyType | ''): TranslationKey {
+  return type === 'CUSTOMER'
+    ? 'parties.customerCode'
+    : type === 'SUPPLIER'
+      ? 'parties.supplierCode'
+      : type === 'CARRIER'
+        ? 'parties.carrierCode'
+        : 'parties.code';
+}
+
+/** The name box's name for the kind of account searched. */
+function nameSearchLabel(type: PartyType | ''): TranslationKey {
+  return type === 'CUSTOMER'
+    ? 'parties.customerName'
+    : type === 'SUPPLIER'
+      ? 'parties.supplierName'
+      : type === 'CARRIER'
+        ? 'parties.carrierName'
+        : 'parties.name';
+}
+
 export function PartiesPage() {
   const { t } = useT();
   const can = useCan();
@@ -92,12 +119,18 @@ export function PartiesPage() {
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
+  const [code, setCode] = useState('');
+  const [page, setPage] = useState(1);
+  const [size, setSize] = usePageSize('parties', 50);
   const query = useDeferredValue(search.trim());
+  const codeQuery = useDeferredValue(/^\d+$/.test(code.trim()) ? code.trim() : '');
+  useEffect(() => setPage(1), [query, codeQuery, type, status, showClosed]);
   const { data, isLoading } = useParties({
-    page: 1,
-    pageSize: 100,
+    page,
+    pageSize: size,
     type: type || undefined,
     search: query || undefined,
+    code: codeQuery || undefined,
     status: status || undefined,
     active: showClosed || status === 'CLOSED' ? undefined : true,
   });
@@ -115,42 +148,27 @@ export function PartiesPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1 basis-72 items-stretch overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface focus-within:border-brand">
-          <label className="block shrink-0">
-            <span className="mb-0.5 block text-xs text-muted">{t('parties.type')}</span>
-            <select
-              aria-label={t('parties.type')}
-              className="h-10 shrink-0 border-e border-line bg-surface-2 px-2 text-sm outline-none"
-              value={type}
-              onChange={(e) => setType(e.target.value as PartyType | '')}
-            >
-              <option value="">{t('parties.all')}</option>
-              {TYPES.map((x) => (
-                <option key={x} value={x}>
-                  {t(TYPE_LABEL[x])}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute inset-y-0 start-3 grid place-items-center text-faint">
-              <Icon name="search" size={16} />
-            </span>
-            <input
-              className="h-10 w-full bg-transparent ps-9 pe-3 text-sm outline-none"
-              value={search}
-              placeholder={t('parties.search')}
-              aria-label={t('parties.search')}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-        </div>
-        <label className="block shrink-0">
+      {/* Each filter with its name over it, two to a row on a phone (owner, 2026-10-22). */}
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end">
+        <label className="block min-w-0 sm:w-40">
+          <span className="mb-0.5 block text-xs text-muted">{t('parties.type')}</span>
+          <select
+            className={filterField}
+            value={type}
+            onChange={(e) => setType(e.target.value as PartyType | '')}
+          >
+            <option value="">{t('parties.all')}</option>
+            {TYPES.map((x) => (
+              <option key={x} value={x}>
+                {t(TYPE_LABEL[x])}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block min-w-0 sm:w-44">
           <span className="mb-0.5 block text-xs text-muted">{t('parties.status')}</span>
           <select
-            aria-label={t('parties.status')}
-            className="h-10 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
+            className={filterField}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -162,7 +180,29 @@ export function PartiesPage() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm text-muted">
+        <label className="block min-w-0 sm:w-32">
+          <span className="mb-0.5 block text-xs text-muted">{t(codeLabel(type))}</span>
+          <input
+            className={`${filterField} tnum`}
+            inputMode="numeric"
+            dir="ltr"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+        </label>
+        <label className="relative block min-w-0 sm:flex-1 sm:basis-64">
+          <span className="mb-0.5 block text-xs text-muted">{t(nameSearchLabel(type))}</span>
+          <span className="pointer-events-none absolute bottom-0 start-3 grid h-10 place-items-center text-faint">
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            className={`${filterField} ps-9`}
+            value={search}
+            placeholder={t('parties.search')}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <label className="col-span-2 flex h-10 items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
             checked={showClosed}
@@ -181,15 +221,31 @@ export function PartiesPage() {
           <EmptyState title={t('common.empty')} icon="parties" />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {data.items.map((party) => (
-            <PartyCard
-              key={party.id}
-              party={party}
-              onEdit={can('parties:edit') ? () => setEditing(party) : undefined}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {data.items.map((party) => (
+              <PartyCard
+                key={party.id}
+                party={party}
+                onEdit={can('parties:edit') ? () => setEditing(party) : undefined}
+              />
+            ))}
+          </div>
+          {data.total > 10 && (
+            <div className="flex justify-center">
+              <Pager
+                page={page}
+                size={size}
+                pages={Math.max(1, Math.ceil(data.total / size))}
+                onPage={setPage}
+                onSize={(n) => {
+                  setSize(n);
+                  setPage(1);
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {editing && (
@@ -356,7 +412,6 @@ export function PartySheet({
     party?.defaultCarrierId ?? (party?.tempCarrierName ? OTHER : ''),
   );
   const [tempCarrierName, setTempCarrierName] = useState(party?.tempCarrierName ?? '');
-  const isCashCustomer = party?.isCashCustomer ?? false;
   const [name, setName] = useState(party?.name ?? '');
   // A new one can only be of the kinds this person may add.
   const addable = TYPES.filter((x) => can(CREATE_PERMISSION[x]));
@@ -393,11 +448,10 @@ export function PartySheet({
   const carrierOnly = types.length === 1 && types[0] === 'CARRIER';
   const customer = types.includes('CUSTOMER');
   const withIdCard = (customer || types.includes('CARRIER')) && can('parties:id_cards');
-  // The address is required (owner, 2026-10-01), except for a walk-in cash customer.
+  // Every field of a new account is optional (owner, 2026-10-22); an existing one keeps a name.
   // Contact details are seen and changed only with parties:contact; a new account's are typed in
   // by whoever adds it (owner, 2026-10-19).
   const showContact = isNew || can('parties:contact');
-  const addressMissing = showContact && !address.trim() && !(customer && isCashCustomer);
   const phones = otherPhones.filter((x) => x.phone.trim());
 
   const contact = {
@@ -428,6 +482,7 @@ export function PartySheet({
   };
   const parsed = partySchema.safeParse(values);
   const issues = new Set(parsed.success ? [] : parsed.error.issues.map((i) => String(i.path[0])));
+  if (!isNew && !name.trim()) issues.add('name');
   const [sending, setSending] = useState(false);
   const pending = create.isPending || update.isPending || sending;
   const error = errorText(t, create.error ?? update.error);
@@ -437,7 +492,7 @@ export function PartySheet({
 
   async function save() {
     setTouched(true);
-    if (!parsed.success || addressMissing) return;
+    if (!parsed.success || issues.size > 0) return;
     // Phones and the national ID as the company's country has them (owner, 2026-10-02).
     if (showContact && anyIdProblem(country, [phone, ...phones.map((x) => x.phone)], nationalId))
       return;
@@ -615,18 +670,12 @@ export function PartySheet({
                 {t(factory ? 'parties.factoryAddress' : 'parties.address')}
               </span>
               <textarea
-                className={`${input} h-auto min-h-16 py-2 ${touched && addressMissing ? 'border-destructive' : ''}`}
+                className={`${input} h-auto min-h-16 py-2`}
                 rows={2}
                 value={address}
                 maxLength={300}
-                aria-invalid={touched && addressMissing}
                 onChange={(e) => setAddress(e.target.value)}
               />
-              {touched && addressMissing && (
-                <span className="mt-0.5 block text-xs text-destructive">
-                  {t('parties.addressRequired')}
-                </span>
-              )}
             </label>
           )}
           {showContact && (

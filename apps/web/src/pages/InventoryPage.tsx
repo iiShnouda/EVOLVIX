@@ -1225,30 +1225,32 @@ function PurchasesOfDay({
             </Button>
           </div>
           <div ref={paper}>
-            <table className="w-full text-sm">
-              <thead className="border-b border-line text-xs text-muted">
-                <tr>
-                  <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
-                  <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
-                  <th className="p-2 text-end font-medium">{t('additems.pieces')}</th>
-                  <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {sheet.lines.map((l) => (
-                  <tr key={l.code + l.name}>
-                    <td className="p-2 text-muted tnum" dir="ltr">
-                      {l.code}
-                    </td>
-                    <td className="p-2 font-medium">{l.name}</td>
-                    <td className="p-2 text-end tnum">{formatNumber(l.pieces, locale)}</td>
-                    <td className="p-2 text-end font-semibold tnum">
-                      {formatMoney(l.salePrice, currency, locale)}
-                    </td>
+            <TableColumns id="inventory.supplierSheet">
+              <table className="w-full text-sm">
+                <thead className="border-b border-line text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
+                    <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                    <th className="p-2 text-end font-medium">{t('additems.pieces')}</th>
+                    <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {sheet.lines.map((l) => (
+                    <tr key={l.code + l.name}>
+                      <td className="p-2 text-muted tnum" dir="ltr">
+                        {l.code}
+                      </td>
+                      <td className="p-2 font-medium">{l.name}</td>
+                      <td className="p-2 text-end tnum">{formatNumber(l.pieces, locale)}</td>
+                      <td className="p-2 text-end font-semibold tnum">
+                        {formatMoney(l.salePrice, currency, locale)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
           </div>
         </Sheet>
       )}

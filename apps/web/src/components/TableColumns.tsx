@@ -24,6 +24,9 @@ import { useHiddenColumns } from '../lib/queries';
  * The table's markup stays as React made it: once a table has an order of its own it is laid out
  * as a grid whose cells take their place from CSS `order` (row by row), so no table needs a change.
  * A table with cells spanning several columns keeps its order.
+ *
+ * Each column can also be left off the printed page only (owner, 2026-10-22: "choose which column I
+ * can print, on every page"), kept per person the same way.
  */
 export function TableColumns({
   id,
@@ -60,6 +63,7 @@ export function TableColumns({
   const [headers, setHeaders] = useState<string[]>([]);
   const [spans, setSpans] = useState(false);
   const [hidden, setHidden] = useHiddenColumns(id);
+  const [noPrint, setNoPrint] = useHiddenColumns(`print:${id}`);
   const [savedOrder, setOrder] = useHiddenColumns(`order:${id}`);
   const [savedWidths, setWidths] = useHiddenColumns(`width:${id}`);
   // While a column's edge is being dragged, its width before it is saved.
@@ -94,9 +98,21 @@ export function TableColumns({
   const positions = headers
     .map((h, i) => (h && hidden.includes(h) ? i + 1 : 0))
     .filter((n) => n > 0);
-  const css = positions
-    .map((n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n}){display:none}`)
-    .join('\n');
+  const printOff = headers
+    .map((h, i) => (h && noPrint.includes(h) && !hidden.includes(h) ? i + 1 : 0))
+    .filter((n) => n > 0);
+  const css = [
+    ...positions.map(
+      (n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n}){display:none}`,
+    ),
+    ...(printOff.length
+      ? [
+          `@media print{${printOff
+            .map((n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n})`)
+            .join(',')},[data-cols="${scope}"] [data-print-off]{display:none!important}}`,
+        ]
+      : []),
+  ].join('\n');
   // Columns with a unique, non-empty header can move; the others keep their place.
   const movable = headers.filter((h) => h && headers.indexOf(h) === headers.lastIndexOf(h));
   const known = savedOrder.filter((h) => movable.includes(h));
@@ -326,15 +342,23 @@ export function TableColumns({
 
   // Rows that span columns (a totals label over several): hide their one-column cells that sit
   // under a hidden column; a cell spanning several stays.
-  const hiddenKey = positions.join(',');
+  const hiddenKey = `${positions.join(',')}|${printOff.join(',')}`;
   useLayoutEffect(() => {
     const apply = () => {
       const off = new Set(positions);
+      const offPrint = new Set(printOff);
+      // The title of a column left off paper says so: the printout's copy leaves it out (print.ts).
+      box.current?.querySelectorAll('thead tr:first-child > th').forEach((th, i) => {
+        if (offPrint.has(i + 1)) th.setAttribute('data-print-off', '');
+        else th.removeAttribute('data-print-off');
+      });
       box.current?.querySelectorAll('tr[data-span]').forEach((row) => {
         let col = 1;
         for (const cell of [...row.children] as HTMLTableCellElement[]) {
           const span = cell.colSpan || 1;
           cell.style.display = span === 1 && off.has(col) ? 'none' : '';
+          if (span === 1 && offPrint.has(col)) cell.setAttribute('data-print-off', '');
+          else cell.removeAttribute('data-print-off');
           col += span;
         }
       });
@@ -351,6 +375,10 @@ export function TableColumns({
     setHidden(hidden.includes(label) ? hidden.filter((h) => h !== label) : [...hidden, label]);
   }
 
+  function togglePrint(label: string) {
+    setNoPrint(noPrint.includes(label) ? noPrint.filter((h) => h !== label) : [...noPrint, label]);
+  }
+
   return (
     <div className={className}>
       {(choices.length > 1 || toolbar) && (
@@ -360,7 +388,12 @@ export function TableColumns({
               choices={choices}
               hidden={hidden}
               onToggle={toggle}
-              onReset={() => setHidden([])}
+              noPrint={noPrint}
+              onTogglePrint={togglePrint}
+              onReset={() => {
+                setHidden([]);
+                setNoPrint([]);
+              }}
               onMove={onMove ?? (spans ? undefined : move)}
               ordered={!onMove && known.length > 0}
               onResetOrder={() => setOrder([])}
@@ -409,6 +442,8 @@ function ColumnMenu({
   choices,
   hidden,
   onToggle,
+  noPrint,
+  onTogglePrint,
   onReset,
   onMove,
   ordered,
@@ -419,6 +454,9 @@ function ColumnMenu({
   choices: string[];
   hidden: string[];
   onToggle: (label: string) => void;
+  /** Columns shown on the screen but left off the printed page. */
+  noPrint: string[];
+  onTogglePrint: (label: string) => void;
   onReset: () => void;
   onMove?: (label: string, step: -1 | 1) => void;
   /** The person has put the columns in their own order (offer to undo it). */
@@ -440,6 +478,7 @@ function ColumnMenu({
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
   const count = choices.filter((c) => hidden.includes(c)).length;
+  const offPrint = choices.filter((c) => noPrint.includes(c) && !hidden.includes(c)).length;
   return (
     <div ref={menu} className="relative shrink-0">
       <button
@@ -450,16 +489,45 @@ function ColumnMenu({
       >
         {t('list.columns')}
         {count > 0 && <span className="tnum">({count})</span>}
+        {offPrint > 0 && (
+          <span className="inline-flex items-center gap-0.5 tnum">
+            <Icon name="print" size={12} />
+            {offPrint}
+          </span>
+        )}
         <Icon name="chevronDown" size={14} />
       </button>
       {open && (
-        <div className="absolute start-0 z-30 mt-1 max-h-80 w-64 overflow-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-card)]">
+        <div className="absolute start-0 z-30 mt-1 max-h-96 w-72 max-w-[calc(100vw-2rem)] overflow-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-card)]">
+          <div className="flex items-center gap-1 px-2 pb-1 text-[11px] text-muted">
+            <span className="w-4 text-center" title={t('list.showColumn')}>
+              <Icon name="eye" size={13} />
+            </span>
+            <span className="w-4 text-center" title={t('list.printColumn')}>
+              <Icon name="print" size={13} />
+            </span>
+            <span className="ms-1">{t('list.showAndPrint')}</span>
+          </div>
           {choices.map((c, i) => (
             <div key={c} className="flex items-center gap-1 rounded-md hover:bg-surface-2">
-              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2 py-1.5 text-sm">
-                <input type="checkbox" checked={!hidden.includes(c)} onChange={() => onToggle(c)} />
-                <span className="truncate">{c}</span>
-              </label>
+              <span className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="w-4 shrink-0"
+                  aria-label={`${t('list.showColumn')} ${c}`}
+                  checked={!hidden.includes(c)}
+                  onChange={() => onToggle(c)}
+                />
+                <input
+                  type="checkbox"
+                  className="w-4 shrink-0"
+                  aria-label={`${t('list.printColumn')} ${c}`}
+                  disabled={hidden.includes(c)}
+                  checked={!hidden.includes(c) && !noPrint.includes(c)}
+                  onChange={() => onTogglePrint(c)}
+                />
+                <span className="ms-1 truncate">{c}</span>
+              </span>
               {onMove && (
                 <>
                   <button
@@ -486,7 +554,7 @@ function ColumnMenu({
               )}
             </div>
           ))}
-          {count > 0 && (
+          {(count > 0 || offPrint > 0) && (
             <button
               type="button"
               className="mt-1 w-full rounded-md px-2 py-1.5 text-start text-xs text-brand hover:bg-surface-2"

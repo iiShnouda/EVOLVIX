@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon';
 import { useT } from '../lib/i18n';
 import { errorText } from '../lib/errors';
 import { useSystemMonitor } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 type Tone = 'ok' | 'warn' | 'bad';
 
@@ -171,32 +172,34 @@ function Body({ d }: { d: SystemMonitor }) {
         </div>
         {d.assistant.models.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted">
-                  <th className="py-1.5 pe-3 text-start font-medium">{t('sys.modelName')}</th>
-                  <th className="py-1.5 pe-3 text-start font-medium">{t('sys.onDisk')}</th>
-                  <th className="py-1.5 text-start font-medium">{t('sys.inMemory')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {d.assistant.models.map((x) => (
-                  <tr key={x.name}>
-                    <td className="py-1.5 pe-3 font-medium">
-                      <bdi>{x.name}</bdi>
-                    </td>
-                    <td className="py-1.5 pe-3 tnum whitespace-nowrap">{bytes(x.sizeBytes)}</td>
-                    <td className="py-1.5 tnum whitespace-nowrap">
-                      {x.loaded ? (
-                        bytes(x.memoryBytes)
-                      ) : (
-                        <span className="text-faint">{t('sys.notLoaded')}</span>
-                      )}
-                    </td>
+            <TableColumns id="system.models">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-muted">
+                    <th className="py-1.5 pe-3 text-start font-medium">{t('sys.modelName')}</th>
+                    <th className="py-1.5 pe-3 text-start font-medium">{t('sys.onDisk')}</th>
+                    <th className="py-1.5 text-start font-medium">{t('sys.inMemory')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {d.assistant.models.map((x) => (
+                    <tr key={x.name}>
+                      <td className="py-1.5 pe-3 font-medium">
+                        <bdi>{x.name}</bdi>
+                      </td>
+                      <td className="py-1.5 pe-3 tnum whitespace-nowrap">{bytes(x.sizeBytes)}</td>
+                      <td className="py-1.5 tnum whitespace-nowrap">
+                        {x.loaded ? (
+                          bytes(x.memoryBytes)
+                        ) : (
+                          <span className="text-faint">{t('sys.notLoaded')}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
           </div>
         )}
       </Section>

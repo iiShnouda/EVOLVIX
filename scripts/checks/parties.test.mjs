@@ -307,4 +307,12 @@ const removed = ok('remove it', await owner.del(`/parties/${contact.id}/id-card/
 eq('no longer kept', removed.hasIdFront, false);
 eq('gone', (await owner.get(`/parties/${contact.id}/id-card/front`)).status, 404);
 
+// ------------------------------------------------------------------ every field optional (owner, 2026-10-22)
+console.log('== nothing but the kind');
+const bare = ok('a customer with no details at all', await owner.post('/parties', { types: ['CUSTOMER'] }));
+eq('named after its kind and code', bare.name, `عميل ${bare.code}`);
+const bareSupplier = ok('a supplier the same', await owner.post('/parties', { name: '', types: ['SUPPLIER'] }));
+eq('…named as a supplier', bareSupplier.name, `مورد ${bareSupplier.code}`);
+eq('an existing one still keeps a name', (await owner.put(`/parties/${bare.id}`, { name: '' })).data?.code, 'bad_name');
+
 process.exit(summary('parties') ? 1 : 0);
