@@ -27,7 +27,6 @@ import { errorText } from '../lib/errors';
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-
 /** Where a movement's source document lives in the app, and who may open it. */
 function documentLink(m: StockMovement): { to: string; permission: Permission } | null {
   if (!m.documentId || !m.documentType) return null;

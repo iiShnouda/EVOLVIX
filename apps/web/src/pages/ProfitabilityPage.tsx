@@ -13,7 +13,6 @@ import { TableColumns } from '../components/TableColumns';
 import { ReportActions } from '../components/ReportActions';
 import { useReportTools } from '../lib/report';
 
-
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
