@@ -26,7 +26,7 @@ import {
   type PaperOptions,
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { useCan, useIsOwner } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
@@ -393,6 +393,7 @@ function InvoiceCard({
   onToggleLock?: () => void;
 }) {
   const { t, locale } = useT();
+  const owner = useIsOwner();
   const [open, setOpen] = useState(false);
   const [discounting, setDiscounting] = useState(false);
   const [draft, setDraft] = useState<DiscountDraft>(() => draftOf(doc, 'DISCOUNT'));
@@ -431,7 +432,7 @@ function InvoiceCard({
         <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
           {t(open ? 'together.hideItems' : 'together.showItems')} ({doc.lines.length})
         </Button>
-        {canDiscount && !locked && (
+        {canDiscount && (!locked || owner) && (
           <Button size="sm" variant="secondary" onClick={() => setDiscounting((d) => !d)}>
             {t('invoice.addDiscount')}
           </Button>

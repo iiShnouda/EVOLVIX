@@ -13,6 +13,7 @@ import { DocumentPreview } from '../components/DocumentPreview';
 import { DocumentTable } from '../components/DocumentTable';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
+import { useIsOwner } from '../lib/can';
 import { useWorkPlace } from '../lib/workPlace';
 import {
   useApproveLimit,
@@ -250,7 +251,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     invoice && returnAfterHours > 0
       ? new Date(new Date(invoice.issueDate).getTime() + returnAfterHours * 3_600_000)
       : null;
-  const returnTooSoon = !!returnFrom && returnFrom.getTime() > Date.now();
+  const owner = useIsOwner();
+  const returnTooSoon = !owner && !!returnFrom && returnFrom.getTime() > Date.now();
   const approveLimit = useApproveLimit();
   const [rejectingLimit, setRejectingLimit] = useState(false);
   const waitsOverLimit = !!invoice?.overLimit;

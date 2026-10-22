@@ -207,13 +207,13 @@ public sealed partial class PayrollService
     /// rows locked, recover the advances oldest first, close the month's adjustments, and post the
     /// journal entry dated the month's last day (or today, for the current month).
     /// </summary>
-    public async Task<PayrollError?> PostAsync(PayrollRun run, Guid staffId)
+    public async Task<PayrollError?> PostAsync(PayrollRun run, Guid staffId, bool owner = false)
     {
         var (start, end) = MonthRange(run.Year, run.Month);
         var date = end.AddDays(-1).AddHours(12);
         if (date > DateTime.UtcNow) date = DateTime.UtcNow;
         var lockDate = await _db.CompanySettings.Select(s => s.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && CompanyClock.DayOf(date) <= DateOnly.FromDateTime(locked))
+        if (lockDate is DateTime locked && CompanyClock.DayOf(date) <= DateOnly.FromDateTime(locked) && !owner)
             return new("period_locked", "That month is in a locked period.");
         if (start > CompanyClock.TodayDate)
             return new("future_month", "A month that hasn't started can't be posted.");

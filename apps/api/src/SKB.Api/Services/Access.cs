@@ -61,7 +61,15 @@ public static class Access
 
     /// <summary>The most discount the person may give (% of a line's worth); null = no limit.</summary>
     public static int? MaxDiscount(ClaimsPrincipal u) =>
-        int.TryParse(u.FindFirst("maxDiscount")?.Value, out var p) ? p : null;
+        IsOwner(u) ? null : int.TryParse(u.FindFirst("maxDiscount")?.Value, out var p) ? p : null;
+
+    /// <summary>
+    /// An owner passes every rule the company set itself (owner, 2026-10-22: "nothing in the program
+    /// may stop the owner"): locked invoices and periods, the half-hour and the hours before a
+    /// return, credit limits, discount limits and the profit floor. What keeps the books right
+    /// still holds for them too: no stock or cash below zero, nothing returned that wasn't sold.
+    /// </summary>
+    public static bool IsOwner(ClaimsPrincipal u) => CurrentUser.Role(u) == Role.OWNER;
 
     /// <summary>Sales documents of the person's departments, and those of no department.</summary>
     public static IQueryable<SalesDocument> InDepartments(this IQueryable<SalesDocument> q, ClaimsPrincipal u)

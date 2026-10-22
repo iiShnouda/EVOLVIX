@@ -86,4 +86,24 @@ eq('a seller may not give a combined discount', (await karim.post('/sales/invoic
 ok('the accountant may give a whole-invoice discount', await accountant.post(`/sales/invoices/${inv.id}/discount`, { percent: 5 }));
 ok('the accountant may give a combined discount', await accountant.post('/sales/invoices/discount-all', { invoiceIds: [inv.id], percent: 0 }));
 
+// ------------------------------------------------------------------ the owner (owner, 2026-10-22)
+console.log('== nothing stops the owner');
+const frozen = ok('another invoice', await accountant.post('/sales/invoices', sale(2)));
+ok('locked', await accountant.post('/sales/invoices/lock', { ids: [frozen.id], locked: true }));
+eq('the accountant is still refused', (await accountant.put(`/sales/invoices/${frozen.id}`, sale(3))).data?.code, 'invoice_locked');
+ok('the owner changes the locked invoice', await owner.put(`/sales/invoices/${frozen.id}`, sale(3)));
+ok('…gives it a discount', await owner.post(`/sales/invoices/${frozen.id}/discount`, { percent: 5 }));
+const lineId = (await owner.get(`/sales/invoices/${frozen.id}`)).data.lines[0].id;
+eq('a return within the hours is refused to others', (await accountant.post(`/sales/invoices/${frozen.id}/returns`, { lines: [{ lineId, quantity: 1 }] })).data?.code, 'return_too_soon');
+ok('the owner takes goods back at once', await owner.post(`/sales/invoices/${frozen.id}/returns`, { lines: [{ lineId, quantity: 1 }] }));
+const below = { ...sale(1), lines: [{ productId: item.id, quantity: 1, unitPrice: 100 }] };
+eq('below cost is refused to others', (await accountant.post('/sales/invoices', below)).data?.code, 'below_cost');
+ok('the owner sells below cost', await owner.post('/sales/invoices', below));
+const tight = ok('a customer with a 1.00 limit', await owner.post('/parties', { name: `Tight ${tag}`, types: ['CUSTOMER'] }));
+ok('limit set', await owner.put(`/parties/${tight.id}/credit-limit`, { creditLimit: 100 }));
+const overSale = ok('the owner sells over the limit', await owner.post('/sales/invoices', { ...sale(1), partyId: tight.id }));
+eq('…posted, not waiting', overSale.overLimit ?? false, false);
+eq('stock still can’t go below zero', (await owner.post('/sales/invoices', sale(100000))).data?.code, 'insufficient_stock');
+ok('the owner closes an account that still owes', await owner.put(`/parties/${tight.id}`, { isActive: false }));
+
 process.exit(summary('invoicelock') ? 1 : 0);

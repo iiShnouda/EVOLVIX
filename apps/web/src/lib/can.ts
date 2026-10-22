@@ -28,3 +28,8 @@ export function useCan(): (permission: Permission) => boolean {
 export function useMaySeeProfit(): boolean {
   return useAuth((s) => s.user?.permissions ?? NONE).includes('profit:view');
 }
+
+/** An owner passes every rule the company set itself (owner, 2026-10-22); the server decides too. */
+export function useIsOwner(): boolean {
+  return useAuth((s) => s.user?.role) === 'OWNER';
+}

@@ -40,6 +40,7 @@ import {
   useParties,
   useReps,
   useSaveExpenseCategory,
+  useDeleteExpenseCategory,
   useUpdateMoneyAccount,
   useDeleteMoneyAccount,
   useVouchers,
@@ -1556,12 +1557,12 @@ function CategoriesTab() {
           <ul className="divide-y divide-line">
             {mains.map((m) => (
               <li key={m.id} className="px-4 py-2">
-                <CategoryRow c={m} canManage={canManage} />
+                <CategoryRow c={m} canManage={canManage} mains={mains} />
                 {(data ?? [])
                   .filter((c) => c.parentId === m.id)
                   .map((c) => (
                     <div key={c.id} className="ms-5 border-s border-line ps-3">
-                      <CategoryRow c={c} canManage={canManage} />
+                      <CategoryRow c={c} canManage={canManage} mains={mains} />
                     </div>
                   ))}
               </li>
@@ -1573,28 +1574,132 @@ function CategoriesTab() {
   );
 }
 
+/** An expense item: renamed, moved under another main item, closed or deleted (owner, 2026-10-22). */
 function CategoryRow({
   c,
   canManage,
+  mains,
 }: {
-  c: { id: string; name: string; isActive: boolean };
+  c: { id: string; name: string; isActive: boolean; parentId?: string | null };
   canManage: boolean;
+  mains: { id: string; name: string; isActive: boolean }[];
 }) {
   const { t } = useT();
   const save = useSaveExpenseCategory();
+  const remove = useDeleteExpenseCategory();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(c.name);
+  const [parentId, setParentId] = useState(c.parentId ?? '');
+  const isMain = !c.parentId;
+
+  async function submit() {
+    try {
+      await save.mutateAsync({
+        id: c.id,
+        input: {
+          name: name.trim(),
+          ...(isMain && !parentId ? {} : { parentId }),
+        },
+      });
+      setEditing(false);
+    } catch {
+      /* shown below */
+    }
+  }
+
+  async function del() {
+    if (!(await confirm({ message: t('setup.deleteEntryAsk'), danger: true }))) return;
+    try {
+      await remove.mutateAsync(c.id);
+    } catch {
+      /* shown below */
+    }
+  }
+
+  const error = save.error ?? remove.error;
   return (
-    <div className="flex items-center justify-between gap-2 py-1 text-sm">
-      <span className={c.isActive ? '' : 'text-faint line-through'}>{c.name}</span>
-      {canManage && (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={save.isPending}
-          onClick={() => save.mutate({ id: c.id, input: { isActive: !c.isActive } })}
-        >
-          {c.isActive ? t('money.stopCategory') : t('money.useCategory')}
-        </Button>
+    <div className="py-1 text-sm">
+      {editing ? (
+        <div className="grid gap-2 sm:grid-cols-[1fr_14rem_auto] sm:items-end">
+          <Field label={t('common.name')}>
+            <input
+              className={input}
+              value={name}
+              maxLength={200}
+              autoFocus
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <Field label={t('money.subOf')}>
+            <select
+              className={input}
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+            >
+              <option value="">{t('money.mainCategory')}</option>
+              {mains
+                .filter((m) => m.id !== c.id && (m.isActive || m.id === parentId))
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              icon="check"
+              loading={save.isPending}
+              disabled={!name.trim()}
+              onClick={() => void submit()}
+            >
+              {t('common.save')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className={c.isActive ? '' : 'text-faint line-through'}>{c.name}</span>
+          {canManage && (
+            <span className="flex flex-wrap gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="edit"
+                onClick={() => {
+                  setName(c.name);
+                  setParentId(c.parentId ?? '');
+                  setEditing(true);
+                }}
+              >
+                {t('common.edit')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={save.isPending}
+                onClick={() => save.mutate({ id: c.id, input: { isActive: !c.isActive } })}
+              >
+                {c.isActive ? t('money.stopCategory') : t('money.useCategory')}
+              </Button>
+              <Button
+                variant="dangerGhost"
+                size="sm"
+                icon="trash"
+                loading={remove.isPending}
+                onClick={() => void del()}
+              >
+                {t('common.delete')}
+              </Button>
+            </span>
+          )}
+        </div>
       )}
+      {error && <p className="mt-1 text-xs text-destructive">{errorText(t, error)}</p>}
     </div>
   );
 }

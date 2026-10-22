@@ -26,7 +26,7 @@ import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { PartyPicker } from '../components/PartyPicker';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { useCan, useIsOwner } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -163,6 +163,7 @@ export function InvoiceBuilderPage({
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
+  const owner = useIsOwner();
   /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
   const seeCosts = can('costs:view');
   // Profit has its own permission and the show/hide switch (owner, 2026-10-17).
@@ -629,12 +630,18 @@ export function InvoiceBuilderPage({
   // Over the customer's purchase limit: unless the person may allow it, the invoice is saved to
   // wait for the accountant to accept or turn it down (owner decision 2026-10-01).
   const overCredit =
-    isSale && !isQuote && party?.creditLimit != null && party.balance + grand > party.creditLimit;
+    !owner &&
+    isSale &&
+    !isQuote &&
+    party?.creditLimit != null &&
+    party.balance + grand > party.creditLimit;
   const profitTotal = netTotal - costTotal;
   const marginPct = netTotal > 0 ? (profitTotal / netTotal) * 100 : 0;
 
-  const hasBelowCost = rows.some((r) => r.belowCost);
-  const hasBlockedFloor = rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
+  // The owner may sell below cost or the floor (owner, 2026-10-22: nothing stops the owner).
+  const hasBelowCost = !owner && rows.some((r) => r.belowCost);
+  const hasBlockedFloor =
+    !owner && rows.some((r) => r.belowFloor) && !(overrideFloor && canOverride);
   const hasOverStock = rows.some((r) => r.overStock);
   const hasUnderList = lines.some((l, i) => underList(l, i));
   /** What still has to be done before it can be saved, in the order it is on the screen. */

@@ -183,6 +183,10 @@
         {
           "ar": "خانات الكود والاسم بقت مكتوب جنبها «كود العميل / اسم العميل» أو «كود المورد / اسم المورد» في كل الصفحات.",
           "en": "Code and name boxes now say “customer code / customer name” or “supplier code / supplier name” on every page."
+        },
+        {
+          "ar": "المالك مفيش حاجة توقفه: يعدّل أو يلغي الفاتورة المقفولة، يعمل مرتجع في أي وقت، يبيع فوق حد الائتمان أو تحت التكلفة، يشتغل في فترة مقفولة، ويقفل حساب عليه رصيد. اللي بيحافظ على صحة الحسابات بس فضل زي ما هو (المخزن والخزينة ما ينزلوش تحت الصفر).",
+          "en": "Nothing stops the owner: edit or cancel a locked invoice, take goods back at any time, sell over the credit limit or below cost, work in a locked period, close an account that still owes. Only what keeps the books right still holds (stock and cash never below zero)."
         }
       ],
       "fixes": [
@@ -381,6 +385,10 @@
         {
           "ar": "صفحة العملاء والموردين على الموبايل: الفلاتر مترتبة كل واحد باسمه، وخانة كود منفصلة، وتقسيم الصفحات.",
           "en": "Customers & suppliers on a phone: tidy labelled filters, a separate code box, and pages."
+        },
+        {
+          "ar": "بنود المصروفات: تعديل الاسم ونقل البند تحت بند تاني وحذفه.",
+          "en": "Expense items: rename, move under another item, and delete."
         }
       ]
     },

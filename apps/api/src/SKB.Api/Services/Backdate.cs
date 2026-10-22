@@ -47,7 +47,7 @@ public static class Backdate
             return (null, "backdate_not_allowed", "You may not date a document on an earlier day.");
         if (d < today.AddDays(-366)) return (null, "bad_date", "At most a year back.");
         var lockDate = await db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && d <= DateOnly.FromDateTime(locked))
+        if (lockDate is DateTime locked && d <= DateOnly.FromDateTime(locked) && !Access.IsOwner(user))
             return (null, "period_locked", "That date is in a locked period.");
         return (CompanyClock.StartOf(d).Add(CompanyClock.Now.TimeOfDay), null, null);
     }

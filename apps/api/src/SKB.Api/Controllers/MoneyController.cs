@@ -417,7 +417,8 @@ public sealed class MoneyController : ControllerBase
         if (voucher is null) return NotFound(new { message = "Voucher not found.", code = "not_found" });
         if (voucher.Status != VoucherStatus.POSTED) return Bad("already_cancelled", "This voucher is already cancelled.");
         var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
-        if (lockDate is DateTime locked && CompanyClock.DayOf(voucher.CreatedAt) <= DateOnly.FromDateTime(locked))
+        if (lockDate is DateTime locked && CompanyClock.DayOf(voucher.CreatedAt) <= DateOnly.FromDateTime(locked)
+            && !Access.IsOwner(User))
             return Bad("period_locked", "The period this voucher is in is locked.");
 
         // Invoices first, then accounts: the same order every money path locks in.

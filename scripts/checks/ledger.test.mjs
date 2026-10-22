@@ -604,7 +604,7 @@ eq(
 eq(
   'no entry in January now',
   (
-    await M(owner, {
+    await M(mona, {
       date: '2026-01-20',
       lines: [
         { accountId: furniture.id, debit: 1 },
@@ -616,8 +616,19 @@ eq(
 );
 eq(
   "January's entry can't be reversed",
-  (await owner.post(`/ledger/entries/${backdated.id}/reverse`)).data?.code,
+  (await mona.post(`/ledger/entries/${backdated.id}/reverse`)).data?.code,
   'period_locked',
+);
+// Nothing stops the owner (owner, 2026-10-22): a locked period too.
+ok(
+  'the owner still posts in January',
+  await M(owner, {
+    date: '2026-01-20',
+    lines: [
+      { accountId: furniture.id, debit: 1 },
+      { accountId: capital.id, credit: 1 },
+    ],
+  }),
 );
 const today = companyToday();
 ok('lock today', await owner.put('/ledger/lock', { lockDate: today }));
@@ -630,11 +641,11 @@ const px = ok(
 );
 eq(
   "a voucher in the locked period can't be cancelled",
-  (await owner.post(`/vouchers/${px.id}/cancel`)).data?.code,
+  (await mona.post(`/vouchers/${px.id}/cancel`)).data?.code,
   'period_locked',
 );
+ok('the owner cancels it all the same', await owner.post(`/vouchers/${px.id}/cancel`));
 eq('unlock', (await owner.put('/ledger/lock', { lockDate: startLock })).data?.lockDate, startLock);
-ok('now it can', await owner.post(`/vouchers/${px.id}/cancel`));
 eq('lock visible', (await mona.get('/ledger/lock')).data?.lockDate, startLock);
 
 console.log('== the ledger still balances');
