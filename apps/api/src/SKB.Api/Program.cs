@@ -296,8 +296,8 @@ app.UseAuthentication();   // before the limiter, so it can key on the signed-in
 app.Use(Access.PickWorkingBranch);   // the branch picked in the app, when the person may use it
 app.UseRateLimiter();
 app.UseAuthorization();
-// The owner may go past a rule once they confirm (owner, 2026-10-22): a refusal they can go past
-// says so, and the app warns them and asks before resending (Access.OwnerPasses).
+// Whoever may go past rules (rules:override) does so once they confirm (owner, 2026-10-22): a refusal they can go past
+// says so, and the app warns them and asks before resending (Access.OverridePasses).
 Access.Http = app.Services.GetRequiredService<IHttpContextAccessor>();
 app.Use(async (ctx, next) =>
 {

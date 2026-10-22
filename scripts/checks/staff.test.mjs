@@ -23,11 +23,12 @@ check(
   staff.map((s) => s.email),
 );
 const me = staff.find((s) => s.email === 'owner@skb.local');
-// Every grantable permission, plus the owner's own (the server monitor), which nobody can be given.
+// Every grantable permission, plus the owner's own (server monitor and update, data import,
+// licence), which nobody can be given.
 eq(
-  "owner has every permission (and the two that are the owner's alone)",
+  "owner has every permission (and the four that are the owner's alone)",
   me.permissions.length,
-  (await owner.get('/permissions')).data.length + 2,
+  (await owner.get('/permissions')).data.length + 4,
 );
 eq('sales cannot list staff', (await karim.get('/staff')).status, 403);
 eq('accountant cannot list staff', (await mona.get('/staff')).status, 403);
@@ -196,8 +197,10 @@ ok(
   }),
 );
 const admin = await login(adminEmail, 'Str0ngPass!');
-// The admin has every permission, new ones too (owner decision 2026-10-02).
-eq('admin has every permission', admin.user.permissions.length, perms.length);
+// The admin has every permission, new ones too (owner decision 2026-10-02), except going past the
+// rules, which is given by hand (owner, 2026-10-22).
+eq('admin has every permission but going past the rules', admin.user.permissions.length, perms.length - 1);
+eq('…not that one until given', admin.user.permissions.includes('rules:override'), false);
 eq('admin role not editable', roles.find((r) => r.role === 'ADMIN').editable, false);
 eq(
   'admin cannot add an owner',

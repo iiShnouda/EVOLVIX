@@ -2996,6 +2996,7 @@ export const ar: TranslationDictionary = {
   'error.below_cost': 'السعر أقل من التكلفة.',
   'error.below_floor': 'السعر أقل من الحد الأدنى للربح.',
   'owner.warnTitle': 'تحذير',
-  'owner.warnAsk': 'البرنامج لا يسمح بهذا لأي حد. بصفتك المالك، هل تريد المتابعة على أي حال؟',
+  'owner.warnAsk': 'البرنامج لا يسمح بهذا عادةً. لديك صلاحية تخطي القواعد، هل تريد المتابعة على أي حال؟',
   'owner.goOn': 'متابعة',
+  'perm.rules:override': 'تخطي قواعد البرنامج (بعد تحذير)',
 };

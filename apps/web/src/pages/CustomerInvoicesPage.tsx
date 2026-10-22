@@ -26,7 +26,7 @@ import {
   type PaperOptions,
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
-import { useCan, useIsOwner } from '../lib/can';
+import { useCan, useMayOverride } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
@@ -393,7 +393,7 @@ function InvoiceCard({
   onToggleLock?: () => void;
 }) {
   const { t, locale } = useT();
-  const owner = useIsOwner();
+  const owner = useMayOverride();
   const [open, setOpen] = useState(false);
   const [discounting, setDiscounting] = useState(false);
   const [draft, setDraft] = useState<DiscountDraft>(() => draftOf(doc, 'DISCOUNT'));

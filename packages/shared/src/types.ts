@@ -137,6 +137,7 @@ export type Permission =
   | 'warehouses:delete'
   | 'units:manage'
   | 'setup:delete'
+  | 'rules:override'
   | 'variant_options:manage'
   | 'seasons:manage'
   | 'sales:change_price'

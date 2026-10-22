@@ -270,6 +270,12 @@ public static class Permissions
     public const string SeasonsManage = "seasons:manage";
     /// <summary>Delete units, sizes, colors, seasons and sub-groups nothing uses (owner, 2026-10-21).</summary>
     public const string SetupDelete = "setup:delete";
+    /// <summary>
+    /// Go past the company's own rules after a warning (owner, 2026-10-22: "like an admin button
+    /// you can give anyone"): locked invoices and periods, the hours before a return, credit and
+    /// discount limits, the profit floor, closing an account with a balance. See Access.OverridePasses.
+    /// </summary>
+    public const string RulesOverride = "rules:override";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
     /// <summary>
@@ -326,7 +332,7 @@ public static class Permissions
         BranchesView, BranchesManage, BranchesDelete, WarehousesDelete,
         AnalyticsView, SettingsView, SettingsManage, AuditView, PresenceView, BackupCreate, CostsView, ProfitView,
         ProductsCreate, ProductsEdit, PricesEdit, PriceLevelsManage, PriceListsManage, CategoriesManage, DepartmentsDelete, UnitsManage,
-        VariantOptionsManage, SeasonsManage, SetupDelete, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
+        VariantOptionsManage, SeasonsManage, SetupDelete, RulesOverride, SalesChangePrice, SalesChoosePriceLevel, PurchasesChangePrice,
         PurchasesChoosePriceLevel, PartiesSetPriceLevel,
         SalesDiscount, SalesDiscountLine, SalesDiscountCombined, SalesLock, SalesBonus, SalesChangeTax, SalesAdditions,
         PurchasesDiscount, PurchasesBonus, PurchasesChangeTax, PurchasesAdditions,
@@ -353,7 +359,8 @@ public static class RolePermissions
         [Role.OWNER] = All,
         // The admin has every permission, and every one added later (owner decision 2026-10-02),
         // except the owner's own.
-        [Role.ADMIN] = All.Except(Permissions.OwnerOnly).ToArray(),
+        // Going past the rules is given by hand, to whoever the owner chooses (owner, 2026-10-22).
+        [Role.ADMIN] = All.Except(Permissions.OwnerOnly).Except(new[] { Permissions.RulesOverride }).ToArray(),
         [Role.ACCOUNTANT] = new[]
         {
             Permissions.DashboardView, Permissions.SalesView, Permissions.SalesCreate, Permissions.SalesEdit,

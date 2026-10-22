@@ -89,6 +89,7 @@ const ALL: Permission[] = [
   'categories:manage',
   'departments:delete',
   'setup:delete',
+  'rules:override',
   'units:manage',
   'variant_options:manage',
   'seasons:manage',
@@ -181,7 +182,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL,
   // The admin has every permission, new ones too (owner decision 2026-10-02).
-  ADMIN: ALL.filter((p) => !OWNER_ONLY.includes(p)),
+  // Going past the rules is given by hand (owner, 2026-10-22).
+  ADMIN: ALL.filter((p) => !OWNER_ONLY.includes(p) && p !== 'rules:override'),
   ACCOUNTANT: [
     'dashboard:view',
     'sales:view',

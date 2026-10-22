@@ -64,12 +64,12 @@ public static class Access
         int.TryParse(u.FindFirst("maxDiscount")?.Value, out var p) ? p : null;
 
     /// <summary>
-    /// An owner passes every rule the company set itself (owner, 2026-10-22: "nothing in the program
-    /// may stop the owner"): locked invoices and periods, the half-hour and the hours before a
-    /// return, credit limits, discount limits and the profit floor. What keeps the books right
+    /// Whoever holds <c>rules:override</c> (the owner always; anyone else it is given to) passes
+    /// every rule the company set itself (owner, 2026-10-22): locked invoices and periods, the hours
+    /// before a return, credit and discount limits, the profit floor. What keeps the books right
     /// still holds for them too: no stock or cash below zero, nothing returned that wasn't sold.
     /// </summary>
-    public static bool IsOwner(ClaimsPrincipal u) => CurrentUser.Role(u) == Role.OWNER;
+    public static bool MayOverride(ClaimsPrincipal u) => u.HasClaim("permission", Permissions.RulesOverride);
 
     /// <summary>The request header by which the owner confirms going past a rule.</summary>
     public const string OverrideHeader = "X-Owner-Override";
@@ -81,13 +81,13 @@ public static class Access
     public static IHttpContextAccessor? Http { get; set; }
 
     /// <summary>
-    /// Ask this when a rule would refuse (owner, 2026-10-22): an owner passes it once they have
-    /// confirmed (the app warns them first and resends with <see cref="OverrideHeader"/>). Without
+    /// Ask this when a rule would refuse (owner, 2026-10-22): whoever may go past rules passes it once they
+    /// have confirmed (the app warns them first and resends with <see cref="OverrideHeader"/>). Without
     /// that, the refusal stands and is marked so the app can ask them (<see cref="CanOverrideHeader"/>).
     /// </summary>
-    public static bool OwnerPasses(ClaimsPrincipal u)
+    public static bool OverridePasses(ClaimsPrincipal u)
     {
-        if (!IsOwner(u)) return false;
+        if (!MayOverride(u)) return false;
         var ctx = Http?.HttpContext;
         if (ctx is null) return false;
         if (ctx.Request.Headers[OverrideHeader] == "1") return true;
@@ -96,7 +96,7 @@ public static class Access
     }
 
     /// <summary>A rule refused the owner in this request, and they haven't confirmed going past it.</summary>
-    public static bool OwnerMayConfirm() => Http?.HttpContext?.Items.ContainsKey(OverrideHeader) == true;
+    public static bool OverrideMayConfirm() => Http?.HttpContext?.Items.ContainsKey(OverrideHeader) == true;
 
     /// <summary>Sales documents of the person's departments, and those of no department.</summary>
     public static IQueryable<SalesDocument> InDepartments(this IQueryable<SalesDocument> q, ClaimsPrincipal u)

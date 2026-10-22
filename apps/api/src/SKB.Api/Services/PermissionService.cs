@@ -22,7 +22,7 @@ public sealed class PermissionService
         var saved = await _db.RolePermissionSets.AsNoTracking().ToDictionaryAsync(r => r.Role);
         return Enum.GetValues<Role>().ToDictionary(role => role, role =>
             role is Role.OWNER ? (Permissions.All, false)
-            : role is Role.ADMIN ? (Known(Permissions.All.Except(Permissions.OwnerOnly)), false)
+            : role is Role.ADMIN ? (Known(AdminAll), false)
                 : saved.TryGetValue(role, out var set)
                     ? (Known(set.Permissions), true)
                     : (RolePermissions.For(role), false));
@@ -35,11 +35,17 @@ public sealed class PermissionService
         // The owner and the admin have everything, including permissions added later.
         // The owner's own permissions (Permissions.OwnerOnly) are nobody else's.
         if (staff.Role == Role.OWNER) return Permissions.All;
-        if (staff.Role == Role.ADMIN && staff.CustomRole is null) return Known(Permissions.All.Except(Permissions.OwnerOnly));
+        // Going past the rules is given by hand, to an admin too (owner, 2026-10-22).
+        if (staff.Role == Role.ADMIN && staff.CustomRole is null)
+            return Known(AdminAll.Union(staff.GrantedPermissions.Intersect(new[] { Permissions.RulesOverride })));
         var set = staff.CustomRole is { } custom ? custom.Permissions.ToArray()
             : sets.TryGetValue(staff.Role, out var s) ? s.Permissions : RolePermissions.For(staff.Role);
         return Known(set.Union(staff.GrantedPermissions).Except(staff.RevokedPermissions).Except(Permissions.OwnerOnly));
     }
+
+    /// <summary>What an admin has without being given anything: all but the owner's own and going past the rules.</summary>
+    private static readonly string[] AdminAll =
+        Permissions.All.Except(Permissions.OwnerOnly).Except(new[] { Permissions.RulesOverride }).ToArray();
 
     /// <summary>Only real permission names, in their standard order.</summary>
     public static string[] Known(IEnumerable<string> permissions)

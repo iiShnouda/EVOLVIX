@@ -3012,6 +3012,7 @@ export const en = {
   'error.below_cost': 'The price is below cost.',
   'error.below_floor': 'The price is below the minimum profit.',
   'owner.warnTitle': 'Warning',
-  'owner.warnAsk': 'The program doesn\'t allow this to anyone. As the owner, do you want to go on anyway?',
+  'owner.warnAsk': "The program doesn't normally allow this. You may go past the rules: do you want to go on anyway?",
   'owner.goOn': 'Go on',
+  'perm.rules:override': 'Go past the program\'s rules (after a warning)',
 } as const;

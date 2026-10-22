@@ -76,6 +76,8 @@ const SECTION_OF: Record<string, string> = {
   payroll: 'payroll',
   employees: 'payroll',
   attendance: 'payroll',
+  // Going past the rules (owner, 2026-10-22) sits with the accounts and permissions.
+  rules: 'staff',
 };
 const SECTIONS = [
   'dashboard',

@@ -29,7 +29,10 @@ export function useMaySeeProfit(): boolean {
   return useAuth((s) => s.user?.permissions ?? NONE).includes('profit:view');
 }
 
-/** An owner passes every rule the company set itself (owner, 2026-10-22); the server decides too. */
-export function useIsOwner(): boolean {
-  return useAuth((s) => s.user?.role) === 'OWNER';
+/**
+ * Whoever may go past the company's rules after a warning (rules:override, owner 2026-10-22: the
+ * owner, and anyone it is given to); the server decides too.
+ */
+export function useMayOverride(): boolean {
+  return useAuth((s) => s.user?.permissions ?? NONE).includes('rules:override');
 }

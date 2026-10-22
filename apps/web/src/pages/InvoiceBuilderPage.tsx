@@ -26,7 +26,7 @@ import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { PartyPicker } from '../components/PartyPicker';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useT } from '../lib/i18n';
-import { useCan, useIsOwner } from '../lib/can';
+import { useCan, useMayOverride } from '../lib/can';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -163,7 +163,7 @@ export function InvoiceBuilderPage({
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
-  const owner = useIsOwner();
+  const owner = useMayOverride();
   /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
   const seeCosts = can('costs:view');
   // Profit has its own permission and the show/hide switch (owner, 2026-10-17).

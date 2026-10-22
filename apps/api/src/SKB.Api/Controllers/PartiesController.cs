@@ -173,7 +173,7 @@ public sealed class PartiesController : ControllerBase
             return StatusCode(403, new { message = "Closing or reopening an account needs permission.", code = "close_not_allowed" });
         if (req.IsActive == false && party.IsActive)
         {
-            if (party.Balance != 0 && !Access.OwnerPasses(User))
+            if (party.Balance != 0 && !Access.OverridePasses(User))
                 return BadRequest(new
                 {
                     message = "This party still has a balance. Settle it before closing the account.",

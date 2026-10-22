@@ -115,4 +115,20 @@ eq('stock still can’t go below zero, even confirmed', [noStock.data?.code, noS
 asked(await owner.put(`/parties/${tight.id}`, { isActive: false }), 'has_balance');
 ok('confirmed: the owner closes an account that still owes', await sure.put(`/parties/${tight.id}`, { isActive: false }));
 
+// ------------------------------------------------------------------ given to anyone (owner, 2026-10-22)
+console.log('== going past the rules is a permission anyone may be given');
+eq('the owner holds it', owner.user.permissions.includes('rules:override'), true);
+const adminRole = (await owner.get('/roles')).data?.find?.((r) => r.role === 'ADMIN');
+check('the admin role is listed', !!adminRole);
+if (adminRole) eq('an admin doesn’t, until given', adminRole.permissions.includes('rules:override'), false);
+const accId = ((await owner.get('/staff')).data.items ?? (await owner.get('/staff')).data).find((x) => x.email === `lockacc.${tag}@skb.local`).id;
+ok('given to the accountant', await owner.put(`/staff/${accId}/permissions`, { granted: ['rules:override'], revoked: [] }));
+const acc2 = await login(`lockacc.${tag}@skb.local`, PASS);
+eq('…who now holds it', acc2.user.permissions.includes('rules:override'), true);
+const locked2 = ok('an invoice', await acc2.post('/sales/invoices', sale(1)));
+ok('locked', await acc2.post('/sales/invoices/lock', { ids: [locked2.id], locked: true }));
+asked(await acc2.put(`/sales/invoices/${locked2.id}`, sale(2)), 'invoice_locked');
+ok('confirmed: the accountant changes the locked invoice', await acc2.confirmed().put(`/sales/invoices/${locked2.id}`, sale(2)));
+ok('taken back', await owner.put(`/staff/${accId}/permissions`, { granted: [], revoked: [] }));
+
 process.exit(summary('invoicelock') ? 1 : 0);
