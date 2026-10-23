@@ -2999,4 +2999,6 @@ export const ar: TranslationDictionary = {
   'owner.warnAsk': 'البرنامج لا يسمح بهذا عادةً. لديك صلاحية تخطي القواعد، هل تريد المتابعة على أي حال؟',
   'owner.goOn': 'متابعة',
   'perm.rules:override': 'تخطي قواعد البرنامج (بعد تحذير)',
+  'staff.forgetPassword': 'حذف كلمة المرور المحفوظة',
+  'staff.forgetPasswordAsk': 'هل تريد حذف كلمة المرور المحفوظة؟',
 };

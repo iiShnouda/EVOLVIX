@@ -3015,4 +3015,6 @@ export const en = {
   'owner.warnAsk': "The program doesn't normally allow this. You may go past the rules: do you want to go on anyway?",
   'owner.goOn': 'Go on',
   'perm.rules:override': 'Go past the program\'s rules (after a warning)',
+  'staff.forgetPassword': 'Delete saved password',
+  'staff.forgetPasswordAsk': 'Delete the saved password?',
 } as const;

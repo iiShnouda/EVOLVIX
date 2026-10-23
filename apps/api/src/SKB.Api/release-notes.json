@@ -393,6 +393,10 @@
         {
           "ar": "بنود المصروفات: تعديل الاسم ونقل البند تحت بند تاني وحذفه.",
           "en": "Expense items: rename, move under another item, and delete."
+        },
+        {
+          "ar": "الحسابات والصلاحيات: زر «حذف كلمة المرور المحفوظة» جنب «عرض كلمة المرور»، من غير ما تحتاج تعمل كلمة مرور جديدة.",
+          "en": "Accounts & permissions: a “Delete saved password” button beside “Show password”, without setting a new one."
         }
       ]
     },

@@ -661,6 +661,22 @@ function PersonPanel({ person }: { person: StaffMember }) {
                 {shown}
               </code>
             )}
+            {/* Forget it without setting a new one (owner, 2026-10-23). */}
+            <Button
+              size="sm"
+              variant="dangerGhost"
+              icon="trash"
+              loading={update.isPending}
+              onClick={async () => {
+                if (!(await confirm({ message: t('staff.forgetPasswordAsk'), danger: true })))
+                  return;
+                setShown(null);
+                setRemember(false);
+                await run({ rememberPassword: false });
+              }}
+            >
+              {t('staff.forgetPassword')}
+            </Button>
           </div>
         )}
         {!canManage && <p className="text-xs text-muted">{t('staff.readonly')}</p>}

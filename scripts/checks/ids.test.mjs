@@ -112,6 +112,12 @@ ok(
   await owner.put(`/staff/${s1.id}`, { password: 'N3wPassword!', rememberPassword: false }),
 );
 eq('nothing kept now', (await owner.get(`/staff/${s1.id}/password-note`)).status, 404);
+// Deleting the kept password on its own, without a new one (owner, 2026-10-23).
+ok('kept again', await owner.put(`/staff/${s1.id}`, { password: 'N3wPassword2!', rememberPassword: true }));
+eq('readable', (await owner.get(`/staff/${s1.id}/password-note`)).status, 200);
+const forgot = ok('deleted alone', await owner.put(`/staff/${s1.id}`, { rememberPassword: false }));
+eq('…the list says none is kept', forgot.hasPasswordNote, false);
+eq('…and none can be read', (await owner.get(`/staff/${s1.id}/password-note`)).status, 404);
 ok('removed (nothing done under it)', await owner.del(`/staff/${s1.id}`), 204);
 check('gone', !(await owner.get('/staff')).data.some((x) => x.id === s1.id));
 const s2 = ok(
