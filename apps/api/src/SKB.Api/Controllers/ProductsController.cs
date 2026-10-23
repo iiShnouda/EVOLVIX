@@ -230,7 +230,7 @@ public sealed class ProductsController : ControllerBase
     [HttpGet("next-code")]
     [Authorize(Policy = Permissions.ProductsCreate)]
     public async Task<ActionResult<NextCodeDto>> NextCode([FromQuery] string? departmentId = null,
-        [FromQuery] string? groupId = null, [FromQuery] string? warehouseId = null)
+        [FromQuery] string? groupId = null, [FromQuery] string? supplierId = null)
     {
         Department? department = null;
         var path = new List<Category>();
@@ -241,9 +241,8 @@ public sealed class ProductsController : ControllerBase
             department = dept;
             path = groups;
         }
-        Warehouse? into = Guid.TryParse(warehouseId, out var wid)
-            ? await _warehouses.Visible(User).AsNoTracking().FirstOrDefaultAsync(w => w.Id == wid) : null;
-        return Ok(new NextCodeDto(await Catalog.NextCodeForAsync(_db, into?.BranchId ?? Access.Work(User), into, department, path)));
+        return Ok(new NextCodeDto(await Catalog.NextCodeForAsync(_db, department, path,
+            Guid.TryParse(supplierId, out var sid) ? sid : null)));
     }
 
     /// <summary>
@@ -353,16 +352,11 @@ public sealed class ProductsController : ControllerBase
 
         var (sku, skuError) = await SkuAsync(req.Sku, null);
         if (skuError is not null) return skuError;
-        // Without a code of its own, one from the prefixes of where it is stored: the warehouse it is
-        // bought into, else the working branch's default (owner decision 2026-10-01).
-        Warehouse? into = null;
-        if (req.WarehouseId is not null)
-        {
-            into = Guid.TryParse(req.WarehouseId, out var wid)
-                ? await _warehouses.Visible(User).FirstOrDefaultAsync(w => w.Id == wid && w.IsActive) : null;
-            if (into is null) return BadRequest(new { message = "Warehouse not found.", code = "warehouse_not_found" });
-        }
-        sku ??= await Catalog.NextCodeForAsync(_db, into?.BranchId ?? Access.Work(User), into, department, path);
+        // Without a code of its own: department and groups, supplier, number (owner, 2026-10-23).
+        if (req.WarehouseId is not null && (!Guid.TryParse(req.WarehouseId, out var wid)
+                || !await _warehouses.Visible(User).AnyAsync(w => w.Id == wid && w.IsActive)))
+            return BadRequest(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+        sku ??= await Catalog.NextCodeForAsync(_db, department, path, product.SupplierId);
         product.Sku = sku;
 
         var (units, unitError) = await Catalog.ParseUnitsAsync(_db, req.Units, withBarcodes: true);

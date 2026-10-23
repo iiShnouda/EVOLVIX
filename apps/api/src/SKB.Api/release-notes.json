@@ -191,6 +191,10 @@
         {
           "ar": "«تخطي قواعد البرنامج (بعد تحذير)» بقت صلاحية في الحسابات والصلاحيات: المالك عنده دايمًا، وتقدر تديها لأي موظف أو دور، والأدمن ما بياخدهاش غير لو اديتهاله.",
           "en": "“Go past the program's rules (after a warning)” is now a permission under accounts & permissions: the owner always has it, it can be given to anyone or any role, and an admin gets it only when given."
+        },
+        {
+          "ar": "كود الصنف الجديد: بادئة القسم والتفريعات مع بعض، ثم كود المورد، ثم رقم الصنف في القسم بـ 1…9 ثم A (10) لحد Z (35) ثم 10… مثال: MWSH-24-1A.",
+          "en": "New item code: the department's and sub-groups' prefixes together, the supplier's code, then the item's number in its department as 1…9, A (10) to Z (35), then 10… e.g. MWSH-24-1A."
         }
       ],
       "fixes": [

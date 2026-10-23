@@ -131,7 +131,7 @@ public sealed class ImportController : ControllerBase
             if (supplierName is not null)
                 product.SupplierId = (await SupplierAsync(supplierName)).Id;
 
-            product.Sku = await Catalog.NextCodeForAsync(_db, branchId, null, department, Array.Empty<Category>());
+            product.Sku = await Catalog.NextCodeForAsync(_db, department, Array.Empty<Category>(), product.SupplierId);
 
             var cost = Catalog.ParseAmount(Cell(row, col, "cost"));
             if (cost is long c) product.CostPrice = c;

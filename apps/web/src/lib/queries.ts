@@ -997,15 +997,16 @@ export function useSaveGroup() {
 export function useNextCode(
   departmentId: string,
   groupId: string,
-  warehouseId: string,
+  supplierId: string,
   enabled: boolean,
 ) {
   const params = new URLSearchParams();
   if (departmentId) params.set('departmentId', departmentId);
   if (groupId) params.set('groupId', groupId);
-  if (warehouseId) params.set('warehouseId', warehouseId);
+  // The code carries the supplier's code (owner, 2026-10-23: MWSH-24-1A).
+  if (supplierId) params.set('supplierId', supplierId);
   return useQuery({
-    queryKey: ['catalog', 'next-code', departmentId, groupId, warehouseId],
+    queryKey: ['catalog', 'next-code', departmentId, groupId, supplierId],
     queryFn: () => api.get<{ code: string }>(`/products/next-code?${params}`),
     enabled,
     staleTime: 10_000,

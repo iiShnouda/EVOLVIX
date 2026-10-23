@@ -45,7 +45,7 @@ const nc = ok(
   await o.get(`/products/next-code?departmentId=${d.id}&groupId=${half.id}`),
 );
 console.log('next code', nc.code);
-check('code has path', /UND-M-V-HS-\d{5}$/.test(nc.code), nc);
+check('code has path', /^UNDMVHS-0-[0-9A-Z]+$/.test(nc.code), nc);
 const units = ok('units', await o.get('/units'));
 const p = ok(
   'create',
@@ -57,7 +57,7 @@ const p = ok(
   }),
 );
 console.log('created', p.sku, p.units);
-check('sku path', p.sku.includes('UND-M-V-HS-'), p.sku);
+check('sku path', /^UNDMVHS-0-[0-9A-Z]+$/.test(p.sku), p.sku);
 const bc = p.units[0].barcode;
 check('auto ean13', /^20\d{11}$/.test(bc), bc);
 // search with typo/variant spellings

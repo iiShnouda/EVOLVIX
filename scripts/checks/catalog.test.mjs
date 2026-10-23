@@ -66,7 +66,7 @@ const itemReq = {
 };
 const juice = ok('create item with units + prices', await owner.post('/products', itemReq));
 eq('item has 2 units', juice.units.map((u) => u.factor), [1, 24]);
-check('auto SKU', /^ITEM-\d{5}$/.test(juice.sku), juice.sku);
+check('auto SKU', /^ITEM-0-[0-9A-Z]+$/.test(juice.sku), juice.sku);
 const cell = (d, unitId, levelId) => d.prices.find((p) => p.unitId === unitId && p.priceLevelId === levelId);
 eq('piece customer price own', [cell(juice, piece.id, custLevel.id).own, cell(juice, piece.id, custLevel.id).source], [1200, 'OWN']);
 eq('carton at retail falls back to default level', [cell(juice, carton.id, retail.id).effective, cell(juice, carton.id, retail.id).source], [27000, 'DEFAULT']);
@@ -213,12 +213,12 @@ console.log('== returns in units');
 ok('buy 2 more cartons', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: mainWh.id, taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitCost: 23000 }] }));
 const big = ok('sell 2 cartons with tax + discount', await sale(mona, { taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitPrice: 27000, discount: 100 }] }));
 const bl = (await owner.get(`/sales/invoices/${big.id}`)).data.lines[0]; // the accountant's answer leaves the cost out
-const ret1 = ok('return 1 whole carton', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 24 }] }));
+const ret1 = ok('return 1 whole carton', await owner.confirmed().post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 24 }] }));
 eq('whole carton returned in cartons', [ret1.lines[0].unitName, ret1.lines[0].unitQuantity, ret1.lines[0].unitPrice, ret1.lines[0].discount, ret1.lines[0].lineTotal], [carton.name, 1, 27000, 50, 26950]);
-const ret2 = ok('return 5 pieces', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 5 }] }));
+const ret2 = ok('return 5 pieces', await owner.confirmed().post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 5 }] }));
 eq('pieces returned in base unit', [ret2.lines[0].unitName, ret2.lines[0].unitFactor, ret2.lines[0].unitQuantity], [piece.name, 1, 5]);
 eq('pieces gross share', ret2.lines[0].lineTotal + ret2.lines[0].discount, round(54000 * 5 / 48));
-const ret3 = ok('return the last 19 pieces', await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 19 }] }));
+const ret3 = ok('return the last 19 pieces', await owner.confirmed().post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 19 }] }));
 const rets = [ret1, ret2, ret3];
 eq('gross returned exactly', rets.reduce((s, x) => s + x.lines[0].lineTotal + x.lines[0].discount, 0), 54000);
 eq('discount returned exactly', rets.reduce((s, x) => s + x.lines[0].discount, 0), 100);
@@ -227,7 +227,7 @@ check('a real cost', bl.lineCost > 0);
 eq('tax returned exactly', rets.reduce((s, x) => s + x.taxTotal, 0), big.taxTotal);
 eq('grand returned exactly', rets.reduce((s, x) => s + x.grandTotal, 0), big.grandTotal);
 eq('invoice fully returned', (await owner.get(`/sales/invoices/${big.id}`)).data.status, 'RETURNED');
-eq('over-return refused', (await owner.post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 1 }] })).data?.code, 'exceeds_returnable');
+eq('over-return refused', (await owner.confirmed().post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 1 }] })).data?.code, 'exceeds_returnable');
 
 // purchase return backs the exact carton value out of the average
 const beforePR = (await owner.get(`/products/${juice.id}`)).data;

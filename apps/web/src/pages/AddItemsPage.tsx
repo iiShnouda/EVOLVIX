@@ -674,7 +674,7 @@ export function AddItemsPage() {
   const nextCode = useNextCode(
     entryDepartment,
     entry.departmentId ? (entry.groupId ?? '') : '',
-    warehouseId,
+    supplier?.id ?? '',
     !entry.existing && !!entry.name.trim() && canNewItems,
   );
 

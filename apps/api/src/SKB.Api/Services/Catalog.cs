@@ -262,21 +262,72 @@ public static class Catalog
     }
 
     /// <summary>
-    /// The next item code from where it is stored and what it is (owner decisions 2026-10-01 and
-    /// 2026-10-06): branch, warehouse, department, then each group's prefix on the way down, e.g.
-    /// EL-H-UND-M-V-HS-00012.
+    /// The next item code (owner, 2026-10-23): the department's and its groups' prefixes written
+    /// together, the main supplier's code (0 for none), and the item's number within its department
+    /// written 1–9, then A (10) to Z (35), then 10, 11…: e.g. MWSH-24-1A. Without any prefix, ITEM.
+    /// Codes handed out but not yet saved (several items in one request) are counted too.
     /// </summary>
-    public static async Task<string> NextCodeForAsync(AppDbContext db, Guid? branchId, Warehouse? into,
-        Department? department, IEnumerable<Category> path)
+    public static async Task<string> NextCodeForAsync(AppDbContext db, Department? department,
+        IEnumerable<Category> path, Guid? supplierId)
     {
-        var groupPrefixes = path.Select(g => g.Prefix).ToList();
-        if (string.IsNullOrWhiteSpace(department?.Prefix) && groupPrefixes.All(string.IsNullOrWhiteSpace))
-            return await NextItemSkuAsync(db);
-        var branchPrefix = await db.Branches.Where(b => b.Id == branchId).Select(b => b.Prefix).FirstOrDefaultAsync();
-        var whPrefix = into is not null ? into.Prefix
-            : await db.Warehouses.Where(w => w.BranchId == branchId && w.IsDefault && w.IsActive)
-                .Select(w => w.Prefix).FirstOrDefaultAsync();
-        return await NextItemCodeAsync(db, new[] { branchPrefix, whPrefix, department?.Prefix }.Concat(groupPrefixes).ToArray());
+        var head = string.Concat(new[] { department?.Prefix }.Concat(path.Select(g => g.Prefix))
+            .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.Trim().ToUpperInvariant()));
+        if (head.Length == 0) head = "ITEM";
+        var supplier = supplierId is Guid sid
+            ? await db.Parties.Where(p => p.Id == sid).Select(p => (int?)p.Code).FirstOrDefaultAsync() ?? 0
+            : 0;
+
+        // The numbers already used in the department (saved, and waiting to be saved).
+        List<string> used;
+        if (department is not null)
+        {
+            var nodes = await db.Categories.Where(c => c.DepartmentId == department.Id).Select(c => c.Id).ToListAsync();
+            used = await db.Products.AsNoTracking().Where(p => nodes.Contains(p.CategoryId)).Select(p => p.Sku).ToListAsync();
+            used.AddRange(db.Products.Local.Where(p => nodes.Contains(p.CategoryId)).Select(p => p.Sku));
+        }
+        else
+        {
+            used = await db.Products.AsNoTracking().Where(p => p.Sku.StartsWith("ITEM-")).Select(p => p.Sku).ToListAsync();
+            used.AddRange(db.Products.Local.Where(p => p.Sku.StartsWith("ITEM-")).Select(p => p.Sku));
+        }
+        var next = used.Select(SerialOf).DefaultIfEmpty(0).Max() + 1;
+        while (true)
+        {
+            var code = $"{head}-{supplier}-{ToBase36(next)}";
+            var upper = code.ToUpperInvariant();
+            if (!db.Products.Local.Any(p => p.Sku.ToUpper() == upper)
+                && !await db.Products.AsNoTracking().AnyAsync(p => p.Sku.ToUpper() == upper))
+                return code;
+            next++;
+        }
+    }
+
+    private const string Base36Digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    /// <summary>A number written with 0–9 then A–Z (A = 10, Z = 35, then 10 = 36).</summary>
+    public static string ToBase36(long n)
+    {
+        if (n <= 0) return "0";
+        var sb = new StringBuilder();
+        for (; n > 0; n /= 36) sb.Insert(0, Base36Digits[(int)(n % 36)]);
+        return sb.ToString();
+    }
+
+    /// <summary>The item number at the end of a code made by <see cref="NextCodeForAsync"/> (HEAD-SUPPLIER-NUMBER); 0 if it isn't one.</summary>
+    public static long SerialOf(string? sku)
+    {
+        var parts = (sku ?? "").ToUpperInvariant().Split('-');
+        if (parts.Length != 3 || parts[1].Length == 0 || !parts[1].All(char.IsAsciiDigit)) return 0;
+        var tail = parts[2];
+        if (tail.Length == 0 || tail.Length > 8) return 0;
+        long n = 0;
+        foreach (var ch in tail)
+        {
+            var d = Base36Digits.IndexOf(ch);
+            if (d < 0) return 0;
+            n = n * 36 + d;
+        }
+        return n;
     }
 
     /// <summary>

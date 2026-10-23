@@ -1,5 +1,5 @@
-// Adding items is a purchase invoice (owner decision 2026-10-01): items created into a warehouse take
-// its branch's and warehouse's prefixes in their code, and the purchase carries the supplier's
+// Adding items is a purchase invoice (owner decision 2026-10-01): items get a code from their
+// department, groups and supplier (owner, 2026-10-23), and the purchase carries the supplier's
 // discount per line, so the goods and the supplier's account are at the net cost. Runs against BASE.
 import { login, check, eq, ok, summary } from './lib.mjs';
 
@@ -32,8 +32,33 @@ const item = ok(
     ],
   }),
 );
-check('its code carries the department prefix', item.sku.includes(dept.prefix), item.sku);
-if (main.prefix) check('and the branch prefix', item.sku.startsWith(main.prefix), item.sku);
+// The code (owner, 2026-10-23): department and groups together, the supplier's code, then the item's
+// number in its department written 1–9, A (10)–Z (35), 10…
+eq('its code: department, supplier, number', item.sku, `${dept.prefix}-${supplier.code}-1`);
+const group = ok('a sub-group', await owner.post('/groups', { departmentId: dept.id, name: `Coats ${tag}`, prefix: 'CO' }));
+const made = [];
+for (let i = 0; i < 10; i++)
+  made.push(
+    ok(
+      `item ${i + 2}`,
+      await owner.post('/products', {
+        name: `Coat ${i} ${tag}`,
+        departmentId: dept.id,
+        groupId: group.id,
+        units: [{ unitId: piece.id, factor: 1 }],
+      }),
+    ).sku,
+  );
+eq('…the group joins the department, no supplier is 0, and 10 is A, 11 is B', [made[0], made[8], made[9]], [
+  `${dept.prefix}CO-0-2`,
+  `${dept.prefix}CO-0-A`,
+  `${dept.prefix}CO-0-B`,
+]);
+eq(
+  'the next code is shown before saving',
+  (await owner.get(`/products/next-code?departmentId=${dept.id}&groupId=${group.id}&supplierId=${supplier.id}`)).data?.code,
+  `${dept.prefix}CO-${supplier.code}-C`,
+);
 eq(
   'an unknown warehouse is refused',
   (await owner.post('/products', { name: `X ${tag}`, departmentId: dept.id, warehouseId: '00000000-0000-0000-0000-000000000000', units: [{ unitId: piece.id, factor: 1 }] })).data?.code,
