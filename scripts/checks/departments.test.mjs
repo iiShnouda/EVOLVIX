@@ -160,6 +160,9 @@ ok('boss: 10% (the company’s)', await access(owner, boss, {}));
 const b = await login(boss.email, PASS);
 eq('boss can’t give 20%', (await access(b, seller, { maxDiscountPercent: 20 })).data?.code, 'over_your_limit');
 ok('…but 5%', await access(b, seller, { maxDiscountPercent: 5 }));
-eq('…nor the company’s none', (await ok('company limit back to none', await owner.put('/settings', { maxDiscountPercent: 100 })), (await access(b, seller, {})).data?.code), 'over_your_limit');
+eq('…nor none (100%)', (await access(b, seller, { maxDiscountPercent: 100 })).data?.code, 'over_your_limit');
+ok('company limit back to none', await owner.put('/settings', { maxDiscountPercent: 100 }));
+// The company's limit is in everyone's sign-in and holds at once (owner, 2026-10-24).
+ok('…at once the boss (on the company’s) may give it too', await access(b, seller, {}));
 
 process.exit(summary('departments') ? 1 : 0);

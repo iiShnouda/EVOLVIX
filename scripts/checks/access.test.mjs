@@ -1,7 +1,7 @@
 // Per-person access (DOMAIN.md §2.1): the branches, warehouses and money accounts each person may
 // use, and the working branch new documents go to (the X-Branch header). Runs in two new branches
 // with its own people, so it can run again on the same database. Runs against BASE.
-import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const PASSWORD = `Access-${tag}-Check1`;
@@ -156,7 +156,8 @@ ok(
   'Rana also works in B',
   await setAccess(owner, rana, { allBranches: false, branchIds: [b2.id] }),
 );
-eq('her old token still says A only', (await r.get(`/sales/invoices/${sB.id}`)).status, 404);
+// It holds at once (owner, 2026-10-24): her next request is answered as things now stand.
+eq('B’s invoice opens for her straight away', (await r.get(`/sales/invoices/${sB.id}`)).status, 200);
 r = await as(rana);
 eq(
   'signed in again: A and B, hers first',
@@ -388,5 +389,57 @@ check(
   'every change is in the activity log',
   log.filter((e) => e.resourceId === rana.id).length >= 5,
 );
+
+// ------------------------------------------------------------------ at once (owner, 2026-10-24)
+console.log('== a change to what someone may do holds at their next request');
+const nowEmail = `now.${tag}@skb.local`;
+const nowStaff = ok('someone who may see sales', await owner.post('/staff', {
+  fullName: `Now ${tag}`, email: nowEmail, password: PASSWORD, role: 'NONE', branchId: b1.id,
+}));
+ok('…given the sales list', await owner.put(`/staff/${nowStaff.id}/permissions`, { granted: ['sales:view'], revoked: [] }));
+const now1 = await login(nowEmail, PASSWORD);
+ok('…which opens', await now1.get('/sales/invoices'));
+const oldToken = now1.token;
+ok('taken away', await owner.put(`/staff/${nowStaff.id}/permissions`, { granted: [], revoked: [] }));
+const raw = await fetch(`${BASE}/sales/invoices`, { headers: { authorization: `Bearer ${oldToken}` } });
+eq('…the token from before is refused at once', [raw.status, (await raw.json()).code], [401, 'ACCESS_CHANGED']);
+eq('…and a new one hasn’t it', (await now1.get('/sales/invoices')).status, 403);
+ok('given again', await owner.put(`/staff/${nowStaff.id}/permissions`, { granted: ['sales:view'], revoked: [] }));
+ok('…it opens again, without signing in', await now1.get('/sales/invoices'));
+ok('the account closed', await owner.put(`/staff/${nowStaff.id}`, { isActive: false }));
+eq('…nothing works for it any more', (await now1.get('/sales/invoices')).status, 401);
+
+console.log('== a sign-in token used twice ends that sign-in');
+const signIn = async () => {
+  const r = await fetch(`${BASE}/auth/login`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'karim@skb.local', password: 'ChangeMe!Staff123' }),
+  });
+  return { token: (await r.json()).accessToken, cookie: (r.headers.get('set-cookie') ?? '').split(';')[0] };
+};
+const renew = (cookie) => fetch(`${BASE}/auth/refresh`, { method: 'POST', headers: { cookie } });
+const first = await signIn();
+const second = await renew(first.cookie);
+eq('renewed once', second.status, 200);
+const newer = { token: (await second.json()).accessToken, cookie: (second.headers.get('set-cookie') ?? '').split(';')[0] };
+eq('…the same token again at once is only refused', (await renew(first.cookie)).status, 401);
+eq('…the newer one still works', (await fetch(`${BASE}/auth/me`, { headers: { authorization: `Bearer ${newer.token}` } })).status, 200);
+await new Promise((done) => setTimeout(done, 31_000));
+eq('the old one again later: refused', (await renew(first.cookie)).status, 401);
+eq('…and the sign-in it belonged to is over', (await renew(newer.cookie)).status, 401);
+eq('…its access token too', (await fetch(`${BASE}/auth/me`, { headers: { authorization: `Bearer ${newer.token}` } })).status, 401);
+
+// ------------------------------------------------------------------ the page's own rules (owner, 2026-10-24)
+console.log('== content security and the staff list');
+{
+  const page = await fetch(`${BASE}/health`);
+  const csp = page.headers.get('content-security-policy') ?? '';
+  check('only the app’s own scripts run', csp.includes("script-src 'self';") && !csp.includes('unsafe-eval'), csp);
+  check('…never framed, nothing embedded', csp.includes("frame-ancestors 'none'") && csp.includes("object-src 'none'"), csp);
+  const seller = await login('karim@skb.local'); // signed in again: the sign-in above was ended
+  ok('a seller lists who a sale is credited to', await seller.get('/sales/reps'));
+  const sara = await login('sara@skb.local'); // INVENTORY: credits no sales, adds no boxes or employees
+  eq('the store doesn’t', (await sara.get('/sales/reps')).status, 403);
+}
 
 process.exit(summary('access') ? 1 : 0);

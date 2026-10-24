@@ -130,9 +130,7 @@ ok('sales sells to customer 1 at the list price', await sell(karim, c1, [[A.id, 
 eq('…nor under it', (await sell(karim, c1, [[A.id, 2, 850]])).data?.code, 'price_not_allowed');
 ok('a seller may add to it on this invoice (sales:raise_price)', await sell(karim, c1, [[A.id, 2, 1000]]));
 eq('customer 2 at the list price: refused', (await sell(karim, c2, [[A.id, 2, 900]])).data?.code, 'price_not_allowed');
-ok('a quotation at the list price', await karim.post('/sales/quotations', {
-  partyId: c1.id, warehouseId: wh.id, taxPercent: 0, lines: [{ productId: A.id, quantity: 3, unitPrice: 900 }],
-}));
+check('no quotations any more (owner, 2026-10-01)', [404, 405].includes((await karim.post('/sales/quotations', {})).status));
 ok('the owner may charge anything', await sell(owner, c1, [[A.id, 1, 950]]));
 
 // A variant's own price on the list beats its model's.

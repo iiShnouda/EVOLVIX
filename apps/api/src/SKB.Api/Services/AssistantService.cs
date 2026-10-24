@@ -657,9 +657,12 @@ public sealed class AssistantTools
                     var have = TextKey.Words(contact ? $"{p.Name} {p.Code} {p.Phone}" : $"{p.Name} {p.Code}");
                     return words.All(w => TextKey.Match(w, have) >= 0);
                 }).Take(8).ToList();
+                // The balance only for whoever may see the party's account, as on the parties list.
                 return hits.Count == 0 ? "No match." : string.Join("\n", hits.Select(p =>
-                    $"{p.Code} {p.Name} ({string.Join("/", p.Types)}){(contact ? $", phone {p.Phone ?? "-"}" : "")}, balance " +
-                    $"{Money(Math.Abs(p.Balance))} {(p.Balance > 0 ? "owed to the company" : p.Balance < 0 ? "owed by the company" : "settled")}"));
+                    $"{p.Code} {p.Name} ({string.Join("/", p.Types)}){(contact ? $", phone {p.Phone ?? "-"}" : "")}" +
+                    (Mapper.MaySeeBalance(p.Types, user)
+                        ? $", balance {Money(Math.Abs(p.Balance))} {(p.Balance > 0 ? "owed to the company" : p.Balance < 0 ? "owed by the company" : "settled")}"
+                        : "")));
             }
             case "find_item":
             {

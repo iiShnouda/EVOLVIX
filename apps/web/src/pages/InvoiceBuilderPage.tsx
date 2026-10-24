@@ -21,13 +21,11 @@ import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { PrintSetupSheet } from '../components/DocumentPreview';
 import { DocumentActivity } from '../components/DocumentActivity';
 import { Icon } from '../components/Icon';
-import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { PartyPicker } from '../components/PartyPicker';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
-import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -41,9 +39,7 @@ import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
   useCompanySettings,
   useDepartments,
-  useCreatePurchaseInvoice,
   useCreateOrder,
-  useCreateQuotation,
   useCreateSalesInvoice,
   useHiddenColumns,
   useUpdateSalesInvoice,
@@ -71,15 +67,6 @@ interface Line {
   touched: boolean;
   /** Free goods (بونص): no price, but the cost counts. */
   bonus: boolean;
-  /**
-   * A discount on this line only: a percent of it, so much per piece (the item's smallest unit,
-   * «على الحتة»), or a fixed amount. Sales and quotations; needs the discount permission.
-   */
-  discMode: LineDiscountMode;
-  discValue: string;
-  /** A second discount on the same line, taken after the first (owner, 2026-10-02: "two discounts a piece"). */
-  disc2Mode: LineDiscountMode;
-  disc2Value: string;
   /** Sold at the selling price, the customer's last price or cost, chosen per item (owner, 2026-10-01). */
   basis: PriceBasis;
   /**
@@ -87,12 +74,6 @@ interface Line {
    * stays, following the quantity — so much for so many pieces of the item's smallest unit.
    */
   kept?: { discount: number; pieces: number };
-}
-
-/** Both of a line's own discounts: the second on what is left after the first. */
-function lineDiscounts(l: Line, gross: number, basePieces: number) {
-  const first = lineDiscount(l.discMode, l.discValue, gross, basePieces);
-  return first + lineDiscount(l.disc2Mode, l.disc2Value, gross - first, basePieces);
 }
 
 /** A line as kept in a draft. */
@@ -104,10 +85,6 @@ const keepLine = (l: Line) => ({
   price: l.price,
   touched: l.touched,
   bonus: l.bonus,
-  discMode: l.discMode,
-  discValue: l.discValue,
-  disc2Mode: l.disc2Mode,
-  disc2Value: l.disc2Value,
   basis: l.basis,
   kept: l.kept,
 });
@@ -124,23 +101,20 @@ const field =
 let nextKey = 0;
 
 /**
- * Sales / purchase invoice builder, and (mode "quote") the price quotation builder: a quotation is
- * priced the same way but has no payment or delivery, may promise more than is in stock, and moves
- * nothing until it becomes an invoice. Each line is in one of the item's units (piece, carton…); the
- * server prices it (POST /pricing): the party's price list or an offer, else the party's price level
- * (else the default) — not shown on a sale — and, for an item without a price, cost × (1 + default
- * markup) (sales) or the average cost (purchases); on a sale a quantity discount then comes off.
+ * The sales invoice screen (making, changing and viewing one). Each line is in one of the item's
+ * units (piece, carton…); the server prices it (POST /pricing): the customer's price list or an
+ * offer, else their price level (else the default) — not shown — and, for an item without a price,
+ * cost × (1 + default markup); a quantity discount then comes off. Discounts are the accountant's,
+ * given from the customer's invoices (owner, 2026-10-24): the ones a changed invoice has stay.
  * A seller may add to a piece's price on this invoice only (sales:raise_price); lowering it or
  * picking another level needs its own permission; the server checks the same.
  * Live cost, markup and profit use the cost of the chosen warehouse's branch. What's typed is kept
  * through an app update (useWorkDraft).
  */
 export function InvoiceBuilderPage({
-  mode,
   editId,
   readOnly = false,
 }: {
-  mode: 'sale' | 'purchase' | 'quote';
   /** A saved sales invoice being changed (sales:edit); it is posted again under its number. */
   editId?: string;
   /**
@@ -149,9 +123,6 @@ export function InvoiceBuilderPage({
    */
   readOnly?: boolean;
 }) {
-  const isQuote = mode === 'quote';
-  const isSale = mode !== 'purchase';
-  const backTo = isQuote ? '/sales?tab=quotations' : isSale ? '/sales' : '/purchases';
   const { t, locale } = useT();
   const navigate = useNavigate();
   const can = useCan();
@@ -163,27 +134,20 @@ export function InvoiceBuilderPage({
 
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
-  const canChangePrice = can(isSale ? 'sales:change_price' : 'purchases:change_price');
+  const canChangePrice = can('sales:change_price');
   // Adding to a price, on this invoice only (owner decision 2026-09-30).
-  const canRaisePrice = isSale && can('sales:raise_price');
+  const canRaisePrice = can('sales:raise_price');
   const priceEditable = canChangePrice || canRaisePrice;
-  const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
-  // The accountant gives every sales discount from the customer's invoices (owner, 2026-10-24):
-  // none is added while a sales invoice is made or changed, and the ones it has stay as they are.
-  const canDiscount = !isSale && can('purchases:discount');
+  const canChooseLevel = can('sales:choose_price_level');
   // Sold at the selling price, the customer's last price, or the supply price (owner, 2026-10-01).
-  const canPriceBasis = isSale && can('sales:price_basis');
+  const canPriceBasis = can('sales:price_basis');
   // The customer's shipping company and address are theirs unless this person may change them.
   const canChangeShipping = can('sales:change_shipping');
-  // Discounts appear only when asked for (owner, 2026-10-01).
-  const [showDiscount1, setShowDiscount1] = useState(false);
-  const [showDiscount2, setShowDiscount2] = useState(false);
-  const [lineDiscountOpen, setLineDiscountOpen] = useState<Set<string>>(new Set());
   // Order of the line columns, kept per person.
-  const [columnOrder, setColumnOrder] = useHiddenColumns(`order.invoice.${mode}`);
+  const [columnOrder, setColumnOrder] = useHiddenColumns('order.invoice.sale');
   const [cashAccountId, setCashAccountId] = useState('');
   const isPhone = useDeviceInfo().deviceClass === 'phone';
-  const reps = useReps(isSale);
+  const reps = useReps(can('sales:create') || can('sales:edit') || can('sales:order'));
   const me = useAuth((s) => s.user);
   // Every sale has a rep (المندوب): whoever makes it unless another is picked.
   const [pickedRep, setPickedRep] = useState('');
@@ -194,8 +158,6 @@ export function InvoiceBuilderPage({
   const [docDate, setDocDate] = useState(companyToday);
   const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
   const repCodeMissing = !!repCode && !(reps.data ?? []).some((r) => String(r.code) === repCode);
-  /** Their discount limit (%); null = none. */
-  const maxDiscount = me?.maxDiscountPercent ?? null;
 
   // Branch, then warehouse, then department (owner decision 2026-10-01): picked by the person, in
   // that order, with no "all"; the invoice can't be saved until all three are chosen.
@@ -204,7 +166,7 @@ export function InvoiceBuilderPage({
   // picking another here changes it on every screen.
   const [place, setPlace] = useWorkPlace();
   const [pickedBranch, setPickedBranch] = useState(
-    isSale && myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '',
+    myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '',
   );
   const allWarehouses = useWarehouses(true);
   const branchWarehouses = (allWarehouses.data ?? []).filter(
@@ -220,7 +182,7 @@ export function InvoiceBuilderPage({
   const [pickedDepartment, setPickedDepartment] = useState('');
   const placeApplied = useRef(false);
   useEffect(() => {
-    if (placeApplied.current || editId || !isSale) return;
+    if (placeApplied.current || editId) return;
     if (!place.branchId && !place.warehouseId && !place.departmentId) return;
     placeApplied.current = true;
     if (place.branchId && myBranches.some((b) => b.id === place.branchId))
@@ -230,11 +192,9 @@ export function InvoiceBuilderPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [place.branchId, place.warehouseId, place.departmentId]);
   // Every sale names its department while the company has any (Settings; owner 2026-10-01).
-  const departmentRequired =
-    isSale && departments.length > 0 && settings.data?.requireDepartment !== false;
-  const departmentId = !isSale
-    ? ''
-    : pickedDepartment && departments.some((d) => d.id === pickedDepartment)
+  const departmentRequired = departments.length > 0 && settings.data?.requireDepartment !== false;
+  const departmentId =
+    pickedDepartment && departments.some((d) => d.id === pickedDepartment)
       ? pickedDepartment
       : onlyChoice(departments);
 
@@ -243,7 +203,6 @@ export function InvoiceBuilderPage({
     pageSize: 100,
     type: 'CARRIER',
     active: true,
-    enabled: isSale,
   });
   const [delivery, setDelivery] = useState<DeliveryValue>({
     method: 'PICKUP',
@@ -265,14 +224,12 @@ export function InvoiceBuilderPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [party?.id, delivery.method]);
   /** A cash customer (عميل نقدي) pays the whole invoice when it is made. */
-  const cashCustomer = isSale && !isQuote && !!party?.isCashCustomer;
+  const cashCustomer = !!party?.isCashCustomer;
 
-  // Price level: the party's own, else the default of this side. Another needs permission.
+  // Price level: the customer's own, else the default sales level. Another needs permission.
   const levels = usePriceLevels();
-  const sideLevels = (levels.data ?? []).filter(
-    (l) => l.side === (isSale ? 'SALE' : 'PURCHASE') && l.isActive,
-  );
-  const partyLevelId = isSale ? party?.salesPriceLevelId : party?.purchasePriceLevelId;
+  const sideLevels = (levels.data ?? []).filter((l) => l.side === 'SALE' && l.isActive);
+  const partyLevelId = party?.salesPriceLevelId;
   const ownLevel =
     sideLevels.find((l) => l.id === partyLevelId) ??
     sideLevels.find((l) => l.isDefault) ??
@@ -280,15 +237,11 @@ export function InvoiceBuilderPage({
   const [pickedLevel, setPickedLevel] = useState('');
   const levelId = (canChooseLevel && pickedLevel) || ownLevel?.id || '';
 
-  // Goods leave from (sale) or arrive into (purchase) this warehouse; defaults to the branch's.
-  const defaultWarehouse = useDefaultWarehouseId();
+  // Goods leave from this warehouse: picked (no default), or the branch's only one.
   const [pickedWarehouse, setPickedWarehouse] = useState('');
-  // A sale's warehouse is picked (no default); a purchase still lands in the branch's by default.
-  const warehouseId = isSale
-    ? branchWarehouses.some((w) => w.id === pickedWarehouse)
-      ? pickedWarehouse
-      : onlyChoice(branchWarehouses)
-    : pickedWarehouse || defaultWarehouse;
+  const warehouseId = branchWarehouses.some((w) => w.id === pickedWarehouse)
+    ? pickedWarehouse
+    : onlyChoice(branchWarehouses);
   /** The warehouse's departments (none picked on it = every department). */
   const warehouseDepartments = (allWarehouses.data ?? []).find(
     (w) => w.id === warehouseId,
@@ -320,7 +273,7 @@ export function InvoiceBuilderPage({
   const [listOpen, setListOpen] = useState(false);
   /** Only this category's items, only items in stock. */
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [inStockOnly, setInStockOnly] = useState(isSale && !isQuote);
+  const [inStockOnly, setInStockOnly] = useState(true);
   const [scanning, setScanning] = useState(false);
   /** How many the next item comes in (كمية), as in the old program; back to 1 after each. */
   const [addQty, setAddQty] = useState('1');
@@ -363,8 +316,6 @@ export function InvoiceBuilderPage({
   // Items being prepared before they go on the invoice (owner, 2026-10-01): quantity, unit, price,
   // discount and basis are set here, with the prices to compare, then "Add" puts them all on it.
   const [staged, setStaged] = useState<Line[]>([]);
-  // Lines whose second discount was asked for.
-  const [second, setSecond] = useState<Set<string>>(new Set());
   // The item whose card is open (clicking its name while making the invoice).
   const [cardOf, setCardOf] = useState<string | null>(null);
   // An item's life opens for whoever may see any part of it.
@@ -386,33 +337,20 @@ export function InvoiceBuilderPage({
     }
     return m;
   }, [lines]);
+  // The invoice discounts a changed invoice already has (the accountant's): they stay as they are.
   const [discount1, setDiscount1] = useState<DiscountInput>({ mode: 'percent', value: '' });
   const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
-  // Purchases only: what we pay the supplier now, and the shipping we pay to bring the goods.
-  const [paidNow, setPaidNow] = useState('');
-  const [paidAccountId, setPaidAccountId] = useState('');
-  const [shippingCost, setShippingCost] = useState('');
-  const [shippingAccountId, setShippingAccountId] = useState('');
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
 
   const createSale = useCreateSalesInvoice();
-  const createPurchase = useCreatePurchaseInvoice();
-  const createQuote = useCreateQuotation();
   const createOrder = useCreateOrder();
   const updateSale = useUpdateSalesInvoice();
   // A sale posts at once and the accountant is told, to take the payment (owner decision 2026-09-30).
   // Only someone who may just save pending invoices (sales:order without sales:create) saves one.
-  const asOrder = isSale && !isQuote && !can('sales:create') && can('sales:order');
-  const pending =
-    createSale.isPending ||
-    createPurchase.isPending ||
-    createQuote.isPending ||
-    createOrder.isPending ||
-    updateSale.isPending;
+  const asOrder = !can('sales:create') && can('sales:order');
+  const pending = createSale.isPending || createOrder.isPending || updateSale.isPending;
   const serverError = (createSale.error ??
-    createPurchase.error ??
-    createQuote.error ??
     createOrder.error ??
     updateSale.error) as ApiError | null;
 
@@ -432,7 +370,7 @@ export function InvoiceBuilderPage({
     const levelPrice = unit?.prices.find((p) => p.priceLevelId === levelId)?.price;
     if (levelPrice !== undefined) return levelPrice;
     const cost = costOf(l.product) * factor;
-    return isSale ? Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100) : cost;
+    return Math.round((cost * (100 + Math.max(0, defaultMarkup))) / 100);
   }
 
   // The server's prices for the lines (price list, level, quantity discount). While they load the
@@ -449,9 +387,9 @@ export function InvoiceBuilderPage({
       priceBasis: canPriceBasis && l.basis !== 'LIST' ? l.basis : undefined,
     })),
   };
-  const pricing = usePricing(isSale ? 'sale' : 'purchase', pricingInput);
+  const pricing = usePricing('sale', pricingInput);
   // The prepared items' prices: the selling, last and cost prices to compare before adding.
-  const stagedPricing = usePricing(isSale ? 'sale' : 'purchase', {
+  const stagedPricing = usePricing('sale', {
     ...pricingInput,
     lines: staged.map((l) => ({
       productId: l.product.id,
@@ -494,10 +432,6 @@ export function InvoiceBuilderPage({
           price: 0,
           touched: false,
           bonus: false,
-          discMode: 'percent',
-          discValue: '',
-          disc2Mode: 'percent',
-          disc2Value: '',
           basis: 'LIST',
         },
       ];
@@ -572,14 +506,13 @@ export function InvoiceBuilderPage({
     const price = priceOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
     const gross = l.quantity * price;
-    const manual =
-      !isSale || l.bonus
-        ? 0
-        : l.kept
-          ? Math.min(gross, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
-          : lineDiscounts(l, gross, l.quantity * factor);
-    // A discount typed on the line replaces its quantity discount.
-    const discount = manual > 0 ? manual : autoDiscountOf(l, i);
+    // The discount the accountant gave the line stays, following the quantity; it replaces the
+    // quantity discount.
+    const kept =
+      !l.bonus && l.kept
+        ? Math.min(gross, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
+        : 0;
+    const discount = kept > 0 ? kept : autoDiscountOf(l, i);
     const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
     return {
       line: l,
@@ -624,10 +557,9 @@ export function InvoiceBuilderPage({
     const netUnit = p.line.quantity > 0 ? net / p.line.quantity : 0;
     const markupPct = p.cost > 0 ? ((netUnit - p.cost) / p.cost) * 100 : 0;
     const floorUnit = Math.round((p.cost * (100 + Math.max(0, minMarkup))) / 100);
-    const belowCost = isSale && !p.line.bonus && net < p.lineCost;
-    const belowFloor = isSale && !p.line.bonus && !belowCost && net < p.line.quantity * floorUnit;
-    const overStock =
-      isSale && (baseWanted.get(p.line.product.id) ?? 0) > available(p.line.product);
+    const belowCost = !p.line.bonus && net < p.lineCost;
+    const belowFloor = !p.line.bonus && !belowCost && net < p.line.quantity * floorUnit;
+    const overStock = (baseWanted.get(p.line.product.id) ?? 0) > available(p.line.product);
     return { ...p, docDiscount, net, lineProfit, markupPct, belowCost, belowFloor, overStock };
   });
 
@@ -638,12 +570,7 @@ export function InvoiceBuilderPage({
   const grand = netTotal + outcome.tax + outcome.addition;
   // Over the customer's purchase limit: unless the person may allow it, the invoice is saved to
   // wait for the accountant to accept or turn it down (owner decision 2026-10-01).
-  const overCredit =
-    !owner &&
-    isSale &&
-    !isQuote &&
-    party?.creditLimit != null &&
-    party.balance + grand > party.creditLimit;
+  const overCredit = !owner && party?.creditLeft != null && grand > party.creditLeft;
   const profitTotal = netTotal - costTotal;
   const marginPct = netTotal > 0 ? (profitTotal / netTotal) * 100 : 0;
 
@@ -655,23 +582,21 @@ export function InvoiceBuilderPage({
   const hasUnderList = lines.some((l, i) => underList(l, i));
   /** What still has to be done before it can be saved, in the order it is on the screen. */
   const missing: string[] = [
-    ...(!partyId ? [t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')] : []),
-    ...(isSale && !isQuote && !editId && !pickedBranch ? [t('invoice.chooseBranch')] : []),
-    ...(isSale && !isQuote && !editId && pickedBranch && !warehouseId
-      ? [t('invoice.chooseWarehouse')]
-      : []),
+    ...(!partyId ? [t('invoice.selectCustomer')] : []),
+    ...(!editId && !pickedBranch ? [t('invoice.chooseBranch')] : []),
+    ...(!editId && pickedBranch && !warehouseId ? [t('invoice.chooseWarehouse')] : []),
     ...((departmentRequired && !departmentId) || !departmentOk
       ? [t('invoice.chooseDepartment')]
       : []),
-    ...(isSale && !repId ? [t('invoice.chooseRep')] : []),
-    ...(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId
+    ...(!repId ? [t('invoice.chooseRep')] : []),
+    ...(delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId
       ? [t('delivery.pickCarrier')]
       : []),
     ...(staged.length > 0 ? [t('stage.notAdded')] : []),
     ...(lines.length === 0 && staged.length === 0 ? [t('invoice.noItems')] : []),
     ...(hasBelowCost ? [t('invoice.belowCost')] : []),
     ...(hasBlockedFloor ? [t('invoice.belowFloor')] : []),
-    ...(!isQuote && hasOverStock ? [t('invoice.overStock')] : []),
+    ...(hasOverStock ? [t('invoice.overStock')] : []),
     ...(hasUnderList ? [t('invoice.raiseOnly')] : []),
     ...(outcome.error ? [t('charge.tooBig')] : []),
   ];
@@ -680,14 +605,14 @@ export function InvoiceBuilderPage({
     lines.length > 0 &&
     !hasBelowCost &&
     !hasBlockedFloor &&
-    (isQuote || !hasOverStock) &&
+    !hasOverStock &&
     !outcome.error &&
-    !(isSale && !isQuote && delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
-    !(isSale && !repId) &&
+    !(delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId) &&
+    !!repId &&
     !(departmentRequired && !departmentId) &&
     departmentOk &&
     // A sale names its branch and warehouse (owner decision 2026-10-01).
-    !(isSale && !isQuote && !editId && (!pickedBranch || !warehouseId)) &&
+    !(!editId && (!pickedBranch || !warehouseId)) &&
     staged.length === 0 &&
     !hasUnderList &&
     !pricingBusy &&
@@ -701,107 +626,54 @@ export function InvoiceBuilderPage({
     }
     setShowMissing(false);
     // A change keeps what was paid when the invoice was made (no more than it now comes to).
-    const paidAmount = cashCustomer
-      ? grand
-      : isSale && editId
-        ? Math.min(editPaid.amount, grand)
-        : isSale || paidNow === ''
-          ? 0
-          : toMinor(Number(paidNow));
+    const paidAmount = cashCustomer ? grand : editId ? Math.min(editPaid.amount, grand) : 0;
     const priceLevelId = canChooseLevel && pickedLevel ? pickedLevel : undefined;
     try {
-      if (isQuote) {
-        await createQuote.mutateAsync({
-          partyId,
-          lines: rows.map((r) => ({
-            productId: r.line.product.id,
-            unitId: r.line.unitId || undefined,
-            quantity: r.line.quantity,
-            unitPrice: r.price,
-            discount: r.discount,
-            isBonus: r.line.bonus || undefined,
-          })),
-          charges: chargeInputs,
-          paidAmount: 0,
-          overrideFloor,
-          notes: notes || undefined,
-          warehouseId: warehouseId || undefined,
-          priceLevelId,
-          repId: repId || undefined,
-          departmentId: departmentId || undefined,
-        });
-        work.finished();
-        navigate(backTo);
-      } else if (isSale) {
-        const input = {
-          partyId,
-          lines: rows.map((r) => ({
-            productId: r.line.product.id,
-            unitId: r.line.unitId || undefined,
-            quantity: r.line.quantity,
-            unitPrice: r.price,
-            discount: r.discount,
-            isBonus: r.line.bonus || undefined,
-            priceBasis: canPriceBasis && r.line.basis !== 'LIST' ? r.line.basis : undefined,
-          })),
-          charges: chargeInputs,
-          paidAmount,
-          overrideFloor,
-          notes: notes || undefined,
-          warehouseId: warehouseId || undefined,
-          branchId: editId ? undefined : pickedBranch || undefined,
-          priceLevelId,
-          repId: repId || undefined,
-          departmentId: departmentId || undefined,
-          dueDate: dueDate || undefined,
-          documentDate: editId || asOrder ? undefined : dayToSend(docDate),
-          deliveryMethod: delivery.method,
-          deliveryAddress:
-            delivery.method !== 'PICKUP' && delivery.address.trim()
-              ? delivery.address.trim()
+      const input = {
+        partyId,
+        lines: rows.map((r) => ({
+          productId: r.line.product.id,
+          unitId: r.line.unitId || undefined,
+          quantity: r.line.quantity,
+          unitPrice: r.price,
+          discount: r.discount,
+          isBonus: r.line.bonus || undefined,
+          priceBasis: canPriceBasis && r.line.basis !== 'LIST' ? r.line.basis : undefined,
+        })),
+        charges: chargeInputs,
+        paidAmount,
+        overrideFloor,
+        notes: notes || undefined,
+        warehouseId: warehouseId || undefined,
+        branchId: editId ? undefined : pickedBranch || undefined,
+        priceLevelId,
+        repId: repId || undefined,
+        departmentId: departmentId || undefined,
+        dueDate: dueDate || undefined,
+        documentDate: editId || asOrder ? undefined : dayToSend(docDate),
+        deliveryMethod: delivery.method,
+        deliveryAddress:
+          delivery.method !== 'PICKUP' && delivery.address.trim()
+            ? delivery.address.trim()
+            : undefined,
+        carrierId:
+          delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
+            ? delivery.carrierId
+            : undefined,
+        paidAccountId:
+          cashCustomer && cashAccountId
+            ? cashAccountId
+            : editId && paidAmount > 0 && editPaid.accountId
+              ? editPaid.accountId
               : undefined,
-          carrierId:
-            delivery.method === 'SHIPPING_COMPANY' && delivery.carrierId
-              ? delivery.carrierId
-              : undefined,
-          paidAccountId:
-            cashCustomer && cashAccountId
-              ? cashAccountId
-              : editId && paidAmount > 0 && editPaid.accountId
-                ? editPaid.accountId
-                : undefined,
-        };
-        const saved = editId
-          ? await updateSale.mutateAsync({ id: editId, input })
-          : await (asOrder ? createOrder : createSale).mutateAsync(input);
-        work.finished();
-        // One that waits for the accountant isn't printed yet.
-        const waits = asOrder || saved.type === 'SALES_ORDER';
-        navigate(`/sales?doc=${saved.id}${print && !waits ? '&print=1' : ''}`);
-      } else {
-        await createPurchase.mutateAsync({
-          partyId,
-          lines: rows.map((r) => ({
-            productId: r.line.product.id,
-            unitId: r.line.unitId || undefined,
-            quantity: r.line.quantity,
-            unitCost: r.price,
-            isBonus: r.line.bonus || undefined,
-          })),
-          charges: chargeInputs,
-          paidAmount,
-          notes: notes || undefined,
-          warehouseId: warehouseId || undefined,
-          priceLevelId,
-          paidAccountId: paidAmount > 0 && paidAccountId ? paidAccountId : undefined,
-          shippingCost: Number(shippingCost) > 0 ? toMinor(Number(shippingCost)) : undefined,
-          shippingAccountId:
-            Number(shippingCost) > 0 && shippingAccountId ? shippingAccountId : undefined,
-          documentDate: dayToSend(docDate),
-        });
-        work.finished();
-        navigate('/purchases');
-      }
+      };
+      const saved = editId
+        ? await updateSale.mutateAsync({ id: editId, input })
+        : await (asOrder ? createOrder : createSale).mutateAsync(input);
+      work.finished();
+      // One that waits for the accountant isn't printed yet.
+      const waits = asOrder || saved.type === 'SALES_ORDER';
+      navigate(`/sales?doc=${saved.id}${print && !waits ? '&print=1' : ''}`);
     } catch {
       /* surfaced via serverError */
     }
@@ -825,12 +697,6 @@ export function InvoiceBuilderPage({
             delivery,
             lines: lines.map(keepLine),
             staged: staged.map(keepLine),
-            discount1,
-            discount2,
-            paidNow,
-            paidAccountId,
-            shippingCost,
-            shippingAccountId,
             overrideFloor,
             notes,
             supplierFilter,
@@ -855,18 +721,6 @@ export function InvoiceBuilderPage({
           address: text(d.delivery.address),
           carrierId: text(d.delivery.carrierId),
         });
-      const discount = (v: DiscountInput | undefined, fallback: DiscountInput): DiscountInput =>
-        v && (v.mode === 'percent' || v.mode === 'amount')
-          ? { mode: v.mode, value: text(v.value) }
-          : fallback;
-      if (canDiscount) {
-        setDiscount1(discount(d.discount1, discount1));
-        setDiscount2(discount(d.discount2, discount2));
-      }
-      setPaidNow(text(d.paidNow));
-      setPaidAccountId(text(d.paidAccountId));
-      setShippingCost(text(d.shippingCost));
-      setShippingAccountId(text(d.shippingAccountId));
       setOverrideFloor(d.overrideFloor === true);
       setNotes(text(d.notes));
       setSupplierFilter(text(d.supplierFilter));
@@ -885,7 +739,6 @@ export function InvoiceBuilderPage({
           for (const p of list) found.set(p.id, p);
         }),
       );
-      const modes: LineDiscountMode[] = ['percent', 'piece', 'amount'];
       const bases: PriceBasis[] = ['LIST', 'LAST', 'COST'];
       const back = (list: InvoiceDraft['lines'] | undefined): Line[] =>
         (Array.isArray(list) ? list : []).flatMap((l) => {
@@ -900,12 +753,6 @@ export function InvoiceBuilderPage({
               price: Math.max(0, Math.round(Number(l.price) || 0)),
               touched: l.touched === true,
               bonus: l.bonus === true,
-              discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
-              discValue: canDiscount ? text(l.discValue) : '',
-              disc2Mode: modes.includes(l.disc2Mode as LineDiscountMode)
-                ? (l.disc2Mode as LineDiscountMode)
-                : 'percent',
-              disc2Value: canDiscount ? text(l.disc2Value) : '',
               basis: bases.includes(l.basis as PriceBasis) ? (l.basis as PriceBasis) : 'LIST',
               kept:
                 l.kept && l.kept.discount > 0 && l.kept.pieces > 0
@@ -976,33 +823,24 @@ export function InvoiceBuilderPage({
       };
       const d1 = asInput('DISCOUNT');
       const d2 = asInput('EXTRA_DISCOUNT');
-      if (d1) {
-        setDiscount1(d1);
-        setShowDiscount1(true);
-      }
-      if (d2) {
-        setDiscount2(d2);
-        setShowDiscount2(true);
-      }
+      if (d1) setDiscount1(d1);
+      if (d2) setDiscount2(d2);
+      // Free goods it already has stay on it (owner, 2026-10-24), though none are added here.
       const loaded = doc.lines.flatMap((l) => {
         const product = byId.get(l.productId);
-        if (!product || l.isBonus) return [];
+        if (!product) return [];
         return [
           {
             key: `l${nextKey++}`,
             product,
             unitId: l.unitId ?? product.units[0]?.unitId ?? '',
             quantity: l.unitQuantity || l.quantity,
-            price: l.unitPrice,
+            price: l.isBonus ? 0 : l.unitPrice,
             touched: true,
-            bonus: false,
-            discMode: 'amount' as LineDiscountMode,
-            discValue: '',
-            disc2Mode: 'percent' as LineDiscountMode,
-            disc2Value: '',
+            bonus: l.isBonus,
             basis: 'LIST' as PriceBasis,
             kept:
-              l.discount > 0 && l.quantity > 0
+              !l.isBonus && l.discount > 0 && l.quantity > 0
                 ? { discount: l.discount, pieces: l.quantity }
                 : undefined,
           },
@@ -1014,7 +852,6 @@ export function InvoiceBuilderPage({
     return () => {
       gone = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
   /** Put every prepared item on the invoice. */
@@ -1033,10 +870,8 @@ export function InvoiceBuilderPage({
   }
   /** A prepared item asking for more than is left in the warehouse (a sale never goes over). */
   const stagedTooMany = (l: Line) =>
-    isSale &&
-    !isQuote &&
     l.quantity * (unitOf(l)?.factor ?? 1) >
-      available(l.product) - (baseWanted.get(l.product.id) ?? 0);
+    available(l.product) - (baseWanted.get(l.product.id) ?? 0);
   const updateStaged = (key: string, patch: Partial<Line>) =>
     setStaged((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -1062,14 +897,12 @@ export function InvoiceBuilderPage({
             const ruled = info?.unitPrice ?? suggested(l);
             const price = priceEditable && l.touched ? l.price : ruled;
             const gross = l.quantity * price;
-            const manual = isSale ? lineDiscounts(l, gross, l.quantity * factor) : 0;
-            const discount =
-              manual > 0 ? manual : priceEditable && l.touched ? 0 : (info?.discount ?? 0);
+            const discount = priceEditable && l.touched ? 0 : (info?.discount ?? 0);
             const total = gross - discount;
             const changed = price !== list;
             const label = 'mb-0.5 block text-[11px] text-muted';
             const left = available(l.product) - (baseWanted.get(l.product.id) ?? 0);
-            const tooMany = isSale && !isQuote && l.quantity * factor > left;
+            const tooMany = l.quantity * factor > left;
             return (
               <li
                 key={l.key}
@@ -1095,7 +928,7 @@ export function InvoiceBuilderPage({
                     <span className="text-xs text-faint tnum">{l.product.sku}</span>
                     {/* What is left in the warehouse after the lines already on the invoice. */}
                     <span
-                      className={`ms-2 text-xs tnum ${isSale && !isQuote && l.quantity * factor > left ? 'font-semibold text-destructive' : 'text-muted'}`}
+                      className={`ms-2 text-xs tnum ${l.quantity * factor > left ? 'font-semibold text-destructive' : 'text-muted'}`}
                     >
                       {t('invoice.balance')}:{' '}
                       {formatQuantity(Math.max(0, left), l.product.units, locale)}
@@ -1195,12 +1028,10 @@ export function InvoiceBuilderPage({
                       </span>
                     </span>
                   )}
-                  {isSale && (
-                    <span>
-                      <span className={label}>{t('col.lastPrice')}</span>
-                      <span className="tnum">{money(info?.lastPrice)}</span>
-                    </span>
-                  )}
+                  <span>
+                    <span className={label}>{t('col.lastPrice')}</span>
+                    <span className="tnum">{money(info?.lastPrice)}</span>
+                  </span>
                   <label className="block">
                     <span className={label}>{t('col.price')}</span>
                     <input
@@ -1219,72 +1050,6 @@ export function InvoiceBuilderPage({
                       }
                     />
                   </label>
-                  {canDiscount && isSale && (
-                    <label className="block">
-                      <span className={label}>{t('col.discount')}</span>
-                      <span className="flex gap-1">
-                        <select
-                          className={`${cell} w-20`}
-                          value={l.discMode}
-                          aria-label={t('col.discount')}
-                          onChange={(e) =>
-                            updateStaged(l.key, { discMode: e.target.value as LineDiscountMode })
-                          }
-                        >
-                          <option value="percent">%</option>
-                          <option value="piece">{t('invoice.perPiece')}</option>
-                          <option value="amount">{t('invoice.amountShort')}</option>
-                        </select>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          className={`${cell} w-20 tnum`}
-                          value={l.discValue}
-                          onChange={(e) => updateStaged(l.key, { discValue: e.target.value })}
-                        />
-                      </span>
-                    </label>
-                  )}
-                  {/* A second discount once the first has a value (owner, 2026-10-02). */}
-                  {canDiscount &&
-                    isSale &&
-                    l.discValue &&
-                    (l.disc2Value || second.has(l.key) ? (
-                      <label className="block">
-                        <span className={label}>{t('invoice.lineDiscount2')}</span>
-                        <span className="flex gap-1">
-                          <select
-                            className={`${cell} w-20`}
-                            value={l.disc2Mode}
-                            aria-label={t('invoice.lineDiscount2')}
-                            onChange={(e) =>
-                              updateStaged(l.key, { disc2Mode: e.target.value as LineDiscountMode })
-                            }
-                          >
-                            <option value="percent">%</option>
-                            <option value="piece">{t('invoice.perPiece')}</option>
-                            <option value="amount">{t('invoice.amountShort')}</option>
-                          </select>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className={`${cell} w-20 tnum`}
-                            value={l.disc2Value}
-                            onChange={(e) => updateStaged(l.key, { disc2Value: e.target.value })}
-                          />
-                        </span>
-                      </label>
-                    ) : (
-                      <button
-                        type="button"
-                        className="h-8 whitespace-nowrap text-xs font-medium text-brand hover:underline"
-                        onClick={() => setSecond((x) => new Set(x).add(l.key))}
-                      >
-                        + {t('invoice.addDiscount2')}
-                      </button>
-                    ))}
                   <span>
                     <span className={label}>{t('col.afterDiscount')}</span>
                     <span className="tnum">
@@ -1391,84 +1156,6 @@ export function InvoiceBuilderPage({
         }}
       />
     );
-  /** A line's own discount: the value and whether it is a %, per piece or an amount. */
-  const discountControls = (r: Row, withLabel: boolean) => (
-    <>
-      {isSale && !r.line.bonus && (canDiscount || r.line.discValue) && (
-        <span className="inline-flex items-center gap-1">
-          {withLabel && <span>{t('invoice.lineDiscount')}</span>}
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
-            aria-label={t('invoice.lineDiscount')}
-            disabled={!canDiscount}
-            value={r.line.discValue}
-            onChange={(e) => updateLine(r.line.key, { discValue: e.target.value })}
-          />
-          <select
-            className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
-            aria-label={t('invoice.lineDiscountMode')}
-            disabled={!canDiscount}
-            value={r.line.discMode}
-            onChange={(e) =>
-              updateLine(r.line.key, {
-                discMode: e.target.value as LineDiscountMode,
-              })
-            }
-          >
-            <option value="percent">%</option>
-            <option value="piece">{t('invoice.perPiece')}</option>
-            <option value="amount">{t('invoice.onLine')}</option>
-          </select>
-          {/* The second discount shows once the first has a value. */}
-          {canDiscount && r.line.discValue && !r.line.disc2Value && !second.has(r.line.key) && (
-            <button
-              type="button"
-              className="whitespace-nowrap text-xs font-medium text-brand hover:underline"
-              onClick={() => setSecond((s) => new Set(s).add(r.line.key))}
-            >
-              + {t('invoice.addDiscount2')}
-            </button>
-          )}
-          {(r.line.disc2Value || second.has(r.line.key)) && (
-            <>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                className="h-7 w-20 rounded-[var(--radius-app)] border border-line bg-surface px-1.5 text-xs text-fg tnum outline-none focus:border-brand disabled:opacity-60"
-                aria-label={t('invoice.lineDiscount2')}
-                title={t('invoice.lineDiscount2')}
-                disabled={!canDiscount}
-                value={r.line.disc2Value}
-                onChange={(e) => updateLine(r.line.key, { disc2Value: e.target.value })}
-              />
-              <select
-                className="h-7 rounded-[var(--radius-app)] border border-line bg-surface px-1 text-xs text-fg outline-none focus:border-brand disabled:opacity-60"
-                aria-label={t('invoice.lineDiscount2')}
-                disabled={!canDiscount}
-                value={r.line.disc2Mode}
-                onChange={(e) =>
-                  updateLine(r.line.key, { disc2Mode: e.target.value as LineDiscountMode })
-                }
-              >
-                <option value="percent">%</option>
-                <option value="piece">{t('invoice.perPiece')}</option>
-                <option value="amount">{t('invoice.onLine')}</option>
-              </select>
-            </>
-          )}
-          {r.discount > 0 && (
-            <span className="text-warning">−{formatMoney(r.discount, currency, locale)}</span>
-          )}
-        </span>
-      )}
-    </>
-  );
   /** Notes under a line: the units it makes, its price list, quantity discount, list price, share of the invoice discount. */
   const lineNotes = (r: Row) => (
     <>
@@ -1488,7 +1175,7 @@ export function InvoiceBuilderPage({
           {formatMoney(r.discount, currency, locale)}
         </span>
       )}
-      {isPhone && isSale && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
+      {isPhone && !r.line.bonus && r.price !== listPriceOf(r.line, r.index) && (
         <span className={underList(r.line, r.index) ? 'text-destructive' : ''}>
           {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
         </span>
@@ -1505,7 +1192,7 @@ export function InvoiceBuilderPage({
       <>
         {(r.belowCost || r.belowFloor || r.overStock) && (
           <p
-            className={`${className} text-xs ${r.belowCost || (r.overStock && !isQuote) ? 'text-destructive' : 'text-warning'}`}
+            className={`${className} text-xs ${r.belowCost || r.overStock ? 'text-destructive' : 'text-warning'}`}
           >
             {r.overStock
               ? `${t('inventory.stock')}: ${formatQuantity(available(r.line.product), r.line.product.units, locale)}`
@@ -1517,55 +1204,13 @@ export function InvoiceBuilderPage({
       </>
     );
 
-  /** A line's own discount: hidden behind "Add discount" until asked for (owner, 2026-10-01). */
-  const lineDiscountCell = (r: Row) => {
-    if (!isSale || r.line.bonus) return null;
-    if (!canDiscount || !isOpen(r.line.key))
-      return r.discount > 0 ? (
-        <span className="whitespace-nowrap text-xs text-warning tnum">
-          −{formatMoney(r.discount, currency, locale)}
-        </span>
-      ) : null;
-    const open = lineDiscountOpen.has(r.line.key) || !!r.line.discValue;
-    if (!open)
-      return canDiscount ? (
-        <button
-          type="button"
-          className="whitespace-nowrap text-xs font-medium text-brand hover:underline"
-          onClick={() => setLineDiscountOpen((s) => new Set(s).add(r.line.key))}
-        >
-          + {t('invoice.addDiscount')}
-        </button>
-      ) : null;
-    return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs">
-        {discountControls(r, false)}
-        {canDiscount && (
-          <button
-            type="button"
-            className="text-faint hover:text-destructive"
-            aria-label={t('invoice.removeDiscount')}
-            title={t('invoice.removeDiscount')}
-            onClick={() => {
-              updateLine(r.line.key, { discValue: '', disc2Value: '' });
-              setSecond((s) => {
-                const next = new Set(s);
-                next.delete(r.line.key);
-                return next;
-              });
-              setLineDiscountOpen((s) => {
-                const next = new Set(s);
-                next.delete(r.line.key);
-                return next;
-              });
-            }}
-          >
-            <Icon name="close" size={14} />
-          </button>
-        )}
+  /** What the line's discount comes to: the accountant's, or a quantity discount. */
+  const lineDiscountCell = (r: Row) =>
+    !r.line.bonus && r.discount > 0 ? (
+      <span className="whitespace-nowrap text-xs text-warning tnum">
+        −{formatMoney(r.discount, currency, locale)}
       </span>
-    );
-  };
+    ) : null;
 
   // The lines table (owner, 2026-10-01): stock, selling and supply price, last price, the
   // increase, before and after discount; each column may be hidden and put in its own place.
@@ -1620,13 +1265,14 @@ export function InvoiceBuilderPage({
           ) : (
             <span className="block font-medium">{r.line.product.name}</span>
           )}
+          {r.line.bonus && <span className="block text-xs text-muted">{t('invoice.bonus')}</span>}
           <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">{lineNotes(r)}</span>
           {lineWarning(r, 'mt-1')}
         </>
       ),
     },
     { key: 'unit', label: t('col.unit'), cell: (r) => unitSelect(r, `${cell} w-24`) },
-    ...when(isSale, {
+    {
       key: 'balance',
       label: t('col.balance'),
       end: true,
@@ -1635,21 +1281,21 @@ export function InvoiceBuilderPage({
           {formatQuantity(available(r.line.product), r.line.product.units, locale)}
         </span>
       ),
-    }),
+    },
     { key: 'qty', label: t('col.qty'), cell: (r) => qtyInput(r, `${cell} w-16 tnum`) },
-    ...when(isSale, {
+    {
       key: 'listPrice',
       label: t('col.listPrice'),
       end: true,
       cell: (r) => plain.format(toMajor(sellingPrice(r))),
-    }),
+    },
     ...when(seeCosts, {
       key: 'cost',
       label: t('col.cost'),
       end: true,
       cell: (r) => plain.format(toMajor(r.cost)),
     }),
-    ...when(isSale && !!partyId, {
+    ...when(!!partyId, {
       key: 'lastPrice',
       label: t('col.lastPrice'),
       end: true,
@@ -1657,10 +1303,10 @@ export function InvoiceBuilderPage({
     }),
     {
       key: 'price',
-      label: isSale ? t('col.price') : t('invoice.receiveCost'),
+      label: t('col.price'),
       cell: (r) => priceInput(r, `${cell} w-24`),
     },
-    ...when(isSale, {
+    {
       key: 'raise',
       label: t('col.raise'),
       end: true,
@@ -1668,25 +1314,25 @@ export function InvoiceBuilderPage({
         const up = r.price - sellingPrice(r);
         return up > 0 ? <span className="text-positive">+{plain.format(toMajor(up))}</span> : '';
       },
-    }),
+    },
     {
       key: 'beforeDiscount',
       label: t('col.beforeDiscount'),
       end: true,
       cell: (r) => plain.format(toMajor(r.gross)),
     },
-    ...when(isSale, {
+    {
       key: 'discount',
       label: t('col.discount'),
       cell: (r) => lineDiscountCell(r),
-    }),
+    },
     {
       key: 'afterDiscount',
       label: t('col.afterDiscount'),
       end: true,
       cell: (r) => <span className="font-semibold">{plain.format(toMajor(r.lineTotal))}</span>,
     },
-    ...when(isSale && seeProfit, {
+    ...when(seeProfit, {
       key: 'profit',
       label: t('col.profit'),
       end: true,
@@ -1737,11 +1383,11 @@ export function InvoiceBuilderPage({
             ? `${t('invoice.view')} ${editedNumber}`
             : editId
               ? `${t('invoice.editTitle')} ${editedNumber}`
-              : t(isQuote ? 'quote.new' : isSale ? 'invoice.newSale' : 'invoice.newPurchase')
+              : t('invoice.newSale')
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {readOnly && viewed && (
+            {readOnly && viewed && can('sales:print') && (
               <Button variant="secondary" size="sm" icon="print" onClick={() => setPrinting(true)}>
                 {t('common.printPdf')}
               </Button>
@@ -1751,187 +1397,186 @@ export function InvoiceBuilderPage({
                 {t('invoice.edit')}
               </Button>
             )}
-            <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
+            <Button variant="ghost" size="sm" icon="close" onClick={() => navigate('/sales')}>
               {t('invoice.back')}
             </Button>
           </div>
         }
       />
-      {printing && viewed && <PrintSetupSheet doc={viewed} onClose={() => setPrinting(false)} />}
+      {printing && viewed && (
+        <PrintSetupSheet doc={viewed} record onClose={() => setPrinting(false)} />
+      )}
 
       <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           {/* Left: builder */}
           <div className="min-w-0 space-y-4">
-            {/* Party (by code or name) + warehouse (+ a purchase's price level) */}
+            {/* The customer (by code or name), then branch, warehouse and department */}
             <Card className="grid gap-4 sm:grid-cols-2">
               <PartyPicker
-                type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+                type="CUSTOMER"
                 withCode
                 value={party}
                 onChange={(p) => {
                   setParty(p);
                   setPickedLevel('');
                 }}
-                label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
-                placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+                label={t('invoice.customer')}
+                placeholder={t('invoice.selectCustomer')}
               />
-              {isSale ? (
-                // Branch, then its warehouses, then that warehouse's departments (owner, 2026-10-01).
-                <>
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-                    <select
-                      className={`${field} ${!pickedBranch ? 'border-warning' : ''}`}
-                      value={pickedBranch}
-                      disabled={!!editId}
-                      aria-invalid={!pickedBranch}
-                      onChange={(e) => {
-                        setPickedBranch(e.target.value);
-                        setPickedWarehouse('');
-                        setPickedDepartment('');
-                        setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
-                      }}
-                    >
-                      <option value="" disabled>
-                        {t('invoice.chooseBranch')}
-                      </option>
-                      {myBranches.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
-                    <select
-                      className={`${field} ${pickedBranch && !warehouseId ? 'border-warning' : ''}`}
-                      value={warehouseId}
-                      disabled={!pickedBranch}
-                      aria-invalid={!warehouseId}
-                      onChange={(e) => {
-                        setPickedWarehouse(e.target.value);
-                        setPickedDepartment('');
-                        setPlace({
-                          branchId: pickedBranch,
-                          warehouseId: e.target.value,
-                          departmentId: '',
-                        });
-                      }}
-                    >
-                      <option value="" disabled>
-                        {t('invoice.chooseWarehouse')}
-                      </option>
-                      {branchWarehouses.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {departments.length > 0 && (
-                    <label className="block">
-                      <span className="mb-0.5 block text-xs text-muted">
-                        {t('invoice.department')}
-                      </span>
-                      <select
-                        className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
-                        value={departmentOk ? departmentId : ''}
-                        required={departmentRequired}
-                        disabled={!warehouseId}
-                        aria-invalid={departmentRequired && !departmentId}
-                        onChange={(e) => {
-                          setPickedDepartment(e.target.value);
-                          setPlace({ departmentId: e.target.value });
-                        }}
-                      >
-                        <option value="" disabled={departmentRequired}>
-                          {departmentRequired
-                            ? t('invoice.chooseDepartment')
-                            : t('invoice.noDepartment')}
-                        </option>
-                        {shownDepartments.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                </>
-              ) : (
-                <WarehouseSelect value={warehouseId} onChange={setPickedWarehouse} />
-              )}
-              {isSale && (
-                // The rep by code or by name, like the customer (owner, 2026-10-01).
-                <div className="flex items-start gap-2">
-                  <label className="block w-24 shrink-0">
-                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
-                    <input
-                      className={`${field} tnum ${repCodeMissing ? 'border-destructive' : ''}`}
-                      inputMode="numeric"
-                      aria-label={`${t('invoice.rep')} — ${t('invoice.code')}`}
-                      aria-invalid={repCodeMissing}
-                      value={repCode ?? String(reps.data?.find((r) => r.id === repId)?.code ?? '')}
-                      onChange={(e) => {
-                        const text = e.target.value.replace(/[^\d]/g, '');
-                        setRepCode(text);
-                        const hit = (reps.data ?? []).find((r) => String(r.code) === text);
-                        if (hit) setPickedRep(hit.id);
-                      }}
-                      onBlur={() => setRepCode(null)}
-                    />
-                    {repCodeMissing && (
-                      <span className="mt-0.5 block text-xs text-destructive">
-                        {t('invoice.codeNotFound')}
-                      </span>
-                    )}
-                  </label>
-                  <label className="block min-w-0 flex-1">
-                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
-                    <select
-                      className={field}
-                      value={repId}
-                      aria-invalid={!repId}
-                      onChange={(e) => setPickedRep(e.target.value)}
-                    >
-                      {!repId && <option value="">{t('invoice.chooseRep')}</option>}
-                      {(reps.data ?? []).map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {codeName(r.code, r.name)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-              )}
-              {!isQuote && !editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
-              {isSale && !isQuote && (
-                // When a sale on account should be paid (تاريخ الاستحقاق); empty = no date.
+              {/* Branch, then its warehouses, then that warehouse's departments (owner, 2026-10-01). */}
+              <>
                 <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
-                  <input
-                    type="date"
-                    className={`${field} tnum`}
-                    min={editId ? undefined : companyToday()}
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                  />
+                  <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+                  <select
+                    className={`${field} ${!pickedBranch ? 'border-warning' : ''}`}
+                    value={pickedBranch}
+                    disabled={!!editId}
+                    aria-invalid={!pickedBranch}
+                    onChange={(e) => {
+                      setPickedBranch(e.target.value);
+                      setPickedWarehouse('');
+                      setPickedDepartment('');
+                      setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
+                    }}
+                  >
+                    <option value="" disabled>
+                      {t('invoice.chooseBranch')}
+                    </option>
+                    {myBranches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              )}
+                <label className="block">
+                  <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+                  <select
+                    className={`${field} ${pickedBranch && !warehouseId ? 'border-warning' : ''}`}
+                    value={warehouseId}
+                    disabled={!pickedBranch}
+                    aria-invalid={!warehouseId}
+                    onChange={(e) => {
+                      setPickedWarehouse(e.target.value);
+                      setPickedDepartment('');
+                      setPlace({
+                        branchId: pickedBranch,
+                        warehouseId: e.target.value,
+                        departmentId: '',
+                      });
+                    }}
+                  >
+                    <option value="" disabled>
+                      {t('invoice.chooseWarehouse')}
+                    </option>
+                    {branchWarehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {departments.length > 0 && (
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">
+                      {t('invoice.department')}
+                    </span>
+                    <select
+                      className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
+                      value={departmentOk ? departmentId : ''}
+                      required={departmentRequired}
+                      disabled={!warehouseId}
+                      aria-invalid={departmentRequired && !departmentId}
+                      onChange={(e) => {
+                        setPickedDepartment(e.target.value);
+                        setPlace({ departmentId: e.target.value });
+                      }}
+                    >
+                      <option value="" disabled={departmentRequired}>
+                        {departmentRequired
+                          ? t('invoice.chooseDepartment')
+                          : t('invoice.noDepartment')}
+                      </option>
+                      {shownDepartments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+              {/* The rep by code or by name, like the customer (owner, 2026-10-01). */}
+              <div className="flex items-start gap-2">
+                <label className="block w-24 shrink-0">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.code')}</span>
+                  <input
+                    className={`${field} tnum ${repCodeMissing ? 'border-destructive' : ''}`}
+                    inputMode="numeric"
+                    aria-label={`${t('invoice.rep')} — ${t('invoice.code')}`}
+                    aria-invalid={repCodeMissing}
+                    value={repCode ?? String(reps.data?.find((r) => r.id === repId)?.code ?? '')}
+                    onChange={(e) => {
+                      const text = e.target.value.replace(/[^\d]/g, '');
+                      setRepCode(text);
+                      const hit = (reps.data ?? []).find((r) => String(r.code) === text);
+                      if (hit) setPickedRep(hit.id);
+                    }}
+                    onBlur={() => setRepCode(null)}
+                  />
+                  {repCodeMissing && (
+                    <span className="mt-0.5 block text-xs text-destructive">
+                      {t('invoice.codeNotFound')}
+                    </span>
+                  )}
+                </label>
+                <label className="block min-w-0 flex-1">
+                  <span className="mb-0.5 block text-xs text-muted">{t('invoice.rep')}</span>
+                  <select
+                    className={field}
+                    value={repId}
+                    aria-invalid={!repId}
+                    onChange={(e) => setPickedRep(e.target.value)}
+                  >
+                    {!repId && <option value="">{t('invoice.chooseRep')}</option>}
+                    {/* The invoice's own rep, when not on the list (no longer active, or the
+                          list isn't this person's to see). */}
+                    {repId &&
+                      viewed?.repId === repId &&
+                      !(reps.data ?? []).some((r) => r.id === repId) && (
+                        <option value={repId}>{viewed.repName ?? ''}</option>
+                      )}
+                    {(reps.data ?? []).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {codeName(r.code, r.name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {!editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
+              {/* When a sale on account should be paid (تاريخ الاستحقاق); empty = no date. */}
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
+                <input
+                  type="date"
+                  className={`${field} tnum`}
+                  min={editId ? undefined : companyToday()}
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </label>
             </Card>
 
-            {isSale && !isQuote && (
-              <DeliveryCard
-                value={delivery}
-                onChange={setDelivery}
-                party={party ?? undefined}
-                carriers={carriers.data?.items ?? []}
-                lockCarrier={!canChangeShipping && !!fileCarrier}
-                lockAddress={!canChangeShipping && !!fileAddress}
-              />
-            )}
+            <DeliveryCard
+              value={delivery}
+              onChange={setDelivery}
+              party={party ?? undefined}
+              carriers={carriers.data?.items ?? []}
+              lockCarrier={!canChangeShipping && !!fileCarrier}
+              lockAddress={!canChangeShipping && !!fileAddress}
+            />
 
             {/* Product search */}
             <Card>
@@ -2096,9 +1741,9 @@ export function InvoiceBuilderPage({
                       departmentId={departmentId || undefined}
                       warehouseId={warehouseId || undefined}
                       branchId={pickedBranch || undefined}
-                      lockPlace={isSale && !!warehouseId}
-                      inStockFirst={isSale && !isQuote}
-                      checkStock={isSale && !isQuote}
+                      lockPlace={!!warehouseId}
+                      inStockFirst
+                      checkStock
                       onInvoice={onInvoice}
                       onClose={() => setFinding(false)}
                       onAdd={(items, close) => {
@@ -2125,7 +1770,6 @@ export function InvoiceBuilderPage({
                       if (!(await confirm({ message: t('invoice.clearLinesAsk'), danger: true })))
                         return;
                       setLines([]);
-                      setSecond(new Set());
                     }}
                   >
                     {t('invoice.clearLines')}
@@ -2141,7 +1785,7 @@ export function InvoiceBuilderPage({
               ) : !isPhone ? (
                 // Wide screens: the lines as a table, like the old program's grid.
                 <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                  <TableColumns id={`invoice.${mode}`} onMove={moveColumn} onDrop={dropColumn}>
+                  <TableColumns id="invoice.sale" onMove={moveColumn} onDrop={dropColumn}>
                     <table className="w-full text-[13px]">
                       <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                         <tr className="whitespace-nowrap">
@@ -2207,7 +1851,14 @@ export function InvoiceBuilderPage({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{r.line.product.name}</p>
+                          <p className="truncate text-sm font-medium">
+                            {r.line.product.name}
+                            {r.line.bonus && (
+                              <span className="ms-1 text-xs font-normal text-muted">
+                                ({t('invoice.bonus')})
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted tnum">
                             {seeCosts && (
                               <>
@@ -2215,16 +1866,12 @@ export function InvoiceBuilderPage({
                                 {r.unit && ` / ${r.unit.name}`}
                               </>
                             )}
-                            {isSale && (
-                              <>
-                                {seeCosts && ' · '}
-                                {t('inventory.stock')}:{' '}
-                                {formatQuantity(
-                                  available(r.line.product),
-                                  r.line.product.units,
-                                  locale,
-                                )}
-                              </>
+                            {seeCosts && ' · '}
+                            {t('inventory.stock')}:{' '}
+                            {formatQuantity(
+                              available(r.line.product),
+                              r.line.product.units,
+                              locale,
                             )}
                           </p>
                         </div>
@@ -2266,11 +1913,11 @@ export function InvoiceBuilderPage({
                         </label>
                         <label className="block">
                           <span className="mb-0.5 block text-xs text-muted">
-                            {isSale ? t('invoice.price') : t('invoice.receiveCost')}
+                            {t('invoice.price')}
                           </span>
                           {priceInput(r)}
                         </label>
-                        {isSale && seeCosts && (
+                        {seeCosts && (
                           <div className="block">
                             <span className="mb-0.5 block text-xs text-muted">
                               {t('invoice.markup')}
@@ -2284,16 +1931,12 @@ export function InvoiceBuilderPage({
                         )}
                         <div className="block">
                           <span className="mb-0.5 block text-xs text-muted">
-                            {isSale && seeProfit ? t('invoice.lineProfit') : t('common.total')}
+                            {seeProfit ? t('invoice.lineProfit') : t('common.total')}
                           </span>
                           <div
-                            className={`${field} grid items-center tnum ${isSale && seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
+                            className={`${field} grid items-center tnum ${seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
                           >
-                            {formatMoney(
-                              isSale && seeProfit ? r.lineProfit : r.lineTotal,
-                              currency,
-                              locale,
-                            )}
+                            {formatMoney(seeProfit ? r.lineProfit : r.lineTotal, currency, locale)}
                           </div>
                         </div>
                       </div>
@@ -2321,78 +1964,22 @@ export function InvoiceBuilderPage({
                   label={t('invoice.subtotal')}
                   value={formatMoney(subtotal, currency, locale)}
                 />
-                {/* Discounts only when asked for (owner, 2026-10-01). */}
-                {(showDiscount1 || discount1.value) && (
-                  <DiscountField
-                    label={t('charge.DISCOUNT')}
-                    value={discount1}
-                    onChange={setDiscount1}
-                    disabled={!canDiscount}
-                    amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
-                    currency={currency}
-                    onRemove={
-                      canDiscount
-                        ? () => {
-                            setDiscount1({ ...discount1, value: '' });
-                            setShowDiscount1(false);
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-                {(showDiscount2 || discount2.value) && (
-                  <DiscountField
-                    label={t('charge.EXTRA_DISCOUNT')}
-                    value={discount2}
-                    onChange={setDiscount2}
-                    disabled={!canDiscount}
-                    amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
-                    currency={currency}
-                    onRemove={
-                      canDiscount
-                        ? () => {
-                            setDiscount2({ ...discount2, value: '' });
-                            setShowDiscount2(false);
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-                {canDiscount && (!showDiscount1 || !showDiscount2) && (
-                  <div className="ro-hide flex flex-wrap gap-x-3 gap-y-1">
-                    {!showDiscount1 && !discount1.value && (
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-brand hover:underline"
-                        onClick={() => setShowDiscount1(true)}
-                      >
-                        + {t('invoice.addDiscount')}
-                      </button>
-                    )}
-                    {/* Two discounts, each a percent or an amount; the second once the first has
-                      a value (owner, 2026-10-02). */}
-                    {!showDiscount2 && !discount2.value && !!discount1.value && (
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-brand hover:underline"
-                        onClick={() => setShowDiscount2(true)}
-                      >
-                        + {t('invoice.addExtraDiscount')}
-                      </button>
-                    )}
-                  </div>
-                )}
+                {/* The accountant's discounts on a changed invoice, as they are. */}
+                <KeptDiscount
+                  label={t('charge.DISCOUNT')}
+                  value={discount1}
+                  amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
+                  currency={currency}
+                />
+                <KeptDiscount
+                  label={t('charge.EXTRA_DISCOUNT')}
+                  value={discount2}
+                  amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
+                  currency={currency}
+                />
                 {outcome.discount > 0 && (
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
                 )}
-                {isSale &&
-                  canDiscount &&
-                  maxDiscount !== null &&
-                  (showDiscount1 || showDiscount2) && (
-                    <p className="text-xs text-faint">
-                      {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
-                    </p>
-                  )}
                 {tax > 0 && (
                   <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />
                 )}
@@ -2403,7 +1990,7 @@ export function InvoiceBuilderPage({
                   value={formatMoney(grand, currency, locale)}
                   strong
                 />
-                {isSale && (seeCosts || seeProfit) && (
+                {(seeCosts || seeProfit) && (
                   <>
                     <div className="my-1 border-t border-line" />
                     {seeCosts && (
@@ -2443,50 +2030,6 @@ export function InvoiceBuilderPage({
                     />
                   </div>
                 )}
-                {isSale ? null : (
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.paidNow')}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className={`${field} tnum`}
-                      value={paidNow}
-                      onChange={(e) => setPaidNow(e.target.value)}
-                    />
-                  </label>
-                )}
-                {!isSale && Number(paidNow) > 0 && (
-                  <MoneyAccountPicker
-                    className={field}
-                    label={t('money.paidInto')}
-                    value={paidAccountId}
-                    onChange={setPaidAccountId}
-                  />
-                )}
-                {!isSale && (
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">
-                      {t('invoice.shippingCost')}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className={`${field} tnum`}
-                      value={shippingCost}
-                      onChange={(e) => setShippingCost(e.target.value)}
-                    />
-                  </label>
-                )}
-                {!isSale && Number(shippingCost) > 0 && (
-                  <MoneyAccountPicker
-                    className={field}
-                    label={t('money.paidInto')}
-                    value={shippingAccountId}
-                    onChange={setShippingAccountId}
-                  />
-                )}
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
                   <input
@@ -2497,7 +2040,7 @@ export function InvoiceBuilderPage({
                 </label>
               </div>
 
-              {isSale && rows.some((r) => r.belowFloor) && canOverride && (
+              {rows.some((r) => r.belowFloor) && canOverride && (
                 <label className="mt-3 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -2548,13 +2091,11 @@ export function InvoiceBuilderPage({
                   >
                     {pending
                       ? t('invoice.saving')
-                      : isQuote
-                        ? t('quote.save')
-                        : editId
-                          ? t('invoice.saveChanges')
-                          : t('invoice.save')}
+                      : editId
+                        ? t('invoice.saveChanges')
+                        : t('invoice.save')}
                   </Button>
-                  {isSale && !isQuote && !asOrder && (
+                  {!asOrder && can('sales:print') && (
                     <Button
                       className="w-full"
                       variant="secondary"
@@ -2589,71 +2130,25 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-/** An invoice discount: a number and whether it is a percent or an amount. */
-function DiscountField({
+/** An invoice discount a changed invoice already has: its percent (if one) and what it comes to. */
+function KeptDiscount({
   label,
   value,
-  onChange,
-  disabled,
   amount,
   currency,
-  onRemove,
 }: {
   label: string;
   value: DiscountInput;
-  onChange: (v: DiscountInput) => void;
-  disabled: boolean;
   amount: number;
   currency: string;
-  onRemove?: () => void;
 }) {
-  const { t, locale } = useT();
+  const { locale } = useT();
+  if (!value.value) return null;
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <dt className="text-muted">{label}</dt>
-        <span className="flex items-center gap-2">
-          {amount > 0 && (
-            <span className="text-xs text-muted tnum">
-              −{formatMoney(amount, currency, locale)}
-            </span>
-          )}
-          {onRemove && (
-            <button
-              type="button"
-              className="text-faint hover:text-destructive"
-              aria-label={t('invoice.removeDiscount')}
-              title={t('invoice.removeDiscount')}
-              onClick={onRemove}
-            >
-              <Icon name="close" size={14} />
-            </button>
-          )}
-        </span>
-      </div>
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          disabled={disabled}
-          className={`${field} tnum`}
-          placeholder="0"
-          value={value.value}
-          onChange={(e) => onChange({ ...value, value: e.target.value })}
-        />
-        <select
-          className={`${field} !w-24 px-1.5`}
-          disabled={disabled}
-          aria-label={label}
-          value={value.mode}
-          onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountInput['mode'] })}
-        >
-          <option value="percent">{t('charge.percent')}</option>
-          <option value="amount">{t('charge.amount')}</option>
-        </select>
-      </div>
-    </div>
+    <Row
+      label={value.mode === 'percent' ? `${label} (${value.value}%)` : label}
+      value={`−${formatMoney(amount, currency, locale)}`}
+    />
   );
 }
 
@@ -2675,21 +2170,11 @@ interface InvoiceDraft {
     price: number;
     touched: boolean;
     bonus: boolean;
-    discMode: LineDiscountMode;
-    discValue: string;
-    disc2Mode?: LineDiscountMode;
-    disc2Value?: string;
     basis?: PriceBasis;
     kept?: { discount: number; pieces: number };
   }[];
   /** Items being prepared, not on the invoice yet. */
   staged?: InvoiceDraft['lines'];
-  discount1: DiscountInput;
-  discount2: DiscountInput;
-  paidNow: string;
-  paidAccountId: string;
-  shippingCost: string;
-  shippingAccountId: string;
   overrideFloor: boolean;
   notes: string;
   supplierFilter: string;

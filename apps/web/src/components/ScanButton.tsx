@@ -31,10 +31,10 @@ export function ScanButton<T>({
   /** How long the server has been reading, shown on the button (a slow server takes minutes). */
   const [waited, setWaited] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  if (!can(kind === 'purchase' ? 'ai:scan_purchase' : 'ai:scan_cheques')) return null;
   // Several pages of one invoice can be picked together (owner, 2026-10-19): each is read in turn
   // and its lines added to the same form.
   const [pageOf, setPageOf] = useState<[number, number] | null>(null);
+  if (!can(kind === 'purchase' ? 'ai:scan_purchase' : 'ai:scan_cheques')) return null;
   const read = async (e: ChangeEvent<HTMLInputElement>) => {
     const picked = [...(e.target.files ?? [])].slice(0, 10);
     e.target.value = '';
@@ -87,6 +87,8 @@ export function ScanButton<T>({
     <span className="inline-flex flex-col items-start gap-1">
       <input
         ref={file}
+        aria-label={t(kind === 'purchase' ? 'assistant.scanUpload' : 'assistant.scanCheques')}
+        tabIndex={-1}
         type="file"
         multiple
         accept="image/jpeg,image/png,image/webp"

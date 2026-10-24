@@ -4,7 +4,7 @@
 // discount, a line discount and a combined discount are each their own permission, and are given
 // only on the customer's invoices, never while one is made or changed (owner, 2026-10-24). Runs
 // against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -143,7 +143,148 @@ eq('…6% now', [e4.lines[0].discount, e4.charges.filter((c) => c.kind !== 'TAX'
 eq('not a discount on items', (await solo.post(`/sales/invoices/${e1.id}/line-discounts`, { lines: [{ lineId: e4.lines[0].id, discount: 40 }] })).status, 403);
 solo = await only([]);
 eq('with none of them, the customer’s invoices stay shut', (await solo.get(`/sales/customers/${customer.id}/invoices`)).status, 403);
+
+console.log('== printing is its own permission (owner, 2026-10-24)');
+solo = await only(['sales:view']);
+eq('seeing an invoice isn’t printing it', (await solo.post(`/sales/invoices/${e0.id}/print`, {})).status, 403);
+solo = await only(['sales:view', 'sales:print']);
+eq('with the print permission it may', (await solo.post(`/sales/invoices/${e0.id}/print`, {})).status, 204);
+check(
+  '…and the activity log says so',
+  ((await owner.get(`/audit?resourceId=${e0.id}&pageSize=50`)).data.items ?? []).some((a) => a.action === 'print'),
+);
+
+console.log('== changing an invoice keeps the free goods it has');
+const freeLine = (quantity) => ({ productId: item.id, quantity, unitPrice: 0, isBonus: true });
+const fb = ok('an invoice with 1 free', await owner.post('/sales/invoices', { ...sale(2), lines: [...sale(2).lines, freeLine(1)] }));
+solo = await only(['sales:edit']);
+const fb2 = ok('changed by someone who can’t give free goods', await solo.put(`/sales/invoices/${fb.id}`, { ...sale(3), lines: [...sale(3).lines, freeLine(1)] }));
+eq('…the free one kept', fb2.lines.map((l) => [l.quantity, l.isBonus, l.unitPrice]), [[3, false, 1000], [1, true, 0]]);
+eq('…but no more of it', (await solo.put(`/sales/invoices/${fb.id}`, { ...sale(3), lines: [...sale(3).lines, freeLine(2)] })).data?.code, 'bonus_not_allowed');
+eq('…nor free goods on another invoice', (await solo.put(`/sales/invoices/${e0.id}`, { ...sale(3), lines: [...sale(3).lines, freeLine(1)] })).data?.code, 'bonus_not_allowed');
 ok('they have work in the books now: closed', await owner.put(`/staff/${soloStaff.id}`, { isActive: false }));
+
+// ------------------------------------------------------------------ after money (owner, 2026-10-24)
+console.log('== a discount after money came in, on a cheque or out for delivery');
+const box = (await owner.get('/money-accounts')).data.find(
+  (a) => a.kind === 'CASH_BOX' && a.branchId === owner.user.branchId && a.isActive && a.isDefault,
+);
+const balanceOf = async (id = customer.id) => (await owner.get(`/parties/${id}`)).data.balance;
+const boxNow = async () => (await owner.get('/money-accounts')).data.find((a) => a.id === box.id).balance;
+const entriesOf = async (source, number) =>
+  (await owner.get(`/ledger/entries?source=${source}&pageSize=100`)).data.items.filter((e) => e.number === number);
+const linesOf = (e) => e.lines.map((l) => [l.accountCode.split('-')[0], l.debit, l.credit]).sort();
+const p0 = ok('a sale of 5', await owner.post('/sales/invoices', sale(5)));
+ok(
+  'paid in full by a receipt',
+  await owner.post('/receipts', {
+    partyId: customer.id,
+    lines: [{ method: 'CASH', accountId: box.id, amount: 5000 }],
+    allocations: [{ documentId: p0.id, amount: 5000 }],
+  }),
+);
+const [b0, m0] = [await balanceOf(), await boxNow()];
+const p1 = ok('then 10% off it', await accountant.post(`/sales/invoices/${p0.id}/discount`, { percent: 10 }));
+const p1o = (await owner.get(`/sales/invoices/${p0.id}`)).data;
+eq('…the same invoice, at what its goods cost, paid', [p1.id, p1.number, p1.grandTotal, p1o.costTotal, p1.paidAmount, p1.status], [p0.id, p0.number, 4500, p0.costTotal, 5000, 'PAID']);
+eq('…its profit less the discount', p1o.profitTotal, p0.profitTotal - 500);
+eq('…the customer has the 5.00 back on account', await balanceOf(), b0 - 500);
+eq('…the money stays where it came in', await boxNow(), m0);
+eq('…its own entry: off the sales, to the customer', (await entriesOf('SALES_DISCOUNT', p0.number)).map(linesOf), [[['1103', 0, 500], ['4101', 500, 0]]]);
+eq('…the sale’s own entry untouched', (await entriesOf('SALES_INVOICE', p0.number)).length, 1);
+eq('…a discount, not an edit', (await owner.get(`/sales/invoices/${p0.id}`)).data.edited ?? false, false);
+let st = ok('the customer’s statement', await owner.get(`/ledger/parties/${customer.id}/statement?from=2022-01-01`));
+eq('…closes at their balance', st.closing, await balanceOf());
+check('…with the discount on its own line', st.lines.some((l) => l.sourceType === 'SALES_DISCOUNT' && l.credit === 500 && l.documentNumber === p0.number));
+eq(
+  'an item of another invoice is still refused',
+  (await accountant.post(`/sales/invoices/${p0.id}/line-discounts`, { lines: [{ lineId: inv.lines[0].id, discount: 1 }] })).data?.code,
+  'line_not_found',
+);
+
+const q0 = ok('a sale of 2', await owner.post('/sales/invoices', sale(2)));
+ok(
+  'a cheque taken for it',
+  await owner.post('/notes/receive', {
+    partyId: customer.id,
+    kind: 'CHEQUE',
+    serialNumber: `L${tag}`,
+    amount: 2000,
+    dueDate: companyToday(),
+    bankName: 'CIB',
+    allocations: [{ documentId: q0.id, amount: 2000 }],
+  }),
+);
+const q1 = ok('then 2.00 off its item', await accountant.post(`/sales/invoices/${q0.id}/line-discounts`, { lines: [{ lineId: q0.lines[0].id, discount: 200 }] }));
+eq('…given', [q1.lines[0].discount, q1.lines[0].lineTotal, q1.grandTotal], [200, 1800, 1800]);
+
+const o0 = ok('a sale our driver takes', await owner.post('/sales/invoices', { ...sale(1), deliveryMethod: 'OWN_DELIVERY', deliveryAddress: 'Main St.' }));
+ok('out for delivery', await owner.put(`/sales/invoices/${o0.id}/delivery`, { status: 'OUT_FOR_DELIVERY' }));
+const o1 = ok('a discount while it is out', await accountant.post(`/sales/invoices/${o0.id}/discount`, { amount: 100 }));
+eq('…given, still out', [o1.grandTotal, o1.deliveryStatus], [900, 'OUT_FOR_DELIVERY']);
+
+const r0 = ok('a sale of 3', await owner.post('/sales/invoices', sale(3)));
+ok('one of them returned', await owner.confirmed().post(`/sales/invoices/${r0.id}/returns`, { lines: [{ lineId: r0.lines[0].id, quantity: 1 }] }));
+eq('then its discount can’t change', (await accountant.post(`/sales/invoices/${r0.id}/discount`, { percent: 5 })).data?.code, 'discount_after_return');
+
+console.log('== paid at the counter, then a discount: the rest is theirs on account');
+const fifo = ok('another customer', await owner.post('/parties', { name: `LockFifo ${tag}`, types: ['CUSTOMER'] }));
+const f1 = ok('owes 10.00 on an older invoice', await owner.post('/sales/invoices', { ...sale(1), partyId: fifo.id }));
+const f2 = ok('a newer one of 20.00 paid at once', await owner.post('/sales/invoices', { ...sale(2), partyId: fifo.id, paidAmount: 2000, paidAccountId: box.id }));
+const m1 = await boxNow();
+ok('10% off the paid one', await accountant.post(`/sales/invoices/${f2.id}/discount`, { percent: 10 }));
+eq('they owe 8.00 now', await balanceOf(fifo.id), 800);
+eq('no money moved', await boxNow(), m1);
+let mine2 = ok('their invoices', await owner.get(`/sales/customers/${fifo.id}/invoices`));
+eq(
+  '…the paid one paid, the older one 2.00 less owed',
+  mine2.invoices.map((i) => [i.number, i.state, i.owed]),
+  [[f1.number, 'PARTIAL', 800], [f2.number, 'PAID', 0]],
+);
+eq('…nothing owed from before them', mine2.previousBalance, 0);
+ok('the paid one deleted', await owner.post(`/sales/invoices/${f2.id}/cancel`, {}));
+eq('…all its money goes back out', await boxNow(), m1 - 2000);
+eq('…they owe the older one again', await balanceOf(fifo.id), 1000);
+
+console.log('== a discount, then its items changed: the statement shows it once');
+const s0 = ok('a sale of 3', await owner.post('/sales/invoices', { ...sale(3), partyId: fifo.id }));
+ok('10% off', await accountant.post(`/sales/invoices/${s0.id}/discount`, { percent: 10 }));
+const s1 = ok('3 → 2, the 10% kept', await accountant.put(`/sales/invoices/${s0.id}`, { ...sale(2), partyId: fifo.id, charges: [{ kind: 'DISCOUNT', percent: 10 }] }));
+eq('…its total', s1.grandTotal, 1800);
+st = ok('their statement', await owner.get(`/ledger/parties/${fifo.id}/statement?from=2022-01-01`));
+eq('…closes at their balance', [st.closing, await balanceOf(fifo.id)], [2800, 2800]);
+check('…the earlier discount left out with the earlier posting', !st.lines.some((l) => l.sourceType === 'SALES_DISCOUNT'));
+
+console.log('== a changed invoice keeps what its goods cost');
+const item2 = ok(
+  'another item at 10.00',
+  await owner.post('/products', {
+    name: `LockCost ${tag}`,
+    categoryId: cat.id,
+    units: [{ unitId: piece.id, factor: 1 }],
+    prices: [{ unitId: piece.id, priceLevelId: level.id, price: 1000 }],
+  }),
+);
+const buy = (unitCost) =>
+  owner.post('/purchases/invoices', {
+    partyId: supplier.id,
+    warehouseId: wh.id,
+    taxPercent: 0,
+    lines: [{ productId: item2.id, quantity: 10, unitCost }],
+  });
+ok('10 bought at 5.00', await buy(500));
+const sale2 = (quantity, notes) => ({ ...sale(quantity), notes, lines: [{ productId: item2.id, quantity, unitPrice: 1000 }] });
+const k0 = ok('2 sold', await owner.post('/sales/invoices', sale2(2)));
+eq('…at 5.00 each', k0.costTotal, 1000);
+ok('10 more bought at 7.00', await buy(700));
+const avg = async () => (await owner.get(`/products/${item2.id}`)).data.costPrice;
+const a0 = await avg();
+const k1 = ok('the sale changed, its notes only', await owner.put(`/sales/invoices/${k0.id}`, sale2(2, 'changed')));
+eq('…its goods still cost 10.00', k1.costTotal, 1000);
+eq('…the average as it was', await avg(), a0);
+const k2 = ok('3 instead of 2', await owner.put(`/sales/invoices/${k0.id}`, sale2(3)));
+eq('…the third at today’s average', k2.costTotal, 1000 + a0);
+eq('…the average still as it was', await avg(), a0);
 
 // ------------------------------------------------------------------ the owner (owner, 2026-10-22)
 console.log('== the owner is warned, then may go past any rule');

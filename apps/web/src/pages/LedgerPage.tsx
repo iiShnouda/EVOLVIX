@@ -878,6 +878,7 @@ function ClosingTab() {
         {can('ledger:lock') && (
           <>
             <input
+              aria-label={t('ledger.lockedThrough')}
               className={`${small} w-auto`}
               type="date"
               min={lockMin}

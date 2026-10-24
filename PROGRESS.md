@@ -1011,13 +1011,13 @@ own permission, and roles bundle them
 
 ## 6. Known limitations / cleanup TODO
 - **Multi-currency is base-currency only.** You can choose the base currency from a list, but
-  invoices are not yet issued in multiple currencies with FX conversion. Also, 3-decimal
-  currencies (KWD/BHD/OMR/JOD) are listed but **money storage assumes 2 decimals** — supporting
-  them needs per-currency minor units (`money.ts`) + storing currency decimals. Do this before
-  enabling those currencies for real amounts.
+  invoices are not yet issued in multiple currencies with FX conversion. 3-decimal currencies
+  (KWD/BHD/OMR/JOD) are not offered (Settings and the server refuse them, 2026-10-24): **money
+  storage assumes 2 decimals** — supporting them needs per-currency minor units (`money.ts`) +
+  storing currency decimals.
 - Historical **seeded** documents got cost/profit backfilled at seed cost; fine for the demo.
-- Returns can't be cancelled/voided yet (no cancel flow for any document). Queries already
-  ignore `CANCELLED` returns, so adding "cancel" later only needs the reversing stock/balance post.
+- A return is cancelled whole (`sales:return_cancel` / `purchases:return_cancel`, 2026-10-24); it
+  can't be changed line by line.
 - Returns are always against an invoice; a "return without invoice" (unknown sale) isn't supported
   by design — it would let goods re-enter stock at a guessed cost.
 - Windows WPF client is **paused** (CLAUDE.md rule 7). Its models stop at the warehouse
@@ -1025,13 +1025,11 @@ own permission, and roles bundle them
 - The invoice screen reads per-warehouse stock from the inventory list (first 500 items). A
   catalogue larger than that needs a per-item stock lookup.
 - `Program.cs` has one deprecation warning (`ForwardedHeaders.KnownNetworks`) — harmless.
-- A permission change reaches a signed-in person at their next token refresh (up to 15 minutes).
 - Transfers and stocktakes are entered in base units (the screens show cartons as a hint only).
 - A model can't gain a new dimension (sizes on a color-only model); make a new model instead.
 - The ledger starts at go-live: documents from before it are not replayed as entries.
 - Stock at average cost can drift from the stock ledger by rounding (under a piastre a unit); a
   stock revaluation entry isn't built yet.
-- A branch-scoped person given `ledger:view` sees the whole company's ledger.
 - An endorsed note that later bounces at the supplier isn't handled yet (record it with a
   manual entry). Notes aren't in a currency other than the company's.
 - An account's opening balance can be set only before money first moves through it.

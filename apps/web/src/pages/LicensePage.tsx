@@ -91,6 +91,7 @@ export function LicensePage() {
       <Card className="space-y-3">
         <SectionTitle>{t('license.code')}</SectionTitle>
         <textarea
+          aria-label={t('license.code')}
           value={code}
           onChange={(e) => {
             setCode(e.target.value);

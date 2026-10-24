@@ -146,8 +146,8 @@ eq(
 eq('supplier owes = ledger', (await party(supp.id)).balance, -94600);
 
 console.log('== sales post');
-// The discount is given afterwards, from the customer's invoices (owner, 2026-10-24): the newest
-// entry under its number is the one it stands on.
+// The discount is given afterwards, from the customer's invoices (owner, 2026-10-24): the sale
+// posts as it was made, the discount as its own entry.
 const sale = ok(
   'sale with discount, VAT, delivery fee, part paid',
   await sellDiscounted(owner, owner, {
@@ -169,15 +169,20 @@ eq(
   'sale entry',
   lines(e),
   [
-    ['1103', sale.grandTotal, 0],
-    ['4101', 0, 14000],
-    ['2102', 0, 1960],
+    ['1103', 17600, 0],
+    ['4101', 0, 15000],
+    ['2102', 0, 2100],
     ['4103', 0, 500],
     ['5101', cost, 0],
     ['1105', 0, cost],
     ['1101', 5000, 0],
     ['1103', 0, 5000],
   ].sort(),
+);
+eq(
+  'its discount: off the sales and the VAT, to the customer',
+  (await entryOf('SALES_DISCOUNT', sale.number)).map(lines),
+  [[['1103', 0, 1140], ['2102', 140, 0], ['4101', 1000, 0]]],
 );
 eq('grand total = 14000 + 1960 + 500', sale.grandTotal, 16460);
 const custAccount = (await accountsNow()).find((a) => a.partyId === cust.id);

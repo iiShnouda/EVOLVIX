@@ -69,7 +69,6 @@ export type Permission =
   | 'sales:print'
   | 'sales:create'
   | 'sales:order'
-  | 'sales:quote'
   | 'sales:edit'
   | 'sales:cancel'
   | 'sales:approve'
@@ -78,6 +77,7 @@ export type Permission =
   | 'sales:invoice_alerts'
   | 'sales:return'
   | 'sales:return_free'
+  | 'sales:return_cancel'
   | 'sales:change_price'
   | 'sales:raise_price'
   | 'sales:choose_price_level'
@@ -107,6 +107,7 @@ export type Permission =
   | 'purchases:photos'
   | 'purchases:return'
   | 'purchases:return_free'
+  | 'purchases:return_cancel'
   | 'purchases:change_price'
   | 'purchases:choose_price_level'
   | 'purchases:discount'
@@ -122,7 +123,6 @@ export type Permission =
   | 'products:barcodes'
   | 'products:images'
   | 'prices:edit'
-  | 'price_levels:manage'
   | 'inventory:total_items'
   | 'inventory:total_quantity'
   | 'inventory:total_sale_value'
@@ -191,7 +191,6 @@ export type Permission =
   | 'parties:id_cards_edit'
   | 'parties:set_price_level'
   | 'parties:credit_limit'
-  | 'parties:cash_customer'
   | 'statement:customers'
   | 'statement:suppliers'
   | 'statement:carriers'
@@ -313,7 +312,6 @@ export type Permission =
   | 'warehouses:create'
   | 'warehouses:edit'
   | 'warehouses:delete'
-  | 'settings:view'
   | 'settings:company'
   | 'settings:logo'
   | 'settings:pricing'
@@ -441,15 +439,17 @@ export interface Party {
   /** The walk-in cash customer (code 0): always there, can't be closed. */
   isSystem?: boolean;
   notes?: string | null;
-  /** The most they may owe (حد الائتمان), minor units; null = no limit. */
+  /** The most they may owe (حد الائتمان), minor units; null = no limit (or not shown). */
   creditLimit?: number | null;
+  /** What a customer may still buy on account before an invoice waits for approval; null = no limit. */
+  creditLeft?: number | null;
   /**
-   * Net balance in minor units.
+   * Net balance in minor units; null for whoever may not see this party's account.
    *  > 0  → they owe us (receivable, مدين)
    *  < 0  → we owe them (payable,   دائن)
    *  = 0  → settled
    */
-  balance: number;
+  balance: number | null;
   currency: string;
   isActive: boolean;
   createdAt: string;
@@ -2458,8 +2458,6 @@ export interface PerformanceRow {
   returns: number;
   /** Paid on the spot with the invoices. */
   collected: number;
-  quotes: number;
-  quotesWon: number;
   /** Percent of all net sales. */
   share: number;
 }

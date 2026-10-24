@@ -279,6 +279,89 @@ public sealed class ReturnsService
     };
 
     /// <summary>
+    /// Cancel return <paramref name="returnId"/> entered by mistake (owner, 2026-10-24). Everything it
+    /// moved goes back: a customer's goods leave stock again at the value they came in at (refused once
+    /// they were sold on), a supplier's come back at the value they left at; the party's account and any
+    /// cash settled at the time go back; its ledger entry is reversed; and the invoice it was against is
+    /// no longer returned. It stays on the list, as cancelled. All-or-nothing.
+    /// </summary>
+    public async Task<(SalesDocument? Doc, ReturnError? Error)> CancelAsync(Guid returnId, bool isSale,
+        ClaimsPrincipal user, Guid staffId)
+    {
+        var type = isSale ? DocumentType.SALES_RETURN : DocumentType.PURCHASE_RETURN;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {returnId} FOR UPDATE");
+        var q = _db.SalesDocuments.Where(d => d.Id == returnId && d.Type == type).InBranches(user, d => d.BranchId);
+        if (isSale) q = q.InDepartments(user);
+        var doc = await q.Include(d => d.Lines).ThenInclude(l => l.Warehouse).FirstOrDefaultAsync();
+        if (doc is null) return (null, new("not_found", "Return not found."));
+        if (doc.Status == DocumentStatus.CANCELLED)
+            return (null, new("return_cancelled", "This return is already cancelled."));
+        var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
+        if (lockDate is DateTime locked && CompanyClock.DayOf(doc.IssueDate) <= DateOnly.FromDateTime(locked)
+            && !Access.OverridePasses(user))
+            return (null, new("period_locked", "This return is in a locked period."));
+
+        // The invoice it was against (documents before items), then the goods.
+        SalesDocument? invoice = null;
+        if (doc.SourceDocumentId is Guid source)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {source} FOR UPDATE");
+            invoice = await _db.SalesDocuments.FirstOrDefaultAsync(d => d.Id == source);
+        }
+        var lines = doc.Lines.Where(l => l.Quantity > 0 && l.Warehouse is not null).ToList();
+        var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
+        if (isSale)
+            foreach (var g in lines.GroupBy(l => (l.ProductId, l.WarehouseId!.Value)))
+            {
+                var wanted = g.Sum(l => l.Quantity);
+                var available = _inventory.Available(g.Key.ProductId, g.Key.Value);
+                if (wanted > available)
+                    return (null, new("insufficient_stock",
+                        $"{g.First().ProductName}: {available} left in {Loc.Name(g.First().Warehouse!)}, {wanted} came back on this return."));
+            }
+        foreach (var l in lines)
+        {
+            if (!products.TryGetValue(l.ProductId, out var product))
+                return (null, new("product_not_found", $"{l.ProductName} no longer exists."));
+            if (isSale)
+                _inventory.ReturnToSupplierValue(product, l.Warehouse!, l.Quantity, l.LineCost,
+                    StockMovementType.SALES_RETURN_CANCELLED, doc.Id, doc.Number);
+            else
+                _inventory.ReceiveValue(product, l.Warehouse!, l.Quantity, l.LineCost,
+                    StockMovementType.PURCHASE_RETURN_CANCELLED, doc.Id, doc.Number);
+        }
+
+        // What went on the party's account comes off it; cash settled at the time goes back.
+        await MoneyService.LockPartiesAsync(_db, doc.PartyId);
+        var party = await _db.Parties.FirstAsync(p => p.Id == doc.PartyId);
+        var onAccount = doc.GrandTotal - doc.PaidAmount;
+        party.Balance += isSale ? onAccount : -onAccount;
+        if (doc.PaidAmount > 0 && doc.PaidAccountId is Guid accountId)
+        {
+            var account = (await _money.LockAsync(new[] { accountId }))[accountId];
+            var moneyError = _money.Move(account, isSale ? doc.PaidAmount : -doc.PaidAmount,
+                MoneyMovementKind.CANCELLATION, staffId, doc.Number, documentId: doc.Id, partyId: doc.PartyId);
+            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
+        }
+        var source2 = isSale ? "SALES_RETURN" : "PURCHASE_RETURN";
+        await _ledger.ReverseAsync(source2, doc.Id, $"{source2}_CANCEL", doc.Number,
+            $"{(isSale ? "Sales" : "Purchase")} return {doc.Number} cancelled", staffId);
+
+        doc.Status = DocumentStatus.CANCELLED;
+        if (invoice?.Status == DocumentStatus.RETURNED)
+        {
+            invoice.Status = DocumentStatus.CONFIRMED;
+            MoneyService.RefreshPaidStatus(invoice);
+        }
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return (doc, null);
+    }
+
+    /// <summary>
     /// Post a return against invoice <paramref name="invoiceId"/>. All-or-nothing: the return
     /// document, its stock movements, the party balance and the invoice status commit together.
     /// <paramref name="user"/> may return only invoices of their branches.

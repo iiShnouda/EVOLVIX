@@ -288,6 +288,22 @@ public sealed class LedgerService
     }
 
     /// <summary>
+    /// A discount given on a posted sales invoice (owner, 2026-10-24): what it takes off the sale, its
+    /// VAT and its additions comes off what the customer owes — Dr sales · Dr VAT · Dr other income ·
+    /// Cr customer — dated when it is given. A smaller discount posts the other way.
+    /// </summary>
+    public async Task PostSalesDiscountAsync(SalesDocument doc, Party party, long net, long tax, long addition,
+        Guid staffId)
+    {
+        var customer = await ForPartyAsync(party, PartyRole.Customer);
+        Post(Begin("SALES_DISCOUNT", doc.Id, doc.Number, $"Discount on sales invoice {doc.Number}", doc.BranchId, staffId)
+            .Debit(await SystemAsync(LedgerKeys.Sales), net)
+            .Debit(await SystemAsync(LedgerKeys.VatOutput), tax)
+            .Debit(await SystemAsync(LedgerKeys.OtherIncome), addition)
+            .Credit(customer, net + tax + addition));
+    }
+
+    /// <summary>
     /// Sales return: Dr sales returns (net) · Dr VAT · Cr customer (total) · Dr inventory · Cr COGS;
     /// cash back: Dr customer · Cr money.
     /// </summary>

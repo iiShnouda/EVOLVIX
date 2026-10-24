@@ -41,7 +41,12 @@ public sealed class PartiesController : ControllerBase
         }
         if (active is bool isActive) q = q.Where(p => p.IsActive == isActive);
         // How the account stands (owner, 2026-10-02): over or near the purchase limit (80%), they
-        // owe us, we owe them, settled, or closed.
+        // owe us, we owe them, settled, or closed. By balance only among the parties whose account
+        // this person may see.
+        var byBalance = status?.Trim().ToUpperInvariant() is "OVER_LIMIT" or "NEAR_LIMIT" or "OWES" or "CREDIT" or "SETTLED";
+        var seen = Enum.GetNames<PartyType>().Where(t => Mapper.MaySeeBalance(new[] { t }, User)).ToArray();
+        if (byBalance && seen.Length < Enum.GetNames<PartyType>().Length)
+            q = q.Where(p => p.Types.Any(t => seen.Contains(t)));
         switch (status?.Trim().ToUpperInvariant())
         {
             case "OVER_LIMIT": q = q.Where(p => p.IsActive && p.CreditLimit != null && p.Balance >= p.CreditLimit); break;
@@ -141,8 +146,7 @@ public sealed class PartiesController : ControllerBase
 
     /// <summary>Edit a party. Closing one needs its balance at zero, so nothing owed is hidden.</summary>
     [HttpPut("{id:guid}")]
-    [AnyPermission(Permissions.PartiesEdit, Permissions.PartiesClose, Permissions.PartiesCashCustomer,
-        Permissions.PartiesContact)]
+    [AnyPermission(Permissions.PartiesEdit, Permissions.PartiesClose, Permissions.PartiesContact)]
     public async Task<ActionResult<PartyDto>> Update(Guid id, [FromBody] UpdatePartyRequest req)
     {
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
@@ -166,7 +170,11 @@ public sealed class PartiesController : ControllerBase
             };
         // The rest of the file is parties:edit's (owner, 2026-10-23: each part its own permission).
         if (!User.Has(Permissions.PartiesEdit))
-            fields = fields with { Name = null, Types = null, Notes = null, DefaultCarrierId = null, TempCarrierName = null };
+            fields = fields with
+            {
+                Name = null, Types = null, Notes = null, DefaultCarrierId = null, TempCarrierName = null,
+                IsCashCustomer = null,
+            };
         var error = await ApplyAsync(party, fields, isNew: false);
         if (error is not null) return error;
         // The walk-in cash customer stays a cash customer, and stays open.
@@ -285,11 +293,13 @@ public sealed class PartiesController : ControllerBase
                 return BadRequest(new { message = "Choose the shipping company.", code = "carrier_not_found" });
             else party.DefaultCarrierId = carrier;
         }
+        // The cash customer is one account, code 0 (owner, 2026-10-03): no other is made one; one marked
+        // before that may stop being one.
         if (f.IsCashCustomer is bool cash && cash != party.IsCashCustomer)
         {
-            if (!User.HasClaim("permission", Permissions.PartiesCashCustomer))
-                return StatusCode(403, new { message = "Marking a cash customer needs permission.", code = "cash_customer_not_allowed" });
-            party.IsCashCustomer = cash;
+            if (cash)
+                return BadRequest(new { message = "The cash customer is the account with code 0.", code = "cash_customer_code_zero" });
+            party.IsCashCustomer = false;
         }
         if (f.Email is not null)
         {

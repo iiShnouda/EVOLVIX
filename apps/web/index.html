@@ -334,44 +334,12 @@
           <h1>Evolvix</h1>
           <div class="bar" role="status" aria-label="Loading"></div>
           <p id="boot-msg">جارٍ التشغيل…</p>
-          <button class="retry" id="boot-retry" type="button" onclick="location.reload()">
+          <button class="retry" id="boot-retry" type="button">
             إعادة المحاولة
           </button>
         </div>
       </div>
-    <script>
-      // The splash shows ONE language — the last one used on this device (Arabic by default for a
-      // new install). The app's own language preference is kept under "skb.prefs"; read it so the
-      // splash matches, and set the page direction before anything paints.
-      var BOOT_AR = true;
-      (function () {
-        try {
-          var p = JSON.parse(localStorage.getItem('skb.prefs') || '{}');
-          if (p && p.state && p.state.locale === 'en') BOOT_AR = false;
-        } catch (e) {
-          /* default to Arabic */
-        }
-        document.documentElement.lang = BOOT_AR ? 'ar' : 'en';
-        document.documentElement.dir = BOOT_AR ? 'rtl' : 'ltr';
-        var msg = document.getElementById('boot-msg');
-        if (msg) msg.textContent = BOOT_AR ? 'جارٍ التشغيل…' : 'Starting…';
-        var retry = document.getElementById('boot-retry');
-        if (retry) retry.textContent = BOOT_AR ? 'إعادة المحاولة' : 'Retry';
-      })();
-      // If the app hasn't taken the splash away after a while, the code didn't load or the server is down.
-      (function () {
-        setTimeout(function () {
-          var boot = document.getElementById('boot');
-          if (!boot) return; // the app is up and took the splash away — all good.
-          boot.className = 'failed';
-          var msg = document.getElementById('boot-msg');
-          if (msg)
-            msg.textContent = BOOT_AR
-              ? 'الخادم غير متاح حالياً. تأكد أن السيرفر يعمل ثم أعد المحاولة.'
-              : 'The server is unavailable. Make sure it is running, then retry.';
-        }, 12000);
-      })();
-    </script>
+    <script src="/boot.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

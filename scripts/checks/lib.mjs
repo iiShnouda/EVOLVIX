@@ -7,7 +7,9 @@ export async function login(email, password = email.startsWith('owner') ? 'Chang
   const r = await fetch(`${BASE}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
   const j = await r.json();
   if (!r.ok) throw new Error(`login ${email}: ${r.status} ${JSON.stringify(j)}`);
-  const c = client(j.accessToken, j.user);
+  // The refresh cookie, so a token refused after the person's access changed is renewed as the app does.
+  const cookie = (r.headers.get('set-cookie') ?? '').split(';')[0];
+  const c = client(j.accessToken, j.user, 'en', null, {}, { token: j.accessToken, cookie });
   // The checks add branches, warehouses and money accounts and use them with other people: new ones
   // are seen by everyone here (the company default hides them until given; story.test checks that).
   if (email.startsWith('owner') && !process.env.KEEP_NEW_HIDDEN && !shownNew) {
@@ -17,26 +19,40 @@ export async function login(email, password = email.startsWith('owner') ? 'Chang
   return c;
 }
 /** A signed-in client; `at(branchId)` gives one working in that branch (the X-Branch header). */
-export function client(token, user, lang = 'en', branch = null, extra = {}) {
-  const call = async (method, path, body) => {
-    const r = await fetch(`${BASE}${path}`, {
+export function client(token, user, lang = 'en', branch = null, extra = {}, session = { token, cookie: '' }) {
+  const send = (method, path, body) =>
+    fetch(`${BASE}${path}`, {
       method, headers: {
-        'content-type': 'application/json', authorization: `Bearer ${token}`, 'accept-language': lang,
+        'content-type': 'application/json', authorization: `Bearer ${session.token}`, 'accept-language': lang,
         ...(branch ? { 'x-branch': branch } : {}),
         ...extra,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const text = await r.text();
+  const call = async (method, path, body) => {
+    let r = await send(method, path, body);
+    let text = await r.text();
+    // The person's access changed (owner, 2026-10-24): a new token as things now stand, as the app does.
+    if (r.status === 401 && session.cookie && text.includes('ACCESS_CHANGED')) {
+      const f = await fetch(`${BASE}/auth/refresh`, { method: 'POST', headers: { cookie: session.cookie } });
+      if (f.ok) {
+        const j = await f.json();
+        session.token = j.accessToken;
+        session.cookie = (f.headers.get('set-cookie') ?? '').split(';')[0] || session.cookie;
+        r = await send(method, path, body);
+        text = await r.text();
+      }
+    }
     let data; try { data = text ? JSON.parse(text) : null; } catch { data = text; }
     return { status: r.status, data, canOverride: r.headers.get('x-owner-can-override') === '1' };
   };
   return {
-    user, token,
-    lang: (l) => client(token, user, l, branch, extra),
-    at: (b) => client(token, user, lang, b, extra),
+    user,
+    get token() { return session.token; },
+    lang: (l) => client(token, user, l, branch, extra, session),
+    at: (b) => client(token, user, lang, b, extra, session),
     /** The owner, having confirmed going past a rule (owner, 2026-10-22). */
-    confirmed: () => client(token, user, lang, branch, { ...extra, 'x-owner-override': '1' }),
+    confirmed: () => client(token, user, lang, branch, { ...extra, 'x-owner-override': '1' }, session),
     get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), put: (p, b) => call('PUT', p, b ?? {}),
     del: (p) => call('DELETE', p),
   };

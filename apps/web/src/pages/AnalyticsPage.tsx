@@ -319,7 +319,7 @@ function MonthlyTab() {
 
 /**
  * Sales performance (أداء المبيعات) by person (the sale's rep, else who made it) or by branch:
- * net sales after returns, profit, invoices, customers, average invoice, and quotations won.
+ * net sales after returns, profit, invoices, customers, average invoice, and what was collected.
  */
 function PerformanceTab() {
   const { t, locale } = useT();
@@ -351,7 +351,6 @@ function PerformanceTab() {
     t('perf.average'),
     t('analytics.returns'),
     t('perf.collected'),
-    t('perf.quotes'),
   ]);
   return (
     <div className="space-y-3">
@@ -397,7 +396,6 @@ function PerformanceTab() {
                   { money: r.averageInvoice },
                   { money: r.returns },
                   { money: r.collected },
-                  `${r.quotesWon} / ${r.quotes}`,
                 ]),
               ),
               cols([
@@ -477,9 +475,6 @@ function PerformanceTab() {
                           {r.returns ? m(r.returns) : '–'}
                         </td>
                         <td className="px-2 py-1.5 text-end tnum">{m(r.collected)}</td>
-                        <td className="px-2 py-1.5 text-end tnum">
-                          {r.quotes ? `${n(r.quotesWon)} / ${n(r.quotes)}` : '–'}
-                        </td>
                       </tr>
                     ))}
                   </tbody>

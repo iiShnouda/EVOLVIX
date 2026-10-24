@@ -502,8 +502,13 @@ public record CreateSettlementRequest(
 
 /// <param name="SalesPriceLevelId">The customer's own price level (null = the default sales level).</param>
 /// <param name="PurchasePriceLevelId">The supplier's own price level (null = the default purchase level).</param>
+/// <summary>
+/// A party. <c>Balance</c> is null for whoever may not see its account (see
+/// <c>Mapper.MaySeeBalance</c>); <c>CreditLeft</c> is what a customer may still buy on account
+/// before an invoice waits for approval (null = no limit).
+/// </summary>
 public record PartyDto(
-    string Id, string Name, string[] Types, string? Phone, long Balance, string Currency,
+    string Id, string Name, string[] Types, string? Phone, long? Balance, string Currency,
     string? SalesPriceLevelId, string? PurchasePriceLevelId,
     string? Email, string? TaxNumber, string? Address, bool IsActive,
     string[] OtherPhones, string? ContactName, string? ShippingAddress, string? Notes, long? CreditLimit = null,
@@ -511,7 +516,7 @@ public record PartyDto(
     string? DefaultCarrierId = null, bool IsCashCustomer = false,
     string[]? OtherPhoneLabels = null, string? ExtraAddress = null, string? ExtraAddressLabel = null,
     string? TempCarrierName = null, bool HasIdFront = false, bool HasIdBack = false, bool IsSystem = false,
-    string? NationalId = null, string? PhoneLabel = null);
+    string? NationalId = null, string? PhoneLabel = null, long? CreditLeft = null);
 
 /// <summary>A customer's credit limit, minor units; null = no limit.</summary>
 public record SetCreditLimitRequest(long? CreditLimit);
@@ -1031,10 +1036,9 @@ public record MonthlySalesDto(string Month, long Sales, long Returns, long NetSa
 public record TopPartyDto(string PartyId, string Name, long Net, int Documents, double Share);
 
 /// <param name="Collected">Paid on the spot with the invoices (later receipts aren't counted).</param>
-/// <param name="QuotesWon">Quotations of the period that became invoices.</param>
 public record PerformanceRowDto(
     string Id, string Name, long NetSales, long Profit, int Invoices, int Customers, long AverageInvoice,
-    long Returns, long Collected, int Quotes, int QuotesWon, double Share);
+    long Returns, long Collected, double Share);
 
 public record PerformanceDto(
     string By, string From, string To, PerformanceRowDto[] Rows, long NetSales, long Profit, int Invoices,

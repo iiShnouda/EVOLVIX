@@ -48,6 +48,12 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: 'DZD', nameEn: 'Algerian Dinar', nameAr: 'دينار جزائري', symbol: 'دج', decimals: 2 },
 ];
 
+/**
+ * The currencies amounts can be kept in (owner, 2026-10-24): two decimals, as every amount is stored
+ * in hundredths. A 3-decimal one (KWD, BHD, OMR, JOD) would lose its last digit, so it isn't offered.
+ */
+export const MONEY_CURRENCIES: CurrencyOption[] = CURRENCIES.filter((c) => c.decimals === 2);
+
 /** Countries offered in the picker, each suggesting a currency + a typical VAT. */
 export const COUNTRIES: CountryOption[] = [
   {

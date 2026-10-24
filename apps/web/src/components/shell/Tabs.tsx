@@ -31,6 +31,11 @@ import {
 import { dropTabWork, guards, signedIn, tabHasWork, useLeavePrompt } from '../../lib/workDraft';
 import { getScroll, setScroll } from '../../lib/scrollRoot';
 import { BackLink, pageName } from './BackLink';
+import { useAuth } from '../../stores/auth';
+import { mayOpenPath } from '../../lib/routeAccess';
+import { NotAllowedPage } from '../NotAllowed';
+
+const NO_PERMISSIONS: string[] = [];
 
 /** The app's pages (App.tsx hands them over; each tab shows one of them). */
 let tabRoutes: RouteObject[] = [];
@@ -387,12 +392,14 @@ function TabPane({ tab, active, fallback }: { tab: AppTab; active: boolean; fall
     return { ...base, navigator };
   }, [base, tab.id]);
   const element = useRoutes(tabRoutes, location);
+  const permissions = useAuth((st) => st.user?.permissions ?? NO_PERMISSIONS);
+  const allowed = mayOpenPath(location.pathname, permissions);
   const value = useMemo(() => ({ id: tab.id, active }), [tab.id, active]);
   return (
     <UNSAFE_NavigationContext.Provider value={navigation}>
       <TabContext.Provider value={value}>
         <BackLink location={location} />
-        {element}
+        {allowed ? element : <NotAllowedPage />}
       </TabContext.Provider>
     </UNSAFE_NavigationContext.Provider>
   );

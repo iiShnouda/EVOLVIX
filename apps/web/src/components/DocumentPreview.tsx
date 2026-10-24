@@ -7,6 +7,7 @@ import {
   formatDateHM,
   formatMoney,
   formatNumber,
+  type Permission,
   type SalesDocument,
   type TranslationKey,
 } from '@skb/shared';
@@ -17,6 +18,7 @@ import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { statusOf } from '../lib/status';
 import { api } from '../lib/api';
+import { errorText } from '../lib/errors';
 import { safeName } from '../lib/print';
 import { PrintEditor } from './PrintEditor';
 import { CodeName } from './CodeName';
@@ -125,11 +127,12 @@ export function DocumentPreview({
   const paper = useRef<HTMLDivElement>(null);
   const [options, setOptions] = usePaperOptions();
   const ready = !loading && !!doc;
+  const canPrint = !!doc && mayPrint(can, doc);
   // Printing opens the setup first (the paper and what shows), then prints from there.
   const [setup, setSetup] = useState(false);
   useEffect(() => {
-    if (autoPrint && ready) setSetup(true);
-  }, [autoPrint, ready]);
+    if (autoPrint && ready && canPrint) setSetup(true);
+  }, [autoPrint, ready, canPrint]);
 
   if (loading) {
     return (
@@ -201,14 +204,16 @@ export function DocumentPreview({
                 onClick={() => navigate(`/inventory/labels?doc=${doc.id}`)}
               />
             )}
-            <Button
-              size="sm"
-              variant="ghost"
-              icon="print"
-              aria-label={t('common.printPdf')}
-              title={t('common.printPdf')}
-              onClick={() => setSetup(true)}
-            />
+            {canPrint && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="print"
+                aria-label={t('common.printPdf')}
+                title={t('common.printPdf')}
+                onClick={() => setSetup(true)}
+              />
+            )}
             {onClose && (
               <button
                 onClick={onClose}
@@ -232,6 +237,7 @@ export function DocumentPreview({
       {setup && (
         <PrintSetupSheet
           doc={doc}
+          record
           onClose={() => {
             setSetup(false);
             if (autoPrint) onPrinted?.();
@@ -690,14 +696,29 @@ export function PrintSetupSheet({
   doc,
   onClose,
   onPrinted,
+  record,
 }: {
   doc: SalesDocument;
   onClose: () => void;
   onPrinted?: () => void;
+  /** Printing it is its own permission: the server is asked (and notes it) first. */
+  record?: boolean;
 }) {
   const { t } = useT();
   const [options, setOptions] = usePaperOptions();
   const [paper, setPaper] = useState<HTMLDivElement | null>(null);
+  const [refused, setRefused] = useState<unknown>(null);
+  const beforePrint = async () => {
+    const path = printPath(doc);
+    if (!record || !path) return true;
+    try {
+      await api.post(path, {});
+      return true;
+    } catch (e) {
+      setRefused(e);
+      return false;
+    }
+  };
   return (
     <>
       {/* The document as the options make it; the editor copies it. */}
@@ -711,10 +732,41 @@ export function PrintSetupSheet({
         fileTitle={safeName(`${t(`doc.${doc.type}`)} ${doc.number}`)}
         onClose={onClose}
         onPrinted={onPrinted}
-        side={<PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />}
+        beforePrint={beforePrint}
+        side={
+          <>
+            {refused != null && (
+              <p className="mb-2 text-sm text-destructive">{errorText(t, refused)}</p>
+            )}
+            <PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />
+          </>
+        }
       />
     </>
   );
+}
+
+/** Where a document's print is asked for, by its kind (none for a quotation). */
+function printPath(doc: SalesDocument): string | null {
+  switch (doc.type) {
+    case 'SALES_INVOICE':
+      return `/sales/invoices/${doc.id}/print`;
+    case 'SALES_RETURN':
+      return `/sales/returns/${doc.id}/print`;
+    case 'SALES_ORDER':
+      return `/sales/orders/${doc.id}/print`;
+    case 'PURCHASE_INVOICE':
+      return `/purchases/invoices/${doc.id}/print`;
+    case 'PURCHASE_RETURN':
+      return `/purchases/returns/${doc.id}/print`;
+    default:
+      return null;
+  }
+}
+
+/** Whether this person may print this kind of document. */
+export function mayPrint(can: (p: Permission) => boolean, doc: SalesDocument): boolean {
+  return can(doc.type.startsWith('PURCHASE') ? 'purchases:print' : 'sales:print');
 }
 
 /**

@@ -460,7 +460,7 @@ export function SectionHeading({ children, extra }: { children: ReactNode; extra
  * return for customers, a purchase invoice / return for suppliers, a receipt, a payment… */
 export function lineKind(t: (k: TranslationKey) => string, l: LedgerLine): string {
   if (l.sourceType === 'MANUAL') return l.description;
-  if (l.documentKind && l.sourceType !== 'VOUCHER_CANCEL') {
+  if (l.documentKind && l.sourceType !== 'VOUCHER_CANCEL' && l.sourceType !== 'SALES_DISCOUNT') {
     const key = `statement.kind.${l.documentKind}` as TranslationKey;
     const label = t(key);
     if (label !== key) return label;

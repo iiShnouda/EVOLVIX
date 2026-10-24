@@ -141,8 +141,9 @@ export function ProductEditorPage() {
   // A new item starts in pieces.
   useEffect(() => {
     if (!isNew || rows.length > 0 || !units.data) return;
+    // The unit of one piece, whatever it is called (owner, 2026-10-24: renaming it kept no default).
     const piece =
-      units.data.find((u) => (u.name === 'قطعة' || u.name === 'Piece') && u.isActive) ??
+      units.data.find((u) => u.isActive && (u.pieces ?? 1) === 1) ??
       units.data.find((u) => u.isActive);
     if (piece) setRows([{ unitId: piece.id, factor: 1, barcode: '' }]);
   }, [isNew, rows.length, units.data]);

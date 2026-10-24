@@ -36,6 +36,21 @@ public sealed class LedgerController : ControllerBase
     private static readonly string[] AutoParents =
         { LedgerKeys.Cash, LedgerKeys.Banks, LedgerKeys.Customers, LedgerKeys.Carriers, LedgerKeys.Suppliers, LedgerKeys.Operating };
 
+    /// <summary>
+    /// What this person may read of the ledger (rule 11): the entries of their branches. An entry of no
+    /// branch (opening balances, a year's close, a manual entry by whoever sees every branch) is the
+    /// whole company's, read by whoever sees every branch.
+    /// </summary>
+    private IQueryable<JournalEntry> VisibleEntries() =>
+        Access.Branches(User) is { } branches
+            ? _db.JournalEntries.Where(e => e.BranchId != null && branches.Contains(e.BranchId.Value))
+            : _db.JournalEntries;
+
+    private IQueryable<JournalLine> VisibleLines() =>
+        Access.Branches(User) is { } branches
+            ? _db.JournalLines.Where(l => l.Entry!.BranchId != null && branches.Contains(l.Entry.BranchId.Value))
+            : _db.JournalLines;
+
     // ------------------------------------------------------------------ accounts
 
     [HttpGet("accounts")]
@@ -44,7 +59,7 @@ public sealed class LedgerController : ControllerBase
     public async Task<ActionResult<LedgerAccountDto[]>> Accounts()
     {
         var accounts = await WithLinks(_db.LedgerAccounts).OrderBy(a => a.Code).ToListAsync();
-        var sums = await _db.JournalLines.GroupBy(l => l.AccountId)
+        var sums = await VisibleLines().GroupBy(l => l.AccountId)
             .Select(g => new { g.Key, Debit = g.Sum(l => l.Debit), Credit = g.Sum(l => l.Credit) })
             .ToDictionaryAsync(x => x.Key, x => (x.Debit, x.Credit));
         // Without the right to see costs, the cost accounts show empty and don't count in their groups.
@@ -130,7 +145,7 @@ public sealed class LedgerController : ControllerBase
         }
         await _db.SaveChangesAsync();
         await AuditAsync("update", "ledger_account", account.Id);
-        var sum = await _db.JournalLines.Where(l => l.AccountId == id)
+        var sum = await VisibleLines().Where(l => l.AccountId == id)
             .GroupBy(l => 1).Select(g => new { D = g.Sum(l => l.Debit), C = g.Sum(l => l.Credit) }).FirstOrDefaultAsync();
         return Ok(ToDto(account, sum?.D ?? 0, sum?.C ?? 0));
     }
@@ -155,7 +170,7 @@ public sealed class LedgerController : ControllerBase
         var hidden = await HiddenAccountIdsAsync();
         if (hidden.Contains(id)) return StatusCode(403, Costs.Refusal);
         ids.ExceptWith(hidden);
-        return await StatementAsync($"{account.Code} {NameOf(account)}", _db.JournalLines.Where(l => ids.Contains(l.AccountId)), from, to);
+        return await StatementAsync($"{account.Code} {NameOf(account)}", VisibleLines().Where(l => ids.Contains(l.AccountId)), from, to);
     }
 
     /// <summary>A customer's / supplier's / carrier's statement (كشف حساب): every line on their accounts.</summary>
@@ -180,13 +195,18 @@ public sealed class LedgerController : ControllerBase
               || (party.Types.Contains(nameof(PartyType.SUPPLIER)) && User.Has(Permissions.StatementSuppliers))
               || (party.Types.Contains(nameof(PartyType.CARRIER)) && User.Has(Permissions.StatementCarriers))))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
-        var lines = _db.JournalLines.Where(l => l.Account!.PartyId == partyId);
+        var lines = VisibleLines().Where(l => l.Account!.PartyId == partyId);
         // A cancelled invoice is not on the customer's statement, and a changed one shows only as it
-        // stands now (owner, 2026-10-01): its earlier postings and their reversals cancel out, so
-        // leaving them all out keeps every balance the same.
+        // stands now (owner, 2026-10-01): its earlier postings, the discounts given on them and their
+        // reversals cancel out, so leaving them all out keeps every balance the same. A discount given
+        // since it was last posted shows on its own line (owner, 2026-10-24).
+        // A cancelled return isn't on it either (owner, 2026-10-24): it and its reversal cancel out.
         var superseded = _db.JournalEntries.Where(e =>
-            e.SourceType == "SALES_INVOICE_CANCEL"
-            || (e.SourceType == "SALES_INVOICE"
+            e.SourceType == "SALES_INVOICE_CANCEL" || e.SourceType == "SALES_RETURN_CANCEL"
+            || e.SourceType == "PURCHASE_RETURN_CANCEL"
+            || ((e.SourceType == "SALES_RETURN" || e.SourceType == "PURCHASE_RETURN")
+                && _db.SalesDocuments.Any(d => d.Id == e.SourceId && d.Status == DocumentStatus.CANCELLED))
+            || ((e.SourceType == "SALES_INVOICE" || e.SourceType == "SALES_DISCOUNT")
                 && (_db.SalesDocuments.Any(d => d.Id == e.SourceId && d.Status == DocumentStatus.CANCELLED)
                     || _db.JournalEntries.Any(o => o.SourceType == "SALES_INVOICE" && o.SourceId == e.SourceId
                                                    && o.Serial > e.Serial))))
@@ -210,7 +230,8 @@ public sealed class LedgerController : ControllerBase
         return await StatementAsync(party.Name, lines, from, to, (rows, dto) => DetailAsync(rows, dto, items));
     }
 
-    private static readonly string[] DocumentSources = { "SALES_INVOICE", "SALES_RETURN", "PURCHASE_INVOICE", "PURCHASE_RETURN" };
+    private static readonly string[] DocumentSources =
+        { "SALES_INVOICE", "SALES_DISCOUNT", "SALES_RETURN", "PURCHASE_INVOICE", "PURCHASE_RETURN" };
 
     /// <summary>What each statement line's document says: its number, book, notes, branch and (optionally) items.</summary>
     private async Task<LedgerLineDto[]> DetailAsync(List<JournalLine> rows, LedgerLineDto[] dto, bool items)
@@ -258,7 +279,8 @@ public sealed class LedgerController : ControllerBase
                 {
                     // What was paid on the spot went through a cash box or bank: that is its book.
                     DocumentNumber = d.Number,
-                    Book = d.PaidAccount is not null && (d.Type == DocumentType.SALES_INVOICE ? line.Credit > 0 : line.Debit > 0)
+                    Book = d.PaidAccount is not null && entry.SourceType != "SALES_DISCOUNT"
+                           && (d.Type == DocumentType.SALES_INVOICE ? line.Credit > 0 : line.Debit > 0)
                         ? Loc.Name(d.PaidAccount)
                         : d.Department is null ? null : Loc.Name(d.Department),
                     Note = d.Notes, BranchName = branch,
@@ -322,9 +344,9 @@ public sealed class LedgerController : ControllerBase
         // Shows cost of goods sold and stock: the report's own permission is enough (owner, 2026-10-23).
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
-        var before = await _db.JournalLines.Where(l => l.Entry!.Date < start).GroupBy(l => l.AccountId)
+        var before = await VisibleLines().Where(l => l.Entry!.Date < start).GroupBy(l => l.AccountId)
             .Select(g => new { g.Key, Net = g.Sum(l => l.Debit - l.Credit) }).ToDictionaryAsync(x => x.Key, x => x.Net);
-        var during = await _db.JournalLines.Where(l => l.Entry!.Date >= start && l.Entry.Date < end).GroupBy(l => l.AccountId)
+        var during = await VisibleLines().Where(l => l.Entry!.Date >= start && l.Entry.Date < end).GroupBy(l => l.AccountId)
             .Select(g => new { g.Key, D = g.Sum(l => l.Debit), C = g.Sum(l => l.Credit) })
             .ToDictionaryAsync(x => x.Key, x => (x.D, x.C));
         var accounts = await WithLinks(_db.LedgerAccounts).Where(a => !a.IsGroup).OrderBy(a => a.Code).ToListAsync();
@@ -410,7 +432,7 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>Debits − credits per account, over the lines that pass <paramref name="filter"/>.</summary>
     private Task<Dictionary<Guid, long>> NetByAccountAsync(System.Linq.Expressions.Expression<Func<JournalLine, bool>> filter) =>
-        _db.JournalLines.Where(filter).GroupBy(l => l.AccountId)
+        VisibleLines().Where(filter).GroupBy(l => l.AccountId)
             .Select(g => new { g.Key, Net = g.Sum(l => l.Debit - l.Credit) })
             .ToDictionaryAsync(x => x.Key, x => x.Net);
 
@@ -440,7 +462,7 @@ public sealed class LedgerController : ControllerBase
             return Bad("bad_range", "Choose up to five years, the start before the end.");
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        var q = _db.JournalEntries.AsNoTracking().Where(e => e.Date >= start && e.Date < end);
+        var q = VisibleEntries().AsNoTracking().Where(e => e.Date >= start && e.Date < end);
         if (!Costs.CanSeeProfit(User)) q = q.Where(e => e.SourceType != "YEAR_CLOSE"); // it is the year's profit
         if (!string.IsNullOrWhiteSpace(source)) q = q.Where(e => e.SourceType == source.ToUpper());
         var total = await q.CountAsync();
@@ -454,7 +476,7 @@ public sealed class LedgerController : ControllerBase
     [AnyPermission(Permissions.LedgerJournal, Permissions.LedgerReverse)]
     public async Task<ActionResult<JournalEntryDto>> Entry(Guid id)
     {
-        var e = await _db.JournalEntries.AsNoTracking().Include(x => x.CreatedBy)
+        var e = await VisibleEntries().AsNoTracking().Include(x => x.CreatedBy)
             .Include(x => x.Lines).ThenInclude(l => l.Account).FirstOrDefaultAsync(x => x.Id == id);
         if (e is not null && e.SourceType == "YEAR_CLOSE" && !Costs.CanSeeProfit(User)) e = null;
         return e is null ? NotFound(new { message = "Entry not found.", code = "not_found" }) : Ok((await ToDtosAsync(new() { e }))[0]);
@@ -504,7 +526,9 @@ public sealed class LedgerController : ControllerBase
         await MoneyService.LockPartiesAsync(_db, partyIds);
         var parties = await _db.Parties.Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
-        var draft = _ledger.Begin("MANUAL", null, await DocumentNumbers.NextJournalAsync(_db), description, null, Me(),
+        // Someone limited to some branches posts in the branch they work in; otherwise it is the company's.
+        var draft = _ledger.Begin("MANUAL", null, await DocumentNumbers.NextJournalAsync(_db), description,
+            Access.AllBranches(User) ? null : Access.Work(User), Me(),
             day.Value.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Utc));
         foreach (var (accountId, debit, credit, memo) in parsed)
         {
@@ -527,7 +551,7 @@ public sealed class LedgerController : ControllerBase
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"JournalEntries\" WHERE \"Id\" = {id} FOR UPDATE");
-        var original = await _db.JournalEntries.Include(e => e.Lines).ThenInclude(l => l.Account).FirstOrDefaultAsync(e => e.Id == id);
+        var original = await VisibleEntries().Include(e => e.Lines).ThenInclude(l => l.Account).FirstOrDefaultAsync(e => e.Id == id);
         if (original is null) return NotFound(new { message = "Entry not found.", code = "not_found" });
         if (original.SourceType != "MANUAL") return Bad("not_manual", "Cancel the document to reverse its entry.");
         if (await _db.JournalEntries.AnyAsync(e => e.SourceType == "MANUAL_REVERSAL" && e.SourceId == id))
@@ -604,7 +628,8 @@ public sealed class LedgerController : ControllerBase
     {
         var entries = await _db.JournalEntries.AsNoTracking().Include(e => e.CreatedBy).Include(e => e.Lines)
             .ThenInclude(l => l.Account).Where(e => e.SourceType == "YEAR_CLOSE").OrderByDescending(e => e.Date).ToListAsync();
-        var seeProfit = Costs.CanSeeProfit(User);
+        // A year's profit is the whole company's: for whoever sees every branch.
+        var seeProfit = Costs.CanSeeProfit(User) && Access.AllBranches(User);
         return Ok(entries.Select(e => new ClosedYearDto(e.Date.Year, e.Id.ToString(),
             seeProfit ? e.Lines.Where(l => l.Account!.SystemKey == LedgerKeys.RetainedEarnings).Sum(l => l.Credit - l.Debit) : 0,
             e.CreatedAt.ToString("o"), e.CreatedBy?.FullName ?? "")).ToArray());
@@ -623,6 +648,9 @@ public sealed class LedgerController : ControllerBase
     {
         if (req.Year < 2000 || req.Year >= CompanyClock.Year)
             return Bad("bad_year", "Only a year that has ended can be closed.");
+        // The year is the whole company's: closed by whoever sees every branch (rule 11).
+        if (!Access.AllBranches(User))
+            return StatusCode(403, new { message = "Closing the year needs every branch.", code = "all_branches_needed" });
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtext('ledger-close-year'))");
         var (start, end) = CompanyClock.Days(new DateOnly(req.Year, 1, 1), new DateOnly(req.Year, 12, 31));

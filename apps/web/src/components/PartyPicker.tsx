@@ -21,6 +21,8 @@ const field =
  * completes the name with the best match, selected so typing on replaces it (Enter or Tab takes
  * it); emptying the box clears the choice. A typed code shows whose it is before it is taken.
  */
+const NO_ROWS: Party[] = [];
+
 export function PartyPicker({
   type,
   value,
@@ -58,7 +60,7 @@ export function PartyPicker({
     search: search || undefined,
     enabled: open,
   });
-  const rows = list.data?.items ?? [];
+  const rows = list.data?.items ?? NO_ROWS;
   useEffect(() => {
     const top = rows[0];
     setHint(

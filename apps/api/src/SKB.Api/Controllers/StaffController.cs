@@ -220,6 +220,8 @@ public sealed class StaffController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+        // Their role, branch, account or password may have changed: it holds from their next request.
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == id));
         await AuditAsync(req.Password is null ? "update" : "update_password", "staff", id);
         await _db.Entry(staff).Reference(s => s.Branch).LoadAsync();
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
@@ -267,6 +269,7 @@ public sealed class StaffController : ControllerBase
         {
             return Bad("in_use", "This person has work in the books: deactivate them instead.");
         }
+        AccessGate.Forget(id);
         await AuditAsync("delete", "staff", id, staff.FullName, staff.FullName);
         return NoContent();
     }
@@ -295,6 +298,7 @@ public sealed class StaffController : ControllerBase
         staff.GrantedPermissions = PermissionService.Known(granted).ToList();
         staff.RevokedPermissions = PermissionService.Known(revoked).ToList();
         await _db.SaveChangesAsync();
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == id));
         await AuditAsync("permissions", "staff", id);
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
     }
@@ -369,6 +373,7 @@ public sealed class StaffController : ControllerBase
         staff.DepartmentIds = departmentIds;
         staff.MaxDiscountPercent = req.MaxDiscountPercent;
         await _db.SaveChangesAsync();
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == id));
         await AuditAsync("access", "staff", id);
         return Ok(ToDto(staff, await _permissions.RoleSetsAsync()));
     }
@@ -428,6 +433,7 @@ public sealed class StaffController : ControllerBase
         set.Permissions = PermissionService.Known(wanted).ToList();
         set.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Role == r && s.CustomRoleId == null));
         await AuditAsync("permissions", "role", Guid.Empty, r.ToString());
         return Ok(await RoleAsync(r));
     }
@@ -486,6 +492,7 @@ public sealed class StaffController : ControllerBase
         }
         role.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.CustomRoleId == id));
         await AuditAsync("permissions", "role", role.Id, role.Name);
         return Ok(ToRoleDto(role, await _db.Staff.CountAsync(s => s.IsActive && s.CustomRoleId == id)));
     }
@@ -537,6 +544,7 @@ public sealed class StaffController : ControllerBase
         if (escalation is not null) return escalation;
 
         await _db.RolePermissionSets.Where(x => x.Role == r).ExecuteDeleteAsync();
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Role == r && s.CustomRoleId == null));
         await AuditAsync("reset", "role", Guid.Empty, r.ToString());
         return Ok(await RoleAsync(r));
     }

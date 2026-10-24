@@ -163,6 +163,16 @@ public sealed class InventoryService
         return pool.AvgCost;
     }
 
+    /// <summary>
+    /// Issue <paramref name="quantity"/> units worth <paramref name="totalValue"/> in all: goods leaving
+    /// again at the cost they had (a changed invoice's goods, back from it a moment before), backed out
+    /// of the pool's average like <see cref="ReturnToSupplierValue"/>, so the average is as it was.
+    /// Refuses to take a warehouse below zero.
+    /// </summary>
+    public void IssueValue(Product product, Warehouse warehouse, int quantity, long totalValue,
+        StockMovementType type, Guid? documentId, string? reference) =>
+        ReturnToSupplierValue(product, warehouse, quantity, totalValue, type, documentId, reference);
+
     /// <summary>Cost of one unit of a value spread over a quantity, to the nearest minor unit.</summary>
     private static long UnitOf(long totalValue, int quantity) =>
         (long)decimal.Round((decimal)totalValue / quantity, MidpointRounding.AwayFromZero);

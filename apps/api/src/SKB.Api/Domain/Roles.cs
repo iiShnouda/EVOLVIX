@@ -65,8 +65,6 @@ public static class Permissions
     /// and checked like an invoice, its goods held for it, but nothing posted until approved.
     /// </summary>
     public const string SalesOrder = "sales:order";
-    /// <summary>Make and cancel price quotations (turning one into an invoice needs sales:create).</summary>
-    public const string SalesQuote = "sales:quote";
     /// <summary>
     /// Change a posted sales invoice (owner decision 2026-10-01): its effects (stock, balance, money,
     /// ledger) are reversed and it is posted again under its own number.
@@ -89,6 +87,8 @@ public static class Permissions
     public const string SalesReturn = "sales:return";
     /// <summary>A sales return typed without picking an invoice.</summary>
     public const string SalesReturnFree = "sales:return_free";
+    /// <summary>Cancel a sales return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
+    public const string SalesReturnCancel = "sales:return_cancel";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
     /// <summary>
@@ -154,6 +154,8 @@ public static class Permissions
     public const string PurchasesReturn = "purchases:return";
     /// <summary>A purchase return typed without picking an invoice.</summary>
     public const string PurchasesReturnFree = "purchases:return_free";
+    /// <summary>Cancel a purchase return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
+    public const string PurchasesReturnCancel = "purchases:return_cancel";
     /// <summary>Buy at a cost other than the supplier price level's.</summary>
     public const string PurchasesChangePrice = "purchases:change_price";
     /// <summary>Price a purchase invoice at a level other than the supplier's own.</summary>
@@ -186,8 +188,6 @@ public static class Permissions
     public const string ProductsImages = "products:images";
     /// <summary>Set item and model prices at each price level.</summary>
     public const string PricesEdit = "prices:edit";
-    /// <summary>Add, rename, reorder and close price levels, and pick each side's default.</summary>
-    public const string PriceLevelsManage = "price_levels:manage";
     /// <summary>The inventory's totals, each its own (owner, 2026-10-21): items in stock, pieces, value at
     /// sale price, value at cost (also needs costs:view) and pieces sold.</summary>
     public const string InventoryTotalItems = "inventory:total_items";
@@ -332,8 +332,6 @@ public static class Permissions
     public const string PartiesSetPriceLevel = "parties:set_price_level";
     /// <summary>Set a customer's credit limit (حد الائتمان).</summary>
     public const string PartiesCreditLimit = "parties:credit_limit";
-    /// <summary>Mark a customer as a cash customer (عميل نقدي), who pays every invoice in full.</summary>
-    public const string PartiesCashCustomer = "parties:cash_customer";
 
     // ──── Statements ────
     /// <summary>Statements · Accounts: Customers.</summary>
@@ -598,8 +596,6 @@ public static class Permissions
     public const string WarehousesDelete = "warehouses:delete";
 
     // ──── Settings ────
-    /// <summary>Open the settings page; each part is changed with its own permission.</summary>
-    public const string SettingsView = "settings:view";
     /// <summary>Settings · Settings: Company details.</summary>
     public const string SettingsCompany = "settings:company";
     /// <summary>Settings · Settings: Company logo.</summary>
@@ -667,16 +663,16 @@ public static class Permissions
         DashboardKpiLowStock, DashboardTrend, DashboardToday, DashboardMonth, DashboardTopItems,
         DashboardTopCustomers, DashboardBranches, DashboardRecent, DashboardAccounts, DashboardNotesDue,
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
-        SalesReturnsView, SalesTogether, SalesPrint, SalesCreate, SalesOrder, SalesQuote, SalesEdit, SalesCancel,
-        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnFree, SalesChangePrice,
+        SalesReturnsView, SalesTogether, SalesPrint, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
+        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnFree, SalesReturnCancel, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
-        PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnFree,
+        PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnFree, PurchasesReturnCancel,
         PurchasesChangePrice, PurchasesChoosePriceLevel, PurchasesDiscount, PurchasesBonus, PurchasesChangeTax,
         PurchasesAdditions, InventoryView, InventoryPrint, InventoryExport, ProductsCreate, ProductsEdit,
-        ProductsClose, ProductsBarcodes, ProductsImages, PricesEdit, PriceLevelsManage, InventoryTotalItems,
+        ProductsClose, ProductsBarcodes, ProductsImages, PricesEdit, InventoryTotalItems,
         InventoryTotalQuantity, InventoryTotalSaleValue, InventoryTotalSupplyValue, InventoryTotalSold,
         InventoryCard, ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices,
         InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices,
@@ -688,7 +684,7 @@ public static class Permissions
         UnitsDelete, SizesCreate, SizesEdit, SizesClose, SizesDelete, ColorsCreate, ColorsEdit, ColorsClose,
         ColorsDelete, SeasonsCreate, SeasonsEdit, SeasonsDelete, PartiesView, PartiesContact, PartiesIdCardsView,
         PartiesPrint, PartiesCreateCustomer, PartiesCreateSupplier, PartiesCreateCarrier, PartiesEdit,
-        PartiesClose, PartiesIdCardsEdit, PartiesSetPriceLevel, PartiesCreditLimit, PartiesCashCustomer,
+        PartiesClose, PartiesIdCardsEdit, PartiesSetPriceLevel, PartiesCreditLimit,
         StatementCustomers, StatementSuppliers, StatementCarriers, StatementMoney, StatementExpenses,
         StatementWarehouses, StatementLedger, StatementPrint, StatementExport, MoneyAccounts, VouchersView,
         ExpenseCategoriesView, MoneyPrint, MoneyExport, ReceiptsCreate, PaymentsCreate, ExpensesCreate,
@@ -708,7 +704,7 @@ public static class Permissions
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
         RolesDelete, BranchesView, BranchesCreate, BranchesEdit, BranchesDelete, WarehousesCreate, WarehousesEdit,
-        WarehousesDelete, SettingsView, SettingsCompany, SettingsLogo, SettingsPricing, SettingsRules,
+        WarehousesDelete, SettingsCompany, SettingsLogo, SettingsPricing, SettingsRules,
         SettingsSecurity, SettingsNumbering, SettingsStorefront, BackupCreate, CostsView, ProfitView,
         DocumentsBackdate, RulesOverride, SystemMonitor, SystemUpdate, DataImport, LicenseManage,
     };
@@ -741,7 +737,7 @@ public static class RolePermissions
             Permissions.DashboardRecent, Permissions.DashboardAccounts, Permissions.DashboardNotesDue,
             Permissions.DashboardAwaiting, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
-            Permissions.SalesCreate, Permissions.SalesQuote, Permissions.SalesEdit, Permissions.SalesCancel,
+            Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesCancel,
             Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesLock,
             Permissions.SalesInvoiceAlerts, Permissions.SalesReturn, Permissions.SalesReturnFree,
             Permissions.SalesChangePrice, Permissions.SalesRaisePrice, Permissions.SalesChoosePriceLevel,
@@ -771,7 +767,7 @@ public static class RolePermissions
             Permissions.PartiesIdCardsView, Permissions.PartiesPrint, Permissions.PartiesCreateCustomer,
             Permissions.PartiesCreateSupplier, Permissions.PartiesCreateCarrier, Permissions.PartiesEdit,
             Permissions.PartiesClose, Permissions.PartiesIdCardsEdit, Permissions.PartiesSetPriceLevel,
-            Permissions.PartiesCreditLimit, Permissions.PartiesCashCustomer, Permissions.StatementCustomers,
+            Permissions.PartiesCreditLimit, Permissions.StatementCustomers,
             Permissions.StatementSuppliers, Permissions.StatementCarriers, Permissions.StatementMoney,
             Permissions.StatementExpenses, Permissions.StatementWarehouses, Permissions.StatementLedger,
             Permissions.StatementPrint, Permissions.StatementExport, Permissions.MoneyAccounts,
@@ -795,7 +791,7 @@ public static class RolePermissions
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
             Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges,
-            Permissions.ReportsPrint, Permissions.ReportsExport, Permissions.ChatUse, Permissions.SettingsView,
+            Permissions.ReportsPrint, Permissions.ReportsExport, Permissions.ChatUse,
             Permissions.DocumentsBackdate,
         },
         // Sales staff sell at the customer's price level and may only add to a price; lowering it or
@@ -810,7 +806,7 @@ public static class RolePermissions
             Permissions.DashboardTopItems, Permissions.DashboardTopCustomers, Permissions.DashboardBranches,
             Permissions.DashboardRecent, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
-            Permissions.SalesCreate, Permissions.SalesQuote, Permissions.SalesReturn, Permissions.SalesReturnFree,
+            Permissions.SalesCreate, Permissions.SalesReturn, Permissions.SalesReturnFree,
             Permissions.SalesRaisePrice, Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.DeliveryStatus, Permissions.ShipmentsCreate,
             Permissions.ShipmentsProgress, Permissions.ShipmentsReturn, Permissions.ShipmentsCancel,

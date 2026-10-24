@@ -412,7 +412,7 @@ function SettleRest({
   const { t, locale } = useT();
   const can = useCan();
   const settle = useSettleDiscount();
-  const left = Math.abs(party.balance);
+  const left = Math.abs(party.balance ?? 0);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(toMajor(left)));
   const [notes, setNotes] = useState('');
@@ -564,21 +564,21 @@ function SideCard({
           )}
         />
       )}
-      {side.kind !== 'EXPENSE' && (
+      {side.kind !== 'EXPENSE' && (side.kind === 'MONEY' || side.party?.balance !== null) && (
         <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
           <span className="text-muted">{t('move.balance')}</span>
           {side.kind === 'MONEY' ? (
             <span className="font-semibold tnum">
               {account?.balance != null ? formatMoney(account.balance, currency, locale) : '—'}
             </span>
-          ) : side.party ? (
+          ) : side.party?.balance != null ? (
             <SidedMoney value={side.party.balance} currency={currency} />
           ) : (
             <span>—</span>
           )}
         </div>
       )}
-      {side.party && side.party.balance !== 0 && (
+      {side.party && side.party.balance != null && side.party.balance !== 0 && (
         <SettleRest
           key={`${side.party.id}:${side.party.balance}`}
           party={side.party}

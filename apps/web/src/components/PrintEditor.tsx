@@ -67,6 +67,7 @@ export function PrintEditor({
   side,
   live = false,
   zoomable = true,
+  beforePrint,
 }: {
   /** What prints (copied; the original is never touched). */
   source: HTMLElement | null;
@@ -79,6 +80,8 @@ export function PrintEditor({
   live?: boolean;
   /** Offer a type size here (a document has its own, kept per person, in `side`). */
   zoomable?: boolean;
+  /** Asked just before printing (the server's say on a document's print); false stops it. */
+  beforePrint?: () => Promise<boolean>;
 }) {
   const { t } = useT();
   const [paper, setPaper] = usePrintPaper();
@@ -109,7 +112,7 @@ export function PrintEditor({
     setPicked([]);
     setStale(false);
   };
-  useEffect(load, [source]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [source]);
 
   // A live source (a document whose options change behind): follow it while nothing is changed.
   useEffect(() => {
@@ -205,9 +208,10 @@ export function PrintEditor({
     setSteps(history.current.length);
     setPicked([]);
   };
-  const print = () => {
+  const print = async () => {
     const box = content.current;
     if (!box) return;
+    if (beforePrint && !(await beforePrint())) return;
     commitTyping();
     unpick();
     const node = document.createElement('div');
@@ -228,7 +232,7 @@ export function PrintEditor({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }); // eslint-disable-line react-hooks/exhaustive-deps
+  });
 
   const choice = (on: boolean) =>
     `px-2.5 py-1 text-xs font-semibold ${on ? 'bg-brand text-brand-fg' : 'hover:bg-surface-2'}`;
@@ -281,7 +285,7 @@ export function PrintEditor({
             {side && <div className="border-t border-line pt-1">{side}</div>}
           </div>
           <div className="flex gap-2">
-            <Button icon="print" className="flex-1" onClick={print}>
+            <Button icon="print" className="flex-1" onClick={() => void print()}>
               {t('print.now')}
             </Button>
             <Button variant="ghost" onClick={onClose}>

@@ -1,6 +1,94 @@
 {
   "releases": [
     {
+      "version": "1.12.0",
+      "date": "2026-10-24",
+      "features": [
+        {
+          "ar": "الخصم بقى ينفع بعد ما الفلوس تتحصّل، أو يتاخد شيك، أو الفاتورة تخرج للتوصيل: بيتسجل لوحده في القيود بتاريخ النهارده، والفلوس اللي اتحصلت بتفضل مكانها، ولو العميل دافع أكتر من الفاتورة بعد الخصم الزيادة بتبقى رصيد ليه.",
+          "en": "A discount can now be given after money came in, a cheque was taken or the invoice went out for delivery: it is entered on its own, dated the day it is given; money received stays where it is, and anything paid over the new total is the customer's on account."
+        },
+        {
+          "ar": "المرتجع اللي اتعمل بالغلط بقى ينفع يتلغي (صلاحية جديدة «إلغاء مرتجع» للمبيعات وللمشتريات): الأصناف والرصيد والفلوس والقيود بترجع زي ما كانت، والمرتجع بيفضل في القائمة ملغي.",
+          "en": "A return entered by mistake can now be cancelled (a new “Cancel a return” permission for sales and for purchases): its goods, balances, cash and entries go back as they were, and it stays on the list as cancelled."
+        },
+        {
+          "ar": "الطباعة بقت صلاحية بجد: زرار الطباعة بيظهر بس للي عنده صلاحية طباعة المبيعات أو المشتريات، والسيرفر بيتأكد قبل الطباعة، وكل طباعة بتتسجل في سجل النشاط.",
+          "en": "Printing is now a real permission: the print button shows only to those who may print sales or purchases, the server checks before anything prints, and every print is written in the activity log."
+        },
+        {
+          "ar": "صفحة مش مسموح لك تفتحها بقت بتقول كده بوضوح بدل ما تفضل تحمّل أو تفتح فاضية.",
+          "en": "A page you may not open now says so plainly, instead of loading forever or opening empty."
+        },
+        {
+          "ar": "الإعدادات بتعرض لكل واحد الأجزاء المسموح له يغيّرها بس، وفيها جزء جديد للمتجر الإلكتروني (حالته وزرار «النشر الآن»).",
+          "en": "Settings shows each person only the parts they may change, with a new online store part (its state and “Publish now”)."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "الخصم مبقاش بيغيّر تكلفة البضاعة اللي في الفاتورة.",
+          "en": "A discount no longer changes what the invoice's goods cost."
+        },
+        {
+          "ar": "تعديل فاتورة فيها بونص مبقاش بيمسح البونص.",
+          "en": "Changing an invoice that has free goods no longer drops them."
+        },
+        {
+          "ar": "تعديل الفاتورة مبقاش بيغيّر تكلفة بضاعتها لمتوسط النهارده؛ الزيادة بس هي اللي بتتحسب بالمتوسط الجديد.",
+          "en": "Changing an invoice no longer moves its goods to today's average cost; only extra quantity is costed at today's average."
+        },
+        {
+          "ar": "اتشالت صلاحيات ملهاش لازمة: عرض الإعدادات، عروض الأسعار (اتشالت نهائي)، علامة العميل النقدي (العميل النقدي هو الحساب كود 0)، وإدارة مستويات الأسعار بقت ضمن صلاحية إعدادات الأسعار والضريبة.",
+          "en": "Permissions that did nothing are gone: viewing settings, price quotes (removed for good), the cash-customer mark (the cash customer is account code 0); managing price levels is now part of the prices-and-tax settings permission."
+        },
+        {
+          "ar": "العملات اللي ليها 3 أرقام عشرية (الدينار الكويتي والبحريني والأردني والريال العماني) مبقتش بتظهر في الإعدادات، لأن المبالغ بتتحفظ برقمين عشريين.",
+          "en": "Currencies with three decimals (Kuwaiti, Bahraini and Jordanian dinar, Omani rial) are no longer offered in Settings, as amounts are kept with two decimals."
+        },
+        {
+          "ar": "الوحدة الافتراضية للصنف الجديد بقت وحدة القطعة الواحدة مهما كان اسمها (كانت بتضيع لو اسم «قطعة» اتغيّر).",
+          "en": "A new item's default unit is now the one-piece unit whatever it is called (it was lost when “Piece” was renamed)."
+        },
+        {
+          "ar": "كل الخانات بقى ليها اسم (أوراق القبض والدفع، تاريخ الإقفال، الترخيص، ترقيم المستندات).",
+          "en": "Every field now has a name (cheque forms, period lock date, licence, document numbering)."
+        },
+        {
+          "ar": "الحسابات العامة (القيود، ميزان المراجعة، كشوف الحساب، قائمة الدخل والميزانية) بقت بتعرض لكل واحد قيود فروعه بس؛ قيود الشركة العامة وإقفال السنة لمين شايف كل الفروع.",
+          "en": "The general ledger (journal, trial balance, statements, income statement, balance sheet) now shows each person only their branches' entries; company-wide entries and closing a year are for those who see every branch."
+        },
+        {
+          "ar": "شيل صلاحية من حد أو قفل حسابه أو تغيير فروعه بقى بيمشي فورًا بدل ما يستنى لحد ربع ساعة، وتسجيل خروجه من كل الأجهزة بيوقف جلساته في نفس اللحظة.",
+          "en": "Taking a permission away, closing an account or changing someone's branches now takes effect at once instead of within 15 minutes, and signing someone out everywhere stops their sessions immediately."
+        },
+        {
+          "ar": "لو رمز الدخول اتسرق واتستخدم تاني، الدخول ده بيتقفل.",
+          "en": "A sign-in token used again (a stolen copy) ends that sign-in."
+        },
+        {
+          "ar": "رصيد العميل أو المورد بيظهر بس للي شايف حسابه (كشف حسابه، أو بيستلم أو بيدفع فلوسه، أو بيدي خصم، أو بيشوف فواتير العميل)؛ الباقيين بيشوفوا الاسم بس.",
+          "en": "A customer's or supplier's balance shows only to those who see their account (its statement, taking or paying its money, giving discounts, or the customer's invoices); others see the name only."
+        },
+        {
+          "ar": "نسب هامش الربح في الإعدادات مبقتش بتوصل غير للي بيحدد الأسعار أو شايف التكلفة، وقايمة الموظفين (المناديب) بقت للي بيختار منها بس.",
+          "en": "The profit markups in Settings now reach only whoever sets prices or sees costs, and the staff (reps) list only those who pick from it."
+        },
+        {
+          "ar": "البرنامج بقى بيرفض أي كود مش جاي من السيرفر نفسه (حماية زيادة من الاختراق).",
+          "en": "The app now refuses any code that doesn't come from the server itself (extra protection against break-ins)."
+        },
+        {
+          "ar": "الفاتورة اللي بتتعدل بتعرض خصومها في الإجمالي كسطر (بالنسبة لو فيه)، من غير خانات مقفولة.",
+          "en": "A changed invoice shows its discounts in the total as lines (with the percent), not as locked boxes."
+        },
+        {
+          "ar": "تقرير أداء المبيعات مبقاش فيه عمود «عروض تحولت» (عروض الأسعار اتشالت).",
+          "en": "The sales performance report no longer has a “quotations won” column (quotes are gone)."
+        }
+      ]
+    },
+    {
       "version": "1.11.0",
       "date": "2026-10-24",
       "features": [

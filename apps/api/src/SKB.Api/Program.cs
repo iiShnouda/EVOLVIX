@@ -133,11 +133,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             // One phone and one computer per account (owner, 2026-10-01; two at once 2026-10-12):
             // a token from a device the account has since left (a newer sign-in of the same kind)
             // no longer works; the other kind's device is unaffected.
+            // What the person may do changed since the token was made (owner, 2026-10-24): refused now,
+            // and the app asks for a new token as things stand (a closed account gets none).
             OnTokenValidated = async ctx =>
             {
                 var sub = ctx.Principal?.FindFirst("sub")?.Value;
                 if (!Guid.TryParse(sub, out var staffId)) return;
                 var db = ctx.HttpContext.RequestServices.GetRequiredService<SKB.Api.Data.AppDbContext>();
+                var (active, version) = await SKB.Api.Services.AccessGate.CurrentAsync(db, staffId);
+                int.TryParse(ctx.Principal?.FindFirst(SKB.Api.Services.AccessGate.VersionClaim)?.Value, out var issued);
+                if (!active || issued != version)
+                {
+                    ctx.HttpContext.Items["accessChanged"] = true;
+                    ctx.Fail("Access changed.");
+                    return;
+                }
                 var current = await SKB.Api.Services.DeviceGate.CurrentAsync(db, staffId);
                 if (current.Mobile is null && current.Desktop is null) return;
                 var sid = ctx.Principal?.FindFirst(SKB.Api.Services.TokenService.DeviceClaim)?.Value;
@@ -154,6 +164,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     ctx.HandleResponse();
                     ctx.Response.StatusCode = 401;
                     await ctx.Response.WriteAsJsonAsync(new { message = "This account signed in on another device.", code = "SIGNED_IN_ELSEWHERE" });
+                }
+                else if (ctx.HttpContext.Items.ContainsKey("accessChanged"))
+                {
+                    ctx.HandleResponse();
+                    ctx.Response.StatusCode = 401;
+                    await ctx.Response.WriteAsJsonAsync(new { message = "Your access changed. Sign in again.", code = "ACCESS_CHANGED" });
                 }
             },
         };
@@ -223,15 +239,31 @@ if (weakJwtSecret)
     app.Logger.LogCritical("Jwt:AccessSecret is a default or too short. A random one is used for this run; " +
                            "set JWT_ACCESS_SECRET in .env (install-server.sh does it) so it is permanent.");
 
-// Safety headers: no MIME sniffing, the app can't be framed by another site, no full URLs leaked.
+// Safety headers: no MIME sniffing, the app can't be framed by another site, no full URLs leaked,
+// and the page runs only the app's own script files (nothing inline or from elsewhere), talks only
+// to this server and shows pictures only from it or made in the page.
 app.Use(async (ctx, next) =>
 {
     var h = ctx.Response.Headers;
     h["X-Content-Type-Options"] = "nosniff";
     h["X-Frame-Options"] = "DENY";
     h["Referrer-Policy"] = "same-origin";
+    h["Content-Security-Policy"] = ContentSecurityPolicy(ctx.Request);
     await next();
 });
+
+static string ContentSecurityPolicy(HttpRequest request)
+{
+    // The live-presence socket is on this same server: 'self' covers it in today's browsers, and
+    // the host is named as well for older ones.
+    var host = request.Host.Value;
+    var sockets = !string.IsNullOrEmpty(host) && host.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or ':' or '[' or ']')
+        ? $" ws://{host} wss://{host}"
+        : "";
+    return "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+           "font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'" + sockets + "; worker-src 'self'; " +
+           "manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+}
 
 // --- Server commands: "backup <file>" and "restore <file>" run and exit (no web server) ----
 if (args.Length > 0 && args[0] is "backup" or "restore")

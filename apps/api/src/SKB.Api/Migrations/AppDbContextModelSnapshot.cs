@@ -2786,6 +2786,9 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AccessVersion")
+                        .HasColumnType("integer");
+
                     b.Property<bool?>("AllBranches")
                         .HasColumnType("boolean");
 

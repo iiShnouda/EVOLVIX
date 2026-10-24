@@ -74,6 +74,8 @@ const SHIPMENT_TONE: Record<ShipmentStatus, Tone> = {
   CANCELLED: 'destructive',
 };
 
+const NO_ROWS: DeliveryRow[] = [];
+
 const input =
   'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
 
@@ -613,7 +615,7 @@ function NewShipmentSheet({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState('');
   const create = useCreateShipment();
 
-  const rows = eligible.data ?? [];
+  const rows = eligible.data ?? NO_ROWS;
   const chosen = rows.filter((r) => picked.includes(r.documentId));
   const customer = chosen[0]?.partyId;
   const owed = chosen.reduce((sum, r) => sum + r.outstanding, 0);

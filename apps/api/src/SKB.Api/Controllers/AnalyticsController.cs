@@ -145,15 +145,7 @@ public sealed class AnalyticsController : ControllerBase
                         : d.RepId ?? d.StaffId),
                 d.PartyId, Net = d.Subtotal - d.DiscountTotal, d.ProfitTotal, d.PaidAmount,
             }).ToListAsync();
-        var quotes = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION && d.IssueDate >= start && d.IssueDate < end);
-        quotes = quotes.InBranches(User, d => d.BranchId);
-        var quoteRows = await quotes.Select(d => new
-        {
-            Key = byDepartment ? d.DepartmentId ?? Guid.Empty : byBranch ? d.BranchId : d.RepId ?? d.StaffId,
-            d.Status,
-        }).ToListAsync();
-
-        var keys = docs.Select(d => d.Key).Concat(quoteRows.Select(q => q.Key)).Distinct().ToList();
+        var keys = docs.Select(d => d.Key).Distinct().ToList();
         var names = byDepartment
             ? (await _db.Departments.AsNoTracking().Where(x => keys.Contains(x.Id)).ToListAsync()).ToDictionary(x => x.Id, x => Loc.Name(x))
             : byBranch
@@ -166,11 +158,9 @@ public sealed class AnalyticsController : ControllerBase
             var returns = mine.Where(d => d.Type == DocumentType.SALES_RETURN).ToList();
             var net = invoices.Sum(d => d.Net) - returns.Sum(d => d.Net);
             var profit = invoices.Sum(d => d.ProfitTotal) - returns.Sum(d => d.ProfitTotal);
-            var myQuotes = quoteRows.Where(q => q.Key == k).ToList();
             return new PerformanceRowDto(k.ToString(), names.GetValueOrDefault(k, ""), net, profit, invoices.Count,
                 invoices.Select(d => d.PartyId).Distinct().Count(), invoices.Count == 0 ? 0 : net / invoices.Count,
-                returns.Sum(d => d.Net), invoices.Sum(d => d.PaidAmount), myQuotes.Count,
-                myQuotes.Count(q => q.Status == DocumentStatus.CONFIRMED), 0);
+                returns.Sum(d => d.Net), invoices.Sum(d => d.PaidAmount), 0);
         }).ToList();
         var totalNet = rows.Sum(r => r.NetSales);
         var result = rows.Select(r => r with { Share = totalNet > 0 ? Math.Round(100.0 * r.NetSales / totalNet, 1) : 0 })

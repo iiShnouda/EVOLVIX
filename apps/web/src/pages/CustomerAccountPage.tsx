@@ -38,10 +38,12 @@ export function CustomerAccountPage() {
             <Button variant="secondary" size="sm" icon="parties" onClick={() => setDirectory(true)}>
               {t('parties.directory')}
             </Button>
-            <div className="flex items-center gap-2 rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
-              <span className="text-muted">{t('account.balance')}</span>
-              <SidedMoney value={p.balance} currency={currency} />
-            </div>
+            {p.balance != null && (
+              <div className="flex items-center gap-2 rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
+                <span className="text-muted">{t('account.balance')}</span>
+                <SidedMoney value={p.balance} currency={currency} />
+              </div>
+            )}
           </div>
         }
       />

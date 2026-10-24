@@ -315,4 +315,35 @@ const bareSupplier = ok('a supplier the same', await owner.post('/parties', { na
 eq('…named as a supplier', bareSupplier.name, `مورد ${bareSupplier.code}`);
 eq('an existing one still keeps a name', (await owner.put(`/parties/${bare.id}`, { name: '' })).data?.code, 'bad_name');
 
+// ------------------------------------------------------------------ who sees what a party owes (owner, 2026-10-24)
+console.log('== balances only for whoever sees the account');
+{
+  const karim = await login('karim@skb.local'); // SALES: the customer's invoices together, no supplier accounts
+  const sara = await login('sara@skb.local'); // INVENTORY: picks suppliers, sees no accounts
+  const box = (await owner.get('/money-accounts')).data.find((a) => a.branchId === owner.user.branchId && a.kind === 'CASH_BOX' && a.isActive);
+  const cust = ok('a customer', await owner.post('/parties', { name: `Bal ${tag}`, types: ['CUSTOMER'] }));
+  const supp = ok('a supplier', await owner.post('/parties', { name: `BalSup ${tag}`, types: ['SUPPLIER'] }));
+  ok('the customer pays 7.00 ahead', await owner.post('/receipts', { partyId: cust.id, lines: [{ method: 'CASH', accountId: box.id, amount: 700 }] }));
+  ok('the supplier is paid 5.00 ahead', await owner.post('/payments', { partyId: supp.id, lines: [{ method: 'CASH', accountId: box.id, amount: 500 }] }));
+  ok('a limit on the customer', await owner.put(`/parties/${cust.id}/credit-limit`, { creditLimit: 10000 }));
+  const seen = async (who, p) => (await who.get(`/parties/${p.id}`)).data;
+  eq('the owner sees both', [(await seen(owner, cust)).balance, (await seen(owner, supp)).balance], [-700, 500]);
+  const k = await seen(karim, cust);
+  eq('a seller sees the customer’s account', [k.balance, k.creditLimit, k.creditLeft], [-700, 10000, 10700]);
+  eq('…not the supplier’s', (await seen(karim, supp)).balance, null);
+  const s = await seen(sara, cust);
+  eq('the store sees neither the balance nor the limit', [s.balance, s.creditLimit], [null, null]);
+  eq('…only what the customer may still buy on account', s.creditLeft, 10700);
+  eq('…nor the supplier’s', (await seen(sara, supp)).balance, null);
+  const listed = (await sara.get(`/parties?search=${tag}&pageSize=100`)).data.items;
+  check('the list hides them too', listed.length > 0 && listed.every((p) => p.balance === null), listed.map((p) => p.balance));
+  const by = async (who, status) => (await who.get(`/parties?status=${status}&search=${tag}&pageSize=100`)).data.items.map((p) => p.id);
+  check('the owner finds the supplier who owes', (await by(owner, 'OWES')).includes(supp.id));
+  check('a seller doesn’t (not their account to see)', !(await by(karim, 'OWES')).includes(supp.id));
+  check('…but finds the customer in credit', (await by(karim, 'CREDIT')).includes(cust.id));
+  eq('the store finds none by balance', (await by(sara, 'CREDIT')).length, 0);
+  eq("a supplier isn't opened as a customer's invoices", (await karim.get(`/sales/customers/${supp.id}/invoices`)).status, 404);
+  eq('…nor as a customer’s account', (await karim.get(`/sales/customers/${supp.id}/account`)).status, 404);
+}
+
 process.exit(summary('parties') ? 1 : 0);

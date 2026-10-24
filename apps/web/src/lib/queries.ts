@@ -138,7 +138,6 @@ import type {
   BackupStatus,
   BackupFile,
   Performance,
-  ConvertQuotationInput,
   Employee,
   WorkShift,
   PayrollRules,
@@ -180,8 +179,8 @@ export function useDashboardMore(period?: Period) {
 
 /** Which side of the business a document belongs to (also its API prefix). */
 export type DocScope = 'sales' | 'purchases';
-/** Invoices, the returns issued against them, or (sales) price quotations. */
-export type DocKind = 'invoices' | 'returns' | 'quotations' | 'orders';
+/** Invoices, the returns issued against them, or (sales) invoices waiting for approval. */
+export type DocKind = 'invoices' | 'returns' | 'orders';
 
 export function useDocumentList(
   scope: DocScope,
@@ -2095,24 +2094,6 @@ export function useRunBackup() {
   });
 }
 
-export function useCreateQuotation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateSalesInvoiceInput) =>
-      api.post<SalesDocument>('/sales/quotations', input),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sales'] }),
-  });
-}
-
-export function useConvertQuotation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ConvertQuotationInput }) =>
-      api.post<SalesDocument>(`/sales/quotations/${id}/convert`, input),
-    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
-  });
-}
-
 /** Cancel (delete) a posted sales invoice: everything it moved goes back. */
 export function useCancelInvoice() {
   const qc = useQueryClient();
@@ -2120,6 +2101,15 @@ export function useCancelInvoice() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
       api.post<SalesDocument>(`/sales/invoices/${id}/cancel`, { reason: reason ?? null }),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** Cancel a return entered by mistake: everything it moved goes back (owner, 2026-10-24). */
+export function useCancelReturn(scope: DocScope) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<SalesDocument>(`/${scope}/returns/${id}/cancel`, {}),
+    onSuccess: () => invalidateAfterPosting(qc, scope),
   });
 }
 
@@ -2663,5 +2653,31 @@ export function useIssueLicense() {
       expiresAt: string | null;
     }) => api.post<IssuedLicense>('/license/issue', body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['license', 'issued'] }),
+  });
+}
+
+/** Whether this server publishes the online store, where and when it last did (settings:storefront). */
+export interface StorefrontStatus {
+  enabled: boolean;
+  publicBaseUrl: string | null;
+  lastPublishedAt: string | null;
+  itemCount: number;
+  lastPushedFiles: number;
+  error: string | null;
+}
+
+export function useStorefrontStatus() {
+  return useQuery({
+    queryKey: ['storefront', 'status'],
+    queryFn: () => api.get<StorefrontStatus>('/storefront/status'),
+  });
+}
+
+/** Publish the online store now. */
+export function usePublishStorefront() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<StorefrontStatus>('/storefront/publish', {}),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['storefront'] }),
   });
 }

@@ -236,12 +236,16 @@ One shape for every document type:
   it holds only that department's items (items of a category with no department go anywhere).
   A person may be limited to some departments (Staff → Access): they sell, search, list and return
   only in theirs. One branch with two floors = one branch, a department and a warehouse per floor.
-- **Discounts** (owner, 2026-10-24): none while an invoice, pending invoice or quotation is made or
-  changed (only the company's quantity discounts); an edit keeps the ones it has, a line's following
-  its quantity. The accountant gives them from the customer's invoices: on a line (a %, so much per
+- **Discounts** (owner, 2026-10-24): none while an invoice or pending invoice is made or changed
+  (only the company's quantity discounts); an edit keeps the ones it has, a line's following its
+  quantity. The accountant gives them from the customer's invoices: on a line (a %, so much per
   piece, or an amount; `sales:discount_line`), on the invoice (`sales:discount`) or over several
   invoices (`sales:discount_combined`). Each person has a limit (theirs, else the company's; the owner
-  none), checked per line on its own discount plus its share of the invoice discount.
+  none), checked per line on its own discount plus its share of the invoice discount. A discount may
+  come after money was taken, a cheque received or the goods sent: it is posted on its own
+  (`SALES_DISCOUNT`, the day it is given), what was paid stays, and anything paid over the new total
+  is the customer's credit. It changes neither the goods' cost nor a closed period, and not an
+  invoice that already has returns against it.
 - **Pending invoice → accountant.** The department's sales person saves a `SALES_ORDER`
   (`sales:order`): items, customer, date. Its goods are held; nothing posts. The accountant
   (`sales:approve`) may change the discounts (each kind with its permission, within their own
@@ -307,7 +311,12 @@ One shape for every document type:
 - **Delivery**: pickup at the office, or a shipping company that the customer pays directly (nothing
   in our books). Shipping *we* pay — goods from a supplier, a customer's return — is a shipping expense.
 - **Returns**: the seller writes them (sales:return in the Sales role); goods go back to the warehouse
-  they left from; cash back to the customer is the accountant's.
+  they left from; cash back to the customer is the accountant's. A return entered by mistake is
+  cancelled whole (`sales:return_cancel` / `purchases:return_cancel`): its stock, balance, cash and
+  entries go back (`*_RETURN_CANCEL` entries) and it stays listed as cancelled — not in a closed
+  period, and a sales return only while its goods are still in stock.
+- **Changing an invoice** keeps the cost its goods went out at: only added quantity is costed at
+  today's average. Free goods it has stay (none are added on the invoice screen).
 - **Credit limit** (حد الائتمان) per customer (`parties:credit_limit` sets it): a sale or approval that
   takes the balance over it is refused unless the person has `sales:over_credit` or more is paid now.
 - **Cost and profit** are the owner's, plus whoever gets `costs:view`. The server leaves them out for
@@ -404,6 +413,8 @@ Owner's answers (2026-09-28):
 |---|---|---|
 | Sales invoice | out, at avg cost | Dr Customer (or Cash for the paid part) · Cr Sales (net of discounts) · Cr VAT output · Dr COGS · Cr Inventory |
 | Sales return | in, at the original line cost | Dr Sales returns · Dr VAT output · Cr Customer/Cash · Dr Inventory · Cr COGS |
+| Discount after the invoice (`SALES_DISCOUNT`) | — | Dr Sales · Dr VAT output (· Dr Other income for additions) · Cr Customer |
+| Return cancelled | back as before the return | the return's entry reversed (`SALES_RETURN_CANCEL` / `PURCHASE_RETURN_CANCEL`) |
 | Purchase invoice | in, recomputes avg | Dr Inventory (net of discounts) · Dr VAT input · Cr Supplier (or Cash) |
 | Purchase return | out, backs the receipt out of avg | Dr Supplier/Cash · Cr Inventory · Cr VAT input |
 | Receipt / Payment | — | Dr Cash/Bank · Cr Customer — or — Dr Supplier · Cr Cash/Bank |

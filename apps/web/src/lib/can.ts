@@ -56,6 +56,24 @@ export const TOGETHER_PERMISSIONS: Permission[] = [
   'sales:discount_combined',
 ];
 
+/**
+ * Whether this person sees what some parties owe or are owed (the server decides per party: its
+ * statement, the ledger, aging, money taken or paid, discounts, a carrier's settlements).
+ */
+export const BALANCE_PERMISSIONS: Permission[] = [
+  'statement:ledger',
+  'receipts:create',
+  'payments:create',
+  'vouchers:discount',
+  'statement:customers',
+  'statement:suppliers',
+  'statement:carriers',
+  'reports:aging',
+  ...TOGETHER_PERMISSIONS,
+  'delivery:settle',
+  'settlements:view',
+];
+
 /** Whether the person may see profit at all (whatever they chose to show). */
 export function useMaySeeProfit(): boolean {
   return useAuth((s) => s.user?.permissions ?? NONE).includes('profit:view');

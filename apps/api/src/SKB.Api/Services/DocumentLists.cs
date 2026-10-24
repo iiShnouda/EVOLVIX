@@ -104,12 +104,14 @@ public static class DocumentLists
             Collecting = db.ShipmentInvoices.Any(x => x.DocumentId == d.Id && x.CodShare > 0
                 && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
                     || x.Shipment.Status == ShipmentStatus.DELIVERED)),
-            Unit = d.GrandTotal - d.PaidDirect,
+            // Paid at the counter more than it comes to now (a discount given after): the rest is
+            // already on the party's account, so it puts nothing on it.
+            Unit = d.GrandTotal > d.PaidDirect ? d.GrandTotal - d.PaidDirect : 0,
             Newer = db.SalesDocuments
                 .Where(o => o.PartyId == d.PartyId && o.Type == d.Type && o.Status != DocumentStatus.CANCELLED
                             && (o.IssueDate > d.IssueDate
                                 || (o.IssueDate == d.IssueDate && string.Compare(o.Number, d.Number) > 0)))
-                .Sum(o => (long?)(o.GrandTotal - o.PaidDirect)) ?? 0,
+                .Sum(o => (long?)(o.GrandTotal > o.PaidDirect ? o.GrandTotal - o.PaidDirect : 0)) ?? 0,
             Owing = d.Type == DocumentType.PURCHASE_INVOICE ? -d.Party!.Balance : d.Party!.Balance,
             Deferred = db.NoteAllocations.Where(a => a.DocumentId == d.Id
                     && (a.Note!.Status == NoteStatus.IN_HAND || a.Note.Status == NoteStatus.UNDER_COLLECTION

@@ -109,22 +109,6 @@ export const createSalesInvoiceSchema = z.object({
 });
 export type CreateSalesInvoiceInput = z.infer<typeof createSalesInvoiceSchema>;
 
-/** Turning a quotation into an invoice: what's decided now (lines and prices come from it). */
-export const convertQuotationSchema = z.object({
-  /** Where the goods leave from; none = each line's warehouse. */
-  warehouseId: z.string().uuid().optional(),
-  paidAmount: z.number().int().min(0).default(0),
-  paidAccountId: z.string().uuid().optional(),
-  deliveryMethod: z.enum(['PICKUP', 'OWN_DELIVERY', 'SHIPPING_COMPANY']).optional(),
-  deliveryAddress: z.string().max(300).optional(),
-  driverId: z.string().uuid().optional(),
-  carrierId: z.string().uuid().optional(),
-  overrideFloor: z.boolean().optional(),
-  dueDate: z.string().optional(),
-  notes: z.string().max(500).optional(),
-});
-export type ConvertQuotationInput = z.infer<typeof convertQuotationSchema>;
-
 export const purchaseLineSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().positive(),

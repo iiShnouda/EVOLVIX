@@ -241,6 +241,7 @@ export function saveXlsx(fileName: string, sheet: Sheet) {
 export function safeName(s: string): string {
   return (
     s
+      // eslint-disable-next-line no-control-regex -- control characters are what is taken out
       .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()

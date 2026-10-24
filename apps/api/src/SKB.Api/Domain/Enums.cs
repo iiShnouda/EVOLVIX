@@ -59,6 +59,8 @@ public enum StockMovementType
     TRANSFER_OUT,   // left this store on a transfer permit
     TRANSFER_IN,    // arrived at this store on a transfer permit
     SALE_CANCELLED, // back into stock when a sales invoice is cancelled or changed
+    SALES_RETURN_CANCELLED,    // a customer's return cancelled: the goods leave stock again
+    PURCHASE_RETURN_CANCELLED, // a return to a supplier cancelled: the goods are back in stock
 }
 
 /// <summary>STORE holds stock people use; TRANSIT is the system place goods sit while being transferred.</summary>

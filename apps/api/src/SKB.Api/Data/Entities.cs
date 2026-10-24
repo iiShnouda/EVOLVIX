@@ -155,6 +155,11 @@ public class Staff
     /// </summary>
     public Guid? CurrentMobileDeviceId { get; set; }
     public Guid? CurrentDesktopDeviceId { get; set; }
+    /// <summary>
+    /// Goes up whenever what this person may do changes (permissions, role, branches, closing the
+    /// account): their access tokens carry it, and one of an older version is refused (owner, 2026-10-24).
+    /// </summary>
+    public int AccessVersion { get; set; }
     public List<string> GrantedPermissions { get; set; } = new();
     /// <summary>Permissions of their role this person does not get.</summary>
     public List<string> RevokedPermissions { get; set; } = new();

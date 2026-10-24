@@ -21,7 +21,7 @@ const acc = ok(
   }),
 );
 const accountant = await login(`invacc.${tag}@skb.local`, PASS);
-for (const p of ['sales:edit', 'sales:cancel', 'sales:price_basis', 'sales:change_shipping', 'parties:cash_customer'])
+for (const p of ['sales:edit', 'sales:cancel', 'sales:price_basis', 'sales:change_shipping'])
   check(`accountant has ${p}`, accountant.user.permissions.includes(p));
 check('a seller does not change posted invoices', !karim.user.permissions.includes('sales:edit'));
 check('…nor cancel them', !karim.user.permissions.includes('sales:cancel'));
@@ -193,9 +193,12 @@ ok(
 eq('not a shipping company', (await owner.put(`/parties/${customer.id}`, { defaultCarrierId: supplier.id })).data?.code, 'carrier_not_found');
 
 console.log('== cash customer');
-const walkIn = ok('a walk-in customer', await owner.post('/parties', { name: `InvCash ${tag}`, types: ['CUSTOMER'] }));
-eq('a seller may not mark it', (await karim.put(`/parties/${walkIn.id}`, { isCashCustomer: true })).status, 403);
-eq('the accountant marks it', ok('marked', await accountant.put(`/parties/${walkIn.id}`, { isCashCustomer: true })).isCashCustomer, true);
+// One cash customer, the account with code 0 (owner, 2026-10-03): no other is made one.
+const plainOne = ok('a walk-in customer', await owner.post('/parties', { name: `InvCash ${tag}`, types: ['CUSTOMER'] }));
+eq('not even the owner makes it a cash customer', (await owner.put(`/parties/${plainOne.id}`, { isCashCustomer: true })).data?.code, 'cash_customer_code_zero');
+eq('…nor adds one', (await owner.post('/parties', { name: `InvCash2 ${tag}`, types: ['CUSTOMER'], isCashCustomer: true })).data?.code, 'cash_customer_code_zero');
+const walkIn = (await owner.get('/parties?code=0')).data.items[0];
+eq('the cash customer is code 0', [walkIn?.code, walkIn?.isCashCustomer], [0, true]);
 eq(
   'nothing on account',
   (await accountant.post('/sales/invoices', sale(1, { partyId: walkIn.id, paidAmount: 500, paidAccountId: cash.id }))).data?.code,

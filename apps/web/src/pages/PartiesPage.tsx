@@ -24,7 +24,7 @@ import {
 import { IdCardFields, IdCardView, type IdSide } from '../components/IdCards';
 import { api } from '../lib/api';
 import { useT } from '../lib/i18n';
-import { mayOpenStatement, useCan } from '../lib/can';
+import { BALANCE_PERMISSIONS, mayOpenStatement, useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
   useCreateParty,
@@ -181,7 +181,7 @@ export function PartiesPage() {
             onChange={(e) => setStatus(e.target.value)}
           >
             <option value="">{t('parties.anyStatus')}</option>
-            {STATUSES.map((s) => (
+            {STATUSES.filter((s) => s === 'CLOSED' || BALANCE_PERMISSIONS.some(can)).map((s) => (
               <option key={s} value={s}>
                 {t(`parties.status.${s}` as TranslationKey)}
               </option>
@@ -273,13 +273,13 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
   const navigate = useNavigate();
   const opensAccount =
     mayOpenStatement(party, can) || (party.types.includes('CUSTOMER') && can('sales:together'));
-  const bal = balanceView(party.balance, party.currency);
+  const bal = balanceView(party.balance ?? 0, party.currency);
   const money = (kind: 'receipt' | 'payment') =>
     navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
   const [idCard, setIdCard] = useState(false);
   // What they owe against their purchase limit (owner, 2026-10-01: a warning on the customer).
   const limit =
-    party.creditLimit == null || !party.types.includes('CUSTOMER')
+    party.creditLimit == null || party.balance == null || !party.types.includes('CUSTOMER')
       ? null
       : party.balance >= party.creditLimit
         ? 'over'
@@ -335,15 +335,17 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         )}
       </div>
 
-      <div className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">{t('parties.balance')}</span>
-          <Badge tone={balTone}>{balLabel}</Badge>
+      {party.balance != null && (
+        <div className="mt-4 rounded-[var(--radius-app)] bg-surface-2 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted">{t('parties.balance')}</span>
+            <Badge tone={balTone}>{balLabel}</Badge>
+          </div>
+          <p className={`mt-1 text-lg font-semibold tnum ${balColor}`}>
+            {formatMoney(bal.amount, bal.currency, locale)}
+          </p>
         </div>
-        <p className={`mt-1 text-lg font-semibold tnum ${balColor}`}>
-          {formatMoney(bal.amount, bal.currency, locale)}
-        </p>
-      </div>
+      )}
 
       <PriceListPicker party={party} canSet={can('parties:set_price_level')} />
       {party.types.includes('CUSTOMER') &&
@@ -776,8 +778,8 @@ export function PartySheet({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={pending || party.balance !== 0}
-                title={party.balance !== 0 ? t('parties.closeHint') : undefined}
+                disabled={pending || (party.balance ?? 0) !== 0}
+                title={(party.balance ?? 0) !== 0 ? t('parties.closeHint') : undefined}
                 onClick={() => void setActive(false)}
               >
                 {t('parties.close')}

@@ -1,3 +1,4 @@
+import { confirm } from '../lib/confirm';
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -22,6 +23,7 @@ import {
   useRejectLimit,
   useCancelOrder,
   useCancelInvoice,
+  useCancelReturn,
   useDepartments,
   usePageSize,
   useWarehouses,
@@ -60,11 +62,11 @@ const LIST_PERMISSIONS: Record<DocScope, Record<'invoices' | 'returns', Permissi
       'sales:discount_line',
       'sales:discount_combined',
     ],
-    returns: ['sales:returns_view'],
+    returns: ['sales:returns_view', 'sales:return_cancel'],
   },
   purchases: {
     invoices: ['purchases:view', 'purchases:return', 'purchases:photos', 'purchases:price_sheet'],
-    returns: ['purchases:returns_view'],
+    returns: ['purchases:returns_view', 'purchases:return_cancel'],
   },
 };
 
@@ -121,6 +123,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [deleting, setDeleting] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const cancelInvoice = useCancelInvoice();
+  const cancelReturn = useCancelReturn(scope);
 
   // `?doc=<id>` (e.g. from an item card) opens that document straight away.
   const linkedId = params.get('doc');
@@ -202,7 +205,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const statuses: Record<DocKind, string[]> = {
     invoices: [],
     orders: ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED'],
-    quotations: ['PENDING', 'CONFIRMED', 'CANCELLED'],
     returns: [],
   };
   const [rejecting, setRejecting] = useState(false);
@@ -345,7 +347,32 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       )}
     </>
   );
-  const returnAction = order ? orderActions : invoiceActions;
+  // A return entered by mistake is cancelled with its own permission (owner, 2026-10-24).
+  const aReturn =
+    (detail.data?.type === 'SALES_RETURN' || detail.data?.type === 'PURCHASE_RETURN') &&
+    detail.data.status !== 'CANCELLED'
+      ? detail.data
+      : undefined;
+  const returnActions = aReturn &&
+    permissions.includes(isSales ? 'sales:return_cancel' : 'purchases:return_cancel') && (
+      <>
+        <Button
+          size="sm"
+          variant="ghost"
+          loading={cancelReturn.isPending}
+          onClick={async () => {
+            if (await confirm({ message: t('return.cancelConfirm'), danger: true }))
+              cancelReturn.mutate(aReturn.id);
+          }}
+        >
+          {t('return.cancel')}
+        </Button>
+        {cancelReturn.error && (
+          <span className="text-sm text-destructive">{errorText(t, cancelReturn.error)}</span>
+        )}
+      </>
+    );
+  const returnAction = order ? orderActions : aReturn ? returnActions || undefined : invoiceActions;
 
   return (
     <div className="space-y-5">
@@ -627,10 +654,17 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   selectedId={selectedId}
                   onSelect={setSelectedId}
                   showDepartment={isSales && (departments.data ?? []).length > 0}
-                  onPrint={(id) => {
-                    setSelectedId(id);
-                    setParams({ ...(tab ? { tab } : {}), doc: id, print: '1' }, { replace: true });
-                  }}
+                  onPrint={
+                    permissions.includes(isSales ? 'sales:print' : 'purchases:print')
+                      ? (id) => {
+                          setSelectedId(id);
+                          setParams(
+                            { ...(tab ? { tab } : {}), doc: id, print: '1' },
+                            { replace: true },
+                          );
+                        }
+                      : undefined
+                  }
                 />
               )
             )}

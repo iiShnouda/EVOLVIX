@@ -14,10 +14,8 @@ const saleLevel = (await owner.get('/price-levels')).data.find((l) => l.side ===
 const wh = (await owner.get('/warehouses')).data.find((w) => w.isDefault && w.branchId === owner.user.branchId);
 const supplier = ok('a supplier', await owner.post('/parties', { name: `RetSup ${tag}`, types: ['SUPPLIER'] }));
 const customer = ok('a customer', await owner.post('/parties', { name: `RetCust ${tag}`, types: ['CUSTOMER'] }));
-const walkIn = ok(
-  'a cash customer',
-  await owner.post('/parties', { name: `RetCash ${tag}`, types: ['CUSTOMER'], isCashCustomer: true }),
-);
+// The cash customer: the account with code 0 (owner, 2026-10-03).
+const walkIn = (await owner.get('/parties?code=0')).data.items[0];
 const item = ok(
   'an item at 10.00',
   await owner.post('/products', {
@@ -142,5 +140,34 @@ const r3 = ok(
   await owner.confirmed().post(`/sales/invoices/${cashInv.id}/returns`, { lines: [{ lineId: cashInv.lines[0].id, quantity: 1 }] }),
 );
 eq('refunded in full', r3.paidAmount, r3.grandTotal);
+
+console.log('== a return entered by mistake is cancelled (owner, 2026-10-24)');
+const accountNow = async (id) => (await owner.get('/money-accounts')).data.find((a) => a.id === id)?.balance;
+const [cb0, s0] = [await balance(customer), await stock()];
+eq('a seller may not cancel one', (await karim.post(`/sales/returns/${r1.id}/cancel`, {})).status, 403);
+const c1 = ok('the sales return of 2 cancelled', await owner.post(`/sales/returns/${r1.id}/cancel`, {}));
+eq('…it stays, cancelled', [c1.id, c1.status], [r1.id, 'CANCELLED']);
+eq('…its goods leave stock again', await stock(), s0 - 2);
+eq('…the customer owes it again', await balance(customer), cb0 + 2000);
+eq('…not twice', (await owner.post(`/sales/returns/${r1.id}/cancel`, {})).data?.code, 'return_cancelled');
+eq(
+  '…its entry reversed',
+  (await owner.get('/ledger/entries?source=SALES_RETURN_CANCEL&pageSize=100')).data.items.filter((e) => e.number === r1.number).length,
+  1,
+);
+const st = ok('the customer’s statement', await owner.get(`/ledger/parties/${customer.id}/statement?from=2022-01-01`));
+eq('…leaves the cancelled return out and closes at their balance', [st.lines.some((l) => l.documentNumber === r1.number), st.closing], [false, await balance(customer)]);
+const m0 = await accountNow(r2.paidAccountId);
+ok('the cash customer’s return cancelled', await owner.post(`/sales/returns/${r2.id}/cancel`, {}));
+eq('…the cash paid back comes in again', await accountNow(r2.paidAccountId), m0 + r2.paidAmount);
+eq('…their balance as it was', await balance(walkIn), cashBefore);
+const r3c = ok('a return against an invoice cancelled', await owner.post(`/sales/returns/${r3.id}/cancel`, {}));
+eq('…so all of it can be returned again', (await owner.get(`/sales/invoices/${cashInv.id}`)).data.lines[0].returnedQuantity ?? 0, 0);
+eq('…cancelled', r3c.status, 'CANCELLED');
+const [sb0, s1] = [await balance(supplier), await stock()];
+eq('a seller may not cancel a purchase return', (await karim.post(`/purchases/returns/${p1.id}/cancel`, {})).status, 403);
+ok('the purchase return cancelled', await owner.post(`/purchases/returns/${p1.id}/cancel`, {}));
+eq('…its goods are back', await stock(), s1 + 2);
+eq('…we owe the supplier it again', await balance(supplier), sb0 - 1000);
 
 summary('returns');

@@ -48,16 +48,6 @@ public sealed class SalesController : ControllerBase
         ListAsync(DocumentType.SALES_INVOICE, page, pageSize, search, status, departmentId, from, to, payment,
             withAwaiting: true);
 
-    /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
-    [HttpGet("quotations")]
-    [AnyPermission(Permissions.SalesView, Permissions.SalesQuote)]
-    public Task<ActionResult<DocumentListDto>> Quotations(
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
-        [FromQuery] string? search = null, [FromQuery] string? status = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] string? payment = null) =>
-        ListAsync(DocumentType.QUOTATION, page, pageSize, search, status, departmentId, from, to, payment);
-
     /// <summary>Pending invoices (فواتير معلّقة) waiting for the accountant, newest first.</summary>
     [HttpGet("orders")]
     [AnyPermission(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject)]
@@ -70,7 +60,7 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
-    [Authorize(Policy = Permissions.SalesReturnsView)]
+    [AnyPermission(Permissions.SalesReturnsView, Permissions.SalesReturnCancel)]
     public Task<ActionResult<DocumentListDto>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -143,6 +133,31 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
+    /// A sales document is about to be printed (owner, 2026-10-24): printing is its own permission,
+    /// checked here before the web app prints, and written in the activity log.
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/print")]
+    [HttpPost("returns/{id:guid}/print")]
+    [HttpPost("orders/{id:guid}/print")]
+    [Authorize(Policy = Permissions.SalesPrint)]
+    public async Task<ActionResult> Printed(Guid id)
+    {
+        var doc = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
+                                       || d.Type == DocumentType.SALES_ORDER || d.Type == DocumentType.QUOTATION))
+            .InBranches(User, d => d.BranchId).InDepartments(User).FirstOrDefaultAsync();
+        if (doc is null || !MaySee(doc)) return NotFound(new { message = "Document not found", code = "not_found" });
+        await AuditAsync("print", doc.Type switch
+        {
+            DocumentType.SALES_RETURN => "sales_return",
+            DocumentType.SALES_ORDER => "sales_order",
+            DocumentType.QUOTATION => "quotation",
+            _ => "sales_invoice",
+        }, doc);
+        return NoContent();
+    }
+
+    /// <summary>
     /// Whether this person may open this document (owner, 2026-10-23): each list has its own
     /// permission and is opened too by whoever acts on its documents; whoever made one may open it.
     /// </summary>
@@ -155,10 +170,12 @@ public sealed class SalesController : ControllerBase
                     Permissions.SalesLock, Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject,
                     Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
                     Permissions.SalesTogether, Permissions.StatementCustomers)
-                || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder, Permissions.SalesQuote)),
-            DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.StatementCustomers)
+                || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder)),
+            DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.SalesReturnCancel,
+                    Permissions.StatementCustomers)
                 || (mine && User.HasAny(Permissions.SalesReturn, Permissions.SalesReturnFree)),
-            DocumentType.QUOTATION => User.HasAny(Permissions.SalesView, Permissions.SalesQuote),
+            // Quotations are gone (owner, 2026-10-01); an old one is read with the sales list.
+            DocumentType.QUOTATION => User.Has(Permissions.SalesView),
             DocumentType.SALES_ORDER => User.HasAny(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject,
                     Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
                     Permissions.SalesTogether)
@@ -178,7 +195,8 @@ public sealed class SalesController : ControllerBase
     public async Task<ActionResult<CustomerAccountDto>> CustomerAccount(Guid partyId, [FromQuery] string? departmentId = null)
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
-        if (party is null) return NotFound(new { message = "Customer not found.", code = "party_not_found" });
+        if (party is null || !party.Types.Contains(nameof(PartyType.CUSTOMER)))
+            return NotFound(new { message = "Customer not found.", code = "party_not_found" });
 
         var q = _db.SalesDocuments.Where(d => d.PartyId == partyId && d.Status != DocumentStatus.CANCELLED
                 && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
@@ -233,7 +251,8 @@ public sealed class SalesController : ControllerBase
         [FromQuery] string? to = null)
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
-        if (party is null) return NotFound(new { message = "Customer not found.", code = "party_not_found" });
+        if (party is null || !party.Types.Contains(nameof(PartyType.CUSTOMER)))
+            return NotFound(new { message = "Customer not found.", code = "party_not_found" });
         var today = CompanyClock.Today;
         var fromDay = DateOnly.TryParse(from, out var f) ? f : today;
         var toDay = DateOnly.TryParse(to, out var t) ? t : fromDay;
@@ -271,7 +290,7 @@ public sealed class SalesController : ControllerBase
         // What they owed before these: the balance less what the posted ones still put on it, plus
         // what their returns took off it (less what was paid back in cash).
         var posted = docs.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
-        var owed = await MoneyService.OutstandingAsync(_db, posted);
+        var owed = await MoneyService.OutstandingAsync(_db, posted, credit: true);
         var onThese = posted.Sum(d => owed.GetValueOrDefault(d.Id));
         var back = docs.Where(d => d.Type == DocumentType.SALES_RETURN).ToList();
         var returnsTotal = back.Sum(d => d.GrandTotal);
@@ -288,59 +307,40 @@ public sealed class SalesController : ControllerBase
     /// <summary>
     /// The accountant's discount on one invoice (owner, 2026-10-02), posted or waiting for approval:
     /// its invoice discount (or, with <c>Kind = EXTRA_DISCOUNT</c>, its second one) becomes this
-    /// percent or amount (neither = none). Everything else stays as it was approved; the discount is
-    /// checked against the person's own permission and limit, and the invoice is posted again under
-    /// its number (listed as a discount among its changes).
+    /// percent or amount (neither = none). Nothing else on it changes (<see cref="DiscountAsync"/>).
     /// </summary>
     [HttpPost("invoices/{id:guid}/discount")]
     [HttpPost("orders/{id:guid}/discount")]
     [Authorize(Policy = Permissions.SalesDiscount)]
-    public async Task<ActionResult<SalesDetailDto>> SetDiscount(Guid id, [FromBody] SetInvoiceDiscountRequest req)
+    public Task<ActionResult<SalesDetailDto>> SetDiscount(Guid id, [FromBody] SetInvoiceDiscountRequest req)
     {
         var kind = string.Equals(req.Kind, nameof(ChargeKind.EXTRA_DISCOUNT), StringComparison.OrdinalIgnoreCase)
             ? ChargeKind.EXTRA_DISCOUNT : ChargeKind.DISCOUNT;
-        var doc = await _db.SalesDocuments.AsNoTracking()
-            .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
-            .InBranches(User, d => d.BranchId).InDepartments(User)
-            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery().FirstOrDefaultAsync();
-        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
-        var error = CheckDiscountTarget(doc);
-        if (error is not null) return error;
-        var result = await ApplyDiscountAsync(doc, kind, req.Percent, req.Amount);
-        _db.ChangeTracker.Clear();
-        return result;
+        return DiscountOneAsync(id, async doc =>
+            CheckDiscountTarget(doc) ?? await DiscountAsync(doc, kind, req.Percent, req.Amount, null));
     }
 
     /// <summary>
     /// The accountant's discount on an invoice's items (owner, 2026-10-24), posted or waiting for
-    /// approval: each line named gets this discount for the whole line (0 = none). Everything else
-    /// stays as it was; the discount keeps to the person's limit and the invoice is posted again under
-    /// its number (listed as a discount among its changes).
+    /// approval: each line named gets this discount for the whole line (0 = none). Nothing else on it
+    /// changes (<see cref="DiscountAsync"/>).
     /// </summary>
     [HttpPost("invoices/{id:guid}/line-discounts")]
     [HttpPost("orders/{id:guid}/line-discounts")]
     [Authorize(Policy = Permissions.SalesDiscountLine)]
-    public async Task<ActionResult<SalesDetailDto>> SetLineDiscounts(Guid id, [FromBody] SetLineDiscountsRequest req)
-    {
-        var doc = await _db.SalesDocuments.AsNoTracking()
-            .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
-            .InBranches(User, d => d.BranchId).InDepartments(User)
-            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery().FirstOrDefaultAsync();
-        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
-        var discounts = new Dictionary<Guid, long>();
-        foreach (var d in req.Lines ?? [])
+    public Task<ActionResult<SalesDetailDto>> SetLineDiscounts(Guid id, [FromBody] SetLineDiscountsRequest req) =>
+        DiscountOneAsync(id, async doc =>
         {
-            if (!Guid.TryParse(d.LineId, out var lineId) || doc.Lines.All(l => l.Id != lineId))
-                return BadRequest(new { message = "A line was not found on the invoice.", code = "line_not_found" });
-            discounts[lineId] = d.Discount;
-        }
-        if (discounts.Count == 0) return BadRequest(new { message = "Choose the items.", code = "line_not_found" });
-        var error = CheckDiscountTarget(doc);
-        if (error is not null) return error;
-        var result = await ApplyDiscountAsync(doc, null, null, null, discounts);
-        _db.ChangeTracker.Clear();
-        return result;
-    }
+            var discounts = new Dictionary<Guid, long>();
+            foreach (var d in req.Lines ?? [])
+            {
+                if (!Guid.TryParse(d.LineId, out var lineId) || doc.Lines.All(l => l.Id != lineId))
+                    return BadRequest(new { message = "A line was not found on the invoice.", code = "line_not_found" });
+                discounts[lineId] = d.Discount;
+            }
+            if (discounts.Count == 0) return BadRequest(new { message = "Choose the items.", code = "line_not_found" });
+            return CheckDiscountTarget(doc) ?? await DiscountAsync(doc, null, null, null, discounts);
+        });
 
     /// <summary>
     /// One discount over several invoices of one customer (owner, 2026-10-02): a percent comes off
@@ -359,10 +359,12 @@ public sealed class SalesController : ControllerBase
             return BadRequest(new { message = "A percent is between 0 and 100.", code = "bad_charge" });
         if (req.Amount is long a && a < 0)
             return BadRequest(new { message = "Enter an amount above zero.", code = "bad_amount" });
-        var docs = await _db.SalesDocuments.AsNoTracking()
-            .Where(d => ids.Contains(d.Id) && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
-            .InBranches(User, d => d.BranchId).InDepartments(User)
-            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery()
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var locking = ids.OrderBy(x => x).ToArray();
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = ANY({locking}) ORDER BY \"Id\" FOR UPDATE");
+        var docs = await DiscountTargets().Where(d => ids.Contains(d.Id))
             .OrderBy(d => d.IssueDate).ThenBy(d => d.Number).ToListAsync();
         if (docs.Count != ids.Count) return NotFound(new { message = "An invoice was not found.", code = "invoice_not_found" });
         if (docs.Select(d => d.PartyId).Distinct().Count() != 1)
@@ -387,22 +389,40 @@ public sealed class SalesController : ControllerBase
                 given += shares[i];
             }
         }
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
-        var done = new List<string>();
         for (var i = 0; i < docs.Count; i++)
         {
-            var result = await ApplyDiscountAsync(docs[i], ChargeKind.EXTRA_DISCOUNT, req.Percent,
-                req.Amount is null ? null : shares[i]);
-            if (result.Result is ObjectResult { StatusCode: >= 400 } failed) return failed;
-            done.Add(docs[i].Id.ToString());
+            var error = await DiscountAsync(docs[i], ChargeKind.EXTRA_DISCOUNT, req.Percent,
+                req.Amount is null ? null : shares[i], null);
+            if (error is not null) return error;
         }
         await tx.CommitAsync();
+        foreach (var d in docs) await AuditAsync("discount", d.Type == DocumentType.SALES_ORDER ? "sales_order" : "sales_invoice", d);
         _db.ChangeTracker.Clear();
         var back = new List<SalesDetailDto>();
-        foreach (var docId in docs.Select(d => d.Type == DocumentType.SALES_ORDER ? d.Id : d.Id))
-            if ((await GetOne(docId)).Result is OkObjectResult { Value: SalesDetailDto dto }) back.Add(dto);
+        foreach (var d in docs)
+            if ((await GetOne(d.Id)).Result is OkObjectResult { Value: SalesDetailDto dto }) back.Add(dto);
         return Ok(back.ToArray());
+    }
+
+    /// <summary>Invoices and pending invoices a discount can be given on, in the person's reach, with their lines and charges.</summary>
+    private IQueryable<SalesDocument> DiscountTargets() =>
+        _db.SalesDocuments.Where(d => d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER)
+            .InBranches(User, d => d.BranchId).InDepartments(User)
+            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery();
+
+    /// <summary>A discount on one invoice under its row lock; then the invoice as it stands now.</summary>
+    private async Task<ActionResult<SalesDetailDto>> DiscountOneAsync(Guid id, Func<SalesDocument, Task<ActionResult?>> apply)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
+        var doc = await DiscountTargets().FirstOrDefaultAsync(d => d.Id == id);
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var error = await apply(doc);
+        if (error is not null) return error;
+        await tx.CommitAsync();
+        await AuditAsync("discount", doc.Type == DocumentType.SALES_ORDER ? "sales_order" : "sales_invoice", doc);
+        _db.ChangeTracker.Clear();
+        return await GetOne(id);
     }
 
     /// <summary>A discount can be given on an open invoice: not cancelled or turned down.</summary>
@@ -417,6 +437,195 @@ public sealed class SalesController : ControllerBase
         if (doc.Type == DocumentType.SALES_INVOICE && doc.EditLocked && !Access.OverridePasses(User))
             return StatusCode(403, new { message = "This invoice is locked. Reopen it to change a discount.", code = "invoice_locked" });
         return null;
+    }
+
+    /// <summary>
+    /// Set the discounts of <paramref name="doc"/> (tracked, its row locked by the caller): one of the
+    /// invoice's own (<paramref name="kind"/>: this percent or amount, neither = none) or its lines'
+    /// own (<paramref name="lineDiscounts"/>, by line). Nothing else changes — quantities, prices, what
+    /// its goods cost and money received stay as they are — so a discount can be given after money
+    /// came in, a cheque was taken or the goods went out for delivery (owner, 2026-10-24). A posted
+    /// invoice's customer owes the difference: entered in the ledger on its own, dated now, and listed
+    /// among the invoice's changes. Not once goods came back from it (the return was priced at its
+    /// discounts as they were then), nor in a locked period. Saved; the caller commits.
+    /// </summary>
+    private async Task<ActionResult?> DiscountAsync(SalesDocument doc, ChargeKind? kind, decimal? percent, long? amount,
+        IReadOnlyDictionary<Guid, long>? lineDiscounts)
+    {
+        var posted = doc.Type == DocumentType.SALES_INVOICE;
+        if (posted)
+        {
+            var lineIds = doc.Lines.Select(l => l.Id).ToList();
+            if (await _db.SalesDocuments.AnyAsync(d => d.SourceDocumentId == doc.Id && d.Type == DocumentType.SALES_RETURN
+                                                       && d.Status != DocumentStatus.CANCELLED)
+                || await _db.DocumentLines.AnyAsync(l => l.SourceLineId != null && lineIds.Contains(l.SourceLineId.Value)
+                                                         && l.Document!.Type == DocumentType.SALES_RETURN
+                                                         && l.Document.Status != DocumentStatus.CANCELLED))
+                return InvoiceLines.Refuse(this, new("discount_after_return",
+                    "Goods were returned from this invoice, so its discount can no longer change."));
+            var lockDate = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
+            if (lockDate is DateTime locked && CompanyClock.DayOf(doc.IssueDate) <= DateOnly.FromDateTime(locked)
+                && !Access.OverridePasses(User))
+                return InvoiceLines.Refuse(this, new("period_locked", "This invoice is in a locked period."));
+        }
+
+        // What is asked: each line's own discount, then the invoice's.
+        var lines = doc.Lines.OrderBy(l => l.LineNo).ToList();
+        var given = new long[lines.Count];
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            given[i] = lineDiscounts?.GetValueOrDefault(l.Id, l.Discount) ?? l.Discount;
+            if (given[i] < 0 || given[i] > l.LineTotal + l.Discount)
+                return BadRequest(new { message = "A discount can't be more than the line's amount.", code = "bad_price" });
+            if (l.IsBonus && given[i] != 0)
+                return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
+        }
+        var specs = doc.Charges.OrderBy(c => c.Seq).Where(c => c.Kind != kind)
+            .Select(c => new Charges.Spec(c.Kind, c.RateBp, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToList();
+        if (kind is ChargeKind asked)
+        {
+            if (percent is decimal pc && pc > 0)
+            {
+                if (pc > 100 || decimal.Round(pc, 2) != pc)
+                    return BadRequest(new { message = "A percent is between 0 and 100, with at most 2 decimals.", code = "bad_charge" });
+                specs.Add(new(asked, (int)(pc * 100), null, null));
+            }
+            else if (amount is long am && am > 0)
+            {
+                if (am > InvoiceLines.MaxPrice) return BadRequest(new { message = "Enter a smaller amount.", code = "bad_charge" });
+                specs.Add(new(asked, null, am, null));
+            }
+        }
+        var nets = lines.Select((l, i) => l.LineTotal + l.Discount - given[i]).ToList();
+        var (charges, applyError) = Charges.Apply(nets, lines.Select(l => !l.IsBonus).ToList(), specs);
+        if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
+
+        var sameLines = lines.Select((l, i) => l.Discount == given[i] && l.DocDiscount == charges!.Allocation[i]).All(x => x);
+        var sameCharges = doc.Charges.OrderBy(c => c.Seq).Select(c => (c.Kind, c.RateBp, c.FixedAmount, c.Amount))
+            .SequenceEqual(charges!.Rows.Select(c => (c.Kind, c.RateBp, c.FixedAmount, c.Amount)));
+        if (sameLines && sameCharges) return null;
+
+        // The person's limit on what comes off each line (the company's quantity discounts aside), and the
+        // profit floor on what is left of it, against what its goods cost when they left.
+        var settings = await GetSettingsAsync();
+        if (Access.MaxDiscount(User) is int maxDiscount && !Access.OverridePasses(User))
+        {
+            var automatic = await QuantityDiscountsAsync(doc, lines, settings);
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var l = lines[i];
+                if (l.IsBonus) continue;
+                var own = given[i] == automatic[i] ? 0 : given[i];
+                if ((own + charges.Allocation[i]) * 100 > (l.LineTotal + l.Discount) * maxDiscount)
+                    return InvoiceLines.Refuse(this, new("discount_over_limit",
+                        $"{l.ProductName}: the discount is more than your limit of {maxDiscount}%."));
+            }
+        }
+        var canOverride = Can(Permissions.SalesOverrideFloor);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (l.IsBonus) continue;
+            var units = l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity;
+            var factor = l.UnitQuantity > 0 ? Math.Max(1, l.UnitFactor) : 1;
+            var floorError = CheckFloor(units, l.UnitPrice, given[i] + charges.Allocation[i], l.UnitCost * factor,
+                settings.MinMarkupPercent, canOverride, overrideRequested: false);
+            if (floorError is not null && !Access.OverridePasses(User))
+                return BadRequest(new
+                {
+                    message = floorError == "below_cost"
+                        ? $"{l.ProductName}: price is below cost — selling at a loss is never allowed."
+                        : $"{l.ProductName}: price is below the minimum profit floor. Ask a manager to override.",
+                    code = floorError,
+                });
+        }
+
+        var before = (Grand: doc.GrandTotal, Net: doc.Subtotal - doc.DiscountTotal, Tax: doc.TaxTotal,
+            Addition: doc.AdditionTotal);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            var gross = l.LineTotal + l.Discount;
+            l.Discount = given[i];
+            l.LineTotal = gross - given[i];
+            l.DocDiscount = charges.Allocation[i];
+            l.LineProfit = l.LineTotal - l.DocDiscount - l.LineCost;
+        }
+        _db.DocumentCharges.RemoveRange(doc.Charges);
+        doc.Charges.Clear();
+        foreach (var c in charges.Rows)
+        {
+            c.DocumentId = doc.Id;
+            doc.Charges.Add(c);
+            _db.Entry(c).State = EntityState.Added;
+        }
+        var subtotal = lines.Sum(l => l.LineTotal + l.Discount);
+        doc.Subtotal = subtotal;
+        doc.DiscountTotal = lines.Sum(l => l.Discount) + charges.Discount;
+        doc.TaxTotal = charges.Tax;
+        doc.AdditionTotal = charges.Addition;
+        var net = subtotal - doc.DiscountTotal;
+        doc.GrandTotal = net + charges.Tax + charges.Addition;
+        doc.ProfitTotal = net - doc.CostTotal;
+
+        if (posted)
+        {
+            // The customer owes the difference; money received stays on the invoice (more than it now
+            // comes to is theirs on account).
+            Guid.TryParse(CurrentUser.Id(User), out var staffId);
+            await MoneyService.LockPartiesAsync(_db, doc.PartyId);
+            var party = await _db.Parties.FirstAsync(p => p.Id == doc.PartyId);
+            var delta = doc.GrandTotal - before.Grand;
+            party.Balance += delta;
+            MoneyService.RefreshPaidStatus(doc);
+            await _ledger.PostSalesDiscountAsync(doc, party, before.Net - net, before.Tax - doc.TaxTotal,
+                before.Addition - doc.AdditionTotal, staffId);
+            // Back within the purchase limit, an invoice waiting for it goes through; a smaller discount
+            // that takes the customer over it waits for the accountant, like a change to its items.
+            var over = party.CreditLimit is long limit && doc.GrandTotal > doc.PaidAmount && party.Balance > limit
+                       && !Access.OverridePasses(User);
+            if (over && delta > 0) { doc.OverLimit = true; doc.ApprovalNote = null; }
+            else if (!over && doc.OverLimit) { doc.OverLimit = false; doc.ApprovalNote = "WITHIN_LIMIT"; }
+            _db.InvoiceRevisions.Add(new InvoiceRevision
+            {
+                DocumentId = doc.Id, Kind = "DISCOUNT", StaffId = staffId, StaffName = CurrentUser.Name(User) ?? "",
+                TotalBefore = before.Grand, TotalAfter = doc.GrandTotal,
+            });
+        }
+        await _db.SaveChangesAsync();
+        return null;
+    }
+
+    /// <summary>
+    /// What the company's own rules (quantity discounts) take off each line at its quantity: not the
+    /// person's discount, so not counted against their limit.
+    /// </summary>
+    private async Task<long[]> QuantityDiscountsAsync(SalesDocument doc, IReadOnlyList<DocumentLine> lines,
+        CompanySettings settings)
+    {
+        var result = new long[lines.Count];
+        var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == doc.PartyId);
+        if (party is null) return result;
+        var ids = lines.Select(l => l.ProductId).Distinct().ToList();
+        var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var book = await PriceBook.LoadAsync(_db, products.Keys);
+        var level = doc.PriceLevelId is Guid lv && book.Level(lv) is { } chosen ? chosen
+            : InvoiceLines.ResolveLevel(book, null, party.SalesPriceLevelId, PriceSide.SALE, true).Level;
+        var special = await SpecialPrices.LoadAsync(_db, PriceSide.SALE, party.SalesPriceListId, products.Values.ToList());
+        var asks = new List<SpecialPrices.LineAsk>();
+        var at = new List<int>();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (!products.TryGetValue(l.ProductId, out var product) || book.UnitOf(l.ProductId, l.UnitId) is not { } unit)
+                continue;
+            asks.Add(new(product, unit, l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.Quantity, l.IsBonus, l.UnitCost));
+            at.Add(i);
+        }
+        var priced = special.Price(book, level, PriceSide.SALE, asks, settings.DefaultMarkupPercent);
+        for (var j = 0; j < at.Count; j++) result[at[j]] = priced[j].Discount;
+        return result;
     }
 
     private bool Can(string permission) => User.HasClaim("permission", permission);
@@ -461,45 +670,12 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// Post <paramref name="doc"/> again with its discounts set: one of the invoice's own
-    /// (<paramref name="kind"/>: this percent or amount, neither = none), or its lines' own
-    /// (<paramref name="lineDiscounts"/>, by line). Nothing else changes.
+    /// The active staff: who a sale can be credited to (the invoice's sales-rep picker), who holds a
+    /// new cash box, and whose sign-in an employee is. Only for those who pick one of them.
     /// </summary>
-    private async Task<ActionResult<SalesDetailDto>> ApplyDiscountAsync(SalesDocument doc, ChargeKind? kind,
-        decimal? percent, long? amount, IReadOnlyDictionary<Guid, long>? lineDiscounts = null)
-    {
-        var charges = doc.Charges.OrderBy(c => c.Seq).Where(c => c.Kind != kind)
-            .Select(c => new ChargeRequest(c.Kind.ToString(),
-                c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label))
-            .ToList();
-        if (kind is ChargeKind given)
-        {
-            if (percent is decimal pc && pc > 0) charges.Add(new ChargeRequest(given.ToString(), pc, null));
-            else if (amount is long am && am > 0) charges.Add(new ChargeRequest(given.ToString(), null, am));
-        }
-        // The invoice's own discount before the second one, as the charges apply in order.
-        charges = charges.OrderBy(c => c.Kind == nameof(ChargeKind.DISCOUNT) ? 0
-            : c.Kind == nameof(ChargeKind.EXTRA_DISCOUNT) ? 1 : 2).ToList();
-        var req = new CreateSalesInvoiceRequest(
-            doc.PartyId.ToString(),
-            doc.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
-                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice,
-                lineDiscounts?.GetValueOrDefault(l.Id, l.Discount) ?? l.Discount,
-                l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
-            Notes: doc.Notes, DueDate: doc.DueDate?.ToString("yyyy-MM-dd"), PaidAmount: doc.PaidAmount,
-            PriceLevelId: doc.PriceLevelId?.ToString(), Charges: charges.ToArray(), RepId: doc.RepId?.ToString(),
-            DeliveryMethod: doc.DeliveryMethod.ToString(), DeliveryAddress: doc.DeliveryAddress,
-            DriverId: doc.DriverId?.ToString(), CarrierId: doc.CarrierId?.ToString(),
-            PaidAccountId: doc.PaidAccountId?.ToString(), DepartmentId: doc.DepartmentId?.ToString());
-        return doc.Type == DocumentType.SALES_ORDER
-            ? await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null,
-                branch: doc.BranchId, discounts: DiscountMode.Give, baseline: doc, replaceId: doc.Id, trustPrices: true)
-            : await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId,
-                discounts: DiscountMode.Give, baseline: doc, editId: doc.Id, trustPrices: true);
-    }
-
-    /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
     [HttpGet("reps")]
+    [AnyPermission(Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesOrder,
+        Permissions.MoneyAccountsCreate, Permissions.EmployeesCreate, Permissions.EmployeesEdit)]
     public async Task<ActionResult<RepOptionDto[]>> Reps()
     {
         var staff = await _db.Staff.AsNoTracking().Where(s => s.IsActive).OrderBy(s => s.FullName).ToListAsync();
@@ -646,46 +822,6 @@ public sealed class SalesController : ControllerBase
         await _ledger.PostSalesInvoiceReversalAsync(doc, party, paidInto, staffId, doc.Number);
         await _db.SaveChangesAsync();
         return null;
-    }
-
-    /// <summary>
-    /// A price quotation (عرض سعر): priced exactly like an invoice — same levels, charges, permissions
-    /// and profit floor — but it moves no stock, money or balance and posts nothing. It holds its
-    /// prices until <c>DueDate</c> (two weeks unless given).
-    /// </summary>
-    [HttpPost("quotations")]
-    [Authorize(Policy = Permissions.SalesQuote)]
-    public Task<ActionResult<SalesDetailDto>> CreateQuotation([FromBody] CreateSalesInvoiceRequest req) =>
-        CreateCore(req, DocumentType.QUOTATION, fromId: null);
-
-    /// <summary>
-    /// Turn an open quotation into a sales invoice with its lines, prices, level, charges and rep.
-    /// While it's valid its prices hold — they were approved when it was made; after its date they
-    /// are checked like any new invoice. Stock, the profit floor and payment are checked now.
-    /// </summary>
-    [HttpPost("quotations/{id:guid}/convert")]
-    [Authorize(Policy = Permissions.SalesCreate)]
-    public async Task<ActionResult<SalesDetailDto>> ConvertQuotation(Guid id, [FromBody] ConvertQuotationRequest req)
-    {
-        var quote = await ScopedQuotes().AsNoTracking().Include(d => d.Lines).Include(d => d.Charges)
-            .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == id);
-        if (quote is null) return NotFound(new { message = "Quotation not found.", code = "not_found" });
-        var invoice = new CreateSalesInvoiceRequest(
-            quote.PartyId.ToString(),
-            quote.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
-                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
-                req.WarehouseId ?? l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
-            Notes: req.Notes ?? quote.Notes, DueDate: req.DueDate, PaidAmount: req.PaidAmount,
-            OverrideFloor: req.OverrideFloor, PriceLevelId: quote.PriceLevelId?.ToString(),
-            Charges: quote.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
-                c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
-            RepId: quote.RepId?.ToString(), DeliveryMethod: req.DeliveryMethod, DeliveryAddress: req.DeliveryAddress,
-            DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId,
-            DepartmentId: quote.DepartmentId?.ToString());
-        // Its discounts were approved with it while it is valid; after its date they are new ones.
-        var valid = quote.DueDate is null || quote.DueDate.Value.Date >= CompanyClock.TodayDate;
-        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: quote.BranchId,
-            discounts: valid ? DiscountMode.Trusted : DiscountMode.Give);
     }
 
     /// <summary>
@@ -967,30 +1103,6 @@ public sealed class SalesController : ControllerBase
         return rows.ToDictionary(r => (r.ProductId, r.WarehouseId), r => r.Quantity);
     }
 
-    /// <summary>Close an open quotation without an invoice.</summary>
-    [HttpPost("quotations/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.SalesQuote)]
-    public async Task<ActionResult<SalesDetailDto>> CancelQuotation(Guid id)
-    {
-        await using var tx = await _db.Database.BeginTransactionAsync();
-        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {id} FOR UPDATE");
-        var quote = await ScopedQuotes().FirstOrDefaultAsync(d => d.Id == id);
-        if (quote is null) return NotFound(new { message = "Quotation not found.", code = "not_found" });
-        if (quote.Status != DocumentStatus.PENDING)
-            return BadRequest(new { message = "This quotation is already closed.", code = "quote_closed" });
-        quote.Status = DocumentStatus.CANCELLED;
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
-        await AuditAsync("cancel", "quotation", quote);
-        return await GetOne(id);
-    }
-
-    private IQueryable<SalesDocument> ScopedQuotes()
-    {
-        var q = _db.SalesDocuments.Where(d => d.Type == DocumentType.QUOTATION);
-        return q.InBranches(User, d => d.BranchId).InDepartments(User);
-    }
-
     private Task AuditAsync(string action, string resource, SalesDocument doc) =>
         _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), action, resource,
             doc.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
@@ -1160,7 +1272,8 @@ public sealed class SalesController : ControllerBase
             if (shape.Error is not null) return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code });
             if (line.IsBonus)
             {
-                if (!Approved(Permissions.SalesBonus))
+                // Changing its items keeps the free goods it had (checked below, once the units are known).
+                if (!Approved(Permissions.SalesBonus) && discounts != DiscountMode.Keep)
                     return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
                 if (line.UnitPrice != 0 || line.Discount != 0)
                     return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
@@ -1203,6 +1316,15 @@ public sealed class SalesController : ControllerBase
             var reverseError = await ReverseInvoiceAsync(edited, staffId);
             if (reverseError is not null) return InvoiceLines.Refuse(this, reverseError);
         }
+        // Its goods leave again at the cost they had (owner, 2026-10-24): only more of an item than
+        // before, or from another warehouse, goes at today's average.
+        var kept = edited?.Lines.Where(l => l.Quantity > 0 && l.WarehouseId != null)
+            .GroupBy(l => (l.ProductId, l.WarehouseId!.Value))
+            .ToDictionary(g => g.Key, g => (Qty: g.Sum(l => (long)l.Quantity), Value: g.Sum(l => l.LineCost)));
+        long? KeptUnitCost(Guid productId, Guid warehouseId) =>
+            kept is not null && kept.TryGetValue((productId, warehouseId), out var had) && had.Qty > 0
+                ? (long)decimal.Round((decimal)had.Value / had.Qty, MidpointRounding.AwayFromZero)
+                : null;
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         var book = await PriceBook.LoadAsync(_db, products.Keys);
         var categoryIds = products.Values.Select(p => p.CategoryId).Distinct().ToList();
@@ -1230,9 +1352,20 @@ public sealed class SalesController : ControllerBase
             var (unit, baseQty, unitError) = InvoiceLines.ResolveUnit(book, product, unitId, line.Quantity);
             if (unitError is not null) return BadRequest(new { message = unitError.Message, code = unitError.Code });
 
-            // Cost is per branch: price and floor are judged against the cost where the goods leave from.
-            var baseCost = _inventory.CostAt(product, warehouse);
+            // Cost is per branch: price and floor are judged against the cost where the goods leave from
+            // (a changed invoice's, the cost they had).
+            var baseCost = KeptUnitCost(product.Id, warehouse.Id) ?? _inventory.CostAt(product, warehouse);
             resolved.Add((line, product, unit!, baseQty, warehouse, baseCost));
+        }
+        // An invoice whose items are changed keeps the free goods it had (owner, 2026-10-24): no more of
+        // an item than before without the permission.
+        if (discounts == DiscountMode.Keep && !Approved(Permissions.SalesBonus))
+        {
+            var had = ((edited ?? baseline)?.Lines ?? []).Where(l => l.IsBonus)
+                .GroupBy(l => l.ProductId).ToDictionary(g => g.Key, g => g.Sum(l => (long)l.Quantity));
+            foreach (var free in resolved.Where(r => r.Req.IsBonus).GroupBy(r => r.Product.Id))
+                if (free.Sum(r => (long)r.BaseQty) > had.GetValueOrDefault(free.Key))
+                    return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
         }
         // What each line costs by the rules: price list, level (or cost), and its quantity discount.
         var special = await SpecialPrices.LoadAsync(_db, PriceSide.SALE, party.SalesPriceListId,
@@ -1423,11 +1556,32 @@ public sealed class SalesController : ControllerBase
         {
             var (line, product, unit, baseQty, warehouse, baseCost) = resolved[i];
             // A quotation only estimates the profit, at today's cost.
-            var unitCost = !posts ? baseCost : _inventory.Issue(product, warehouse, baseQty,
-                StockMovementType.SALE_OUT, doc.Id, number);
+            long unitCost, lineCost;
+            if (!posts)
+            {
+                unitCost = baseCost;
+                lineCost = (long)baseQty * unitCost;
+            }
+            else if (kept is not null && kept.TryGetValue((product.Id, warehouse.Id), out var had) && had.Qty > 0)
+            {
+                var again = (int)Math.Min(baseQty, had.Qty);
+                var value = again == had.Qty ? had.Value
+                    : (long)decimal.Round((decimal)had.Value * again / had.Qty, MidpointRounding.AwayFromZero);
+                kept[(product.Id, warehouse.Id)] = (had.Qty - again, had.Value - value);
+                _inventory.IssueValue(product, warehouse, again, value, StockMovementType.SALE_OUT, doc.Id, number);
+                lineCost = value + (baseQty > again
+                    ? (long)(baseQty - again) * _inventory.Issue(product, warehouse, baseQty - again,
+                        StockMovementType.SALE_OUT, doc.Id, number)
+                    : 0);
+                unitCost = (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero);
+            }
+            else
+            {
+                unitCost = _inventory.Issue(product, warehouse, baseQty, StockMovementType.SALE_OUT, doc.Id, number);
+                lineCost = (long)baseQty * unitCost;
+            }
 
             var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
-            var lineCost = (long)baseQty * unitCost;
             var docDiscount = charges!.Allocation[i];
             doc.Lines.Add(new DocumentLine
             {
@@ -1501,8 +1655,7 @@ public sealed class SalesController : ControllerBase
         if (over && !approved && edited is null)
             return BadRequest(new
             {
-                message = $"{party.Name} would owe {InvoiceLines.Major(party.Balance)}, over their credit limit of " +
-                          $"{InvoiceLines.Major(party.CreditLimit!.Value)}. It waits for the accountant.",
+                message = $"{party.Name} would go over their credit limit. It waits for the accountant.",
                 code = "over_credit_limit",
             });
         if (approved) { doc.OverLimit = false; doc.ApprovalNote = approvalNote ?? doc.ApprovalNote; }
@@ -1574,6 +1727,23 @@ public sealed class SalesController : ControllerBase
         return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
     }
 
+    /// <summary>Cancel a sales return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
+    [HttpPost("returns/{id:guid}/cancel")]
+    [Authorize(Policy = Permissions.SalesReturnCancel)]
+    public async Task<ActionResult<SalesDetailDto>> CancelReturn(Guid id)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var (doc, error) = await _returns.CancelAsync(id, true, User, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+        await AuditAsync("cancel", "sales_return", doc!);
+        _db.ChangeTracker.Clear();
+        return await GetOne(id);
+    }
+
     /// <summary>
     /// A return typed line by line, without picking an invoice (owner decision 2026-10-01). It goes
     /// on the party's account; a cash customer is paid back from the branch cash box.
@@ -1610,7 +1780,9 @@ public sealed class SalesController : ControllerBase
         // Goods come back on an invoice only some hours after it was made (Settings, 12 by default;
         // owner 2026-10-02): until then the invoice itself is changed.
         var hours = await _db.CompanySettings.Select(x => x.ReturnAfterHours).FirstOrDefaultAsync();
+        // Only an invoice this person may see (else it is "not found" below, telling nothing of it).
         var made = await _db.SalesDocuments.Where(d => d.Id == id && d.Type == DocumentType.SALES_INVOICE)
+            .InBranches(User, d => d.BranchId).InDepartments(User)
             .Select(d => (DateTime?)d.CreatedAt).FirstOrDefaultAsync();
         if (hours > 0 && made is DateTime createdAt && DateTime.UtcNow < createdAt.AddHours(hours)
             && !Access.OverridePasses(User))

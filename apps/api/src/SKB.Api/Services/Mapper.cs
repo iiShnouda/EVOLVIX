@@ -93,17 +93,49 @@ public static class Mapper
 
     /// <summary>
     /// A party as this person may see it: its contact details (phones, email, addresses, owner or
-    /// person in charge, national ID, tax number) only with <c>parties:contact</c> (owner, 2026-10-19).
+    /// person in charge, national ID, tax number) only with <c>parties:contact</c> (owner, 2026-10-19),
+    /// and its balance and credit limit only for whoever may see its account.
     /// </summary>
-    public static PartyDto ToParty(Party p, System.Security.Claims.ClaimsPrincipal user) =>
-        user.HasClaim("permission", Permissions.PartiesContact)
-            ? ToParty(p)
-            : ToParty(p) with
+    public static PartyDto ToParty(Party p, System.Security.Claims.ClaimsPrincipal user)
+    {
+        var dto = ToParty(p);
+        if (!user.HasClaim("permission", Permissions.PartiesContact))
+            dto = dto with
             {
                 Phone = null, PhoneLabel = null, OtherPhones = Array.Empty<string>(), OtherPhoneLabels = Array.Empty<string>(),
                 Email = null, TaxNumber = null, Address = null, ShippingAddress = null, ExtraAddress = null,
                 ExtraAddressLabel = null, ContactName = null, NationalId = null,
             };
+        if (!MaySeeBalance(p.Types, user))
+            dto = dto with { Balance = null, CreditLimit = user.Has(Permissions.PartiesCreditLimit) ? p.CreditLimit : null };
+        return dto;
+    }
+
+    /// <summary>
+    /// Whether this person may see what a party owes or is owed: whoever sees it already elsewhere —
+    /// its statement, the ledger, the aging report, money taken or paid, settlement discounts, a
+    /// customer's invoices together (and their discounts), a carrier's settlements.
+    /// </summary>
+    public static bool MaySeeBalance(IEnumerable<string> types, System.Security.Claims.ClaimsPrincipal user)
+    {
+        if (user.HasAny(Permissions.StatementLedger, Permissions.ReceiptsCreate, Permissions.PaymentsCreate,
+                Permissions.VouchersDiscount)) return true;
+        foreach (var type in types)
+        {
+            var may = type switch
+            {
+                nameof(PartyType.CUSTOMER) => user.HasAny(Permissions.StatementCustomers, Permissions.ReportsAging,
+                    Permissions.SalesTogether, Permissions.SalesDiscount, Permissions.SalesDiscountLine,
+                    Permissions.SalesDiscountCombined),
+                nameof(PartyType.SUPPLIER) => user.HasAny(Permissions.StatementSuppliers, Permissions.ReportsAging),
+                nameof(PartyType.CARRIER) => user.HasAny(Permissions.StatementCarriers, Permissions.DeliverySettle,
+                    Permissions.SettlementsView),
+                _ => false,
+            };
+            if (may) return true;
+        }
+        return false;
+    }
 
     public static PartyDto ToParty(Party p) => new(
         p.Id.ToString(), p.Name, p.Types.ToArray(), p.Phone, p.Balance, p.Currency,
@@ -114,7 +146,7 @@ public static class Mapper
         p.DefaultCarrierId?.ToString(), p.IsCashCustomer,
         p.OtherPhones.Select((_, i) => i < p.OtherPhoneLabels.Count ? p.OtherPhoneLabels[i] : "").ToArray(),
         p.ExtraAddress, p.ExtraAddressLabel, p.TempCarrierName, p.HasIdFront, p.HasIdBack, p.IsSystem,
-        p.NationalId, p.PhoneLabel);
+        p.NationalId, p.PhoneLabel, p.CreditLimit is long limit ? limit - p.Balance : null);
 
     public static PriceLevelDto ToPriceLevel(PriceLevel l) => new(
         l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.IsDefault, l.SortOrder, l.IsActive);

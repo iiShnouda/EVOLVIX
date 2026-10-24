@@ -45,7 +45,7 @@ public sealed class PurchasesController : ControllerBase
 
     /// <summary>Purchase returns (مرتجعات المشتريات), newest first.</summary>
     [HttpGet("returns")]
-    [Authorize(Policy = Permissions.PurchasesReturnsView)]
+    [AnyPermission(Permissions.PurchasesReturnsView, Permissions.PurchasesReturnCancel)]
     public Task<ActionResult<DocumentListDto>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
         [FromQuery] string? status = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
@@ -69,7 +69,7 @@ public sealed class PurchasesController : ControllerBase
     [HttpGet("returns/{id:guid}")]
     [AnyPermission(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
         Permissions.PurchasesPriceSheet, Permissions.PurchasesReturnsView, Permissions.PurchasesCreate,
-        Permissions.PurchasesReturnFree, Permissions.StatementSuppliers)]
+        Permissions.PurchasesReturnFree, Permissions.PurchasesReturnCancel, Permissions.StatementSuppliers)]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
@@ -89,7 +89,8 @@ public sealed class PurchasesController : ControllerBase
         // by whoever made them (owner, 2026-10-23).
         var mine = doc.StaffId.ToString() == CurrentUser.Id(User);
         if (doc.Type == DocumentType.PURCHASE_RETURN
-                ? !(User.HasAny(Permissions.PurchasesReturnsView, Permissions.StatementSuppliers)
+                ? !(User.HasAny(Permissions.PurchasesReturnsView, Permissions.PurchasesReturnCancel,
+                        Permissions.StatementSuppliers)
                     || (mine && User.HasAny(Permissions.PurchasesReturn, Permissions.PurchasesReturnFree)))
                 : !(User.HasAny(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
                         Permissions.PurchasesPriceSheet, Permissions.StatementSuppliers)
@@ -104,6 +105,26 @@ public sealed class PurchasesController : ControllerBase
         var pages = await _db.DocumentImages.CountAsync(x => x.DocumentId == doc.Id);
         if (pages > 0) dto = dto with { HasImage = true, ImagePages = pages };
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// A purchase document is about to be printed (owner, 2026-10-24): printing is its own permission,
+    /// checked here before the web app prints, and written in the activity log.
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/print")]
+    [HttpPost("returns/{id:guid}/print")]
+    [Authorize(Policy = Permissions.PurchasesPrint)]
+    public async Task<ActionResult> Printed(Guid id)
+    {
+        var doc = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.Id == id && (d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN))
+            .InBranches(User, d => d.BranchId).FirstOrDefaultAsync();
+        if (doc is null) return NotFound(new { message = "Document not found", code = "not_found" });
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "print",
+            doc.Type == DocumentType.PURCHASE_RETURN ? "purchase_return" : "purchase_invoice",
+            doc.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString(), $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
+        return NoContent();
     }
 
     private const long MaxImageBytes = 5 * 1024 * 1024;
@@ -395,6 +416,25 @@ public sealed class PurchasesController : ControllerBase
         if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());
         var last = await PriceBasis.LastPricesAsync(_db, partyId, productIds, DocumentType.PURCHASE_INVOICE);
         return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
+    }
+
+    /// <summary>Cancel a purchase return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
+    [HttpPost("returns/{id:guid}/cancel")]
+    [Authorize(Policy = Permissions.PurchasesReturnCancel)]
+    public async Task<ActionResult<SalesDetailDto>> CancelReturn(Guid id)
+    {
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        var (doc, error) = await _returns.CancelAsync(id, false, User, staffId);
+        if (error is not null)
+        {
+            var body = new { message = error.Message, code = error.Code };
+            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
+        }
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "cancel", "purchase_return",
+            doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString(), $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
+        _db.ChangeTracker.Clear();
+        return await GetOne(id);
     }
 
     /// <summary>

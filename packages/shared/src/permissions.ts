@@ -61,7 +61,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         permissions: [
           'sales:create',
           'sales:order',
-          'sales:quote',
           'sales:edit',
           'sales:cancel',
           'sales:approve',
@@ -72,7 +71,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'returns',
-        permissions: ['sales:return', 'sales:return_free'],
+        permissions: ['sales:return', 'sales:return_free', 'sales:return_cancel'],
       },
       {
         key: 'prices_and_discounts',
@@ -132,6 +131,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'purchases:photos',
           'purchases:return',
           'purchases:return_free',
+          'purchases:return_cancel',
         ],
       },
       {
@@ -162,7 +162,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'products:barcodes',
           'products:images',
           'prices:edit',
-          'price_levels:manage',
         ],
       },
       {
@@ -284,7 +283,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'prices_and_credit',
-        permissions: ['parties:set_price_level', 'parties:credit_limit', 'parties:cash_customer'],
+        permissions: ['parties:set_price_level', 'parties:credit_limit'],
       },
     ],
   },
@@ -553,7 +552,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       {
         key: 'settings',
         permissions: [
-          'settings:view',
           'settings:company',
           'settings:logo',
           'settings:pricing',

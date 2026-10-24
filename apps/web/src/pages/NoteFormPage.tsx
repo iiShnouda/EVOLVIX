@@ -500,6 +500,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   <td className="px-1 py-1 text-muted tnum">{i + 1}</td>
                   <td className="px-1 py-1">
                     <input
+                      aria-label={`${t('notes.serial')} ${i + 1}`}
                       className={`${cell} tnum`}
                       dir="ltr"
                       maxLength={40}
@@ -509,6 +510,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   </td>
                   <td className="px-1 py-1">
                     <input
+                      aria-label={`${t('notes.amount')} ${i + 1}`}
                       type="number"
                       min={0}
                       step="0.01"
@@ -519,6 +521,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   </td>
                   <td className="px-1 py-1">
                     <input
+                      aria-label={`${t('notes.due')} ${i + 1}`}
                       type="date"
                       className={`${cell} tnum`}
                       value={r.due}
@@ -527,6 +530,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   </td>
                   <td className="px-1 py-1">
                     <input
+                      aria-label={`${t('notes.bank')} ${i + 1}`}
                       className={cell}
                       maxLength={100}
                       value={r.bank}
@@ -536,6 +540,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   {receivable && (
                     <td className="px-1 py-1">
                       <input
+                        aria-label={`${t('notes.drawer')} ${i + 1}`}
                         className={cell}
                         maxLength={100}
                         value={r.drawer}
@@ -578,6 +583,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                           >
                             <Icon name="plus" size={15} />
                             <input
+                              aria-label={t('cheque.fromFile')}
                               type="file"
                               accept="image/jpeg,image/png,image/webp"
                               className="sr-only"

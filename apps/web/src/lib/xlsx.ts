@@ -178,6 +178,7 @@ function column(i: number): string {
 
 function xml(s: string): string {
   return s
+    // eslint-disable-next-line no-control-regex -- only the characters XML allows are kept
     .replace(/[^\u0009\u000A\u000D -퟿-�\u{10000}-\u{10FFFF}]/gu, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

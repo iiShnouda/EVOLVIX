@@ -71,6 +71,7 @@ import { ImportPage } from './pages/ImportPage';
 import { LicensePage } from './pages/LicensePage';
 import { PayrollPage } from './pages/PayrollPage';
 import { ThemesPage } from './pages/ThemesPage';
+import { mayOpenPath } from './lib/routeAccess';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
@@ -235,11 +236,19 @@ function PrintPaper() {
 function Landing() {
   const prefs = usePreferences();
   const home = useHomePath();
+  const permissions = useAuth((s) => s.user?.permissions ?? NO_PERMISSIONS);
   if (prefs.isPending) return null;
   const page = prefs.data?.[LAST_PAGE];
-  const safe = page?.startsWith('/') && !page.startsWith('//') && page !== '/';
+  // …unless it is no longer theirs to open.
+  const safe =
+    page?.startsWith('/') &&
+    !page.startsWith('//') &&
+    page !== '/' &&
+    mayOpenPath(page.split('?')[0]!, permissions);
   return <Navigate to={safe && page ? page : home} replace />;
 }
+
+const NO_PERMISSIONS: string[] = [];
 
 /** An unknown address: the person's first page. */
 function HomeRedirect() {
@@ -263,7 +272,7 @@ function LoginRoute() {
  */
 function ViewSalesInvoiceRoute() {
   const { id } = useParams();
-  return <InvoiceBuilderPage key={`view-${id}`} mode="sale" editId={id} readOnly />;
+  return <InvoiceBuilderPage key={`view-${id}`} editId={id} readOnly />;
 }
 
 /**
@@ -290,7 +299,7 @@ function EditTransferRoute() {
 /** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
 function EditSalesInvoiceRoute() {
   const { id } = useParams();
-  return <InvoiceBuilderPage key={`edit-${id}`} mode="sale" editId={id} />;
+  return <InvoiceBuilderPage key={`edit-${id}`} editId={id} />;
 }
 
 // A data router, so a screen with work on it can ask before it is left (useBlocker).
@@ -301,7 +310,7 @@ const routes = createRoutesFromElements(
       <Route index element={<Landing />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/sales" element={<DocumentsPage key="sales" scope="sales" />} />
-      <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" mode="sale" />} />
+      <Route path="/sales/new" element={<InvoiceBuilderPage key="sale" />} />
       <Route path="/sales/invoices/:id" element={<ViewSalesInvoiceRoute />} />
       <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
       <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />

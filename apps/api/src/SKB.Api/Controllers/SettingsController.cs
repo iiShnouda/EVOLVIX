@@ -13,6 +13,10 @@ namespace SKB.Api.Controllers;
 [Authorize]
 public sealed class SettingsController : ControllerBase
 {
+    /// <summary>The currencies amounts can be kept in: two decimals, as every amount is stored in hundredths.</summary>
+    private static readonly HashSet<string> MoneyCurrencies =
+        new() { "EGP", "SAR", "AED", "QAR", "USD", "EUR", "GBP", "TRY", "MAD", "DZD" };
+
     private readonly AppDbContext _db;
     private readonly AuditService _audit;
     public SettingsController(AppDbContext db, AuditService audit)
@@ -29,8 +33,17 @@ public sealed class SettingsController : ControllerBase
     public async Task<ActionResult<CompanySettingsDto>> Get()
     {
         var s = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
-        return Ok(Mapper.ToSettings(s));
+        return Ok(Visible(Mapper.ToSettings(s)));
     }
+
+    /// <summary>
+    /// The settings as this person may see them: the selling markups on cost would let anyone work
+    /// out what items cost, so only whoever sets prices or sees supply prices gets them.
+    /// </summary>
+    private CompanySettingsDto Visible(CompanySettingsDto dto) =>
+        User.Has(Permissions.SettingsPricing) || Costs.CanSee(User)
+            ? dto
+            : dto with { DefaultMarkupPercent = 0, MinMarkupPercent = 0 };
 
     /// <summary>
     /// Update company settings. Each part is changed with its own permission (owner, 2026-10-23):
@@ -76,6 +89,10 @@ public sealed class SettingsController : ControllerBase
         };
         if (parts.FirstOrDefault(x => x.Changes && !User.Has(x.Permission)) is { Permission: { } part })
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden", part });
+        // Amounts are kept in hundredths: only a currency with two decimals (owner, 2026-10-24).
+        if (!string.IsNullOrWhiteSpace(req.Currency) && req.Currency.Trim().ToUpperInvariant() is var asked
+            && asked != s.Currency && !MoneyCurrencies.Contains(asked))
+            return BadRequest(new { message = "Amounts are kept with two decimals: choose another currency.", code = "bad_currency" });
 
         if (!string.IsNullOrWhiteSpace(req.CompanyName)) s.CompanyName = req.CompanyName.Trim();
         if (!string.IsNullOrWhiteSpace(req.Country)) s.Country = req.Country.Trim().ToUpperInvariant();
@@ -84,6 +101,7 @@ public sealed class SettingsController : ControllerBase
         if (req.DefaultMarkupPercent is int mk) s.DefaultMarkupPercent = Math.Clamp(mk, 0, 1000);
         if (req.MinMarkupPercent is int min) s.MinMarkupPercent = Math.Clamp(min, 0, 1000);
         if (req.TransfersRequireReceipt is bool receipt) s.TransfersRequireReceipt = receipt;
+        var limitChanged = req.MaxDiscountPercent is int newLimit && Math.Clamp(newLimit, 0, 100) != s.MaxDiscountPercent;
         if (req.MaxDiscountPercent is int maxDiscount) s.MaxDiscountPercent = Math.Clamp(maxDiscount, 0, 100);
         if (req.PendingHoldDays is int holdDays) s.PendingHoldDays = Math.Clamp(holdDays, 0, 365);
         if (req.RequireDepartment is bool requireDepartment) s.RequireDepartment = requireDepartment;
@@ -120,12 +138,14 @@ public sealed class SettingsController : ControllerBase
         s.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();
+        // The company's discount limit is in everyone's sign-in: it holds from their next request.
+        if (limitChanged) await AccessGate.ChangedAsync(_db, _db.Staff);
         CompanyClock.Use(s.TimeZone);
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "update", "settings",
             CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), s.Id.ToString());
 
-        return Ok(Mapper.ToSettings(s));
+        return Ok(Visible(Mapper.ToSettings(s)));
     }
 
     /// <summary>The document kinds whose serial number (الرقم المسلسل) the company may shape.</summary>

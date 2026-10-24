@@ -453,8 +453,9 @@ public sealed class CatalogController : ControllerBase
     public async Task<ActionResult<PriceLevelDto[]>> PriceLevels() =>
         Ok((await PriceBook.LevelsAsync(_db)).Select(Mapper.ToPriceLevel).ToArray());
 
+    // Price levels are part of the prices settings (owner, 2026-10-24): no permission of their own.
     [HttpPost("price-levels")]
-    [Authorize(Policy = Permissions.PriceLevelsManage)]
+    [Authorize(Policy = Permissions.SettingsPricing)]
     public async Task<ActionResult<PriceLevelDto>> CreatePriceLevel([FromBody] CreatePriceLevelRequest req)
     {
         if (!Enum.TryParse<PriceSide>(req.Side, true, out var side))
@@ -474,7 +475,7 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPut("price-levels/{id:guid}")]
-    [Authorize(Policy = Permissions.PriceLevelsManage)]
+    [Authorize(Policy = Permissions.SettingsPricing)]
     public async Task<ActionResult<PriceLevelDto>> UpdatePriceLevel(Guid id, [FromBody] UpdatePriceLevelRequest req)
     {
         var level = await _db.PriceLevels.FirstOrDefaultAsync(l => l.Id == id);

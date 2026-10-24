@@ -54,6 +54,7 @@ public sealed class TokenService
             new("name", staff.FullName),
         };
         if (deviceId is Guid device) claims.Add(new Claim(DeviceClaim, device.ToString()));
+        claims.Add(new Claim(AccessGate.VersionClaim, staff.AccessVersion.ToString()));
         foreach (var p in permissions)
             claims.Add(new Claim("permission", p));
         claims.AddRange(Access.Claims(access));
@@ -117,6 +118,15 @@ public sealed class TokenService
         if (session.RevokedReason == "other_device"
             || (session.RevokedAt is null && slot is Guid current && current != session.DeviceId))
             return (null, "other_device");
+        // A refresh token used again after it was exchanged: someone else may have a copy (owner,
+        // 2026-10-24). The device's sign-in ends, so neither copy works; the same token twice in a
+        // moment (two requests at once) is no theft.
+        if (session.RevokedReason is null or "rotated" && session.RevokedAt is DateTime rotatedAt
+            && DateTime.UtcNow - rotatedAt > TimeSpan.FromSeconds(30))
+        {
+            await EndDeviceAsync(session.StaffId, session.DeviceId, "reused");
+            return (null, null);
+        }
         if (session.RevokedAt is not null || session.ExpiresAt < DateTime.UtcNow)
             return (null, null);
         if (session.Staff is null || !session.Staff.IsActive)
@@ -125,6 +135,7 @@ public sealed class TokenService
             return (null, null);
 
         session.RevokedAt = DateTime.UtcNow;
+        session.RevokedReason = "rotated";
         var newRaw = CryptoService.GenerateOpaqueToken();
         var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
         _db.Sessions.Add(new Session
@@ -144,6 +155,23 @@ public sealed class TokenService
         return (new Rotated(session.Staff, newRaw, session.DeviceId, session.Remember), null);
     }
 
+    /// <summary>End one device's sign-in: its sessions, and its place as the account's device of its kind.</summary>
+    private async Task EndDeviceAsync(Guid staffId, Guid deviceId, string reason)
+    {
+        var now = DateTime.UtcNow;
+        await _db.Sessions.Where(s => s.StaffId == staffId && s.DeviceId == deviceId && s.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now).SetProperty(x => x.RevokedReason, reason));
+        await _db.Staff.Where(s => s.Id == staffId && s.CurrentMobileDeviceId == deviceId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CurrentMobileDeviceId, (Guid?)null));
+        await _db.Staff.Where(s => s.Id == staffId && s.CurrentDesktopDeviceId == deviceId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CurrentDesktopDeviceId, (Guid?)null));
+        var row = await _db.Staff.AsNoTracking().Where(s => s.Id == staffId)
+            .Select(s => new { s.CurrentMobileDeviceId, s.CurrentDesktopDeviceId }).FirstOrDefaultAsync();
+        DeviceGate.Set(staffId, row?.CurrentMobileDeviceId, row?.CurrentDesktopDeviceId);
+        // Its access tokens stop at once too (the account's other device just asks for a new one).
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == staffId));
+    }
+
     public async Task RevokeByRawTokenAsync(string rawToken)
     {
         var hash = CryptoService.Sha256(rawToken);
@@ -154,7 +182,7 @@ public sealed class TokenService
     /// <summary>
     /// Sign the whole account out everywhere (owner, 2026-10-14: for a lost or virus-hit device).
     /// Every live session ends and both device slots are cleared, so each other device is refused at
-    /// its next refresh and its short-lived access token (15 min) soon stops working too.
+    /// its next refresh, and its access token stops working at once.
     /// </summary>
     public async Task RevokeAllForStaffAsync(Guid staffId)
     {
@@ -165,5 +193,7 @@ public sealed class TokenService
             s.SetProperty(x => x.CurrentMobileDeviceId, (Guid?)null)
              .SetProperty(x => x.CurrentDesktopDeviceId, (Guid?)null));
         DeviceGate.Set(staffId, null, null);
+        // …and their access tokens stop at once, not when they run out (owner, 2026-10-24).
+        await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == staffId));
     }
 }

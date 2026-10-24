@@ -191,9 +191,8 @@ export function AddItemsPage() {
   const sizes = (options.data ?? []).filter((o) => o.kind === 'SIZE' && o.isActive);
   const colors = (options.data ?? []).filter((o) => o.kind === 'COLOR' && o.isActive);
   const activeUnits = (units.data ?? []).filter((u) => u.isActive);
-  const pieceUnit =
-    activeUnits.find((u) => (u.pieces ?? 1) === 1 && ['قطعة', 'Piece'].includes(u.name)) ??
-    activeUnits.find((u) => (u.pieces ?? 1) === 1);
+  // The unit of one piece, whatever it is called.
+  const pieceUnit = activeUnits.find((u) => (u.pieces ?? 1) === 1);
   const saleLevel = (levels.data ?? []).find((l) => l.side === 'SALE' && l.isDefault);
   const purchaseLevel = (levels.data ?? []).find((l) => l.side === 'PURCHASE' && l.isDefault);
 

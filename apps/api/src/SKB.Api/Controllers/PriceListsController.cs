@@ -263,7 +263,7 @@ public sealed class PriceListsController : ControllerBase
             return NotFound(new { message = "Not found.", code = "not_found" });
         bool Can(string permission) => User.HasClaim("permission", permission);
         if (isSale
-                ? !User.HasAny(Permissions.SalesCreate, Permissions.SalesQuote, Permissions.SalesOrder, Permissions.SalesEdit)
+                ? !User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder, Permissions.SalesEdit)
                 : !Can(Permissions.PurchasesCreate))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var priceSide = isSale ? PriceSide.SALE : PriceSide.PURCHASE;

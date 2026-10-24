@@ -335,4 +335,14 @@ eq(
   'price_not_allowed',
 );
 
+// The selling markups on cost would tell what items cost (owner, 2026-10-24).
+console.log('== markups only for whoever sets prices or sees costs');
+{
+  const set = ok('the owner sees them', await owner.get('/settings'));
+  check('…as set', set.defaultMarkupPercent > 0, set);
+  const theirs = ok('a seller reads the settings', await karim.get('/settings'));
+  eq('…without the markups', [theirs.defaultMarkupPercent, theirs.minMarkupPercent], [0, 0]);
+  eq('…the rest as they are', [theirs.currency, theirs.defaultTaxPercent], [set.currency, set.defaultTaxPercent]);
+}
+
 process.exit(summary('costs') ? 1 : 0);

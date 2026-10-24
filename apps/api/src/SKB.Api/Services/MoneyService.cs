@@ -193,7 +193,10 @@ public sealed class MoneyService
     /// What is still owed on each invoice: grand total − paid, less what its returns put back on
     /// the party's account (a return credits the account, not the invoice).
     /// </summary>
-    public static async Task<Dictionary<Guid, long>> OutstandingAsync(AppDbContext db, IReadOnlyCollection<SalesDocument> docs)
+    /// <param name="credit">Keep what was paid over an invoice (a discount given after the money came in)
+    /// as a negative amount, instead of nothing owed.</param>
+    public static async Task<Dictionary<Guid, long>> OutstandingAsync(AppDbContext db, IReadOnlyCollection<SalesDocument> docs,
+        bool credit = false)
     {
         var ids = docs.Select(d => d.Id).ToList();
         var credited = await db.SalesDocuments.AsNoTracking()
@@ -205,6 +208,7 @@ public sealed class MoneyService
             .ToDictionaryAsync(x => x.Id, x => x.OnAccount);
         return docs.ToDictionary(d => d.Id,
             d => d.Status == DocumentStatus.CANCELLED ? 0
+                : credit ? d.GrandTotal - d.PaidAmount - credited.GetValueOrDefault(d.Id)
                 : Math.Max(0, d.GrandTotal - d.PaidAmount - credited.GetValueOrDefault(d.Id)));
     }
 
