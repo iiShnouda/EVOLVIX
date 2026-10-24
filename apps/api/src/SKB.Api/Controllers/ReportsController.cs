@@ -31,7 +31,7 @@ public sealed class ReportsController : ControllerBase
         var toDay = CompanyClock.ParseDay(to) ?? today;
         var (fromDate, toExclusive) = CompanyClock.Days(fromDay, toDay);
         var q = _db.InvoiceRevisions.AsNoTracking().Where(r => r.At >= fromDate && r.At < toExclusive);
-        if (kind is "EDIT" or "CANCEL") q = q.Where(r => r.Kind == kind);
+        if (kind is "EDIT" or "CANCEL" or "DISCOUNT") q = q.Where(r => r.Kind == kind);
         var allowed = _db.SalesDocuments.InBranches(User, d => d.BranchId).Select(d => d.Id);
         q = q.Where(r => allowed.Contains(r.DocumentId));
         var rows = await q.OrderByDescending(r => r.At).Take(1000)

@@ -1,6 +1,6 @@
 // Step 3 checks: units, price levels, prices & permissions, size × color models, invoices and
 // returns in units, reports. Runs against BASE (default :5090). Works on an upgraded or a fresh DB.
-import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -157,8 +157,9 @@ eq('the seller does not', s1.lines[0].lineProfit, 0);
 eq('sale priced at customer level', s1.priceLevelId, custLevel.id);
 r = await sale(karim, { lines: [{ productId: juice.id, unitId: carton.id, quantity: 1, unitPrice: 26000 }] });
 eq('sales cannot change price', [r.status, r.data?.code], [403, 'price_not_allowed']);
-r = await sale(karim, { lines: [{ productId: juice.id, quantity: 1, unitPrice: 1200, discount: 10 }] });
-eq('sales cannot discount', [r.status, r.data?.code], [403, 'discount_not_allowed']);
+r = await sale(mona, { lines: [{ productId: juice.id, quantity: 1, unitPrice: 1200, discount: 10 }] });
+eq('no discount while selling', [r.status, r.data?.code], [400, 'discount_on_customer_invoices']);
+eq('sales cannot discount an item', (await karim.post(`/sales/invoices/${s1.id}/line-discounts`, { lines: [{ lineId: s1.lines[0].id, discount: 10 }] })).status, 403);
 r = await sale(karim, { priceLevelId: retail.id, lines: [{ productId: juice.id, quantity: 1, unitPrice: 1500 }] });
 eq('sales cannot choose level', [r.status, r.data?.code], [403, 'price_level_not_allowed']);
 r = await sale(mona, { priceLevelId: retail.id, lines: [{ productId: juice.id, quantity: 1, unitPrice: 1500 }] });
@@ -166,8 +167,9 @@ const s2 = ok('accountant sells at retail level', r);
 eq('retail level stored', s2.priceLevelName, `Retail ${tag}`);
 r = await sale(mona, { priceLevelId: suppLevel.id, lines: [{ productId: juice.id, quantity: 1, unitPrice: 1500 }] });
 eq('purchase level refused on a sale', r.data?.code, 'price_level_not_found');
-r = await sale(mona, { lines: [{ productId: juice.id, quantity: 1, unitPrice: 1300, discount: 1300 - cost + 1 }] });
+r = await sellDiscounted(mona, mona, { partyId: c1.id, taxPercent: 0, warehouseId: mainWh.id, lines: [{ productId: juice.id, quantity: 1, unitPrice: 1300, discount: 1300 - cost + 1 }] });
 eq('discount below cost blocked', r.data?.code, 'below_cost');
+ok('that sale cancelled', await owner.post(`/sales/invoices/${r.made.id}/cancel`, {}));
 r = await sale(owner, { lines: [{ productId: juice.id, unitId: carton.id, quantity: 1, unitPrice: 27000 }, { productId: juice.id, quantity: 5, unitPrice: 1200 }] });
 eq('oversell across units blocked (24+5 > 28)', r.data?.code, 'insufficient_stock');
 r = await sale(owner, { lines: [{ productId: juice.id, unitId: dozen.id, quantity: 1, unitPrice: 100 }] });
@@ -211,7 +213,7 @@ eq('cannot close item with stock', (await owner.put(`/products/${juice.id}`, { i
 console.log('== returns in units');
 // sale of 2 cartons (48 pcs) needs stock: buy 2 more cartons
 ok('buy 2 more cartons', await owner.post('/purchases/invoices', { partyId: supplier.id, warehouseId: mainWh.id, taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitCost: 23000 }] }));
-const big = ok('sell 2 cartons with tax + discount', await sale(mona, { taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitPrice: 27000, discount: 100 }] }));
+const big = ok('sell 2 cartons with tax + discount', await sellDiscounted(mona, mona, { partyId: c1.id, warehouseId: mainWh.id, taxPercent: 14, lines: [{ productId: juice.id, unitId: carton.id, quantity: 2, unitPrice: 27000, discount: 100 }] }));
 const bl = (await owner.get(`/sales/invoices/${big.id}`)).data.lines[0]; // the accountant's answer leaves the cost out
 const ret1 = ok('return 1 whole carton', await owner.confirmed().post(`/sales/invoices/${big.id}/returns`, { lines: [{ lineId: bl.id, quantity: 24 }] }));
 eq('whole carton returned in cartons', [ret1.lines[0].unitName, ret1.lines[0].unitQuantity, ret1.lines[0].unitPrice, ret1.lines[0].discount, ret1.lines[0].lineTotal], [carton.name, 1, 27000, 50, 26950]);

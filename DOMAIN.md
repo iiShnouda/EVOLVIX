@@ -236,13 +236,17 @@ One shape for every document type:
   it holds only that department's items (items of a category with no department go anywhere).
   A person may be limited to some departments (Staff → Access): they sell, search, list and return
   only in theirs. One branch with two floors = one branch, a department and a warehouse per floor.
-- **Discounts**: on a line (a %, so much per piece, or an amount) or on the whole invoice. Needs
-  `sales:discount`; each person has a limit (theirs, else the company's; the owner none), checked per
-  line on its own discount plus its share of the invoice discount.
+- **Discounts** (owner, 2026-10-24): none while an invoice, pending invoice or quotation is made or
+  changed (only the company's quantity discounts); an edit keeps the ones it has, a line's following
+  its quantity. The accountant gives them from the customer's invoices: on a line (a %, so much per
+  piece, or an amount; `sales:discount_line`), on the invoice (`sales:discount`) or over several
+  invoices (`sales:discount_combined`). Each person has a limit (theirs, else the company's; the owner
+  none), checked per line on its own discount plus its share of the invoice discount.
 - **Pending invoice → accountant.** The department's sales person saves a `SALES_ORDER`
   (`sales:order`): items, customer, date. Its goods are held; nothing posts. The accountant
-  (`sales:approve`) may change the discounts within their own limit, takes the payment (cash, transfer
-  into a bank account; a cheque or promissory note right after, against the invoice) and approves it:
+  (`sales:approve`) may change the discounts (each kind with its permission, within their own
+  limit), takes the payment (cash, transfer into a bank account; a cheque or promissory note right
+  after, against the invoice) and approves it:
   it becomes the `SALES_INVOICE`. What isn't paid stays on the customer's account. To make sales
   people only save pending invoices, take `sales:create` off the Sales role.
 - **Customer account for the accountant**: owed now, totals per department, every invoice and return

@@ -97,7 +97,6 @@ export const NAV_SECTIONS: NavSection[] = [
           'sales:choose_price_level',
           'sales:price_basis',
           'sales:override_floor',
-          'sales:discount_line',
           'sales:bonus',
           'sales:change_tax',
           'sales:additions',

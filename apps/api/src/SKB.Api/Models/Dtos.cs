@@ -107,6 +107,9 @@ public record SetInvoiceDiscountRequest(decimal? Percent = null, long? Amount = 
 /// <summary>One discount shared over several invoices of a customer.</summary>
 public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = null, long? Amount = null);
 
+/// <summary>Discounts on an invoice's items: each line named and its discount (0 = none).</summary>
+public record SetLineDiscountsRequest(LineDiscountRequest[]? Lines = null);
+
 /// <summary>Cancelling a posted sales invoice; the reason is optional.</summary>
 public record CancelInvoiceRequest(string? Reason = null);
 

@@ -74,27 +74,27 @@ eq(
   (await Q(karim, { lines: [{ productId: a.id, quantity: 1, unitPrice: 1900 }] })).data?.code,
   'price_not_allowed',
 );
+// Discounts are given only on the customer's invoices (owner, 2026-10-24), not on a quotation.
 eq(
-  '… and the discount rules',
+  '… and has no discount',
   (
-    await Q(karim, {
+    await Q(owner, {
       lines: [{ productId: a.id, quantity: 1, unitPrice: 2000 }],
       charges: [{ kind: 'DISCOUNT', percent: 5 }, ...taxCharge],
     })
   ).data?.code,
-  'discount_not_allowed',
+  'discount_on_customer_invoices',
 );
 
 console.log('== a quotation moves nothing');
 const [stockA, stockB, bal0] = [await stock(a), await stock(b), await balance()];
 const q1 = ok(
-  'owner quotes a special price and 10% off',
+  'owner quotes a special price',
   await Q(owner, {
     lines: [
       { productId: a.id, quantity: 5, unitPrice: 1800 },
       { productId: b.id, quantity: 2, unitPrice: 2000 },
     ],
-    charges: [{ kind: 'DISCOUNT', percent: 10 }, ...taxCharge],
     notes: 'valid two weeks',
   }),
 );
@@ -106,7 +106,7 @@ eq(
 const days = Math.round((new Date(q1.dueDate) - Date.now()) / 86400000);
 check('valid for two weeks', days >= 13 && days <= 14, q1.dueDate);
 eq('priced like an invoice', q1.subtotal, 5 * 1800 + 2 * 2000);
-eq('its discount', q1.discountTotal, Math.round((9000 + 4000) * 0.1));
+eq('no discount', q1.discountTotal, 0);
 eq('no stock moved', [await stock(a), await stock(b)], [stockA, stockB]);
 eq('no balance changed', await balance(), bal0);
 eq('nothing paid', q1.paidAmount, 0);

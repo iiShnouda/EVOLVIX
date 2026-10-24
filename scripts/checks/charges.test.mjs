@@ -1,6 +1,6 @@
 // Invoice charges (DOMAIN.md step 4): discounts, taxes and additions in order, bonus lines, the
 // sales rep, their permissions, exact returns, purchase discounts in the average cost. Runs against BASE.
-import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -75,10 +75,13 @@ const charges = [
 ];
 const sale = (who, body) =>
   who.post('/sales/invoices', { partyId: c1.id, warehouseId: wh.id, ...body });
+// Discounts are given afterwards, from the customer's invoices (owner, 2026-10-24).
+const given = (who, body) =>
+  sellDiscounted(who, who, { partyId: c1.id, warehouseId: wh.id, ...body });
 const balBefore = (await owner.get(`/parties/${c1.id}`)).data.balance;
 const inv = ok(
   'sale with discounts, VAT, delivery fee and a bonus line',
-  await sale(owner, { lines, charges, repId: monaId }),
+  await given(owner, { lines, charges, repId: monaId }),
 );
 eq(
   'charge amounts',
@@ -129,9 +132,14 @@ eq('detail keeps charges', detail.charges.length, 4);
 console.log('== permissions');
 const plain = { lines: [{ productId: A.id, quantity: 1, unitPrice: 1000 }] };
 eq(
-  'sales: no discount',
-  (await sale(karim, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
-  'discount_not_allowed',
+  'no discount while selling',
+  (await sale(mona, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
+  'discount_on_customer_invoices',
+);
+eq(
+  'sales: no invoice discount',
+  (await karim.post(`/sales/invoices/${inv.id}/discount`, { percent: 5 })).status,
+  403,
 );
 eq(
   'sales: no delivery fee',
@@ -170,7 +178,7 @@ eq('company tax applied', ks.taxTotal, Math.round((1000 * settings.defaultTaxPer
 ok('sales can list reps', await karim.get('/sales/reps'));
 const ms = ok(
   'accountant may give discounts',
-  await sale(mona, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] }),
+  await given(mona, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] }),
 );
 
 console.log('== validation');
@@ -185,12 +193,18 @@ await bad(
 await bad('neither', { charges: [{ kind: 'DISCOUNT' }] }, 'bad_charge');
 await bad('percent over 100', { charges: [{ kind: 'TAX', percent: 101 }] }, 'bad_charge');
 await bad('three decimals', { charges: [{ kind: 'DISCOUNT', percent: 1.234 }] }, 'bad_charge');
-await bad(
+// A discount refused afterwards leaves the invoice as it was made: cancelled here.
+const badGiven = async (name, body, code) => {
+  const r = await given(owner, { ...plain, ...body });
+  eq(name, r.data?.code, code);
+  if (r.made) ok(`${name}: cancelled`, await owner.post(`/sales/invoices/${r.made.id}/cancel`, {}));
+};
+await badGiven(
   'discount larger than invoice',
   { charges: [{ kind: 'DISCOUNT', amount: 1001 }] },
   'discount_too_big',
 );
-await bad(
+await badGiven(
   'discount on bonus only',
   {
     lines: [{ productId: C.id, quantity: 1, unitPrice: 0, isBonus: true }],
@@ -204,7 +218,7 @@ await bad(
   'bad_bonus',
 );
 await bad('unknown rep', { repId: '00000000-0000-0000-0000-000000000001' }, 'rep_not_found');
-await bad(
+await badGiven(
   'invoice discount below cost',
   { charges: [{ kind: 'DISCOUNT', percent: 60 }] },
   'below_cost',

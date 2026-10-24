@@ -38,7 +38,8 @@ public sealed class SalesController : ControllerBase
 
     [HttpGet("invoices")]
     [AnyPermission(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel, Permissions.SalesLock,
-        Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesDiscount)]
+        Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesDiscount,
+        Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined)]
     public Task<ActionResult<DocumentListDto>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -152,14 +153,15 @@ public sealed class SalesController : ControllerBase
         {
             DocumentType.SALES_INVOICE => User.HasAny(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel,
                     Permissions.SalesLock, Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject,
-                    Permissions.SalesDiscount, Permissions.SalesDiscountCombined, Permissions.SalesTogether,
-                    Permissions.StatementCustomers)
+                    Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
+                    Permissions.SalesTogether, Permissions.StatementCustomers)
                 || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder, Permissions.SalesQuote)),
             DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.StatementCustomers)
                 || (mine && User.HasAny(Permissions.SalesReturn, Permissions.SalesReturnFree)),
             DocumentType.QUOTATION => User.HasAny(Permissions.SalesView, Permissions.SalesQuote),
             DocumentType.SALES_ORDER => User.HasAny(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject,
-                    Permissions.SalesDiscount, Permissions.SalesDiscountCombined, Permissions.SalesTogether)
+                    Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
+                    Permissions.SalesTogether)
                 || (mine && User.Has(Permissions.SalesOrder)),
             _ => false,
         };
@@ -221,10 +223,12 @@ public sealed class SalesController : ControllerBase
     /// A customer's invoices together, for the accountant (owner, 2026-10-02): what they took from
     /// every department in the period (today unless given) — posted invoices and those waiting for
     /// approval — one after another with their lines, so a discount can be given on each or on all,
-    /// and each printed alone or together. Also what they owed before these invoices.
+    /// and each printed alone or together. Also what they owed before these invoices. It opens for
+    /// whoever prints them and whoever gives any kind of discount, which is given only here.
     /// </summary>
     [HttpGet("customers/{partyId:guid}/invoices")]
-    [AnyPermission(Permissions.SalesTogether, Permissions.SalesDiscountCombined)]
+    [AnyPermission(Permissions.SalesTogether, Permissions.SalesDiscount, Permissions.SalesDiscountLine,
+        Permissions.SalesDiscountCombined)]
     public async Task<ActionResult<CustomerInvoicesDto>> CustomerInvoices(Guid partyId, [FromQuery] string? from = null,
         [FromQuery] string? to = null)
     {
@@ -286,7 +290,7 @@ public sealed class SalesController : ControllerBase
     /// its invoice discount (or, with <c>Kind = EXTRA_DISCOUNT</c>, its second one) becomes this
     /// percent or amount (neither = none). Everything else stays as it was approved; the discount is
     /// checked against the person's own permission and limit, and the invoice is posted again under
-    /// its number (shown as changed).
+    /// its number (listed as a discount among its changes).
     /// </summary>
     [HttpPost("invoices/{id:guid}/discount")]
     [HttpPost("orders/{id:guid}/discount")]
@@ -303,6 +307,37 @@ public sealed class SalesController : ControllerBase
         var error = CheckDiscountTarget(doc);
         if (error is not null) return error;
         var result = await ApplyDiscountAsync(doc, kind, req.Percent, req.Amount);
+        _db.ChangeTracker.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// The accountant's discount on an invoice's items (owner, 2026-10-24), posted or waiting for
+    /// approval: each line named gets this discount for the whole line (0 = none). Everything else
+    /// stays as it was; the discount keeps to the person's limit and the invoice is posted again under
+    /// its number (listed as a discount among its changes).
+    /// </summary>
+    [HttpPost("invoices/{id:guid}/line-discounts")]
+    [HttpPost("orders/{id:guid}/line-discounts")]
+    [Authorize(Policy = Permissions.SalesDiscountLine)]
+    public async Task<ActionResult<SalesDetailDto>> SetLineDiscounts(Guid id, [FromBody] SetLineDiscountsRequest req)
+    {
+        var doc = await _db.SalesDocuments.AsNoTracking()
+            .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_ORDER))
+            .InBranches(User, d => d.BranchId).InDepartments(User)
+            .Include(d => d.Lines).Include(d => d.Charges).AsSplitQuery().FirstOrDefaultAsync();
+        if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
+        var discounts = new Dictionary<Guid, long>();
+        foreach (var d in req.Lines ?? [])
+        {
+            if (!Guid.TryParse(d.LineId, out var lineId) || doc.Lines.All(l => l.Id != lineId))
+                return BadRequest(new { message = "A line was not found on the invoice.", code = "line_not_found" });
+            discounts[lineId] = d.Discount;
+        }
+        if (discounts.Count == 0) return BadRequest(new { message = "Choose the items.", code = "line_not_found" });
+        var error = CheckDiscountTarget(doc);
+        if (error is not null) return error;
+        var result = await ApplyDiscountAsync(doc, null, null, null, discounts);
         _db.ChangeTracker.Clear();
         return result;
     }
@@ -425,23 +460,31 @@ public sealed class SalesController : ControllerBase
         return Ok(new { locked = req.Locked, count = docs.Count });
     }
 
-    /// <summary>Post <paramref name="doc"/> again with one of its discounts set; nothing else changes.</summary>
-    private async Task<ActionResult<SalesDetailDto>> ApplyDiscountAsync(SalesDocument doc, ChargeKind kind,
-        decimal? percent, long? amount)
+    /// <summary>
+    /// Post <paramref name="doc"/> again with its discounts set: one of the invoice's own
+    /// (<paramref name="kind"/>: this percent or amount, neither = none), or its lines' own
+    /// (<paramref name="lineDiscounts"/>, by line). Nothing else changes.
+    /// </summary>
+    private async Task<ActionResult<SalesDetailDto>> ApplyDiscountAsync(SalesDocument doc, ChargeKind? kind,
+        decimal? percent, long? amount, IReadOnlyDictionary<Guid, long>? lineDiscounts = null)
     {
         var charges = doc.Charges.OrderBy(c => c.Seq).Where(c => c.Kind != kind)
             .Select(c => new ChargeRequest(c.Kind.ToString(),
                 c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label))
             .ToList();
-        if (percent is decimal pc && pc > 0) charges.Add(new ChargeRequest(kind.ToString(), pc, null));
-        else if (amount is long am && am > 0) charges.Add(new ChargeRequest(kind.ToString(), null, am));
+        if (kind is ChargeKind given)
+        {
+            if (percent is decimal pc && pc > 0) charges.Add(new ChargeRequest(given.ToString(), pc, null));
+            else if (amount is long am && am > 0) charges.Add(new ChargeRequest(given.ToString(), null, am));
+        }
         // The invoice's own discount before the second one, as the charges apply in order.
         charges = charges.OrderBy(c => c.Kind == nameof(ChargeKind.DISCOUNT) ? 0
             : c.Kind == nameof(ChargeKind.EXTRA_DISCOUNT) ? 1 : 2).ToList();
         var req = new CreateSalesInvoiceRequest(
             doc.PartyId.ToString(),
             doc.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
-                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
+                l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice,
+                lineDiscounts?.GetValueOrDefault(l.Id, l.Discount) ?? l.Discount,
                 l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
             Notes: doc.Notes, DueDate: doc.DueDate?.ToString("yyyy-MM-dd"), PaidAmount: doc.PaidAmount,
             PriceLevelId: doc.PriceLevelId?.ToString(), Charges: charges.ToArray(), RepId: doc.RepId?.ToString(),
@@ -450,9 +493,9 @@ public sealed class SalesController : ControllerBase
             PaidAccountId: doc.PaidAccountId?.ToString(), DepartmentId: doc.DepartmentId?.ToString());
         return doc.Type == DocumentType.SALES_ORDER
             ? await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER, fromId: null,
-                branch: doc.BranchId, replaceId: doc.Id, trustPrices: true, discountsKept: false)
-            : await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId, editId: doc.Id,
-                trustPrices: true, discountsKept: false);
+                branch: doc.BranchId, discounts: DiscountMode.Give, baseline: doc, replaceId: doc.Id, trustPrices: true)
+            : await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId,
+                discounts: DiscountMode.Give, baseline: doc, editId: doc.Id, trustPrices: true);
     }
 
     /// <summary>Who a sale can be credited to (active staff), for the invoice's sales-rep picker.</summary>
@@ -512,7 +555,9 @@ public sealed class SalesController : ControllerBase
         if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
         var gate = CheckEditable(doc.StaffId, doc.CreatedAt, doc.EditLocked, Permissions.SalesEdit);
         if (gate is not null) return gate;
-        return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId, editId: id);
+        // Its discounts stay as they are: the accountant changes them from the customer's invoices.
+        return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId,
+            discounts: DiscountMode.Keep, editId: id);
     }
 
     /// <summary>
@@ -637,12 +682,15 @@ public sealed class SalesController : ControllerBase
             RepId: quote.RepId?.ToString(), DeliveryMethod: req.DeliveryMethod, DeliveryAddress: req.DeliveryAddress,
             DriverId: req.DriverId, CarrierId: req.CarrierId, PaidAccountId: req.PaidAccountId,
             DepartmentId: quote.DepartmentId?.ToString());
-        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: quote.BranchId);
+        // Its discounts were approved with it while it is valid; after its date they are new ones.
+        var valid = quote.DueDate is null || quote.DueDate.Value.Date >= CompanyClock.TodayDate;
+        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: quote.BranchId,
+            discounts: valid ? DiscountMode.Trusted : DiscountMode.Give);
     }
 
     /// <summary>
     /// Save a pending invoice (فاتورة معلّقة) for the accountant: priced and checked exactly like an
-    /// invoice — prices, level, discounts and the person's discount limit, the department, the
+    /// invoice — prices, level (no discounts: the accountant gives those), the department, the
     /// profit floor, stock — and its goods are held for it, but nothing is posted: no stock leaves,
     /// no money, balance or ledger moves until the accountant approves it.
     /// </summary>
@@ -685,8 +733,6 @@ public sealed class SalesController : ControllerBase
                 .Concat(req.Charges.Where(c => string.Equals(c.Kind, nameof(ChargeKind.DISCOUNT), StringComparison.OrdinalIgnoreCase)
                                                || string.Equals(c.Kind, nameof(ChargeKind.EXTRA_DISCOUNT), StringComparison.OrdinalIgnoreCase)))
                 .ToArray();
-        var discountsKept = lines.Zip(order.Lines.OrderBy(l => l.LineNo)).All(x => x.First.Discount == x.Second.Discount)
-                            && SameDiscounts(kept, charges);
 
         // The sale is credited to its rep, else to whoever made it (if they still work here).
         var repId = order.RepId
@@ -699,8 +745,9 @@ public sealed class SalesController : ControllerBase
             DeliveryMethod: order.DeliveryMethod.ToString(), DeliveryAddress: order.DeliveryAddress,
             DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
             PaidAccountId: req.PaidAccountId, DepartmentId: order.DepartmentId?.ToString());
-        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId, approved: true,
-            discountsKept: discountsKept, approvalNote: order.OverLimit ? $"BY:{CurrentUser.Name(User)}" : null);
+        return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId,
+            discounts: DiscountMode.Give, baseline: order, approved: true,
+            approvalNote: order.OverLimit ? $"BY:{CurrentUser.Name(User)}" : null);
     }
 
     /// <summary>
@@ -822,7 +869,7 @@ public sealed class SalesController : ControllerBase
                 DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
                 DepartmentId: order.DepartmentId?.ToString());
             var result = await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: orderId, branch: order.BranchId,
-                approved: true, approvalNote: note, systemApproval: true);
+                discounts: DiscountMode.Trusted, approved: true, approvalNote: note, systemApproval: true);
             if (result.Result is ObjectResult { StatusCode: >= 400 }) continue;
             accepted++;
             await AuditAsync("auto_approve", "sales_order", order);
@@ -832,22 +879,24 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// Change a pending invoice before it is approved — its items, prices, discounts, notes — checked
-    /// exactly like a new one. It keeps its number, date and maker. Its maker or an approver may.
+    /// Change a pending invoice before it is approved — its items, prices, notes — checked exactly like
+    /// a new one; its discounts stay. It keeps its number, date and maker. Its maker or an approver may.
     /// </summary>
     [HttpPut("orders/{id:guid}")]
     [AnyPermission(Permissions.SalesOrder, Permissions.SalesApprove)]
     public async Task<ActionResult<SalesDetailDto>> UpdateOrder(Guid id, [FromBody] CreateSalesInvoiceRequest req)
     {
-        var order = await ScopedOrders().AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
+        var order = await ScopedOrders().AsNoTracking().Include(d => d.Lines).Include(d => d.Charges)
+            .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == id);
         if (order is null) return NotFound(new { message = "Pending invoice not found.", code = "not_found" });
         var mine = order.StaffId.ToString() == CurrentUser.Id(User) && User.HasClaim("permission", Permissions.SalesOrder);
         if (!mine && !User.HasClaim("permission", Permissions.SalesApprove))
             return StatusCode(403, new { message = "Only its maker or an approver can change it.", code = "edit_not_allowed" });
         if (order.Status != DocumentStatus.PENDING)
             return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
+        // Its discounts stay as they are: the accountant changes them from the customer's invoices.
         return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER,
-            fromId: null, branch: order.BranchId, replaceId: id);
+            fromId: null, branch: order.BranchId, discounts: DiscountMode.Keep, baseline: order, replaceId: id);
     }
 
     /// <summary>
@@ -900,14 +949,6 @@ public sealed class SalesController : ControllerBase
         _db.SalesDocuments.Where(d => d.Type == DocumentType.SALES_ORDER)
             .InBranches(User, d => d.BranchId).InDepartments(User);
 
-    /// <summary>The same invoice discounts (kind, rate or amount), in order.</summary>
-    private static bool SameDiscounts(ChargeRequest[] a, ChargeRequest[] b)
-    {
-        static string Key(ChargeRequest c) => $"{c.Kind?.ToUpperInvariant()}|{c.Percent}|{c.Amount}";
-        static bool IsDiscount(ChargeRequest c) => c.Kind?.ToUpperInvariant() is nameof(ChargeKind.DISCOUNT) or nameof(ChargeKind.EXTRA_DISCOUNT);
-        return a.Where(IsDiscount).Select(Key).SequenceEqual(b.Where(IsDiscount).Select(Key));
-    }
-
     /// <summary>
     /// Base units of each item held by open pending invoices, per warehouse (except
     /// <paramref name="except"/>, the one being approved or changed). One past its hold date
@@ -957,16 +998,34 @@ public sealed class SalesController : ControllerBase
             $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
 
     /// <summary>
+    /// Where an invoice's discounts come from (owner, 2026-10-24): none are given while an invoice is
+    /// made or its items changed; the accountant gives every kind from the customer's invoices, each
+    /// with its own permission.
+    /// </summary>
+    private enum DiscountMode
+    {
+        /// <summary>A new invoice, pending invoice or quotation: only the company's quantity discounts.</summary>
+        None,
+        /// <summary>Its items are changed: the discounts it has stay exactly as they are.</summary>
+        Keep,
+        /// <summary>The accountant's discount: a kind that changes needs its permission and keeps to their limit.</summary>
+        Give,
+        /// <summary>Approved already (a valid quotation, the system accepting a pending invoice).</summary>
+        Trusted,
+    }
+
+    /// <summary>
     /// Make a sales invoice, a quotation or a pending invoice (<paramref name="type"/>). With
     /// <paramref name="fromId"/> the invoice comes from that quotation or pending invoice, which is
-    /// closed with it: what was approved on it (prices, level, free goods, taxes) holds, and so do
-    /// its discounts unless they were changed (<paramref name="discountsKept"/>).
+    /// closed with it: what was approved on it (prices, level, free goods, taxes) holds.
     /// </summary>
     /// <param name="branch">The branch it belongs to (a quotation's invoice stays in its branch); else the working branch.</param>
+    /// <param name="discounts">How its discounts are checked, against <paramref name="baseline"/> (what it had before).</param>
     private async Task<ActionResult<SalesDetailDto>> CreateCore(
-        CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null, bool discountsKept = true,
-        Guid? replaceId = null, Guid? editId = null, bool approved = false, bool overLimit = false,
-        bool trustPrices = false, string? approvalNote = null, bool systemApproval = false)
+        CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null,
+        DiscountMode discounts = DiscountMode.None, SalesDocument? baseline = null, Guid? replaceId = null,
+        Guid? editId = null, bool approved = false, bool overLimit = false, bool trustPrices = false,
+        string? approvalNote = null, bool systemApproval = false)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -1023,18 +1082,14 @@ public sealed class SalesController : ControllerBase
         if (trustPrices) trusted = true;
         bool Can(string permission) => User.HasClaim("permission", permission);
         bool Approved(string permission) => trusted || Can(permission);
-        // Discounts someone changes now are theirs: their permission and their limit.
-        var discountTrusted = trusted && discountsKept;
-        bool DiscountApproved() => discountTrusted || Can(Permissions.SalesDiscount);
         var canOverride = Can(Permissions.SalesOverrideFloor);
         var canChangePrice = Approved(Permissions.SalesChangePrice);
         var canRaisePrice = Approved(Permissions.SalesRaisePrice);
 
         // ---- Invoice charges: discounts, taxes, additions — each needs its own permission ----
+        // (Discounts are checked with the lines' own, below.)
         var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
         if (chargeError is not null) return BadRequest(new { message = chargeError.Message, code = chargeError.Code });
-        if (specs!.Any(c => c.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT) && !DiscountApproved())
-            return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
         if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Approved(Permissions.SalesAdditions))
             return InvoiceLines.Refuse(this, new("additions_not_allowed", "Adding charges needs permission."));
         if (!Approved(Permissions.SalesChangeTax) && !Charges.IsDefaultTax(specs!, settings.DefaultTaxPercent))
@@ -1211,11 +1266,49 @@ public sealed class SalesController : ControllerBase
                     $"{Loc.Name(product)}: the price is {InvoiceLines.Major(priced[i].UnitPrice)} per {Loc.Name(unit.Unit)}" +
                     (priced[i].Discount > 0 ? $", less {InvoiceLines.Major(priced[i].Discount)}" : "") +
                     ". Changing a price needs permission."));
-            // A line's quantity discount comes by itself; any other discount on one line is a discount,
-            // not a price change. (More than the line is worth is already refused by the shape check.)
-            if (line.Discount != 0 && line.Discount != priced[i].Discount && !DiscountApproved())
+        }
+
+        // ---- Discounts: what changed from before, kind by kind ----
+        // A line's quantity discount comes by itself and none is no discount; any other stays as it was
+        // when it is no more a piece than the same item had before (it follows the quantity, rounding
+        // aside), else it is a new one. (More than the line is worth is refused by the shape check.)
+        var discountChanged = false;
+        if (discounts != DiscountMode.Trusted)
+        {
+            var before = edited ?? baseline;
+            var had = (before?.Lines ?? []).Where(l => !l.IsBonus && l.Discount > 0 && l.Quantity > 0).ToList();
+            string? lineGiven = null;
+            for (var i = 0; i < resolved.Count; i++)
+            {
+                var (line, product, _, baseQty, _, _) = resolved[i];
+                if (line.Discount == 0 || line.Discount == priced[i].Discount) continue;
+                if (had.Any(b => b.ProductId == product.Id
+                                 && (decimal)line.Discount * b.Quantity <= (decimal)b.Discount * baseQty + b.Quantity))
+                    continue;
+                lineGiven ??= Loc.Name(product);
+            }
+            // The invoice's own discounts, as a list per kind (a zero one is none).
+            bool Changed(ChargeKind kind) =>
+                !specs!.Where(s => s.Kind == kind && ((long?)s.RateBp ?? s.Fixed ?? 0) != 0)
+                    .Select(s => (s.RateBp, s.RateBp is null ? s.Fixed : null))
+                    .SequenceEqual((before?.Charges ?? []).Where(c => c.Kind == kind
+                                                                     && ((long?)c.RateBp ?? c.FixedAmount ?? 0) != 0)
+                        .OrderBy(c => c.Seq).Select(c => (c.RateBp, c.RateBp is null ? c.FixedAmount : null)));
+            var invoiceGiven = Changed(ChargeKind.DISCOUNT);
+            var extraGiven = Changed(ChargeKind.EXTRA_DISCOUNT);
+            discountChanged = lineGiven is not null || invoiceGiven || extraGiven;
+            // Not while an invoice is made or its items changed (owner, 2026-10-24).
+            if (discountChanged && discounts != DiscountMode.Give)
+                return InvoiceLines.Refuse(this, new("discount_on_customer_invoices",
+                    "Discounts are given from the customer's invoices."));
+            if (lineGiven is not null && !Can(Permissions.SalesDiscountLine))
                 return InvoiceLines.Refuse(this, new("discount_not_allowed",
-                    $"{Loc.Name(product)}: giving a discount needs permission."));
+                    $"{lineGiven}: a discount on an item needs permission."));
+            if (invoiceGiven && !Can(Permissions.SalesDiscount))
+                return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
+            // The second discount is also where one discount over several invoices goes.
+            if (extraGiven && !Can(Permissions.SalesDiscount) && !Can(Permissions.SalesDiscountCombined))
+                return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
         }
 
         // ---- Work out the charges and each line's share of the invoice discount ----
@@ -1223,8 +1316,9 @@ public sealed class SalesController : ControllerBase
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
 
-        // The person's discount limit: a line's own discount plus its share of the invoice discount.
-        if (!discountTrusted && Access.MaxDiscount(User) is int maxDiscount)
+        // The person's discount limit, when they change one: a line's own discount plus its share of the
+        // invoice discount.
+        if (discountChanged && Access.MaxDiscount(User) is int maxDiscount)
             for (var i = 0; i < resolved.Count; i++)
             {
                 var (line, product, _, _, _, _) = resolved[i];
@@ -1374,7 +1468,8 @@ public sealed class SalesController : ControllerBase
                 await _notifications.OrderPendingAsync(doc, party.Name, department is null ? null : Loc.Name(department), User);
             await _db.SaveChangesAsync();
             if (tx is not null) await tx.CommitAsync();
-            await AuditAsync(replaced is null ? "create" : "update", quote ? "quotation" : "sales_order", doc);
+            await AuditAsync(replaced is null ? "create" : discounts == DiscountMode.Give ? "discount" : "update",
+                quote ? "quotation" : "sales_order", doc);
             await InvoiceLines.LoadForDetailAsync(_db, doc);
             return Created($"/api/sales/{(quote ? "quotations" : "orders")}/{doc.Id}",
                 Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
@@ -1442,10 +1537,11 @@ public sealed class SalesController : ControllerBase
         if (edited is null) _db.SalesDocuments.Add(doc);
         else
         {
+            // The accountant's discount is a change of its own, not an edit of the invoice (owner, 2026-10-24).
             _db.InvoiceRevisions.Add(new InvoiceRevision
             {
-                DocumentId = doc.Id, Kind = "EDIT", StaffId = staffId, StaffName = CurrentUser.Name(User) ?? "",
-                TotalBefore = editedTotal, TotalAfter = doc.GrandTotal,
+                DocumentId = doc.Id, Kind = discounts == DiscountMode.Give ? "DISCOUNT" : "EDIT", StaffId = staffId,
+                StaffName = CurrentUser.Name(User) ?? "", TotalBefore = editedTotal, TotalAfter = doc.GrandTotal,
             });
             // New rows under a document already tracked: insert them (their ids are set already).
             foreach (var l in doc.Lines) _db.Entry(l).State = EntityState.Added;
@@ -1454,7 +1550,8 @@ public sealed class SalesController : ControllerBase
         await _db.SaveChangesAsync();
         if (tx is not null) await tx.CommitAsync();
 
-        await AuditAsync(edited is null ? "create" : "update", "sales_invoice", doc);
+        await AuditAsync(edited is null ? "create" : discounts == DiscountMode.Give ? "discount" : "update",
+            "sales_invoice", doc);
         if (fromQuote is not null)
             await AuditAsync(fromQuote.Type == DocumentType.SALES_ORDER ? "approve" : "convert",
                 fromQuote.Type == DocumentType.SALES_ORDER ? "sales_order" : "quotation", fromQuote);

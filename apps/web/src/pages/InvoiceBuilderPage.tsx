@@ -27,6 +27,7 @@ import { PartyPicker } from '../components/PartyPicker';
 import { BarcodeScanner } from '../components/BarcodeScanner';
 import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
+import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { api, ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -81,21 +82,11 @@ interface Line {
   disc2Value: string;
   /** Sold at the selling price, the customer's last price or cost, chosen per item (owner, 2026-10-01). */
   basis: PriceBasis;
-}
-
-type LineDiscountMode = 'percent' | 'piece' | 'amount';
-
-/** A line discount in minor units, never more than the line (`gross`) is worth. */
-function lineDiscount(mode: LineDiscountMode, value: string, gross: number, basePieces: number) {
-  const v = Number(value);
-  if (!value.trim() || !Number.isFinite(v) || v <= 0 || gross <= 0) return 0;
-  const d =
-    mode === 'percent'
-      ? Math.round((gross * Math.min(v, 100)) / 100)
-      : mode === 'piece'
-        ? toMinor(v) * basePieces
-        : toMinor(v);
-  return Math.min(gross, Math.max(0, d));
+  /**
+   * The discount the accountant gave this line, on an invoice being changed (owner, 2026-10-24): it
+   * stays, following the quantity — so much for so many pieces of the item's smallest unit.
+   */
+  kept?: { discount: number; pieces: number };
 }
 
 /** Both of a line's own discounts: the second on what is left after the first. */
@@ -118,6 +109,7 @@ const keepLine = (l: Line) => ({
   disc2Mode: l.disc2Mode,
   disc2Value: l.disc2Value,
   basis: l.basis,
+  kept: l.kept,
 });
 
 /** An invoice discount as typed: a percent or an amount. */
@@ -176,7 +168,9 @@ export function InvoiceBuilderPage({
   const canRaisePrice = isSale && can('sales:raise_price');
   const priceEditable = canChangePrice || canRaisePrice;
   const canChooseLevel = can(isSale ? 'sales:choose_price_level' : 'purchases:choose_price_level');
-  const canDiscount = can(isSale ? 'sales:discount' : 'purchases:discount');
+  // The accountant gives every sales discount from the customer's invoices (owner, 2026-10-24):
+  // none is added while a sales invoice is made or changed, and the ones it has stay as they are.
+  const canDiscount = !isSale && can('purchases:discount');
   // Sold at the selling price, the customer's last price, or the supply price (owner, 2026-10-01).
   const canPriceBasis = isSale && can('sales:price_basis');
   // The customer's shipping company and address are theirs unless this person may change them.
@@ -578,7 +572,12 @@ export function InvoiceBuilderPage({
     const price = priceOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
     const gross = l.quantity * price;
-    const manual = isSale && !l.bonus ? lineDiscounts(l, gross, l.quantity * factor) : 0;
+    const manual =
+      !isSale || l.bonus
+        ? 0
+        : l.kept
+          ? Math.min(gross, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
+          : lineDiscounts(l, gross, l.quantity * factor);
     // A discount typed on the line replaces its quantity discount.
     const discount = manual > 0 ? manual : autoDiscountOf(l, i);
     const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
@@ -860,8 +859,10 @@ export function InvoiceBuilderPage({
         v && (v.mode === 'percent' || v.mode === 'amount')
           ? { mode: v.mode, value: text(v.value) }
           : fallback;
-      setDiscount1(discount(d.discount1, discount1));
-      setDiscount2(discount(d.discount2, discount2));
+      if (canDiscount) {
+        setDiscount1(discount(d.discount1, discount1));
+        setDiscount2(discount(d.discount2, discount2));
+      }
       setPaidNow(text(d.paidNow));
       setPaidAccountId(text(d.paidAccountId));
       setShippingCost(text(d.shippingCost));
@@ -900,12 +901,16 @@ export function InvoiceBuilderPage({
               touched: l.touched === true,
               bonus: l.bonus === true,
               discMode: modes.includes(l.discMode) ? l.discMode : 'percent',
-              discValue: text(l.discValue),
+              discValue: canDiscount ? text(l.discValue) : '',
               disc2Mode: modes.includes(l.disc2Mode as LineDiscountMode)
                 ? (l.disc2Mode as LineDiscountMode)
                 : 'percent',
-              disc2Value: text(l.disc2Value),
+              disc2Value: canDiscount ? text(l.disc2Value) : '',
               basis: bases.includes(l.basis as PriceBasis) ? (l.basis as PriceBasis) : 'LIST',
+              kept:
+                l.kept && l.kept.discount > 0 && l.kept.pieces > 0
+                  ? { discount: Math.round(l.kept.discount), pieces: Math.round(l.kept.pieces) }
+                  : undefined,
             },
           ];
         });
@@ -967,7 +972,7 @@ export function InvoiceBuilderPage({
         if (!c) return null;
         return c.rate != null
           ? { mode: 'percent', value: String(c.rate) }
-          : { mode: 'amount', value: String(toMajor(c.amount)) };
+          : { mode: 'amount', value: String(toMajor(c.fixedAmount ?? c.amount)) };
       };
       const d1 = asInput('DISCOUNT');
       const d2 = asInput('EXTRA_DISCOUNT');
@@ -992,15 +997,18 @@ export function InvoiceBuilderPage({
             touched: true,
             bonus: false,
             discMode: 'amount' as LineDiscountMode,
-            discValue: l.discount > 0 ? String(toMajor(l.discount)) : '',
+            discValue: '',
             disc2Mode: 'percent' as LineDiscountMode,
             disc2Value: '',
             basis: 'LIST' as PriceBasis,
+            kept:
+              l.discount > 0 && l.quantity > 0
+                ? { discount: l.discount, pieces: l.quantity }
+                : undefined,
           },
         ];
       });
       setLines(loaded);
-      setLineDiscountOpen(new Set(loaded.filter((l) => l.discValue).map((l) => l.key)));
       setLoadingEdit(false);
     })();
     return () => {
@@ -1512,7 +1520,7 @@ export function InvoiceBuilderPage({
   /** A line's own discount: hidden behind "Add discount" until asked for (owner, 2026-10-01). */
   const lineDiscountCell = (r: Row) => {
     if (!isSale || r.line.bonus) return null;
-    if (!isOpen(r.line.key))
+    if (!canDiscount || !isOpen(r.line.key))
       return r.discount > 0 ? (
         <span className="whitespace-nowrap text-xs text-warning tnum">
           −{formatMoney(r.discount, currency, locale)}
@@ -1957,7 +1965,8 @@ export function InvoiceBuilderPage({
                       {t('invoice.inStockOnly')}
                     </label>
                   </div>
-                  <div className="flex items-end gap-2">
+                  {/* On a phone the item search takes its own line, above the code and quantity. */}
+                  <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
                     <label className="block w-28 shrink-0 sm:w-36">
                       <span className="mb-0.5 block text-xs text-muted">
                         {t('invoice.itemCode')}
@@ -1978,7 +1987,7 @@ export function InvoiceBuilderPage({
                         }}
                       />
                     </label>
-                    <div className="min-w-0 flex-1">
+                    <div className="order-first min-w-0 flex-1 basis-full sm:order-none sm:basis-0">
                       <span className="mb-0.5 block text-xs text-muted">{t('col.item')}</span>
                       <div className="relative">
                         <span className="pointer-events-none absolute inset-y-0 start-2.5 grid place-items-center text-faint">
@@ -2671,6 +2680,7 @@ interface InvoiceDraft {
     disc2Mode?: LineDiscountMode;
     disc2Value?: string;
     basis?: PriceBasis;
+    kept?: { discount: number; pieces: number };
   }[];
   /** Items being prepared, not on the invoice yet. */
   staged?: InvoiceDraft['lines'];

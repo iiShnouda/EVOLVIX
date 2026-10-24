@@ -2,7 +2,7 @@
 // department's sales people sell only its items, even from a shared warehouse; every sale belongs to
 // one department. Also: each person's discount limit (theirs, else the company's; the owner has none),
 // counted on a line's own discount plus its share of the invoice discount. Runs against BASE.
-import { login, check, eq, ok, summary, companyToday } from './lib.mjs';
+import { login, check, eq, ok, summary, companyToday, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -68,6 +68,9 @@ ok(
 const line = (p, extra = {}) => ({ productId: p.id, quantity: 1, unitPrice: 1000, ...extra });
 const sell = (who, lines, extra = {}) =>
   who.post('/sales/invoices', { partyId: customer.id, warehouseId: wh.id, taxPercent: 0, lines, ...extra });
+// Discounts are given from the customer's invoices once the sale is made (owner, 2026-10-24).
+const sellGiven = (who, lines, extra = {}) =>
+  sellDiscounted(who, who, { partyId: customer.id, warehouseId: wh.id, taxPercent: 0, lines, ...extra });
 
 console.log('== selling in a department');
 const s1 = ok('owner sells in men’s: a shirt and a bag', await sell(owner, [line(shirt), line(bag)], { departmentId: men.id }));
@@ -129,26 +132,26 @@ const settings = (await owner.get('/settings')).data;
 eq('no company limit at first', settings.maxDiscountPercent, 100);
 ok('company limit 10%', await owner.put('/settings', { maxDiscountPercent: 10 }));
 const seller = await person('SALES', 'seller');
-ok('may give discounts', await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:discount'] }));
+ok('may give discounts', await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:discount', 'sales:discount_line'] }));
 let s = await login(seller.email, PASS);
 eq('the company’s limit in their sign-in', s.user.maxDiscountPercent, 10);
-ok('10% of a line', await sell(s, [line(shirt, { quantity: 2, discount: 200 })]));
-const over = await sell(s, [line(shirt, { quantity: 2, discount: 201 })]);
+ok('10% of a line', await sellGiven(s, [line(shirt, { quantity: 2, discount: 200 })]));
+const over = await sellGiven(s, [line(shirt, { quantity: 2, discount: 201 })]);
 eq('a bit more refused', [over.status, over.data?.code], [400, 'discount_over_limit']);
 eq(
   'an invoice discount counts too (6% + 5%)',
-  (await sell(s, [line(shirt, { discount: 60 })], { charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
+  (await sellGiven(s, [line(shirt, { discount: 60 })], { charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
   'discount_over_limit',
 );
-ok('4% + 5% is fine', await sell(s, [line(shirt, { discount: 40 })], { charges: [{ kind: 'DISCOUNT', percent: 5 }] }));
-ok('owner: no limit', await sell(owner, [line(shirt, { discount: 400 })]));
+ok('4% + 5% is fine', await sellGiven(s, [line(shirt, { discount: 40 })], { charges: [{ kind: 'DISCOUNT', percent: 5 }] }));
+ok('owner: no limit', await sellGiven(owner, [line(shirt, { discount: 400 })]));
 eq('owner’s sign-in has none', owner.user.maxDiscountPercent ?? null, null);
 
 const own = ok('their own limit 20%', await access(owner, seller, { maxDiscountPercent: 20 }));
 eq('on the staff record', own.maxDiscountPercent, 20);
 s = await login(seller.email, PASS);
-ok('15% now', await sell(s, [line(shirt, { discount: 150 })]));
-eq('21% not', (await sell(s, [line(shirt, { discount: 210 })])).data?.code, 'discount_over_limit');
+ok('15% now', await sellGiven(s, [line(shirt, { discount: 150 })]));
+eq('21% not', (await sellGiven(s, [line(shirt, { discount: 210 })])).data?.code, 'discount_over_limit');
 eq('a limit over 100% refused', (await access(owner, seller, { maxDiscountPercent: 101 })).data?.code, 'bad_percent');
 
 // Someone with a limit can't give a bigger one.

@@ -1,7 +1,7 @@
 // Ledger (DOMAIN.md step 6): chart of accounts, the automatic entries every document posts,
 // statements, the trial balance, manual entries and their reversal, the period lock and
 // permissions. Runs against BASE.
-import { BASE, login, check, eq, ok, summary, companyToday } from './lib.mjs';
+import { BASE, login, check, eq, ok, summary, companyToday, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -146,9 +146,11 @@ eq(
 eq('supplier owes = ledger', (await party(supp.id)).balance, -94600);
 
 console.log('== sales post');
+// The discount is given afterwards, from the customer's invoices (owner, 2026-10-24): the newest
+// entry under its number is the one it stands on.
 const sale = ok(
   'sale with discount, VAT, delivery fee, part paid',
-  await owner.post('/sales/invoices', {
+  await sellDiscounted(owner, owner, {
     partyId: cust.id,
     warehouseId: wh.id,
     paidAmount: 5000,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 
 /**
  * A labelled drop-down where several choices can be ticked at once (owner, 2026-10-21: the stock
@@ -31,7 +31,7 @@ export function MultiSelect({
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
   const chosen = options.filter((o) => value.includes(o.value));
-  const shown = chosen.length === 0 ? t('common.all') : chosen.map((o) => o.label).join('، ');
+  const shown = chosen.length === 0 ? t('common.all') : joinList(chosen.map((o) => o.label));
   return (
     <div ref={box} className={`relative block ${className ?? ''}`}>
       <span className="mb-0.5 block text-xs text-muted">{label}</span>

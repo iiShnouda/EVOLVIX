@@ -14,7 +14,7 @@ import { DocumentPreview } from '../components/DocumentPreview';
 import { DocumentTable } from '../components/DocumentTable';
 import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
-import { useMayOverride } from '../lib/can';
+import { TOGETHER_PERMISSIONS, useMayOverride } from '../lib/can';
 import { useWorkPlace } from '../lib/workPlace';
 import {
   useApproveLimit,
@@ -57,6 +57,8 @@ const LIST_PERMISSIONS: Record<DocScope, Record<'invoices' | 'returns', Permissi
       'sales:approve',
       'sales:reject',
       'sales:discount',
+      'sales:discount_line',
+      'sales:discount_combined',
     ],
     returns: ['sales:returns_view'],
   },
@@ -109,6 +111,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   // A sales person who may only save pending invoices still starts one from here.
   const canStart = canCreate || (isSales && permissions.includes('sales:order'));
   const canReturn = permissions.includes(isSales ? 'sales:return' : 'purchases:return');
+  // A customer's invoices together: printed, and where every discount is given.
+  const canTogether = TOGETHER_PERMISSIONS.some((p) => permissions.includes(p));
   const [approving, setApproving] = useState(false);
   const [editingOrder, setEditingOrder] = useState(false);
   const cancelOrder = useCancelOrder();
@@ -316,7 +320,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           {t('return.action')}
         </Button>
       )}
-      {invoice && canApprove && invoice.partyCode !== 0 && (
+      {invoice && canTogether && invoice.partyCode !== 0 && (
         <Button
           size="sm"
           variant="ghost"
@@ -349,7 +353,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         title={t(isSales ? 'nav.sales' : 'nav.purchases')}
         subtitle={list.data ? `${list.data.total} ${t('common.total')}` : undefined}
         action={
-          kind === 'invoices' && isSales && permissions.includes('sales:approve') && !canStart ? (
+          kind === 'invoices' && isSales && canTogether && !canStart ? (
             <Button variant="secondary" size="sm" onClick={() => navigate('/sales/together')}>
               {t('together.open')}
             </Button>
@@ -358,8 +362,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               {t('return.new')}
             </Button>
           ) : canStart ? (
-            <span className="flex gap-2">
-              {isSales && permissions.includes('sales:approve') && (
+            <span className="flex flex-wrap gap-2">
+              {isSales && canTogether && (
                 <Button variant="secondary" size="sm" onClick={() => navigate('/sales/together')}>
                   {t('together.open')}
                 </Button>

@@ -2,7 +2,7 @@
 // costs:view — sees what goods cost and what sales earn. The server leaves these numbers out for
 // everyone else. Also: a discount on one line (a %, so much per piece, or an amount), which needs
 // the discount permission (not the change-price one) and can't exceed the line. Runs against BASE.
-import { login, check, eq, ok, summary } from './lib.mjs';
+import { login, check, eq, ok, summary, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -288,46 +288,45 @@ check(
 eq('and the trial balance', (await acc.get('/ledger/trial-balance')).status, 200);
 
 console.log('== a discount on one line');
+// Given from the customer's invoices once the sale is made (owner, 2026-10-24); a refused one
+// leaves the sale as it was made, cancelled here.
+const sellGiven = (who, lines) =>
+  sellDiscounted(who, who, { partyId: customer.id, warehouseId: wh.id, taxPercent: 0, lines });
+const cancelMade = async (r) => {
+  if (r.made) ok('cancelled', await owner.post(`/sales/invoices/${r.made.id}/cancel`, {}));
+};
 const disc = ok(
   'accountant: 10% off a line',
-  await sell(acc, [{ productId: item.id, quantity: 2, unitPrice: 1000, discount: 200 }]),
+  await sellGiven(acc, [{ productId: item.id, quantity: 2, unitPrice: 1000, discount: 200 }]),
 );
 eq(
   'line after its discount',
   [disc.lines[0].discount, disc.lines[0].lineTotal, disc.grandTotal],
   [200, 1800, 1800],
 );
-eq(
-  'more than the line refused',
-  (await sell(acc, [{ productId: item.id, quantity: 1, unitPrice: 1000, discount: 1001 }])).data
-    ?.code,
-  'bad_price',
-);
-eq(
-  "a discount still can't go below cost",
-  (await sell(acc, [{ productId: item.id, quantity: 1, unitPrice: 1000, discount: 500 }])).data
-    ?.code,
-  'below_cost',
-);
-const noDisc = await sell(seller, [
+let refused = await sellGiven(acc, [
+  { productId: item.id, quantity: 1, unitPrice: 1000, discount: 1001 },
+]);
+eq('more than the line refused', refused.data?.code, 'bad_price');
+await cancelMade(refused);
+refused = await sellGiven(acc, [{ productId: item.id, quantity: 1, unitPrice: 1000, discount: 500 }]);
+eq("a discount still can't go below cost", refused.data?.code, 'below_cost');
+await cancelMade(refused);
+const noDisc = await sellGiven(seller, [
   { productId: item.id, quantity: 1, unitPrice: 1000, discount: 100 },
 ]);
-if (seller.user.permissions.includes('sales:discount'))
-  check('sales has discounts by role', noDisc.status === 201);
-else
-  eq(
-    'without the discount permission',
-    [noDisc.status, noDisc.data?.code],
-    [403, 'discount_not_allowed'],
-  );
+if (seller.user.permissions.includes('sales:discount_line'))
+  check('sales has item discounts by role', noDisc.status === 200);
+else eq('without the item-discount permission', noDisc.status, 403);
+await cancelMade(noDisc);
 ok(
-  'owner lets the seller give discounts',
-  await owner.put(`/staff/${sellerP.staff.id}/permissions`, { granted: ['sales:discount'] }),
+  'owner lets the seller discount items',
+  await owner.put(`/staff/${sellerP.staff.id}/permissions`, { granted: ['sales:discount_line'] }),
 );
 seller = await login(sellerP.email, PASS);
 const perPiece = ok(
   'seller: 0.50 per piece on 4, at the list price',
-  await sell(seller, [{ productId: item.id, quantity: 4, unitPrice: 1000, discount: 4 * 50 }]),
+  await sellGiven(seller, [{ productId: item.id, quantity: 4, unitPrice: 1000, discount: 4 * 50 }]),
 );
 eq('no price-change permission needed', perPiece.lines[0].lineTotal, 3800);
 eq(

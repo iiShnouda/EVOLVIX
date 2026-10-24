@@ -16,7 +16,7 @@ import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
 import { useNotePhoto } from '../components/NotePhoto';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { CodeName } from '../components/CodeName';
@@ -747,7 +747,7 @@ function PortfoliosTab() {
             </div>
             <span className="font-semibold tnum">{formatMoney(p.total, p.currency, locale)}</span>
           </div>
-          <p className="mt-2 text-xs text-muted tnum">{p.refs.join('، ')}</p>
+          <p className="mt-2 text-xs text-muted tnum">{joinList(p.refs)}</p>
         </Card>
       ))}
     </div>

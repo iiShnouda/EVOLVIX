@@ -1,4 +1,5 @@
 import { NAV_ITEMS, hasPermission, type Permission, type TranslationKey } from '@skb/shared';
+import { TOGETHER_PERMISSIONS } from './can';
 
 /**
  * Everything the quick-action button can open (owner, 2026-10-05: "a quick button each person
@@ -37,7 +38,7 @@ const ACTIONS: QuickAction[] = [
     label: 'together.title',
     icon: 'sales',
     path: '/sales/together',
-    permission: 'sales:together',
+    anyOf: TOGETHER_PERMISSIONS,
   },
   {
     id: 'purchase',

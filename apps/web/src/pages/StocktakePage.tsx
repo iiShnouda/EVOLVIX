@@ -13,7 +13,7 @@ import { Icon } from '../components/Icon';
 import { Pager } from '../components/Pager';
 import { ReportActions } from '../components/ReportActions';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
@@ -193,7 +193,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
         ok: matched > 0,
         text:
           t('stocktake.readDone').replace('{n}', formatNumber(matched, locale)) +
-          (unknown.length ? ` · ${t('stocktake.readUnknown')}: ${unknown.join('، ')}` : ''),
+          (unknown.length ? ` · ${t('stocktake.readUnknown')}: ${joinList(unknown)}` : ''),
       });
     } catch (e) {
       setReadNote({ ok: false, text: errorText(t, e as ApiError) ?? '' });

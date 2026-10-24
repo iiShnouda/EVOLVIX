@@ -204,7 +204,7 @@ eq('free goods neither count nor get it', bonus.lines.map((l) => [l.unitPrice, l
 
 ok('sales sells 10 of A with the 5% off', await sell(karim, c2, [[A.id, 10, 1000, 500]]));
 ok('…or without it (never below the rule)', await sell(karim, c2, [[A.id, 10, 1000, 0]]));
-eq('…but more needs the discount permission', (await sell(karim, c2, [[A.id, 10, 1000, 600]])).data?.code, 'discount_not_allowed');
+eq('…but more is a discount, given from the customer’s invoices', (await sell(karim, c2, [[A.id, 10, 1000, 600]])).data?.code, 'discount_on_customer_invoices');
 eq('…and the price can’t go under the list', (await sell(karim, c2, [[A.id, 10, 900, 500]])).data?.code, 'price_not_allowed');
 
 ok('model T: 6 → 3%', await steps({ modelId: model.id }, [{ minQuantity: 6, percent: 3 }]));

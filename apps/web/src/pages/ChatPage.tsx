@@ -4,7 +4,7 @@ import { formatDateTime, type ChatConversation, type ChatPerson } from '@skb/sha
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
 import { errorText } from '../lib/errors';
@@ -266,7 +266,7 @@ function Thread({
           <p className="truncate text-sm font-semibold">{titleOf(conversation, me)}</p>
           {conversation.kind === 'GROUP' && (
             <p className="truncate text-xs text-muted">
-              {conversation.members.map((m) => m.name).join('، ')}
+              {joinList(conversation.members.map((m) => m.name))}
             </p>
           )}
         </div>

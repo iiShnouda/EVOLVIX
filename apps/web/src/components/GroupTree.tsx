@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { formatNumber, groupPath, type Department, type Group } from '@skb/shared';
 import { Badge, Button, Card, EmptyState } from './ui';
 import { Icon } from './Icon';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { ApiError } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useDeleteCatalogEntry, useSaveGroup } from '../lib/queries';
@@ -141,7 +141,7 @@ function GroupForm({
   const save = useSaveGroup();
   const [name, setName] = useState(group?.name ?? '');
   const [prefix, setPrefix] = useState(group?.prefix ?? '');
-  const [keywords, setKeywords] = useState((group?.keywords ?? []).join('، '));
+  const [keywords, setKeywords] = useState(joinList(group?.keywords ?? []));
   const error = save.error as ApiError | null;
   const submit = async () => {
     try {
@@ -256,7 +256,7 @@ function GroupNode({
           {t('setup.itemCount')}: {formatNumber(group.itemCount, locale)}
         </span>
         {group.keywords.length > 0 && (
-          <span className="text-xs text-faint">{group.keywords.join('، ')}</span>
+          <span className="text-xs text-faint">{joinList(group.keywords)}</span>
         )}
         {mode === 'view' && (
           <span className="ms-auto flex flex-wrap gap-1">

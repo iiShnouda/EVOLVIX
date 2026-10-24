@@ -16,7 +16,7 @@ import {
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { Sheet } from '../components/Sheet';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { CodeName, codeName } from '../components/CodeName';
@@ -179,7 +179,7 @@ function Outcome({ returns, problems }: { returns: string[]; problems: string[] 
     <Card className="space-y-1 text-sm">
       {returns.length > 0 && (
         <p className="text-positive">
-          {t('delivery.returnsPosted')}: <span className="tnum">{returns.join('، ')}</span>
+          {t('delivery.returnsPosted')}: <span className="tnum">{joinList(returns)}</span>
         </p>
       )}
       {problems.length > 0 && (
@@ -837,7 +837,7 @@ function SettlementsTab() {
                 </Fact>
               </dl>
               <p className="mt-2 text-xs text-muted">
-                {t('settlement.parcels')}: <span className="tnum">{x.shipments.join('، ')}</span>
+                {t('settlement.parcels')}: <span className="tnum">{joinList(x.shipments)}</span>
               </p>
               {x.notes && <p className="mt-1 text-xs text-muted">{x.notes}</p>}
             </Card>

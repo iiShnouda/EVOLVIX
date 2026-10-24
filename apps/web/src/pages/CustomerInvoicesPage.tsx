@@ -27,6 +27,7 @@ import {
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
+import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { errorText } from '../lib/errors';
 import { printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
@@ -36,6 +37,7 @@ import {
   useDiscountAll,
   useLockInvoices,
   useSetInvoiceDiscount,
+  useSetLineDiscounts,
 } from '../lib/queries';
 import { PartyLink } from '../components/PartyContact';
 import { TableColumns } from '../components/TableColumns';
@@ -58,10 +60,18 @@ function draftOf(doc: SalesDocument, kind: 'DISCOUNT' | 'EXTRA_DISCOUNT'): Disco
     : { mode: 'amount', value: String(toMajor(c.fixedAmount ?? c.amount)) };
 }
 
+/** A line's discount as typed. */
+interface LineDraft {
+  mode: LineDiscountMode;
+  value: string;
+}
+
 /**
  * A customer's invoices together, for the accountant (owner, 2026-10-02): when a customer takes
  * goods from several departments, each department's invoice shows one after another, each with
  * its own discount and its own print button; a discount can also be given on all of them together.
+ * Every discount is given here (owner, 2026-10-24) — on items, on an invoice, on all of them — each
+ * with its own permission.
  * Below, one printout puts every department's invoice together (with the discounts and what was
  * owed before), and another prints every invoice on its own page followed by that one. The print
  * options choose what shows, the type size and bold, and the paper.
@@ -72,6 +82,7 @@ export function CustomerInvoicesPage() {
   const { t, locale } = useT();
   const can = useCan();
   const canDiscount = can('sales:discount');
+  const canLineDiscount = can('sales:discount_line');
   const canDiscountCombined = can('sales:discount_combined');
   const canLock = can('sales:lock');
   const [from, setFrom] = useState(companyToday);
@@ -87,6 +98,7 @@ export function CustomerInvoicesPage() {
   const money = (v: number) => formatMoney(v, currency, locale);
 
   const setDiscount = useSetInvoiceDiscount();
+  const setLineDiscounts = useSetLineDiscounts();
   const discountAll = useDiscountAll();
   const lock = useLockInvoices();
   const [all, setAll] = useState<DiscountDraft>({ mode: 'percent', value: '' });
@@ -190,7 +202,9 @@ export function CustomerInvoicesPage() {
                 doc={doc}
                 options={options}
                 canDiscount={canDiscount}
-                busy={setDiscount.isPending}
+                canLineDiscount={canLineDiscount}
+                busy={setDiscount.isPending || setLineDiscounts.isPending}
+                onLineDiscounts={(lines) => setLineDiscounts.mutate({ doc, lines })}
                 onDiscount={(d) => {
                   const v = Number(d.value);
                   setDiscount.mutate({
@@ -212,8 +226,10 @@ export function CustomerInvoicesPage() {
                 onToggleLock={() => lock.mutate({ ids: [doc.id], locked: !doc.locked })}
               />
             ))}
-            {setDiscount.error && (
-              <p className="text-sm text-destructive">{errorText(t, setDiscount.error)}</p>
+            {(setDiscount.error || setLineDiscounts.error) && (
+              <p className="text-sm text-destructive">
+                {errorText(t, setDiscount.error ?? setLineDiscounts.error)}
+              </p>
             )}
             {printing && <PrintSetupSheet doc={printing} onClose={() => setPrinting(null)} />}
             {/* The customer's returns: printed with the invoices and taken off the total. */}
@@ -228,9 +244,11 @@ export function CustomerInvoicesPage() {
                 doc={doc}
                 options={options}
                 canDiscount={false}
+                canLineDiscount={false}
                 busy={false}
                 isReturn
                 onDiscount={() => undefined}
+                onLineDiscounts={() => undefined}
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
@@ -371,8 +389,10 @@ function InvoiceCard({
   doc,
   options,
   canDiscount,
+  canLineDiscount,
   busy,
   onDiscount,
+  onLineDiscounts,
   onPrint,
   paperRef,
   isReturn,
@@ -384,8 +404,10 @@ function InvoiceCard({
   isReturn?: boolean;
   options: PaperOptions;
   canDiscount: boolean;
+  canLineDiscount: boolean;
   busy: boolean;
   onDiscount: (d: DiscountDraft) => void;
+  onLineDiscounts: (lines: { lineId: string; discount: number }[]) => void;
   onPrint: () => void;
   paperRef: (el: HTMLDivElement | null) => void;
   canLock?: boolean;
@@ -397,9 +419,33 @@ function InvoiceCard({
   const [open, setOpen] = useState(false);
   const [discounting, setDiscounting] = useState(false);
   const [draft, setDraft] = useState<DiscountDraft>(() => draftOf(doc, 'DISCOUNT'));
+  // Each item's discount as typed, from what it has when the discount is opened.
+  const [lineDrafts, setLineDrafts] = useState<Record<string, LineDraft>>({});
   const status = statusOf(doc);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
+  const items = doc.lines.filter((l) => !l.isBonus);
+  const grossOf = (l: SalesDocument['lines'][number]) =>
+    l.unitPrice * (l.unitQuantity || l.quantity);
+  const newLineDiscount = (l: SalesDocument['lines'][number]) => {
+    const d = lineDrafts[l.id];
+    return d ? lineDiscount(d.mode, d.value, grossOf(l), l.quantity) : l.discount;
+  };
+  const changedLines = items.filter((l) => newLineDiscount(l) !== l.discount);
+  function openDiscount() {
+    if (!discounting)
+      setLineDrafts(
+        Object.fromEntries(
+          items.map((l) => [
+            l.id,
+            l.discount > 0
+              ? { mode: 'amount', value: String(toMajor(l.discount)) }
+              : { mode: 'percent', value: '' },
+          ]),
+        ),
+      );
+    setDiscounting((d) => !d);
+  }
   return (
     <Card padded={false} className={`overflow-hidden ${isReturn ? 'border-destructive/40' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
@@ -432,8 +478,8 @@ function InvoiceCard({
         <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
           {t(open ? 'together.hideItems' : 'together.showItems')} ({doc.lines.length})
         </Button>
-        {canDiscount && (!locked || owner) && (
-          <Button size="sm" variant="secondary" onClick={() => setDiscounting((d) => !d)}>
+        {(canDiscount || canLineDiscount) && (!locked || owner) && (
+          <Button size="sm" variant="secondary" onClick={openDiscount}>
             {t('invoice.addDiscount')}
           </Button>
         )}
@@ -451,19 +497,92 @@ function InvoiceCard({
           {t('common.print')}
         </Button>
       </div>
-      {discounting && (
-        <div className="flex flex-wrap items-end gap-2 border-t border-line p-3">
-          <DiscountInputs value={draft} onChange={setDraft} currency={doc.currency} />
+      {discounting && canLineDiscount && items.length > 0 && (
+        <div className="border-t border-line p-3">
+          <p className="mb-1 text-xs font-medium text-muted">{t('together.itemsDiscount')}</p>
+          <ul className="divide-y divide-[var(--c-line)]">
+            {items.map((l) => {
+              const d = lineDrafts[l.id] ?? { mode: 'percent', value: '' };
+              const off = newLineDiscount(l);
+              return (
+                <li key={l.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{l.productName}</span>
+                    <span className="text-xs text-muted tnum">
+                      {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName} ×{' '}
+                      {money(l.unitPrice)}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      className={`${field} w-24 tnum`}
+                      aria-label={t('invoice.lineDiscount')}
+                      placeholder="0"
+                      value={d.value}
+                      onChange={(e) =>
+                        setLineDrafts((s) => ({ ...s, [l.id]: { ...d, value: e.target.value } }))
+                      }
+                    />
+                    <select
+                      className={`${field} px-1.5`}
+                      aria-label={t('invoice.lineDiscountMode')}
+                      value={d.mode}
+                      onChange={(e) =>
+                        setLineDrafts((s) => ({
+                          ...s,
+                          [l.id]: { ...d, mode: e.target.value as LineDiscountMode },
+                        }))
+                      }
+                    >
+                      <option value="percent">%</option>
+                      <option value="piece">{t('invoice.perPiece')}</option>
+                      <option value="amount">{t('invoice.onLine')}</option>
+                    </select>
+                  </span>
+                  <span className="w-28 text-end tnum">
+                    {off > 0 && <span className="block text-xs text-warning">−{money(off)}</span>}
+                    {money(grossOf(l) - off)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
           <Button
             size="sm"
+            className="mt-2"
             loading={busy}
+            disabled={changedLines.length === 0}
             onClick={() => {
-              onDiscount(draft);
+              onLineDiscounts(
+                changedLines.map((l) => ({ lineId: l.id, discount: newLineDiscount(l) })),
+              );
               setDiscounting(false);
             }}
           >
             {t('together.apply')}
           </Button>
+        </div>
+      )}
+      {discounting && canDiscount && (
+        <div className="border-t border-line p-3">
+          <p className="mb-1 text-xs font-medium text-muted">{t('together.invoiceDiscount')}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <DiscountInputs value={draft} onChange={setDraft} currency={doc.currency} />
+            <Button
+              size="sm"
+              loading={busy}
+              onClick={() => {
+                onDiscount(draft);
+                setDiscounting(false);
+              }}
+            >
+              {t('together.apply')}
+            </Button>
+          </div>
         </div>
       )}
       {/* The invoice as it prints; its items show when opened. */}

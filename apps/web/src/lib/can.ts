@@ -45,6 +45,17 @@ export function mayOpenStatement(
   );
 }
 
+/**
+ * Who opens a customer's invoices together: whoever prints them, and whoever gives discounts, since
+ * every kind of discount is given there (owner, 2026-10-24).
+ */
+export const TOGETHER_PERMISSIONS: Permission[] = [
+  'sales:together',
+  'sales:discount',
+  'sales:discount_line',
+  'sales:discount_combined',
+];
+
 /** Whether the person may see profit at all (whatever they chose to show). */
 export function useMaySeeProfit(): boolean {
   return useAuth((s) => s.user?.permissions ?? NONE).includes('profit:view');

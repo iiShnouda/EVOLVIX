@@ -1299,7 +1299,7 @@ export interface InvoiceRevision {
   number: string;
   partyName: string;
   partyCode?: number | null;
-  kind: 'EDIT' | 'CANCEL';
+  kind: 'EDIT' | 'CANCEL' | 'DISCOUNT';
   at: string;
   staffName: string;
   reason?: string | null;
@@ -2648,6 +2648,14 @@ export interface ApproveOrderInput {
   charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
   notes?: string;
   overrideFloor?: boolean;
+}
+
+/**
+ * POST /sales/invoices/{id}/line-discounts (or orders/{id}): the accountant's discount on an
+ * invoice's items — each line named and its discount (minor units, the whole line; 0 = none).
+ */
+export interface SetLineDiscountsInput {
+  lines: { lineId: string; discount: number }[];
 }
 
 /** One department's share of a customer's account (departmentId null = no department). */

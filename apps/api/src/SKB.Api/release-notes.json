@@ -31,6 +31,14 @@
         {
           "ar": "تقارير الربح والتكلفة (قائمة الدخل، الميزانية، ميزان المراجعة، الأرباح، وقيمة المخزون) بتتفتح بصلاحيتها لوحدها.",
           "en": "Profit and cost reports (income statement, balance sheet, trial balance, profit and stock value) open with their own permission alone."
+        },
+        {
+          "ar": "الخصم بقى من فواتير العميل بس: مفيش خصم وانت بتعمل الفاتورة أو بتعدلها. المحاسب وهو بيشوف فواتير العميل يدي خصم على الأصناف، أو على الفاتورة، أو على كل الفواتير مع بعض — كل نوع بصلاحيته، ولما الفاتورة تتعدل خصومها بتفضل زي ما هي.",
+          "en": "Discounts are given only from the customer's invoices: none while an invoice is made or changed. The accountant, looking at the customer's invoices, gives a discount on items, on an invoice, or on all of them together — each kind with its own permission — and a changed invoice keeps its discounts."
+        },
+        {
+          "ar": "الخصم بقى بيظهر في تقرير الفواتير الملغاة والمعدّلة كـ«خصم» لوحده، وفي سجل النشاط «منح خصمًا»، ومبقاش بيعلّم الفاتورة إنها «معدّلة».",
+          "en": "A discount shows in the cancelled and changed invoices report as a discount of its own, and in the activity log as “gave a discount”; it no longer marks the invoice as changed."
         }
       ],
       "fixes": [
@@ -41,6 +49,22 @@
         {
           "ar": "صفحة التحديثات مبقتش تعرض سطر طويل كأنه جديد وهو مش جديد، ومفيش سطر بيتشال من إصدار فيه سطور كتير.",
           "en": "The updates page no longer shows a long line as new when it isn't, and no line is dropped from a release with many lines."
+        },
+        {
+          "ar": "دفتر القيود مبقاش يكتب كود بدل «إلغاء فاتورة مبيعات»، وسجل النشاط بقى بيسمّي كل الحركات بالعربي والإنجليزي (كان فيه حركات بتظهر بكلام إنجليزي).",
+          "en": "The journal no longer shows a code instead of “Cancelled sales invoice”, and the activity log names every action in Arabic and English (some showed English words)."
+        },
+        {
+          "ar": "على الموبايل: خانة البحث عن الصنف في الفاتورة الجديدة مبقتش راكبة على خانة الكمية، وزراير صفحة المبيعات اللي فوق بتنزل سطر لو مفيش مكان.",
+          "en": "On a phone: the item search on a new invoice no longer sits over the quantity, and the sales page's top buttons wrap when there's no room."
+        },
+        {
+          "ar": "المساعد الذكي مبقاش بيقول رقم تليفون العميل أو المورد إلا للي عنده صلاحية بيانات التواصل.",
+          "en": "The assistant no longer gives a customer's or supplier's phone number to someone who may not see contact details."
+        },
+        {
+          "ar": "الأسماء اللي ورا بعض بقت بفاصلة إنجليزي في الشاشة الإنجليزي.",
+          "en": "Lists of names use an English comma on the English screen."
         }
       ]
     },

@@ -5,7 +5,7 @@ import { formatNumber, type Permission, type TranslationKey, type Warehouse } fr
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import {
@@ -537,7 +537,7 @@ function EntryRow({
                     <span key={branchId} className="inline-flex items-center gap-1">
                       <Icon name="branches" size={13} />
                       <span className="font-medium text-fg">{inBranch[0]!.branchName}:</span>
-                      <span>{inBranch.map((w) => w.name).join('، ')}</span>
+                      <span>{joinList(inBranch.map((w) => w.name))}</span>
                     </span>
                   );
                 },

@@ -108,6 +108,17 @@ check('ready', st.reachable && st.chatReady && st.visionReady, st);
 // Several conversations (owner, 2026-10-10): a question without one starts one; asking in it continues it.
 const a1 = ok('ask balance', await o.post('/assistant/ask', { text: 'كم رصيد النور؟' }));
 check('tool used', a1.answer.content.includes('Al-Nour') && a1.answer.content.includes('balance'), a1.answer.content);
+check('the owner is told the phone', a1.answer.content.includes(', phone '), a1.answer.content);
+// A phone number is a contact detail (parties:contact), on the assistant too (2026-10-24 review).
+const noContactEmail = `aicontact.${Date.now().toString(36)}@skb.local`;
+const noContact = ok('someone who may ask but not see contacts', await o.post('/staff', {
+  fullName: 'AI no contact', email: noContactEmail, password: 'Str0ngPass!', role: 'NONE', branchId: o.user.branchId,
+}));
+ok('given the assistant and the parties', await o.put(`/staff/${noContact.id}/permissions`, { granted: ['ai:chat', 'parties:view'], revoked: [] }));
+const asker = await login(noContactEmail, 'Str0ngPass!');
+const a0 = ok('they ask the balance', await asker.post('/assistant/ask', { text: 'كم رصيد النور؟' }));
+check('…and get it without the phone', a0.answer.content.includes('Al-Nour') && !a0.answer.content.includes(', phone '), a0.answer.content);
+ok('closed again', await o.put(`/staff/${noContact.id}`, { isActive: false }));
 const a2 = ok('ask sales in the same conversation', await o.post('/assistant/ask', { text: 'مبيعات الشهر', conversationId: a1.conversationId }));
 eq('same conversation', a2.conversationId, a1.conversationId);
 check('sales summary', a2.answer.content.includes('sales'), a2.answer.content);

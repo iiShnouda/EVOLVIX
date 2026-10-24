@@ -65,6 +65,7 @@ import type {
   Product,
   ProfitReport,
   SalesDocument,
+  SetLineDiscountsInput,
   DocumentList,
   UnitOfMeasure,
   PriceLevel,
@@ -541,6 +542,22 @@ export function useSetInvoiceDiscount() {
       api.post<SalesDocument>(
         `/sales/${doc.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${doc.id}/discount`,
         { percent, amount, kind },
+      ),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/** The accountant's discount on an invoice's items (posted or pending): each line's whole discount. */
+export function useSetLineDiscounts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      doc,
+      ...input
+    }: { doc: Pick<SalesDocument, 'id' | 'type'> } & SetLineDiscountsInput) =>
+      api.post<SalesDocument>(
+        `/sales/${doc.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${doc.id}/line-discounts`,
+        input,
       ),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
   });
@@ -2362,7 +2379,11 @@ export function usePreferences() {
 }
 
 /** Cancelled and changed sales invoices in a period (reports:changes). */
-export function useInvoiceChanges(from: string, to: string, kind: '' | 'EDIT' | 'CANCEL') {
+export function useInvoiceChanges(
+  from: string,
+  to: string,
+  kind: '' | 'EDIT' | 'CANCEL' | 'DISCOUNT',
+) {
   const q = new URLSearchParams({ from, to });
   if (kind) q.set('kind', kind);
   return useQuery({

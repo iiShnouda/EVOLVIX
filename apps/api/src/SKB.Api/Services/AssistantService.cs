@@ -648,15 +648,17 @@ public sealed class AssistantTools
             {
                 var words = TextKey.Words(Arg("query"));
                 if (words.Length == 0) return "Nothing to look for.";
+                // Phone numbers only for whoever may see contact details, as on the parties list.
+                var contact = Has(user, Permissions.PartiesContact);
                 var parties = await _db.Parties.AsNoTracking().Where(p => p.IsActive)
                     .Select(p => new { p.Code, p.Name, p.Phone, p.Types, p.Balance }).Take(5000).ToListAsync(ct);
                 var hits = parties.Where(p =>
                 {
-                    var have = TextKey.Words($"{p.Name} {p.Code} {p.Phone}");
+                    var have = TextKey.Words(contact ? $"{p.Name} {p.Code} {p.Phone}" : $"{p.Name} {p.Code}");
                     return words.All(w => TextKey.Match(w, have) >= 0);
                 }).Take(8).ToList();
                 return hits.Count == 0 ? "No match." : string.Join("\n", hits.Select(p =>
-                    $"{p.Code} {p.Name} ({string.Join("/", p.Types)}), phone {p.Phone ?? "-"}, balance " +
+                    $"{p.Code} {p.Name} ({string.Join("/", p.Types)}){(contact ? $", phone {p.Phone ?? "-"}" : "")}, balance " +
                     $"{Money(Math.Abs(p.Balance))} {(p.Balance > 0 ? "owed to the company" : p.Balance < 0 ? "owed by the company" : "settled")}"));
             }
             case "find_item":

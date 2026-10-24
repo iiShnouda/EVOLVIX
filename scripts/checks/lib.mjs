@@ -67,6 +67,34 @@ export function addDays(day, n) {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+/**
+ * Sell with discounts the way they are given now (owner, 2026-10-24): `maker` makes the invoice at
+ * `path` without them, then `by` gives each kind from the customer's invoices — the lines' own (a
+ * line's `discount`), then the invoice discount (a DISCOUNT charge) and the second one
+ * (EXTRA_DISCOUNT). Answers with the first refusal (and the invoice as made, `made`), else the
+ * invoice as it ends up.
+ */
+export async function sellDiscounted(maker, by, body, path = '/sales/invoices') {
+  const isDiscount = (c) => ['DISCOUNT', 'EXTRA_DISCOUNT'].includes(String(c.kind).toUpperCase());
+  const lines = body.lines ?? [];
+  const r0 = await maker.post(path, {
+    ...body,
+    lines: lines.map(({ discount, ...line }) => line),
+    ...(body.charges ? { charges: body.charges.filter((c) => !isDiscount(c)) } : {}),
+  });
+  if (r0.status >= 300) return r0;
+  const made = r0.data;
+  const at = `/sales/${made.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${made.id}`;
+  let r = r0;
+  const given = lines.flatMap((l, i) => (l.discount ? [{ lineId: made.lines[i].id, discount: l.discount }] : []));
+  if (given.length) r = await by.post(`${at}/line-discounts`, { lines: given });
+  for (const c of (body.charges ?? []).filter(isDiscount)) {
+    if (r.status >= 300) break;
+    r = await by.post(`${at}/discount`, { kind: String(c.kind).toUpperCase(), percent: c.percent, amount: c.amount });
+  }
+  return r.status >= 300 ? { ...r, made } : r;
+}
+
 export function summary(label) {
   console.log(`\n${label}: ${passed} passed, ${failed} failed`);
   if (failed) console.log('Failures:\n - ' + failures.join('\n - '));

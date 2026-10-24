@@ -851,7 +851,7 @@ function ChangesTab() {
   const { t, locale } = useT();
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
-  const [kind, setKind] = useState<'' | 'EDIT' | 'CANCEL'>('');
+  const [kind, setKind] = useState<'' | 'EDIT' | 'CANCEL' | 'DISCOUNT'>('');
   const { data, isLoading } = useInvoiceChanges(from, to, kind);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
@@ -880,11 +880,12 @@ function ChangesTab() {
             <select
               className={small}
               value={kind}
-              onChange={(e) => setKind(e.target.value as '' | 'EDIT' | 'CANCEL')}
+              onChange={(e) => setKind(e.target.value as '' | 'EDIT' | 'CANCEL' | 'DISCOUNT')}
             >
               <option value="">{t('changes.all')}</option>
               <option value="CANCEL">{t('changes.CANCEL')}</option>
               <option value="EDIT">{t('changes.EDIT')}</option>
+              <option value="DISCOUNT">{t('changes.DISCOUNT')}</option>
             </select>
           </label>
         </div>
@@ -944,7 +945,15 @@ function ChangesTab() {
                         {formatDateTime(r.at, locale)}
                       </td>
                       <td className="px-3 py-1.5">
-                        <Badge tone={r.kind === 'CANCEL' ? 'destructive' : 'warning'}>
+                        <Badge
+                          tone={
+                            r.kind === 'CANCEL'
+                              ? 'destructive'
+                              : r.kind === 'DISCOUNT'
+                                ? 'info'
+                                : 'warning'
+                          }
+                        >
                           {t(`changes.${r.kind}`)}
                         </Badge>
                       </td>

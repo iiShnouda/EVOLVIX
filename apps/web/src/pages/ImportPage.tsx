@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { ImportResult } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { useT } from '../lib/i18n';
+import { useT, joinList } from '../lib/i18n';
 import { useImportData } from '../lib/queries';
 import { buildImportWorkbook } from '../lib/importTemplate';
 import { saveFile, safeName, XLSX_MIME } from '../lib/print';
@@ -153,7 +153,7 @@ function ResultView({ result, onAgain }: { result: ImportResult; onAgain: () => 
 
       {result.unknownSheets.length > 0 && (
         <p className="text-xs text-muted">
-          {t('import.unknownSheets').replace('{x}', result.unknownSheets.join('، '))}
+          {t('import.unknownSheets').replace('{x}', joinList(result.unknownSheets))}
         </p>
       )}
 

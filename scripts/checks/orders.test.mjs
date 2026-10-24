@@ -3,7 +3,7 @@
 // money, balance or ledger moves. The accountant may change its discounts (within their own
 // permission and limit), takes what the customer pays and approves it: it becomes a sales invoice.
 // The rest stays on the customer's account, which the accountant sees per department. Runs against BASE.
-import { login, check, eq, ok, summary, addDays, companyToday } from './lib.mjs';
+import { login, check, eq, ok, summary, addDays, companyToday, sellDiscounted } from './lib.mjs';
 
 const tag = Date.now().toString(36).slice(-5);
 const owner = await login('owner@skb.local');
@@ -86,8 +86,10 @@ ok(
 );
 // Invoices post at once now (owner decision 2026-09-30); pending ones are for whoever is given it.
 ok(
-  '…with the discount permission, saving pending invoices',
-  await owner.put(`/staff/${repP.id}/permissions`, { granted: ['sales:discount', 'sales:order'] }),
+  '…saving pending invoices, and discounting items on the customer’s invoices',
+  await owner.put(`/staff/${repP.id}/permissions`, {
+    granted: ['sales:discount_line', 'sales:order'],
+  }),
 );
 const rep = await login(repP.email, PASS);
 check(
@@ -101,13 +103,22 @@ check('the accountant approves', acc.user.permissions.includes('sales:approve'))
 
 console.log('== a pending invoice');
 const before = { stock: await stock(), balance: await balance() };
-const o1 = ok(
-  'rep saves 6 coats, 5% off, with a note',
-  await rep.post(
-    '/sales/orders',
-    body(6, { notes: 'Pick up Thursday', paidAmount: 5000 }, { discount: 300 }),
-  ),
+eq(
+  'no discount while saving it (owner, 2026-10-24)',
+  (await rep.post('/sales/orders', body(6, {}, { discount: 300 }))).data?.code,
+  'discount_on_customer_invoices',
 );
+const saved = ok(
+  'rep saves 6 coats with a note',
+  await rep.post('/sales/orders', body(6, { notes: 'Pick up Thursday', paidAmount: 5000 })),
+);
+const o1 = ok(
+  '…then 5% off them from the customer’s invoices',
+  await rep.post(`/sales/orders/${saved.id}/line-discounts`, {
+    lines: [{ lineId: saved.lines[0].id, discount: 300 }],
+  }),
+);
+eq('the same pending invoice', [o1.id, o1.number], [saved.id, saved.number]);
 eq('it waits', [o1.type, o1.status, o1.number.startsWith('SO-')], ['SALES_ORDER', 'PENDING', true]);
 eq('…in the rep’s department', o1.departmentId, dept.id);
 eq('…with its total', [o1.subtotal, o1.discountTotal, o1.grandTotal], [6000, 300, 5700]);
@@ -117,7 +128,11 @@ eq('no stock left', await stock(), before.stock);
 eq('no balance moved', await balance(), before.balance);
 eq(
   'over the rep’s limit refused',
-  (await rep.post('/sales/orders', body(1, {}, { discount: 101 }))).data?.code,
+  (
+    await rep.post(`/sales/orders/${o1.id}/line-discounts`, {
+      lines: [{ lineId: o1.lines[0].id, discount: 601 }],
+    })
+  ).data?.code,
   'discount_over_limit',
 );
 
@@ -132,7 +147,10 @@ eq(
   (await owner.post('/sales/invoices', body(5))).data?.code,
   'insufficient_stock',
 );
-const o2 = ok('4 more held', await rep.post('/sales/orders', body(4, {}, { discount: 200 })));
+const o2 = ok(
+  '4 more held, 5% off',
+  await sellDiscounted(rep, rep, body(4, {}, { discount: 200 }), '/sales/orders'),
+);
 eq(
   'none left to hold',
   (await rep.post('/sales/orders', body(1))).data?.code,

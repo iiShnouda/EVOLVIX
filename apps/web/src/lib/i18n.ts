@@ -8,3 +8,8 @@ export function useT(): { t: Translate; locale: 'en' | 'ar'; rtl: boolean } {
   const t = useMemo(() => createTranslator(locale), [locale]);
   return { t, locale, rtl: isRtl(locale) };
 }
+
+/** Several names in a row, with the screen language's comma («،» in Arabic, "," in English). */
+export function joinList(items: readonly string[]): string {
+  return items.join(usePrefs.getState().locale === 'ar' ? '، ' : ', ');
+}

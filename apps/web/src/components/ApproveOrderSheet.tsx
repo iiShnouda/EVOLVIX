@@ -6,6 +6,7 @@ import { Button } from './ui';
 import { MoneyAccountPicker } from './MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
+import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
@@ -14,21 +15,6 @@ import { CodeName } from './CodeName';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
-
-type Mode = 'percent' | 'piece' | 'amount';
-
-/** A line's discount in minor units from what was typed: a %, so much per piece, or an amount. */
-function discountOf(mode: Mode, value: string, gross: number, pieces: number) {
-  const v = Number(value);
-  if (!value.trim() || !Number.isFinite(v) || v <= 0) return 0;
-  const d =
-    mode === 'percent'
-      ? Math.round((gross * Math.min(v, 100)) / 100)
-      : mode === 'piece'
-        ? toMinor(v) * pieces
-        : toMinor(v);
-  return Math.min(d, gross);
-}
 
 /**
  * The accountant approves a pending invoice: the items, prices, department and rep stay as the
@@ -50,11 +36,13 @@ export function ApproveOrderSheet({
   const navigate = useNavigate();
   const approve = useApproveOrder();
   const maxDiscount = useAuth((s) => s.user?.maxDiscountPercent ?? null);
+  // Each kind of discount is its own permission (owner, 2026-10-24).
   const canDiscount = can('sales:discount');
+  const canLineDiscount = can('sales:discount_line');
   const money = (v: number) => formatMoney(v, order.currency, locale);
 
   const lines = order.lines.filter((l) => !l.isBonus);
-  const [edits, setEdits] = useState<Record<string, { mode: Mode; value: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { mode: LineDiscountMode; value: string }>>({});
   const invoiceRate = order.charges.find((c) => c.kind === 'DISCOUNT')?.rate ?? null;
   const [invoicePct, setInvoicePct] = useState(invoiceRate != null ? String(invoiceRate) : '');
   const [paid, setPaid] = useState('');
@@ -65,7 +53,7 @@ export function ApproveOrderSheet({
   const grossOf = (l: (typeof lines)[number]) => l.unitPrice * (l.unitQuantity || l.quantity);
   const newDiscount = (l: (typeof lines)[number]) => {
     const e = edits[l.id];
-    return e ? discountOf(e.mode, e.value, grossOf(l), l.quantity) : l.discount;
+    return e ? lineDiscount(e.mode, e.value, grossOf(l), l.quantity) : l.discount;
   };
   const changedLines = lines.filter((l) => edits[l.id] && newDiscount(l) !== l.discount);
   const invoiceChanged = (invoicePct.trim() === '' ? null : Number(invoicePct)) !== invoiceRate;
@@ -197,7 +185,7 @@ export function ApproveOrderSheet({
                             min={0}
                             step="0.01"
                             aria-label={t('order.lineDiscount')}
-                            disabled={!canDiscount}
+                            disabled={!canLineDiscount}
                             className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-sm tnum outline-none focus:border-brand"
                             placeholder={l.discount ? String(toMajor(l.discount)) : '0'}
                             value={e?.value ?? ''}
@@ -210,13 +198,16 @@ export function ApproveOrderSheet({
                           />
                           <select
                             aria-label={t('invoice.lineDiscountMode')}
-                            disabled={!canDiscount}
+                            disabled={!canLineDiscount}
                             className="h-8 rounded-lg border border-line bg-surface px-1 text-xs outline-none focus:border-brand"
                             value={e?.mode ?? 'amount'}
                             onChange={(ev) =>
                               setEdits((s) => ({
                                 ...s,
-                                [l.id]: { mode: ev.target.value as Mode, value: e?.value ?? '' },
+                                [l.id]: {
+                                  mode: ev.target.value as LineDiscountMode,
+                                  value: e?.value ?? '',
+                                },
                               }))
                             }
                           >
@@ -249,7 +240,7 @@ export function ApproveOrderSheet({
               value={invoicePct}
               onChange={(e) => setInvoicePct(e.target.value)}
             />
-            {canDiscount && maxDiscount !== null && (
+            {(canDiscount || canLineDiscount) && maxDiscount !== null && (
               <span className="mt-0.5 block text-xs text-faint">
                 {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
               </span>
