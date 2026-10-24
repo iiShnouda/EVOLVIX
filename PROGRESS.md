@@ -343,11 +343,16 @@ Security-first, server-authoritative (no business data readable offline).
   `ledger:lock`; Accounts → Trial balance):
   - Posts one closing entry (`CLOSE-<year>`, dated 31 December). It brings every revenue and
     expense account to zero and moves the profit or loss into retained earnings.
-  - It sweeps everything not yet closed up to that day, so years close in order: none before a
-    closed one.
-  - The period is then locked through 31 December and the lock can't move back into a closed year.
-  - The closing entry can't be reversed, and the income statement leaves it out.
-  - Two people closing at once: one closes, the other is told it's already closed.
+  - It sweeps everything not yet closed up to that day.
+  - **A closed year stays open** (owner, 2026-10-24: past years are needed for other reasons):
+    closing locks nothing. Whatever is entered in a closed year later shows it as "changed after
+    closing"; closing it again makes its entry anew from the books as they are — and the entries
+    of the closed years after it, in order (each sweeps what wasn't closed before its 31 December),
+    so an earlier year can be closed after a later one too. The lock a close set before is lifted
+    on update (migration `YearsStayOpen`); the period lock (`ledger:lock`) is only ever set by
+    hand and can always be moved or lifted.
+  - The closing entry can't be reversed by hand, and the income statement leaves it out.
+  - Two people closing at once: one closes, the other is told nothing changed since.
 - **Activity log** (سجل النشاط, `/audit`, `GET /api/audit`, `GET /api/audit/facets`; `audit:view`,
   the owner's): every audited change — who, what, which record, branch, IP and time.
   - Filters by person, record type, action and days; newest first, 50 a page.
@@ -357,8 +362,8 @@ Security-first, server-authoritative (no business data readable offline).
   - the activity log (filters, paging, only the owner);
   - aging: every bucket, using backdated invoices when `PGURL` is set; unlinked payments;
     customers in credit;
-  - the year-end close: the entry, the statements before and after, the lock, the race, and the
-    rules.
+  - the year-end close: the entry, the statements before and after, the race, a closed year
+    staying open (a late entry, closing again, an earlier year after a later one), and the rules.
 
   All other suites still pass on a fresh database and on an upgraded older one, with the
   invariants. In the browser (EN/AR, phone width): the settings, an invoice printout, the
@@ -1035,7 +1040,9 @@ own permission, and roles bundle them
 - An account's opening balance can be set only before money first moves through it.
 - Most older screens still show the server's English error message; the delivery and party
   screens use `lib/errors.ts` to show it in Arabic too.
-- A closed year can't be reopened.
+- **Not planned** (owner, 2026-10-24): the tax authority e-invoice / e-receipt link, purchase
+  orders to suppliers, two-step sign-in, reopening a closed year (years never lock, see the
+  year-end close).
 - Printing on iPhone depends on Safari's print sheet (not tested on a device here).
 
 ## 7. What's NEXT (pick up here)

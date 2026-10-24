@@ -2443,6 +2443,8 @@ export interface ClosedYear {
   netProfit: number;
   closedAt: string;
   closedByName: string;
+  /** Something was entered in the year (or before it) after it was closed: close it again. */
+  changed?: boolean;
 }
 
 /** One person's (or branch's) sales in a period (أداء المبيعات). */

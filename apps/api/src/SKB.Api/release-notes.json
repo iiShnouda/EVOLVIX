@@ -5,6 +5,10 @@
       "date": "2026-10-24",
       "features": [
         {
+          "ar": "السنين اللي فاتت بقت فاضلة مفتوحة: إقفال السنة مبقاش بيقفل حاجة، فتقدر تضيف أو تعدّل فواتير ومرتجعات وقيود فيها في أي وقت. السنة اللي اتغيّر فيها حاجة بعد إقفالها بيظهر جنبها «تغيّرت بعد الإقفال»، و«إقفال مرة أخرى» بيحدّث ربحها (والسنين المقفولة اللي بعدها معاها). القفل اللي إقفال السنة كان عامله بيتشال مع التحديث.",
+          "en": "Past years now stay open: closing a year locks nothing, so invoices, returns and entries can be added or changed in it at any time. A year changed after it was closed says so, and “Close again” updates its profit (and the closed years after it). The lock a year-end close set is lifted with this update."
+        },
+        {
           "ar": "الخصم بقى ينفع بعد ما الفلوس تتحصّل، أو يتاخد شيك، أو الفاتورة تخرج للتوصيل: بيتسجل لوحده في القيود بتاريخ النهارده، والفلوس اللي اتحصلت بتفضل مكانها، ولو العميل دافع أكتر من الفاتورة بعد الخصم الزيادة بتبقى رصيد ليه.",
           "en": "A discount can now be given after money came in, a cheque was taken or the invoice went out for delivery: it is entered on its own, dated the day it is given; money received stays where it is, and anything paid over the new total is the customer's on account."
         },
@@ -26,6 +30,10 @@
         }
       ],
       "fixes": [
+        {
+          "ar": "المستند بقى ينفع يتأرخ بتاريخ أقدم من سنة (للي عنده صلاحية التاريخ القديم)، وقفل الفترة اللي بيتحط باليد بقى ينفع يتغيّر أو يتشال في أي وقت.",
+          "en": "A document can now be dated more than a year back (for those who may date documents earlier), and a period lock set by hand can be moved or lifted at any time."
+        },
         {
           "ar": "الخصم مبقاش بيغيّر تكلفة البضاعة اللي في الفاتورة.",
           "en": "A discount no longer changes what the invoice's goods cost."

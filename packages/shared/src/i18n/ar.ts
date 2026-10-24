@@ -1325,9 +1325,9 @@ export const ar: TranslationDictionary = {
   'ledger.year': 'السنة',
   'ledger.closed': 'مقفلة',
   'ledger.yearClose': 'إقفال السنة المالية',
-  'ledger.yearCloseHint':
-    'إقفال سنة منتهية ينقل ربحها (أو خسارتها) إلى الأرباح المحتجزة، ويبدأ الإيرادات والمصروفات من الصفر، ويقفل السنة.',
   'ledger.closeYear': 'إقفال سنة',
+  'ledger.changedSinceClose': 'تغيّرت بعد الإقفال',
+  'ledger.closeAgain': 'إقفال مرة أخرى',
   'ledger.closeYearConfirm': 'نعم، إقفال',
   'ledger.source.YEAR_CLOSE': 'إقفال السنة',
   'fin.amount': 'المبلغ',
@@ -1437,9 +1437,8 @@ export const ar: TranslationDictionary = {
   'audit.resource.unit': 'وحدة',
   'audit.resource.variant_option': 'مقاس / لون',
   'error.bad_year': 'لا يمكن إقفال إلا سنة انتهت.',
-  'error.already_closed': 'هذه السنة، أو سنة بعدها، مقفلة بالفعل.',
+  'error.already_closed': 'هذه السنة مقفلة، ولم يتغير فيها شيء منذ إقفالها.',
   'error.nothing_to_close': 'لا توجد إيرادات أو مصروفات في تلك السنة.',
-  'error.year_closed': 'السنة المقفلة تبقى مقفلة.',
   // Who's online, backups
   'nav.presence': 'المتصلون الآن',
   'perm.backup:create': 'النسخ الاحتياطي',

@@ -861,9 +861,6 @@ function ClosingTab() {
   const lock = useLockDate();
   const setLock = useSetLockDate();
   const [lockTo, setLockTo] = useState(today);
-  // A closed year stays locked: the lock can't move back before its 31 December.
-  const lastClosed = Math.max(0, ...(useClosedYears().data ?? []).map((c) => c.year));
-  const lockMin = lastClosed ? `${lastClosed}-12-31` : undefined;
   return (
     <div className="space-y-3">
       <Card className="flex flex-wrap items-end gap-2 !p-3 text-sm">
@@ -881,7 +878,6 @@ function ClosingTab() {
               aria-label={t('ledger.lockedThrough')}
               className={`${small} w-auto`}
               type="date"
-              min={lockMin}
               max={today()}
               value={lockTo}
               onChange={(e) => setLockTo(e.target.value)}
@@ -894,7 +890,7 @@ function ClosingTab() {
             >
               {t('ledger.setLock')}
             </Button>
-            {lock.data?.lockDate && !lastClosed && (
+            {lock.data?.lockDate && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -913,16 +909,20 @@ function ClosingTab() {
   );
 }
 
-/** Year-end close (إقفال السنة): the closed years, and closing the next one. */
+/**
+ * Year-end close (إقفال السنة): the closed years, and closing one. A closed year stays open
+ * (owner, 2026-10-24): one changed after closing is closed again.
+ */
 function YearClose() {
   const { t, locale } = useT();
   const can = useCan();
   const closed = useClosedYears();
   const close = useCloseYear();
   const thisYear = Number(companyToday().slice(0, 4));
-  // Years close in order: only those after the last closed one.
-  const last = Math.max(0, ...(closed.data ?? []).map((c) => c.year));
-  const open = [1, 2, 3, 4, 5].map((i) => thisYear - i).filter((y) => y > last);
+  const isClosed = (y: number) => (closed.data ?? []).some((c) => c.year === y);
+  // The last five finished years: one not closed yet first.
+  const finished = [1, 2, 3, 4, 5].map((i) => thisYear - i);
+  const open = [...finished.filter((y) => !isClosed(y)), ...finished.filter(isClosed)];
   const [picked, setPicked] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
   const year = picked !== null && open.includes(picked) ? picked : open[0];
@@ -965,21 +965,32 @@ function YearClose() {
               </>
             ) : (
               <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>
-                {t('ledger.closeYear')}
+                {t(year !== undefined && isClosed(year) ? 'ledger.closeAgain' : 'ledger.closeYear')}
               </Button>
             )}
           </div>
         )}
       </div>
-      <p className="text-xs text-faint">{t('ledger.yearCloseHint')}</p>
       {close.error && <p className="text-destructive">{errorText(t, close.error)}</p>}
       {(closed.data ?? []).length > 0 && (
         <ul className="divide-y divide-line">
           {closed.data!.map((c) => (
             <li key={c.year} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
-              <span>
-                <span className="font-semibold tnum">{c.year}</span>{' '}
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="font-semibold tnum">{c.year}</span>
                 <Badge tone="neutral">{t('ledger.closed')}</Badge>
+                {c.changed && <Badge tone="warning">{t('ledger.changedSinceClose')}</Badge>}
+                {c.changed && can('ledger:close_year') && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    loading={close.isPending && close.variables === c.year}
+                    disabled={close.isPending}
+                    onClick={() => close.mutate(c.year)}
+                  >
+                    {t('ledger.closeAgain')}
+                  </Button>
+                )}
               </span>
               <span className="text-xs text-muted">
                 {c.netProfit < 0 ? t('fin.netLoss') : t('fin.netProfit')}{' '}

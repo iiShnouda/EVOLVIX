@@ -52,6 +52,8 @@ const buy = (who, day) =>
   });
 eq('not in the future', (await buy(owner, addDays(today, 1))).data?.code, 'future_date');
 eq('a bad day', (await buy(owner, '2026-13-40')).data?.code, 'bad_date');
+// Past years stay open (owner, 2026-10-24): a document may go back more than a year.
+ok('two years back', await buy(owner, addDays(today, -730)));
 const p = ok('dated three days ago', await buy(owner, addDays(today, -3)));
 eq('its day', dayIn(p.issueDate), addDays(today, -3));
 check(

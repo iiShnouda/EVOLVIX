@@ -244,7 +244,7 @@ One shape for every document type:
   none), checked per line on its own discount plus its share of the invoice discount. A discount may
   come after money was taken, a cheque received or the goods sent: it is posted on its own
   (`SALES_DISCOUNT`, the day it is given), what was paid stays, and anything paid over the new total
-  is the customer's credit. It changes neither the goods' cost nor a closed period, and not an
+  is the customer's credit. It changes neither the goods' cost nor a locked period, and not an
   invoice that already has returns against it.
 - **Pending invoice → accountant.** The department's sales person saves a `SALES_ORDER`
   (`sales:order`): items, customer, date. Its goods are held; nothing posts. The accountant
@@ -313,7 +313,7 @@ One shape for every document type:
 - **Returns**: the seller writes them (sales:return in the Sales role); goods go back to the warehouse
   they left from; cash back to the customer is the accountant's. A return entered by mistake is
   cancelled whole (`sales:return_cancel` / `purchases:return_cancel`): its stock, balance, cash and
-  entries go back (`*_RETURN_CANCEL` entries) and it stays listed as cancelled — not in a closed
+  entries go back (`*_RETURN_CANCEL` entries) and it stays listed as cancelled — not in a locked
   period, and a sales return only while its goods are still in stock.
 - **Changing an invoice** keeps the cost its goods went out at: only added quantity is costed at
   today's average. Free goods it has stay (none are added on the invoice screen).
@@ -382,6 +382,8 @@ One shape for every document type:
   - A **compound entry** (قيد مركب) is a manual entry with any number of lines. Old tables `kedAction` / `kedActionSub`.
 - **Opening balances** (أرصدة أول المدة): a single opening entry at go-live. Old table `RAwel`.
 - **Period lock** (إقفال الحركات): nothing can be posted, edited or cancelled on or before the lock date.
+  It is only ever set by hand (`ledger:lock`) and can always be moved or lifted: closing a year
+  locks nothing (owner, 2026-10-24: past years stay open, they are needed for other reasons).
 - **Built (step 6):** `LedgerAccount` (system accounts by `SystemKey`; sub-accounts linked to a
   party, money account or expense category), `JournalEntry` (source type + id, `JV-` numbers for
   manual entries) and `JournalLine` (account, debit or credit). All sales taxes post to one

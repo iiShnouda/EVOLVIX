@@ -70,9 +70,19 @@ check(
   log.items.every((e, i, a) => i === 0 || a[i - 1].createdAt >= e.createdAt),
 );
 // A more detailed log (owner, 2026-10-12): the device each action came from, and a note for the ones that carry one.
-check('each row names the device', log.items.every((e) => typeof e.device === 'string' && e.device.length > 0));
-const sale = ok('a sale in the log', await owner.get('/audit?resource=sales_invoice&action=create&pageSize=1'));
-check('a sale carries a detail (its number and total)', sale.items.length === 0 || /\d/.test(sale.items[0].details || ''), sale.items[0]);
+check(
+  'each row names the device',
+  log.items.every((e) => typeof e.device === 'string' && e.device.length > 0),
+);
+const sale = ok(
+  'a sale in the log',
+  await owner.get('/audit?resource=sales_invoice&action=create&pageSize=1'),
+);
+check(
+  'a sale carries a detail (its number and total)',
+  sale.items.length === 0 || /\d/.test(sale.items[0].details || ''),
+  sale.items[0],
+);
 const facets = ok('filters', await owner.get('/audit/facets'));
 check(
   'filters list what happened',
@@ -317,11 +327,6 @@ if (closed0.length > 0) {
   const done = race.find((r) => r.status === 201)?.data;
   eq('the other: already closed', race.find((r) => r.status === 400)?.data?.code, 'already_closed');
   eq('profit moved = the year’s profit', [done?.year, done?.netProfit], [Y, isY.netProfit]);
-  eq(
-    'no closing an earlier year now',
-    (await owner.post('/ledger/close-year', { year: Y - 1 })).data?.code,
-    'already_closed',
-  );
 
   const list = ok('listed', await owner.get('/ledger/closed-years'));
   eq(
@@ -382,36 +387,67 @@ if (closed0.length > 0) {
     'not_manual',
   );
 
-  console.log('== a closed year stays locked');
-  eq('locked through 31 December', (await mona.get('/ledger/lock')).data?.lockDate, `${Y}-12-31`);
+  // Past years stay open (owner, 2026-10-24): closing one locks nothing.
+  console.log('== a closed year stays open');
+  eq('closing locked nothing', (await mona.get('/ledger/lock')).data?.lockDate ?? null, null);
+  const late = (date, amount, what) =>
+    owner.post('/ledger/entries', {
+      date,
+      description: `${what} ${tag}`,
+      lines: [
+        { accountId: capital.id, debit: amount },
+        { accountId: other.id, credit: amount },
+      ],
+    });
+  ok('an entry in the closed year', await late(`${Y}-12-30`, 5000, 'Late'));
+  const yearOf = async (y) =>
+    (await owner.get('/ledger/closed-years')).data.find((c) => c.year === y);
+  eq('the year shows as changed', (await yearOf(Y))?.changed, true);
+  const isLate = ok(
+    'its income statement has it',
+    await owner.get(`/ledger/income-statement?${range(Y)}`),
+  );
+  eq('…5.00 more profit', isLate.netProfit - isY.netProfit, 5000);
+  const again = ok('closed again', await owner.post('/ledger/close-year', { year: Y }));
+  eq('with the new profit', again.netProfit, isLate.netProfit);
+  const y1 = await yearOf(Y);
+  eq('no longer changed', [y1?.changed, y1?.netProfit], [false, isLate.netProfit]);
   eq(
-    'no entry in the closed year',
-    (
-      await owner.post('/ledger/entries', {
-        date: `${Y}-12-30`,
-        description: 'late',
-        lines: [
-          { accountId: capital.id, debit: 1 },
-          { accountId: other.id, credit: 1 },
-        ],
-      })
-    ).data?.code,
-    'period_locked',
+    'still one closing entry',
+    (await owner.get(`/ledger/entries?from=${Y}-12-31&to=${Y}-12-31&source=YEAR_CLOSE`)).data.items
+      .length,
+    1,
   );
   eq(
-    "can't unlock",
-    (await owner.put('/ledger/lock', { lockDate: null })).data?.code,
-    'year_closed',
+    'nothing changed since: already closed',
+    (await owner.post('/ledger/close-year', { year: Y })).data?.code,
+    'already_closed',
+  );
+  // An earlier year closed after a later one: the later one is made anew with it.
+  ok(`an entry in ${Y - 1}`, await late(`${Y - 1}-03-01`, 2000, 'Earlier'));
+  eq(`${Y} shows as changed (it took in ${Y - 1})`, (await yearOf(Y))?.changed, true);
+  const upTo = ok(
+    `everything up to ${Y - 1}`,
+    await owner.get(`/ledger/income-statement?from=${Y - 5}-01-01&to=${Y - 1}-12-31`),
+  );
+  const earlier = ok(
+    `${Y - 1} closed after ${Y}`,
+    await owner.post('/ledger/close-year', { year: Y - 1 }),
+  );
+  eq('its profit is everything before', earlier.netProfit, upTo.netProfit);
+  const [a1, b1] = [await yearOf(Y - 1), await yearOf(Y)];
+  eq('both closed, neither changed', [a1?.changed, b1?.changed], [false, false]);
+  eq(`${Y} keeps its own profit`, b1?.netProfit, isLate.netProfit);
+  const bs2 = ok('balance sheet', await owner.get('/ledger/balance-sheet'));
+  eq('still balances', bs2.assets, bs2.liabilities + bs2.equity);
+  ok(
+    'the lock can be put inside a closed year',
+    await owner.put('/ledger/lock', { lockDate: `${Y}-06-30` }),
   );
   eq(
-    "can't move the lock into it",
-    (await owner.put('/ledger/lock', { lockDate: `${Y}-06-30` })).data?.code,
-    'year_closed',
-  );
-  eq(
-    'the lock can stay on 31 December',
-    (await owner.put('/ledger/lock', { lockDate: `${Y}-12-31` })).data?.lockDate,
-    `${Y}-12-31`,
+    '…and lifted',
+    (await owner.put('/ledger/lock', { lockDate: null })).data?.lockDate ?? null,
+    null,
   );
   ok(
     'this year still takes entries',

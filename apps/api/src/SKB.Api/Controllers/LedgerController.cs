@@ -605,11 +605,6 @@ public sealed class LedgerController : ControllerBase
         }
         var settings = await _db.CompanySettings.FirstOrDefaultAsync();
         if (settings is null) return Bad("no_settings", "Company settings are missing.");
-        // A closed year stays locked: the lock can't move back before its 31 December.
-        var closed = await _db.JournalEntries.Where(e => e.SourceType == "YEAR_CLOSE")
-            .Select(e => (DateTime?)e.Date).MaxAsync();
-        if (closed is DateTime c && (value is null || value < c.Date))
-            return Bad("year_closed", "A closed year stays locked.");
         settings.LockDate = value;
         settings.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -630,17 +625,37 @@ public sealed class LedgerController : ControllerBase
             .ThenInclude(l => l.Account).Where(e => e.SourceType == "YEAR_CLOSE").OrderByDescending(e => e.Date).ToListAsync();
         // A year's profit is the whole company's: for whoever sees every branch.
         var seeProfit = Costs.CanSeeProfit(User) && Access.AllBranches(User);
-        return Ok(entries.Select(e => new ClosedYearDto(e.Date.Year, e.Id.ToString(),
-            seeProfit ? e.Lines.Where(l => l.Account!.SystemKey == LedgerKeys.RetainedEarnings).Sum(l => l.Credit - l.Debit) : 0,
-            e.CreatedAt.ToString("o"), e.CreatedBy?.FullName ?? "")).ToArray());
+        var list = new List<ClosedYearDto>();
+        foreach (var e in entries)
+            list.Add(new ClosedYearDto(e.Date.Year, e.Id.ToString(),
+                seeProfit ? e.Lines.Where(l => l.Account!.SystemKey == LedgerKeys.RetainedEarnings).Sum(l => l.Credit - l.Debit) : 0,
+                e.CreatedAt.ToString("o"), e.CreatedBy?.FullName ?? "", (await UnclosedUpToAsync(e.Date.Year)).Count > 0));
+        return Ok(list.ToArray());
+    }
+
+    /// <summary>
+    /// What revenue and expense accounts still hold up to the end of a year (every entry before its
+    /// 1 January after, earlier closing entries included): nothing once the year is closed, until
+    /// something is entered in it (or before it) later.
+    /// </summary>
+    private async Task<List<(Guid AccountId, long Net)>> UnclosedUpToAsync(int year)
+    {
+        var (_, end) = CompanyClock.Days(new DateOnly(year, 1, 1), new DateOnly(year, 12, 31));
+        return (await _db.JournalLines
+                .Where(l => l.Entry!.Date < end
+                            && (l.Account!.Type == LedgerAccountType.REVENUE || l.Account.Type == LedgerAccountType.EXPENSE))
+                .GroupBy(l => l.AccountId).Select(g => new { g.Key, Net = g.Sum(l => l.Debit - l.Credit) })
+                .Where(x => x.Net != 0).ToListAsync())
+            .Select(x => (x.Key, x.Net)).ToList();
     }
 
     /// <summary>
     /// Close a finished year (إقفال السنة): one closing entry, dated 31 December, brings every
-    /// revenue and expense account to zero and moves the net profit into retained earnings; the
-    /// year is then locked. It sweeps everything not closed yet up to that day (so an earlier year
-    /// that was never closed is swept too), which is why years close in order: none before a
-    /// closed one. The income statement leaves closing entries out.
+    /// revenue and expense account to zero and moves the net profit into retained earnings. The
+    /// year is not locked (owner, 2026-10-24: past years stay open, they are needed for other
+    /// reasons): whatever is entered in it later shows it as changed, and closing it again makes its
+    /// entry anew. Each closing sweeps everything not closed before its 31 December, so the closed
+    /// years after it are made anew too, in order. The income statement leaves closing entries out.
     /// </summary>
     [HttpPost("close-year")]
     [Authorize(Policy = Permissions.LedgerCloseYear)]
@@ -653,31 +668,46 @@ public sealed class LedgerController : ControllerBase
             return StatusCode(403, new { message = "Closing the year needs every branch.", code = "all_branches_needed" });
         await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtext('ledger-close-year'))");
-        var (start, end) = CompanyClock.Days(new DateOnly(req.Year, 1, 1), new DateOnly(req.Year, 12, 31));
-        if (await _db.JournalEntries.AnyAsync(e => e.SourceType == "YEAR_CLOSE" && e.Date >= start))
-            return Bad("already_closed", "This year, or a later one, is already closed.");
-        // Everything up to 31 December, earlier closing entries included (they zeroed their years).
-        var net = await _db.JournalLines
-            .Where(l => l.Entry!.Date < end
-                        && (l.Account!.Type == LedgerAccountType.REVENUE || l.Account.Type == LedgerAccountType.EXPENSE))
-            .GroupBy(l => l.AccountId).Select(g => new { g.Key, Net = g.Sum(l => l.Debit - l.Credit) })
-            .Where(x => x.Net != 0).ToListAsync();
-        if (net.Count == 0) return Bad("nothing_to_close", "Nothing was earned or spent in that year.");
-        var accounts = await _db.LedgerAccounts.Where(a => net.Select(n => n.Key).Contains(a.Id)).ToDictionaryAsync(a => a.Id);
-        var draft = _ledger.Begin("YEAR_CLOSE", null, $"CLOSE-{req.Year}", $"Year-end close {req.Year}", null, Me(),
-            new DateTime(req.Year, 12, 31, 12, 0, 0, DateTimeKind.Utc));
-        foreach (var n in net) draft.Credit(accounts[n.Key], n.Net);
-        var profit = -net.Sum(n => n.Net);
-        draft.Credit(await _ledger.SystemAsync(LedgerKeys.RetainedEarnings), profit);
-        var entry = _ledger.Post(draft)!;
-        var settings = await _db.CompanySettings.FirstAsync();
-        var yearEnd = new DateTime(req.Year, 12, 31, 0, 0, 0, DateTimeKind.Utc);
-        if (settings.LockDate is null || settings.LockDate < yearEnd) settings.LockDate = yearEnd;
+        var closings = (await _db.JournalEntries.Where(e => e.SourceType == "YEAR_CLOSE").ToListAsync())
+            .Where(e => e.Date.Year >= req.Year).ToList();
+        var years = closings.Select(e => e.Date.Year).Append(req.Year).Distinct().Order().ToList();
+        if (closings.Any(e => e.Date.Year == req.Year))
+        {
+            // Closed already, with nothing entered since in it (or in a closed year after it).
+            var changed = false;
+            foreach (var y in years) changed |= (await UnclosedUpToAsync(y)).Count > 0;
+            if (!changed) return Bad("already_closed", "This year is closed, and nothing in it changed since.");
+        }
+        else if ((await UnclosedUpToAsync(req.Year)).Count == 0)
+            return Bad("nothing_to_close", "Nothing was earned or spent in that year.");
+
+        // Their closing entries are made anew, each from the books as they are by then.
+        _db.JournalEntries.RemoveRange(closings);
         await _db.SaveChangesAsync();
+        var retained = await _ledger.SystemAsync(LedgerKeys.RetainedEarnings);
+        JournalEntry? entry = null;
+        long profit = 0;
+        foreach (var y in years)
+        {
+            var net = await UnclosedUpToAsync(y);
+            if (net.Count == 0) continue;
+            var ids = net.Select(n => n.AccountId).ToList();
+            var accounts = await _db.LedgerAccounts.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id);
+            var draft = _ledger.Begin("YEAR_CLOSE", null, $"CLOSE-{y}", $"Year-end close {y}", null, Me(),
+                new DateTime(y, 12, 31, 12, 0, 0, DateTimeKind.Utc));
+            foreach (var n in net) draft.Credit(accounts[n.AccountId], n.Net);
+            draft.Credit(retained, -net.Sum(n => n.Net));
+            var posted = _ledger.Post(draft)!;
+            await _db.SaveChangesAsync();
+            if (y == req.Year) (entry, profit) = (posted, -net.Sum(n => n.Net));
+        }
         await tx.CommitAsync();
-        await AuditAsync("close_year", "ledger", entry.Id);
-        return Created($"/api/ledger/entries/{entry.Id}", new ClosedYearDto(req.Year, entry.Id.ToString(), profit,
-            entry.CreatedAt.ToString("o"), CurrentUser.Name(User)));
+        await AuditAsync("close_year", "ledger", entry?.Id ?? Guid.Empty);
+        // (A year whose earnings were all undone since has nothing left to close.)
+        return entry is null
+            ? Ok(new ClosedYearDto(req.Year, "", 0, DateTime.UtcNow.ToString("o"), CurrentUser.Name(User)))
+            : Created($"/api/ledger/entries/{entry.Id}", new ClosedYearDto(req.Year, entry.Id.ToString(), profit,
+                entry.CreatedAt.ToString("o"), CurrentUser.Name(User)));
     }
 
     // ------------------------------------------------------------------ helpers

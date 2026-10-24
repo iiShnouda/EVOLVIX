@@ -1070,7 +1070,8 @@ public record AgingDto(
 public record CloseYearRequest(int Year);
 
 /// <param name="NetProfit">The year's revenue − expenses moved into retained earnings.</param>
-public record ClosedYearDto(int Year, string EntryId, long NetProfit, string ClosedAt, string ClosedByName);
+/// <param name="Changed">Something was entered in the year (or before it) after it was closed: closing it again redoes it.</param>
+public record ClosedYearDto(int Year, string EntryId, long NetProfit, string ClosedAt, string ClosedByName, bool Changed = false);
 
 // ---- Backups ----
 

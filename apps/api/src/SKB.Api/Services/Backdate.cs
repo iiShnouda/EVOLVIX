@@ -10,7 +10,8 @@ namespace SKB.Api.Services;
 /// invoice entered late, money moved yesterday and written today. Everything the request saves —
 /// the document, its stock and money movements, its journal entry — lands on that day (at the
 /// time of day it is typed); the document keeps when it was really entered. Needs
-/// <c>documents:backdate</c>; never in the future, never in a locked period, at most a year back.
+/// <c>documents:backdate</c>; never in the future, never in a period someone locked. Any past year
+/// may be written in (owner, 2026-10-24: past years stay open, they are needed for other reasons).
 /// </summary>
 public static class Backdate
 {
@@ -45,7 +46,7 @@ public static class Backdate
         if (d > today) return (null, "future_date", "A document can't be dated after today.");
         if (!user.HasClaim("permission", Permissions.DocumentsBackdate))
             return (null, "backdate_not_allowed", "You may not date a document on an earlier day.");
-        if (d < today.AddDays(-366)) return (null, "bad_date", "At most a year back.");
+        if (d.Year < 2000) return (null, "bad_date", "Enter the date as yyyy-mm-dd.");
         var lockDate = await db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
         if (lockDate is DateTime locked && d <= DateOnly.FromDateTime(locked) && !Access.OverridePasses(user))
             return (null, "period_locked", "That date is in a locked period.");

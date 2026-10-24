@@ -1328,9 +1328,9 @@ export const en = {
   'ledger.year': 'Year',
   'ledger.closed': 'Closed',
   'ledger.yearClose': 'Year-end close',
-  'ledger.yearCloseHint':
-    'Closing a finished year moves its profit (or loss) into retained earnings, starts revenue and expenses again from zero, and locks the year.',
   'ledger.closeYear': 'Close a year',
+  'ledger.changedSinceClose': 'Changed after closing',
+  'ledger.closeAgain': 'Close again',
   'ledger.closeYearConfirm': 'Yes, close',
   'ledger.source.YEAR_CLOSE': 'Year-end close',
   'fin.amount': 'Amount',
@@ -1440,9 +1440,8 @@ export const en = {
   'audit.resource.unit': 'unit',
   'audit.resource.variant_option': 'size / color',
   'error.bad_year': 'Only a year that has ended can be closed.',
-  'error.already_closed': 'This year, or a later one, is already closed.',
+  'error.already_closed': 'This year is closed, and nothing in it changed since.',
   'error.nothing_to_close': 'Nothing was earned or spent in that year.',
-  'error.year_closed': 'A closed year stays locked.',
   // Who's online, backups
   'nav.presence': "Who's online",
   'perm.backup:create': 'Backups',
