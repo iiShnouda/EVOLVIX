@@ -108,6 +108,7 @@ function Period({
         </label>
         <div className="ms-auto">
           <ReportActions
+            scope="statement"
             disabled={!canPrint}
             onPrint={() =>
               report.print(

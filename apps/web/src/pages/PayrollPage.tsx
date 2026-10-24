@@ -10,6 +10,7 @@ import {
   type Employee,
   type PayrollRun,
   type PayrollRunStatus,
+  type Permission,
   type TranslationKey,
   type WorkShift,
   addMonths,
@@ -62,12 +63,41 @@ import {
 import { TableColumns } from '../components/TableColumns';
 
 type Tab = 'runs' | 'attendance' | 'employees' | 'advances' | 'setup';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'runs', label: 'payroll.tabRuns' },
-  { key: 'attendance', label: 'payroll.tabAttendance' },
-  { key: 'employees', label: 'payroll.tabEmployees' },
-  { key: 'advances', label: 'payroll.tabAdvances' },
-  { key: 'setup', label: 'payroll.tabSetup' },
+/** Each part opens for its own permissions (owner, 2026-10-23: none needs another). */
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'runs',
+    label: 'payroll.tabRuns',
+    anyOf: [
+      'payroll:runs',
+      'payroll:run',
+      'payroll:post',
+      'payroll:run_cancel',
+      'payroll:pay',
+      'payroll:adjust',
+      'payroll:adjust_cancel',
+    ],
+  },
+  {
+    key: 'attendance',
+    label: 'payroll.tabAttendance',
+    anyOf: ['payroll:attendance', 'attendance:edit', 'attendance:import'],
+  },
+  {
+    key: 'employees',
+    label: 'payroll.tabEmployees',
+    anyOf: ['payroll:employees', 'employees:create', 'employees:edit', 'employees:delete'],
+  },
+  {
+    key: 'advances',
+    label: 'payroll.tabAdvances',
+    anyOf: ['payroll:advances', 'payroll:advance', 'payroll:advance_cancel'],
+  },
+  {
+    key: 'setup',
+    label: 'payroll.tabSetup',
+    anyOf: ['payroll:setup', 'shifts:create', 'shifts:edit', 'payroll:settings'],
+  },
 ];
 const STATUSES: AttendanceStatus[] = ['PRESENT', 'ABSENT', 'LEAVE', 'UNPAID_LEAVE', 'HOLIDAY'];
 const RUN_TONE: Record<PayrollRunStatus, Tone> = {
@@ -106,8 +136,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 /** Payroll & attendance (الرواتب والحضور, DOMAIN.md §2.9). */
 export function PayrollPage() {
   const { t } = useT();
+  const can = useCan();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'runs') as Tab;
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
+  if (!tab) return <EmptyState title={t('common.empty')} icon="payroll" />;
   return (
     <div className="space-y-5">
       <PageHeader title={t('payroll.title')} subtitle={t('payroll.subtitle')} />
@@ -115,7 +149,7 @@ export function PayrollPage() {
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
       >
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button
             key={x.key}
             role="tab"
@@ -147,7 +181,11 @@ function RunsTab() {
   const [month, setMonth] = useState(lastMonth());
   const [branchId, setBranchId] = useState('');
   const branches = useBranches();
-  const runs = usePayrollRuns();
+  // The runs for whoever sees or works on them; the month's bonuses and deductions alone otherwise.
+  const seesRuns = (
+    ['payroll:runs', 'payroll:run', 'payroll:post', 'payroll:run_cancel', 'payroll:pay'] as const
+  ).some(can);
+  const runs = usePayrollRuns(seesRuns);
   const [year, m] = month.split('-').map(Number) as [number, number];
   const found = (runs.data ?? []).find(
     (r) => r.year === year && r.month === m && (r.branchId ?? '') === branchId,
@@ -214,6 +252,7 @@ function RunsTab() {
         </div>
         {r && (
           <ReportActions
+            scope="payroll"
             onPrint={() => report.print(paper.current, title)}
             onExcel={() =>
               report.excel(
@@ -249,7 +288,7 @@ function RunsTab() {
 
       <AdjustmentsCard year={year} month={m} branchId={branchId} />
 
-      {runs.isLoading ? (
+      {!seesRuns ? null : runs.isLoading ? (
         <Loading />
       ) : !found ? (
         <Card className="space-y-2 text-sm">
@@ -262,7 +301,7 @@ function RunsTab() {
                 .join(' · ')}
             </p>
           )}
-          {can('payroll:post') && (
+          {can('payroll:run') && (
             <Button
               icon="plus"
               loading={create.isPending}
@@ -292,17 +331,19 @@ function RunsTab() {
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                {r.status === 'DRAFT' && can('payroll:post') && (
+                {r.status === 'DRAFT' && (
                   <>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={action.isPending && action.variables?.action === 'recalculate'}
-                      onClick={() => action.mutate({ id: r.id, action: 'recalculate' })}
-                    >
-                      {t('payroll.recalculate')}
-                    </Button>
-                    {confirmPost ? (
+                    {can('payroll:run') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={action.isPending && action.variables?.action === 'recalculate'}
+                        onClick={() => action.mutate({ id: r.id, action: 'recalculate' })}
+                      >
+                        {t('payroll.recalculate')}
+                      </Button>
+                    )}
+                    {!can('payroll:post') ? null : confirmPost ? (
                       <>
                         <DocumentDateField
                           value={postDate}
@@ -327,13 +368,15 @@ function RunsTab() {
                         {t('payroll.post')}
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => action.mutate({ id: r.id, action: 'cancel' })}
-                    >
-                      {t('payroll.cancelDraft')}
-                    </Button>
+                    {can('payroll:run_cancel') && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => action.mutate({ id: r.id, action: 'cancel' })}
+                      >
+                        {t('payroll.cancelDraft')}
+                      </Button>
+                    )}
                   </>
                 )}
                 {r.status === 'POSTED' && can('payroll:pay') && (
@@ -521,8 +564,9 @@ function AdjustmentsCard({
   const { t, locale } = useT();
   const can = useCan();
   const currency = useCurrency();
-  const list = useAdjustments(year, month);
-  const employees = useEmployees();
+  const seen = can('payroll:runs') || can('payroll:adjust') || can('payroll:adjust_cancel');
+  const list = useAdjustments(year, month, seen);
+  const employees = useEmployees(seen);
   const add = useAddAdjustment();
   const cancel = useCancelAdjustment();
   const [employeeId, setEmployeeId] = useState('');
@@ -550,7 +594,7 @@ function AdjustmentsCard({
               </span>
               <span className="flex items-center gap-2">
                 <span className="tnum">{formatMoney(a.amount, currency, locale)}</span>
-                {!a.posted && can('payroll:adjust') && (
+                {!a.posted && can('payroll:adjust_cancel') && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -727,34 +771,38 @@ function AttendanceTab() {
             </select>
           </Field>
         </div>
-        {editable && (
+        {(editable || can('attendance:import')) && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() =>
-                setDraft((cur) =>
-                  Object.fromEntries(
-                    rows.map((r) => [
-                      r.employeeId,
-                      r.locked || r.dayOff || cur[r.employeeId]?.status
-                        ? cur[r.employeeId]!
-                        : { ...cur[r.employeeId]!, status: 'PRESENT' as AttendanceStatus },
-                    ]),
-                  ),
-                )
-              }
-            >
-              {t('payroll.allPresent')}
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="download"
-              onClick={() => setImporting(true)}
-            >
-              {t('payroll.import')}
-            </Button>
+            {editable && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  setDraft((cur) =>
+                    Object.fromEntries(
+                      rows.map((r) => [
+                        r.employeeId,
+                        r.locked || r.dayOff || cur[r.employeeId]?.status
+                          ? cur[r.employeeId]!
+                          : { ...cur[r.employeeId]!, status: 'PRESENT' as AttendanceStatus },
+                      ]),
+                    ),
+                  )
+                }
+              >
+                {t('payroll.allPresent')}
+              </Button>
+            )}
+            {can('attendance:import') && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="download"
+                onClick={() => setImporting(true)}
+              >
+                {t('payroll.import')}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -976,7 +1024,7 @@ function EmployeesTab() {
           />
           {t('payroll.showInactive')}
         </label>
-        {can('employees:manage') && (
+        {can('employees:create') && (
           <Button size="sm" icon="plus" onClick={() => setEditing('new')}>
             {t('payroll.addEmployee')}
           </Button>
@@ -995,7 +1043,7 @@ function EmployeesTab() {
               <li key={e.id}>
                 <button
                   type="button"
-                  disabled={!can('employees:manage')}
+                  disabled={!can('employees:edit') && !can('employees:delete')}
                   onClick={() => setEditing(e)}
                   className={`flex w-full flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-start hover:bg-surface-2 disabled:hover:bg-transparent ${e.isActive ? '' : 'opacity-60'}`}
                 >
@@ -1054,7 +1102,7 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
     })),
   );
   const shifts = useShifts();
-  const staff = useReps(can('sales:view'));
+  const staff = useReps();
   const [f, setF] = useState({
     name: employee?.name ?? '',
     branchId: employee?.branchId ?? workBranch,
@@ -1214,31 +1262,35 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         {employee ? (
           <span className="flex flex-wrap gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={save.isPending}
-              onClick={() => void run({ isActive: !employee.isActive })}
-            >
-              {employee.isActive ? t('payroll.deactivate') : t('payroll.reactivate')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="close"
-              loading={remove.isPending}
-              onClick={async () => {
-                if (!(await confirm({ message: t('payroll.deleteAsk'), danger: true }))) return;
-                try {
-                  await remove.mutateAsync(employee.id);
-                  onClose();
-                } catch {
-                  /* shown below */
-                }
-              }}
-            >
-              {t('payroll.delete')}
-            </Button>
+            {can('employees:edit') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={save.isPending}
+                onClick={() => void run({ isActive: !employee.isActive })}
+              >
+                {employee.isActive ? t('payroll.deactivate') : t('payroll.reactivate')}
+              </Button>
+            )}
+            {can('employees:delete') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="close"
+                loading={remove.isPending}
+                onClick={async () => {
+                  if (!(await confirm({ message: t('payroll.deleteAsk'), danger: true }))) return;
+                  try {
+                    await remove.mutateAsync(employee.id);
+                    onClose();
+                  } catch {
+                    /* shown below */
+                  }
+                }}
+              >
+                {t('payroll.delete')}
+              </Button>
+            )}
           </span>
         ) : (
           <span />
@@ -1247,14 +1299,16 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
           <Button variant="ghost" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button
-            icon="check"
-            loading={save.isPending}
-            disabled={!f.name.trim() || idBad}
-            onClick={() => void run()}
-          >
-            {t('common.save')}
-          </Button>
+          {can(employee ? 'employees:edit' : 'employees:create') && (
+            <Button
+              icon="check"
+              loading={save.isPending}
+              disabled={!f.name.trim() || idBad}
+              onClick={() => void run()}
+            >
+              {t('common.save')}
+            </Button>
+          )}
         </div>
       </div>
     </Sheet>
@@ -1334,16 +1388,18 @@ function AdvancesTab() {
                   >
                     {t(`payroll.adv.${a.status}` as TranslationKey)}
                   </Badge>
-                  {a.status === 'OPEN' && a.remaining === a.amount && can('payroll:advance') && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      loading={cancel.isPending && cancel.variables === a.id}
-                      onClick={() => cancel.mutate(a.id)}
-                    >
-                      {t('payroll.returned')}
-                    </Button>
-                  )}
+                  {a.status === 'OPEN' &&
+                    a.remaining === a.amount &&
+                    can('payroll:advance_cancel') && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={cancel.isPending && cancel.variables === a.id}
+                        onClick={() => cancel.mutate(a.id)}
+                      >
+                        {t('payroll.returned')}
+                      </Button>
+                    )}
                 </span>
               </li>
             ))}
@@ -1462,8 +1518,11 @@ function AdvancesTab() {
 function SetupTab() {
   const { t, locale } = useT();
   const can = useCan();
-  const shifts = useShifts();
-  const rules = usePayrollRules();
+  // Shifts and the payroll rules are permissions of their own (owner, 2026-10-23).
+  const seesShifts = can('payroll:setup') || can('shifts:create') || can('shifts:edit');
+  const seesRules = can('payroll:setup') || can('payroll:settings');
+  const shifts = useShifts(seesShifts);
+  const rules = usePayrollRules(seesRules);
   const saveRules = useSavePayrollRules();
   const [editing, setEditing] = useState<WorkShift | 'new' | null>(null);
   const [r, setR] = useState<{
@@ -1480,110 +1539,114 @@ function SetupTab() {
       });
   }, [rules.data, r]);
   const dayNames = useDayNames();
-  const manage = can('employees:manage');
+  const manage = can('payroll:settings');
   return (
     <div className="grid gap-3 lg:grid-cols-2">
-      <Card className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="font-medium">{t('payroll.shifts')}</p>
-          {manage && (
-            <Button size="sm" icon="plus" onClick={() => setEditing('new')}>
-              {t('payroll.addShift')}
-            </Button>
-          )}
-        </div>
-        {(shifts.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted">{t('payroll.noShifts')}</p>
-        ) : (
-          <ul className="divide-y divide-line text-sm">
-            {(shifts.data ?? []).map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  disabled={!manage}
-                  onClick={() => setEditing(s)}
-                  className={`flex w-full items-center justify-between gap-2 py-2 text-start ${s.isActive ? '' : 'opacity-60'}`}
-                >
-                  <span>
-                    <span className="font-medium">{s.name}</span>
-                    <span className="block text-xs text-muted tnum">
-                      <bdi>
-                        {s.start}–{s.end}
-                      </bdi>{' '}
-                      · {t('payroll.grace')} {formatNumber(s.graceMinutes, locale)} ·{' '}
-                      {s.daysOff.map((d) => dayNames[d]).join(locale === 'ar' ? '، ' : ', ')}
-                    </span>
-                  </span>
-                  <span className="text-xs text-faint tnum">
-                    {formatNumber(Math.round((s.minutes / 60) * 10) / 10, locale)}{' '}
-                    {t('payroll.hours')}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-      <Card className="space-y-3">
-        <p className="font-medium">{t('payroll.rules')}</p>
-        {r && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('payroll.dayBasis')}>
-                <input
-                  className={`${field} tnum`}
-                  type="number"
-                  min={20}
-                  max={31}
-                  disabled={!manage}
-                  value={r.dayBasis}
-                  onChange={(e) => setR({ ...r, dayBasis: e.target.value })}
-                />
-              </Field>
-              <Field label={t('payroll.overtimePercent')}>
-                <input
-                  className={`${field} tnum`}
-                  type="number"
-                  min={0}
-                  max={500}
-                  disabled={!manage}
-                  value={r.overtimePercent}
-                  onChange={(e) => setR({ ...r, overtimePercent: e.target.value })}
-                />
-              </Field>
-            </div>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                disabled={!manage}
-                checked={r.missing}
-                onChange={(e) => setR({ ...r, missing: e.target.checked })}
-              />
-              <span>{t('payroll.missingIsAbsent')}</span>
-            </label>
-            {manage && (
-              <Button
-                size="sm"
-                icon="check"
-                loading={saveRules.isPending}
-                onClick={() =>
-                  saveRules.mutate({
-                    dayBasis: Number(r.dayBasis),
-                    overtimePercent: Number(r.overtimePercent),
-                    missingAttendanceIsAbsent: r.missing,
-                  })
-                }
-              >
-                {t('common.save')}
+      {seesShifts && (
+        <Card className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="font-medium">{t('payroll.shifts')}</p>
+            {can('shifts:create') && (
+              <Button size="sm" icon="plus" onClick={() => setEditing('new')}>
+                {t('payroll.addShift')}
               </Button>
             )}
-            {saveRules.error && (
-              <p className="text-sm text-destructive">{errorText(t, saveRules.error)}</p>
-            )}
-          </>
-        )}
-      </Card>
+          </div>
+          {(shifts.data ?? []).length === 0 ? (
+            <p className="text-sm text-muted">{t('payroll.noShifts')}</p>
+          ) : (
+            <ul className="divide-y divide-line text-sm">
+              {(shifts.data ?? []).map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    disabled={!can('shifts:edit')}
+                    onClick={() => setEditing(s)}
+                    className={`flex w-full items-center justify-between gap-2 py-2 text-start ${s.isActive ? '' : 'opacity-60'}`}
+                  >
+                    <span>
+                      <span className="font-medium">{s.name}</span>
+                      <span className="block text-xs text-muted tnum">
+                        <bdi>
+                          {s.start}–{s.end}
+                        </bdi>{' '}
+                        · {t('payroll.grace')} {formatNumber(s.graceMinutes, locale)} ·{' '}
+                        {s.daysOff.map((d) => dayNames[d]).join(locale === 'ar' ? '، ' : ', ')}
+                      </span>
+                    </span>
+                    <span className="text-xs text-faint tnum">
+                      {formatNumber(Math.round((s.minutes / 60) * 10) / 10, locale)}{' '}
+                      {t('payroll.hours')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+      {seesRules && (
+        <Card className="space-y-3">
+          <p className="font-medium">{t('payroll.rules')}</p>
+          {r && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t('payroll.dayBasis')}>
+                  <input
+                    className={`${field} tnum`}
+                    type="number"
+                    min={20}
+                    max={31}
+                    disabled={!manage}
+                    value={r.dayBasis}
+                    onChange={(e) => setR({ ...r, dayBasis: e.target.value })}
+                  />
+                </Field>
+                <Field label={t('payroll.overtimePercent')}>
+                  <input
+                    className={`${field} tnum`}
+                    type="number"
+                    min={0}
+                    max={500}
+                    disabled={!manage}
+                    value={r.overtimePercent}
+                    onChange={(e) => setR({ ...r, overtimePercent: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  disabled={!manage}
+                  checked={r.missing}
+                  onChange={(e) => setR({ ...r, missing: e.target.checked })}
+                />
+                <span>{t('payroll.missingIsAbsent')}</span>
+              </label>
+              {manage && (
+                <Button
+                  size="sm"
+                  icon="check"
+                  loading={saveRules.isPending}
+                  onClick={() =>
+                    saveRules.mutate({
+                      dayBasis: Number(r.dayBasis),
+                      overtimePercent: Number(r.overtimePercent),
+                      missingAttendanceIsAbsent: r.missing,
+                    })
+                  }
+                >
+                  {t('common.save')}
+                </Button>
+              )}
+              {saveRules.error && (
+                <p className="text-sm text-destructive">{errorText(t, saveRules.error)}</p>
+              )}
+            </>
+          )}
+        </Card>
+      )}
       {editing && (
         <ShiftSheet
           shift={editing === 'new' ? undefined : editing}

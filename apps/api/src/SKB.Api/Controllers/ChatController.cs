@@ -16,7 +16,8 @@ namespace SKB.Api.Controllers;
 /// <list type="bullet">
 /// <item><c>chat:use</c>: talk one to one, and in the groups one is in.</item>
 /// <item><c>chat:monitor</c>: read every conversation (not write in others').</item>
-/// <item><c>chat:manage</c>: make groups and stop or allow people writing.</item>
+/// <item><c>chat:groups</c>: make groups and change who is in them.</item>
+/// <item><c>chat:mute</c>: stop or allow people writing.</item>
 /// </list>
 /// Messages stay on the server; nothing is deleted. Each new message is only signalled over the live
 /// connection ("chat" with the conversation id); its text is read from here, which checks access.
@@ -41,12 +42,14 @@ public sealed class ChatController : ControllerBase
     private Guid Me => Guid.Parse(CurrentUser.Id(User));
     private bool Can(string permission) => User.HasClaim("permission", permission);
     private ActionResult Denied() => StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+    /// <summary>Any of the chat's permissions opens it (owner, 2026-10-23: none needs another).</summary>
+    private bool Opens() => User.HasAny(Permissions.ChatUse, Permissions.ChatMonitor, Permissions.ChatGroups, Permissions.ChatMute);
 
     /// <summary>Whether this person may write, and how many messages wait for them.</summary>
     [HttpGet("status")]
     public async Task<ActionResult<ChatStatusDto>> Status()
     {
-        if (!Can(Permissions.ChatUse) && !Can(Permissions.ChatMonitor)) return Denied();
+        if (!Opens()) return Denied();
         var me = Me;
         var unread = await _db.ChatMembers.Where(m => m.StaffId == me)
             .SumAsync(m => _db.ChatMessages.Count(x => x.ConversationId == m.ConversationId
@@ -58,7 +61,7 @@ public sealed class ChatController : ControllerBase
     [HttpGet("people")]
     public async Task<ActionResult<ChatPersonDto[]>> People()
     {
-        if (!Can(Permissions.ChatUse) && !Can(Permissions.ChatMonitor)) return Denied();
+        if (!Opens()) return Denied();
         var muted = (await _db.ChatMutes.Select(m => m.StaffId).ToListAsync()).ToHashSet();
         var people = await _db.Staff.AsNoTracking().Where(s => s.IsActive)
             .OrderBy(s => s.FullName).Select(s => new { s.Id, s.Code, s.FullName, s.Role }).ToListAsync();
@@ -70,8 +73,7 @@ public sealed class ChatController : ControllerBase
     [HttpGet("conversations")]
     public async Task<ActionResult<ChatConversationDto[]>> Conversations([FromQuery] bool all = false)
     {
-        if (all ? !Can(Permissions.ChatMonitor) : !Can(Permissions.ChatUse) && !Can(Permissions.ChatMonitor))
-            return Denied();
+        if (all ? !Can(Permissions.ChatMonitor) : !Opens()) return Denied();
         var me = Me;
         var q = _db.ChatConversations.AsNoTracking();
         if (!all) q = q.Where(c => c.Members.Any(m => m.StaffId == me));
@@ -137,9 +139,9 @@ public sealed class ChatController : ControllerBase
         return conv.Id;
     }
 
-    /// <summary>Make a group conversation (chat:manage); its maker is in it.</summary>
+    /// <summary>Make a group conversation (chat:groups); its maker is in it.</summary>
     [HttpPost("groups")]
-    [Authorize(Policy = Permissions.ChatManage)]
+    [Authorize(Policy = Permissions.ChatGroups)]
     public async Task<ActionResult<ChatConversationRefDto>> CreateGroup([FromBody] ChatGroupRequest req)
     {
         var title = Loc.Clean(req.Title);
@@ -159,9 +161,9 @@ public sealed class ChatController : ControllerBase
         return Ok(new ChatConversationRefDto(conv.Id.ToString()));
     }
 
-    /// <summary>Rename a group or change who is in it (chat:manage).</summary>
+    /// <summary>Rename a group or change who is in it (chat:groups).</summary>
     [HttpPut("groups/{id:guid}")]
-    [Authorize(Policy = Permissions.ChatManage)]
+    [Authorize(Policy = Permissions.ChatGroups)]
     public async Task<ActionResult<ChatConversationRefDto>> UpdateGroup(Guid id, [FromBody] ChatGroupRequest req)
     {
         var conv = await _db.ChatConversations.Include(c => c.Members)
@@ -200,7 +202,7 @@ public sealed class ChatController : ControllerBase
         var member = await _db.ChatMembers.FirstOrDefaultAsync(m => m.ConversationId == id && m.StaffId == me);
         if (member is null && !Can(Permissions.ChatMonitor))
             return NotFound(new { message = "Conversation not found.", code = "not_found" });
-        if (member is not null && !Can(Permissions.ChatUse) && !Can(Permissions.ChatMonitor)) return Denied();
+        if (member is not null && !Opens()) return Denied();
         take = Math.Clamp(take, 1, 200);
         var q = _db.ChatMessages.AsNoTracking().Where(m => m.ConversationId == id);
         if (before is DateTime b) q = q.Where(m => m.CreatedAt < b);
@@ -241,9 +243,9 @@ public sealed class ChatController : ControllerBase
         return Ok(new ChatMessageDto(msg.Id.ToString(), me.ToString(), CurrentUser.Name(User), msg.Text, msg.CreatedAt));
     }
 
-    /// <summary>Stop someone writing in the chat (chat:manage). They still read.</summary>
+    /// <summary>Stop someone writing in the chat (chat:mute). They still read.</summary>
     [HttpPost("mutes/{staffId:guid}")]
-    [Authorize(Policy = Permissions.ChatManage)]
+    [Authorize(Policy = Permissions.ChatMute)]
     public async Task<IActionResult> Mute(Guid staffId)
     {
         if (staffId == Me) return BadRequest(new { message = "You can't stop yourself.", code = "bad_request" });
@@ -259,9 +261,9 @@ public sealed class ChatController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Let someone write in the chat again (chat:manage).</summary>
+    /// <summary>Let someone write in the chat again (chat:mute).</summary>
     [HttpDelete("mutes/{staffId:guid}")]
-    [Authorize(Policy = Permissions.ChatManage)]
+    [Authorize(Policy = Permissions.ChatMute)]
     public async Task<IActionResult> Unmute(Guid staffId)
     {
         var row = await _db.ChatMutes.FirstOrDefaultAsync(m => m.StaffId == staffId);

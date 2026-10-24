@@ -1,6 +1,6 @@
-import { formatMoney } from '@skb/shared';
+import { LOOKUPS, formatMoney } from '@skb/shared';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { useCanAny } from '../lib/can';
 import { useMoneyAccounts } from '../lib/queries';
 
 /**
@@ -19,8 +19,8 @@ export function MoneyAccountPicker({
   className: string;
 }) {
   const { t, locale } = useT();
-  const can = useCan();
-  const allowed = can('receipts:view');
+  const canAny = useCanAny();
+  const allowed = canAny(...LOOKUPS.moneyAccounts);
   const accounts = useMoneyAccounts(allowed);
   if (!allowed) return null;
   return (
@@ -32,7 +32,8 @@ export function MoneyAccountPicker({
           .filter((a) => a.isActive)
           .map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} · {t(`money.kind.${a.kind}`)} · {formatMoney(a.balance, a.currency, locale)}
+              {a.name} · {t(`money.kind.${a.kind}`)}
+              {a.balance != null && ` · ${formatMoney(a.balance, a.currency, locale)}`}
             </option>
           ))}
       </select>

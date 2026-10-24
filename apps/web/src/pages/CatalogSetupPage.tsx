@@ -32,14 +32,32 @@ type Tab = 'departments' | 'groups' | 'units' | 'sizes' | 'colors' | 'seasons';
  * levels: an item has one sale price per unit. A department is added in the branches' warehouses
  * chosen, shows where it is, and one with nothing recorded can be deleted (owner, 2026-10-11).
  */
-const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
-  { key: 'departments', label: 'setup.departments', permission: 'categories:manage' },
-  { key: 'groups', label: 'groups.tab', permission: 'categories:manage' },
-  { key: 'units', label: 'setup.units', permission: 'units:manage' },
-  { key: 'sizes', label: 'setup.sizes', permission: 'variant_options:manage' },
-  { key: 'colors', label: 'setup.colors', permission: 'variant_options:manage' },
-  { key: 'seasons', label: 'setup.seasons', permission: 'seasons:manage' },
+const TABS: { key: Tab; label: TranslationKey }[] = [
+  { key: 'departments', label: 'setup.departments' },
+  { key: 'groups', label: 'groups.tab' },
+  { key: 'units', label: 'setup.units' },
+  { key: 'sizes', label: 'setup.sizes' },
+  { key: 'colors', label: 'setup.colors' },
+  { key: 'seasons', label: 'setup.seasons' },
 ];
+
+/** What a list's tab lets the person do: each a permission of its own (owner, 2026-10-23). */
+interface Rights {
+  create: boolean;
+  edit: boolean;
+  close: boolean;
+  remove: boolean;
+}
+
+function rightsOn(tab: Tab, can: (p: Permission) => boolean): Rights {
+  const may = (action: string) => can(`${tab}:${action}` as Permission);
+  return {
+    create: may('create'),
+    edit: may('edit'),
+    close: tab !== 'seasons' && may('close'),
+    remove: may('delete'),
+  };
+}
 
 /** One row of any of the lists. */
 interface Entry {
@@ -64,7 +82,9 @@ export function CatalogSetupPage() {
   const navigate = useNavigate();
   const can = useCan();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'departments') as Tab;
+  const mine = TABS.filter((x) => Object.values(rightsOn(x.key, can)).some(Boolean));
+  const tabs = mine.length ? mine : TABS;
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]!.key) as Tab;
 
   const units = useUnits();
   const departments = useDepartments();
@@ -74,8 +94,7 @@ export function CatalogSetupPage() {
   const warehouses = useWarehouses(true);
   const stores = (warehouses.data ?? []).filter((w) => w.kind === 'STORE');
 
-  const current = TABS.find((x) => x.key === tab)!;
-  const canManage = can(current.permission);
+  const rights = rightsOn(tab, can);
   const list: CatalogList =
     tab === 'units'
       ? 'units'
@@ -113,7 +132,7 @@ export function CatalogSetupPage() {
         role="tablist"
         className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
       >
-        {TABS.map((x) => (
+        {tabs.map((x) => (
           <button
             key={x.key}
             role="tab"
@@ -134,15 +153,11 @@ export function CatalogSetupPage() {
             <Spinner size={26} />
           </div>
         ) : (
-          <GroupsSetup
-            departments={departments.data ?? []}
-            groups={groups.data ?? []}
-            canManage={canManage}
-          />
+          <GroupsSetup departments={departments.data ?? []} groups={groups.data ?? []} />
         )
       ) : (
         <>
-          {canManage &&
+          {rights.create &&
             (tab === 'seasons' ? (
               <AddSeason />
             ) : (
@@ -164,7 +179,7 @@ export function CatalogSetupPage() {
                     entry={e}
                     tab={tab}
                     list={list}
-                    canManage={canManage}
+                    rights={rights}
                     stores={stores}
                   />
                 ))}
@@ -396,17 +411,16 @@ function EntryRow({
   entry,
   tab,
   list,
-  canManage,
+  rights,
   stores,
 }: {
   entry: Entry;
   tab: Tab;
   list: CatalogList;
-  canManage: boolean;
+  rights: Rights;
   stores: Warehouse[];
 }) {
   const { t, locale } = useT();
-  const can = useCan();
   const update = useUpdateCatalogEntry(list);
   const remove = useDeleteCatalogEntry(list);
   const [editing, setEditing] = useState(false);
@@ -415,10 +429,8 @@ function EntryRow({
   const [pieces, setPieces] = useState(String(entry.pieces ?? 1));
   const isDepartment = tab === 'departments';
   const isSeason = tab === 'seasons';
-  const canRename = !isSeason || entry.kind === 'CUSTOM';
-  const canDelete = isDepartment
-    ? can('departments:delete')
-    : can('setup:delete') && !(isSeason && entry.kind === 'NONE');
+  const canRename = rights.edit && (!isSeason || entry.kind === 'CUSTOM');
+  const canDelete = rights.remove && !(isSeason && entry.kind === 'NONE');
   const where = isDepartment ? placesOf(entry.id, stores) : [];
   const [places, setPlaces] = useState<string[]>(where);
   const error = (update.error ?? remove.error) as ApiError | null;
@@ -535,7 +547,7 @@ function EntryRow({
         </div>
       )}
 
-      {canManage && (
+      {(rights.edit || rights.close || rights.remove) && (
         <div className="mt-2 flex flex-wrap gap-2">
           {editing ? (
             <>
@@ -564,7 +576,7 @@ function EntryRow({
                   {t('common.edit')}
                 </Button>
               )}
-              {tab === 'colors' && (
+              {tab === 'colors' && rights.edit && (
                 <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2 text-xs">
                   {t('setup.swatch')}
                   <input
@@ -575,7 +587,7 @@ function EntryRow({
                   />
                 </label>
               )}
-              {entry.isActive && !isSeason && (
+              {rights.close && entry.isActive && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -585,7 +597,7 @@ function EntryRow({
                   {t('setup.close')}
                 </Button>
               )}
-              {entry.isActive === false && (
+              {rights.close && entry.isActive === false && (
                 <Button
                   size="sm"
                   variant="secondary"

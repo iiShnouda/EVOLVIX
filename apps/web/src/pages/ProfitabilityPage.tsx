@@ -87,6 +87,7 @@ export function ProfitabilityPage({ embedded = false }: { embedded?: boolean }) 
           </div>
           <div className="ms-auto">
             <ReportActions
+              scope="reports"
               disabled={!data}
               onPrint={() =>
                 tools.print(

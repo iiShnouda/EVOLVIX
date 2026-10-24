@@ -15,7 +15,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/analytics")]
-[Authorize(Policy = Permissions.AnalyticsView)]
+[Authorize]
 public sealed class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -31,6 +31,7 @@ public sealed class AnalyticsController : ControllerBase
     /// months and years). Each row's key is "yyyy-MM" or "yyyy".
     /// </summary>
     [HttpGet("monthly")]
+    [Authorize(Policy = Permissions.ReportsMonthly)]
     public async Task<ActionResult<MonthlySalesDto[]>> Monthly([FromQuery] int months = 12, [FromQuery] string? by = null,
         [FromQuery] int years = 5)
     {
@@ -66,10 +67,11 @@ public sealed class AnalyticsController : ControllerBase
     /// people who may see costs.
     /// </summary>
     [HttpGet("profit-loss")]
+    [AnyPermission(Permissions.ReportsPl, Permissions.DashboardProfit)]
     public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
         [FromQuery] string? branchId = null)
     {
-        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
+        // A report of profit and loss: its own permission is enough (owner, 2026-10-23).
         var today = CompanyClock.Today;
         var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);
         var toDay = CompanyClock.ParseDay(to) ?? today;
@@ -87,6 +89,7 @@ public sealed class AnalyticsController : ControllerBase
 
     /// <summary>The customers (or suppliers) with the most net business in a period.</summary>
     [HttpGet("top-parties")]
+    [Authorize(Policy = Permissions.ReportsParties)]
     public async Task<ActionResult<TopPartyDto[]>> TopParties(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string side = "customers",
         [FromQuery] int limit = 10)
@@ -120,6 +123,7 @@ public sealed class AnalyticsController : ControllerBase
     /// counts against whoever made the sale it returns.
     /// </summary>
     [HttpGet("performance")]
+    [Authorize(Policy = Permissions.ReportsPerformance)]
     public async Task<ActionResult<PerformanceDto>> Performance(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "rep")
     {
@@ -182,6 +186,7 @@ public sealed class AnalyticsController : ControllerBase
     /// didn't sell at all in the period (الأصناف الراكدة), with their value at cost.
     /// </summary>
     [HttpGet("item-movement")]
+    [Authorize(Policy = Permissions.ReportsItems)]
     public async Task<ActionResult<ItemMovementDto>> ItemMovement(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] int limit = 20)
     {
@@ -244,6 +249,7 @@ public sealed class AnalyticsController : ControllerBase
     /// invoices as they stand.
     /// </summary>
     [HttpGet("aging")]
+    [Authorize(Policy = Permissions.ReportsAging)]
     public async Task<ActionResult<AgingDto>> Aging([FromQuery] string side = "customers")
     {
         var suppliers = side.Equals("suppliers", StringComparison.OrdinalIgnoreCase);

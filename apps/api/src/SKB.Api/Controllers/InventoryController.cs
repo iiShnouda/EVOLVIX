@@ -18,7 +18,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/inventory")]
-[Authorize(Policy = Permissions.InventoryView)]
+[Authorize]
 public sealed class InventoryController : ControllerBase
 {
     private const int MaxStocktakeLines = 1000;
@@ -49,6 +49,12 @@ public sealed class InventoryController : ControllerBase
     /// (then cost is that branch's). Totals cover that scope and ignore the search / low-stock filter.
     /// </summary>
     [HttpGet("items")]
+    [AnyPermission(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
+        Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
+        Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
+        Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
+        Permissions.InventoryTotalItems, Permissions.InventoryTotalQuantity, Permissions.InventoryTotalSaleValue,
+        Permissions.InventoryTotalSupplyValue, Permissions.InventoryTotalSold)]
     public async Task<ActionResult<InventoryListDto>> Items(
         [FromQuery] string? search = null, [FromQuery] bool lowOnly = false, [FromQuery] string? warehouseId = null,
         [FromQuery] string? modelId = null, [FromQuery] string? branchId = null,
@@ -196,12 +202,17 @@ public sealed class InventoryController : ControllerBase
             Has(Permissions.InventoryTotalItems) ? list.Count(i => i.StockOnHand > 0) : null,
             Has(Permissions.InventoryTotalQuantity) ? list.Sum(i => (long)Math.Max(0, i.StockOnHand)) : null,
             Has(Permissions.InventoryTotalSaleValue) ? list.Sum(i => (long)Math.Max(0, i.StockOnHand) * i.SalePrice) : null,
-            seeCosts && Has(Permissions.InventoryTotalSupplyValue) ? list.Sum(i => i.StockValue) : null,
+            Has(Permissions.InventoryTotalSupplyValue) ? list.Sum(i => i.StockValue) : null,
             sold);
 
+        // The rows for whoever sees the list or works on its items; the totals alone otherwise.
+        var seesRows = User.HasAny(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
+            Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
+            Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
+            Permissions.ProductsCardReturns, Permissions.ProductsCardPrices);
         return Ok(new InventoryListDto(
-            pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))
-                .ToArray(),
+            seesRows ? pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))
+                .ToArray() : Array.Empty<InventoryItemDto>(),
             seeCosts ? all.Sum(i => i.StockValue) : 0, all.Count, all.Count(i => i.IsLow),
             await CurrencyAsync(), list.Count, at, size, totals));
     }
@@ -217,6 +228,7 @@ public sealed class InventoryController : ControllerBase
     /// Defaults to the last 30 days. Values use each branch's average cost at that point in time.
     /// </summary>
     [HttpGet("items/{id:guid}/card")]
+    [Authorize(Policy = Permissions.InventoryCard)]
     public async Task<ActionResult<ItemCardDto>> Card(Guid id,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? warehouseId = null)
     {
@@ -305,6 +317,8 @@ public sealed class InventoryController : ControllerBase
     /// part needs its own permission; costs and profit need costs:view as everywhere.
     /// </summary>
     [HttpGet("items/{id:guid}/life")]
+    [AnyPermission(Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
+        Permissions.ProductsCardReturns, Permissions.ProductsCardPrices)]
     public async Task<ActionResult<ItemLifeDto>> Life(Guid id)
     {
         var product = await _db.Products.AsNoTracking().Include(p => p.Supplier)
@@ -387,7 +401,8 @@ public sealed class InventoryController : ControllerBase
     /// their last movement on or before that day).
     /// </summary>
     [HttpGet("valuation")]
-    [Authorize(Policy = Permissions.InventoryValuation)]
+    [AnyPermission(Permissions.InventoryValuation, Permissions.ValuationDepartments, Permissions.ValuationWarehouses,
+        Permissions.ValuationItems, Permissions.ValuationPrices, Permissions.ValuationSuppliers)]
     public async Task<ActionResult<ValuationDto>> Valuation(
         [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null,
         [FromQuery] string? branchId = null, [FromQuery] string? departmentId = null,
@@ -517,9 +532,12 @@ public sealed class InventoryController : ControllerBase
                 .OrderByDescending(r => r.Value ?? 0).ToArray()
             : Array.Empty<ValuationRowDto>();
 
+        // The grand totals are inventory:valuation's; each table its own (owner, 2026-10-23).
+        var totalsToo = Has(Permissions.InventoryValuation);
         return Ok(new ValuationDto(
             date.ToString("yyyy-MM-dd"), await CurrencyAsync(), wid?.ToString(),
-            lines.Sum(l => l.Qty), Money(lines.Sum(l => l.Value)), totalItems, keep.Count,
+            totalsToo ? lines.Sum(l => l.Qty) : 0, totalsToo ? Money(lines.Sum(l => l.Value)) : null,
+            totalsToo ? totalItems : 0, totalsToo ? keep.Count : 0,
             categoryRows, itemRows, warehouseRows, modelRows));
     }
 
@@ -529,6 +547,7 @@ public sealed class InventoryController : ControllerBase
     /// for people who may see costs.
     /// </summary>
     [HttpGet("warehouses/{id:guid}/statement")]
+    [AnyPermission(Permissions.StatementWarehouses)]
     public async Task<ActionResult<WarehouseStatementDto>> WarehouseStatement(Guid id, [FromQuery] string? from = null,
         [FromQuery] string? to = null)
     {

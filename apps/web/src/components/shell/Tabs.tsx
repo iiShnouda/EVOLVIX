@@ -16,6 +16,7 @@ import { useT } from '../../lib/i18n';
 import { api } from '../../lib/api';
 import { usePreferences } from '../../lib/queries';
 import { useDeviceInfo } from '../../lib/device';
+import { useHomePath } from '../../lib/home';
 import {
   MAIN_TAB,
   MAX_TABS,
@@ -50,6 +51,7 @@ const scrolls = new Map<string, number>();
 /** Show another tab: the address bar follows it; nothing on either page is lost. */
 export function useTabActions() {
   const navigate = useNavigate();
+  const home = useHomePath();
   const ask = (leave: () => void) =>
     useLeavePrompt.setState({
       ask: {
@@ -66,7 +68,7 @@ export function useTabActions() {
     if (!tab || id === active) return;
     scrolls.set(active, getScroll());
     useTabs.setState({ active: id });
-    navigate(tab.path || '/dashboard', { replace: true, state: TAB_SWITCH });
+    navigate(tab.path || home, { replace: true, state: TAB_SWITCH });
     requestAnimationFrame(() => setScroll(scrolls.get(id) ?? 0));
   };
   const open = (path: string) => {
@@ -95,7 +97,7 @@ export function useTabActions() {
           active: next.id,
           second: second === next.id ? null : second,
         });
-        navigate(next.path || '/dashboard', { replace: true, state: TAB_SWITCH });
+        navigate(next.path || home, { replace: true, state: TAB_SWITCH });
       } else useTabs.setState({ tabs: rest, second: second === id ? null : second });
       scrolls.delete(id);
     };
@@ -111,6 +113,7 @@ export function useTabActions() {
  */
 export function TabsView() {
   const { t } = useT();
+  const home = useHomePath();
   const location = useLocation();
   const { tabs, active, split, second } = useTabs();
   const { deviceClass } = useDeviceInfo();
@@ -205,7 +208,7 @@ export function TabsView() {
 
   const toggleSplit = () => {
     if (splitOn) return useTabs.setState({ split: false });
-    if (tabs.length < 2) actions.open('/dashboard');
+    if (tabs.length < 2) actions.open(home);
     useTabs.setState({ split: true });
   };
 
@@ -232,7 +235,7 @@ export function TabsView() {
         {tabs.length < MAX_TABS && (
           <button
             type="button"
-            onClick={() => actions.open('/dashboard')}
+            onClick={() => actions.open(home)}
             title={t('tabs.new')}
             aria-label={t('tabs.new')}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-fg"

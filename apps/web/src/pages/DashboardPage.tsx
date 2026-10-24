@@ -6,7 +6,9 @@ import {
   formatNumber,
   type DashRank,
   type DashboardData,
+  type DashboardMore,
   type KpiValue,
+  type Permission,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
@@ -49,22 +51,36 @@ const TONE_TILE: Record<Tone, { tile: string; text: string; color: string }> = {
   neutral: { tile: 'bg-surface-2', text: 'text-fg', color: 'var(--c-muted)' },
 };
 
-/** Every widget the dashboard can show, in order; each person picks theirs (owner, 2026-10-01). */
+/**
+ * Every widget the dashboard can show, in order, with the permissions that show it (owner,
+ * 2026-10-23: each card its own); each person picks theirs among them (owner, 2026-10-01).
+ */
 const WIDGETS = [
-  ['kpis', 'dash.w.kpis'],
-  ['profit', 'pnl.title'],
-  ['trend', 'dashboard.trend'],
-  ['month', 'dash.w.month'],
-  ['today', 'dash.w.today'],
-  ['topItems', 'dash.w.topItems'],
-  ['topCustomers', 'dash.w.topCustomers'],
-  ['branches', 'dash.w.branches'],
-  ['recent', 'dashboard.recent'],
-  ['alerts', 'dash.w.alerts'],
-  ['notesDue', 'dash.w.notesDue'],
-  ['accounts', 'dash.w.accounts'],
-  ['lowStock', 'dashboard.lowStock'],
-] as const satisfies readonly (readonly [string, TranslationKey])[];
+  [
+    'kpis',
+    'dash.w.kpis',
+    [
+      'dashboard:kpi_sales',
+      'dashboard:kpi_purchases',
+      'dashboard:kpi_receivables',
+      'dashboard:kpi_payables',
+      'dashboard:kpi_cash',
+      'dashboard:kpi_low_stock',
+    ],
+  ],
+  ['profit', 'pnl.title', ['dashboard:profit']],
+  ['trend', 'dashboard.trend', ['dashboard:trend']],
+  ['month', 'dash.w.month', ['dashboard:month', 'dashboard:stock_value']],
+  ['today', 'dash.w.today', ['dashboard:today']],
+  ['topItems', 'dash.w.topItems', ['dashboard:top_items']],
+  ['topCustomers', 'dash.w.topCustomers', ['dashboard:top_customers']],
+  ['branches', 'dash.w.branches', ['dashboard:branches']],
+  ['recent', 'dashboard.recent', ['dashboard:recent']],
+  ['alerts', 'dash.w.alerts', ['dashboard:awaiting', 'dashboard:over_limit']],
+  ['notesDue', 'dash.w.notesDue', ['dashboard:notes_due']],
+  ['accounts', 'dash.w.accounts', ['dashboard:accounts']],
+  ['lowStock', 'dashboard.lowStock', ['dashboard:low_stock']],
+] as const satisfies readonly (readonly [string, TranslationKey, readonly Permission[]])[];
 type Widget = (typeof WIDGETS)[number][0];
 
 /** The main period and the company's currency, for every card. */
@@ -105,7 +121,12 @@ export function DashboardPage() {
   const more = useDashboardMore(period).data;
   // Kept on the server for the person, like hidden columns.
   const [hidden, setHidden] = useHiddenColumns('dashboard.widgets');
-  const shows = (w: Widget) => !hidden.includes(w);
+  const allowed = WIDGETS.filter(([, , anyOf]) => anyOf.some(can));
+  const shows = (w: Widget) => !hidden.includes(w) && allowed.some(([id]) => id === w);
+  // The period's figures: the month, today's counts and the stock value, in one card.
+  const monthShown = shows('month') && !!more?.month;
+  const todayShown = shows('today') && !!more?.today;
+  const valueShown = shows('month') && more?.stockValue != null;
   const [choosing, setChoosing] = useState(false);
 
   if (isLoading) {
@@ -173,7 +194,7 @@ export function DashboardPage() {
 
         {shows('kpis') && <KpiRow {...cardPeriod('kpis')} />}
         {/* Gains, losses and net profit by branch (owner, 2026-10-06), for people who may see costs. */}
-        {shows('profit') && can('costs:view') && can('profit:view') && (
+        {shows('profit') && (
           <ProfitLossCard
             from={cardPeriod('profit').period.from}
             to={cardPeriod('profit').period.to}
@@ -185,11 +206,16 @@ export function DashboardPage() {
           {shows('trend') && (
             <TrendCard
               {...cardPeriod('trend')}
-              className={more?.month && shows('month') ? 'xl:col-span-2' : 'xl:col-span-3'}
+              className={monthShown || todayShown || valueShown ? 'xl:col-span-2' : 'xl:col-span-3'}
             />
           )}
-          {more?.month && shows('month') && (
-            <MonthCard {...cardPeriod('month')} withCounts={shows('today')} />
+          {(monthShown || todayShown || valueShown) && (
+            <MonthCard
+              {...cardPeriod('month')}
+              withMonth={monthShown}
+              withCounts={todayShown}
+              withValue={valueShown}
+            />
           )}
         </div>
 
@@ -232,7 +258,7 @@ export function DashboardPage() {
             closeLabel={t('common.close')}
           >
             <ul className="space-y-1">
-              {WIDGETS.map(([id, label]) => (
+              {allowed.map(([id, label]) => (
                 <li key={id}>
                   <label className="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-app)] px-2 py-2 text-sm hover:bg-surface-2">
                     <input
@@ -271,7 +297,7 @@ function CardHead({ title, p, extra }: { title: ReactNode; p?: PeriodProps; extr
 function KpiRow(p: PeriodProps) {
   const { t } = useT();
   const { data } = useDashboard(p.period);
-  if (!data) return null;
+  if (!data || data.kpis.length === 0) return null;
   return (
     <section>
       <CardHead title={t('dash.w.kpis')} p={p} />
@@ -358,17 +384,39 @@ function TrendCard({ className, ...p }: PeriodProps & { className?: string }) {
   );
 }
 
-/** The period's sales against the same number of days before it, as a ring. */
-function MonthCard({ withCounts, ...p }: PeriodProps & { withCounts: boolean }) {
+/**
+ * The period's sales against the same number of days before it, as a ring; today's counts and the
+ * stock value with it. Each part shows on its own permission.
+ */
+function MonthCard({
+  withMonth,
+  withCounts,
+  withValue,
+  ...p
+}: PeriodProps & { withMonth: boolean; withCounts: boolean; withValue: boolean }) {
   const { t, locale } = useT();
   const can = useCan();
-  const seeCosts = can('costs:view');
   const seeProfit = can('profit:view');
   const { data: more } = useDashboardMore(p.period);
   const currency = useContext(Main).currency;
-  if (!more?.month) return null;
+  if (!more) return null;
   const money = (v: number) => formatMoney(v, currency, locale);
-  const month = more.month;
+  const month = withMonth ? more.month : null;
+  const value = withValue && more.stockValue != null ? more.stockValue : null;
+  if (!month) {
+    if (!(withCounts && more.today) && value == null) return null;
+    return (
+      <Card className="flex flex-col">
+        <CardHead title={t(withCounts && more.today ? 'dash.w.today' : 'dash.stockValue')} p={p} />
+        {value != null && (
+          <dl className="space-y-2 text-sm">
+            <Line label={t('dash.stockValue')} value={money(value)} />
+          </dl>
+        )}
+        {withCounts && more.today && <TodayCounts today={more.today} money={money} />}
+      </Card>
+    );
+  }
   const percent = month.lastMonth > 0 ? Math.round((month.sales * 100) / month.lastMonth) : null;
   const change = percent != null ? percent - 100 : null;
   return (
@@ -409,26 +457,36 @@ function MonthCard({ withCounts, ...p }: PeriodProps & { withCounts: boolean }) 
               tone="text-destructive"
             />
           )}
-          {seeCosts && more.stockValue != null && (
-            <Line label={t('dash.stockValue')} value={money(more.stockValue)} />
-          )}
+          {value != null && <Line label={t('dash.stockValue')} value={money(value)} />}
         </dl>
       </div>
-      {withCounts && more.today && (
-        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
-          <Mini label={t('dash.invoices')} value={formatNumber(more.today.invoices, locale)} />
-          <Mini
-            label={t('dash.avgInvoice')}
-            value={
-              more.today.invoices > 0
-                ? money(Math.round((more.today.sales + more.today.returns) / more.today.invoices))
-                : '—'
-            }
-          />
-          <Mini label={t('dash.returns')} value={money(more.today.returns)} />
-        </div>
-      )}
+      {withCounts && more.today && <TodayCounts today={more.today} money={money} />}
     </Card>
+  );
+}
+
+/** Today's invoices, the average invoice and returns. */
+function TodayCounts({
+  today,
+  money,
+}: {
+  today: NonNullable<DashboardMore['today']>;
+  money: (v: number) => string;
+}) {
+  const { t, locale } = useT();
+  return (
+    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
+      <Mini label={t('dash.invoices')} value={formatNumber(today.invoices, locale)} />
+      <Mini
+        label={t('dash.avgInvoice')}
+        value={
+          today.invoices > 0
+            ? money(Math.round((today.sales + today.returns) / today.invoices))
+            : '—'
+        }
+      />
+      <Mini label={t('dash.returns')} value={money(today.returns)} />
+    </div>
   );
 }
 

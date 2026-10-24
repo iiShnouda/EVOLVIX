@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatMoney,
   formatNumber,
+  type Permission,
   type TranslationKey,
   companyToday,
 } from '@skb/shared';
@@ -30,15 +31,16 @@ import { TableColumns } from '../components/TableColumns';
 import { CodeName, codeName } from '../components/CodeName';
 
 type Tab = 'pl' | 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'pl', label: 'pnl.title' },
-  { key: 'profit', label: 'analytics.tabProfit' },
-  { key: 'monthly', label: 'analytics.tabMonthly' },
-  { key: 'performance', label: 'analytics.tabPerformance' },
-  { key: 'parties', label: 'analytics.tabParties' },
-  { key: 'aging', label: 'analytics.tabAging' },
-  { key: 'items', label: 'analytics.tabItems' },
-  { key: 'changes', label: 'changes.title' },
+/** Each report is a permission of its own (owner, 2026-10-23). */
+const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
+  { key: 'pl', label: 'pnl.title', permission: 'reports:pl' },
+  { key: 'profit', label: 'analytics.tabProfit', permission: 'reports:profit' },
+  { key: 'monthly', label: 'analytics.tabMonthly', permission: 'reports:monthly' },
+  { key: 'performance', label: 'analytics.tabPerformance', permission: 'reports:performance' },
+  { key: 'parties', label: 'analytics.tabParties', permission: 'reports:parties' },
+  { key: 'aging', label: 'analytics.tabAging', permission: 'reports:aging' },
+  { key: 'items', label: 'analytics.tabItems', permission: 'reports:items' },
+  { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -50,15 +52,11 @@ const small =
 export function AnalyticsPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
-  // Profitability is the owner's unless given (costs:view): the server refuses it otherwise.
   const can = useCan();
-  const seeCosts = can('costs:view') && can('profit:view');
-  const tabs = TABS.filter(
-    (x) =>
-      ((x.key !== 'profit' && x.key !== 'pl') || seeCosts) &&
-      (x.key !== 'changes' || can('sales:changes_report')),
-  );
-  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]!.key) as Tab;
+  const tabs = TABS.filter((x) => can(x.permission));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
+  if (!tab) return <EmptyState title={t('common.empty')} icon="analytics" />;
   return (
     <div className="space-y-5">
       <PageHeader title={t('analytics.title')} subtitle={t('analytics.subtitle')} />
@@ -204,6 +202,7 @@ function MonthlyTab() {
           </label>
         </div>
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('analytics.tabMonthly'), subtitle)}
           onExcel={() =>
@@ -376,6 +375,7 @@ function PerformanceTab() {
           </div>
         </div>
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() =>
             report.print(paper.current, `${t('analytics.tabPerformance')} — ${byLabel}`, period)
@@ -532,6 +532,7 @@ function AgingTab() {
           ))}
         </div>
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('analytics.tabAging'), sideLabel)}
           onExcel={() =>
@@ -612,7 +613,9 @@ function AgingTab() {
                     {data.rows.map((r) => (
                       <tr key={r.partyId}>
                         <td className="px-3 py-1.5">
-                          {can('ledger:view') ? (
+                          {can(
+                            side === 'customers' ? 'statement:customers' : 'statement:suppliers',
+                          ) ? (
                             <button
                               type="button"
                               className="text-start hover:text-brand hover:underline"
@@ -675,6 +678,7 @@ function PartiesTab() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
         <ReportActions
+          scope="reports"
           onPrint={() => report.print(paper.current, t('analytics.tabParties'), period)}
         />
       </div>
@@ -747,6 +751,7 @@ function ItemsTab() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <Period from={from} to={to} setFrom={setFrom} setTo={setTo} />
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('analytics.tabItems'), period)}
         />
@@ -884,6 +889,7 @@ function ChangesTab() {
           </label>
         </div>
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('changes.title'), period)}
           onExcel={() =>

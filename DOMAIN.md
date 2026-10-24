@@ -482,7 +482,7 @@ Old values are from the company's settings file. "Default" is what SKB starts wi
 | `chkBoxFar*`, `chkBoxMakhzan*`, `chkBoxKhazna*`, `chkBoxMandob*`, `chkBoxAmin*` | **scopes**: allowed branches / warehouses / cash boxes / reps |
 | `chkBoxShowPriceT/B/MInReport` | `prices:view-cost` (supply price and average cost are hidden without it) |
 | `chkBoxIsPriceUpdate`, `chkBoxIsPriceComboEnable` | `sales:change_price`, `sales:choose_price_level` (and `purchases:…` for purchases) — built |
-| `chkCanAddItems` | `products:create`, `products:edit`, `prices:edit`, `units:manage`, `categories:manage`, `variant_options:manage`, `price_levels:manage` — built |
+| `chkCanAddItems` | `products:create`, `products:edit`, `prices:edit`, and each list's own `units:*`, `departments:*`, `groups:*`, `sizes:*`, `colors:*`, `seasons:*` (create / edit / close / delete), `price_levels:manage` — built |
 | `chkBoxShowRaseed` | `parties:view-balance` |
 | `chkBoxCanTarseed` | `setup:opening-balances` |
 | `chkIsSV`, `chkIsIntAdmin` | roles `OWNER` / `ADMIN` |

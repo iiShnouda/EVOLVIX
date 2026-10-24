@@ -11,8 +11,8 @@ namespace SKB.Api.Controllers;
 /// <summary>
 /// Price lists (قوائم الأسعار) and quantity discounts (خصم الكميات), DOMAIN.md §2.2, and the prices
 /// an invoice's lines would get (the invoice screen asks as they change; the invoice itself checks
-/// the same way, see <see cref="SpecialPrices"/>). Anyone who sees stock can look; changing them
-/// needs <c>price_lists:manage</c>.
+/// the same way, see <see cref="SpecialPrices"/>). Looking and each change (add, edit, prices,
+/// customers, delete; quantity discounts) are permissions of their own.
 /// </summary>
 [ApiController]
 [Route("api")]
@@ -39,7 +39,7 @@ public sealed class PriceListsController : ControllerBase
     // ------------------------------------------------------------------ lists
 
     [HttpGet("price-lists")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize(Policy = Lookups.PriceLists)]
     public async Task<ActionResult<PriceListDto[]>> Lists([FromQuery] string? side = null)
     {
         var q = _db.PriceLists.AsNoTracking();
@@ -49,7 +49,7 @@ public sealed class PriceListsController : ControllerBase
     }
 
     [HttpGet("price-lists/{id:guid}")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize(Policy = Lookups.PriceLists)]
     public async Task<ActionResult<PriceListDetailDto>> Get(Guid id)
     {
         var list = await _db.PriceLists.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
@@ -58,7 +58,7 @@ public sealed class PriceListsController : ControllerBase
     }
 
     [HttpPost("price-lists")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.PriceListsCreate)]
     public async Task<ActionResult<PriceListDetailDto>> Create([FromBody] SavePriceListRequest req)
     {
         // Price lists are for customers only (owner, 2026-10-21); purchase lists made before still work.
@@ -72,7 +72,7 @@ public sealed class PriceListsController : ControllerBase
     }
 
     [HttpPut("price-lists/{id:guid}")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.PriceListsEdit)]
     public async Task<ActionResult<PriceListDetailDto>> Update(Guid id, [FromBody] SavePriceListRequest req)
     {
         var list = await _db.PriceLists.FirstOrDefaultAsync(l => l.Id == id);
@@ -89,7 +89,7 @@ public sealed class PriceListsController : ControllerBase
 
     /// <summary>Delete a list; the parties that had it go back to their price level.</summary>
     [HttpDelete("price-lists/{id:guid}")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.PriceListsDelete)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var list = await _db.PriceLists.FirstOrDefaultAsync(l => l.Id == id);
@@ -106,7 +106,7 @@ public sealed class PriceListsController : ControllerBase
 
     /// <summary>Replace a list's prices: each an item or a whole model, one unit, a price.</summary>
     [HttpPut("price-lists/{id:guid}/items")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.PriceListsPrices)]
     public async Task<ActionResult<PriceListDetailDto>> SetItems(Guid id, [FromBody] SetPriceListItemsRequest req)
     {
         var list = await _db.PriceLists.FirstOrDefaultAsync(l => l.Id == id);
@@ -154,7 +154,7 @@ public sealed class PriceListsController : ControllerBase
 
     /// <summary>The customers a sales list is given to (owner, 2026-10-21): those named get it, the others it had lose it.</summary>
     [HttpPut("price-lists/{id:guid}/parties")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.PriceListsCustomers)]
     public async Task<ActionResult<PriceListDetailDto>> SetParties(Guid id, [FromBody] SetPriceListPartiesRequest req)
     {
         var list = await _db.PriceLists.FirstOrDefaultAsync(l => l.Id == id);
@@ -178,7 +178,7 @@ public sealed class PriceListsController : ControllerBase
     // ------------------------------------------------------------------ quantity discounts
 
     [HttpGet("quantity-breaks")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [AnyPermission(Permissions.QuantityBreaksView, Permissions.QuantityBreaksEdit)]
     public async Task<ActionResult<QuantityBreakDto[]>> Breaks([FromQuery] string? productId = null)
     {
         var q = _db.QuantityBreaks.AsNoTracking().Include(b => b.Product).Include(b => b.Model).AsQueryable();
@@ -196,7 +196,7 @@ public sealed class PriceListsController : ControllerBase
     /// percent off; a larger quantity gets a larger discount. They replace what it had.
     /// </summary>
     [HttpPut("quantity-breaks")]
-    [Authorize(Policy = Permissions.PriceListsManage)]
+    [Authorize(Policy = Permissions.QuantityBreaksEdit)]
     public async Task<ActionResult<QuantityBreakDto[]>> SetBreaks([FromBody] SetQuantityBreaksRequest req)
     {
         Guid? product = Guid.TryParse(req.ProductId, out var p) ? p : null;
@@ -262,7 +262,9 @@ public sealed class PriceListsController : ControllerBase
         if (!isSale && !side.Equals("purchase", StringComparison.OrdinalIgnoreCase))
             return NotFound(new { message = "Not found.", code = "not_found" });
         bool Can(string permission) => User.HasClaim("permission", permission);
-        if (isSale ? !(Can(Permissions.SalesCreate) || Can(Permissions.SalesQuote)) : !Can(Permissions.PurchasesCreate))
+        if (isSale
+                ? !User.HasAny(Permissions.SalesCreate, Permissions.SalesQuote, Permissions.SalesOrder, Permissions.SalesEdit)
+                : !Can(Permissions.PurchasesCreate))
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var priceSide = isSale ? PriceSide.SALE : PriceSide.PURCHASE;
 

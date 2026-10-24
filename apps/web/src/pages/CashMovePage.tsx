@@ -569,7 +569,7 @@ function SideCard({
           <span className="text-muted">{t('move.balance')}</span>
           {side.kind === 'MONEY' ? (
             <span className="font-semibold tnum">
-              {account ? formatMoney(account.balance, currency, locale) : '—'}
+              {account?.balance != null ? formatMoney(account.balance, currency, locale) : '—'}
             </span>
           ) : side.party ? (
             <SidedMoney value={side.party.balance} currency={currency} />
@@ -692,7 +692,7 @@ function SideCard({
 
 /**
  * The expense item an expense goes to, with adding a new item or deleting one nothing used yet
- * (owner, 2026-10-02), for whoever may manage expense items.
+ * (owner, 2026-10-02), each for whoever may do it.
  */
 function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const { t } = useT();
@@ -701,7 +701,8 @@ function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: 
   const save = useSaveExpenseCategory();
   const remove = useDeleteExpenseCategory();
   const [name, setName] = useState('');
-  const manage = can('expense_categories:manage');
+  const adds = can('expense_categories:create');
+  const deletes = can('expense_categories:delete');
   const list = (items.data ?? []).filter((c) => c.isActive);
   return (
     <div className="space-y-2">
@@ -717,7 +718,7 @@ function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: 
               </option>
             ))}
           </select>
-          {manage && value && (
+          {deletes && value && (
             <Button
               size="sm"
               variant="ghost"
@@ -738,7 +739,7 @@ function ExpenseItemPicker({ value, onChange }: { value: string; onChange: (id: 
           )}
         </span>
       </label>
-      {manage && (
+      {adds && (
         <span className="flex gap-1.5">
           <input
             className={field}

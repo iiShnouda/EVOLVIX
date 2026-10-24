@@ -30,14 +30,14 @@ const ACTIONS: QuickAction[] = [
     label: 'qa.saleReturn',
     icon: 'returns',
     path: '/sales/returns/new',
-    permission: 'sales:return',
+    anyOf: ['sales:return', 'sales:return_free'],
   },
   {
     id: 'together',
     label: 'together.title',
     icon: 'sales',
     path: '/sales/together',
-    permission: 'sales:view',
+    permission: 'sales:together',
   },
   {
     id: 'purchase',
@@ -51,7 +51,7 @@ const ACTIONS: QuickAction[] = [
     label: 'qa.purchaseReturn',
     icon: 'returns',
     path: '/purchases/returns/new',
-    permission: 'purchases:return',
+    anyOf: ['purchases:return', 'purchases:return_free'],
   },
   {
     id: 'receipt',
@@ -115,14 +115,22 @@ const ACTIONS: QuickAction[] = [
     label: 'nav.statement',
     icon: 'ledger',
     path: '/statement',
-    permission: 'ledger:view',
+    anyOf: [
+      'statement:customers',
+      'statement:suppliers',
+      'statement:carriers',
+      'statement:money',
+      'statement:expenses',
+      'statement:warehouses',
+      'statement:ledger',
+    ],
   },
   {
     id: 'stocktake',
     label: 'stocktake.title',
     icon: 'inventory',
     path: '/inventory/stocktake',
-    permission: 'inventory:stocktake',
+    anyOf: ['inventory:stocktake_view', 'inventory:stocktake'],
   },
   {
     id: 'labels',
@@ -145,7 +153,6 @@ const PAGES: QuickAction[] = NAV_ITEMS.map((item) => ({
   label: item.labelKey,
   icon: item.icon,
   path: item.path,
-  permission: item.permission,
   anyOf: item.anyOf,
   group: 'pages' as const,
 }));
@@ -166,9 +173,9 @@ export const NONE = '-';
 export const MAX_QUICK = 12;
 
 export function mayUse(a: QuickAction, permissions: Permission[]): boolean {
+  if (!a.permission && !a.anyOf) return true;
   return (
-    !a.permission ||
-    hasPermission(permissions, a.permission) ||
+    (!!a.permission && hasPermission(permissions, a.permission)) ||
     (a.anyOf ?? []).some((p) => hasPermission(permissions, p))
   );
 }

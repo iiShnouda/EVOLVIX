@@ -13,6 +13,7 @@ import { ConfirmHost } from './components/ConfirmHost';
 import { setCompanyTimeZone } from '@skb/shared';
 import { queryClient } from './lib/queryClient';
 import { useCompanySettings, usePreferences, usePrintPaper } from './lib/queries';
+import { useHomePath } from './lib/home';
 import { api, API_BASE } from './lib/api';
 import { applyDocumentPrefs, usePrefs } from './stores/prefs';
 import { useAuth } from './stores/auth';
@@ -233,10 +234,16 @@ function PrintPaper() {
 /** Opening the app (or signing in) lands on the page the person was on, else the dashboard. */
 function Landing() {
   const prefs = usePreferences();
+  const home = useHomePath();
   if (prefs.isPending) return null;
   const page = prefs.data?.[LAST_PAGE];
   const safe = page?.startsWith('/') && !page.startsWith('//') && page !== '/';
-  return <Navigate to={safe && page ? page : '/dashboard'} replace />;
+  return <Navigate to={safe && page ? page : home} replace />;
+}
+
+/** An unknown address: the person's first page. */
+function HomeRedirect() {
+  return <Navigate to={useHomePath()} replace />;
 }
 
 function LoginRoute() {
@@ -352,14 +359,14 @@ const routes = createRoutesFromElements(
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/themes" element={<ThemesPage />} />
     </Route>
-    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    <Route path="*" element={<HomeRedirect />} />
   </>,
 );
 // Each open tab shows one of the signed-in pages (shell/Tabs.tsx), with an unknown address
 // going to the dashboard there too.
 setTabRoutes([
   ...(routes.find((r) => !r.path && r.children)?.children ?? []),
-  { path: '*', element: <Navigate to="/dashboard" replace /> },
+  { path: '*', element: <HomeRedirect /> },
 ]);
 const router = createBrowserRouter(routes);
 

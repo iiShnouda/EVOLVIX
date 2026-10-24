@@ -13,7 +13,7 @@ import { SectionHeading, SidedMoney, StatementBody } from './LedgerStatementShee
 import { Sheet } from './Sheet';
 import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { mayOpenStatement, useCan } from '../lib/can';
 import { useDeviceInfo } from '../lib/device';
 import { useCustomerAccount, useDepartments, useDocument } from '../lib/queries';
 import { codeName } from './CodeName';
@@ -32,8 +32,9 @@ const small =
 export function PartyAccount({ party }: { party: Party }) {
   const { t } = useT();
   const can = useCan();
-  const canStatement = can('ledger:view');
-  const canInvoices = party.types.includes('CUSTOMER') && can('sales:view');
+  const canStatement = mayOpenStatement(party, can);
+  const canInvoices =
+    party.types.includes('CUSTOMER') && (can('sales:together') || can('statement:customers'));
   const [department, setDepartment] = useState('');
   const account = useCustomerAccount(party.id, department, canInvoices);
   const departments = useDepartments();

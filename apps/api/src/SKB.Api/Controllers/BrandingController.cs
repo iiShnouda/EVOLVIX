@@ -11,7 +11,7 @@ namespace SKB.Api.Controllers;
 /// <summary>
 /// The company's own name and logo (owner, 2026-10-01): a buyer of Evolvix brands it with their
 /// office's name and logo, shown beside the program's own mark. Read without signing in, so the
-/// sign-in page can show them; only settings:manage changes the logo.
+/// sign-in page can show them; only settings:logo changes the logo.
 /// </summary>
 [ApiController]
 [Route("api/branding")]
@@ -52,7 +52,7 @@ public sealed class BrandingController : ControllerBase
     }
 
     [HttpPut("logo")]
-    [Authorize(Policy = Permissions.SettingsManage)]
+    [Authorize(Policy = Permissions.SettingsLogo)]
     public async Task<ActionResult<BrandingDto>> Upload([FromBody] UploadLogoRequest req)
     {
         var text = req.Data ?? "";
@@ -84,7 +84,7 @@ public sealed class BrandingController : ControllerBase
     }
 
     [HttpDelete("logo")]
-    [Authorize(Policy = Permissions.SettingsManage)]
+    [Authorize(Policy = Permissions.SettingsLogo)]
     public async Task<ActionResult<BrandingDto>> Remove()
     {
         var s = await Settings();

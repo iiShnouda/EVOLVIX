@@ -10,7 +10,7 @@ namespace SKB.Api.Controllers;
 
 /// <summary>
 /// The public storefront catalog (owner, 2026-10-12: show the office's products on the KM Collection
-/// site). This endpoint is OWNER-ONLY (<c>settings:manage</c>): the company server never faces the
+/// site). This endpoint needs <c>settings:storefront</c>: the company server never faces the
 /// public. The owner reads this scrubbed catalog and publishes it OUTWARD to the storefront host; the
 /// site reads the published copy, so there is no inbound path to this server to attack. The catalog
 /// carries only what is meant to be public — names, departments, colours, sizes, and in-stock or not
@@ -19,7 +19,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/storefront")]
-[Authorize(Policy = Permissions.SettingsManage)]
+[Authorize(Policy = Permissions.SettingsStorefront)]
 public sealed class StorefrontController : ControllerBase
 {
     private readonly AppDbContext _db;

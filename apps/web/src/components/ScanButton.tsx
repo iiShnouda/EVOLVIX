@@ -9,7 +9,7 @@ import { shrinkPhoto } from './IdCards';
 
 /**
  * Read a supplier invoice or cheques from a photo with the company's offline assistant (owner,
- * 2026-10-06), for people with ai:scan: from the camera, or a photo already on the device. What comes back only fills the
+ * 2026-10-06), for people with ai:scan_purchase / ai:scan_cheques: from the camera, or a photo already on the device. What comes back only fills the
  * form; the person checks it and saves as usual. The photo is not kept anywhere.
  */
 export function ScanButton<T>({
@@ -31,7 +31,7 @@ export function ScanButton<T>({
   /** How long the server has been reading, shown on the button (a slow server takes minutes). */
   const [waited, setWaited] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  if (!can('ai:scan')) return null;
+  if (!can(kind === 'purchase' ? 'ai:scan_purchase' : 'ai:scan_cheques')) return null;
   // Several pages of one invoice can be picked together (owner, 2026-10-19): each is read in turn
   // and its lines added to the same form.
   const [pageOf, setPageOf] = useState<[number, number] | null>(null);

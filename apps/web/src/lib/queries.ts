@@ -667,7 +667,10 @@ export function useInventory(params: {
   inStock?: boolean;
   /** Any of these stock statuses: in, out, low. */
   status?: string[];
+  /** Off when the list isn't shown (it opens only for those who may see it). */
+  enabled?: boolean;
 }) {
+  const { enabled = true, ...rest } = params;
   const query = new URLSearchParams();
   if (params.status?.length) query.set('status', params.status.join(','));
   if (params.inStock) query.set('inStock', 'true');
@@ -685,9 +688,10 @@ export function useInventory(params: {
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   if (params.modelId) query.set('modelId', params.modelId);
   return useQuery({
-    queryKey: ['inventory', 'items', params],
+    queryKey: ['inventory', 'items', rest],
     queryFn: () => api.get<InventoryList>(`/inventory/items?${query}`),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -1804,12 +1808,13 @@ export function useTrialBalance(from: string, to: string) {
   });
 }
 
-export function useJournal(params: { from: string; to: string; source?: string }) {
+export function useJournal(params: { from: string; to: string; source?: string }, enabled = true) {
   const query = new URLSearchParams({ from: params.from, to: params.to, pageSize: '100' });
   if (params.source) query.set('source', params.source);
   return useQuery({
     queryKey: ['ledger', 'journal', params],
     queryFn: () => api.get<Paginated<JournalEntry>>(`/ledger/entries?${query}`),
+    enabled,
   });
 }
 
@@ -2157,10 +2162,11 @@ export function useDeleteEmployee() {
   });
 }
 
-export function useShifts() {
+export function useShifts(enabled = true) {
   return useQuery({
     queryKey: ['payroll', 'shifts'],
     queryFn: () => api.get<WorkShift[]>('/payroll/shifts'),
+    enabled,
   });
 }
 
@@ -2175,10 +2181,11 @@ export function useSaveShift() {
   });
 }
 
-export function usePayrollRules() {
+export function usePayrollRules(enabled = true) {
   return useQuery({
     queryKey: ['payroll', 'rules'],
     queryFn: () => api.get<PayrollRules>('/payroll/settings'),
+    enabled,
   });
 }
 
@@ -2225,10 +2232,11 @@ export function useImportAttendance() {
   });
 }
 
-export function useAdjustments(year: number, month: number) {
+export function useAdjustments(year: number, month: number, enabled = true) {
   return useQuery({
     queryKey: ['payroll', 'adjustments', year, month],
     queryFn: () => api.get<PayrollAdjustment[]>(`/payroll/adjustments?year=${year}&month=${month}`),
+    enabled,
   });
 }
 
@@ -2291,10 +2299,11 @@ export function useCancelAdvance() {
   });
 }
 
-export function usePayrollRuns() {
+export function usePayrollRuns(enabled = true) {
   return useQuery({
     queryKey: ['payroll', 'runs'],
     queryFn: () => api.get<PayrollRun[]>('/payroll/runs'),
+    enabled,
   });
 }
 
@@ -2352,7 +2361,7 @@ export function usePreferences() {
   });
 }
 
-/** Cancelled and changed sales invoices in a period (sales:changes_report). */
+/** Cancelled and changed sales invoices in a period (reports:changes). */
 export function useInvoiceChanges(from: string, to: string, kind: '' | 'EDIT' | 'CANCEL') {
   const q = new URLSearchParams({ from, to });
   if (kind) q.set('kind', kind);

@@ -45,7 +45,7 @@ public sealed class CashHandoversController : ControllerBase
     [HttpGet("cash-handovers")]
     public async Task<ActionResult<CashHandoverDto[]>> List([FromQuery] string? status = null, [FromQuery] string? side = null)
     {
-        if (!Can(Permissions.CashHandoverSend) && !Can(Permissions.CashHandoverReceive) && !Can(Permissions.ReceiptsView))
+        if (!User.HasAny(Permissions.CashHandoverSend, Permissions.CashHandoverReceive, Permissions.MoneyAccounts))
             return Forbid();
         var mine = _money.Visible(User).Select(a => a.Id);
         var q = Query();

@@ -215,13 +215,11 @@ function GroupNode({
   group,
   groups,
   depth,
-  canManage,
   path,
 }: {
   group: Group;
   groups: Group[];
   depth: number;
-  canManage: boolean;
   path: string;
 }) {
   const { t, locale } = useT();
@@ -260,23 +258,29 @@ function GroupNode({
         {group.keywords.length > 0 && (
           <span className="text-xs text-faint">{group.keywords.join('، ')}</span>
         )}
-        {canManage && mode === 'view' && (
+        {mode === 'view' && (
           <span className="ms-auto flex flex-wrap gap-1">
-            <Button size="sm" variant="ghost" icon="plus" onClick={() => setMode('add')}>
-              {t('groups.addUnder')}
-            </Button>
-            <Button size="sm" variant="ghost" icon="edit" onClick={() => setMode('edit')}>
-              {t('common.edit')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              loading={save.isPending}
-              onClick={() => save.mutate({ id: group.id, input: { isActive: !group.isActive } })}
-            >
-              {t(group.isActive ? 'setup.close' : 'setup.reopen')}
-            </Button>
-            {can('setup:delete') && (
+            {can('groups:create') && (
+              <Button size="sm" variant="ghost" icon="plus" onClick={() => setMode('add')}>
+                {t('groups.addUnder')}
+              </Button>
+            )}
+            {can('groups:edit') && (
+              <Button size="sm" variant="ghost" icon="edit" onClick={() => setMode('edit')}>
+                {t('common.edit')}
+              </Button>
+            )}
+            {can('groups:close') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={save.isPending}
+                onClick={() => save.mutate({ id: group.id, input: { isActive: !group.isActive } })}
+              >
+                {t(group.isActive ? 'setup.close' : 'setup.reopen')}
+              </Button>
+            )}
+            {can('groups:delete') && (
               <Button
                 size="sm"
                 variant="dangerGhost"
@@ -315,14 +319,7 @@ function GroupNode({
       {open && kids.length > 0 && (
         <ul>
           {kids.map((k) => (
-            <GroupNode
-              key={k.id}
-              group={k}
-              groups={groups}
-              depth={depth + 1}
-              canManage={canManage}
-              path={code}
-            />
+            <GroupNode key={k.id} group={k} groups={groups} depth={depth + 1} path={code} />
           ))}
         </ul>
       )}
@@ -334,13 +331,12 @@ function GroupNode({
 export function GroupsSetup({
   departments,
   groups,
-  canManage,
 }: {
   departments: Department[];
   groups: Group[];
-  canManage: boolean;
 }) {
   const { t } = useT();
+  const can = useCan();
   const open = useMemo(() => departments.filter((d) => d.isActive), [departments]);
   const [chosen, setChosen] = useState('');
   const department = open.find((d) => d.id === chosen) ?? open[0];
@@ -376,7 +372,7 @@ export function GroupsSetup({
       <Card padded={false} className="overflow-hidden">
         <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
           <span className="font-semibold">{department.name}</span>
-          {canManage && !adding && (
+          {can('groups:create') && !adding && (
             <Button size="sm" icon="plus" onClick={() => setAdding(true)}>
               {t('groups.add')}
             </Button>
@@ -401,7 +397,6 @@ export function GroupsSetup({
                 group={g}
                 groups={groups}
                 depth={0}
-                canManage={canManage}
                 path={department.prefix ?? ''}
               />
             ))}

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LicenseBanner } from '../LicenseBanner';
 import { NavLink, useLocation, type NavLinkProps } from 'react-router-dom';
-import { NAV_ITEMS, hasPermission, type NavItem } from '@skb/shared';
+import { NAV_SECTIONS, mayOpen, type NavItem, type NavSection } from '@skb/shared';
 import { Icon } from '../Icon';
 import { Logo, Wordmark } from '../Logo';
 import { CompanyMark, CompanyName } from '../CompanyBadge';
@@ -23,19 +23,30 @@ import { UpdateBadge } from './UpdateBadge';
 import { GlobalSearch, PhoneSearch } from './GlobalSearch';
 import { FROM_MENU } from '../../lib/tabs';
 
-function useVisibleNav(): NavItem[] {
+/** The menu's parts with only the pages this person may open (a part with none is left out). */
+function useVisibleSections(): NavSection[] {
   const user = useAuth((s) => s.user);
   return useMemo(
     () =>
-      NAV_ITEMS.filter(
-        (item) =>
-          !item.permission ||
-          (user &&
-            (hasPermission(user.permissions, item.permission) ||
-              (item.anyOf ?? []).some((p) => hasPermission(user.permissions, p)))),
-      ),
+      NAV_SECTIONS.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => mayOpen(item, user?.permissions ?? [])),
+      })).filter((section) => section.items.length > 0),
     [user],
   );
+}
+
+function useVisibleNav(): NavItem[] {
+  const sections = useVisibleSections();
+  return useMemo(() => sections.flatMap((s) => s.items), [sections]);
+}
+
+/** The page of the menu the screen is on: the longest path the address starts with. */
+function useActiveKey(items: NavItem[]): string | undefined {
+  const { pathname } = useLocation();
+  return items
+    .filter((i) => pathname === i.path || pathname.startsWith(`${i.path}/`))
+    .sort((a, b) => b.path.length - a.path.length)[0]?.key;
 }
 
 /** Adaptive application shell: desktop sidebar · tablet rail · phone bottom tabs + More. */
@@ -62,7 +73,8 @@ export function Shell() {
 function SidebarShell() {
   const backdrop = useBackdropStyle();
   const { t } = useT();
-  const items = useVisibleNav();
+  const sections = useVisibleSections();
+  const active = useActiveKey(useVisibleNav());
   const collapsed = usePrefs((s) => s.navCollapsed);
   if (collapsed) return <RailShell canExpand />;
   return (
@@ -74,9 +86,23 @@ function SidebarShell() {
         className="flex h-screen w-64 shrink-0 flex-col overflow-hidden border-e border-line bg-surface"
       >
         {/* The side menu's own slim scroll, on its inner edge; the brand now lives in the top bar. */}
-        <nav className="nav-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {items.map((item) => (
-            <SidebarLink key={item.key} item={item} label={t(item.labelKey)} />
+        <nav className="nav-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
+          {sections.map((section) => (
+            <div key={section.key} className="space-y-0.5">
+              {section.labelKey && (
+                <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-faint">
+                  {t(section.labelKey)}
+                </p>
+              )}
+              {section.items.map((item) => (
+                <SidebarLink
+                  key={item.key}
+                  item={item}
+                  label={t(item.labelKey)}
+                  active={item.key === active}
+                />
+              ))}
+            </div>
           ))}
         </nav>
       </aside>
@@ -91,7 +117,8 @@ function SidebarShell() {
 function RailShell({ canExpand = false }: { canExpand?: boolean }) {
   const backdrop = useBackdropStyle();
   const { t } = useT();
-  const items = useVisibleNav();
+  const sections = useVisibleSections();
+  const active = useActiveKey(useVisibleNav());
   return (
     <div className="flex h-screen overflow-hidden bg-canvas" style={backdrop}>
       <aside
@@ -99,8 +126,18 @@ function RailShell({ canExpand = false }: { canExpand?: boolean }) {
         className="flex h-screen w-20 shrink-0 flex-col items-center overflow-hidden border-e border-line bg-surface py-3"
       >
         <nav className="nav-scroll flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5">
-          {items.map((item) => (
-            <RailLink key={item.key} item={item} label={t(item.labelKey)} />
+          {sections.map((section, i) => (
+            <div key={section.key} className="flex flex-col items-center gap-1">
+              {i > 0 && <span aria-hidden className="my-1 h-px w-10 bg-line" />}
+              {section.items.map((item) => (
+                <RailLink
+                  key={item.key}
+                  item={item}
+                  label={t(item.labelKey)}
+                  active={item.key === active}
+                />
+              ))}
+            </div>
           ))}
         </nav>
       </aside>
@@ -118,6 +155,8 @@ function PhoneShell() {
   const backdrop = useBackdropStyle();
   const { t } = useT();
   const items = useVisibleNav();
+  const sections = useVisibleSections();
+  const active = useActiveKey(items);
   const [moreOpen, setMoreOpen] = useState(false);
 
   const headerRef = useRef<HTMLElement>(null);
@@ -189,7 +228,12 @@ function PhoneShell() {
         className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface pb-safe"
       >
         {primary.map((item) => (
-          <PhoneTab key={item.key} item={item} label={t(item.labelKey)} />
+          <PhoneTab
+            key={item.key}
+            item={item}
+            label={t(item.labelKey)}
+            active={item.key === active}
+          />
         ))}
         <button
           onClick={() => setMoreOpen(true)}
@@ -213,22 +257,43 @@ function PhoneShell() {
             <div className="mb-3 flex justify-center">
               <PrefControls />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {rest.map((item) => (
-                <MenuLink
-                  key={item.key}
-                  to={item.path}
-                  onClick={() => setMoreOpen(false)}
-                  className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-3 text-center text-sm text-fg"
-                >
-                  <span className="relative">
-                    <Icon name={item.icon} size={22} className="text-brand" />
-                    {item.key === 'chat' && <ChatBadge className="absolute -end-2.5 -top-1.5" />}
-                    {item.key === 'updates' && <UpdateBadge className="absolute -end-1 -top-1" />}
-                  </span>
-                  <span className="text-xs">{t(item.labelKey)}</span>
-                </MenuLink>
-              ))}
+            <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+              {sections
+                .map((section) => ({
+                  ...section,
+                  items: section.items.filter((i) => rest.includes(i)),
+                }))
+                .filter((section) => section.items.length > 0)
+                .map((section) => (
+                  <div key={section.key}>
+                    {section.labelKey && (
+                      <p className="mb-1.5 px-1 text-[11px] font-semibold tracking-wide text-faint">
+                        {t(section.labelKey)}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      {section.items.map((item) => (
+                        <MenuLink
+                          key={item.key}
+                          to={item.path}
+                          onClick={() => setMoreOpen(false)}
+                          className="flex flex-col items-center gap-1.5 rounded-xl border border-line p-3 text-center text-sm text-fg"
+                        >
+                          <span className="relative">
+                            <Icon name={item.icon} size={22} className="text-brand" />
+                            {item.key === 'chat' && (
+                              <ChatBadge className="absolute -end-2.5 -top-1.5" />
+                            )}
+                            {item.key === 'updates' && (
+                              <UpdateBadge className="absolute -end-1 -top-1" />
+                            )}
+                          </span>
+                          <span className="text-xs">{t(item.labelKey)}</span>
+                        </MenuLink>
+                      ))}
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
@@ -349,16 +414,15 @@ function MainArea(): ReactNode {
   );
 }
 
-function SidebarLink({ item, label }: { item: NavItem; label: string }) {
+function SidebarLink({ item, label, active }: { item: NavItem; label: string; active: boolean }) {
   return (
     <MenuLink
       to={item.path}
       data-ui="nav"
-      className={({ isActive }) =>
-        `flex items-center gap-3 rounded-[var(--radius-app)] px-3 py-2 text-sm font-medium transition-colors ${
-          isActive ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'
-        }`
-      }
+      aria-current={active ? 'page' : undefined}
+      className={`flex items-center gap-3 rounded-[var(--radius-app)] px-3 py-2 text-sm font-medium transition-colors ${
+        active ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'
+      }`}
     >
       <Icon name={item.icon} size={20} />
       {label}
@@ -368,16 +432,15 @@ function SidebarLink({ item, label }: { item: NavItem; label: string }) {
   );
 }
 
-function RailLink({ item, label }: { item: NavItem; label: string }) {
+function RailLink({ item, label, active }: { item: NavItem; label: string; active: boolean }) {
   return (
     <MenuLink
       to={item.path}
       title={label}
-      className={({ isActive }) =>
-        `flex w-16 flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium transition-colors ${
-          isActive ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'
-        }`
-      }
+      aria-current={active ? 'page' : undefined}
+      className={`flex w-16 flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium transition-colors ${
+        active ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'
+      }`}
     >
       <span className="relative">
         <Icon name={item.icon} size={22} />
@@ -389,9 +452,7 @@ function RailLink({ item, label }: { item: NavItem; label: string }) {
   );
 }
 
-function PhoneTab({ item, label }: { item: NavItem; label: string }) {
-  const location = useLocation();
-  const active = location.pathname.startsWith(item.path);
+function PhoneTab({ item, label, active }: { item: NavItem; label: string; active: boolean }) {
   return (
     <MenuLink
       to={item.path}

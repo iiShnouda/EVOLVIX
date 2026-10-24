@@ -10,7 +10,7 @@ namespace SKB.Api.Controllers;
 
 [ApiController]
 [Route("api/purchases")]
-[Authorize(Policy = Permissions.PurchasesView)]
+[Authorize]
 public sealed class PurchasesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -35,6 +35,8 @@ public sealed class PurchasesController : ControllerBase
 
     /// <summary>Purchase invoices, newest first: filtered by period, status and payment, with their totals.</summary>
     [HttpGet("invoices")]
+    [AnyPermission(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
+        Permissions.PurchasesPriceSheet)]
     public Task<ActionResult<DocumentListDto>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
         [FromQuery] string? status = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
@@ -43,6 +45,7 @@ public sealed class PurchasesController : ControllerBase
 
     /// <summary>Purchase returns (مرتجعات المشتريات), newest first.</summary>
     [HttpGet("returns")]
+    [Authorize(Policy = Permissions.PurchasesReturnsView)]
     public Task<ActionResult<DocumentListDto>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? search = null,
         [FromQuery] string? status = null, [FromQuery] string? from = null, [FromQuery] string? to = null) =>
@@ -64,6 +67,9 @@ public sealed class PurchasesController : ControllerBase
     /// <summary>One purchase invoice or purchase return (invoice lines carry the returned quantity).</summary>
     [HttpGet("invoices/{id:guid}")]
     [HttpGet("returns/{id:guid}")]
+    [AnyPermission(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
+        Permissions.PurchasesPriceSheet, Permissions.PurchasesReturnsView, Permissions.PurchasesCreate,
+        Permissions.PurchasesReturnFree, Permissions.StatementSuppliers)]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
@@ -79,6 +85,16 @@ public sealed class PurchasesController : ControllerBase
             .AsSplitQuery()
             .FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found" });
+        // Invoices and returns are seen with permissions of their own, by whoever acts on them, and
+        // by whoever made them (owner, 2026-10-23).
+        var mine = doc.StaffId.ToString() == CurrentUser.Id(User);
+        if (doc.Type == DocumentType.PURCHASE_RETURN
+                ? !(User.HasAny(Permissions.PurchasesReturnsView, Permissions.StatementSuppliers)
+                    || (mine && User.HasAny(Permissions.PurchasesReturn, Permissions.PurchasesReturnFree)))
+                : !(User.HasAny(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
+                        Permissions.PurchasesPriceSheet, Permissions.StatementSuppliers)
+                    || (mine && User.Has(Permissions.PurchasesCreate))))
+            return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.PURCHASE_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
         var dto = Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc));
@@ -97,6 +113,7 @@ public sealed class PurchasesController : ControllerBase
     /// came and what it sells for now, to print for the salespeople. Sale prices only, never costs.
     /// </summary>
     [HttpGet("invoices/{id:guid}/price-sheet")]
+    [Authorize(Policy = Permissions.PurchasesPriceSheet)]
     public async Task<ActionResult<PriceSheetDto>> PriceSheet(Guid id)
     {
         var doc = await _db.SalesDocuments.AsNoTracking().InBranches(User, d => d.BranchId)
@@ -120,7 +137,7 @@ public sealed class PurchasesController : ControllerBase
     /// checked); stored in the database, never on the server's disk.
     /// </summary>
     [HttpPut("invoices/{id:guid}/image")]
-    [Authorize(Policy = Permissions.PurchasesCreate)]
+    [Authorize(Policy = Permissions.PurchasesPhotos)]
     [RequestSizeLimit(MaxImageBytes + 64 * 1024)]
     public async Task<ActionResult> PutImage(Guid id, IFormFile? file, [FromQuery] int page = 0)
     {
@@ -152,6 +169,7 @@ public sealed class PurchasesController : ControllerBase
 
     /// <summary>A page of the supplier invoice's photos, never cached.</summary>
     [HttpGet("invoices/{id:guid}/image")]
+    [AnyPermission(Permissions.PurchasesView, Permissions.PurchasesPhotos)]
     public async Task<IActionResult> GetImage(Guid id, [FromQuery] int page = 0)
     {
         var mine = await _db.SalesDocuments.InBranches(User, d => d.BranchId).AnyAsync(d => d.Id == id);
@@ -371,7 +389,7 @@ public sealed class PurchasesController : ControllerBase
     /// return typed without an invoice is priced at it (another price needs the change-price permission).
     /// </summary>
     [HttpGet("returns/last-prices")]
-    [Authorize(Policy = Permissions.PurchasesReturn)]
+    [AnyPermission(Permissions.PurchasesReturn, Permissions.PurchasesReturnFree)]
     public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
     {
         if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());

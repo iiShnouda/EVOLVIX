@@ -71,7 +71,8 @@ and one to read photos of supplier invoices and cheques. After that it works wit
 and nothing is sent outside the building.
 
 - Only the app can reach it (no port is opened on the server or the office network).
-- People need the **ai:chat** permission to ask it and **ai:scan** to read photos; it only looks up
+- People need the **ai:chat** permission to ask it (**ai:voice** to talk to it) and **ai:scan_purchase**,
+  **ai:scan_cheques** or **ai:scan_stocktake** to read each kind of photo; it only looks up
   what that person may see, and never changes anything by itself.
 - Extra machine needed for it: **8 GB more memory** and ~12 GB of disk for the default models
   (`qwen2.5:7b-instruct`, `qwen2.5vl:7b`). A graphics card makes answers much faster but is not

@@ -738,7 +738,7 @@ const cashier = ok(
 ok(
   'give receipts',
   await owner.put(`/staff/${cashier.id}/permissions`, {
-    granted: ['receipts:view', 'receipts:create'],
+    granted: ['money:accounts', 'vouchers:view', 'receipts:create'],
   }),
 );
 const cash = await login(email, 'Str0ngPass!');

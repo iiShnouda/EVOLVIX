@@ -8,7 +8,7 @@ using SKB.Api.Services;
 
 namespace SKB.Api.Controllers;
 
-/// <summary>Seasons (مواسم): read by anyone who sees the stock; added by hand under seasons:manage.</summary>
+/// <summary>Seasons (مواسم): read by anyone signed in; added, renamed and deleted each with its own permission.</summary>
 [ApiController]
 [Route("api/seasons")]
 [Authorize]
@@ -25,7 +25,7 @@ public sealed class SeasonsController : ControllerBase
 
     /// <summary>Every season, newest first, "no season" last; the current one is marked.</summary>
     [HttpGet]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<SeasonDto[]>> List()
     {
         await Seasons.EnsureAsync(_db);
@@ -40,7 +40,7 @@ public sealed class SeasonsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = Permissions.SeasonsManage)]
+    [Authorize(Policy = Permissions.SeasonsCreate)]
     public async Task<ActionResult<SeasonDto>> Create([FromBody] CreateSeasonRequest req)
     {
         var name = Loc.Clean(req.Name);
@@ -59,7 +59,7 @@ public sealed class SeasonsController : ControllerBase
 
     /// <summary>Rename a season added by hand (summer and winter keep the system's names).</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Policy = Permissions.SeasonsManage)]
+    [Authorize(Policy = Permissions.SeasonsEdit)]
     public async Task<ActionResult<SeasonDto>> Update(Guid id, [FromBody] CreateSeasonRequest req)
     {
         var season = await _db.Seasons.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
@@ -82,7 +82,7 @@ public sealed class SeasonsController : ControllerBase
     /// hidden instead, so it isn't added again; "no season" stays.
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [Authorize(Policy = Permissions.SetupDelete)]
+    [Authorize(Policy = Permissions.SeasonsDelete)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var season = await _db.Seasons.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);

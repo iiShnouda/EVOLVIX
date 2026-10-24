@@ -23,7 +23,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api")]
-[Authorize(Policy = Permissions.ReceiptsView)]
+[Authorize]
 public sealed class MoneyController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -44,6 +44,7 @@ public sealed class MoneyController : ControllerBase
     // ------------------------------------------------------------------ accounts
 
     [HttpGet("money-accounts")]
+    [Authorize(Policy = Lookups.MoneyAccounts)]
     public async Task<ActionResult<MoneyAccountDto[]>> Accounts([FromQuery] string? kind = null, [FromQuery] bool? active = null)
     {
         var q = _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian).Include(a => a.Warehouse).AsQueryable();
@@ -52,12 +53,19 @@ public sealed class MoneyController : ControllerBase
         var rows = await q.OrderBy(a => a.Branch!.CreatedAt).ThenByDescending(a => a.IsMain).ThenByDescending(a => a.IsDefault)
             .ThenBy(a => a.Kind).ThenBy(a => a.WarehouseId != null).ThenBy(a => a.Name).ToListAsync();
         var up = await _money.UpTargetsAsync();
-        return Ok(rows.Select(a => ToDto(a, up(a))).ToArray());
+        return Ok(rows.Select(a => Shown(ToDto(a, up(a)))).ToArray());
     }
+
+    /// <summary>
+    /// What is in an account is for whoever sees the money accounts or their statements (owner,
+    /// 2026-10-23); the others choose an account by its name.
+    /// </summary>
+    private MoneyAccountDto Shown(MoneyAccountDto a) =>
+        User.HasAny(Permissions.MoneyAccounts, Permissions.StatementMoney) ? a : a with { Balance = null, Held = 0 };
 
     /// <summary>Add a money account; money already in it is posted as its opening balance.</summary>
     [HttpPost("money-accounts")]
-    [Authorize(Policy = Permissions.MoneyAccountsManage)]
+    [Authorize(Policy = Permissions.MoneyAccountsCreate)]
     public async Task<ActionResult<MoneyAccountDto>> CreateAccount([FromBody] CreateMoneyAccountRequest req)
     {
         var name = Loc.Clean(req.Name);
@@ -117,13 +125,16 @@ public sealed class MoneyController : ControllerBase
 
     /// <summary>Rename, change details, make the branch's default cash box, close or reopen.</summary>
     [HttpPut("money-accounts/{id:guid}")]
-    [Authorize(Policy = Permissions.MoneyAccountsManage)]
+    [AnyPermission(Permissions.MoneyAccountsEdit, Permissions.MoneyAccountsMain)]
     public async Task<ActionResult<MoneyAccountDto>> UpdateAccount(Guid id, [FromBody] UpdateMoneyAccountRequest req)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
         var locked = await _money.LockAsync(new[] { id });
         if (!locked.TryGetValue(id, out var account) || !MoneyService.CanUse(User, account))
             return NotFound(new { message = "Money account not found.", code = "not_found" });
+        // Changing an account and choosing the main cash box are permissions of their own.
+        if (req with { IsMain = null } != new UpdateMoneyAccountRequest() && !User.Has(Permissions.MoneyAccountsEdit))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
 
         if (req.Name is not null)
         {
@@ -193,6 +204,7 @@ public sealed class MoneyController : ControllerBase
     /// the daily cash report (حركة اليوم).
     /// </summary>
     [HttpGet("money-accounts/{id:guid}/movements")]
+    [AnyPermission(Permissions.MoneyAccounts, Permissions.StatementMoney)]
     public async Task<ActionResult<AccountStatementDto>> Statement(Guid id, [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         var account = await _money.Visible(User).AsNoTracking().Include(a => a.Branch).Include(a => a.Custodian).Include(a => a.Warehouse)
@@ -223,6 +235,8 @@ public sealed class MoneyController : ControllerBase
 
     /// <summary>A party's invoices with something still owed: sales (for receipts) or purchases (for payments).</summary>
     [HttpGet("parties/{id:guid}/open-invoices")]
+    [AnyPermission(Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.VouchersDiscount,
+        Permissions.VouchersView)]
     public async Task<ActionResult<OpenInvoiceDto[]>> OpenInvoices(Guid id, [FromQuery] string? side = "sales")
     {
         var type = string.Equals(side, "purchases", StringComparison.OrdinalIgnoreCase)
@@ -241,6 +255,7 @@ public sealed class MoneyController : ControllerBase
     // ------------------------------------------------------------------ vouchers
 
     [HttpGet("vouchers")]
+    [AnyPermission(Permissions.VouchersView, Permissions.VouchersCancel)]
     public async Task<ActionResult<PaginatedDto<VoucherDto>>> Vouchers(
         [FromQuery] string? type = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
         [FromQuery] string? accountId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 30,
@@ -268,6 +283,7 @@ public sealed class MoneyController : ControllerBase
     /// it (or an item under it) between two company days, oldest first, with the total.
     /// </summary>
     [HttpGet("expense-categories/{id:guid}/statement")]
+    [Authorize(Policy = Permissions.StatementExpenses)]
     public async Task<ActionResult<ExpenseStatementDto>> ExpenseStatement(Guid id, [FromQuery] string? from = null,
         [FromQuery] string? to = null)
     {
@@ -289,6 +305,7 @@ public sealed class MoneyController : ControllerBase
     }
 
     [HttpGet("vouchers/{id:guid}")]
+    [AnyPermission(Permissions.VouchersView, Permissions.VouchersCancel)]
     public async Task<ActionResult<VoucherDto>> Voucher(Guid id)
     {
         var v = await WithDetails(ScopedVouchers()).FirstOrDefaultAsync(x => x.Id == id);
@@ -602,6 +619,9 @@ public sealed class MoneyController : ControllerBase
     // ------------------------------------------------------------------ expense categories
 
     [HttpGet("expense-categories")]
+    [AnyPermission(Permissions.ExpenseCategoriesView, Permissions.ExpenseCategoriesCreate,
+        Permissions.ExpenseCategoriesEdit, Permissions.ExpenseCategoriesClose, Permissions.ExpenseCategoriesDelete,
+        Permissions.ExpensesCreate, Permissions.StatementExpenses, Permissions.VouchersView, Permissions.ReportsPl)]
     public async Task<ActionResult<ExpenseCategoryDto[]>> Categories()
     {
         var rows = await _db.ExpenseCategories.AsNoTracking().Include(c => c.Parent).ToListAsync();
@@ -610,7 +630,7 @@ public sealed class MoneyController : ControllerBase
     }
 
     [HttpPost("expense-categories")]
-    [Authorize(Policy = Permissions.ExpenseCategoriesManage)]
+    [Authorize(Policy = Permissions.ExpenseCategoriesCreate)]
     public async Task<ActionResult<ExpenseCategoryDto>> CreateCategory([FromBody] CreateExpenseCategoryRequest req)
     {
         var name = Loc.Clean(req.Name);
@@ -632,11 +652,15 @@ public sealed class MoneyController : ControllerBase
     }
 
     [HttpPut("expense-categories/{id:guid}")]
-    [Authorize(Policy = Permissions.ExpenseCategoriesManage)]
+    [AnyPermission(Permissions.ExpenseCategoriesEdit, Permissions.ExpenseCategoriesClose)]
     public async Task<ActionResult<ExpenseCategoryDto>> UpdateCategory(Guid id, [FromBody] UpdateExpenseCategoryRequest req)
     {
         var category = await _db.ExpenseCategories.Include(c => c.Parent).FirstOrDefaultAsync(c => c.Id == id);
         if (category is null) return NotFound(new { message = "Category not found.", code = "not_found" });
+        // Changing an expense item and stopping it are permissions of their own (owner, 2026-10-23).
+        if ((req with { IsActive = null } != new UpdateExpenseCategoryRequest() && !User.Has(Permissions.ExpenseCategoriesEdit))
+            || (req.IsActive is bool a && a != category.IsActive && !User.Has(Permissions.ExpenseCategoriesClose)))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         if (req.ParentId is not null)
         {
             Guid? parentId = null;
@@ -670,7 +694,7 @@ public sealed class MoneyController : ControllerBase
     /// stays (its expenses keep their item): close it instead.
     /// </summary>
     [HttpDelete("expense-categories/{id:guid}")]
-    [Authorize(Policy = Permissions.ExpenseCategoriesManage)]
+    [Authorize(Policy = Permissions.ExpenseCategoriesDelete)]
     public async Task<IActionResult> DeleteCategory(Guid id)
     {
         var category = await _db.ExpenseCategories.FirstOrDefaultAsync(c => c.Id == id);
@@ -694,7 +718,7 @@ public sealed class MoneyController : ControllerBase
     /// or a balance stays in the books: close it instead.
     /// </summary>
     [HttpDelete("money-accounts/{id:guid}")]
-    [Authorize(Policy = Permissions.MoneyAccountsManage)]
+    [Authorize(Policy = Permissions.MoneyAccountsDelete)]
     public async Task<IActionResult> DeleteAccount(Guid id)
     {
         var account = await _money.Visible(User).FirstOrDefaultAsync(a => a.Id == id);
@@ -780,7 +804,7 @@ public sealed class MoneyController : ControllerBase
     private async Task<MoneyAccountDto> AccountDtoAsync(Guid id)
     {
         var account = await ReloadAccountAsync(id);
-        return ToDto(account, (await _money.UpTargetsAsync())(account));
+        return Shown(ToDto(account, (await _money.UpTargetsAsync())(account)));
     }
 
     /// <summary>

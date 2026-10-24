@@ -10,7 +10,7 @@ namespace SKB.Api.Controllers;
 
 [ApiController]
 [Route("api/sales")]
-[Authorize(Policy = Permissions.SalesView)]
+[Authorize]
 public sealed class SalesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -37,6 +37,8 @@ public sealed class SalesController : ControllerBase
     }
 
     [HttpGet("invoices")]
+    [AnyPermission(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel, Permissions.SalesLock,
+        Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesDiscount)]
     public Task<ActionResult<DocumentListDto>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -47,6 +49,7 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>Price quotations (عروض الأسعار), newest first.</summary>
     [HttpGet("quotations")]
+    [AnyPermission(Permissions.SalesView, Permissions.SalesQuote)]
     public Task<ActionResult<DocumentListDto>> Quotations(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -56,6 +59,7 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>Pending invoices (فواتير معلّقة) waiting for the accountant, newest first.</summary>
     [HttpGet("orders")]
+    [AnyPermission(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject)]
     public Task<ActionResult<DocumentListDto>> Orders(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -65,6 +69,7 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>Sales returns (مرتجعات المبيعات), newest first.</summary>
     [HttpGet("returns")]
+    [Authorize(Policy = Permissions.SalesReturnsView)]
     public Task<ActionResult<DocumentListDto>> Returns(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -118,7 +123,7 @@ public sealed class SalesController : ControllerBase
             .Include(d => d.PaidAccount).Include(d => d.Department)
             .AsSplitQuery()
             .FirstOrDefaultAsync();
-        if (doc is null) return NotFound(new { message = "Document not found" });
+        if (doc is null || !MaySee(doc)) return NotFound(new { message = "Document not found" });
 
         var returned = doc.Type == DocumentType.SALES_INVOICE ? await _returns.ReturnedByLineAsync(doc.Id) : null;
         var dto = Mapper.ToDetail(doc, returned, await InvoiceLines.BaseUnitNamesAsync(_db, doc));
@@ -137,12 +142,37 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
+    /// Whether this person may open this document (owner, 2026-10-23): each list has its own
+    /// permission and is opened too by whoever acts on its documents; whoever made one may open it.
+    /// </summary>
+    private bool MaySee(SalesDocument d)
+    {
+        var mine = d.StaffId.ToString() == CurrentUser.Id(User);
+        return d.Type switch
+        {
+            DocumentType.SALES_INVOICE => User.HasAny(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel,
+                    Permissions.SalesLock, Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject,
+                    Permissions.SalesDiscount, Permissions.SalesDiscountCombined, Permissions.SalesTogether,
+                    Permissions.StatementCustomers)
+                || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder, Permissions.SalesQuote)),
+            DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.StatementCustomers)
+                || (mine && User.HasAny(Permissions.SalesReturn, Permissions.SalesReturnFree)),
+            DocumentType.QUOTATION => User.HasAny(Permissions.SalesView, Permissions.SalesQuote),
+            DocumentType.SALES_ORDER => User.HasAny(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject,
+                    Permissions.SalesDiscount, Permissions.SalesDiscountCombined, Permissions.SalesTogether)
+                || (mine && User.Has(Permissions.SalesOrder)),
+            _ => false,
+        };
+    }
+
+    /// <summary>
     /// A customer's account for the accountant (owner decision 2026-09-30): what they owe now, their
     /// invoices and returns with dates, discounts, what was paid and what is left, and notes — in
     /// total and per sales department — plus the pending invoices waiting for approval. No cost or
     /// profit. Limited to the person's branches and departments.
     /// </summary>
     [HttpGet("customers/{partyId:guid}/account")]
+    [AnyPermission(Permissions.SalesTogether, Permissions.StatementCustomers)]
     public async Task<ActionResult<CustomerAccountDto>> CustomerAccount(Guid partyId, [FromQuery] string? departmentId = null)
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
@@ -194,6 +224,7 @@ public sealed class SalesController : ControllerBase
     /// and each printed alone or together. Also what they owed before these invoices.
     /// </summary>
     [HttpGet("customers/{partyId:guid}/invoices")]
+    [AnyPermission(Permissions.SalesTogether, Permissions.SalesDiscountCombined)]
     public async Task<ActionResult<CustomerInvoicesDto>> CustomerInvoices(Guid partyId, [FromQuery] string? from = null,
         [FromQuery] string? to = null)
     {
@@ -473,6 +504,7 @@ public sealed class SalesController : ControllerBase
     /// it is in a locked period.
     /// </summary>
     [HttpPut("invoices/{id:guid}")]
+    [AnyPermission(Permissions.SalesEdit, Permissions.SalesCreate)]
     public async Task<ActionResult<SalesDetailDto>> UpdateInvoice(Guid id, [FromBody] CreateSalesInvoiceRequest req)
     {
         var doc = await ScopedInvoices().Where(d => d.Id == id)
@@ -489,6 +521,7 @@ public sealed class SalesController : ControllerBase
     /// entry is reversed. It stays on the list as cancelled, under its number.
     /// </summary>
     [HttpPost("invoices/{id:guid}/cancel")]
+    [AnyPermission(Permissions.SalesCancel, Permissions.SalesCreate)]
     public async Task<ActionResult<SalesDetailDto>> CancelInvoice(Guid id,
         [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelInvoiceRequest? req)
     {
@@ -697,7 +730,7 @@ public sealed class SalesController : ControllerBase
     /// (everything it moved goes back), with the reason.
     /// </summary>
     [HttpPost("invoices/{id:guid}/reject-limit")]
-    [Authorize(Policy = Permissions.SalesApprove)]
+    [Authorize(Policy = Permissions.SalesReject)]
     public async Task<ActionResult<SalesDetailDto>> RejectLimit(Guid id, [FromBody] RejectOrderRequest req)
     {
         var reason = Clean(req.Reason, 300);
@@ -803,6 +836,7 @@ public sealed class SalesController : ControllerBase
     /// exactly like a new one. It keeps its number, date and maker. Its maker or an approver may.
     /// </summary>
     [HttpPut("orders/{id:guid}")]
+    [AnyPermission(Permissions.SalesOrder, Permissions.SalesApprove)]
     public async Task<ActionResult<SalesDetailDto>> UpdateOrder(Guid id, [FromBody] CreateSalesInvoiceRequest req)
     {
         var order = await ScopedOrders().AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
@@ -821,7 +855,7 @@ public sealed class SalesController : ControllerBase
     /// maker is told.
     /// </summary>
     [HttpPost("orders/{id:guid}/reject")]
-    [Authorize(Policy = Permissions.SalesApprove)]
+    [Authorize(Policy = Permissions.SalesReject)]
     public async Task<ActionResult<SalesDetailDto>> RejectOrder(Guid id, [FromBody] RejectOrderRequest req)
     {
         var reason = Clean(req.Reason, 300);
@@ -843,6 +877,7 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>Cancel a pending invoice: its goods are free again. Its maker or an approver may.</summary>
     [HttpPost("orders/{id:guid}/cancel")]
+    [AnyPermission(Permissions.SalesOrder, Permissions.SalesApprove)]
     public async Task<ActionResult<SalesDetailDto>> CancelOrder(Guid id)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -1434,7 +1469,7 @@ public sealed class SalesController : ControllerBase
     /// return typed without an invoice is priced at it (another price needs the change-price permission).
     /// </summary>
     [HttpGet("returns/last-prices")]
-    [Authorize(Policy = Permissions.SalesReturn)]
+    [AnyPermission(Permissions.SalesReturn, Permissions.SalesReturnFree)]
     public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
     {
         if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());

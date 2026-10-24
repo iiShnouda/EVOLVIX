@@ -9,6 +9,7 @@ import {
   type DeliveryRow,
   type DeliveryStatus,
   type Shipment,
+  type Permission,
   type ShipmentStatus,
   type TranslationKey,
 } from '@skb/shared';
@@ -34,10 +35,28 @@ import {
 } from '../lib/queries';
 
 type Tab = 'deliveries' | 'shipments' | 'settlements';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'deliveries', label: 'delivery.tabDeliveries' },
-  { key: 'shipments', label: 'delivery.tabShipments' },
-  { key: 'settlements', label: 'delivery.tabSettlements' },
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'deliveries',
+    label: 'delivery.tabDeliveries',
+    anyOf: ['delivery:view', 'delivery:status'],
+  },
+  {
+    key: 'shipments',
+    label: 'delivery.tabShipments',
+    anyOf: [
+      'shipments:view',
+      'shipments:create',
+      'shipments:progress',
+      'shipments:return',
+      'shipments:cancel',
+    ],
+  },
+  {
+    key: 'settlements',
+    label: 'delivery.tabSettlements',
+    anyOf: ['settlements:view', 'delivery:settle'],
+  },
 ];
 
 const DELIVERY_TONE: Record<DeliveryStatus, Tone> = {
@@ -64,30 +83,35 @@ const input =
  */
 export function DeliveriesPage() {
   const { t } = useT();
+  const can = useCan();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'deliveries') as Tab;
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
 
   return (
     <div className="space-y-5">
       <PageHeader title={t('delivery.title')} subtitle={t('delivery.subtitle')} />
-      <div
-        role="tablist"
-        className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {TABS.map((x) => (
-          <button
-            key={x.key}
-            role="tab"
-            aria-selected={tab === x.key}
-            onClick={() => setParams({ tab: x.key }, { replace: true })}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(x.label)}
-          </button>
-        ))}
-      </div>
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {tabs.map((x) => (
+            <button
+              key={x.key}
+              role="tab"
+              aria-selected={tab === x.key}
+              onClick={() => setParams({ tab: x.key }, { replace: true })}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(x.label)}
+            </button>
+          ))}
+        </div>
+      )}
       {tab === 'deliveries' && <DeliveriesTab />}
       {tab === 'shipments' && <ShipmentsTab />}
       {tab === 'settlements' && <SettlementsTab />}
@@ -235,7 +259,7 @@ function DeliveriesTab() {
   const step = useSetDelivery();
   const [returning, setReturning] = useState<DeliveryRow | null>(null);
   const [outcome, setOutcome] = useState<{ returns: string[]; problems: string[] } | null>(null);
-  const canManage = can('delivery:manage');
+  const canManage = can('delivery:status');
 
   async function move(
     row: DeliveryRow,
@@ -415,7 +439,12 @@ function ShipmentsTab() {
   const [creating, setCreating] = useState(false);
   const [returning, setReturning] = useState<Shipment | null>(null);
   const [outcome, setOutcome] = useState<{ returns: string[]; problems: string[] } | null>(null);
-  const canManage = can('delivery:manage');
+  const may = {
+    create: can('shipments:create'),
+    progress: can('shipments:progress'),
+    return: can('shipments:return'),
+    cancel: can('shipments:cancel'),
+  };
 
   async function move(s: Shipment, name: ShipmentStep, createReturns = false) {
     try {
@@ -436,7 +465,7 @@ function ShipmentsTab() {
           onChange={setStatus}
           label={(s) => t(`shipment.status.${s}`)}
         />
-        {canManage && (
+        {may.create && (
           <Button icon="plus" onClick={() => setCreating(true)}>
             {t('shipment.new')}
           </Button>
@@ -459,9 +488,10 @@ function ShipmentsTab() {
               key={s.id}
               s={s}
               actions={
-                canManage && (s.status === 'CREATED' || s.status === 'PICKED_UP') ? (
+                (may.progress || may.return || may.cancel) &&
+                (s.status === 'CREATED' || s.status === 'PICKED_UP') ? (
                   <>
-                    {s.status === 'CREATED' && (
+                    {may.progress && s.status === 'CREATED' && (
                       <Button
                         size="sm"
                         variant="secondary"
@@ -471,23 +501,27 @@ function ShipmentsTab() {
                         {t('shipment.pickedUp')}
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      disabled={step.isPending}
-                      onClick={() => void move(s, 'delivered')}
-                      title={s.codAmount > 0 ? t('shipment.deliveredHint') : undefined}
-                    >
-                      {t('shipment.delivered')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={step.isPending}
-                      onClick={() => setReturning(s)}
-                    >
-                      {t('shipment.returned')}
-                    </Button>
-                    {s.status === 'CREATED' && (
+                    {may.progress && (
+                      <Button
+                        size="sm"
+                        disabled={step.isPending}
+                        onClick={() => void move(s, 'delivered')}
+                        title={s.codAmount > 0 ? t('shipment.deliveredHint') : undefined}
+                      >
+                        {t('shipment.delivered')}
+                      </Button>
+                    )}
+                    {may.return && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={step.isPending}
+                        onClick={() => setReturning(s)}
+                      >
+                        {t('shipment.returned')}
+                      </Button>
+                    )}
+                    {may.cancel && s.status === 'CREATED' && (
                       <Button
                         size="sm"
                         variant="ghost"

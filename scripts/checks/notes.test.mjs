@@ -435,7 +435,9 @@ const other = ok(
 );
 ok(
   'let them see notes',
-  await owner.put(`/staff/${other.id}/permissions`, { granted: ['notes:view'] }),
+  await owner.put(`/staff/${other.id}/permissions`, {
+    granted: ['notes:view_receivable', 'notes:view_payable'],
+  }),
 );
 const o = await login(email, 'Str0ngPass!');
 eq('main-branch note hidden from the other branch', (await o.get(`/notes/${n1.id}`)).status, 404);

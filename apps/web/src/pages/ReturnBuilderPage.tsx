@@ -526,8 +526,11 @@ function ReturnStart({ scope }: { scope: DocScope }) {
   const [party, setParty] = useState<Party | null>(null);
   // Typed line by line, without an invoice (owner decision 2026-10-01).
   const [params, setParams] = useSearchParams();
-  const canFree = useCan()(isSale ? 'sales:return_free' : 'purchases:return_free');
-  const free = canFree && params.get('free') === '1';
+  const can = useCan();
+  const canFree = can(isSale ? 'sales:return_free' : 'purchases:return_free');
+  // Each kind of return is a permission of its own (owner, 2026-10-23): with only one, it opens alone.
+  const canFromInvoice = can(isSale ? 'sales:return' : 'purchases:return');
+  const free = canFree && (params.get('free') === '1' || !canFromInvoice);
   const invoices = useDocumentList(scope, 'invoices', {
     page: 1,
     pageSize: 100,
@@ -556,7 +559,7 @@ function ReturnStart({ scope }: { scope: DocScope }) {
           </Button>
         }
       />
-      {canFree && (
+      {canFree && canFromInvoice && (
         <div className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5 text-sm">
           {([false, true] as const).map((f) => (
             <button

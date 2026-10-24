@@ -10,7 +10,14 @@ namespace SKB.Api.Controllers;
 
 [ApiController]
 [Route("api/dashboard")]
-[Authorize(Policy = Permissions.DashboardView)]
+// Opens for whoever holds any of its cards; each card is computed only for its own permission
+// (owner, 2026-10-23).
+[AnyPermission(Permissions.DashboardKpiSales, Permissions.DashboardKpiPurchases, Permissions.DashboardKpiReceivables,
+    Permissions.DashboardKpiPayables, Permissions.DashboardKpiCash, Permissions.DashboardKpiLowStock,
+    Permissions.DashboardTrend, Permissions.DashboardToday, Permissions.DashboardMonth, Permissions.DashboardTopItems,
+    Permissions.DashboardTopCustomers, Permissions.DashboardBranches, Permissions.DashboardRecent,
+    Permissions.DashboardAccounts, Permissions.DashboardNotesDue, Permissions.DashboardAwaiting, Permissions.DashboardOverLimit,
+    Permissions.DashboardLowStock, Permissions.DashboardStockValue, Permissions.DashboardProfit)]
 public sealed class DashboardController : ControllerBase
 {
     private const string Currency = "EGP";
@@ -29,58 +36,71 @@ public sealed class DashboardController : ControllerBase
         [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         IQueryable<SalesDocument> Scoped(IQueryable<SalesDocument> q) => q.InBranches(User, d => d.BranchId);
+        bool Can(string p) => User.Has(p);
         var period = Period(from, to);
         if (period is { Error: true }) return BadRequest(new { message = "Choose up to ten years, the start before the end.", code = "bad_range" });
         var (pStart, pEnd) = period is { } pr ? CompanyClock.Days(pr.From, pr.To) : (DateTime.MinValue, DateTime.MaxValue);
 
         // Net of returns: sales returns reduce revenue, purchase returns reduce purchases.
-        var totals = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Status != DocumentStatus.CANCELLED && d.IssueDate >= pStart && d.IssueDate < pEnd)
-            .GroupBy(d => d.Type)
-            .Select(g => new { Type = g.Key, Total = g.Sum(d => d.GrandTotal) })
-            .ToListAsync();
+        var totals = Can(Permissions.DashboardKpiSales) || Can(Permissions.DashboardKpiPurchases)
+            ? await Scoped(_db.SalesDocuments)
+                .Where(d => d.Status != DocumentStatus.CANCELLED && d.IssueDate >= pStart && d.IssueDate < pEnd)
+                .GroupBy(d => d.Type)
+                .Select(g => new { Type = g.Key, Total = g.Sum(d => d.GrandTotal) })
+                .ToListAsync()
+            : new();
         long Total(DocumentType t) => totals.FirstOrDefault(x => x.Type == t)?.Total ?? 0;
         var revenue = Total(DocumentType.SALES_INVOICE) - Total(DocumentType.SALES_RETURN);
         var purchases = Total(DocumentType.PURCHASE_INVOICE) - Total(DocumentType.PURCHASE_RETURN);
 
         // Cash position: what the money accounts hold (cash boxes, custody, banks, wallets).
         var only = Access.MoneyAccounts(User);
-        var cash = await _db.MoneyAccounts.InBranches(User, a => a.BranchId)
-            .Where(a => a.IsActive && (only == null || only.Contains(a.Id)))
-            .SumAsync(a => (long?)a.Balance) ?? 0;
+        var cash = Can(Permissions.DashboardKpiCash)
+            ? await _db.MoneyAccounts.InBranches(User, a => a.BranchId)
+                .Where(a => a.IsActive && (only == null || only.Contains(a.Id)))
+                .SumAsync(a => (long?)a.Balance) ?? 0
+            : 0;
 
         // Summed by the database (not every balance brought over).
-        var receivables = await _db.Parties.Where(p => p.Balance > 0).SumAsync(p => (long?)p.Balance) ?? 0;
-        var payables = await _db.Parties.Where(p => p.Balance < 0).SumAsync(p => (long?)-p.Balance) ?? 0;
+        var receivables = Can(Permissions.DashboardKpiReceivables)
+            ? await _db.Parties.Where(p => p.Balance > 0).SumAsync(p => (long?)p.Balance) ?? 0 : 0;
+        var payables = Can(Permissions.DashboardKpiPayables)
+            ? await _db.Parties.Where(p => p.Balance < 0).SumAsync(p => (long?)-p.Balance) ?? 0 : 0;
 
         // How many items are low, and only the few the dashboard shows (a big catalogue may have
         // thousands out of stock).
         var low = _db.Products.AsNoTracking().Where(p => p.IsActive && p.StockOnHand <= p.ReorderLevel);
-        var lowCount = await low.CountAsync();
-        var lowStock = await low.Include(p => p.Size).Include(p => p.Color)
-            .OrderBy(p => p.StockOnHand).ThenBy(p => p.Id).Take(LowStockShown).ToListAsync();
+        var lowCount = Can(Permissions.DashboardKpiLowStock) ? await low.CountAsync() : 0;
+        var lowStock = Can(Permissions.DashboardLowStock)
+            ? await low.Include(p => p.Size).Include(p => p.Color)
+                .OrderBy(p => p.StockOnHand).ThenBy(p => p.Id).Take(LowStockShown).ToListAsync()
+            : new List<Product>();
         var book = await PriceBook.LoadAsync(_db, lowStock.Select(p => p.Id));
 
         // Posted documents only: quotations and pending invoices move nothing.
-        var recent = await Scoped(_db.SalesDocuments)
-            .Where(d => d.Type != DocumentType.QUOTATION && d.Type != DocumentType.SALES_ORDER
-                        && d.IssueDate >= pStart && d.IssueDate < pEnd)
-            .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
-            .OrderByDescending(d => d.IssueDate).Take(6).ToListAsync();
+        var recent = Can(Permissions.DashboardRecent)
+            ? await Scoped(_db.SalesDocuments)
+                .Where(d => d.Type != DocumentType.QUOTATION && d.Type != DocumentType.SALES_ORDER
+                            && d.IssueDate >= pStart && d.IssueDate < pEnd)
+                .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
+                .OrderByDescending(d => d.IssueDate).Take(6).ToListAsync()
+            : new List<SalesDocument>();
 
-        var kpis = new[]
+        // Each figure only for its own permission.
+        var kpis = new (string Permission, KpiDto Kpi)[]
         {
-            new KpiDto("kpi.revenue", revenue, true, Currency, "positive", null),
-            new KpiDto("kpi.purchases", purchases, true, Currency, "info", null),
-            new KpiDto("kpi.receivables", receivables, true, Currency, "positive", null),
-            new KpiDto("kpi.payables", payables, true, Currency, "warning", null),
-            new KpiDto("kpi.lowStock", lowCount, false, null, lowCount > 0 ? "destructive" : "neutral", null),
-            new KpiDto("kpi.cashPosition", cash, true, Currency, "neutral", null),
-        };
+            (Permissions.DashboardKpiSales, new KpiDto("kpi.revenue", revenue, true, Currency, "positive", null)),
+            (Permissions.DashboardKpiPurchases, new KpiDto("kpi.purchases", purchases, true, Currency, "info", null)),
+            (Permissions.DashboardKpiReceivables, new KpiDto("kpi.receivables", receivables, true, Currency, "positive", null)),
+            (Permissions.DashboardKpiPayables, new KpiDto("kpi.payables", payables, true, Currency, "warning", null)),
+            (Permissions.DashboardKpiLowStock, new KpiDto("kpi.lowStock", lowCount, false, null, lowCount > 0 ? "destructive" : "neutral", null)),
+            (Permissions.DashboardKpiCash, new KpiDto("kpi.cashPosition", cash, true, Currency, "neutral", null)),
+        }.Where(k => Can(k.Permission)).Select(k => k.Kpi).ToArray();
 
         return Ok(new DashboardDto(
             kpis,
-            period is { } tp
+            !Can(Permissions.DashboardTrend) ? Array.Empty<TrendPointDto>()
+            : period is { } tp
                 ? await BuildTrendAsync(tp.From, tp.To)
                 : await BuildTrendAsync(CompanyClock.Today.AddDays(-(Math.Clamp(days, 1, 31) - 1)), CompanyClock.Today),
             lowStock.Select(p => Costs.Guard(User, Mapper.ToProduct(p, book),
@@ -125,14 +145,17 @@ public sealed class DashboardController : ControllerBase
         DashTodayDto? todayDto = null;
         DashMonthDto? month = null;
         DashRankDto[]? topCustomers = null, topItems = null, byBranch = null;
-        if (Can(Permissions.SalesView))
+        if (Can(Permissions.DashboardToday))
         {
             var t = await sales.Where(d => d.IssueDate >= dayStart && d.IssueDate < dayEnd).GroupBy(d => d.Type)
                 .Select(g => new { g.Key, Total = g.Sum(d => d.GrandTotal), Count = g.Count() }).ToListAsync();
             var inv = t.FirstOrDefault(x => x.Key == DocumentType.SALES_INVOICE);
             var ret = t.FirstOrDefault(x => x.Key == DocumentType.SALES_RETURN);
             todayDto = new DashTodayDto((inv?.Total ?? 0) - (ret?.Total ?? 0), inv?.Count ?? 0, ret?.Total ?? 0);
+        }
 
+        if (Can(Permissions.DashboardMonth))
+        {
             var m = await sales.Where(d => d.IssueDate >= lastMonthStart && d.IssueDate < monthEnd)
                 .GroupBy(d => new { This = d.IssueDate >= monthStart, d.Type })
                 .Select(g => new { g.Key.This, g.Key.Type, Total = g.Sum(d => d.GrandTotal), Profit = g.Sum(d => d.ProfitTotal) })
@@ -140,16 +163,17 @@ public sealed class DashboardController : ControllerBase
             long Net(bool thisMonth, bool profit = false) =>
                 m.Where(x => x.This == thisMonth).Sum(x =>
                     (x.Type == DocumentType.SALES_INVOICE ? 1 : -1) * (profit ? x.Profit : x.Total));
-            long? expenses = null;
-            if (Can(Permissions.ReceiptsView))
-                expenses = await _db.Vouchers.InBranches(User, v => v.BranchId)
-                    .Where(v => v.Type == VoucherType.EXPENSE && v.Status == VoucherStatus.POSTED
-                                && v.CreatedAt >= monthStart && v.CreatedAt < monthEnd)
-                    .SumAsync(v => (long?)v.Amount) ?? 0;
+            var expenses = await _db.Vouchers.InBranches(User, v => v.BranchId)
+                .Where(v => v.Type == VoucherType.EXPENSE && v.Status == VoucherStatus.POSTED
+                            && v.CreatedAt >= monthStart && v.CreatedAt < monthEnd)
+                .SumAsync(v => (long?)v.Amount) ?? 0;
             month = new DashMonthDto(Net(true), Net(false),
                 Can(Permissions.ProfitView) ? Net(true, profit: true) : null, expenses);
+        }
 
-            var monthSales = sales.Where(d => d.IssueDate >= monthStart && d.IssueDate < monthEnd);
+        var monthSales = sales.Where(d => d.IssueDate >= monthStart && d.IssueDate < monthEnd);
+        if (Can(Permissions.DashboardTopCustomers))
+        {
             var customers = await monthSales.GroupBy(d => d.PartyId)
                 .Select(g => new
                 {
@@ -162,7 +186,10 @@ public sealed class DashboardController : ControllerBase
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
             topCustomers = customers.Select(c => new DashRankDto(c.Key.ToString(),
                 names.GetValueOrDefault(c.Key, ""), c.Net, c.Count)).ToArray();
+        }
 
+        if (Can(Permissions.DashboardTopItems))
+        {
             var items = await _db.DocumentLines.Where(l => monthSales.Any(d => d.Id == l.DocumentId))
                 .GroupBy(l => new { l.ProductId, l.ProductName })
                 .Select(g => new
@@ -174,7 +201,10 @@ public sealed class DashboardController : ControllerBase
                 })
                 .OrderByDescending(x => x.Qty).Take(5).ToListAsync();
             topItems = items.Select(i => new DashRankDto(i.ProductId.ToString(), i.ProductName, i.Value, i.Qty)).ToArray();
+        }
 
+        if (Can(Permissions.DashboardBranches))
+        {
             var branches = await monthSales.GroupBy(d => d.BranchId)
                 .Select(g => new { g.Key, Net = g.Sum(d => d.Type == DocumentType.SALES_INVOICE ? d.GrandTotal : -d.GrandTotal) })
                 .ToListAsync();
@@ -184,7 +214,7 @@ public sealed class DashboardController : ControllerBase
         }
 
         DashAccountDto[]? accounts = null;
-        if (Can(Permissions.ReceiptsView))
+        if (Can(Permissions.DashboardAccounts))
         {
             var only = Access.MoneyAccounts(User);
             var rows = await _db.MoneyAccounts.InBranches(User, a => a.BranchId)
@@ -194,7 +224,7 @@ public sealed class DashboardController : ControllerBase
         }
 
         DashNotesDueDto? notes = null;
-        if (Can(Permissions.NotesView))
+        if (Can(Permissions.DashboardNotesDue))
         {
             var weekEnd = CompanyClock.StartOf(notesUntil.AddDays(1));
             var due = await _db.Notes.InBranches(User, n => n.BranchId)
@@ -207,14 +237,14 @@ public sealed class DashboardController : ControllerBase
             notes = new DashNotesDueDto(r?.Count ?? 0, r?.Amount ?? 0, p?.Count ?? 0, p?.Amount ?? 0);
         }
 
-        int? awaiting = Can(Permissions.SalesApprove)
+        int? awaiting = Can(Permissions.DashboardAwaiting)
             ? await _db.SalesDocuments.InBranches(User, d => d.BranchId)
                 .CountAsync(d => d.Type == DocumentType.SALES_ORDER && d.Status == DocumentStatus.PENDING)
             : null;
 
         DashRankDto[]? overLimit = null;
         var overCount = 0;
-        if (Can(Permissions.PartiesView))
+        if (Can(Permissions.DashboardOverLimit))
         {
             var over = _db.Parties.Where(p => p.IsActive && p.CreditLimit != null && p.Balance >= p.CreditLimit);
             overCount = await over.CountAsync();
@@ -222,7 +252,7 @@ public sealed class DashboardController : ControllerBase
                 .Select(p => new DashRankDto(p.Id.ToString(), p.Name, p.Balance, null, p.CreditLimit)).ToArray();
         }
 
-        long? stockValue = Can(Permissions.CostsView)
+        long? stockValue = Can(Permissions.DashboardStockValue)
             ? await _db.Products.Where(p => p.IsActive && p.StockOnHand > 0).SumAsync(p => (long?)p.StockOnHand * p.CostPrice) ?? 0
             : null;
 

@@ -23,7 +23,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api")]
-[Authorize(Policy = Permissions.NotesView)]
+[Authorize]
 public sealed class NotesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -42,11 +42,33 @@ public sealed class NotesController : ControllerBase
     private static readonly NoteStatus[] Open = { NoteStatus.IN_HAND, NoteStatus.UNDER_COLLECTION, NoteStatus.ISSUED };
     private static readonly ShipmentStatus[] OnTheWay = { ShipmentStatus.CREATED, ShipmentStatus.PICKED_UP };
 
+    /// <summary>
+    /// The papers this person sees (owner, 2026-10-23): ones received with notes:view_receivable or
+    /// a step done on them, ones issued with notes:view_payable or a step done on them.
+    /// </summary>
+    private IQueryable<Note> Seen()
+    {
+        var received = User.HasAny(Permissions.NotesViewReceivable, Permissions.NotesPhotos, Permissions.NotesReceive,
+            Permissions.NotesDeposit, Permissions.NotesCollect, Permissions.NotesBounce, Permissions.NotesEndorse,
+            Permissions.NotesCancel, Permissions.NotesLost);
+        var issued = User.HasAny(Permissions.NotesViewPayable, Permissions.NotesPhotos, Permissions.NotesIssue,
+            Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesCancel, Permissions.NotesLost);
+        var q = Scoped();
+        return received && issued ? q
+            : received ? q.Where(n => n.Direction == NoteDirection.RECEIVABLE)
+            : issued ? q.Where(n => n.Direction == NoteDirection.PAYABLE)
+            : q.Where(n => false);
+    }
+
     // ------------------------------------------------------------------ lists
 
     /// <param name="search">Finds a paper by its number, our reference, its bank, its drawer or the
     /// party's name or code (owner, 2026-10-02: "find the cheque in my hand and tell me what to do").</param>
     [HttpGet("notes")]
+    [AnyPermission(Permissions.NotesViewReceivable, Permissions.NotesViewPayable, Permissions.NotesPhotos,
+        Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit, Permissions.NotesCollect,
+        Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse, Permissions.NotesCancel,
+        Permissions.NotesLost)]
     public async Task<ActionResult<PaginatedDto<NoteDto>>> List(
         [FromQuery] string? direction = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
         [FromQuery] bool? open = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
@@ -54,7 +76,7 @@ public sealed class NotesController : ControllerBase
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        var q = Scoped();
+        var q = Seen();
         if (Text(search, 60) is { } term)
         {
             var low = term.ToLower();
@@ -77,11 +99,15 @@ public sealed class NotesController : ControllerBase
 
     /// <summary>What is open and what falls due: overdue, and due in the next seven days.</summary>
     [HttpGet("notes/summary")]
+    [AnyPermission(Permissions.NotesViewReceivable, Permissions.NotesViewPayable, Permissions.NotesPhotos,
+        Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit, Permissions.NotesCollect,
+        Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse, Permissions.NotesCancel,
+        Permissions.NotesLost)]
     public async Task<ActionResult<NotesSummaryDto>> Summary()
     {
         var today = CompanyClock.TodayDate;
         var week = today.AddDays(7);
-        var open = await Scoped().Where(n => Open.Contains(n.Status))
+        var open = await Seen().Where(n => Open.Contains(n.Status))
             .Select(n => new { n.Direction, n.Amount, n.DueDate }).ToListAsync();
         long Sum(NoteDirection d, Func<DateTime, bool> when) =>
             open.Where(n => n.Direction == d && when(n.DueDate)).Sum(n => n.Amount);
@@ -93,13 +119,18 @@ public sealed class NotesController : ControllerBase
     }
 
     [HttpGet("notes/{id:guid}")]
+    [AnyPermission(Permissions.NotesViewReceivable, Permissions.NotesViewPayable, Permissions.NotesPhotos,
+        Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit, Permissions.NotesCollect,
+        Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse, Permissions.NotesCancel,
+        Permissions.NotesLost)]
     public async Task<ActionResult<NoteDto>> Get(Guid id)
     {
-        var n = await WithDetails(Scoped()).FirstOrDefaultAsync(x => x.Id == id);
+        var n = await WithDetails(Seen()).FirstOrDefaultAsync(x => x.Id == id);
         return n is null ? NotFound(new { message = "Note not found.", code = "not_found" }) : Ok(ToDto(n, await CurrencyAsync()));
     }
 
     [HttpGet("portfolios")]
+    [AnyPermission(Permissions.NotesPortfolios, Permissions.NotesDeposit)]
     public async Task<ActionResult<PortfolioDto[]>> Portfolios()
     {
         var q = _db.Portfolios.AsNoTracking().Include(p => p.Account).Include(p => p.Branch).Include(p => p.CreatedBy)
@@ -380,14 +411,15 @@ public sealed class NotesController : ControllerBase
     /// PNG or WebP up to 3 MB, read from its bytes; stored in the database, never on disk.
     /// </summary>
     [HttpPut("notes/{id:guid}/photo")]
+    [AnyPermission(Permissions.NotesPhotos, Permissions.NotesReceive, Permissions.NotesIssue)]
     [RequestSizeLimit(MaxPhotoBytes + 64 * 1024)]
     public async Task<ActionResult<NoteDto>> PutPhoto(Guid id, IFormFile? file)
     {
         var note = await Scoped().FirstOrDefaultAsync(n => n.Id == id);
         if (note is null) return NotFound(new { message = "Note not found.", code = "not_found" });
-        // Whoever may take (or issue) such papers keeps their photos.
+        // notes:photos, or whoever may take (or issue) such papers, keeps their photos.
         var may = note.Direction == NoteDirection.RECEIVABLE ? Permissions.NotesReceive : Permissions.NotesIssue;
-        if (!User.HasClaim("permission", may)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        if (!User.HasAny(may, Permissions.NotesPhotos)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         if (file is null || file.Length == 0 || file.Length > MaxPhotoBytes)
             return Bad("bad_photo", "Choose a photo of up to 3 MB.");
         using var buffer = new MemoryStream();
@@ -409,9 +441,13 @@ public sealed class NotesController : ControllerBase
 
     /// <summary>The paper's photo, never cached anywhere.</summary>
     [HttpGet("notes/{id:guid}/photo")]
+    [AnyPermission(Permissions.NotesViewReceivable, Permissions.NotesViewPayable, Permissions.NotesPhotos,
+        Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit, Permissions.NotesCollect,
+        Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse, Permissions.NotesCancel,
+        Permissions.NotesLost)]
     public async Task<IActionResult> GetPhoto(Guid id)
     {
-        if (!await Scoped().AnyAsync(n => n.Id == id)) return NotFound(new { message = "Not found.", code = "not_found" });
+        if (!await Seen().AnyAsync(n => n.Id == id)) return NotFound(new { message = "Not found.", code = "not_found" });
         var photo = await _db.NotePhotos.AsNoTracking().FirstOrDefaultAsync(x => x.NoteId == id);
         if (photo is null) return NotFound(new { message = "Not found.", code = "not_found" });
         Response.Headers.CacheControl = "no-store";
@@ -420,12 +456,13 @@ public sealed class NotesController : ControllerBase
     }
 
     [HttpDelete("notes/{id:guid}/photo")]
+    [AnyPermission(Permissions.NotesPhotos, Permissions.NotesReceive, Permissions.NotesIssue)]
     public async Task<ActionResult<NoteDto>> DeletePhoto(Guid id)
     {
         var note = await Scoped().FirstOrDefaultAsync(n => n.Id == id);
         if (note is null) return NotFound(new { message = "Note not found.", code = "not_found" });
         var may = note.Direction == NoteDirection.RECEIVABLE ? Permissions.NotesReceive : Permissions.NotesIssue;
-        if (!User.HasClaim("permission", may)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        if (!User.HasAny(may, Permissions.NotesPhotos)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         await _db.NotePhotos.Where(x => x.NoteId == id).ExecuteDeleteAsync();
         note.HasPhoto = false;
         await _db.SaveChangesAsync();

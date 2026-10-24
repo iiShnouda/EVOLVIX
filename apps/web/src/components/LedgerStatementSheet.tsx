@@ -351,6 +351,7 @@ export function StatementBody({
         )}
         <div className="ms-auto">
           <ReportActions
+            scope="statement"
             disabled={!data}
             onPrint={() => report.print(paper.current, heading, period)}
             onExcel={excel}

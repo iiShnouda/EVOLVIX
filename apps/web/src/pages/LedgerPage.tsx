@@ -7,6 +7,7 @@ import {
   type FinancialRow,
   type JournalEntry,
   type LedgerAccount,
+  type Permission,
   type TranslationKey,
   companyToday,
 } from '@skb/shared';
@@ -34,13 +35,23 @@ import {
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
 
-type Tab = 'accounts' | 'journal' | 'trial' | 'income' | 'balance';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'accounts', label: 'ledger.tabAccounts' },
-  { key: 'journal', label: 'ledger.tabJournal' },
-  { key: 'trial', label: 'ledger.tabTrial' },
-  { key: 'income', label: 'ledger.tabIncome' },
-  { key: 'balance', label: 'ledger.tabBalance' },
+type Tab = 'accounts' | 'journal' | 'trial' | 'income' | 'balance' | 'closing';
+/** Each part opens for its own permissions (owner, 2026-10-23: none needs another). */
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'accounts',
+    label: 'ledger.tabAccounts',
+    anyOf: ['ledger:accounts', 'ledger:accounts_create', 'ledger:accounts_edit'],
+  },
+  {
+    key: 'journal',
+    label: 'ledger.tabJournal',
+    anyOf: ['ledger:journal', 'ledger:post', 'ledger:reverse'],
+  },
+  { key: 'trial', label: 'ledger.tabTrial', anyOf: ['ledger:trial_balance'] },
+  { key: 'income', label: 'ledger.tabIncome', anyOf: ['ledger:income_statement'] },
+  { key: 'balance', label: 'ledger.tabBalance', anyOf: ['ledger:balance_sheet'] },
+  { key: 'closing', label: 'ledger.tabClosing', anyOf: ['ledger:lock', 'ledger:close_year'] },
 ];
 /** Groups whose accounts come from customers, suppliers, cash boxes and categories. */
 const AUTO_GROUPS = ['CASH', 'BANKS', 'CUSTOMERS', 'CARRIERS', 'SUPPLIERS', 'OPERATING_EXPENSES'];
@@ -76,15 +87,11 @@ const today = companyToday;
 export function LedgerPage() {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
-  // Trial balance, income statement and balance sheet show cost of goods and profit: the owner's
-  // unless given (costs:view); the server refuses them otherwise.
-  // …and profit, which has its own permission (owner, 2026-10-17).
   const can = useCan();
-  const seeCosts = can('costs:view') && can('profit:view');
-  const tabs = seeCosts
-    ? TABS
-    : TABS.filter((x) => !['trial', 'income', 'balance'].includes(x.key));
-  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
+  if (!tab) return <EmptyState title={t('common.empty')} icon="ledger" />;
   return (
     <div className="space-y-5">
       <PageHeader title={t('ledger.title')} subtitle={t('ledger.subtitle')} />
@@ -111,6 +118,7 @@ export function LedgerPage() {
       {tab === 'trial' && <TrialTab />}
       {tab === 'income' && <IncomeTab />}
       {tab === 'balance' && <BalanceTab />}
+      {tab === 'closing' && <ClosingTab />}
     </div>
   );
 }
@@ -200,7 +208,7 @@ function AccountsTab() {
           />
           {t('ledger.showEmpty')}
         </label>
-        {can('ledger:manage') && (
+        {can('ledger:accounts_create') && (
           <Button icon="plus" size="sm" onClick={() => setAdding(true)}>
             {t('ledger.addAccount')}
           </Button>
@@ -232,7 +240,7 @@ function AccountsTab() {
                   <span className="ms-auto shrink-0 text-end">
                     <SidedMoney value={a.balance} currency={currency} />
                   </span>
-                  {can('ledger:manage') &&
+                  {can('ledger:accounts_edit') &&
                     !a.systemKey &&
                     !a.partyId &&
                     !a.moneyAccountId &&
@@ -376,36 +384,40 @@ function JournalTab() {
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(today());
   const [source, setSource] = useState('');
-  const { data, isLoading } = useJournal({ from, to, source: source || undefined });
+  // The entries for whoever sees the journal or reverses entries; a manual entry alone otherwise.
+  const listed = can('ledger:journal') || can('ledger:reverse');
+  const { data, isLoading } = useJournal({ from, to, source: source || undefined }, listed);
   const [open, setOpen] = useState<JournalEntry | null>(null);
   const [posting, setPosting] = useState(false);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
-          <select
-            className={`${small} w-auto`}
-            value={source}
-            aria-label={t('ledger.allSources')}
-            onChange={(e) => setSource(e.target.value)}
-          >
-            <option value="">{t('ledger.allSources')}</option>
-            {SOURCES.map((s) => (
-              <option key={s} value={s}>
-                {t(`ledger.source.${s}` as TranslationKey)}
-              </option>
-            ))}
-          </select>
-        </div>
+        {listed && (
+          <div className="flex flex-wrap items-end gap-3">
+            <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
+            <select
+              className={`${small} w-auto`}
+              value={source}
+              aria-label={t('ledger.allSources')}
+              onChange={(e) => setSource(e.target.value)}
+            >
+              <option value="">{t('ledger.allSources')}</option>
+              {SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {t(`ledger.source.${s}` as TranslationKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {can('ledger:post') && (
           <Button icon="plus" size="sm" onClick={() => setPosting(true)}>
             {t('ledger.newEntry')}
           </Button>
         )}
       </div>
-      {isLoading ? (
+      {!listed ? null : isLoading ? (
         <Loading />
       ) : !data || data.items.length === 0 ? (
         <Card>
@@ -507,7 +519,7 @@ function EntrySheet({ e, onClose }: { e: JournalEntry; onClose: () => void }) {
       {reverse.error && (
         <p className="mt-3 text-sm text-destructive">{errorText(t, reverse.error)}</p>
       )}
-      {e.reversible && can('ledger:post') && (
+      {e.reversible && can('ledger:reverse') && (
         <div className="mt-4 border-t border-line pt-3">
           <p className="mb-2 text-xs text-muted">{t('ledger.reverseHint')}</p>
           <Button
@@ -705,16 +717,9 @@ function NewEntrySheet({ onClose }: { onClose: () => void }) {
 
 function TrialTab() {
   const { t, locale } = useT();
-  const can = useCan();
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(today());
   const { data, isLoading, error } = useTrialBalance(from, to);
-  const lock = useLockDate();
-  const setLock = useSetLockDate();
-  const [lockTo, setLockTo] = useState(today);
-  // A closed year stays locked: the lock can't move back before its 31 December.
-  const lastClosed = Math.max(0, ...(useClosedYears().data ?? []).map((c) => c.year));
-  const lockMin = lastClosed ? `${lastClosed}-12-31` : undefined;
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
@@ -731,54 +736,11 @@ function TrialTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
-        <Card className="flex flex-wrap items-end gap-2 !p-3 text-sm">
-          <span className="self-center text-muted">
-            {t('ledger.lock')}:{' '}
-            <span className="font-medium text-fg">
-              {lock.data?.lockDate
-                ? `${t('ledger.lockedThrough')} ${formatDate(lock.data.lockDate, locale)}`
-                : t('ledger.notLocked')}
-            </span>
-          </span>
-          {can('ledger:lock') && (
-            <>
-              <input
-                className={`${small} w-auto`}
-                type="date"
-                min={lockMin}
-                max={today()}
-                value={lockTo}
-                onChange={(e) => setLockTo(e.target.value)}
-              />
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!lockTo || setLock.isPending}
-                onClick={() => setLock.mutate(lockTo)}
-              >
-                {t('ledger.setLock')}
-              </Button>
-              {lock.data?.lockDate && !lastClosed && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={setLock.isPending}
-                  onClick={() => setLock.mutate(null)}
-                >
-                  {t('ledger.unlock')}
-                </Button>
-              )}
-            </>
-          )}
-          {setLock.error && <span className="text-destructive">{errorText(t, setLock.error)}</span>}
-        </Card>
-      </div>
-      <YearClose />
+      <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
       {error && <p className="text-sm text-destructive">{errorText(t, error)}</p>}
       <div className="flex justify-end">
         <ReportActions
+          scope="ledger"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('ledger.tabTrial'), period)}
           onExcel={() => {
@@ -887,6 +849,69 @@ function TrialTab() {
   );
 }
 
+/* ---------------------------------------------------------- closing */
+
+/**
+ * Closing the books (owner, 2026-10-23: its own part, apart from the trial balance): the period
+ * lock (ledger:lock) and the year-end close (ledger:close_year).
+ */
+function ClosingTab() {
+  const { t, locale } = useT();
+  const can = useCan();
+  const lock = useLockDate();
+  const setLock = useSetLockDate();
+  const [lockTo, setLockTo] = useState(today);
+  // A closed year stays locked: the lock can't move back before its 31 December.
+  const lastClosed = Math.max(0, ...(useClosedYears().data ?? []).map((c) => c.year));
+  const lockMin = lastClosed ? `${lastClosed}-12-31` : undefined;
+  return (
+    <div className="space-y-3">
+      <Card className="flex flex-wrap items-end gap-2 !p-3 text-sm">
+        <span className="self-center text-muted">
+          {t('ledger.lock')}:{' '}
+          <span className="font-medium text-fg">
+            {lock.data?.lockDate
+              ? `${t('ledger.lockedThrough')} ${formatDate(lock.data.lockDate, locale)}`
+              : t('ledger.notLocked')}
+          </span>
+        </span>
+        {can('ledger:lock') && (
+          <>
+            <input
+              className={`${small} w-auto`}
+              type="date"
+              min={lockMin}
+              max={today()}
+              value={lockTo}
+              onChange={(e) => setLockTo(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!lockTo || setLock.isPending}
+              onClick={() => setLock.mutate(lockTo)}
+            >
+              {t('ledger.setLock')}
+            </Button>
+            {lock.data?.lockDate && !lastClosed && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={setLock.isPending}
+                onClick={() => setLock.mutate(null)}
+              >
+                {t('ledger.unlock')}
+              </Button>
+            )}
+          </>
+        )}
+        {setLock.error && <span className="text-destructive">{errorText(t, setLock.error)}</span>}
+      </Card>
+      <YearClose />
+    </div>
+  );
+}
+
 /** Year-end close (إقفال السنة): the closed years, and closing the next one. */
 function YearClose() {
   const { t, locale } = useT();
@@ -906,7 +931,7 @@ function YearClose() {
     <Card className="space-y-2 !p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-medium">{t('ledger.yearClose')}</span>
-        {can('ledger:lock') && year !== undefined && (
+        {can('ledger:close_year') && year !== undefined && (
           <div className="flex flex-wrap items-center gap-2">
             <select
               className={`${small} w-auto tnum`}
@@ -1063,6 +1088,7 @@ function IncomeTab() {
       <div className="flex max-w-2xl flex-wrap items-end justify-between gap-3">
         <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
         <ReportActions
+          scope="ledger"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('ledger.tabIncome'), period)}
           onExcel={() => {
@@ -1161,6 +1187,7 @@ function BalanceTab() {
           />
         </label>
         <ReportActions
+          scope="ledger"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('ledger.tabBalance'), asOfText)}
           onExcel={() => {

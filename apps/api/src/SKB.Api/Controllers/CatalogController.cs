@@ -30,7 +30,7 @@ public sealed class CatalogController : ControllerBase
     // ------------------------------------------------------------------ units
 
     [HttpGet("units")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<UnitDto[]>> Units()
     {
         var units = await _db.Units.AsNoTracking().ToListAsync();
@@ -41,7 +41,7 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPost("units")]
-    [Authorize(Policy = Permissions.UnitsManage)]
+    [Authorize(Policy = Permissions.UnitsCreate)]
     public async Task<ActionResult<UnitDto>> CreateUnit([FromBody] CreateNamedRequest req)
     {
         var unit = new Unit { Pieces = Math.Clamp(req.Pieces ?? 1, 1, 100000) };
@@ -53,11 +53,13 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPut("units/{id:guid}")]
-    [Authorize(Policy = Permissions.UnitsManage)]
+    [AnyPermission(Permissions.UnitsEdit, Permissions.UnitsClose)]
     public async Task<ActionResult<UnitDto>> UpdateUnit(Guid id, [FromBody] UpdateNamedRequest req)
     {
         var unit = await _db.Units.FirstOrDefaultAsync(u => u.Id == id);
         if (unit is null) return NotFound(new { message = "Unit not found.", code = "unit_not_found" });
+        if (Refuse(req with { IsActive = null } != new UpdateNamedRequest(), Permissions.UnitsEdit,
+                req.IsActive is bool a && a != unit.IsActive, Permissions.UnitsClose) is { } no) return no;
         var error = await RenameAsync(unit, req, _db.Units, "unit");
         if (error is not null) return error;
         if (req.IsActive is bool active) unit.IsActive = active;
@@ -69,7 +71,7 @@ public sealed class CatalogController : ControllerBase
 
     /// <summary>Delete a unit no item, model, price or invoice uses (owner, 2026-10-21); else close it.</summary>
     [HttpDelete("units/{id:guid}")]
-    [Authorize(Policy = Permissions.SetupDelete)]
+    [Authorize(Policy = Permissions.UnitsDelete)]
     public async Task<IActionResult> DeleteUnit(Guid id)
     {
         var unit = await _db.Units.FirstOrDefaultAsync(u => u.Id == id);
@@ -84,7 +86,7 @@ public sealed class CatalogController : ControllerBase
     // ------------------------------------------------------------------ categories
 
     [HttpGet("categories")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<CategoryDto[]>> Categories()
     {
         var categories = await _db.Categories.AsNoTracking().Include(c => c.Department).ToListAsync();
@@ -96,7 +98,7 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPost("categories")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [Authorize(Policy = Permissions.GroupsCreate)]
     public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateCategoryRequest req)
     {
         var category = new Category();
@@ -109,7 +111,7 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPut("categories/{id:guid}")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [Authorize(Policy = Permissions.GroupsEdit)]
     public async Task<ActionResult<CategoryDto>> UpdateCategory(Guid id, [FromBody] UpdateCategoryRequest req)
     {
         var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id);
@@ -163,7 +165,7 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPost("groups")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [Authorize(Policy = Permissions.GroupsCreate)]
     public async Task<ActionResult<GroupDto>> CreateGroup([FromBody] CreateGroupRequest req)
     {
         var department = Guid.TryParse(req.DepartmentId, out var did)
@@ -180,11 +182,13 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPut("groups/{id:guid}")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [AnyPermission(Permissions.GroupsEdit, Permissions.GroupsClose)]
     public async Task<ActionResult<GroupDto>> UpdateGroup(Guid id, [FromBody] UpdateGroupRequest req)
     {
         var group = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsRoot && c.DepartmentId != null);
         if (group is null) return NotFound(new { message = "Group not found.", code = "group_not_found" });
+        if (Refuse(req with { IsActive = null } != new UpdateGroupRequest(), Permissions.GroupsEdit,
+                req.IsActive is bool a && a != group.IsActive, Permissions.GroupsClose) is { } no) return no;
         var error = (req.ParentId is null ? null : await ParentAsync(group, req.ParentId))
                     ?? GroupFields(group, req.Name, req.Prefix, req.Keywords)
                     ?? await SiblingClashAsync(group);
@@ -199,7 +203,7 @@ public sealed class CatalogController : ControllerBase
 
     /// <summary>Delete a sub-group with no items and no sub-groups under it (owner, 2026-10-21).</summary>
     [HttpDelete("groups/{id:guid}")]
-    [Authorize(Policy = Permissions.SetupDelete)]
+    [Authorize(Policy = Permissions.GroupsDelete)]
     public async Task<IActionResult> DeleteGroup(Guid id)
     {
         var group = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && !c.IsRoot && c.DepartmentId != null);
@@ -294,7 +298,7 @@ public sealed class CatalogController : ControllerBase
     /// in"); every other warehouse goes on without it.
     /// </summary>
     [HttpPost("departments")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [Authorize(Policy = Permissions.DepartmentsCreate)]
     public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req,
         [FromServices] AccessService access, [FromServices] WarehouseService warehouses)
     {
@@ -315,12 +319,14 @@ public sealed class CatalogController : ControllerBase
 
     /// <summary>Rename, close or reopen a department, or change its warehouses. Its old sales keep its name.</summary>
     [HttpPut("departments/{id:guid}")]
-    [Authorize(Policy = Permissions.CategoriesManage)]
+    [AnyPermission(Permissions.DepartmentsEdit, Permissions.DepartmentsClose)]
     public async Task<ActionResult<DepartmentDto>> UpdateDepartment(Guid id, [FromBody] UpdateNamedRequest req,
         [FromServices] WarehouseService warehouses)
     {
         var department = await _db.Departments.FirstOrDefaultAsync(d => d.Id == id);
         if (department is null) return NotFound(new { message = "Department not found.", code = "department_not_found" });
+        if (Refuse(req with { IsActive = null } != new UpdateNamedRequest(), Permissions.DepartmentsEdit,
+                req.IsActive is bool a && a != department.IsActive, Permissions.DepartmentsClose) is { } no) return no;
         var error = await RenameAsync(department, req, _db.Departments, "department")
                     ?? PrefixOf(department, req.Prefix)
                     ?? await PlaceAsync(id, req.WarehouseIds, warehouses);
@@ -443,7 +449,7 @@ public sealed class CatalogController : ControllerBase
     // ------------------------------------------------------------------ price levels
 
     [HttpGet("price-levels")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<PriceLevelDto[]>> PriceLevels() =>
         Ok((await PriceBook.LevelsAsync(_db)).Select(Mapper.ToPriceLevel).ToArray());
 
@@ -520,7 +526,7 @@ public sealed class CatalogController : ControllerBase
     // ------------------------------------------------------------------ sizes & colors
 
     [HttpGet("variant-options")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<VariantOptionDto[]>> VariantOptions([FromQuery] string? kind = null)
     {
         var q = _db.VariantOptions.AsNoTracking();
@@ -531,11 +537,12 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPost("variant-options")]
-    [Authorize(Policy = Permissions.VariantOptionsManage)]
+    [AnyPermission(Permissions.SizesCreate, Permissions.ColorsCreate)]
     public async Task<ActionResult<VariantOptionDto>> CreateVariantOption([FromBody] CreateVariantOptionRequest req)
     {
         if (!Enum.TryParse<VariantKind>(req.Kind, true, out var kind))
             return BadRequest(new { message = "Choose size or color.", code = "bad_kind" });
+        if (!User.Has(kind == VariantKind.SIZE ? Permissions.SizesCreate : Permissions.ColorsCreate)) return Forbidden();
         var sameKind = _db.VariantOptions.Where(o => o.Kind == kind);
         var hex = HexOf(req.Hex);
         if (hex == "") return BadRequest(new { message = "Pick a color like #1d4ed8.", code = "bad_color" });
@@ -554,11 +561,15 @@ public sealed class CatalogController : ControllerBase
     }
 
     [HttpPut("variant-options/{id:guid}")]
-    [Authorize(Policy = Permissions.VariantOptionsManage)]
+    [AnyPermission(Permissions.SizesEdit, Permissions.SizesClose, Permissions.ColorsEdit, Permissions.ColorsClose)]
     public async Task<ActionResult<VariantOptionDto>> UpdateVariantOption(Guid id, [FromBody] UpdateNamedRequest req)
     {
         var option = await _db.VariantOptions.FirstOrDefaultAsync(o => o.Id == id);
         if (option is null) return NotFound(new { message = "Size or color not found.", code = "variant_option_not_found" });
+        var size = option.Kind == VariantKind.SIZE;
+        if (Refuse(req with { IsActive = null } != new UpdateNamedRequest(), size ? Permissions.SizesEdit : Permissions.ColorsEdit,
+                req.IsActive is bool a && a != option.IsActive, size ? Permissions.SizesClose : Permissions.ColorsClose) is { } no)
+            return no;
         var error = await RenameAsync(option, req, _db.VariantOptions.Where(o => o.Kind == option.Kind),
             option.Kind == VariantKind.SIZE ? "size" : "color");
         if (error is not null) return error;
@@ -578,17 +589,28 @@ public sealed class CatalogController : ControllerBase
 
     /// <summary>Delete a size or color no item uses (owner, 2026-10-21); else close it.</summary>
     [HttpDelete("variant-options/{id:guid}")]
-    [Authorize(Policy = Permissions.SetupDelete)]
+    [AnyPermission(Permissions.SizesDelete, Permissions.ColorsDelete)]
     public async Task<IActionResult> DeleteVariantOption(Guid id)
     {
         var option = await _db.VariantOptions.FirstOrDefaultAsync(o => o.Id == id);
         if (option is null) return NotFound(new { message = "Size or color not found.", code = "variant_option_not_found" });
+        if (!User.Has(option.Kind == VariantKind.SIZE ? Permissions.SizesDelete : Permissions.ColorsDelete)) return Forbidden();
         if (await _db.Products.AnyAsync(p => p.SizeId == id || p.ColorId == id)) return InUse();
         _db.VariantOptions.Remove(option);
         return await RemoveAsync("variant_option", id, Loc.Name(option));
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>
+    /// Changing an entry and stopping it are permissions of their own (owner, 2026-10-23): a request
+    /// that changes anything but whether it is in use needs <paramref name="edit"/>; stopping or
+    /// reopening it needs <paramref name="close"/>.
+    /// </summary>
+    private ObjectResult? Refuse(bool edits, string edit, bool closes, string close) =>
+        (edits && !User.Has(edit)) || (closes && !User.Has(close)) ? Forbidden() : null;
+
+    private ObjectResult Forbidden() => StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
 
     /// <summary>Save a removal; something still pointing at it (a foreign key) refuses it.</summary>
     private async Task<IActionResult> RemoveAsync(string resource, Guid id, string name)

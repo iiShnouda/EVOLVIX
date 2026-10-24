@@ -111,7 +111,7 @@ function SendCard({ initialFrom }: { initialFrom: string }) {
   const [done, setDone] = useState(false);
   const list = boxes.data ?? [];
   const box = list.find((b) => b.id === fromId) ?? list[0];
-  const available = box ? box.balance - (box.held ?? 0) : 0;
+  const available = box ? (box.balance ?? 0) - (box.held ?? 0) : 0;
   const minor = toMinor(Number(amount) || 0);
   const money = (v: number) => (box ? formatMoney(v, box.currency, locale) : '');
 

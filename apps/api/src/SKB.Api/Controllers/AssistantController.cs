@@ -10,7 +10,8 @@ namespace SKB.Api.Controllers;
 
 /// <summary>
 /// The company's offline assistant (see <see cref="AssistantService"/>): ask it (<c>ai:chat</c>), and
-/// read a photo of a supplier invoice or cheques into a draft (<c>ai:scan</c> and the permission of
+/// read a photo of a supplier invoice, cheques or a count sheet into a draft (<c>ai:scan_purchase</c>,
+/// <c>ai:scan_cheques</c>, <c>ai:scan_stocktake</c>; talking needs <c>ai:voice</c>; and the permission of
 /// the screen the draft goes to). Each person's conversations stay on the server, theirs alone; they
 /// can keep several and delete any (owner, 2026-10-10). Answers come in the app's language, and one
 /// can talk with it by voice (owner, 2026-10-11): the server's own speech service (Whisper) reads what
@@ -85,20 +86,20 @@ public sealed class AssistantController : ControllerBase
 
     /// <summary>Whether the assistant is ready (the model server answers and has its models).</summary>
     [HttpGet("status")]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice, Permissions.AiScanPurchase, Permissions.AiScanStocktake,
+        Permissions.AiScanCheques)]
     public async Task<ActionResult<AssistantStatusDto>> Status(CancellationToken ct)
     {
-        if (!Can(Permissions.AiChat) && !Can(Permissions.AiScan))
-            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var s = await _ai.StatusAsync(ct);
-        var chat = Can(Permissions.AiChat);
-        var speech = chat && await _ai.SpeechReadyAsync(ct);
-        var voice = chat ? (await _ai.VoiceStatusAsync(ct)).Languages : Array.Empty<string>();
+        var talk = Can(Permissions.AiVoice);
+        var speech = talk && await _ai.SpeechReadyAsync(ct);
+        var voice = talk ? (await _ai.VoiceStatusAsync(ct)).Languages : Array.Empty<string>();
         return Ok(new AssistantStatusDto(s.Enabled, s.Reachable, s.ChatReady, s.VisionReady, speech, voice));
     }
 
     /// <summary>This person's conversations, latest first.</summary>
     [HttpGet("conversations")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice)]
     public async Task<ActionResult<AssistantConversationDto[]>> Conversations()
     {
         var me = Me;
@@ -110,7 +111,7 @@ public sealed class AssistantController : ControllerBase
 
     /// <summary>One conversation's questions and answers, oldest first (the person's own only).</summary>
     [HttpGet("conversations/{id:guid}")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice)]
     public async Task<ActionResult<AssistantTurnDto[]>> Turns(Guid id)
     {
         var me = Me;
@@ -121,7 +122,7 @@ public sealed class AssistantController : ControllerBase
     }
 
     [HttpDelete("conversations/{id:guid}")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice)]
     public async Task<IActionResult> DeleteConversation(Guid id)
     {
         var me = Me;
@@ -136,7 +137,7 @@ public sealed class AssistantController : ControllerBase
     /// days, or all of them when it isn't given.
     /// </summary>
     [HttpDelete("conversations")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice)]
     public async Task<ActionResult<object>> DeleteConversations([FromQuery] int? olderThanDays)
     {
         var me = Me;
@@ -156,7 +157,7 @@ public sealed class AssistantController : ControllerBase
     /// Ask a question in a conversation (a new one when none is given); the answer is kept with it.
     /// </summary>
     [HttpPost("ask")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [AnyPermission(Permissions.AiChat, Permissions.AiVoice)]
     public async Task<ActionResult<AssistantAnswerDto>> Ask([FromBody] AssistantAskRequest req, CancellationToken ct)
     {
         var question = (req.Text ?? "").Trim();
@@ -207,7 +208,7 @@ public sealed class AssistantController : ControllerBase
 
     /// <summary>What was said in a short recording, read by the server's own speech service.</summary>
     [HttpPost("transcribe")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [Authorize(Policy = Permissions.AiVoice)]
     [RequestSizeLimit(MaxAudio + 64 * 1024)]
     public async Task<ActionResult<AssistantTranscriptDto>> Transcribe(IFormFile? file, [FromQuery] string? language,
         CancellationToken ct)
@@ -234,7 +235,7 @@ public sealed class AssistantController : ControllerBase
     /// device and in Arabic too, where a device may have no Arabic voice of its own.
     /// </summary>
     [HttpPost("speak")]
-    [Authorize(Policy = Permissions.AiChat)]
+    [Authorize(Policy = Permissions.AiVoice)]
     public async Task<IActionResult> Speak([FromBody] AssistantSpeakRequest req, CancellationToken ct)
     {
         var language = req.Language is "ar" or "en" ? req.Language : null;
@@ -264,11 +265,10 @@ public sealed class AssistantController : ControllerBase
     /// <see cref="ScanJob"/>.
     /// </summary>
     [HttpPost("scan/purchase")]
-    [Authorize(Policy = Permissions.AiScan)]
+    [Authorize(Policy = Permissions.AiScanPurchase)]
     [RequestSizeLimit(MaxImage + 64 * 1024)]
     public async Task<IActionResult> ScanPurchase(IFormFile? file, CancellationToken ct)
     {
-        if (!Can(Permissions.PurchasesCreate)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
         if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
@@ -281,11 +281,10 @@ public sealed class AssistantController : ControllerBase
     /// count decides (read on like an invoice).
     /// </summary>
     [HttpPost("scan/stocktake")]
-    [Authorize(Policy = Permissions.AiScan)]
+    [Authorize(Policy = Permissions.AiScanStocktake)]
     [RequestSizeLimit(MaxImage + 64 * 1024)]
     public async Task<IActionResult> ScanStocktake(IFormFile? file, CancellationToken ct)
     {
-        if (!Can(Permissions.InventoryStocktake)) return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
         if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
@@ -294,12 +293,10 @@ public sealed class AssistantController : ControllerBase
 
     /// <summary>Read cheques from a photo into rows for the notes screen (read on like an invoice).</summary>
     [HttpPost("scan/cheques")]
-    [Authorize(Policy = Permissions.AiScan)]
+    [Authorize(Policy = Permissions.AiScanCheques)]
     [RequestSizeLimit(MaxImage + 64 * 1024)]
     public async Task<IActionResult> ScanCheques(IFormFile? file, CancellationToken ct)
     {
-        if (!Can(Permissions.NotesReceive) && !Can(Permissions.NotesIssue))
-            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var (image, error) = await ImageAsync(file, ct);
         if (error is not null) return error;
         if (await PhotoBlockedAsync(ct) is { } blocked) return blocked;
@@ -311,7 +308,7 @@ public sealed class AssistantController : ControllerBase
     /// read, then what it read, or why it couldn't be.
     /// </summary>
     [HttpGet("scan/jobs/{id:guid}")]
-    [Authorize(Policy = Permissions.AiScan)]
+    [AnyPermission(Permissions.AiScanPurchase, Permissions.AiScanStocktake, Permissions.AiScanCheques)]
     public IActionResult ScanJob(Guid id)
     {
         var job = _jobs.Find(id, CurrentUser.Id(User));

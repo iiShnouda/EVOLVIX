@@ -5,7 +5,7 @@ import { useCan } from '../lib/can';
 
 /**
  * An item's name with its code; tapping it opens its item card (owner, 2026-10-19: "tapping any
- * item shows its card"). Plain text for someone who may not see the stock.
+ * item shows its card"). Plain text for someone who may not open item cards.
  */
 export function ItemLink({
   id,
@@ -23,7 +23,7 @@ export function ItemLink({
   const can = useCan();
   const navigate = useNavigate();
   const label = <CodeName code={code} name={name} truncate={truncate} />;
-  if (!id || !can('inventory:view')) return <span className={className}>{label}</span>;
+  if (!id || !can('inventory:card')) return <span className={className}>{label}</span>;
   return (
     <button
       type="button"

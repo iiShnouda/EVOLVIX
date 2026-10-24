@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Party, TranslationKey } from '@skb/shared';
+import type { Party, Permission, TranslationKey } from '@skb/shared';
 import { Card, PageHeader } from '../components/ui';
 import { PartyPicker } from '../components/PartyPicker';
 import { PartyAccount } from '../components/PartyAccount';
@@ -26,18 +26,15 @@ const PARTY_KINDS = ['CUSTOMER', 'SUPPLIER', 'CARRIER'] as const;
 type PartyKind = (typeof PARTY_KINDS)[number];
 const isParty = (k: Kind): k is PartyKind => (PARTY_KINDS as readonly Kind[]).includes(k);
 
-const KINDS: {
-  kind: Kind;
-  label: TranslationKey;
-  permission: 'ledger:view' | 'receipts:view' | 'inventory:view';
-}[] = [
-  { kind: 'CUSTOMER', label: 'statement.customers', permission: 'ledger:view' },
-  { kind: 'SUPPLIER', label: 'statement.suppliers', permission: 'ledger:view' },
-  { kind: 'CARRIER', label: 'statement.carriers', permission: 'ledger:view' },
-  { kind: 'CASH', label: 'statement.cash', permission: 'receipts:view' },
-  { kind: 'EXPENSE', label: 'statement.expenses', permission: 'receipts:view' },
-  { kind: 'WAREHOUSE', label: 'statement.warehouses', permission: 'inventory:view' },
-  { kind: 'LEDGER', label: 'statement.ledger', permission: 'ledger:view' },
+/** Each kind of statement is a permission of its own (owner, 2026-10-23). */
+const KINDS: { kind: Kind; label: TranslationKey; permission: Permission }[] = [
+  { kind: 'CUSTOMER', label: 'statement.customers', permission: 'statement:customers' },
+  { kind: 'SUPPLIER', label: 'statement.suppliers', permission: 'statement:suppliers' },
+  { kind: 'CARRIER', label: 'statement.carriers', permission: 'statement:carriers' },
+  { kind: 'CASH', label: 'statement.cash', permission: 'statement:money' },
+  { kind: 'EXPENSE', label: 'statement.expenses', permission: 'statement:expenses' },
+  { kind: 'WAREHOUSE', label: 'statement.warehouses', permission: 'statement:warehouses' },
+  { kind: 'LEDGER', label: 'statement.ledger', permission: 'statement:ledger' },
 ];
 
 const PARTY_LABEL: Record<PartyKind, TranslationKey> = {

@@ -1,6 +1,50 @@
 {
   "releases": [
     {
+      "version": "1.11.0",
+      "date": "2026-10-24",
+      "features": [
+        {
+          "ar": "كل حاجة في كل صفحة بقت صلاحية لوحدها، ومفيش صلاحية محتاجة صلاحية تانية: تقدر تدي حد كارت واحد في الرئيسية، أو تقرير واحد، أو قائمة واحدة، أو زرار واحد بس.",
+          "en": "Every action on every page is now a permission of its own, and none needs another: you can give someone a single dashboard card, one report, one list or one button."
+        },
+        {
+          "ar": "دور جديد «بدون صلاحيات»: الشخص يبدأ من غير أي حاجة، وتديله بالظبط اللي محتاجه.",
+          "en": "A new role, “No permissions”: a person starts with nothing and gets exactly what you give them."
+        },
+        {
+          "ar": "صفحة الحسابات والصلاحيات اتعملت من جديد: الصلاحيات متقسمة حسب الصفحة وجزء الصفحة، تختار صفحة كاملة أو جزء منها مرة واحدة، فيها بحث، وكلام أقل.",
+          "en": "The accounts and permissions page is redone: permissions grouped by page and part of the page, a whole page or part ticked at once, a search box, and far fewer words."
+        },
+        {
+          "ar": "القائمة الجانبية بقت متقسمة لأقسام، وكل صفحة بتظهر فيها الأجزاء اللي الشخص مسموح له بيها بس، والبرنامج بيفتح على أول صفحة مسموح له بيها.",
+          "en": "The menu is arranged in sections; each page shows only the parts the person may use, and the app opens on the first page they may open."
+        },
+        {
+          "ar": "الإعدادات اتقسمت: بيانات المنشأة، اللوجو، الأسعار والضريبة، قواعد المخزون والفواتير، الأمان، ترقيم المستندات، والمتجر الإلكتروني — كل جزء بصلاحيته.",
+          "en": "Settings are split into parts — company details, logo, prices and tax, stock and invoice rules, security, document numbering, online store — each changed with its own permission."
+        },
+        {
+          "ar": "رصيد الخزائن والبنوك بيظهر بس للي عنده صلاحية عرض الحسابات المالية أو كشف حسابها؛ الباقيين بيختاروا الحساب باسمه.",
+          "en": "What is in each cash box or bank shows only to those who may see the money accounts or their statements; others pick an account by its name."
+        },
+        {
+          "ar": "تقارير الربح والتكلفة (قائمة الدخل، الميزانية، ميزان المراجعة، الأرباح، وقيمة المخزون) بتتفتح بصلاحيتها لوحدها.",
+          "en": "Profit and cost reports (income statement, balance sheet, trial balance, profit and stock value) open with their own permission alone."
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "البحث بكود صنف كامل (زي MWSH-24-1A) بقى يجيب الصنف ده بس، مش الأكواد اللي شبهه.",
+          "en": "Searching a full item code (such as MWSH-24-1A) now finds that item, not the codes next to it."
+        },
+        {
+          "ar": "صفحة التحديثات مبقتش تعرض سطر طويل كأنه جديد وهو مش جديد، ومفيش سطر بيتشال من إصدار فيه سطور كتير.",
+          "en": "The updates page no longer shows a long line as new when it isn't, and no line is dropped from a release with many lines."
+        }
+      ]
+    },
+    {
       "version": "1.10.0",
       "date": "2026-10-14",
       "features": [

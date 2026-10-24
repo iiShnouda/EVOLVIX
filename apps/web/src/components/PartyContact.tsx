@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { CodeName, codeName } from './CodeName';
 import { ReportActions } from './ReportActions';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { mayOpenStatement, useCan } from '../lib/can';
 import { useParty } from '../lib/queries';
 import { useReportTools } from '../lib/report';
 
@@ -37,7 +37,9 @@ export function PartyLink({
   const can = useCan();
   const [open, setOpen] = useState(false);
   const label = <CodeName code={code} name={name} truncate={truncate} />;
-  if (!id || !can('parties:view')) return <span className={className}>{label}</span>;
+  if (!id || !(can('parties:view') || can('parties:contact'))) {
+    return <span className={className}>{label}</span>;
+  }
   return (
     <>
       <button
@@ -123,7 +125,7 @@ export function PartyDirectory({ id, onClose }: { id: string; onClose: () => voi
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {can('ledger:view') && (
+            {mayOpenStatement(p, can) && (
               <button
                 type="button"
                 className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-app)] border border-line px-3 text-sm hover:border-brand hover:text-brand"
@@ -137,6 +139,7 @@ export function PartyDirectory({ id, onClose }: { id: string; onClose: () => voi
               </button>
             )}
             <ReportActions
+              scope="parties"
               onPrint={() =>
                 report.print(paper.current, t('parties.directory'), codeName(p.code, p.name))
               }

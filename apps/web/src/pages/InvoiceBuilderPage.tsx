@@ -373,6 +373,16 @@ export function InvoiceBuilderPage({
   const [second, setSecond] = useState<Set<string>>(new Set());
   // The item whose card is open (clicking its name while making the invoice).
   const [cardOf, setCardOf] = useState<string | null>(null);
+  // An item's life opens for whoever may see any part of it.
+  const seesLife = (
+    [
+      'inventory:card',
+      'products:card_purchases',
+      'products:card_sales',
+      'products:card_returns',
+      'products:card_prices',
+    ] as const
+  ).some(can);
   // What each item already has on the invoice (base units), shown in the detailed search.
   const onInvoice = useMemo(() => {
     const m = new Map<string, number>();
@@ -1060,14 +1070,20 @@ export function InvoiceBuilderPage({
                 {/* What it is, how many, and on which basis. */}
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-40 flex-1">
-                    <button
-                      type="button"
-                      className="block max-w-full truncate text-start text-sm font-medium hover:text-brand hover:underline"
-                      title={t('itemCard.open')}
-                      onClick={() => setCardOf(l.product.id)}
-                    >
-                      {l.product.name}
-                    </button>
+                    {seesLife ? (
+                      <button
+                        type="button"
+                        className="block max-w-full truncate text-start text-sm font-medium hover:text-brand hover:underline"
+                        title={t('itemCard.open')}
+                        onClick={() => setCardOf(l.product.id)}
+                      >
+                        {l.product.name}
+                      </button>
+                    ) : (
+                      <span className="block max-w-full truncate text-sm font-medium">
+                        {l.product.name}
+                      </span>
+                    )}
                     <span className="text-xs text-faint tnum">{l.product.sku}</span>
                     {/* What is left in the warehouse after the lines already on the invoice. */}
                     <span
@@ -1584,14 +1600,18 @@ export function InvoiceBuilderPage({
       className: 'min-w-40',
       cell: (r) => (
         <>
-          <button
-            type="button"
-            className="block text-start font-medium hover:text-brand hover:underline"
-            title={t('itemCard.open')}
-            onClick={() => setCardOf(r.line.product.id)}
-          >
-            {r.line.product.name}
-          </button>
+          {seesLife ? (
+            <button
+              type="button"
+              className="block text-start font-medium hover:text-brand hover:underline"
+              title={t('itemCard.open')}
+              onClick={() => setCardOf(r.line.product.id)}
+            >
+              {r.line.product.name}
+            </button>
+          ) : (
+            <span className="block font-medium">{r.line.product.name}</span>
+          )}
           <span className="flex flex-wrap gap-x-2 text-xs text-muted tnum">{lineNotes(r)}</span>
           {lineWarning(r, 'mt-1')}
         </>

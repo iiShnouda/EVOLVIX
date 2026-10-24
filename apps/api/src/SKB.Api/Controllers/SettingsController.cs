@@ -32,9 +32,14 @@ public sealed class SettingsController : ControllerBase
         return Ok(Mapper.ToSettings(s));
     }
 
-    /// <summary>Update company settings (country, currency, VAT, markup, floor). Owner/Admin only.</summary>
+    /// <summary>
+    /// Update company settings. Each part is changed with its own permission (owner, 2026-10-23):
+    /// the company's details, prices and tax, the stock and invoice rules, and security. A part sent
+    /// back unchanged by someone who may not change it is left as it is; changing it is refused.
+    /// </summary>
     [HttpPut]
-    [Authorize(Policy = Permissions.SettingsManage)]
+    [AnyPermission(Permissions.SettingsCompany, Permissions.SettingsPricing, Permissions.SettingsRules,
+        Permissions.SettingsSecurity)]
     public async Task<ActionResult<CompanySettingsDto>> Update([FromBody] UpdateSettingsRequest req)
     {
         var s = await _db.CompanySettings.FirstOrDefaultAsync();
@@ -43,6 +48,34 @@ public sealed class SettingsController : ControllerBase
             s = new CompanySettings();
             _db.CompanySettings.Add(s);
         }
+        static bool Differs<T>(T? asked, T now) where T : struct => asked is { } a && !a.Equals(now);
+        static bool TextDiffers(string? asked, string? now, int max) => asked is not null && Text(asked, max) != now;
+        var parts = new (string Permission, bool Changes)[]
+        {
+            (Permissions.SettingsCompany,
+                (!string.IsNullOrWhiteSpace(req.CompanyName) && req.CompanyName.Trim() != s.CompanyName)
+                || (!string.IsNullOrWhiteSpace(req.Country) && req.Country.Trim().ToUpperInvariant() != s.Country)
+                || (!string.IsNullOrWhiteSpace(req.Currency) && req.Currency.Trim().ToUpperInvariant() != s.Currency)
+                || (req.TimeZone is not null && req.TimeZone != s.TimeZone)
+                || TextDiffers(req.Address, s.Address, 300) || TextDiffers(req.Phone, s.Phone, 60)
+                || TextDiffers(req.TaxNumber, s.TaxNumber, 60) || TextDiffers(req.CommercialRegister, s.CommercialRegister, 60)
+                || (req.Email is not null && Text(req.Email, 200)?.ToLowerInvariant() != s.Email)),
+            (Permissions.SettingsPricing,
+                Differs(req.DefaultTaxPercent is int t ? (int?)Math.Clamp(t, 0, 100) : null, s.DefaultTaxPercent)
+                || Differs(req.DefaultMarkupPercent is int m ? (int?)Math.Clamp(m, 0, 1000) : null, s.DefaultMarkupPercent)
+                || Differs(req.MinMarkupPercent is int n ? (int?)Math.Clamp(n, 0, 1000) : null, s.MinMarkupPercent)
+                || Differs(req.MaxDiscountPercent is int d ? (int?)Math.Clamp(d, 0, 100) : null, s.MaxDiscountPercent)),
+            (Permissions.SettingsRules,
+                Differs(req.TransfersRequireReceipt, s.TransfersRequireReceipt)
+                || Differs(req.PendingHoldDays is int h ? (int?)Math.Clamp(h, 0, 365) : null, s.PendingHoldDays)
+                || Differs(req.RequireDepartment, s.RequireDepartment)
+                || Differs(req.ReturnAfterHours is int r ? (int?)Math.Clamp(r, 0, 720) : null, s.ReturnAfterHours)
+                || Differs(req.HideNewPlaces, s.HideNewPlaces)
+                || (req.CurrentSeasonId is { } cs && cs != (s.CurrentSeasonId?.ToString() ?? ""))),
+            (Permissions.SettingsSecurity, Differs(req.IdleMinutes is int i ? (int?)Math.Clamp(i, 0, 24 * 60) : null, s.IdleMinutes)),
+        };
+        if (parts.FirstOrDefault(x => x.Changes && !User.Has(x.Permission)) is { Permission: { } part })
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden", part });
 
         if (!string.IsNullOrWhiteSpace(req.CompanyName)) s.CompanyName = req.CompanyName.Trim();
         if (!string.IsNullOrWhiteSpace(req.Country)) s.Country = req.Country.Trim().ToUpperInvariant();
@@ -123,7 +156,7 @@ public sealed class SettingsController : ControllerBase
     /// past the highest already used with that prefix. An empty prefix = the built-in numbering.
     /// </summary>
     [HttpPut("numbering")]
-    [Authorize(Policy = Permissions.SettingsManage)]
+    [Authorize(Policy = Permissions.SettingsNumbering)]
     public async Task<ActionResult<NumberingDto[]>> SaveNumbering([FromBody] SaveNumberingRequest req)
     {
         if (!Enum.TryParse<DocumentType>(req.Type, out var type) || !Numbered.Contains(type))

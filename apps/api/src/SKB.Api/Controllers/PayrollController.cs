@@ -12,12 +12,12 @@ namespace SKB.Api.Controllers;
 /// <summary>
 /// Payroll (الرواتب, DOMAIN.md §2.9): employees, shifts and the payroll rules; bonuses and
 /// deductions; advances; and the month's payroll run — made as a draft, posted to the ledger, then
-/// paid. Salaries are private: everything needs <c>payroll:view</c>, and each change its own
-/// permission. Branch-scoped people see and pay their branch only.
+/// paid. Salaries are private: each part (employees, runs, bonuses, advances, shifts, rules) and
+/// each change is a permission of its own. Branch-scoped people see and pay their branch only.
 /// </summary>
 [ApiController]
 [Route("api/payroll")]
-[Authorize(Policy = Permissions.PayrollView)]
+[Authorize]
 public sealed class PayrollController : ControllerBase
 {
     private const long MaxAmount = 100_000_000_00; // 100 million
@@ -37,6 +37,10 @@ public sealed class PayrollController : ControllerBase
     // ------------------------------------------------------------------ employees
 
     [HttpGet("employees")]
+    [AnyPermission(Permissions.PayrollEmployees, Permissions.EmployeesCreate, Permissions.EmployeesEdit,
+        Permissions.EmployeesDelete, Permissions.PayrollAttendance, Permissions.AttendanceEdit,
+        Permissions.AttendanceImport, Permissions.PayrollRuns, Permissions.PayrollAdjust, Permissions.PayrollAdjustCancel,
+        Permissions.PayrollAdvance, Permissions.PayrollAdvances, Permissions.PayrollAdvanceCancel)]
     public async Task<ActionResult<EmployeeDto[]>> Employees([FromQuery] bool? active = null)
     {
         var q = ScopedEmployees().AsNoTracking().Include(e => e.Branch).Include(e => e.Shift).Include(e => e.Staff).AsQueryable();
@@ -45,7 +49,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpPost("employees")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.EmployeesCreate)]
     public async Task<ActionResult<EmployeeDto>> CreateEmployee([FromBody] SaveEmployeeRequest req)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -66,7 +70,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpPut("employees/{id:guid}")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.EmployeesEdit)]
     public async Task<ActionResult<EmployeeDto>> UpdateEmployee(Guid id, [FromBody] SaveEmployeeRequest req)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -86,7 +90,7 @@ public sealed class PayrollController : ControllerBase
     /// 2026-10-02); one with any stays in the books: deactivate them instead.
     /// </summary>
     [HttpDelete("employees/{id:guid}")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.EmployeesDelete)]
     public async Task<IActionResult> DeleteEmployee(Guid id)
     {
         var e = await ScopedEmployees().FirstOrDefaultAsync(x => x.Id == id);
@@ -187,11 +191,14 @@ public sealed class PayrollController : ControllerBase
     // ------------------------------------------------------------------ shifts and rules
 
     [HttpGet("shifts")]
+    [AnyPermission(Permissions.PayrollSetup, Permissions.ShiftsCreate, Permissions.ShiftsEdit,
+        Permissions.PayrollEmployees, Permissions.EmployeesCreate, Permissions.EmployeesEdit,
+        Permissions.PayrollAttendance, Permissions.AttendanceEdit)]
     public async Task<ActionResult<ShiftDto[]>> Shifts() =>
         Ok((await _db.Shifts.AsNoTracking().OrderBy(s => s.StartMinute).ThenBy(s => s.Name).ToListAsync()).Select(ToDto).ToArray());
 
     [HttpPost("shifts")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.ShiftsCreate)]
     public async Task<ActionResult<ShiftDto>> CreateShift([FromBody] SaveShiftRequest req)
     {
         var shift = new Shift();
@@ -205,7 +212,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpPut("shifts/{id:guid}")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.ShiftsEdit)]
     public async Task<ActionResult<ShiftDto>> UpdateShift(Guid id, [FromBody] SaveShiftRequest req)
     {
         var shift = await _db.Shifts.FirstOrDefaultAsync(s => s.Id == id);
@@ -254,6 +261,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpGet("settings")]
+    [AnyPermission(Permissions.PayrollSetup, Permissions.PayrollSettings)]
     public async Task<ActionResult<PayrollSettingsDto>> Settings()
     {
         var s = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
@@ -261,7 +269,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpPut("settings")]
-    [Authorize(Policy = Permissions.EmployeesManage)]
+    [Authorize(Policy = Permissions.PayrollSettings)]
     public async Task<ActionResult<PayrollSettingsDto>> SaveSettings([FromBody] PayrollSettingsDto req)
     {
         if (req.DayBasis is < 20 or > 31) return Bad("bad_day_basis", "A day's pay is the salary ÷ 20 to 31.");
@@ -279,6 +287,7 @@ public sealed class PayrollController : ControllerBase
     // ------------------------------------------------------------------ bonuses and deductions
 
     [HttpGet("adjustments")]
+    [AnyPermission(Permissions.PayrollRuns, Permissions.PayrollAdjust, Permissions.PayrollAdjustCancel)]
     public async Task<ActionResult<AdjustmentDto[]>> Adjustments([FromQuery] int year, [FromQuery] int month)
     {
         var ids = ScopedEmployees().Select(e => e.Id);
@@ -315,7 +324,7 @@ public sealed class PayrollController : ControllerBase
 
     /// <summary>Take back a bonus or deduction not yet in a posted payroll.</summary>
     [HttpPost("adjustments/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.PayrollAdjust)]
+    [Authorize(Policy = Permissions.PayrollAdjustCancel)]
     public async Task<IActionResult> CancelAdjustment(Guid id)
     {
         var ids = ScopedEmployees().Select(e => e.Id);
@@ -332,6 +341,7 @@ public sealed class PayrollController : ControllerBase
     // ------------------------------------------------------------------ advances
 
     [HttpGet("advances")]
+    [AnyPermission(Permissions.PayrollAdvances, Permissions.PayrollAdvance, Permissions.PayrollAdvanceCancel)]
     public async Task<ActionResult<AdvanceDto[]>> Advances([FromQuery] string? employeeId = null, [FromQuery] bool open = false)
     {
         var ids = ScopedEmployees().Select(e => e.Id);
@@ -379,7 +389,7 @@ public sealed class PayrollController : ControllerBase
 
     /// <summary>An advance handed back before anything was recovered: the money goes back.</summary>
     [HttpPost("advances/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.PayrollAdvance)]
+    [Authorize(Policy = Permissions.PayrollAdvanceCancel)]
     public async Task<ActionResult<AdvanceDto>> CancelAdvance(Guid id)
     {
         var ids = ScopedEmployees().Select(e => e.Id);
@@ -402,6 +412,8 @@ public sealed class PayrollController : ControllerBase
     // ------------------------------------------------------------------ payroll runs
 
     [HttpGet("runs")]
+    [AnyPermission(Permissions.PayrollRuns, Permissions.PayrollRun, Permissions.PayrollPost,
+        Permissions.PayrollRunCancel, Permissions.PayrollPay)]
     public async Task<ActionResult<PayrollRunDto[]>> Runs([FromQuery] int? year = null)
     {
         var q = ScopedRuns().AsNoTracking().Include(r => r.Branch).Include(r => r.CreatedBy).Include(r => r.PostedBy)
@@ -415,6 +427,8 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpGet("runs/{id:guid}")]
+    [AnyPermission(Permissions.PayrollRuns, Permissions.PayrollRun, Permissions.PayrollPost,
+        Permissions.PayrollRunCancel, Permissions.PayrollPay)]
     public async Task<ActionResult<PayrollRunDto>> Run(Guid id)
     {
         var dto = await RunDtoAsync(id);
@@ -423,7 +437,7 @@ public sealed class PayrollController : ControllerBase
 
     /// <summary>Make a month's payroll as a draft (whole company, or one branch).</summary>
     [HttpPost("runs")]
-    [Authorize(Policy = Permissions.PayrollPost)]
+    [Authorize(Policy = Permissions.PayrollRun)]
     public async Task<ActionResult<PayrollRunDto>> CreateRun([FromBody] CreatePayrollRunRequest req)
     {
         if (req.Year is < 2000 or > 2100 || req.Month is < 1 or > 12) return Bad("bad_month", "Choose a month.");
@@ -461,7 +475,7 @@ public sealed class PayrollController : ControllerBase
 
     /// <summary>Work a draft out again (after attendance, bonuses or salaries changed).</summary>
     [HttpPost("runs/{id:guid}/recalculate")]
-    [Authorize(Policy = Permissions.PayrollPost)]
+    [Authorize(Policy = Permissions.PayrollRun)]
     public Task<ActionResult<PayrollRunDto>> Recalculate(Guid id) => WithDraftAsync(id, "recalculate", async run =>
     {
         await _payroll.ComputeAsync(run);
@@ -481,7 +495,7 @@ public sealed class PayrollController : ControllerBase
     }
 
     [HttpPost("runs/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.PayrollPost)]
+    [Authorize(Policy = Permissions.PayrollRunCancel)]
     public Task<ActionResult<PayrollRunDto>> CancelRun(Guid id) => WithDraftAsync(id, "cancel", run =>
     {
         run.Status = PayrollRunStatus.CANCELLED;

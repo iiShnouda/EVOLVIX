@@ -24,7 +24,7 @@ import {
 import { IdCardFields, IdCardView, type IdSide } from '../components/IdCards';
 import { api } from '../lib/api';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { mayOpenStatement, useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import {
   useCreateParty,
@@ -72,6 +72,14 @@ const filterField =
   'h-10 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 /** The code box's name for the kind of account searched (owner, 2026-10-22). */
+/** Whoever may change any part of an account opens its form. */
+const EDIT_PERMISSIONS: Permission[] = [
+  'parties:edit',
+  'parties:close',
+  'parties:contact',
+  'parties:id_cards_edit',
+];
+
 function codeLabel(type: PartyType | ''): TranslationKey {
   return type === 'CUSTOMER'
     ? 'parties.customerCode'
@@ -227,7 +235,7 @@ export function PartiesPage() {
               <PartyCard
                 key={party.id}
                 party={party}
-                onEdit={can('parties:edit') ? () => setEditing(party) : undefined}
+                onEdit={EDIT_PERMISSIONS.some(can) ? () => setEditing(party) : undefined}
               />
             ))}
           </div>
@@ -263,6 +271,8 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
   const { t, locale } = useT();
   const can = useCan();
   const navigate = useNavigate();
+  const opensAccount =
+    mayOpenStatement(party, can) || (party.types.includes('CUSTOMER') && can('sales:together'));
   const bal = balanceView(party.balance, party.currency);
   const money = (kind: 'receipt' | 'payment') =>
     navigate(`/receipts?tab=vouchers&new=${kind}&party=${party.id}`);
@@ -341,11 +351,9 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
           <CreditLimitField party={party} canSet={can('parties:credit_limit')} />
         )}
 
-      {((party.isActive && (can('receipts:create') || can('payments:create'))) ||
-        can('ledger:view') ||
-        (party.types.includes('CUSTOMER') && can('sales:view'))) && (
+      {((party.isActive && (can('receipts:create') || can('payments:create'))) || opensAccount) && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {(can('ledger:view') || (party.types.includes('CUSTOMER') && can('sales:view'))) && (
+          {opensAccount && (
             <Button
               size="sm"
               variant="secondary"
@@ -367,11 +375,12 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         </div>
       )}
 
-      {(party.hasIdFront || party.hasIdBack) && can('parties:id_cards') && (
-        <Button size="sm" variant="ghost" className="mt-2" onClick={() => setIdCard(true)}>
-          {t('parties.idShow')}
-        </Button>
-      )}
+      {(party.hasIdFront || party.hasIdBack) &&
+        (can('parties:id_cards_view') || can('parties:id_cards_edit')) && (
+          <Button size="sm" variant="ghost" className="mt-2" onClick={() => setIdCard(true)}>
+            {t('parties.idShow')}
+          </Button>
+        )}
       <PartyDetails party={party} />
       {idCard && (
         <Sheet title={party.name} onClose={() => setIdCard(false)} closeLabel={t('common.close')}>
@@ -447,11 +456,13 @@ export function PartySheet({
   const factory = isFactory(types);
   const carrierOnly = types.length === 1 && types[0] === 'CARRIER';
   const customer = types.includes('CUSTOMER');
-  const withIdCard = (customer || types.includes('CARRIER')) && can('parties:id_cards');
+  const withIdCard = (customer || types.includes('CARRIER')) && can('parties:id_cards_edit');
   // Every field of a new account is optional (owner, 2026-10-22); an existing one keeps a name.
   // Contact details are seen and changed only with parties:contact; a new account's are typed in
   // by whoever adds it (owner, 2026-10-19).
   const showContact = isNew || can('parties:contact');
+  // The name, kind, notes and carrier change with parties:edit; each other part with its own.
+  const editsMain = isNew || can('parties:edit');
   const phones = otherPhones.filter((x) => x.phone.trim());
 
   const contact = {
@@ -562,7 +573,7 @@ export function PartySheet({
                   name="party-type"
                   className="sr-only"
                   checked={types.includes(type)}
-                  disabled={system}
+                  disabled={system || !editsMain}
                   onChange={() => toggle(type)}
                 />
                 {types.includes(type) && <Icon name="check" size={14} />}
@@ -582,6 +593,7 @@ export function PartySheet({
             value={name}
             maxLength={200}
             autoFocus
+            disabled={!editsMain}
             onChange={(e) => setName(e.target.value)}
             aria-invalid={touched && issues.has('name')}
           />
@@ -706,6 +718,7 @@ export function PartySheet({
               <select
                 className={input}
                 value={defaultCarrierId}
+                disabled={!editsMain}
                 onChange={(e) => setDefaultCarrierId(e.target.value)}
               >
                 <option value="">{t('parties.noCarrier')}</option>
@@ -725,6 +738,7 @@ export function PartySheet({
                 className={input}
                 value={tempCarrierName}
                 maxLength={200}
+                disabled={!editsMain}
                 onChange={(e) => setTempCarrierName(e.target.value)}
               />
             </label>
@@ -744,6 +758,7 @@ export function PartySheet({
               rows={2}
               value={notes}
               maxLength={1000}
+              disabled={!editsMain}
               onChange={(e) => setNotes(e.target.value)}
             />
           </label>
@@ -785,9 +800,11 @@ export function PartySheet({
             <Button type="button" variant="ghost" onClick={onClose}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" loading={pending}>
-              {t('common.save')}
-            </Button>
+            {(editsMain || showContact) && (
+              <Button type="submit" loading={pending}>
+                {t('common.save')}
+              </Button>
+            )}
           </div>
         </div>
       </form>

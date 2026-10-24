@@ -8,6 +8,7 @@ import {
   toMajor,
   toMinor,
   type Party,
+  type Permission,
   type PriceList,
   type PriceListItem,
   type PriceListParty,
@@ -47,15 +48,31 @@ type Tab = 'lists' | 'breaks';
  * Price lists (special prices for chosen items — or a percent off a department's items — for the
  * customers given them or for everyone while they run, optionally only from an invoice amount) and
  * quantity discounts (a percent off from a quantity or an amount) — DOMAIN.md §2.2. Customers only
- * (owner, 2026-10-21). Anyone who sees stock can look; changing them needs price_lists:manage.
- * Invoices use them on their own.
+ * (owner, 2026-10-21). Each change is a permission of its own (owner, 2026-10-23). Invoices use
+ * them on their own.
  */
+/** Whoever may look at or change price lists, or quantity discounts, sees that tab. */
+const LIST_PERMISSIONS: Permission[] = [
+  'price_lists:view',
+  'price_lists:create',
+  'price_lists:edit',
+  'price_lists:prices',
+  'price_lists:customers',
+  'price_lists:delete',
+];
+const BREAK_PERMISSIONS: Permission[] = ['quantity_breaks:view', 'quantity_breaks:edit'];
+
 export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useT();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const can = useCan();
+  const tabs = (['lists', 'breaks'] as const).filter((x) =>
+    (x === 'lists' ? LIST_PERMISSIONS : BREAK_PERMISSIONS).some(can),
+  );
   // Its own key (the inventory page's tabs use `tab`).
-  const tab: Tab = params.get('pl') === 'breaks' ? 'breaks' : 'lists';
+  const tab: Tab | undefined =
+    params.get('pl') === 'breaks' && tabs.includes('breaks') ? 'breaks' : tabs[0];
 
   return (
     <div className="space-y-4">
@@ -69,30 +86,33 @@ export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}
           }
         />
       )}
-      <div
-        role="tablist"
-        className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {(['lists', 'breaks'] as const).map((x) => (
-          <button
-            key={x}
-            role="tab"
-            aria-selected={tab === x}
-            onClick={() => {
-              const q = new URLSearchParams(params);
-              if (x === 'lists') q.delete('pl');
-              else q.set('pl', x);
-              setParams(q, { replace: true });
-            }}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === x ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(x === 'lists' ? 'pl.lists' : 'pl.breaks')}
-          </button>
-        ))}
-      </div>
-      {tab === 'lists' ? <ListsTab /> : <BreaksTab />}
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {tabs.map((x) => (
+            <button
+              key={x}
+              role="tab"
+              aria-selected={tab === x}
+              onClick={() => {
+                const q = new URLSearchParams(params);
+                if (x === 'lists') q.delete('pl');
+                else q.set('pl', x);
+                setParams(q, { replace: true });
+              }}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === x ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(x === 'lists' ? 'pl.lists' : 'pl.breaks')}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'lists' && <ListsTab />}
+      {tab === 'breaks' && <BreaksTab />}
     </div>
   );
 }
@@ -105,12 +125,11 @@ function ListsTab() {
   const lists = usePriceLists();
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  const canManage = can('price_lists:manage');
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
       <div className="min-w-0 space-y-3">
-        {canManage &&
+        {can('price_lists:create') &&
           (adding ? (
             <ListSettings
               onDone={(id) => {
@@ -198,7 +217,7 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
     percent: list?.percentBp ? String(list.percentBp / 100) : '',
     minAmount: list?.minAmount ? String(toMajor(list.minAmount)) : '',
   });
-  const disabled = !can('price_lists:manage');
+  const disabled = !can(list ? 'price_lists:edit' : 'price_lists:create');
   const deptGroups = (groups.data ?? []).filter(
     (g) => g.departmentId === f.departmentId && g.isActive,
   );
@@ -372,7 +391,7 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
 /** The customers a list is given to: picked by code or name, each removable. */
 function ListCustomers({ id, parties }: { id: string; parties: PriceListParty[] }) {
   const { t } = useT();
-  const canManage = useCan()('price_lists:manage');
+  const canManage = useCan()('price_lists:customers');
   const save = useSetPriceListParties();
   const [chosen, setChosen] = useState<PriceListParty[]>(parties);
   const [picker, setPicker] = useState<Party | null>(null);
@@ -474,7 +493,8 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
   const remove = useDeletePriceList();
   const currency = useCompanySettings().data?.currency ?? 'EGP';
   const levels = usePriceLevels();
-  const canManage = can('price_lists:manage');
+  const canManage = can('price_lists:prices');
+  const deletes = can('price_lists:delete');
   const [rows, setRows] = useState<Row[]>([]);
   const [wholeModel, setWholeModel] = useState(false);
   useEffect(() => {
@@ -600,39 +620,43 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
             ))}
           </ul>
         )}
-        {canManage && (
+        {(canManage || deletes) && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              icon="check"
-              loading={saveItems.isPending}
-              disabled={!dirty || bad}
-              onClick={() =>
-                saveItems.mutate({
-                  id: list.id,
-                  items: rows.map((r) => ({
-                    productId: r.productId,
-                    modelId: r.modelId,
-                    unitId: r.unitId,
-                    price: toMinor(Number(r.price)),
-                  })),
-                })
-              }
-            >
-              {t('pl.savePrices')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              loading={remove.isPending}
-              onClick={async () => {
-                if (!(await confirm({ message: t('pl.deleteConfirm'), danger: true }))) return;
-                await remove.mutateAsync(list.id);
-                onGone();
-              }}
-            >
-              {t('pl.delete')}
-            </Button>
+            {canManage && (
+              <Button
+                size="sm"
+                icon="check"
+                loading={saveItems.isPending}
+                disabled={!dirty || bad}
+                onClick={() =>
+                  saveItems.mutate({
+                    id: list.id,
+                    items: rows.map((r) => ({
+                      productId: r.productId,
+                      modelId: r.modelId,
+                      unitId: r.unitId,
+                      price: toMinor(Number(r.price)),
+                    })),
+                  })
+                }
+              >
+                {t('pl.savePrices')}
+              </Button>
+            )}
+            {deletes && (
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={remove.isPending}
+                onClick={async () => {
+                  if (!(await confirm({ message: t('pl.deleteConfirm'), danger: true }))) return;
+                  await remove.mutateAsync(list.id);
+                  onGone();
+                }}
+              >
+                {t('pl.delete')}
+              </Button>
+            )}
           </div>
         )}
         {(saveItems.error || remove.error) && (
@@ -791,7 +815,7 @@ function BreaksTab() {
   const currency = useCompanySettings().data?.currency ?? 'EGP';
   const [target, setTarget] = useState<Target | null>(null);
   const [wholeModel, setWholeModel] = useState(false);
-  const canManage = can('price_lists:manage');
+  const canManage = can('quantity_breaks:edit');
 
   const groups = useMemo(() => {
     const m = new Map<string, { target: Target; steps: QuantityBreak[] }>();
@@ -906,7 +930,7 @@ function StepsEditor({ target, steps }: { target: Target; steps: QuantityBreak[]
       percent: String(s.percentBp / 100),
     }));
   const [rows, setRows] = useState(initial);
-  const canManage = can('price_lists:manage');
+  const canManage = can('quantity_breaks:edit');
   const bad = rows.some(
     (r) => !(Number(r.min) >= (byAmount ? 0.01 : 2)) || !(Number(r.percent) > 0),
   );

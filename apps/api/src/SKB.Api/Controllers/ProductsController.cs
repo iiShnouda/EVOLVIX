@@ -17,7 +17,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/products")]
-[Authorize(Policy = Permissions.InventoryView)]
+[Authorize]
 public sealed class ProductsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -42,6 +42,7 @@ public sealed class ProductsController : ControllerBase
     /// since they sit close to cost.
     /// </summary>
     [HttpGet]
+    [Authorize(Policy = Lookups.Products)]
     public async Task<ActionResult<ProductDto[]>> List(
         [FromQuery] string? search = null, [FromQuery] bool inStockOnly = false, [FromQuery] int limit = 50,
         [FromQuery] string? supplierId = null, [FromQuery] string? departmentId = null,
@@ -161,7 +162,7 @@ public sealed class ProductsController : ControllerBase
                 .FirstOrDefaultAsync();
             if (Catalog.ParseAmount(term) is long price)
             {
-                var seePurchase = User.HasClaim("permission", Permissions.PurchasesView);
+                var seePurchase = Costs.CanSeePurchasePrices(User);
                 var levels = await _db.PriceLevels.AsNoTracking()
                     .Where(l => l.Side == PriceSide.SALE || seePurchase).Select(l => l.Id).ToListAsync();
                 q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
@@ -220,6 +221,7 @@ public sealed class ProductsController : ControllerBase
 
     /// <summary>One item for the item editor: both names, units with barcodes, every unit × level price.</summary>
     [HttpGet("{id:guid}")]
+    [Authorize(Policy = Lookups.Products)]
     public async Task<ActionResult<ProductDetailDto>> Get(Guid id)
     {
         var detail = await DetailAsync(id);
@@ -280,7 +282,7 @@ public sealed class ProductsController : ControllerBase
     /// their labels). Returns the items' barcodes.
     /// </summary>
     [HttpPost("barcodes")]
-    [Authorize(Policy = Permissions.ProductsEdit)]
+    [Authorize(Policy = Permissions.ProductsBarcodes)]
     public async Task<ActionResult<Dictionary<string, string>>> AssignBarcodes([FromBody] string[] ids)
     {
         var wanted = (ids ?? Array.Empty<string>()).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty)
@@ -390,11 +392,14 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Policy = Permissions.ProductsEdit)]
+    [AnyPermission(Permissions.ProductsEdit, Permissions.ProductsClose)]
     public async Task<ActionResult<ProductDetailDto>> Update(Guid id, [FromBody] UpdateProductRequest req)
     {
         var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
         if (product is null) return NotFound(new { message = "Item not found.", code = "not_found" });
+        // Changing an item and stopping it are permissions of their own (owner, 2026-10-23).
+        if (req with { IsActive = null } != new UpdateProductRequest() && !User.Has(Permissions.ProductsEdit))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var isVariant = product.ModelId is not null;
         var variantRule = BadRequest(new
         {
@@ -666,7 +671,7 @@ public sealed class ProductsController : ControllerBase
     /// </summary>
     private static async Task<List<Guid>> NearAsync(IQueryable<Product> q, string[] words, int take, HashSet<Guid> skip)
     {
-        if (words.All(w => TextKey.Slack(w.Length) == 0)) return new();
+        if (words.All(w => TextKey.Slack(w) == 0)) return new();
         var keys = await q.Select(p => new { p.Id, p.SearchKey }).Take(20000).ToListAsync();
         return keys.Where(k => !skip.Contains(k.Id))
             .Select(k =>
@@ -692,7 +697,7 @@ public sealed class ProductsController : ControllerBase
     /// .jpg is refused; stored in the database, never on the server's disk.
     /// </summary>
     [HttpPut("{id:guid}/image")]
-    [Authorize(Policy = Permissions.ProductsEdit)]
+    [Authorize(Policy = Permissions.ProductsImages)]
     [RequestSizeLimit(MaxImageBytes + 64 * 1024)]
     public async Task<ActionResult> PutImage(Guid id, IFormFile? file)
     {
@@ -722,6 +727,7 @@ public sealed class ProductsController : ControllerBase
 
     /// <summary>The item's photo, never cached. Anyone who may see inventory may see it.</summary>
     [HttpGet("{id:guid}/image")]
+    [Authorize(Policy = Lookups.Products)]
     public async Task<IActionResult> GetImage(Guid id)
     {
         var image = await _db.ProductImages.AsNoTracking().FirstOrDefaultAsync(x => x.ProductId == id);
@@ -732,7 +738,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/image")]
-    [Authorize(Policy = Permissions.ProductsEdit)]
+    [Authorize(Policy = Permissions.ProductsImages)]
     public async Task<ActionResult> DeleteImage(Guid id)
     {
         var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);

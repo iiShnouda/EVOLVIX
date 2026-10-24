@@ -475,7 +475,7 @@ export const createStaffSchema = z.object({
   fullName: z.string().trim().min(1).max(100),
   email: z.string().trim().email().max(200),
   password: z.string().min(8).max(200),
-  role: z.enum(['OWNER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'INVENTORY', 'VIEWER']),
+  role: z.enum(['OWNER', 'ADMIN', 'ACCOUNTANT', 'SALES', 'INVENTORY', 'VIEWER', 'NONE']),
   branchId: z.string().uuid(),
   phone: z.string().trim().max(40).optional(),
   /** A role the company made ("" = none); the person then works like its base role. */

@@ -93,13 +93,19 @@ public static class TextKey
     public static int Slack(int length) => length >= 7 ? 2 : length >= 4 ? 1 : 0;
 
     /// <summary>
+    /// How many slips this word may have: none when it holds a digit, since codes such as
+    /// MWSH-24-1A and MWSH-24-1B differ by one character and name different items.
+    /// </summary>
+    public static int Slack(string word) => word.Any(char.IsDigit) ? 0 : Slack(word.Length);
+
+    /// <summary>
     /// How well a typed word matches any word of a search key: 0 = contained, 1–2 = slips, -1 = no
     /// match. The outline is compared too, so missing or extra long vowels cost nothing.
     /// </summary>
     public static int Match(string typedWord, string[] keyWords)
     {
         var outline = Outline(typedWord);
-        var slack = Slack(typedWord.Length);
+        var slack = Slack(typedWord);
         var best = -1;
         foreach (var w in keyWords)
         {

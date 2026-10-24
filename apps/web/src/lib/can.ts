@@ -24,6 +24,27 @@ export function useCan(): (permission: Permission) => boolean {
     permissions.includes(permission) && (permission !== 'profit:view' || showCosts);
 }
 
+/** `canAny('a', 'b')` — whether the signed-in user holds any one of these (only shapes the UI). */
+export function useCanAny(): (...permissions: Permission[]) => boolean {
+  const can = useCan();
+  return (...permissions) => permissions.some(can);
+}
+
+/**
+ * Whether a party's statement opens for this person: customers', suppliers' and shipping companies'
+ * statements are a permission each (owner, 2026-10-23).
+ */
+export function mayOpenStatement(
+  party: { types: string[] },
+  can: (permission: Permission) => boolean,
+): boolean {
+  return (
+    (party.types.includes('CUSTOMER') && can('statement:customers')) ||
+    (party.types.includes('SUPPLIER') && can('statement:suppliers')) ||
+    (party.types.includes('CARRIER') && can('statement:carriers'))
+  );
+}
+
 /** Whether the person may see profit at all (whatever they chose to show). */
 export function useMaySeeProfit(): boolean {
   return useAuth((s) => s.user?.permissions ?? NONE).includes('profit:view');

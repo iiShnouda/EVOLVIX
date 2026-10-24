@@ -10,7 +10,7 @@ namespace SKB.Api.Controllers;
 
 [ApiController]
 [Route("api/parties")]
-[Authorize(Policy = Permissions.PartiesView)]
+[Authorize]
 public sealed class PartiesController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -23,6 +23,7 @@ public sealed class PartiesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = Lookups.Parties)]
     public async Task<ActionResult<PaginatedDto<PartyDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? type = null, [FromQuery] string? search = null, [FromQuery] bool? active = null,
@@ -83,6 +84,7 @@ public sealed class PartiesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Policy = Lookups.Parties)]
     public async Task<ActionResult<PartyDto>> GetOne(Guid id)
     {
         var party = await _db.Parties.FindAsync(id);
@@ -105,6 +107,8 @@ public sealed class PartiesController : ControllerBase
 
     /// <summary>Add a customer, supplier (a factory is a supplier) or shipping company (a party can be several).</summary>
     [HttpPost]
+    [AnyPermission(Permissions.PartiesCreateCustomer, Permissions.PartiesCreateSupplier,
+        Permissions.PartiesCreateCarrier)]
     public async Task<ActionResult<PartyDto>> Create([FromBody] CreatePartyRequest req)
     {
         if (!MayAdd(req.Types)) return TypeNotAllowed();
@@ -137,7 +141,8 @@ public sealed class PartiesController : ControllerBase
 
     /// <summary>Edit a party. Closing one needs its balance at zero, so nothing owed is hidden.</summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Policy = Permissions.PartiesEdit)]
+    [AnyPermission(Permissions.PartiesEdit, Permissions.PartiesClose, Permissions.PartiesCashCustomer,
+        Permissions.PartiesContact)]
     public async Task<ActionResult<PartyDto>> Update(Guid id, [FromBody] UpdatePartyRequest req)
     {
         var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == id);
@@ -159,6 +164,9 @@ public sealed class PartiesController : ControllerBase
                 TaxNumber = null, Address = null, ShippingAddress = null, ExtraAddress = null,
                 ExtraAddressLabel = null, ContactName = null, NationalId = null,
             };
+        // The rest of the file is parties:edit's (owner, 2026-10-23: each part its own permission).
+        if (!User.Has(Permissions.PartiesEdit))
+            fields = fields with { Name = null, Types = null, Notes = null, DefaultCarrierId = null, TempCarrierName = null };
         var error = await ApplyAsync(party, fields, isNew: false);
         if (error is not null) return error;
         // The walk-in cash customer stays a cash customer, and stays open.
@@ -379,7 +387,7 @@ public sealed class PartiesController : ControllerBase
     /// before. Only JPEG, PNG or WebP photos up to 3 MB; stored in the database, never on disk.
     /// </summary>
     [HttpPut("{id:guid}/id-card/{side}")]
-    [Authorize(Policy = Permissions.PartiesIdCards)]
+    [Authorize(Policy = Permissions.PartiesIdCardsEdit)]
     [RequestSizeLimit(MaxIdCardBytes + 64 * 1024)]
     public async Task<ActionResult<PartyDto>> PutIdCard(Guid id, string side, IFormFile? file)
     {
@@ -410,7 +418,7 @@ public sealed class PartiesController : ControllerBase
 
     /// <summary>The ID card photo, never cached anywhere.</summary>
     [HttpGet("{id:guid}/id-card/{side}")]
-    [Authorize(Policy = Permissions.PartiesIdCards)]
+    [AnyPermission(Permissions.PartiesIdCardsView, Permissions.PartiesIdCardsEdit)]
     public async Task<IActionResult> GetIdCard(Guid id, string side)
     {
         var which = Side(side);
@@ -423,7 +431,7 @@ public sealed class PartiesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/id-card/{side}")]
-    [Authorize(Policy = Permissions.PartiesIdCards)]
+    [Authorize(Policy = Permissions.PartiesIdCardsEdit)]
     public async Task<ActionResult<PartyDto>> DeleteIdCard(Guid id, string side)
     {
         var which = Side(side);

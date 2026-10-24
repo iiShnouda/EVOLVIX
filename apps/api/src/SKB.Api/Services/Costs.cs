@@ -14,7 +14,7 @@ namespace SKB.Api.Services;
 /// stocktakes, dead stock); profit in sales performance. Whole reports that are only about cost or
 /// profit (profitability, stock valuation, income statement) are refused instead.
 /// Supplier-side price levels, which sit close to cost, are only shown to people who work with
-/// purchases (<see cref="Permissions.PurchasesView"/>) or may see costs.
+/// purchases (<see cref="Permissions.PurchasesView"/>, <see cref="Permissions.PurchasesCreate"/>) or may see costs.
 /// Purchase documents keep their prices: what we paid is the purchase side's own business.
 /// </summary>
 public static class Costs
@@ -28,7 +28,7 @@ public static class Costs
     public static bool CanSeeBoth(ClaimsPrincipal user) => CanSee(user) && CanSeeProfit(user);
 
     public static bool CanSeePurchasePrices(ClaimsPrincipal user) =>
-        CanSee(user) || user.HasClaim("permission", Permissions.PurchasesView);
+        CanSee(user) || user.HasAny(Permissions.PurchasesView, Permissions.PurchasesCreate);
 
     /// <summary>A sales invoice, return or quotation without its cost and profit.</summary>
     public static SalesDetailDto Guard(ClaimsPrincipal user, SalesDetailDto d)

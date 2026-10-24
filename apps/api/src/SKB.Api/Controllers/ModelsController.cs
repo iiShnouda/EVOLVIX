@@ -17,7 +17,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/models")]
-[Authorize(Policy = Permissions.InventoryView)]
+[Authorize]
 public sealed class ModelsController : ControllerBase
 {
     private const int MaxVariants = 400;
@@ -35,6 +35,7 @@ public sealed class ModelsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = Lookups.Products)]
     public async Task<ActionResult<ModelSummaryDto[]>> List([FromQuery] string? search = null)
     {
         var q = _db.ProductModels.AsNoTracking().Include(m => m.Category).AsQueryable();
@@ -56,6 +57,7 @@ public sealed class ModelsController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Policy = Lookups.Products)]
     public async Task<ActionResult<ModelDetailDto>> Get(Guid id)
     {
         var detail = await DetailAsync(id);

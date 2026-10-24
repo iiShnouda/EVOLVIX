@@ -1,5 +1,5 @@
 // Purchase limits, the walk-in cash customer and the accountant's checkout (owner, 2026-10-02):
-// a sale over the customer's limit always waits for the accountant, whoever makes it; a change to a
+// a sale over the customer's limit waits for the accountant (the owner is asked first); a change to a
 // posted invoice that crosses the limit is saved but waits too (changed + waiting + its payment state);
 // a receipt that brings the customer back within the limit accepts what waits by itself and says so;
 // goods come back on an invoice only after Settings → hours; a return typed without the invoice counts
@@ -107,11 +107,12 @@ ok(
   await sale(owner, walkIn.id, 1, { paidAmount: 1000, paidAccountId: box.id }),
 );
 
-console.log('== over the limit: everyone waits for the accountant');
+console.log('== over the limit: it waits for the accountant');
 const c1 = await customer('Lim1', 1500);
 ok('10.00 on credit fits', await sale(owner, c1.id, 1));
 const before = await stock();
-const waits = ok('another 10.00 by the owner waits', await sale(owner, c1.id, 1));
+eq('the owner is asked first', (await sale(owner, c1.id, 1)).data?.code, 'over_credit_limit');
+const waits = ok('another 10.00 by the accountant waits', await sale(acc, c1.id, 1));
 eq(
   'a pending invoice marked over the limit',
   [waits.type, waits.status, waits.overLimit],
@@ -154,8 +155,8 @@ check(
 console.log('== oldest first, only what fits');
 const c2 = await customer('Lim2', 2000);
 ok('20.00 fits', await sale(owner, c2.id, 2));
-const w1 = ok('10.00 waits', await sale(owner, c2.id, 1));
-const w2 = ok('10.00 more waits', await sale(owner, c2.id, 1));
+const w1 = ok('10.00 waits', await sale(acc, c2.id, 1));
+const w2 = ok('10.00 more waits', await sale(acc, c2.id, 1));
 ok('10.00 received: room for one', await receipt(c2.id, 1000));
 eq('the older one is accepted', (await acc.get(`/sales/orders/${w1.id}`)).data.status, 'CONFIRMED');
 eq('the newer one still waits', (await acc.get(`/sales/orders/${w2.id}`)).data.status, 'PENDING');
@@ -210,7 +211,7 @@ eq(
   'not_awaiting',
 );
 
-const inv2 = ok('another invoice crossing it', await sale(owner, c3.id, 1, { paidAmount: 0 })).id;
+const inv2 = ok('another invoice crossing it', await sale(acc, c3.id, 1, { paidAmount: 0 })).id;
 // (c3 owes 30 of 25: a new sale waits; turn it down and make one inside the limit instead)
 const c4 = await customer('Lim4', 1500);
 const base4 = ok('10.00 fits', await sale(owner, c4.id, 1));
@@ -384,7 +385,7 @@ eq(
   'charge_too_big',
 );
 ok('the discount removed', await acc.post(`/sales/invoices/${a1.id}/discount`, {}));
-const pend = ok('a pending one', await sale(owner, (await customer('Lim9', 500)).id, 1));
+const pend = ok('a pending one', await sale(acc, (await customer('Lim9', 500)).id, 1));
 eq('it is pending', pend.type, 'SALES_ORDER');
 const pd = ok(
   'a discount on a pending one',

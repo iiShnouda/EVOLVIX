@@ -27,8 +27,8 @@ function titleOf(c: ChatConversation, me: string): string {
 
 /**
  * The staff chat (owner, 2026-10-06): one-to-one and group conversations between colleagues. A
- * supervisor (chat:monitor) can read every conversation; with chat:manage they make groups and stop
- * or allow people writing. Messages are read from the server as they arrive; none are kept here.
+ * supervisor (chat:monitor) can read every conversation; groups (chat:groups) and stopping or
+ * allowing people writing (chat:mute) are permissions of their own. Messages are read from the server as they arrive; none are kept here.
  */
 export function ChatPage() {
   const { t, locale } = useT();
@@ -38,7 +38,8 @@ export function ChatPage() {
   const phone = deviceClass === 'phone';
   const canUse = can('chat:use');
   const canMonitor = can('chat:monitor');
-  const canManage = can('chat:manage');
+  const canGroups = can('chat:groups');
+  const canMute = can('chat:mute');
   const [params, setParams] = useSearchParams();
   const all = canMonitor && params.get('all') === '1';
   const chosen = params.get('c');
@@ -93,12 +94,12 @@ export function ChatPage() {
             {t('chat.new')}
           </Button>
         )}
-        {canManage && (
+        {canGroups && (
           <Button size="sm" variant="secondary" icon="parties" onClick={() => setPicking('group')}>
             {t('chat.newGroup')}
           </Button>
         )}
-        {canManage && (
+        {canMute && (
           <Button size="sm" variant="ghost" onClick={() => setPicking('mutes')}>
             {t('chat.writing')}
           </Button>
@@ -153,7 +154,7 @@ export function ChatPage() {
       me={me}
       muted={!!status.data?.muted}
       onBack={phone ? () => open(null) : undefined}
-      onEdit={canManage && current.kind === 'GROUP' ? () => setEditing(current) : undefined}
+      onEdit={canGroups && current.kind === 'GROUP' ? () => setEditing(current) : undefined}
     />
   ) : (
     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted">
@@ -460,7 +461,7 @@ function PeopleSheet({
   );
 }
 
-/** Who may write in the chat (chat:manage): stop or allow each person. */
+/** Who may write in the chat (chat:mute): stop or allow each person. */
 function MutesSheet({ me, onClose }: { me: string; onClose: () => void }) {
   const { t } = useT();
   const people = useChatPeople();

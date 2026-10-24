@@ -16,7 +16,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/payroll/attendance")]
-[Authorize(Policy = Permissions.PayrollView)]
+[Authorize]
 public sealed class AttendanceController : ControllerBase
 {
     private const int MaxImportChars = 2_000_000;
@@ -30,6 +30,7 @@ public sealed class AttendanceController : ControllerBase
     }
 
     [HttpGet]
+    [AnyPermission(Permissions.PayrollAttendance, Permissions.AttendanceEdit, Permissions.AttendanceImport)]
     public async Task<ActionResult<AttendanceSheetDto>> Sheet([FromQuery] string? date = null, [FromQuery] string? branchId = null)
     {
         var day = ParseDay(date) ?? CompanyClock.TodayDate;
@@ -111,7 +112,7 @@ public sealed class AttendanceController : ControllerBase
     /// last the check-out. Days of a posted month are skipped; unknown device numbers are listed.
     /// </summary>
     [HttpPost("import")]
-    [Authorize(Policy = Permissions.AttendanceEdit)]
+    [Authorize(Policy = Permissions.AttendanceImport)]
     public async Task<ActionResult<ImportAttendanceResultDto>> Import([FromBody] ImportAttendanceRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Text)) return Bad("no_rows", "Nothing to read.");

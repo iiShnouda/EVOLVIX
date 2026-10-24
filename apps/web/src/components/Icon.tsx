@@ -12,6 +12,7 @@ const PATHS: Record<string, string> = {
   parties:
     'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM2 20c0-3 3-5 6-5s6 2 6 5M17 11a3 3 0 1 0 0-6M22 20c0-2.5-1.5-4-4-4.5',
   inventory: 'M3 8l9-5 9 5-9 5zM3 8v8l9 5 9-5V8M12 13v8',
+  layers: 'M12 3 3 7.5 12 12l9-4.5zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5',
   staff: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21c0-4 3.5-6 8-6s8 2 8 6',
   branches: 'M4 21V8l8-5 8 5v13M9 21v-6h6v6M9 11h.01M15 11h.01',
   analytics: 'M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6',

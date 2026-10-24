@@ -89,7 +89,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
   const can = useCan();
   // What a count gains or loses at cost is the owner's unless given (costs:view).
   const seeCosts = can('costs:view');
-  const canScan = can('ai:scan');
+  const canScan = can('ai:scan_stocktake');
   const navigate = useNavigate();
   const myBranches = useAuth((s) => s.user?.branches ?? []);
   const warehouses = useWarehouses(true);
@@ -472,15 +472,17 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
                 {errorText(t, error)}
               </p>
             )}
-            <Button
-              className="mt-4 w-full"
-              icon="check"
-              loading={stocktake.isPending}
-              disabled={changed.length === 0}
-              onClick={post}
-            >
-              {stocktake.isPending ? t('stocktake.saving') : t('stocktake.save')}
-            </Button>
+            {can('inventory:stocktake') && (
+              <Button
+                className="mt-4 w-full"
+                icon="check"
+                loading={stocktake.isPending}
+                disabled={changed.length === 0}
+                onClick={post}
+              >
+                {stocktake.isPending ? t('stocktake.saving') : t('stocktake.save')}
+              </Button>
+            )}
           </Card>
           {changed.length > 0 && (
             <Card padded={false} className="overflow-hidden">

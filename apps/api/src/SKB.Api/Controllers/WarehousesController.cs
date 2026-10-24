@@ -9,11 +9,11 @@ using SKB.Api.Services;
 namespace SKB.Api.Controllers;
 
 /// <summary>
-/// Branches and their warehouses (الفروع والمخازن). Everyone who sees inventory can list the
-/// warehouses they may use; managing branches and warehouses (add, rename, close, choose the branch
-/// default) needs <c>branches:manage</c>. A branch or warehouse with nothing recorded in it can be
-/// deleted (<c>branches:delete</c>, <c>warehouses:delete</c>); once it has documents, stock or money
-/// it can only be closed. Names are kept exactly as typed.
+/// Branches and their warehouses (الفروع والمخازن). Everyone signed in can list the branches and
+/// warehouses they may use (every page picks them); adding, changing and deleting a branch or a
+/// warehouse are a permission each (owner, 2026-10-23). A branch or warehouse with nothing recorded
+/// in it can be deleted; once it has documents, stock or money it can only be closed. Names are kept
+/// exactly as typed.
 /// </summary>
 [ApiController]
 [Route("api")]
@@ -38,7 +38,7 @@ public sealed class WarehousesController : ControllerBase
     /// "In transit" warehouse is left out unless <paramref name="includeTransit"/> is set.
     /// </summary>
     [HttpGet("warehouses")]
-    [Authorize(Policy = Permissions.InventoryView)]
+    [Authorize]
     public async Task<ActionResult<WarehouseDto[]>> List(
         [FromQuery] bool activeOnly = false, [FromQuery] bool includeTransit = false)
     {
@@ -57,7 +57,7 @@ public sealed class WarehousesController : ControllerBase
     /// branch-scoped staff can pick another branch as the destination.
     /// </summary>
     [HttpGet("warehouses/destinations")]
-    [Authorize(Policy = Permissions.InventoryTransfer)]
+    [AnyPermission(Permissions.InventoryTransfer, Permissions.InventoryTransferEdit)]
     public async Task<ActionResult<WarehouseOptionDto[]>> Destinations()
     {
         var rows = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)
@@ -69,7 +69,7 @@ public sealed class WarehousesController : ControllerBase
 
     /// <summary>Every branch with its warehouses (active and closed).</summary>
     [HttpGet("branches")]
-    [Authorize(Policy = Permissions.BranchesView)]
+    [Authorize]
     public async Task<ActionResult<BranchDto[]>> Branches()
     {
         // Only the person's own branches and the warehouses they see in them (owner, 2026-10-02:
@@ -85,7 +85,7 @@ public sealed class WarehousesController : ControllerBase
 
     /// <summary>Add a branch; it gets a default store straight away so documents can post there.</summary>
     [HttpPost("branches")]
-    [Authorize(Policy = Permissions.BranchesManage)]
+    [Authorize(Policy = Permissions.BranchesCreate)]
     public async Task<ActionResult<BranchDto>> CreateBranch([FromBody] CreateBranchRequest req,
         [FromServices] AccessService access)
     {
@@ -134,7 +134,7 @@ public sealed class WarehousesController : ControllerBase
     }
 
     [HttpPut("branches/{id:guid}")]
-    [Authorize(Policy = Permissions.BranchesManage)]
+    [Authorize(Policy = Permissions.BranchesEdit)]
     public async Task<ActionResult<BranchDto>> UpdateBranch(Guid id, [FromBody] UpdateBranchRequest req)
     {
         var branch = await _db.Branches.Include(b => b.Warehouses).FirstOrDefaultAsync(b => b.Id == id);
@@ -156,7 +156,7 @@ public sealed class WarehousesController : ControllerBase
     }
 
     [HttpPost("warehouses")]
-    [Authorize(Policy = Permissions.BranchesManage)]
+    [Authorize(Policy = Permissions.WarehousesCreate)]
     public async Task<ActionResult<WarehouseDto>> Create([FromBody] CreateWarehouseRequest req,
         [FromServices] AccessService access)
     {
@@ -198,7 +198,7 @@ public sealed class WarehousesController : ControllerBase
     }
 
     [HttpPut("warehouses/{id:guid}")]
-    [Authorize(Policy = Permissions.BranchesManage)]
+    [Authorize(Policy = Permissions.WarehousesEdit)]
     public async Task<ActionResult<WarehouseDto>> Update(Guid id, [FromBody] UpdateWarehouseRequest req)
     {
         var warehouse = await _db.Warehouses.Include(w => w.Branch)
@@ -440,10 +440,15 @@ public sealed class WarehousesController : ControllerBase
             .Select(w => { w.Branch = b; return ToDto(w, stats); })
             .ToArray(), b.Prefix);
 
-    /// <summary>A warehouse with its stock; the stock's value only for people who may see costs.</summary>
+    /// <summary>
+    /// A warehouse with its stock; the stock only for people who see the stock or the branches, its
+    /// value only for people who may see costs. Its name is everyone's (every page picks warehouses).
+    /// </summary>
     private WarehouseDto ToDto(Warehouse w, Dictionary<Guid, Stats> stats)
     {
-        var s = stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0);
+        var seesStock = User.HasAny(Permissions.InventoryView, Permissions.BranchesView, Permissions.BranchesEdit,
+            Permissions.WarehousesEdit, Permissions.WarehousesDelete, Permissions.BranchesDelete);
+        var s = seesStock ? stats.GetValueOrDefault(w.Id) ?? new Stats(0, 0, 0) : new Stats(0, 0, 0);
         return Costs.Guard(User, new WarehouseDto(w.Id.ToString(), w.Code, Loc.Name(w), w.BranchId.ToString(),
             Loc.Name(w.Branch), w.Kind.ToString(), w.IsDefault, w.IsActive, s.Items, s.Quantity, s.Value,
             w.Prefix, _departments.GetValueOrDefault(w.Id, Array.Empty<string>())));

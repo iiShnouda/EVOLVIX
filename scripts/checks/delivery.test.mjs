@@ -45,7 +45,9 @@ eq(
   (await P({ name: `shop ${tag}`, types: ['CUSTOMER'] })).data?.code,
   'duplicate_name',
 );
-eq('no name', (await P({ name: '  ', types: ['CUSTOMER'] })).data?.code, 'bad_name');
+// Every field is optional (owner, 2026-10-22): no name is named by its kind and code.
+const unnamed = ok('no name', await P({ name: '  ', types: ['CUSTOMER'] }));
+eq('named by its kind and code', unnamed.name, `عميل ${unnamed.code}`);
 eq('no type', (await P({ name: `X ${tag}`, types: [] })).data?.code, 'bad_type');
 eq('unknown type', (await P({ name: `X ${tag}`, types: ['ALIEN'] })).data?.code, 'bad_type');
 eq(
@@ -597,7 +599,7 @@ const i9 = ok(
 const line = (await owner.get(`/sales/invoices/${i9.id}`)).data.lines[0];
 ok(
   'one piece returned before shipping',
-  await owner.post(`/sales/invoices/${i9.id}/returns`, {
+  await owner.confirmed().post(`/sales/invoices/${i9.id}/returns`, {
     lines: [{ lineId: line.id, quantity: 1 }],
   }),
 );

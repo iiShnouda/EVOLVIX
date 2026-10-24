@@ -212,6 +212,7 @@ export function ProfitLossTab() {
           )}
         </div>
         <ReportActions
+          scope="reports"
           disabled={!data}
           onPrint={() => report.print(paper.current, t('pnl.title'), subtitle)}
           onExcel={() => data && excel(data)}

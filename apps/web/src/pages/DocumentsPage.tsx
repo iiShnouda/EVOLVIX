@@ -5,6 +5,7 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  type Permission,
   type SalesDocument,
   type TranslationKey,
 } from '@skb/shared';
@@ -44,6 +45,27 @@ import { CodeName, codeName } from '../components/CodeName';
 const filterField =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
+/** Who sees each list: its view permission and every action done on its documents. */
+const LIST_PERMISSIONS: Record<DocScope, Record<'invoices' | 'returns', Permission[]>> = {
+  sales: {
+    invoices: [
+      'sales:view',
+      'sales:edit',
+      'sales:cancel',
+      'sales:lock',
+      'sales:return',
+      'sales:approve',
+      'sales:reject',
+      'sales:discount',
+    ],
+    returns: ['sales:returns_view'],
+  },
+  purchases: {
+    invoices: ['purchases:view', 'purchases:return', 'purchases:photos', 'purchases:price_sheet'],
+    returns: ['purchases:returns_view'],
+  },
+};
+
 const TAB_LABEL: Record<DocScope, Partial<Record<DocKind, TranslationKey>>> = {
   sales: {
     invoices: 'sales.invoices',
@@ -76,8 +98,12 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab');
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  const kind: DocKind = tab === 'returns' ? 'returns' : 'invoices';
-  const kinds: DocKind[] = ['invoices', 'returns'];
+  // Each list for whoever may see it or act on its documents (owner, 2026-10-23).
+  const kinds = (['invoices', 'returns'] as const).filter((k) =>
+    LIST_PERMISSIONS[scope][k].some((p) => permissions.includes(p)),
+  );
+  const kind: DocKind = tab === 'returns' && kinds.includes('returns') ? 'returns' : 'invoices';
+  const listed = kinds.includes(kind as 'invoices' | 'returns');
 
   const canCreate = permissions.includes(isSales ? 'sales:create' : 'purchases:create');
   // A sales person who may only save pending invoices still starts one from here.
@@ -152,6 +178,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     state: kind === 'invoices' && state ? state : undefined,
     branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
+    enabled: listed,
   });
   // Another filter starts again at the first page.
   useEffect(
@@ -345,262 +372,276 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         }
       />
 
-      <div
-        role="tablist"
-        className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {kinds.map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={kind === k}
-            onClick={() => switchKind(k)}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              kind === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(TAB_LABEL[scope][k]!)}
-          </button>
-        ))}
-      </div>
+      {kinds.length > 1 && (
+        <div
+          role="tablist"
+          className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {kinds.map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={kind === k}
+              onClick={() => switchKind(k)}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                kind === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(TAB_LABEL[scope][k]!)}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block w-40">
-          <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
-          <input
-            type="search"
-            className={`${filterField} tnum`}
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-          />
-        </label>
-        {/* The code before the name, as everywhere (owner, 2026-10-06). */}
-        <label className="block w-28">
-          <span className="mb-0.5 block text-xs text-muted">
-            {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
-          </span>
-          <input
-            inputMode="numeric"
-            className={`${filterField} tnum`}
-            value={partyCode}
-            onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
-          />
-        </label>
-        <label className="block min-w-48 flex-1">
-          <span className="mb-0.5 block text-xs text-muted">
-            {t(isSales ? 'list.customerName' : 'list.supplierName')}
-          </span>
-          <input
-            type="search"
-            className={filterField}
-            value={partyName}
-            onChange={(e) => setPartyName(e.target.value)}
-          />
-        </label>
-        {myBranches.length > 0 && (
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-            <select
-              className={filterField}
-              value={branchId}
-              onChange={(e) => {
-                setBranchId(e.target.value);
-                setWarehouseId('');
-                if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
-              }}
-            >
-              <option value="">{t('list.all')}</option>
-              {myBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {/* Always there (owner, 2026-10-06: picking a branch must not take the warehouse away). */}
-        {(warehouses.data ?? []).length > 0 && (
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
-            <select
-              className={filterField}
-              value={warehouseId}
-              onChange={(e) => {
-                setWarehouseId(e.target.value);
-                if (e.target.value) setPlace({ warehouseId: e.target.value });
-              }}
-            >
-              <option value="">{t('list.all')}</option>
-              {shownWarehouses.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {(isSales || kind === 'invoices') && (departments.data ?? []).length > 0 && (
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-            <select
-              className={filterField}
-              value={departmentId}
-              onChange={(e) => {
-                setDepartmentId(e.target.value);
-                if (e.target.value && e.target.value !== 'none')
-                  setPlace({ departmentId: e.target.value });
-              }}
-            >
-              <option value="">{t('list.all')}</option>
-              {(departments.data ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-              {isSales && <option value="none">{t('invoice.noDepartment')}</option>}
-            </select>
-          </label>
-        )}
-        {statuses[kind].length > 0 && (
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
-            <select
-              className={filterField}
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">{t('sales.allStatuses')}</option>
-              {statuses[kind].map((s) => (
-                <option key={s} value={s}>
-                  {t(`status.${s}` as TranslationKey)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="block w-40 min-w-0">
-          <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
-          <input
-            type="date"
-            className={`${filterField} tnum`}
-            value={from}
-            max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label className="block w-40 min-w-0">
-          <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
-          <input
-            type="date"
-            className={`${filterField} tnum`}
-            value={to}
-            min={from || undefined}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
-        {kind === 'invoices' && isSales && (
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.state')}</span>
-            <select
-              className={filterField}
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-            >
-              <option value="">{t('list.all')}</option>
-              {[...PAY_STATES, ...(isSales ? (['AWAITING', 'EDITED'] as const) : [])].map((s) => (
-                <option key={s} value={s}>
-                  {t(`state.${s}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      {/* The list, full width; a document opens over it. */}
-      <Card padded={false} className="overflow-hidden">
-        {list.isLoading ? (
-          <div className="grid place-items-center py-16 text-muted">
-            <Spinner size={26} />
-          </div>
-        ) : rows.length === 0 ? (
-          <EmptyState title={t('common.empty')} icon={kind === 'returns' ? 'returns' : scope} />
-        ) : isPhone ? (
-          <ul className="divide-y divide-[var(--c-line)]">
-            {rows.map((doc) => (
-              <li key={doc.id}>
-                <button
-                  onClick={() => setSelectedId(doc.id)}
-                  className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
+      {listed && (
+        <>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block w-40">
+              <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+              <input
+                type="search"
+                className={`${filterField} tnum`}
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+              />
+            </label>
+            {/* The code before the name, as everywhere (owner, 2026-10-06). */}
+            <label className="block w-28">
+              <span className="mb-0.5 block text-xs text-muted">
+                {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
+              </span>
+              <input
+                inputMode="numeric"
+                className={`${filterField} tnum`}
+                value={partyCode}
+                onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
+              />
+            </label>
+            <label className="block min-w-48 flex-1">
+              <span className="mb-0.5 block text-xs text-muted">
+                {t(isSales ? 'list.customerName' : 'list.supplierName')}
+              </span>
+              <input
+                type="search"
+                className={filterField}
+                value={partyName}
+                onChange={(e) => setPartyName(e.target.value)}
+              />
+            </label>
+            {myBranches.length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+                <select
+                  className={filterField}
+                  value={branchId}
+                  onChange={(e) => {
+                    setBranchId(e.target.value);
+                    setWarehouseId('');
+                    if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+                  }}
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-medium">
-                      <CodeName code={doc.partyCode} name={doc.partyName} truncate />
-                    </span>
-                    <span className="text-xs text-muted tnum">
-                      {doc.number} · {formatDate(doc.issueDate, locale)}
-                      {doc.sourceNumber && <> · {doc.sourceNumber}</>}
-                      {doc.departmentName && <> · {doc.departmentName}</>}
-                      {doc.repName && <> · {codeName(doc.repCode, doc.repName)}</>}
-                    </span>
-                    {(doc.edited || (doc.overLimit && doc.type === 'SALES_INVOICE')) &&
-                      doc.status !== 'CANCELLED' && (
-                        <span className="mt-1 flex gap-1">
-                          {doc.edited && <Badge tone="info">{t('state.EDITED')}</Badge>}
-                          {doc.overLimit && <Badge tone="warning">{t('state.AWAITING')}</Badge>}
-                        </span>
-                      )}
-                  </span>
-                  <span className="text-end">
-                    <span className="block text-sm font-semibold tnum">
-                      {formatMoney(doc.grandTotal, doc.currency, locale)}
-                    </span>
-                    {doc.owed > 0 ? (
-                      <span className="block text-xs text-warning tnum">
-                        {t('list.owed')} {formatMoney(doc.owed, doc.currency, locale)}
-                      </span>
-                    ) : (
-                      isSales && (
-                        <Badge tone={statusOf(doc).tone}>
-                          {t(statusOf(doc).key as TranslationKey)}
-                        </Badge>
-                      )
-                    )}
-                  </span>
-                </button>
-              </li>
-            ))}
-            {list.data && (
-              <li className="flex justify-between bg-surface-2 p-4 text-sm font-semibold tnum">
-                <span>
-                  {list.data.totals.count} {t('list.documents')}
-                </span>
-                <span>
-                  {formatMoney(list.data.totals.grandTotal, rows[0]?.currency ?? 'EGP', locale)}
-                </span>
-              </li>
+                  <option value="">{t('list.all')}</option>
+                  {myBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
-          </ul>
-        ) : (
-          list.data && (
-            <DocumentTable
-              scope={scope}
-              kind={kind}
-              list={list.data}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              showDepartment={isSales && (departments.data ?? []).length > 0}
-              onPrint={(id) => {
-                setSelectedId(id);
-                setParams({ ...(tab ? { tab } : {}), doc: id, print: '1' }, { replace: true });
-              }}
+            {/* Always there (owner, 2026-10-06: picking a branch must not take the warehouse away). */}
+            {(warehouses.data ?? []).length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+                <select
+                  className={filterField}
+                  value={warehouseId}
+                  onChange={(e) => {
+                    setWarehouseId(e.target.value);
+                    if (e.target.value) setPlace({ warehouseId: e.target.value });
+                  }}
+                >
+                  <option value="">{t('list.all')}</option>
+                  {shownWarehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {(isSales || kind === 'invoices') && (departments.data ?? []).length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+                <select
+                  className={filterField}
+                  value={departmentId}
+                  onChange={(e) => {
+                    setDepartmentId(e.target.value);
+                    if (e.target.value && e.target.value !== 'none')
+                      setPlace({ departmentId: e.target.value });
+                  }}
+                >
+                  <option value="">{t('list.all')}</option>
+                  {(departments.data ?? []).map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                  {isSales && <option value="none">{t('invoice.noDepartment')}</option>}
+                </select>
+              </label>
+            )}
+            {statuses[kind].length > 0 && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
+                <select
+                  className={filterField}
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="">{t('sales.allStatuses')}</option>
+                  {statuses[kind].map((s) => (
+                    <option key={s} value={s}>
+                      {t(`status.${s}` as TranslationKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="block w-40 min-w-0">
+              <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
+              <input
+                type="date"
+                className={`${filterField} tnum`}
+                value={from}
+                max={to || undefined}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label className="block w-40 min-w-0">
+              <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
+              <input
+                type="date"
+                className={`${filterField} tnum`}
+                value={to}
+                min={from || undefined}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </label>
+            {kind === 'invoices' && isSales && (
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('list.state')}</span>
+                <select
+                  className={filterField}
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                >
+                  <option value="">{t('list.all')}</option>
+                  {[...PAY_STATES, ...(isSales ? (['AWAITING', 'EDITED'] as const) : [])].map(
+                    (s) => (
+                      <option key={s} value={s}>
+                        {t(`state.${s}`)}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+            )}
+          </div>
+
+          {/* The list, full width; a document opens over it. */}
+          <Card padded={false} className="overflow-hidden">
+            {list.isLoading ? (
+              <div className="grid place-items-center py-16 text-muted">
+                <Spinner size={26} />
+              </div>
+            ) : rows.length === 0 ? (
+              <EmptyState title={t('common.empty')} icon={kind === 'returns' ? 'returns' : scope} />
+            ) : isPhone ? (
+              <ul className="divide-y divide-[var(--c-line)]">
+                {rows.map((doc) => (
+                  <li key={doc.id}>
+                    <button
+                      onClick={() => setSelectedId(doc.id)}
+                      className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">
+                          <CodeName code={doc.partyCode} name={doc.partyName} truncate />
+                        </span>
+                        <span className="text-xs text-muted tnum">
+                          {doc.number} · {formatDate(doc.issueDate, locale)}
+                          {doc.sourceNumber && <> · {doc.sourceNumber}</>}
+                          {doc.departmentName && <> · {doc.departmentName}</>}
+                          {doc.repName && <> · {codeName(doc.repCode, doc.repName)}</>}
+                        </span>
+                        {(doc.edited || (doc.overLimit && doc.type === 'SALES_INVOICE')) &&
+                          doc.status !== 'CANCELLED' && (
+                            <span className="mt-1 flex gap-1">
+                              {doc.edited && <Badge tone="info">{t('state.EDITED')}</Badge>}
+                              {doc.overLimit && <Badge tone="warning">{t('state.AWAITING')}</Badge>}
+                            </span>
+                          )}
+                      </span>
+                      <span className="text-end">
+                        <span className="block text-sm font-semibold tnum">
+                          {formatMoney(doc.grandTotal, doc.currency, locale)}
+                        </span>
+                        {doc.owed > 0 ? (
+                          <span className="block text-xs text-warning tnum">
+                            {t('list.owed')} {formatMoney(doc.owed, doc.currency, locale)}
+                          </span>
+                        ) : (
+                          isSales && (
+                            <Badge tone={statusOf(doc).tone}>
+                              {t(statusOf(doc).key as TranslationKey)}
+                            </Badge>
+                          )
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {list.data && (
+                  <li className="flex justify-between bg-surface-2 p-4 text-sm font-semibold tnum">
+                    <span>
+                      {list.data.totals.count} {t('list.documents')}
+                    </span>
+                    <span>
+                      {formatMoney(list.data.totals.grandTotal, rows[0]?.currency ?? 'EGP', locale)}
+                    </span>
+                  </li>
+                )}
+              </ul>
+            ) : (
+              list.data && (
+                <DocumentTable
+                  scope={scope}
+                  kind={kind}
+                  list={list.data}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  showDepartment={isSales && (departments.data ?? []).length > 0}
+                  onPrint={(id) => {
+                    setSelectedId(id);
+                    setParams({ ...(tab ? { tab } : {}), doc: id, print: '1' }, { replace: true });
+                  }}
+                />
+              )
+            )}
+          </Card>
+          <div className="flex justify-end">
+            <Pager
+              page={page}
+              size={pageSize}
+              pages={pages}
+              onPage={setPage}
+              onSize={setPageSize}
             />
-          )
-        )}
-      </Card>
-      <div className="flex justify-end">
-        <Pager page={page} size={pageSize} pages={pages} onPage={setPage} onSize={setPageSize} />
-      </div>
+          </div>
+        </>
+      )}
 
       {/* A document, over the list (a panel at the side on a wide screen). */}
       {!isPhone && selectedId && (

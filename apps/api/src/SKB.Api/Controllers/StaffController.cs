@@ -13,9 +13,10 @@ namespace SKB.Api.Controllers;
 /// Staff and permissions (الموظفون والصلاحيات). Owner decision 2026-09-29: every action has its own
 /// permission and roles bundle them. Here the owner:
 /// <list type="bullet">
-/// <item>adds staff and changes their role, branch, password or active state (<c>staff:manage</c>);</item>
-/// <item>changes what each role may do, and gives a person extra permissions or takes some of their
-/// role's away (<c>roles:manage</c>).</item>
+/// <item>adds staff and changes their details, role, password or active state, each with its own
+/// permission (<c>staff:create</c>, <c>staff:edit</c>, <c>staff:role</c>, <c>staff:password</c>, …);</item>
+/// <item>changes what each role may do (<c>roles:*</c>), and gives a person extra permissions or
+/// takes some of their role's away (<c>staff:permissions</c>).</item>
 /// </list>
 /// Safety rules, all checked here: nobody can grant a permission they don't hold themselves; only an
 /// owner can make or change an owner; there is always at least one active owner; nobody can
@@ -45,7 +46,9 @@ public sealed class StaffController : ControllerBase
     // ------------------------------------------------------------------ staff
 
     [HttpGet("staff")]
-    [Authorize(Policy = Permissions.StaffView)]
+    [AnyPermission(Permissions.StaffView, Permissions.StaffEdit, Permissions.StaffRole, Permissions.StaffPassword,
+        Permissions.StaffPasswordNote, Permissions.StaffClose, Permissions.StaffDelete, Permissions.StaffAccess,
+        Permissions.StaffPermissions)]
     public async Task<ActionResult<StaffDto[]>> List()
     {
         var staff = await _db.Staff.AsNoTracking().Include(s => s.Branch).ToListAsync();
@@ -56,7 +59,7 @@ public sealed class StaffController : ControllerBase
     }
 
     [HttpPost("staff")]
-    [Authorize(Policy = Permissions.StaffManage)]
+    [Authorize(Policy = Permissions.StaffCreate)]
     public async Task<ActionResult<StaffDto>> Create([FromBody] CreateStaffRequest req,
         [FromServices] CryptoService crypto, [FromServices] LicenseService license)
     {
@@ -105,7 +108,8 @@ public sealed class StaffController : ControllerBase
     }
 
     [HttpPut("staff/{id:guid}")]
-    [Authorize(Policy = Permissions.StaffManage)]
+    [AnyPermission(Permissions.StaffEdit, Permissions.StaffRole, Permissions.StaffPassword,
+        Permissions.StaffPasswordNote, Permissions.StaffClose)]
     public async Task<ActionResult<StaffDto>> Update(Guid id, [FromBody] UpdateStaffRequest req,
         [FromServices] CryptoService crypto, [FromServices] LicenseService license)
     {
@@ -115,6 +119,17 @@ public sealed class StaffController : ControllerBase
         var iAmOwner = CurrentUser.Role(User) == Role.OWNER;
         if (staff.Role == Role.OWNER && !iAmOwner)
             return Forbidden("owner_only", "Only an owner can change an owner's account.");
+        // Each part of an account is changed with its own permission (owner, 2026-10-23): the
+        // details sent by someone who may not change them are left as they are; a role, a password
+        // or stopping the account asked for without its permission is refused.
+        if (!User.Has(Permissions.StaffEdit))
+            req = req with { FullName = null, Email = null, Phone = null, OtherPhones = null, OtherPhoneLabels = null, BranchId = null };
+        var roleAsked = (req.Role is not null && (!Enum.TryParse<Role>(req.Role, true, out var asked) || asked != staff.Role))
+                        || (req.CustomRoleId is not null && req.CustomRoleId != (staff.CustomRoleId?.ToString() ?? ""));
+        if ((roleAsked && !User.Has(Permissions.StaffRole))
+            || (req.IsActive is bool on && on != staff.IsActive && !User.Has(Permissions.StaffClose))
+            || (req.Password is not null && !User.Has(Permissions.StaffPassword)))
+            return Forbidden("not_your_permission", "Not allowed.");
 
         if (req.FullName is not null)
         {
@@ -230,7 +245,7 @@ public sealed class StaffController : ControllerBase
     /// Someone who made documents, money moves or entries stays in the books: deactivate them.
     /// </summary>
     [HttpDelete("staff/{id:guid}")]
-    [Authorize(Policy = Permissions.StaffManage)]
+    [Authorize(Policy = Permissions.StaffDelete)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var staff = await _db.Staff.FirstOrDefaultAsync(s => s.Id == id);
@@ -258,7 +273,7 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Give one person permissions beyond their role, or take some of their role's away.</summary>
     [HttpPut("staff/{id:guid}/permissions")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.StaffPermissions)]
     public async Task<ActionResult<StaffDto>> SetPermissions(Guid id, [FromBody] StaffPermissionsRequest req)
     {
         var staff = await _db.Staff.Include(s => s.Branch).FirstOrDefaultAsync(s => s.Id == id);
@@ -373,7 +388,8 @@ public sealed class StaffController : ControllerBase
     // ------------------------------------------------------------------ roles
 
     [HttpGet("roles")]
-    [Authorize(Policy = Permissions.StaffView)]
+    [AnyPermission(Permissions.RolesView, Permissions.RolesCreate, Permissions.RolesEdit, Permissions.RolesDelete,
+        Permissions.StaffCreate, Permissions.StaffRole, Permissions.StaffPermissions)]
     public async Task<ActionResult<RoleDto[]>> Roles()
     {
         var sets = await _permissions.RoleSetsAsync();
@@ -391,7 +407,7 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Set what a role may do. Everyone in the role gets it at their next token refresh.</summary>
     [HttpPut("roles/{role}")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.RolesEdit)]
     public async Task<ActionResult<RoleDto>> UpdateRole(string role, [FromBody] UpdateRoleRequest req)
     {
         if (!Enum.TryParse<Role>(role, true, out var r)) return NotFound(new { message = "Role not found.", code = "not_found" });
@@ -421,7 +437,7 @@ public sealed class StaffController : ControllerBase
     /// do. Only permissions the maker holds can go in it.
     /// </summary>
     [HttpPost("roles")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.RolesCreate)]
     public async Task<ActionResult<RoleDto>> CreateRole([FromBody] CreateRoleRequest req)
     {
         var name = Loc.Clean(req.Name);
@@ -445,7 +461,7 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Rename a made role or set what it may do; everyone in it gets it at their next refresh.</summary>
     [HttpPut("roles/custom/{id:guid}")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.RolesEdit)]
     public async Task<ActionResult<RoleDto>> UpdateCustomRole(Guid id, [FromBody] UpdateRoleRequest req)
     {
         var role = await _db.CustomRoles.FirstOrDefaultAsync(r => r.Id == id);
@@ -476,7 +492,7 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Remove a made role nobody is in.</summary>
     [HttpDelete("roles/custom/{id:guid}")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.RolesDelete)]
     public async Task<IActionResult> DeleteCustomRole(Guid id)
     {
         var role = await _db.CustomRoles.FirstOrDefaultAsync(r => r.Id == id);
@@ -508,7 +524,7 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Put a role back to the permissions it came with.</summary>
     [HttpPost("roles/{role}/reset")]
-    [Authorize(Policy = Permissions.RolesManage)]
+    [Authorize(Policy = Permissions.RolesEdit)]
     public async Task<ActionResult<RoleDto>> ResetRole(string role)
     {
         if (!Enum.TryParse<Role>(role, true, out var r)) return NotFound(new { message = "Role not found.", code = "not_found" });
@@ -527,7 +543,8 @@ public sealed class StaffController : ControllerBase
 
     /// <summary>Every permission and the module it belongs to (labels are translated in the app).</summary>
     [HttpGet("permissions")]
-    [Authorize(Policy = Permissions.StaffView)]
+    [AnyPermission(Permissions.RolesView, Permissions.RolesCreate, Permissions.RolesEdit, Permissions.StaffPermissions,
+        Permissions.StaffView)]
     public ActionResult<PermissionInfoDto[]> AllPermissions() =>
         Ok(Permissions.All.Except(Permissions.OwnerOnly).Select(p => new PermissionInfoDto(p, p.Split(':')[0])).ToArray());
 

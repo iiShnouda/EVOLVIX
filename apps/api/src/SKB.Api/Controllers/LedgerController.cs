@@ -13,11 +13,12 @@ namespace SKB.Api.Controllers;
 /// account and party statements, the trial balance, the journal, manual (compound) entries and
 /// the period lock. Documents post their own entries; manual entries can't touch money accounts
 /// or stock (use vouchers and stocktakes), and an entry on a party's account moves the party's
-/// balance with it. The ledger is company-wide: seeing it needs <c>ledger:view</c>.
+/// balance with it. The ledger is company-wide; each part (accounts, journal, each statement,
+/// posting, reversing, the lock, closing a year) is a permission of its own.
 /// </summary>
 [ApiController]
 [Route("api/ledger")]
-[Authorize(Policy = Permissions.LedgerView)]
+[Authorize]
 public sealed class LedgerController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -38,6 +39,8 @@ public sealed class LedgerController : ControllerBase
     // ------------------------------------------------------------------ accounts
 
     [HttpGet("accounts")]
+    [AnyPermission(Permissions.LedgerAccounts, Permissions.LedgerAccountsCreate, Permissions.LedgerAccountsEdit,
+        Permissions.LedgerPost, Permissions.StatementLedger)]
     public async Task<ActionResult<LedgerAccountDto[]>> Accounts()
     {
         var accounts = await WithLinks(_db.LedgerAccounts).OrderBy(a => a.Code).ToListAsync();
@@ -69,7 +72,7 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>Add an account under a group (not under the groups that fill themselves, like customers).</summary>
     [HttpPost("accounts")]
-    [Authorize(Policy = Permissions.LedgerManage)]
+    [Authorize(Policy = Permissions.LedgerAccountsCreate)]
     public async Task<ActionResult<LedgerAccountDto>> CreateAccount([FromBody] CreateLedgerAccountRequest req)
     {
         var name = Loc.Clean(req.Name);
@@ -97,7 +100,7 @@ public sealed class LedgerController : ControllerBase
     }
 
     [HttpPut("accounts/{id:guid}")]
-    [Authorize(Policy = Permissions.LedgerManage)]
+    [Authorize(Policy = Permissions.LedgerAccountsEdit)]
     public async Task<ActionResult<LedgerAccountDto>> UpdateAccount(Guid id, [FromBody] UpdateLedgerAccountRequest req)
     {
         var account = await _db.LedgerAccounts.Include(a => a.Party).Include(a => a.MoneyAccount)
@@ -136,6 +139,7 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>An account's lines between two days, with the balance before and after (a group: everything under it).</summary>
     [HttpGet("accounts/{id:guid}/statement")]
+    [AnyPermission(Permissions.StatementLedger, Permissions.LedgerAccounts)]
     public async Task<ActionResult<LedgerStatementDto>> AccountStatement(Guid id, [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         var account = await WithLinks(_db.LedgerAccounts).FirstOrDefaultAsync(a => a.Id == id);
@@ -156,6 +160,7 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>A customer's / supplier's / carrier's statement (كشف حساب): every line on their accounts.</summary>
     [HttpGet("parties/{partyId:guid}/statement")]
+    [AnyPermission(Permissions.StatementCustomers, Permissions.StatementSuppliers, Permissions.StatementCarriers)]
     /// <remarks>
     /// Like the old program's كشف حساب: each line says which book it went through (الدفتر — the sales
     /// department of an invoice, the cash box or bank of a receipt), its document number and notes.
@@ -170,6 +175,11 @@ public sealed class LedgerController : ControllerBase
     {
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId);
         if (party is null) return NotFound(new { message = "Party not found.", code = "not_found" });
+        // Customers', suppliers' and shipping companies' statements are a permission each (owner, 2026-10-23).
+        if (!((party.Types.Contains(nameof(PartyType.CUSTOMER)) && User.Has(Permissions.StatementCustomers))
+              || (party.Types.Contains(nameof(PartyType.SUPPLIER)) && User.Has(Permissions.StatementSuppliers))
+              || (party.Types.Contains(nameof(PartyType.CARRIER)) && User.Has(Permissions.StatementCarriers))))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var lines = _db.JournalLines.Where(l => l.Account!.PartyId == partyId);
         // A cancelled invoice is not on the customer's statement, and a changed one shows only as it
         // stands now (owner, 2026-10-01): its earlier postings and their reversals cancel out, so
@@ -306,10 +316,10 @@ public sealed class LedgerController : ControllerBase
     /// period, the period's debits and credits, and its balance at the end.
     /// </summary>
     [HttpGet("trial-balance")]
+    [Authorize(Policy = Permissions.LedgerTrialBalance)]
     public async Task<ActionResult<TrialBalanceDto>> TrialBalance([FromQuery] string? from = null, [FromQuery] string? to = null)
     {
-        // Shows cost of goods sold and stock: only for people who may see costs.
-        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
+        // Shows cost of goods sold and stock: the report's own permission is enough (owner, 2026-10-23).
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
         var before = await _db.JournalLines.Where(l => l.Entry!.Date < start).GroupBy(l => l.AccountId)
@@ -336,10 +346,10 @@ public sealed class LedgerController : ControllerBase
     /// sales returns) − cost of goods sold = gross profit; − expenses = net profit.
     /// </summary>
     [HttpGet("income-statement")]
+    [Authorize(Policy = Permissions.LedgerIncomeStatement)]
     public async Task<ActionResult<IncomeStatementDto>> IncomeStatement([FromQuery] string? from = null, [FromQuery] string? to = null)
     {
-        // The income statement is the company's profit: only for people who may see it.
-        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
+        // The income statement is the company's profit: the report's own permission is enough.
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
         var net = await NetByAccountAsync(l => l.Entry!.Date >= start && l.Entry.Date < end && l.Entry.SourceType != "YEAR_CLOSE");
@@ -364,10 +374,10 @@ public sealed class LedgerController : ControllerBase
     /// includes the profit to date (revenue − expenses not yet closed into retained earnings).
     /// </summary>
     [HttpGet("balance-sheet")]
+    [Authorize(Policy = Permissions.LedgerBalanceSheet)]
     public async Task<ActionResult<BalanceSheetDto>> BalanceSheet([FromQuery] string? asOf = null)
     {
-        // Shows stock at cost and the profit to date: only for people who may see costs.
-        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
+        // Shows stock at cost and the profit to date: the report's own permission is enough.
         var day = CompanyClock.ParseDay(asOf) ?? CompanyClock.Today;
         var end = CompanyClock.StartOf(day.AddDays(1));
         var net = await NetByAccountAsync(l => l.Entry!.Date < end);
@@ -421,6 +431,7 @@ public sealed class LedgerController : ControllerBase
     // ------------------------------------------------------------------ journal
 
     [HttpGet("entries")]
+    [AnyPermission(Permissions.LedgerJournal, Permissions.LedgerReverse)]
     public async Task<ActionResult<PaginatedDto<JournalEntryDto>>> Entries(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? source = null,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 30)
@@ -440,6 +451,7 @@ public sealed class LedgerController : ControllerBase
     }
 
     [HttpGet("entries/{id:guid}")]
+    [AnyPermission(Permissions.LedgerJournal, Permissions.LedgerReverse)]
     public async Task<ActionResult<JournalEntryDto>> Entry(Guid id)
     {
         var e = await _db.JournalEntries.AsNoTracking().Include(x => x.CreatedBy)
@@ -510,7 +522,7 @@ public sealed class LedgerController : ControllerBase
 
     /// <summary>Reverse a manual entry (its exact opposite, dated today). Document entries reverse with their document.</summary>
     [HttpPost("entries/{id:guid}/reverse")]
-    [Authorize(Policy = Permissions.LedgerPost)]
+    [Authorize(Policy = Permissions.LedgerReverse)]
     public async Task<ActionResult<JournalEntryDto>> Reverse(Guid id)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -545,6 +557,10 @@ public sealed class LedgerController : ControllerBase
     // ------------------------------------------------------------------ period lock
 
     [HttpGet("lock")]
+    [AnyPermission(Permissions.LedgerAccounts, Permissions.LedgerJournal, Permissions.LedgerTrialBalance,
+        Permissions.LedgerIncomeStatement, Permissions.LedgerBalanceSheet, Permissions.LedgerAccountsCreate,
+        Permissions.LedgerAccountsEdit, Permissions.LedgerPost, Permissions.LedgerReverse, Permissions.LedgerLock,
+        Permissions.LedgerCloseYear)]
     public async Task<ActionResult<LockDateDto>> GetLock()
     {
         var d = await _db.CompanySettings.Select(x => x.LockDate).FirstOrDefaultAsync();
@@ -580,6 +596,10 @@ public sealed class LedgerController : ControllerBase
     // ------------------------------------------------------------------ year-end close
 
     [HttpGet("closed-years")]
+    [AnyPermission(Permissions.LedgerAccounts, Permissions.LedgerJournal, Permissions.LedgerTrialBalance,
+        Permissions.LedgerIncomeStatement, Permissions.LedgerBalanceSheet, Permissions.LedgerAccountsCreate,
+        Permissions.LedgerAccountsEdit, Permissions.LedgerPost, Permissions.LedgerReverse, Permissions.LedgerLock,
+        Permissions.LedgerCloseYear)]
     public async Task<ActionResult<ClosedYearDto[]>> ClosedYears()
     {
         var entries = await _db.JournalEntries.AsNoTracking().Include(e => e.CreatedBy).Include(e => e.Lines)
@@ -598,7 +618,7 @@ public sealed class LedgerController : ControllerBase
     /// closed one. The income statement leaves closing entries out.
     /// </summary>
     [HttpPost("close-year")]
-    [Authorize(Policy = Permissions.LedgerLock)]
+    [Authorize(Policy = Permissions.LedgerCloseYear)]
     public async Task<ActionResult<ClosedYearDto>> CloseYear([FromBody] CloseYearRequest req)
     {
         if (req.Year < 2000 || req.Year >= CompanyClock.Year)

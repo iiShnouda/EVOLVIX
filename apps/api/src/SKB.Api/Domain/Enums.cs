@@ -1,6 +1,7 @@
 namespace SKB.Api.Domain;
 
-public enum Role { OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER }
+/// <summary>Built-in roles; NONE starts with no permission at all (owner, 2026-10-23).</summary>
+public enum Role { OWNER, ADMIN, ACCOUNTANT, SALES, INVENTORY, VIEWER, NONE }
 
 /// <summary>
 /// What a party is to us; one party can be several. A CARRIER is a shipping company (شركة شحن).

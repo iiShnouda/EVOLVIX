@@ -6,7 +6,6 @@ import { NameFields, changedNames, namesFrom, type NameValues } from '../compone
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
-import { useAuth } from '../stores/auth';
 import {
   useBranches,
   useCompanySettings,
@@ -35,7 +34,7 @@ const EMPTY: NameValues = '';
 export function BranchesPage() {
   const { t } = useT();
   const branches = useBranches();
-  const canManage = useAuth((s) => s.user?.permissions ?? []).includes('branches:manage');
+  const can = useCan();
   const currency = useCompanySettings().data?.currency ?? 'EGP';
   const [adding, setAdding] = useState(false);
 
@@ -45,7 +44,7 @@ export function BranchesPage() {
         title={t('branches.title')}
         subtitle={t('branches.subtitle')}
         action={
-          canManage && !adding ? (
+          can('branches:create') && !adding ? (
             <Button size="sm" icon="plus" onClick={() => setAdding(true)}>
               {t('branches.add')}
             </Button>
@@ -64,7 +63,7 @@ export function BranchesPage() {
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {(branches.data ?? []).map((b) => (
-            <BranchCard key={b.id} branch={b} canManage={canManage} currency={currency} />
+            <BranchCard key={b.id} branch={b} currency={currency} />
           ))}
         </div>
       )}
@@ -126,20 +125,13 @@ function NewBranch({ onDone }: { onDone: () => void }) {
   );
 }
 
-function BranchCard({
-  branch,
-  canManage,
-  currency,
-}: {
-  branch: BranchWithWarehouses;
-  canManage: boolean;
-  currency: string;
-}) {
+function BranchCard({ branch, currency }: { branch: BranchWithWarehouses; currency: string }) {
   const { t } = useT();
   const create = useCreateWarehouse();
   const update = useUpdateBranch();
   const remove = useDeleteBranch();
-  const canDelete = useCan()('branches:delete');
+  const can = useCan();
+  const canDelete = can('branches:delete');
   const [names, setNames] = useState<NameValues>(EMPTY);
   const [code, setCode] = useState('');
   const [editing, setEditing] = useState(false);
@@ -230,7 +222,7 @@ function BranchCard({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {!branch.isActive && <Badge>{t('warehouse.closed')}</Badge>}
-              {canManage && (
+              {can('branches:edit') && (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -270,12 +262,12 @@ function BranchCard({
       ) : (
         <ul className="divide-y divide-[var(--c-line)]">
           {branch.warehouses.map((w) => (
-            <WarehouseRow key={w.id} warehouse={w} canManage={canManage} currency={currency} />
+            <WarehouseRow key={w.id} warehouse={w} currency={currency} />
           ))}
         </ul>
       )}
 
-      {canManage && (
+      {can('warehouses:create') && (
         <div className="space-y-2 border-t border-line bg-surface-2 p-4">
           <div className="grid gap-2 sm:grid-cols-[1fr_140px_auto] sm:items-end">
             <NameFields
@@ -311,21 +303,15 @@ function BranchCard({
   );
 }
 
-function WarehouseRow({
-  warehouse: w,
-  canManage,
-  currency,
-}: {
-  warehouse: Warehouse;
-  canManage: boolean;
-  currency: string;
-}) {
+function WarehouseRow({ warehouse: w, currency }: { warehouse: Warehouse; currency: string }) {
   const { t, locale } = useT();
+  const can = useCan();
   // A warehouse's stock value (at cost) is the owner's unless given (costs:view).
-  const seeCosts = useCan()('costs:view');
+  const seeCosts = can('costs:view');
   const update = useUpdateWarehouse();
   const remove = useDeleteWarehouse();
-  const canDelete = useCan()('warehouses:delete');
+  const canDelete = can('warehouses:delete');
+  const canManage = can('warehouses:edit');
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(w.name));
   const [prefix, setPrefix] = useState(w.prefix ?? '');

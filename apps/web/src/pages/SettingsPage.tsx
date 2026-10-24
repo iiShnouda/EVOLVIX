@@ -6,6 +6,7 @@ import {
   companyToday,
   findCountry,
   type CompanySettings,
+  type Permission,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { useT } from '../lib/i18n';
@@ -57,8 +58,18 @@ export function SettingsPage() {
   const seasons = useSeasons();
   const { t, locale } = useT();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  const canManage = permissions.includes('settings:manage');
-  const canBackup = permissions.includes('backup:create');
+  const may = (p: Permission) => permissions.includes(p);
+  // Each part is changed with its own permission (owner, 2026-10-23); settings:view reads them all.
+  const edits = {
+    company: may('settings:company'),
+    logo: may('settings:logo'),
+    pricing: may('settings:pricing'),
+    rules: may('settings:rules'),
+    security: may('settings:security'),
+    numbering: may('settings:numbering'),
+  };
+  const canSave = edits.company || edits.pricing || edits.rules || edits.security;
+  const canBackup = may('backup:create');
   const query = useCompanySettings();
   const update = useUpdateSettings();
 
@@ -98,7 +109,12 @@ export function SettingsPage() {
     const c = findCountry(code);
     set(
       c
-        ? { country: code, currency: c.currency, defaultTaxPercent: c.vat, timeZone: c.timeZone }
+        ? {
+            country: code,
+            currency: c.currency,
+            timeZone: c.timeZone,
+            ...(edits.pricing ? { defaultTaxPercent: c.vat } : {}),
+          }
         : { country: code },
     );
   };
@@ -131,7 +147,6 @@ export function SettingsPage() {
     setDirty(false);
   }
 
-  const disabled = !canManage;
   // The season the date falls in: summer April–September, winter October–March named for the year
   // it ends in (as the server works it out).
   const seasonList = seasons.data ?? [];
@@ -147,7 +162,7 @@ export function SettingsPage() {
       <PageHeader title={t('settings.title')} />
 
       {/* Save stays in reach at the top while scrolling (owner, 2026-10-02). */}
-      {canManage && (
+      {canSave && (
         <div className="sticky top-[max(4rem,calc(var(--top-bar,0px)+3.5rem))] z-10 -mx-1 flex flex-wrap items-center gap-3 rounded-[var(--radius-app)] border border-line bg-surface px-3 py-2 shadow-sm">
           <Button
             icon="check"
@@ -168,12 +183,6 @@ export function SettingsPage() {
         </div>
       )}
 
-      {!canManage && (
-        <p className="rounded-[var(--radius-app)] bg-warning-soft p-3 text-sm text-warning">
-          {t('settings.readonly')}
-        </p>
-      )}
-
       {/* Company */}
       <Card>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -184,17 +193,17 @@ export function SettingsPage() {
             <span className="mb-0.5 block text-xs text-muted">{t('settings.companyName')}</span>
             <input
               className={field}
-              disabled={disabled}
+              disabled={!edits.company}
               value={form.companyName}
               onChange={(e) => set({ companyName: e.target.value })}
             />
           </label>
-          <CompanyLogoField disabled={disabled} />
+          <CompanyLogoField disabled={!edits.logo} />
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.country')}</span>
             <select
               className={field}
-              disabled={disabled}
+              disabled={!edits.company}
               value={form.country}
               onChange={(e) => onCountry(e.target.value)}
             >
@@ -209,7 +218,7 @@ export function SettingsPage() {
             <span className="mb-0.5 block text-xs text-muted">{t('settings.currency')}</span>
             <select
               className={field}
-              disabled={disabled}
+              disabled={!edits.company}
               value={form.currency}
               onChange={(e) => set({ currency: e.target.value })}
             >
@@ -224,7 +233,7 @@ export function SettingsPage() {
             <span className="mb-0.5 block text-xs text-muted">{t('settings.timeZone')}</span>
             <select
               className={field}
-              disabled={disabled}
+              disabled={!edits.company}
               value={form.timeZone}
               onChange={(e) => set({ timeZone: e.target.value })}
             >
@@ -246,7 +255,7 @@ export function SettingsPage() {
             <input
               className={field}
               dir="auto"
-              disabled={disabled}
+              disabled={!edits.company}
               maxLength={300}
               value={form.address ?? ''}
               onChange={(e) => set({ address: e.target.value })}
@@ -258,7 +267,7 @@ export function SettingsPage() {
               className={field}
               dir="ltr"
               inputMode="tel"
-              disabled={disabled}
+              disabled={!edits.company}
               maxLength={60}
               value={form.phone ?? ''}
               onChange={(e) => set({ phone: e.target.value })}
@@ -270,7 +279,7 @@ export function SettingsPage() {
               className={field}
               dir="ltr"
               type="email"
-              disabled={disabled}
+              disabled={!edits.company}
               maxLength={200}
               value={form.email ?? ''}
               onChange={(e) => set({ email: e.target.value })}
@@ -281,7 +290,7 @@ export function SettingsPage() {
             <input
               className={`${field} tnum`}
               dir="ltr"
-              disabled={disabled}
+              disabled={!edits.company}
               maxLength={60}
               value={form.taxNumber ?? ''}
               onChange={(e) => set({ taxNumber: e.target.value })}
@@ -294,7 +303,7 @@ export function SettingsPage() {
             <input
               className={`${field} tnum`}
               dir="ltr"
-              disabled={disabled}
+              disabled={!edits.company}
               maxLength={60}
               value={form.commercialRegister ?? ''}
               onChange={(e) => set({ commercialRegister: e.target.value })}
@@ -316,7 +325,7 @@ export function SettingsPage() {
               min={0}
               max={100}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.pricing}
               value={form.defaultTaxPercent}
               onChange={(e) => set({ defaultTaxPercent: clampInt(e.target.value, 0, 100) })}
             />
@@ -327,7 +336,7 @@ export function SettingsPage() {
               type="number"
               min={0}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.pricing}
               value={form.defaultMarkupPercent}
               onChange={(e) => set({ defaultMarkupPercent: clampInt(e.target.value, 0, 1000) })}
             />
@@ -338,7 +347,7 @@ export function SettingsPage() {
               type="number"
               min={0}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.pricing}
               value={form.minMarkupPercent}
               onChange={(e) => set({ minMarkupPercent: clampInt(e.target.value, 0, 1000) })}
             />
@@ -350,25 +359,33 @@ export function SettingsPage() {
               min={0}
               max={100}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.pricing}
               value={form.maxDiscountPercent ?? 100}
               onChange={(e) => set({ maxDiscountPercent: clampInt(e.target.value, 0, 100) })}
             />
           </label>
-          <label className="block sm:col-span-2">
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('settings.rules')}
+        </h2>
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('settings.pendingHoldDays')}</span>
             <input
               type="number"
               min={0}
               max={365}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.rules}
               value={form.pendingHoldDays ?? 0}
               onChange={(e) => set({ pendingHoldDays: clampInt(e.target.value, 0, 365) })}
             />
           </label>
           {/* Goods on an invoice come back only after this many hours (owner, 2026-10-02). */}
-          <label className="block sm:col-span-2">
+          <label className="block">
             <span className="mb-0.5 block text-xs text-muted">
               {t('settings.returnAfterHours')}
             </span>
@@ -377,24 +394,17 @@ export function SettingsPage() {
               min={0}
               max={720}
               className={`${field} tnum`}
-              disabled={disabled}
+              disabled={!edits.rules}
               value={form.returnAfterHours ?? 12}
               onChange={(e) => set({ returnAfterHours: clampInt(e.target.value, 0, 720) })}
             />
           </label>
         </div>
-      </Card>
-
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          {t('settings.stock')}
-        </h2>
-
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
             className="mt-1"
-            disabled={disabled}
+            disabled={!edits.rules}
             checked={form.requireDepartment !== false}
             onChange={(e) => set({ requireDepartment: e.target.checked })}
           />
@@ -404,34 +414,18 @@ export function SettingsPage() {
           <input
             type="checkbox"
             className="mt-1"
-            disabled={disabled}
+            disabled={!edits.rules}
             checked={form.hideNewPlaces !== false}
             onChange={(e) => set({ hideNewPlaces: e.target.checked })}
           />
           <span className="block text-sm">{t('settings.hideNewPlaces')}</span>
-        </label>
-        {/* Signing out after a while without use, for everyone (owner, 2026-10-17). */}
-        <label className="mt-3 flex items-center gap-3">
-          <span className="min-w-0 flex-1 text-sm">{t('auth.idleLock')}</span>
-          <select
-            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
-            disabled={disabled}
-            value={form.idleMinutes ?? 30}
-            onChange={(e) => set({ idleMinutes: Number(e.target.value) })}
-          >
-            {[5, 10, 15, 30, 60, 120, 0].map((m) => (
-              <option key={m} value={m}>
-                {m === 0 ? t('auth.idleNever') : t('auth.idleMinutes').replace('{n}', String(m))}
-              </option>
-            ))}
-          </select>
         </label>
         {/* The season it is now: worked out from the date, or set by hand when that is wrong (owner, 2026-10-19). */}
         <label className="mt-3 flex items-center gap-3">
           <span className="min-w-0 flex-1 text-sm">{t('settings.currentSeason')}</span>
           <select
             className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
-            disabled={disabled}
+            disabled={!edits.rules}
             value={form.currentSeasonId ?? ''}
             onChange={(e) => set({ currentSeasonId: e.target.value || null })}
           >
@@ -449,7 +443,29 @@ export function SettingsPage() {
         </label>
       </Card>
 
-      <NumberingCard disabled={disabled} />
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('settings.security')}
+        </h2>
+        {/* Signing out after a while without use, for everyone (owner, 2026-10-17). */}
+        <label className="flex items-center gap-3">
+          <span className="min-w-0 flex-1 text-sm">{t('auth.idleLock')}</span>
+          <select
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
+            disabled={!edits.security}
+            value={form.idleMinutes ?? 30}
+            onChange={(e) => set({ idleMinutes: Number(e.target.value) })}
+          >
+            {[5, 10, 15, 30, 60, 120, 0].map((m) => (
+              <option key={m} value={m}>
+                {m === 0 ? t('auth.idleNever') : t('auth.idleMinutes').replace('{n}', String(m))}
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
+
+      <NumberingCard disabled={!edits.numbering} />
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">

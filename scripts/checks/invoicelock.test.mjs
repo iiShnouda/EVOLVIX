@@ -98,9 +98,13 @@ asked(await owner.put(`/sales/invoices/${frozen.id}`, sale(3)), 'invoice_locked'
 ok('confirmed: the owner changes the locked invoice', await sure.put(`/sales/invoices/${frozen.id}`, sale(3)));
 ok('…and gives it a discount', await sure.post(`/sales/invoices/${frozen.id}/discount`, { percent: 5 }));
 const lineId = (await owner.get(`/sales/invoices/${frozen.id}`)).data.lines[0].id;
+// Goods come back after Settings → hours (12 by default; other suites set 0): as by default here.
+const hoursBefore = (await owner.get('/settings')).data.returnAfterHours;
+ok('returns wait 12 hours', await owner.put('/settings', { returnAfterHours: 12 }));
 eq('a return within the hours is refused to others', (await accountant.post(`/sales/invoices/${frozen.id}/returns`, { lines: [{ lineId, quantity: 1 }] })).data?.code, 'return_too_soon');
 asked(await owner.post(`/sales/invoices/${frozen.id}/returns`, { lines: [{ lineId, quantity: 1 }] }), 'return_too_soon');
 ok('confirmed: the owner takes goods back at once', await sure.post(`/sales/invoices/${frozen.id}/returns`, { lines: [{ lineId, quantity: 1 }] }));
+ok('the hours as they were', await owner.put('/settings', { returnAfterHours: hoursBefore }));
 const below = { ...sale(1), lines: [{ productId: item.id, quantity: 1, unitPrice: 100 }] };
 eq('below cost is refused to others', (await accountant.post('/sales/invoices', below)).data?.code, 'below_cost');
 asked(await owner.post('/sales/invoices', below), 'below_cost');

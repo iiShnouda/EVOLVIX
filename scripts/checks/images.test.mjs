@@ -38,7 +38,7 @@ const putImage = (token, bytes, type, name) => {
   });
 };
 const findItem = async () =>
-  ((await owner.get(`/products?query=${item.sku}`)).data || []).find((p) => p.id === item.id);
+  ((await owner.get(`/products?search=${item.sku}`)).data || []).find((p) => p.id === item.id);
 
 console.log('== item photo');
 eq('a new item has no photo', (await findItem())?.hasImage ?? false, false);

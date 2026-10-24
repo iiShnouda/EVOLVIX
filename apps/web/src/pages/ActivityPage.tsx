@@ -44,6 +44,7 @@ export function ActivityPage() {
         subtitle={t('audit.subtitle')}
         action={
           <ReportActions
+            scope="audit"
             disabled={!data || data.items.length === 0}
             onPrint={() => report.print(paper.current, t('audit.title'))}
             onExcel={() =>

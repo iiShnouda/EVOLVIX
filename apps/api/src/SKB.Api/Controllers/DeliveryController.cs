@@ -20,13 +20,15 @@ namespace SKB.Api.Controllers;
 /// stays on the carrier's balance.</item>
 /// <item>A refused parcel can post full sales returns of its goods (needs <c>sales:return</c>).</item>
 /// </list>
-/// Seeing needs <c>delivery:view</c>, moving things along <c>delivery:manage</c>, settling
-/// <c>delivery:settle</c>. Branch-scoped users see their branch's. Cash received lands in a cash
+/// Each list and each step has its own permission (owner, 2026-10-23): deliveries, shipments and
+/// settlements are seen with <c>delivery:view</c>, <c>shipments:view</c>, <c>settlements:view</c> (or
+/// by whoever acts on them); moving a delivery, handing over, moving, returning and cancelling a
+/// shipment, and settling are one each. Branch-scoped users see their branch's. Cash received lands in a cash
 /// box once cash boxes exist (step 5); fees post to the ledger with step 6.
 /// </summary>
 [ApiController]
 [Route("api")]
-[Authorize(Policy = Permissions.DeliveryView)]
+[Authorize]
 public sealed class DeliveryController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -52,6 +54,7 @@ public sealed class DeliveryController : ControllerBase
 
     /// <summary>Sales that are delivered (not picked up), newest first; filter by status and method.</summary>
     [HttpGet("deliveries")]
+    [AnyPermission(Permissions.DeliveryView, Permissions.DeliveryStatus)]
     public async Task<ActionResult<PaginatedDto<DeliveryDto>>> Deliveries(
         [FromQuery] string? status = null, [FromQuery] string? method = null,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 30)
@@ -78,7 +81,7 @@ public sealed class DeliveryController : ControllerBase
     /// Sales sent with a shipping company move with their shipment instead.
     /// </summary>
     [HttpPut("sales/invoices/{id:guid}/delivery")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.DeliveryStatus)]
     public async Task<ActionResult<DeliveryActionDto>> SetDelivery(Guid id, [FromBody] SetDeliveryStatusRequest req)
     {
         if (!Enum.TryParse<DeliveryStatus>(req.Status, true, out var next) || next == DeliveryStatus.PENDING)
@@ -130,6 +133,8 @@ public sealed class DeliveryController : ControllerBase
     // ------------------------------------------------------------------ shipments
 
     [HttpGet("shipments")]
+    [AnyPermission(Permissions.ShipmentsView, Permissions.ShipmentsProgress, Permissions.ShipmentsReturn,
+        Permissions.ShipmentsCancel, Permissions.DeliverySettle)]
     public async Task<ActionResult<PaginatedDto<ShipmentDto>>> Shipments(
         [FromQuery] string? status = null, [FromQuery] string? carrierId = null,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 30)
@@ -147,6 +152,8 @@ public sealed class DeliveryController : ControllerBase
     }
 
     [HttpGet("shipments/{id:guid}")]
+    [AnyPermission(Permissions.ShipmentsView, Permissions.ShipmentsProgress, Permissions.ShipmentsReturn,
+        Permissions.ShipmentsCancel, Permissions.DeliverySettle)]
     public async Task<ActionResult<ShipmentDto>> Shipment(Guid id)
     {
         var s = await WithDetails(ScopedShipments()).FirstOrDefaultAsync(x => x.Id == id);
@@ -155,6 +162,7 @@ public sealed class DeliveryController : ControllerBase
 
     /// <summary>Sales waiting for a shipment with a carrier: sent by it and not on a live shipment.</summary>
     [HttpGet("shipments/eligible")]
+    [Authorize(Policy = Permissions.ShipmentsCreate)]
     public async Task<ActionResult<DeliveryDto[]>> Eligible([FromQuery] string? carrierId = null)
     {
         if (!Guid.TryParse(carrierId, out var carrier)) return Ok(Array.Empty<DeliveryDto>());
@@ -174,7 +182,7 @@ public sealed class DeliveryController : ControllerBase
     /// them (0 = prepaid) and is shared over the invoices in date order.
     /// </summary>
     [HttpPost("shipments")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.ShipmentsCreate)]
     public async Task<ActionResult<ShipmentDto>> Create([FromBody] CreateShipmentRequest req)
     {
         if (!Guid.TryParse(req.CarrierId, out var carrierId)) return Bad("carrier_not_found", "Choose the shipping company.");
@@ -240,7 +248,7 @@ public sealed class DeliveryController : ControllerBase
     }
 
     [HttpPost("shipments/{id:guid}/picked-up")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.ShipmentsProgress)]
     public Task<ActionResult<ShipmentDto>> PickedUp(Guid id) =>
         MoveAsync(id, "picked_up", ShipmentStatus.PICKED_UP, s =>
         {
@@ -254,7 +262,7 @@ public sealed class DeliveryController : ControllerBase
     /// customer's debt moves to the carrier, and each invoice counts its share as paid.
     /// </summary>
     [HttpPost("shipments/{id:guid}/delivered")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.ShipmentsProgress)]
     public Task<ActionResult<ShipmentDto>> Delivered(Guid id) =>
         MoveAsync(id, "delivered", ShipmentStatus.DELIVERED, s =>
         {
@@ -284,7 +292,7 @@ public sealed class DeliveryController : ControllerBase
     /// <c>CreateReturns</c> the goods come back into stock through full sales returns.
     /// </summary>
     [HttpPost("shipments/{id:guid}/returned")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.ShipmentsReturn)]
     public async Task<ActionResult<ShipmentActionDto>> Returned(Guid id, [FromBody] ShipmentReturnRequest? req)
     {
         var createReturns = req?.CreateReturns ?? true;
@@ -306,7 +314,7 @@ public sealed class DeliveryController : ControllerBase
     }
 
     [HttpPost("shipments/{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.DeliveryManage)]
+    [Authorize(Policy = Permissions.ShipmentsCancel)]
     public Task<ActionResult<ShipmentDto>> Cancel(Guid id) =>
         MoveAsync(id, "cancel", ShipmentStatus.CANCELLED, s =>
         {
@@ -318,6 +326,7 @@ public sealed class DeliveryController : ControllerBase
     // ------------------------------------------------------------------ settlements
 
     [HttpGet("carrier-settlements")]
+    [AnyPermission(Permissions.SettlementsView, Permissions.DeliverySettle)]
     public async Task<ActionResult<CarrierSettlementDto[]>> Settlements([FromQuery] string? carrierId = null)
     {
         var q = _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier).Include(x => x.CreatedBy)

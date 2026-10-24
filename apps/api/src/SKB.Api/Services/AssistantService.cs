@@ -613,7 +613,7 @@ public sealed class AssistantTools
         new("find_invoice", "Look up a sales or purchase invoice by its number.",
             null, Params(("number", "string", "the invoice number, e.g. INV-2026-000012"))),
         new("sales_summary", "Sales, returns and purchases totals between two days (YYYY-MM-DD).",
-            Permissions.DashboardView, Params(("from", "string", "first day"), ("to", "string", "last day"))),
+            Permissions.DashboardKpiSales, Params(("from", "string", "first day"), ("to", "string", "last day"))),
         new("low_stock", "Items at or below their reorder level in the person's warehouses.",
             Permissions.InventoryView, Params(("limit", "integer", "how many, default 20"))),
     };
@@ -622,7 +622,8 @@ public sealed class AssistantTools
 
     /// <summary>The tools this person may use, in the model server's format.</summary>
     public JsonArray Definitions(ClaimsPrincipal user) => new(All.Where(t => Has(user, t.Permission) &&
-            (t.Name != "find_invoice" || Has(user, Permissions.SalesView) || Has(user, Permissions.PurchasesView)))
+            (t.Name != "find_invoice" || user.HasAny(Permissions.SalesView, Permissions.SalesReturnsView,
+                Permissions.PurchasesView, Permissions.PurchasesReturnsView)))
         .Select(t => (JsonNode?)new JsonObject
         {
             ["type"] = "function",
@@ -690,8 +691,10 @@ public sealed class AssistantTools
                 var number = Arg("number").ToUpperInvariant();
                 if (number.Length == 0) return "Nothing to look for.";
                 var types = new List<DocumentType>();
-                if (Has(user, Permissions.SalesView)) types.AddRange(new[] { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN });
-                if (Has(user, Permissions.PurchasesView)) types.AddRange(new[] { DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN });
+                if (Has(user, Permissions.SalesView)) types.Add(DocumentType.SALES_INVOICE);
+                if (Has(user, Permissions.SalesReturnsView)) types.Add(DocumentType.SALES_RETURN);
+                if (Has(user, Permissions.PurchasesView)) types.Add(DocumentType.PURCHASE_INVOICE);
+                if (Has(user, Permissions.PurchasesReturnsView)) types.Add(DocumentType.PURCHASE_RETURN);
                 var docs = await _db.SalesDocuments.AsNoTracking().InBranches(user, d => d.BranchId)
                     .Where(d => types.Contains(d.Type) && d.Number.ToUpper().Contains(number))
                     .OrderByDescending(d => d.IssueDate).Take(5)

@@ -196,10 +196,11 @@ ok(
 console.log('== the admin has every permission');
 const perms = (await owner.get('/permissions')).data;
 const roles = (await owner.get('/roles')).data;
+const adminHas = new Set(roles.find((r) => r.role === 'ADMIN').permissions);
 eq(
-  'admin role holds them all',
-  roles.find((r) => r.role === 'ADMIN').permissions.length,
-  perms.length,
+  'admin role holds them all but overriding the rules',
+  perms.map((p) => p.key).filter((p) => !adminHas.has(p)),
+  ['rules:override'],
 );
 
 summary('story');

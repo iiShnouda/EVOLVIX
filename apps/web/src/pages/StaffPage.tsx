@@ -2,10 +2,12 @@ import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  LOOKUPS,
+  OWNER_ONLY,
+  PERMISSION_GROUPS,
   ROLES,
   formatNumber,
   type Permission,
-  type PermissionInfo,
   type Role,
   type RoleInfo,
   type StaffMember,
@@ -22,7 +24,7 @@ import {
   useCompanyCountry,
   type NamedPhone,
 } from '../components/PhoneFields';
-import { useCan } from '../lib/can';
+import { useCan, useCanAny } from '../lib/can';
 import { ApiError, api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../stores/auth';
@@ -33,7 +35,6 @@ import {
   useDepartments,
   useMoneyAccounts,
   useSetStaffAccess,
-  usePermissionCatalog,
   useResetRole,
   useRoles,
   useSetStaffPermissions,
@@ -50,57 +51,30 @@ import {
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
 
-/** Screen sections that permissions are shown in (the API groups by the part before the colon). */
-const SECTION_OF: Record<string, string> = {
-  products: 'catalog',
-  prices: 'catalog',
-  price_levels: 'catalog',
-  categories: 'catalog',
-  departments: 'catalog',
-  labels: 'catalog',
-  units: 'catalog',
-  variant_options: 'catalog',
-  roles: 'staff',
-  payments: 'receipts',
-  expenses: 'receipts',
-  cash: 'receipts',
-  vouchers: 'receipts',
-  money_accounts: 'receipts',
-  expense_categories: 'receipts',
-  audit: 'system',
-  presence: 'system',
-  backup: 'system',
-  costs: 'system',
-  profit: 'system',
-  warehouses: 'branches',
-  payroll: 'payroll',
-  employees: 'payroll',
-  attendance: 'payroll',
-  // Going past the rules (owner, 2026-10-22) sits with the accounts and permissions.
-  rules: 'staff',
-};
-const SECTIONS = [
-  'dashboard',
-  'sales',
-  'purchases',
-  'receipts',
-  'parties',
-  'delivery',
-  'inventory',
-  'catalog',
-  'notes',
-  'ledger',
-  'branches',
-  'staff',
-  'analytics',
-  'payroll',
-  'chat',
-  'ai',
-  'settings',
-  'system',
-];
-
 type Tab = 'people' | 'roles';
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'people',
+    label: 'staff.people',
+    anyOf: [
+      'staff:view',
+      'staff:create',
+      'staff:edit',
+      'staff:role',
+      'staff:password',
+      'staff:password_note',
+      'staff:close',
+      'staff:delete',
+      'staff:access',
+      'staff:permissions',
+    ],
+  },
+  {
+    key: 'roles',
+    label: 'staff.roles',
+    anyOf: ['roles:view', 'roles:create', 'roles:edit', 'roles:delete'],
+  },
+];
 
 const NO_PERMISSIONS: Permission[] = [];
 
@@ -113,31 +87,39 @@ const NO_PERMISSIONS: Permission[] = [];
  */
 export function StaffPage() {
   const { t } = useT();
+  const can = useCan();
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'roles' ? 'roles' : 'people';
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
 
   return (
     <div className="space-y-5">
-      <PageHeader title={t('staff.title')} subtitle={t('staff.subtitle')} />
-      <div
-        role="tablist"
-        className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {(['people', 'roles'] as const).map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => setParams(k === 'roles' ? { tab: 'roles' } : {}, { replace: true })}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === k ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(k === 'people' ? 'staff.people' : 'staff.roles')}
-          </button>
-        ))}
-      </div>
-      {tab === 'people' ? <PeopleTab /> : <RolesTab />}
+      <PageHeader title={t('staff.title')} />
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {tabs.map((x) => (
+            <button
+              key={x.key}
+              role="tab"
+              aria-selected={tab === x.key}
+              onClick={() =>
+                setParams(x.key === 'roles' ? { tab: 'roles' } : {}, { replace: true })
+              }
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(x.label)}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'people' && <PeopleTab />}
+      {tab === 'roles' && <RolesTab />}
     </div>
   );
 }
@@ -177,7 +159,7 @@ function PeopleTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div className="min-w-0 space-y-3">
-        {can('staff:manage') &&
+        {can('staff:create') &&
           (adding ? (
             <AddPerson
               onDone={(id) => {
@@ -396,7 +378,7 @@ function AddPerson({ onDone }: { onDone: (id?: string) => void }) {
           onChange={(phone) => setForm({ ...form, phone })}
           label={t('staff.phone')}
         />
-        <Field label={t('staff.password')} hint={t('staff.passwordHint')}>
+        <Field label={t('staff.password')}>
           <input
             className={field}
             type="password"
@@ -447,7 +429,15 @@ function PersonPanel({ person }: { person: StaffMember }) {
   const myId = useAuth((s) => s.user?.id);
   const myRole = useAuth((s) => s.user?.role);
   const isMe = person.id === myId;
-  const canManage = can('staff:manage') && (person.role !== 'OWNER' || myRole === 'OWNER');
+  // Each change is a permission of its own (owner, 2026-10-23); only an owner changes an owner.
+  const reach = person.role !== 'OWNER' || myRole === 'OWNER';
+  const may = {
+    edit: reach && can('staff:edit'),
+    role: reach && !isMe && can('staff:role'),
+    password: reach && can('staff:password'),
+    close: reach && !isMe && can('staff:close'),
+    remove: reach && !isMe && person.role !== 'OWNER' && can('staff:delete'),
+  };
   const update = useUpdateStaff();
   const branches = useBranches();
   const roles = useAssignableRoles();
@@ -509,11 +499,12 @@ function PersonPanel({ person }: { person: StaffMember }) {
           {isMe && <Badge tone="info">{t('staff.you')}</Badge>}
           {!person.isActive && <Badge>{t('staff.inactive')}</Badge>}
         </div>
-        <fieldset disabled={!canManage} className="grid gap-3 sm:grid-cols-2">
+        <fieldset disabled={!may.edit && !may.role} className="grid gap-3 sm:grid-cols-2">
           <Field label={t('staff.name')}>
             <input
               className={field}
               value={form.fullName}
+              disabled={!may.edit}
               onChange={(e) => setForm({ ...form, fullName: e.target.value })}
             />
           </Field>
@@ -522,6 +513,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
               className={field}
               dir="ltr"
               value={form.email}
+              disabled={!may.edit}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
           </Field>
@@ -529,7 +521,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
             <select
               className={field}
               value={form.role}
-              disabled={isMe}
+              disabled={!may.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
             >
               <RoleOptions
@@ -542,6 +534,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
             <select
               className={field}
               value={form.branchId}
+              disabled={!may.edit}
               onChange={(e) => setForm({ ...form, branchId: e.target.value })}
             >
               {(branches.data ?? []).map((b) => (
@@ -551,29 +544,33 @@ function PersonPanel({ person }: { person: StaffMember }) {
               ))}
             </select>
           </Field>
-          <PhoneInput
-            value={form.phone}
-            onChange={(phone) => setForm({ ...form, phone })}
-            label={t('staff.phone')}
-          />
-          <PhoneList
-            value={others}
-            onChange={setOthers}
-            listId={`staff-${person.id}-phone-kinds`}
-          />
+          <fieldset disabled={!may.edit} className="contents">
+            <PhoneInput
+              value={form.phone}
+              onChange={(phone) => setForm({ ...form, phone })}
+              label={t('staff.phone')}
+            />
+            <PhoneList
+              value={others}
+              onChange={setOthers}
+              listId={`staff-${person.id}-phone-kinds`}
+            />
+          </fieldset>
         </fieldset>
-        {canManage && (
+        {(may.edit || may.role || may.close || may.remove) && (
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              icon="check"
-              loading={update.isPending}
-              disabled={Object.keys(changed).length === 0 || idBad}
-              onClick={() => run(changed)}
-            >
-              {t('common.save')}
-            </Button>
-            {!isMe && (
+            {(may.edit || may.role) && (
+              <Button
+                size="sm"
+                icon="check"
+                loading={update.isPending}
+                disabled={Object.keys(changed).length === 0 || idBad}
+                onClick={() => run(changed)}
+              >
+                {t('common.save')}
+              </Button>
+            )}
+            {may.close && (
               <Button
                 size="sm"
                 variant={person.isActive ? 'ghost' : 'secondary'}
@@ -583,7 +580,7 @@ function PersonPanel({ person }: { person: StaffMember }) {
                 {person.isActive ? t('staff.deactivate') : t('staff.reactivate')}
               </Button>
             )}
-            {!isMe && person.role !== 'OWNER' && (
+            {may.remove && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -603,9 +600,9 @@ function PersonPanel({ person }: { person: StaffMember }) {
             )}
           </div>
         )}
-        {canManage && (
+        {may.password && (
           <div className="grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <Field label={t('staff.newPassword')} hint={t('staff.passwordHint')}>
+            <Field label={t('staff.newPassword')}>
               <input
                 className={field}
                 type="password"
@@ -679,7 +676,6 @@ function PersonPanel({ person }: { person: StaffMember }) {
             </Button>
           </div>
         )}
-        {!canManage && <p className="text-xs text-muted">{t('staff.readonly')}</p>}
         {error && <p className="text-xs text-destructive">{errorText(t, error)}</p>}
       </Card>
       <PersonAccess person={person} />
@@ -697,9 +693,11 @@ type BranchMode = 'role' | 'all' | 'some';
 function PersonAccess({ person }: { person: StaffMember }) {
   const { t } = useT();
   const can = useCan();
+  const canAny = useCanAny();
   const myId = useAuth((s) => s.user?.id);
   const branchList = useBranches();
-  const accountList = useMoneyAccounts(can('receipts:view'));
+  const seesAccounts = canAny(...LOOKUPS.moneyAccounts);
+  const accountList = useMoneyAccounts(seesAccounts);
   const departmentList = useDepartments();
   const save = useSetStaffAccess();
 
@@ -871,7 +869,7 @@ function PersonAccess({ person }: { person: StaffMember }) {
             )}
           </fieldset>
 
-          {can('receipts:view') && (
+          {seesAccounts && (
             <fieldset className="space-y-1">
               <legend className="mb-1 text-xs font-medium text-muted">
                 {t('access.moneyAccounts')}
@@ -998,7 +996,6 @@ function PersonPermissions({ person }: { person: StaffMember }) {
   const can = useCan();
   const myId = useAuth((s) => s.user?.id);
   const roles = useRoles();
-  const catalog = usePermissionCatalog();
   const save = useSetStaffPermissions();
   const roleSet = useMemo(
     () =>
@@ -1017,18 +1014,16 @@ function PersonPermissions({ person }: { person: StaffMember }) {
     setRevoked(new Set(person.revoked));
   }, [person.granted, person.revoked]);
 
-  const isOwner = person.role === 'OWNER' || (person.role === 'ADMIN' && !person.customRoleId);
-  const editable = can('roles:manage') && !isOwner && person.id !== myId;
+  // Only an owner is fixed: anyone else, an admin too, can be given or lose single permissions.
+  const isOwner = person.role === 'OWNER';
+  const editable = can('staff:permissions') && !isOwner && person.id !== myId;
   const error = save.error as ApiError | null;
   const allowed = (p: string) => (roleSet.has(p) && !revoked.has(p)) || granted.has(p);
   const dirty =
     [...granted].sort().join() !== [...person.granted].sort().join() ||
     [...revoked].sort().join() !== [...person.revoked].sort().join();
 
-  function toggle(p: string) {
-    setMany([p], !allowed(p));
-  }
-  /** Give (on) or take (off) several at once, e.g. the supply-price switch. */
+  /** Give (on) or take (off) one or several, against what the role has. */
   function setMany(keys: string[], on: boolean) {
     const g = new Set(granted);
     const r = new Set(revoked);
@@ -1055,9 +1050,7 @@ function PersonPermissions({ person }: { person: StaffMember }) {
       ) : (
         <>
           <PermissionChecklist
-            catalog={catalog.data ?? []}
             isChecked={allowed}
-            onToggle={toggle}
             onSetMany={setMany}
             disabled={!editable}
             mark={(p) => (granted.has(p) ? 'added' : revoked.has(p) ? 'removed' : null)}
@@ -1120,7 +1113,7 @@ function RolesTab() {
             <span className="tnum text-xs opacity-80">{r.staff}</span>
           </button>
         ))}
-        {can('roles:manage') && (
+        {can('roles:create') && (
           <Button size="sm" icon="plus" variant="secondary" onClick={() => setPick('new')}>
             {t('staff.newRole')}
           </Button>
@@ -1146,7 +1139,6 @@ function RolesTab() {
 /** Make a role: its name, the built-in role it works like, and what it may do. */
 function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) => void }) {
   const { t } = useT();
-  const catalog = usePermissionCatalog();
   const create = useCreateRole();
   const builtIn = useAssignableRoles().filter((r) => r !== 'OWNER');
   const [name, setName] = useState('');
@@ -1169,7 +1161,7 @@ function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) =
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
-        <Field label={t('staff.basedOn')} hint={t('staff.basedOnHint')}>
+        <Field label={t('staff.basedOn')}>
           <select className={field} value={base} onChange={(e) => setBase(e.target.value as Role)}>
             {builtIn.map((r) => (
               <option key={r} value={r}>
@@ -1201,37 +1193,9 @@ function NewRole({ roles, onDone }: { roles: RoleInfo[]; onDone: (id?: string) =
           </select>
         </Field>
       </div>
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() =>
-            setSet(
-              new Set(
-                (catalog.data ?? [])
-                  .map((p) => p.key)
-                  .filter((p) => mine.includes(p as Permission)),
-              ),
-            )
-          }
-        >
-          {t('staff.selectAll')}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setSet(new Set())}>
-          {t('staff.selectNone')}
-        </Button>
-      </div>
       <PermissionChecklist
-        catalog={catalog.data ?? []}
         isChecked={(p) => set.has(p)}
-        onToggle={(p) =>
-          setSet((cur) => {
-            const next = new Set(cur);
-            if (next.has(p)) next.delete(p);
-            else next.add(p);
-            return next;
-          })
-        }
+        onSetMany={(keys, on) => setSet((cur) => switched(cur, keys, on))}
         disabled={false}
       />
       <div className="flex gap-2">
@@ -1268,7 +1232,6 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
   const { t } = useT();
   const can = useCan();
   const me = useAuth((s) => s.user);
-  const catalog = usePermissionCatalog();
   const update = useUpdateRole();
   const reset = useResetRole();
   const updateMade = useUpdateCustomRole();
@@ -1277,7 +1240,8 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
   const [set, setSet] = useState<Set<string>>(new Set(info.permissions));
   const [name, setName] = useState(info.name ?? '');
   const mine = made ? me?.roleName === info.name : info.role === me?.role && !me?.roleName;
-  const editable = info.editable && can('roles:manage') && !mine;
+  const editable = info.editable && can('roles:edit') && !mine;
+  const deletes = made && can('roles:delete') && !mine;
   const dirty =
     [...set].sort().join() !== [...info.permissions].sort().join() ||
     (made && name.trim() !== info.name);
@@ -1310,39 +1274,36 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
           {t('staff.members')}: {info.staff}
         </span>
       </div>
-      {!info.editable && <p className="text-xs text-faint">{t('staff.ownerAll')}</p>}
-      <PermissionChecklist
-        catalog={catalog.data ?? []}
-        isChecked={(p) => set.has(p)}
-        onToggle={(p) =>
-          setSet((cur) => {
-            const next = new Set(cur);
-            if (next.has(p)) next.delete(p);
-            else next.add(p);
-            return next;
-          })
-        }
-        disabled={!editable}
-      />
-      {editable && (
+      {info.role === 'OWNER' && !made ? (
+        <p className="text-sm text-muted">{t('staff.ownerAll')}</p>
+      ) : (
+        <PermissionChecklist
+          isChecked={(p) => set.has(p)}
+          onSetMany={(keys, on) => setSet((cur) => switched(cur, keys, on))}
+          disabled={!editable}
+        />
+      )}
+      {(editable || deletes) && (
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            icon="check"
-            loading={update.isPending || updateMade.isPending}
-            disabled={!dirty || (made && !name.trim())}
-            onClick={() =>
-              made
-                ? updateMade.mutate({
-                    id: info.id!,
-                    input: { name: name.trim(), permissions: [...set] },
-                  })
-                : update.mutate({ role: info.role, permissions: [...set] })
-            }
-          >
-            {t('staff.saveRole')}
-          </Button>
-          {!made && info.custom && (
+          {editable && (
+            <Button
+              size="sm"
+              icon="check"
+              loading={update.isPending || updateMade.isPending}
+              disabled={!dirty || (made && !name.trim())}
+              onClick={() =>
+                made
+                  ? updateMade.mutate({
+                      id: info.id!,
+                      input: { name: name.trim(), permissions: [...set] },
+                    })
+                  : update.mutate({ role: info.role, permissions: [...set] })
+              }
+            >
+              {t('staff.saveRole')}
+            </Button>
+          )}
+          {editable && !made && info.custom && (
             <Button
               size="sm"
               variant="ghost"
@@ -1352,7 +1313,7 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
               {t('staff.resetRole')}
             </Button>
           )}
-          {made && (
+          {deletes && (
             <Button
               size="sm"
               variant="ghost"
@@ -1379,114 +1340,238 @@ function RoleEditor({ info, onDeleted }: { info: RoleInfo; onDeleted: () => void
 
 // ------------------------------------------------------------------ shared
 
-/** Supply prices, profit and what shows them: one switch in the permissions (owner, 2026-10-02). */
-const COST_BUNDLE: Permission[] = [
-  'costs:view',
-  'sales:price_basis',
-  'products:card_purchases',
-  'products:card_prices',
-];
+/** Every permission that can be given, by page and part of the page (the owner's own never are). */
+const GRANTABLE = PERMISSION_GROUPS.map((g) => ({
+  key: g.key,
+  sections: g.sections
+    .map((x) => ({ key: x.key, permissions: x.permissions.filter((p) => !OWNER_ONLY.includes(p)) }))
+    .filter((x) => x.permissions.length > 0),
+})).filter((g) => g.sections.length > 0);
+const ALL_GRANTABLE = GRANTABLE.flatMap((g) => g.sections.flatMap((x) => x.permissions));
+
+/** A set with these keys turned on or off. */
+function switched(set: Set<string>, keys: string[], on: boolean): Set<string> {
+  const next = new Set(set);
+  for (const k of keys) {
+    if (on) next.add(k);
+    else next.delete(k);
+  }
+  return next;
+}
+
+/** A box for a whole page or part: ticked when all are on, half when some are. */
+function AllBox({
+  on,
+  total,
+  disabled,
+  label,
+  onChange,
+}: {
+  on: number;
+  total: number;
+  disabled: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <input
+      type="checkbox"
+      className="h-4 w-4 shrink-0 accent-brand"
+      aria-label={label}
+      checked={total > 0 && on === total}
+      ref={(el) => {
+        if (el) el.indeterminate = on > 0 && on < total;
+      }}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  );
+}
 
 /**
- * Every permission, grouped by screen, as checkboxes. Permissions the signed-in user doesn't hold
- * can't be changed — the server refuses giving or taking what you don't have yourself.
+ * Every permission, by page and part of the page (owner, 2026-10-23: every action is its own and
+ * none needs another): each one on or off alone, or a whole page or part at once. Permissions the
+ * signed-in user doesn't hold can't be changed: the server refuses giving or taking them.
  */
 function PermissionChecklist({
-  catalog,
   isChecked,
-  onToggle,
+  onSetMany,
   disabled,
   mark,
-  onSetMany,
 }: {
-  catalog: PermissionInfo[];
   isChecked: (p: string) => boolean;
-  onToggle: (p: string) => void;
-  /** Turn several on or off together (else each is toggled in turn). */
-  onSetMany?: (keys: string[], on: boolean) => void;
+  /** Turn these on or off. */
+  onSetMany: (keys: string[], on: boolean) => void;
   disabled: boolean;
+  /** What a person has beyond their role, or doesn't have of it. */
   mark?: (p: string) => 'added' | 'removed' | null;
 }) {
   const { t } = useT();
   const mine = useAuth((s) => s.user?.permissions ?? NO_PERMISSIONS);
-  const sections = SECTIONS.map((section) => ({
-    section,
-    items: catalog.filter((p) => (SECTION_OF[p.group] ?? p.group) === section),
-  })).filter((s) => s.items.length > 0);
-
-  // Supply prices, profit and everything near them, given or taken in one go (owner, 2026-10-02).
-  const bundle = COST_BUNDLE.filter((k) => catalog.some((p) => p.key === k));
-  const bundleOn = bundle.filter((k) => isChecked(k)).length;
-  const bundleLocked = disabled || bundle.some((k) => !mine.includes(k));
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const label = (p: Permission) => t(`perm.${p}` as TranslationKey);
+  const free = (p: Permission) => !disabled && mine.includes(p);
+  // A whole page or part: everything the user may change goes on, or off when all already are.
+  const flip = (keys: Permission[]) => {
+    const movable = keys.filter(free);
+    const on = movable.some((p) => !isChecked(p));
+    onSetMany(
+      movable.filter((p) => isChecked(p) !== on),
+      on,
+    );
+  };
+  const groups = GRANTABLE.map((g) => {
+    const name = t(`permGroup.${g.key}` as TranslationKey);
+    const sections = g.sections
+      .map((x) => {
+        const title = t(`permSection.${g.key}.${x.key}` as TranslationKey);
+        const whole = !q || name.toLowerCase().includes(q) || title.toLowerCase().includes(q);
+        return {
+          ...x,
+          title,
+          shown: whole
+            ? x.permissions
+            : x.permissions.filter((p) => label(p).toLowerCase().includes(q)),
+        };
+      })
+      .filter((x) => x.shown.length > 0);
+    return { key: g.key, name, sections, all: g.sections.flatMap((x) => x.permissions) };
+  }).filter((g) => g.sections.length > 0);
+  const onCount = ALL_GRANTABLE.filter(isChecked).length;
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {bundle.length > 0 && (
-        <label
-          className={`flex items-start gap-2.5 rounded-[var(--radius-app)] border border-brand/40 bg-brand-soft/40 p-3 text-sm md:col-span-2 ${bundleLocked ? 'opacity-70' : 'cursor-pointer'}`}
-        >
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={bundleOn === bundle.length}
-            ref={(el) => {
-              if (el) el.indeterminate = bundleOn > 0 && bundleOn < bundle.length;
-            }}
-            disabled={bundleLocked}
-            onChange={() => {
-              const on = bundleOn !== bundle.length;
-              const change = bundle.filter((k) => isChecked(k) !== on);
-              if (onSetMany) onSetMany(change, on);
-              else change.forEach((k) => onToggle(k));
-            }}
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="relative min-w-0 flex-1">
+          <Icon
+            name="search"
+            size={16}
+            className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-faint"
           />
-          <span>
-            <span className="block font-semibold">{t('staff.costBundle')}</span>
-            <span className="block text-xs text-muted">
-              {bundle.map((k) => t(`perm.${k}` as TranslationKey)).join(' · ')}
-            </span>
-          </span>
+          <input
+            className={`${field} ps-8`}
+            type="search"
+            aria-label={t('common.search')}
+            placeholder={t('common.search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </label>
-      )}
-      {sections.map(({ section, items }) => (
-        <fieldset key={section} className="rounded-[var(--radius-app)] border border-line p-3">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            {t(`permGroup.${section}` as TranslationKey)}
-          </legend>
-          <ul className="space-y-1.5">
-            {items.map((p) => {
-              const flag = mark?.(p.key);
-              const locked = disabled || !mine.includes(p.key as Permission);
-              return (
-                <li key={p.key}>
-                  <label
-                    className={`flex items-start gap-2 text-sm ${locked ? 'opacity-70' : 'cursor-pointer'}`}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={isChecked(p.key)}
-                      disabled={locked}
-                      title={!disabled && locked ? t('staff.cantGrant') : undefined}
-                      onChange={() => onToggle(p.key)}
-                    />
-                    <span className="min-w-0 flex-1">
-                      {t(`perm.${p.key}` as TranslationKey)}
-                      {flag && (
-                        <span
-                          className={`ms-1.5 text-xs ${flag === 'added' ? 'text-positive' : 'text-destructive'}`}
-                        >
-                          ({t(flag === 'added' ? 'staff.added' : 'staff.removed')})
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </fieldset>
-      ))}
+        <AllBox
+          on={onCount}
+          total={ALL_GRANTABLE.length}
+          disabled={!ALL_GRANTABLE.some(free)}
+          label={t('common.all')}
+          onChange={() => flip(ALL_GRANTABLE)}
+        />
+        <span className="shrink-0 text-xs text-muted tnum">
+          {onCount}/{ALL_GRANTABLE.length}
+        </span>
+      </div>
+      <ul className="divide-y divide-[var(--c-line)] overflow-hidden rounded-[var(--radius-app)] border border-line">
+        {groups.map((g) => {
+          const on = g.all.filter(isChecked).length;
+          const expanded = !!q || open.has(g.key);
+          return (
+            <li key={g.key}>
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <AllBox
+                  on={on}
+                  total={g.all.length}
+                  disabled={!g.all.some(free)}
+                  label={g.name}
+                  onChange={() => flip(g.all)}
+                />
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-start"
+                  onClick={() =>
+                    setOpen((cur) => {
+                      const next = new Set(cur);
+                      if (next.has(g.key)) next.delete(g.key);
+                      else next.add(g.key);
+                      return next;
+                    })
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{g.name}</span>
+                  <span className={`text-xs tnum ${on ? 'text-brand' : 'text-faint'}`}>
+                    {on}/{g.all.length}
+                  </span>
+                  <Icon
+                    name="chevronDown"
+                    size={16}
+                    className={`shrink-0 text-muted transition-transform ${expanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              </div>
+              {expanded && (
+                <div className="space-y-3 border-t border-line bg-surface-2 px-3 py-3">
+                  {g.sections.map((x) => {
+                    const sectionOn = x.permissions.filter(isChecked).length;
+                    return (
+                      <div key={x.key} className="space-y-1.5">
+                        {g.sections.length > 1 && (
+                          <label className="flex items-center gap-2 text-xs font-semibold text-muted">
+                            <AllBox
+                              on={sectionOn}
+                              total={x.permissions.length}
+                              disabled={!x.permissions.some(free)}
+                              label={x.title}
+                              onChange={() => flip(x.permissions)}
+                            />
+                            {x.title}
+                          </label>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {x.shown.map((p) => {
+                            const checked = isChecked(p);
+                            const locked = !free(p);
+                            const flag = mark?.(p);
+                            return (
+                              <button
+                                key={p}
+                                type="button"
+                                role="switch"
+                                aria-checked={checked}
+                                disabled={locked}
+                                title={!disabled && locked ? t('staff.cantGrant') : undefined}
+                                onClick={() => onSetMany([p], !checked)}
+                                className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-start text-xs transition-colors ${
+                                  checked
+                                    ? 'border-brand bg-brand-soft font-medium text-brand'
+                                    : 'border-line bg-surface text-muted hover:border-brand/60 hover:text-fg'
+                                } ${locked ? 'cursor-default opacity-60' : ''}`}
+                              >
+                                {checked && <Icon name="check" size={13} />}
+                                {label(p)}
+                                {flag && (
+                                  <span
+                                    aria-label={t(
+                                      flag === 'added' ? 'staff.added' : 'staff.removed',
+                                    )}
+                                    title={t(flag === 'added' ? 'staff.added' : 'staff.removed')}
+                                    className={`h-2 w-2 shrink-0 rounded-full ${
+                                      flag === 'added' ? 'bg-positive' : 'bg-destructive'
+                                    }`}
+                                  />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

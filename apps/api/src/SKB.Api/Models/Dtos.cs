@@ -827,7 +827,7 @@ public record PresenceEntryDto(
 /// <param name="UpToId">The box its cash is sent up to (warehouse → branch → main), if any.</param>
 public record MoneyAccountDto(
     string Id, string Name, string Kind, string BranchId, string BranchName, string? CustodianId,
-    string? CustodianName, string? Number, string? BankName, long Balance, string Currency, bool IsDefault,
+    string? CustodianName, string? Number, string? BankName, long? Balance, string Currency, bool IsDefault,
     bool IsActive, bool HasMovements, bool IsMain = false, string? WarehouseId = null, string? WarehouseName = null,
     long Held = 0, string? UpToId = null, string? UpToName = null);
 

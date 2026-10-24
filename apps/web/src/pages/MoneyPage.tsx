@@ -10,6 +10,7 @@ import {
   type MoneyAccount,
   type MoneyAccountKind,
   type PaymentMethod,
+  type Permission,
   type TranslationKey,
   type Voucher,
   type VoucherType,
@@ -20,7 +21,7 @@ import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
+import { useCan, useCanAny } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { confirm } from '../lib/confirm';
 import { useReportTools } from '../lib/report';
@@ -49,10 +50,31 @@ import {
 } from '../lib/queries';
 
 type Tab = 'accounts' | 'vouchers' | 'categories';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'accounts', label: 'money.tabAccounts' },
-  { key: 'vouchers', label: 'money.tabVouchers' },
-  { key: 'categories', label: 'money.tabCategories' },
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'accounts',
+    label: 'money.tabAccounts',
+    anyOf: [
+      'money:accounts',
+      'statement:money',
+      'money_accounts:create',
+      'money_accounts:edit',
+      'money_accounts:main',
+      'money_accounts:delete',
+    ],
+  },
+  { key: 'vouchers', label: 'money.tabVouchers', anyOf: ['vouchers:view', 'vouchers:cancel'] },
+  {
+    key: 'categories',
+    label: 'money.tabCategories',
+    anyOf: [
+      'expense_categories:view',
+      'expense_categories:create',
+      'expense_categories:edit',
+      'expense_categories:close',
+      'expense_categories:delete',
+    ],
+  },
 ];
 const KINDS: MoneyAccountKind[] = ['CASH_BOX', 'CUSTODY', 'BANK', 'WALLET', 'POST'];
 const METHODS: PaymentMethod[] = ['CASH', 'BANK_TRANSFER', 'INSTAPAY', 'MOBILE_WALLET', 'POST'];
@@ -89,7 +111,9 @@ export function MoneyPage() {
   const navigate = useNavigate();
   const can = useCan();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'accounts') as Tab;
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
   const form = params.get('new') as NewForm | null;
   const presetParty = params.get('party') ?? '';
 
@@ -139,28 +163,30 @@ export function MoneyPage() {
           </div>
         }
       />
-      <div
-        role="tablist"
-        className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {TABS.map((x) => (
-          <button
-            key={x.key}
-            role="tab"
-            aria-selected={tab === x.key}
-            onClick={() => {
-              const p = new URLSearchParams(params);
-              p.set('tab', x.key);
-              setParams(p, { replace: true });
-            }}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(x.label)}
-          </button>
-        ))}
-      </div>
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {tabs.map((x) => (
+            <button
+              key={x.key}
+              role="tab"
+              aria-selected={tab === x.key}
+              onClick={() => {
+                const p = new URLSearchParams(params);
+                p.set('tab', x.key);
+                setParams(p, { replace: true });
+              }}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(x.label)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'accounts' && <AccountsTab />}
       {tab === 'vouchers' && <VouchersTab />}
@@ -215,7 +241,8 @@ function AccountSelect({
       <option value="">{placeholder}</option>
       {list.map((a) => (
         <option key={a.id} value={a.id}>
-          {a.name} · {t(`money.kind.${a.kind}`)} · {formatMoney(a.balance, a.currency, locale)}
+          {a.name} · {t(`money.kind.${a.kind}`)}
+          {a.balance != null && ` · ${formatMoney(a.balance, a.currency, locale)}`}
         </option>
       ))}
     </select>
@@ -227,6 +254,7 @@ function AccountSelect({
 function AccountsTab() {
   const { t } = useT();
   const can = useCan();
+  const canAny = useCanAny();
   const { data, isLoading } = useMoneyAccounts();
   const [showClosed, setShowClosed] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -253,7 +281,7 @@ function AccountsTab() {
           />
           {t('money.showClosed')}
         </label>
-        {can('money_accounts:manage') && (
+        {can('money_accounts:create') && (
           <Button icon="plus" size="sm" onClick={() => setAdding(true)}>
             {t('money.addAccount')}
           </Button>
@@ -274,8 +302,14 @@ function AccountsTab() {
                 <AccountCard
                   key={a.id}
                   a={a}
-                  onStatement={() => setStatement(a)}
-                  onEdit={can('money_accounts:manage') ? () => setEditing(a) : undefined}
+                  onStatement={
+                    canAny('money:accounts', 'statement:money') ? () => setStatement(a) : undefined
+                  }
+                  onEdit={
+                    canAny('money_accounts:edit', 'money_accounts:main', 'money_accounts:delete')
+                      ? () => setEditing(a)
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -297,7 +331,7 @@ function AccountCard({
   onEdit,
 }: {
   a: MoneyAccount;
-  onStatement: () => void;
+  onStatement?: () => void;
   onEdit?: () => void;
 }) {
   const { t, locale } = useT();
@@ -326,9 +360,11 @@ function AccountCard({
           <Icon name="receipts" size={20} />
         </span>
       </div>
-      <p className="mt-3 text-xl font-semibold tnum">
-        {formatMoney(a.balance, a.currency, locale)}
-      </p>
+      {a.balance != null && (
+        <p className="mt-3 text-xl font-semibold tnum">
+          {formatMoney(a.balance, a.currency, locale)}
+        </p>
+      )}
       {!!a.held && (
         <p className="text-xs text-warning tnum">
           {t('money.held')}: {formatMoney(a.held, a.currency, locale)}
@@ -340,15 +376,17 @@ function AccountCard({
         </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" onClick={onStatement}>
-          {t('money.statement')}
-        </Button>
+        {onStatement && (
+          <Button size="sm" variant="secondary" onClick={onStatement}>
+            {t('money.statement')}
+          </Button>
+        )}
         {a.upToId && a.isActive && can('cash:handover_send') && (
           <Button size="sm" variant="ghost" onClick={() => navigate(`/handovers?from=${a.id}`)}>
             {t('hand.send')}
           </Button>
         )}
-        {a.upToId && a.isActive && a.balance > 0 && can('cash:transfer') && (
+        {a.upToId && a.isActive && a.balance !== 0 && can('cash:transfer') && (
           <Button
             size="sm"
             variant="ghost"
@@ -558,6 +596,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
   const [opening, setOpening] = useState('');
   const [warehouseId, setWarehouseId] = useState(a.warehouseId ?? '');
   const can = useCan();
+  const edits = can('money_accounts:edit');
   const warehouses = useWarehouses(true);
   const branchStores = (warehouses.data ?? []).filter((w) => w.branchId === a.branchId);
 
@@ -572,7 +611,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
 
   return (
     <Sheet title={t('money.editAccount')} onClose={onClose} closeLabel={t('common.close')}>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <fieldset disabled={!edits} className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Field label={t('common.name')}>
             <input
@@ -620,8 +659,8 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
             </select>
           </Field>
         )}
-      </div>
-      {!a.hasMovements && a.isActive && (
+      </fieldset>
+      {edits && !a.hasMovements && a.isActive && (
         <div className="mt-3">
           <Field label={t('money.opening')}>
             <input
@@ -643,7 +682,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
       )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
-          {a.kind === 'CASH_BOX' && a.isActive && !a.isDefault && (
+          {edits && a.kind === 'CASH_BOX' && a.isActive && !a.isDefault && (
             <Button
               size="sm"
               variant="secondary"
@@ -663,11 +702,11 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
               {t('money.makeMain')}
             </Button>
           )}
-          {a.isActive ? (
+          {!edits ? null : a.isActive ? (
             <Button
               size="sm"
               variant="ghost"
-              disabled={update.isPending || a.balance !== 0 || a.isDefault || !!a.isMain}
+              disabled={update.isPending || !!a.balance || a.isDefault || !!a.isMain}
               title={t('money.closeHint')}
               onClick={() => void run({ isActive: false })}
             >
@@ -685,7 +724,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
           )}
           {/* Delete an account that no money has gone through yet (owner, 2026-10-14: moved here from
               the cash-move screen). The default and main boxes can't be deleted. */}
-          {can('money_accounts:manage') && !a.isDefault && !a.isMain && !a.hasMovements && (
+          {can('money_accounts:delete') && !a.isDefault && !a.isMain && !a.hasMovements && (
             <Button
               size="sm"
               variant="dangerGhost"
@@ -711,7 +750,7 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
           <Button
             icon="check"
             loading={update.isPending}
-            disabled={!name.trim()}
+            disabled={!edits || !name.trim()}
             onClick={() =>
               void run({
                 name: name.trim(),
@@ -762,6 +801,7 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="order-last ms-auto">
           <ReportActions
+            scope="money"
             disabled={!data}
             onPrint={() =>
               report.print(
@@ -981,6 +1021,7 @@ function VoucherSheet({ v, onClose }: { v: Voucher; onClose: () => void }) {
             <Badge tone="brand">{v.branchName}</Badge>
           </div>
           <ReportActions
+            scope="money"
             onPrint={() =>
               report.print(
                 paper.current,
@@ -1497,7 +1538,11 @@ function CategoriesTab() {
   const save = useSaveExpenseCategory();
   const [name, setName] = useState('');
   const [parentId, setParentId] = useState('');
-  const canManage = can('expense_categories:manage');
+  const may = {
+    edit: can('expense_categories:edit'),
+    close: can('expense_categories:close'),
+    remove: can('expense_categories:delete'),
+  };
   const mains = (data ?? []).filter((c) => !c.parentId);
 
   async function add() {
@@ -1511,7 +1556,7 @@ function CategoriesTab() {
 
   return (
     <div className="space-y-3">
-      {canManage && (
+      {can('expense_categories:create') && (
         <Card className="grid gap-2 sm:grid-cols-[1fr_14rem_auto] sm:items-end">
           <Field label={t('common.name')}>
             <input
@@ -1557,12 +1602,12 @@ function CategoriesTab() {
           <ul className="divide-y divide-line">
             {mains.map((m) => (
               <li key={m.id} className="px-4 py-2">
-                <CategoryRow c={m} canManage={canManage} mains={mains} />
+                <CategoryRow c={m} may={may} mains={mains} />
                 {(data ?? [])
                   .filter((c) => c.parentId === m.id)
                   .map((c) => (
                     <div key={c.id} className="ms-5 border-s border-line ps-3">
-                      <CategoryRow c={c} canManage={canManage} mains={mains} />
+                      <CategoryRow c={c} may={may} mains={mains} />
                     </div>
                   ))}
               </li>
@@ -1577,11 +1622,11 @@ function CategoriesTab() {
 /** An expense item: renamed, moved under another main item, closed or deleted (owner, 2026-10-22). */
 function CategoryRow({
   c,
-  canManage,
+  may,
   mains,
 }: {
   c: { id: string; name: string; isActive: boolean; parentId?: string | null };
-  canManage: boolean;
+  may: { edit: boolean; close: boolean; remove: boolean };
   mains: { id: string; name: string; isActive: boolean }[];
 }) {
   const { t } = useT();
@@ -1664,37 +1709,43 @@ function CategoryRow({
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className={c.isActive ? '' : 'text-faint line-through'}>{c.name}</span>
-          {canManage && (
+          {(may.edit || may.close || may.remove) && (
             <span className="flex flex-wrap gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="edit"
-                onClick={() => {
-                  setName(c.name);
-                  setParentId(c.parentId ?? '');
-                  setEditing(true);
-                }}
-              >
-                {t('common.edit')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={save.isPending}
-                onClick={() => save.mutate({ id: c.id, input: { isActive: !c.isActive } })}
-              >
-                {c.isActive ? t('money.stopCategory') : t('money.useCategory')}
-              </Button>
-              <Button
-                variant="dangerGhost"
-                size="sm"
-                icon="trash"
-                loading={remove.isPending}
-                onClick={() => void del()}
-              >
-                {t('common.delete')}
-              </Button>
+              {may.edit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="edit"
+                  onClick={() => {
+                    setName(c.name);
+                    setParentId(c.parentId ?? '');
+                    setEditing(true);
+                  }}
+                >
+                  {t('common.edit')}
+                </Button>
+              )}
+              {may.close && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={save.isPending}
+                  onClick={() => save.mutate({ id: c.id, input: { isActive: !c.isActive } })}
+                >
+                  {c.isActive ? t('money.stopCategory') : t('money.useCategory')}
+                </Button>
+              )}
+              {may.remove && (
+                <Button
+                  variant="dangerGhost"
+                  size="sm"
+                  icon="trash"
+                  loading={remove.isPending}
+                  onClick={() => void del()}
+                >
+                  {t('common.delete')}
+                </Button>
+              )}
             </span>
           )}
         </div>

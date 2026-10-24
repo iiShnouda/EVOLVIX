@@ -16,13 +16,14 @@ namespace SKB.Api.Controllers;
 /// they arrive at once). A permit still in transit can be cancelled, which returns the goods to
 /// the source. Stock value and average cost never change on a transfer — only where units sit.
 ///
-/// Who may do what: sending needs inventory:edit on a source warehouse the user can use;
-/// receiving needs it on the destination; cancelling on the source. Branch-scoped users see the
+/// Who may do what: sending needs inventory:transfer on a source warehouse the user can use;
+/// receiving needs inventory:transfer_receive on the destination; cancelling inventory:transfer_cancel
+/// on the source. Branch-scoped users see the
 /// permits that touch their branch.
 /// </summary>
 [ApiController]
 [Route("api/transfers")]
-[Authorize(Policy = Permissions.InventoryView)]
+[Authorize]
 public sealed class TransfersController : ControllerBase
 {
     private const int MaxLines = 500;
@@ -46,6 +47,8 @@ public sealed class TransfersController : ControllerBase
     /// and a sent-date range (ISO dates, inclusive).
     /// </summary>
     [HttpGet]
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+        Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
     public async Task<ActionResult<PaginatedDto<StockTransferDto>>> List(
         [FromQuery] string? status = null, [FromQuery] string? warehouseId = null,
         [FromQuery] string? productId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
@@ -77,6 +80,8 @@ public sealed class TransfersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+        Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
     public async Task<ActionResult<StockTransferDto>> Get(Guid id)
     {
         var transfer = await WithDetails(Scoped()).FirstOrDefaultAsync(t => t.Id == id);
@@ -286,12 +291,12 @@ public sealed class TransfersController : ControllerBase
 
     /// <summary>The destination confirms the goods arrived: from transit into the destination warehouse.</summary>
     [HttpPost("{id:guid}/receive")]
-    [Authorize(Policy = Permissions.InventoryTransfer)]
+    [Authorize(Policy = Permissions.InventoryTransferReceive)]
     public Task<ActionResult<StockTransferDto>> Receive(Guid id) => FinishAsync(id, receive: true);
 
     /// <summary>Call a transfer back before it is received: from transit back into the source.</summary>
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Policy = Permissions.InventoryTransfer)]
+    [Authorize(Policy = Permissions.InventoryTransferCancel)]
     public Task<ActionResult<StockTransferDto>> Cancel(Guid id) => FinishAsync(id, receive: false);
 
     private async Task<ActionResult<StockTransferDto>> FinishAsync(Guid id, bool receive)
@@ -376,7 +381,7 @@ public sealed class TransfersController : ControllerBase
     /// <summary>Warehouses the user may act on (null = every warehouse), for CanReceive/CanCancel.</summary>
     private async Task<HashSet<Guid>?> AccessAsync()
     {
-        if (!User.HasClaim("permission", Permissions.InventoryEdit)) return new HashSet<Guid>();
+        if (!User.HasAny(Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)) return new HashSet<Guid>();
         if (Unlimited()) return null;
         return (await _warehouses.Visible(User).Select(w => w.Id).ToListAsync()).ToHashSet();
     }
@@ -397,7 +402,8 @@ public sealed class TransfersController : ControllerBase
             t.CreatedAt.ToString("o"), t.CreatedBy?.FullName ?? "",
             t.ReceivedAt?.ToString("o"), t.ReceivedBy?.FullName, t.CancelledAt?.ToString("o"), t.CancelledBy?.FullName,
             t.Notes, lines.Sum(l => l.Quantity), lines.Sum(l => l.Value), lines,
-            inTransit && May(t.ToWarehouseId), inTransit && May(t.FromWarehouseId)));
+            inTransit && User.Has(Permissions.InventoryTransferReceive) && May(t.ToWarehouseId),
+            inTransit && User.Has(Permissions.InventoryTransferCancel) && May(t.FromWarehouseId)));
     }
 
     private Task AuditAsync(string action, StockTransfer t, Guid branchId) =>

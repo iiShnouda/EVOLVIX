@@ -172,7 +172,13 @@ builder.Services.AddAuthorization(options =>
             // The owner's own permissions also need the owner's role (a forged grant can't pass).
             if (Permissions.OwnerOnly.Contains(perm)) policy.RequireClaim("role", nameof(Role.OWNER));
         });
+    // Lists several pages read: any one of the permissions that use them (owner, 2026-10-23).
+    foreach (var (name, perms) in Lookups.Sets)
+        options.AddPolicy(name, policy =>
+            policy.RequireAssertion(ctx => perms.Any(p => ctx.User.HasClaim("permission", p))));
 });
+// [AnyPermission(a, b)]: needs any one of them.
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 // --- CORS (strict allow-list, credentials for the refresh cookie) -----------------------
 var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()

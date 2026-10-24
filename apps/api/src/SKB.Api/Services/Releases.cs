@@ -35,7 +35,7 @@ public static class Releases
 
     /// <summary>
     /// A release-notes file, read carefully (the newest one comes from the server's copy of the code):
-    /// only well-formed versions, at most 100 releases and 50 lines each, lines cut at 400 characters.
+    /// only well-formed versions, at most 100 releases and 200 lines each, lines cut at 400 characters.
     /// Null when it can't be read.
     /// </summary>
     public static IReadOnlyList<Release>? Parse(string json)
@@ -46,7 +46,7 @@ public static class Releases
             if (file?.Releases is null) return null;
             static Note[] Clean(Note[]? notes) => (notes ?? [])
                 .Where(n => n is not null && !string.IsNullOrWhiteSpace(n.Ar) && !string.IsNullOrWhiteSpace(n.En))
-                .Take(50).Select(n => new Note(Cut(n.Ar), Cut(n.En))).ToArray();
+                .Take(200).Select(n => new Note(Cut(n.Ar), Cut(n.En))).ToArray();
             return file.Releases
                 .Where(r => r is not null && VersionOf(r.Version) is not null)
                 .Take(100)
@@ -62,7 +62,11 @@ public static class Releases
         }
     }
 
-    private static string Cut(string s, int max = 400) => s.Trim() is var t && t.Length > max ? t[..max] : s.Trim();
+    /// <summary>
+    /// A line trimmed and cut to <paramref name="max"/> characters. Reading it again gives the same
+    /// line, so a line that was cut is never taken for a new one.
+    /// </summary>
+    private static string Cut(string s, int max = 400) => s.Trim() is var t && t.Length > max ? t[..max].TrimEnd() : t;
 
     /// <summary>A version as numbers ("1.8.0" → 1.8.0), or null when it isn't one.</summary>
     public static Version? VersionOf(string? version) =>

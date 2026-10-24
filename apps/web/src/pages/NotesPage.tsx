@@ -8,6 +8,7 @@ import {
   type NoteDirection,
   type NoteStatus,
   type Party,
+  type Permission,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
@@ -31,10 +32,36 @@ import {
 } from '../lib/queries';
 
 type Tab = 'receivable' | 'payable' | 'portfolios';
-const TABS: { key: Tab; label: TranslationKey }[] = [
-  { key: 'receivable', label: 'notes.tabReceivable' },
-  { key: 'payable', label: 'notes.tabPayable' },
-  { key: 'portfolios', label: 'notes.tabPortfolios' },
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'receivable',
+    label: 'notes.tabReceivable',
+    anyOf: [
+      'notes:view_receivable',
+      'notes:photos',
+      'notes:receive',
+      'notes:deposit',
+      'notes:collect',
+      'notes:bounce',
+      'notes:endorse',
+      'notes:cancel',
+      'notes:lost',
+    ],
+  },
+  {
+    key: 'payable',
+    label: 'notes.tabPayable',
+    anyOf: [
+      'notes:view_payable',
+      'notes:photos',
+      'notes:issue',
+      'notes:pay',
+      'notes:bounce',
+      'notes:cancel',
+      'notes:lost',
+    ],
+  },
+  { key: 'portfolios', label: 'notes.tabPortfolios', anyOf: ['notes:portfolios', 'notes:deposit'] },
 ];
 const RECEIVABLE_STATUSES: NoteStatus[] = [
   'IN_HAND',
@@ -72,7 +99,9 @@ export function NotesPage() {
   const can = useCan();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((x) => x.key === params.get('tab'))?.key ?? 'receivable') as Tab;
+  const tabs = TABS.filter((x) => x.anyOf.some(can));
+  const tab = (tabs.find((x) => x.key === params.get('tab'))?.key ?? tabs[0]?.key) as
+    Tab | undefined;
   // `?receiveFor=<party>&amount=<minor>` (e.g. after approving an invoice) opens the receive page
   // for that customer.
   const receiveFor = params.get('receiveFor');
@@ -110,26 +139,32 @@ export function NotesPage() {
           </div>
         }
       />
-      <Summary />
-      <FindCheque />
-      <div
-        role="tablist"
-        className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
-      >
-        {TABS.map((x) => (
-          <button
-            key={x.key}
-            role="tab"
-            aria-selected={tab === x.key}
-            onClick={() => setParams({ tab: x.key }, { replace: true })}
-            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-              tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-            }`}
-          >
-            {t(x.label)}
-          </button>
-        ))}
-      </div>
+      {tabs.some((x) => x.key !== 'portfolios') && (
+        <>
+          <Summary />
+          <FindCheque />
+        </>
+      )}
+      {tabs.length > 1 && (
+        <div
+          role="tablist"
+          className="flex max-w-full flex-wrap gap-1 rounded-[var(--radius-app)] border border-line bg-surface p-1"
+        >
+          {tabs.map((x) => (
+            <button
+              key={x.key}
+              role="tab"
+              aria-selected={tab === x.key}
+              onClick={() => setParams({ tab: x.key }, { replace: true })}
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
+                tab === x.key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t(x.label)}
+            </button>
+          ))}
+        </div>
+      )}
       {tab === 'receivable' && <NotesTab direction="RECEIVABLE" />}
       {tab === 'payable' && <NotesTab direction="PAYABLE" />}
       {tab === 'portfolios' && <PortfoliosTab />}
@@ -573,7 +608,9 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
                         .filter((a) => a.isActive)
                         .map((a) => (
                           <option key={a.id} value={a.id}>
-                            {a.name} · {formatMoney(a.balance, a.currency, locale)}
+                            {a.name}
+                            {a.balance != null &&
+                              ` · ${formatMoney(a.balance, a.currency, locale)}`}
                           </option>
                         ))}
                     </select>
@@ -654,7 +691,8 @@ function DepositSheet({
           <option value="">{t('money.pickAccount')}</option>
           {banks.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} · {formatMoney(a.balance, a.currency, locale)}
+              {a.name}
+              {a.balance != null && ` · ${formatMoney(a.balance, a.currency, locale)}`}
             </option>
           ))}
         </select>

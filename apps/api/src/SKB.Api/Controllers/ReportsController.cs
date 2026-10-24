@@ -11,7 +11,7 @@ namespace SKB.Api.Controllers;
 
 [ApiController]
 [Route("api/reports")]
-[Authorize(Policy = Permissions.AnalyticsView)]
+[Authorize]
 public sealed class ReportsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -22,7 +22,7 @@ public sealed class ReportsController : ControllerBase
     /// why (if given) and the invoice total before and after. <paramref name="kind"/> EDIT or CANCEL.
     /// </summary>
     [HttpGet("invoice-changes")]
-    [Authorize(Policy = Permissions.SalesChangesReport)]
+    [Authorize(Policy = Permissions.ReportsChanges)]
     public async Task<ActionResult<InvoiceRevisionDto[]>> InvoiceChanges(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? kind = null)
     {
@@ -53,11 +53,11 @@ public sealed class ReportsController : ControllerBase
     /// Revenue = subtotal − discount (tax excluded); profit is the stored per-document/-line profit.
     /// </summary>
     [HttpGet("profitability")]
+    [Authorize(Policy = Permissions.ReportsProfit)]
     public async Task<ActionResult<ProfitReportDto>> Profitability(
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string by = "customer")
     {
-        // A report of cost and profit: only for people who may see them.
-        if (!Costs.CanSeeBoth(User)) return StatusCode(403, Costs.Refusal);
+        // A report of cost and profit: its own permission is enough (owner, 2026-10-23).
         // Whole company days (Settings → time zone); by default this month so far.
         var today = CompanyClock.Today;
         var fromDay = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, today.Month, 1);

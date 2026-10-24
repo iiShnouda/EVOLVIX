@@ -54,9 +54,12 @@ first‑class concern.
    - Only the app's own texts are bilingual: they come from `@skb/shared` i18n (rule 5).
 
 9. **Every action has its own permission (owner decision 2026-09-29).** A new feature adds its
-   own `resource:action` permission(s) in `Roles.cs` + `@skb/shared` `roles.ts`, enforces them on
-   the server, and hides the matching UI. Roles only bundle permissions. Prices are a separate
-   permission from items; changing an invoice price or level needs one too.
+   own `resource:action` permission(s) in `Roles.cs` + `@skb/shared` `permissions.ts` (its page
+   and part), enforces them on the server, and hides the matching UI. Roles only bundle
+   permissions. Prices are a separate permission from items; changing an invoice price or level
+   needs one too. **No permission needs another (owner, 2026-10-23):** a list opens for its view
+   permission and for any action done on its items, shared pick-lists through `Lookups.cs` /
+   `lookups.ts`, and a page shows only the parts the person may use.
 
 10. **Days are the company's, not UTC's.** Store instants in UTC, but any "today", day or month
     boundary, or report period goes through `CompanyClock` on the server (`Today`, `StartOf`,

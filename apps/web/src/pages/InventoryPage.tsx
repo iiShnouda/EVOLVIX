@@ -6,8 +6,10 @@ import {
   formatMoney,
   formatNumber,
   formatQuantity,
+  groupPermissions,
   type InventoryItem,
   type Party,
+  type Permission,
   type TranslationKey,
   type Valuation,
   type ValuationItem,
@@ -50,6 +52,74 @@ const field =
 const today = companyToday;
 
 type Tab = 'items' | 'valuation' | 'stocktake' | 'transfers' | 'labels' | 'pricelists';
+const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
+  {
+    key: 'items',
+    label: 'inventory.items',
+    anyOf: [
+      'inventory:view',
+      'inventory:card',
+      'inventory:stocktake_view',
+      'inventory:stocktake',
+      'products:edit',
+      'products:close',
+      'products:barcodes',
+      'products:images',
+      'prices:edit',
+      'products:card_purchases',
+      'products:card_sales',
+      'products:card_returns',
+      'products:card_prices',
+      'inventory:total_items',
+      'inventory:total_quantity',
+      'inventory:total_sale_value',
+      'inventory:total_supply_value',
+      'inventory:total_sold',
+    ],
+  },
+  {
+    key: 'valuation',
+    label: 'inventory.valuation',
+    anyOf: [
+      'inventory:valuation',
+      'inventory:valuation_departments',
+      'inventory:valuation_warehouses',
+      'inventory:valuation_items',
+    ],
+  },
+  {
+    key: 'stocktake',
+    label: 'stocktake.action',
+    anyOf: ['inventory:stocktake', 'inventory:stocktake_view'],
+  },
+  {
+    key: 'transfers',
+    label: 'transfer.title',
+    anyOf: [
+      'transfers:view',
+      'transfers:print',
+      'inventory:transfer',
+      'inventory:transfer_edit',
+      'inventory:transfer_receive',
+      'inventory:transfer_cancel',
+    ],
+  },
+  { key: 'labels', label: 'labels.title', anyOf: ['labels:print'] },
+  {
+    key: 'pricelists',
+    label: 'pl.short',
+    anyOf: [
+      'price_lists:view',
+      'price_lists:create',
+      'price_lists:edit',
+      'price_lists:prices',
+      'price_lists:customers',
+      'price_lists:delete',
+      'quantity_breaks:view',
+      'quantity_breaks:edit',
+    ],
+  },
+];
 
 /**
  * Inventory (المخزون): every item with stock, average cost, value and reorder status,
@@ -61,22 +131,16 @@ export function InventoryPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const can = useCan();
-  const canEdit = can('inventory:stocktake');
   // Average cost, stock value and the valuation are the owner's unless given (costs:view).
   const seeCosts = can('costs:view');
-  // The valuation has its own permission, and each part and column another (owner, 2026-10-19).
-  const canValuation = can('inventory:valuation');
-  // The store's other screens open here, as tabs (owner, 2026-10-21: not on pages of their own).
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'items', label: t('inventory.items') },
-    ...(canValuation ? [{ key: 'valuation' as Tab, label: t('inventory.valuation') }] : []),
-    ...(canEdit ? [{ key: 'stocktake' as Tab, label: t('stocktake.action') }] : []),
-    { key: 'transfers', label: t('transfer.title') },
-    ...(can('labels:print') ? [{ key: 'labels' as Tab, label: t('labels.title') }] : []),
-    { key: 'pricelists', label: t('pl.short') },
-  ];
+  // The store's other screens open here, as tabs (owner, 2026-10-21: not on pages of their own),
+  // each for whoever may use any part of it (owner, 2026-10-23).
+  const tabs = TABS.filter((x) => x.anyOf.some(can)).map((x) => ({
+    key: x.key,
+    label: t(x.label),
+  }));
   const asked = params.get('tab');
-  const tab: Tab = tabs.find((x) => x.key === asked)?.key ?? 'items';
+  const tab = (tabs.find((x) => x.key === asked)?.key ?? tabs[0]?.key) as Tab | undefined;
   const ownFilters = tab === 'items' || tab === 'valuation';
   // Any of the stock statuses (owner, 2026-10-21: instead of the reorder tick); `?low=1` still opens
   // those at the reorder level.
@@ -118,6 +182,7 @@ export function InventoryPage() {
     branchId: (!warehouseId && branchId) || undefined,
     departmentId: departmentId || undefined,
     groupId: groupId || undefined,
+    enabled: tab === 'items',
   });
 
   const currency = list.data?.currency ?? 'EGP';
@@ -219,16 +284,18 @@ export function InventoryPage() {
             </button>
           ))}
           {/* Setting up the catalogue stays a screen of its own. */}
-          {[{ path: '/inventory/setup', label: t('catalog.setup') }].map((x) => (
-            <button
-              key={x.path}
-              type="button"
-              onClick={() => navigate(x.path)}
-              className="h-8 shrink-0 rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
-            >
-              {x.label}
-            </button>
-          ))}
+          {[{ path: '/inventory/setup', label: t('catalog.setup') }]
+            .filter(() => groupPermissions('setup').some(can))
+            .map((x) => (
+              <button
+                key={x.path}
+                type="button"
+                onClick={() => navigate(x.path)}
+                className="h-8 shrink-0 rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+              >
+                {x.label}
+              </button>
+            ))}
         </div>
         {ownFilters && myBranches.length > 0 && (
           <label className="block w-full shrink-0 sm:w-48">
@@ -328,8 +395,10 @@ export function InventoryPage() {
         <TransfersPage embedded />
       ) : tab === 'labels' ? (
         <LabelsPage embedded />
-      ) : (
+      ) : tab === 'pricelists' ? (
         <PriceListsPage embedded />
+      ) : (
+        <EmptyState title={t('common.empty')} icon="inventory" />
       )}
       {tab === 'items' && (
         <div className="flex justify-end">
@@ -531,6 +600,7 @@ function ItemsTab({
           ]}
         />
         <ReportActions
+          scope="inventory"
           disabled={loading || items.length === 0}
           onPrint={() => report.print(paper.current, t('nav.inventory'))}
         />
@@ -737,6 +807,7 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
             />
           </label>
           <ReportActions
+            scope="inventory"
             disabled={!data}
             onPrint={() =>
               report.print(paper.current, t('inventory.valuation'), formatDate(asOf, locale))

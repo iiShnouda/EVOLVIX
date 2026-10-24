@@ -295,6 +295,7 @@ function TransferDetail({
             </Button>
           )}
           <ReportActions
+            scope="transfers"
             onPrint={() =>
               report.print(
                 paper.current,

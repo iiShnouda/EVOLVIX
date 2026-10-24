@@ -199,7 +199,11 @@ ok(
 const admin = await login(adminEmail, 'Str0ngPass!');
 // The admin has every permission, new ones too (owner decision 2026-10-02), except going past the
 // rules, which is given by hand (owner, 2026-10-22).
-eq('admin has every permission but going past the rules', admin.user.permissions.length, perms.length - 1);
+eq(
+  'admin has every permission but going past the rules',
+  admin.user.permissions.length,
+  perms.length - 1,
+);
 eq('…not that one until given', admin.user.permissions.includes('rules:override'), false);
 eq('admin role not editable', roles.find((r) => r.role === 'ADMIN').editable, false);
 eq(
@@ -236,7 +240,20 @@ const mgrStaff = ok(
 ok(
   '…who may manage staff and roles',
   await owner.put(`/staff/${mgrStaff.id}/permissions`, {
-    granted: ['staff:view', 'staff:manage', 'roles:manage'],
+    granted: [
+      'staff:view',
+      'staff:create',
+      'staff:edit',
+      'staff:role',
+      'staff:password',
+      'staff:close',
+      'staff:delete',
+      'staff:permissions',
+      'roles:view',
+      'roles:create',
+      'roles:edit',
+      'roles:delete',
+    ],
     revoked: [],
   }),
 );
@@ -309,7 +326,7 @@ const cashier = ok(
   await owner.post('/roles', {
     name: `Cashier ${rtag}`,
     baseRole: 'SALES',
-    permissions: ['dashboard:view', 'sales:view', 'sales:create', 'receipts:view'],
+    permissions: ['dashboard:kpi_sales', 'sales:view', 'sales:create', 'money:accounts'],
   }),
 );
 eq(
