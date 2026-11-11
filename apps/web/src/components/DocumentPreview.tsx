@@ -457,7 +457,7 @@ export function InvoicePaper({
       {/* Line items (owner, 2026-11-10): code, name, price of one, quantity, its discount (only
           when a line has one) and the total. */}
       {shows('lines') && (
-        <div className="overflow-hidden rounded-[var(--radius-app)] border border-line">
+        <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
           <TableColumns id="invoice.lines">
             <table className="w-full text-sm">
               <thead className="bg-surface-2 text-xs text-muted">
