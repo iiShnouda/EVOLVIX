@@ -554,13 +554,21 @@ public sealed class InventoryController : ControllerBase
         var (wid, notFound) = await VisibleWarehouseAsync(id.ToString());
         if (notFound is not null) return notFound;
         var seeCosts = Costs.CanSee(User);
-        var start = CompanyClock.StartOf(CompanyClock.ParseDay(from) ?? CompanyClock.Today);
-        var end = CompanyClock.StartOf((CompanyClock.ParseDay(to) ?? CompanyClock.Today).AddDays(1));
+        var fromDay = CompanyClock.ParseDay(from) ?? CompanyClock.Today;
+        var toDay = CompanyClock.ParseDay(to) ?? CompanyClock.Today;
+        if (toDay < fromDay) (fromDay, toDay) = (toDay, fromDay);
+        var (start, end) = CompanyClock.Days(fromDay, toDay);
         var all = _db.StockMovements.AsNoTracking().Where(m => m.WarehouseId == wid);
-        var opening = await all.Where(m => m.CreatedAt < start).SumAsync(m => (int?)m.Quantity) ?? 0;
-        var openingValue = seeCosts
-            ? await all.Where(m => m.CreatedAt < start).SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
-        var rows = await all.Where(m => m.CreatedAt >= start && m.CreatedAt < end)
+        // Opening = everything before the first day (= the day before's closing); in, out and the
+        // closing are sums over the whole period, never only over the lines listed.
+        var before = all.Where(m => m.CreatedAt < start);
+        var during = all.Where(m => m.CreatedAt >= start && m.CreatedAt < end);
+        var opening = await before.SumAsync(m => (int?)m.Quantity) ?? 0;
+        var openingValue = seeCosts ? await before.SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
+        var inQty = await during.Where(m => m.Quantity > 0).SumAsync(m => (int?)m.Quantity) ?? 0;
+        var outQty = -(await during.Where(m => m.Quantity < 0).SumAsync(m => (int?)m.Quantity) ?? 0);
+        var periodValue = seeCosts ? await during.SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
+        var rows = await during
             .Include(m => m.Product).OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(5000).ToListAsync();
         // Where each movement came from or went to (owner, 2026-10-19): the customer or supplier on
         // its invoice or return, or the other warehouse on a transfer.
@@ -575,7 +583,8 @@ public sealed class InventoryController : ControllerBase
             if (m.DocumentId is not Guid d) return null;
             if (transfers.TryGetValue(d, out var t))
             {
-                var other = m.Type == StockMovementType.TRANSFER_OUT ? t.ToWarehouse : t.FromWarehouse;
+                // The permit's other end (a cancelled or changed one coming back included).
+                var other = m.WarehouseId == t.FromWarehouseId ? t.ToWarehouse : t.FromWarehouse;
                 return other is null ? null : Loc.Name(other);
             }
             return parties.GetValueOrDefault(d);
@@ -591,8 +600,7 @@ public sealed class InventoryController : ControllerBase
         }).ToArray();
         var name = Loc.Name(await _db.Warehouses.AsNoTracking().FirstAsync(w => w.Id == wid));
         return Ok(new WarehouseStatementDto(name, await CurrencyAsync(), opening, seeCosts ? openingValue : null,
-            rows.Where(m => m.Quantity > 0).Sum(m => m.Quantity), -rows.Where(m => m.Quantity < 0).Sum(m => m.Quantity),
-            balance, seeCosts ? openingValue + rows.Sum(m => (long)m.Quantity * m.UnitCost) : null, lines));
+            inQty, outQty, opening + inQty - outQty, seeCosts ? openingValue + periodValue : null, lines));
     }
 
     /// <summary>

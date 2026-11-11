@@ -56,10 +56,15 @@ export function StatementPage() {
   const [params, setParams] = useSearchParams();
   const kinds = KINDS.filter((k) => can(k.permission));
   // `?kind=CASH&account=<id>` opens a cash box's or bank's (the Cash & Banks page's button).
-  const [kind, setKind] = useState<Kind>(() => {
+  const [askedKind, setKind] = useState<Kind>(() => {
     const asked = params.get('kind') as Kind | null;
-    return asked && KINDS.some((k) => k.kind === asked) ? asked : 'CUSTOMER';
+    return asked && KINDS.some((k) => k.kind === asked) ? asked : (kinds[0]?.kind ?? 'CUSTOMER');
   });
+  // Only a kind the person may open (owner, 2026-11-10: given the warehouses' statement alone, it
+  // still loaded customers and never showed the warehouses).
+  const kind: Kind = kinds.some((k) => k.kind === askedKind)
+    ? askedKind
+    : (kinds[0]?.kind ?? askedKind);
   const [party, setParty] = useState<Party | null>(null);
   const [pick, setPick] = useState(() => params.get('account') ?? '');
   const askedAccount = params.get('account');
@@ -162,7 +167,12 @@ export function StatementPage() {
             placeholder={t('statement.pick')}
           />
         ) : kind === 'WAREHOUSE' ? (
-          <WarehouseSelect value={pick} onChange={setPick} label={t('statement.pickAccount')} />
+          <WarehouseSelect
+            value={pick}
+            onChange={setPick}
+            includeClosed
+            label={t('statement.pickAccount')}
+          />
         ) : (
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('statement.pickAccount')}</span>
