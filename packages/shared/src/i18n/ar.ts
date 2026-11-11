@@ -243,7 +243,7 @@ export const ar: TranslationDictionary = {
   'inventory.itemCount': 'عدد الأصناف',
   'inventory.lowStock': 'وصلت لحد الطلب',
   'inventory.lowOnly': 'الأصناف التي وصلت لحد الطلب فقط',
-  'inventory.avgCost': 'متوسط التكلفة',
+  'inventory.avgCost': 'سعر التوريد',
   'inventory.category': 'القسم',
   'inventory.search': 'ابحث بالاسم أو الكود أو الباركود…',
   'inventory.ok': 'متوفر',
@@ -396,7 +396,7 @@ export const ar: TranslationDictionary = {
   'invoice.pickCustomerFirst': 'اختر عميلاً للبدء.',
   'invoice.pickSupplierFirst': 'اختر مورّداً للبدء.',
   'invoice.receiveCost': 'تكلفة الشراء',
-  'invoice.newAvgCost': 'متوسط التكلفة الجديد',
+  'invoice.newAvgCost': 'سعر التوريد الجديد',
   'invoice.back': 'العودة للقائمة',
 
   // Returns (مرتجع مبيعات / مرتجع مشتريات)

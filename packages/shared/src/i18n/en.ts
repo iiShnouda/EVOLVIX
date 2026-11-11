@@ -242,7 +242,7 @@ export const en = {
   'inventory.itemCount': 'Items',
   'inventory.lowStock': 'At reorder level',
   'inventory.lowOnly': 'Only items at reorder level',
-  'inventory.avgCost': 'Avg cost',
+  'inventory.avgCost': 'Supply price',
   'inventory.category': 'Department',
   'inventory.search': 'Search by name, SKU or barcode…',
   'inventory.ok': 'In stock',
@@ -395,7 +395,7 @@ export const en = {
   'invoice.pickCustomerFirst': 'Choose a customer to start.',
   'invoice.pickSupplierFirst': 'Choose a supplier to start.',
   'invoice.receiveCost': 'Purchase cost',
-  'invoice.newAvgCost': 'New avg cost',
+  'invoice.newAvgCost': 'New supply price',
   'invoice.back': 'Back to list',
 
   // Returns (مرتجع مبيعات / مرتجع مشتريات)
