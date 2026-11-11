@@ -2,6 +2,7 @@ import { confirm } from '../lib/confirm';
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  companyDay,
   companyToday,
   formatDate,
   formatDateTime,
@@ -366,7 +367,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => navigate(`/sales/together/${invoice.partyId}`)}
+          // On the invoice's own day (owner, 2026-11-10: from an older invoice it opened empty).
+          onClick={() =>
+            navigate(`/sales/together/${invoice.partyId}?day=${companyDay(invoice.issueDate)}`)
+          }
         >
           {t('together.open')}
         </Button>

@@ -296,19 +296,16 @@ public sealed class SalesController : ControllerBase
             dto = await InvoiceLines.WithCodesAsync(_db, dto);
             (d.Type == DocumentType.SALES_RETURN ? returns : invoices).Add(Costs.Guard(User, dto));
         }
-        // What they owed before these: the balance less what the posted ones still put on it, plus
-        // what their returns took off it (less what was paid back in cash).
         var posted = docs.Where(d => d.Type == DocumentType.SALES_INVOICE).ToList();
         var owed = await MoneyService.OutstandingAsync(_db, posted, credit: true);
         var onThese = posted.Sum(d => owed.GetValueOrDefault(d.Id));
         var back = docs.Where(d => d.Type == DocumentType.SALES_RETURN).ToList();
         var returnsTotal = back.Sum(d => d.GrandTotal);
-        // A return against one of these invoices is already off what that invoice still owes.
-        var postedIds = posted.Select(d => d.Id).ToHashSet();
-        var offBalance = back.Where(d => d.SourceDocumentId is not Guid src || !postedIds.Contains(src))
-            .Sum(d => d.GrandTotal - d.PaidAmount);
         var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
-        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party, User), party.Balance, party.Balance - onThese + offBalance, onThese,
+        // What they owed before the period (owner, 2026-11-10): their account up to its first day, as it
+        // stands now — money received during the period is not taken off it (it shows as paid).
+        var previous = await PreviousBalance.BeforeAsync(_db, partyId, start);
+        return Ok(new CustomerInvoicesDto(Mapper.ToParty(party, User), party.Balance, previous, onThese,
             currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray(),
             returns.ToArray(), returnsTotal, DocumentLists.Together(states.Values, posted.Sum(d => d.GrandTotal))));
     }

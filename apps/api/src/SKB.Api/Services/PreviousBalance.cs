@@ -26,7 +26,24 @@ public static class PreviousBalance
         var wanted = docs.Where(Applies).ToList();
         var result = new Dictionary<Guid, long>();
         if (wanted.Count == 0) return result;
-        var last = wanted.Max(d => d.IssueDate);
+        var rows = await RowsAsync(db, partyId, wanted.Max(d => d.IssueDate));
+        foreach (var d in wanted)
+            result[d.Id] = rows.Where(r => r.At < d.IssueDate && r.SourceId != d.Id).Sum(r => r.Net);
+        return result;
+    }
+
+    /// <summary>
+    /// What the customer owed before <paramref name="start"/> (the customer's invoices together: before
+    /// the period's first day), by the same rules.
+    /// </summary>
+    public static async Task<long> BeforeAsync(AppDbContext db, Guid partyId, DateTime start) =>
+        (await RowsAsync(db, partyId, start)).Sum(r => r.Net);
+
+    private sealed record Row(Guid? SourceId, DateTime At, long Net);
+
+    /// <summary>The customer's lines that stand, each at its date (an invoice at its own), before <paramref name="last"/>.</summary>
+    private static async Task<List<Row>> RowsAsync(AppDbContext db, Guid partyId, DateTime last)
+    {
         // What no longer stands (the same rule as the customer's statement).
         var superseded = db.JournalEntries.Where(e =>
             e.SourceType == "SALES_INVOICE_CANCEL" || e.SourceType == "SALES_RETURN_CANCEL"
@@ -38,7 +55,7 @@ public static class PreviousBalance
                     || db.JournalEntries.Any(o => o.SourceType == "SALES_INVOICE" && o.SourceId == e.SourceId
                                                    && o.Serial > e.Serial))))
             .Select(e => e.Id);
-        var rows = await db.JournalLines.AsNoTracking()
+        var lines = await db.JournalLines.AsNoTracking()
             .Where(l => l.Account!.PartyId == partyId && !superseded.Contains(l.EntryId))
             .Select(l => new
             {
@@ -52,9 +69,7 @@ public static class PreviousBalance
             })
             .Where(x => x.At < last)
             .ToListAsync();
-        foreach (var d in wanted)
-            result[d.Id] = rows.Where(r => r.At < d.IssueDate && r.SourceId != d.Id).Sum(r => r.Net);
-        return result;
+        return lines.Select(r => new Row(r.SourceId, r.At, r.Net)).ToList();
     }
 
     /// <summary>A sales invoice that stands, or one waiting for approval.</summary>

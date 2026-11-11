@@ -123,6 +123,12 @@ eq(
     [f.number, 74000],
   ],
 );
+eq('owed before the day: only the back-dated invoice', day.previousBalance, 10000);
+eq(
+  'before + invoices − returns − paid = now',
+  day.previousBalance + 40000 + 30000 + 9000 + 10000 + 10000 - 10000 - (10000 + 5000),
+  day.balance,
+);
 check(
   'lines carry codes there too',
   day.invoices.every((x) => x.lines.every((l) => l.productCode === item.sku)),

@@ -25,7 +25,14 @@ export function PrintEditorHost() {
     return () => setPrintEditor(null);
   }, []);
   if (!job) return null;
-  return <PrintEditor source={job.node} fileTitle={job.fileTitle} onClose={() => setJob(null)} />;
+  return (
+    <PrintEditor
+      source={job.node}
+      fileTitle={job.fileTitle}
+      onPrinted={job.onPrinted}
+      onClose={() => setJob(null)}
+    />
+  );
 }
 
 /** The cells of a table's column, whatever row they are in (a wide cell counts for each column it covers). */
