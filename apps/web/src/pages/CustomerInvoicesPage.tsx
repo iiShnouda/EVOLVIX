@@ -18,7 +18,6 @@ import { PartyPicker } from '../components/PartyPicker';
 import { CompanyMark } from '../components/CompanyBadge';
 import {
   InvoicePaper,
-  PrintOptions,
   approvalText,
   usePaperOptions,
   PAPER_SIZES,
@@ -88,7 +87,7 @@ export function CustomerInvoicesPage() {
   const [from, setFrom] = useState(companyToday);
   const [to, setTo] = useState(companyToday);
   const data = useCustomerInvoices(partyId || null, from, to);
-  const [options, setOptions] = usePaperOptions();
+  const [options] = usePaperOptions();
   const [party, setParty] = useState<Party | null>(null);
   const shownParty = party?.id === partyId ? party : (data.data?.party ?? null);
   const invoices = data.data?.invoices ?? [];
@@ -178,7 +177,6 @@ export function CustomerInvoicesPage() {
             onChange={(e) => setTo(e.target.value || from)}
           />
         </label>
-        <PrintOptions options={options} onChange={setOptions} />
       </Card>
 
       {!partyId ? (

@@ -1,5 +1,5 @@
 import { confirm } from '../lib/confirm';
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   companyToday,
@@ -131,6 +131,45 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   useEffect(() => {
     if (linkedId) setSelectedId(linkedId);
   }, [linkedId]);
+  // The open document is in the address, in place (owner, 2026-11-10): closing it takes it out, so
+  // coming back to the list never opens it again, and no step is left behind in the history.
+  // Clicks in a hurry don't queue up: one right after an opening or a closing is ignored.
+  const lastToggle = useRef(0);
+  const settled = () => performance.now() - lastToggle.current > 350;
+  function openDoc(id: string) {
+    if (id === selectedId || !settled()) return;
+    lastToggle.current = performance.now();
+    setSelectedId(id);
+    setParams(
+      (p) => {
+        p.set('doc', id);
+        p.delete('print');
+        return p;
+      },
+      { replace: true },
+    );
+  }
+  function closeDoc() {
+    if (!selectedId || !settled()) return;
+    lastToggle.current = performance.now();
+    setSelectedId(null);
+    setParams(
+      (p) => {
+        p.delete('doc');
+        p.delete('print');
+        return p;
+      },
+      { replace: true },
+    );
+  }
+  const printedDoc = () =>
+    setParams(
+      (p) => {
+        p.delete('print');
+        return p;
+      },
+      { replace: true },
+    );
   // Filters: number or customer, department, status, company days.
   // Three searches (owner, 2026-10-06): the number, the customer's name, the customer's code.
   const [number, setNumber] = useState('');
@@ -197,10 +236,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   useEffect(() => {
     if (!selectedId) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) setSelectedId(null);
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) closeDoc();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
   const statuses: Record<DocKind, string[]> = {
     invoices: [],
@@ -594,7 +634,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 {rows.map((doc) => (
                   <li key={doc.id}>
                     <button
-                      onClick={() => setSelectedId(doc.id)}
+                      onClick={() => openDoc(doc.id)}
                       className="flex w-full items-center gap-3 p-4 text-start hover:bg-surface-2"
                     >
                       <span className="min-w-0 flex-1">
@@ -652,7 +692,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   kind={kind}
                   list={list.data}
                   selectedId={selectedId}
-                  onSelect={setSelectedId}
+                  onSelect={openDoc}
                   showDepartment={isSales && (departments.data ?? []).length > 0}
                   onPrint={
                     permissions.includes(isSales ? 'sales:print' : 'purchases:print')
@@ -685,7 +725,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       {!isPhone && selectedId && (
         <div
           className="fixed inset-0 z-40 flex justify-end bg-black/30"
-          onClick={() => setSelectedId(null)}
+          onClick={(e) => {
+            // The second click of a double click on a row lands here: it doesn't close it.
+            if (e.detail <= 1) closeDoc();
+          }}
         >
           <div
             className="h-full w-full max-w-xl border-s border-line bg-canvas shadow-xl"
@@ -694,10 +737,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <DocumentPreview
               doc={detail.data}
               loading={detail.isFetching}
-              onClose={() => setSelectedId(null)}
+              onClose={closeDoc}
               action={returnAction}
               autoPrint={params.get('print') === '1'}
-              onPrinted={() => setParams({ doc: selectedId ?? '' }, { replace: true })}
+              onPrinted={printedDoc}
             />
           </div>
         </div>
@@ -791,10 +834,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
             <DocumentPreview
               doc={detail.data}
               loading={detail.isFetching}
-              onClose={() => setSelectedId(null)}
+              onClose={closeDoc}
               action={returnAction}
               autoPrint={params.get('print') === '1'}
-              onPrinted={() => setParams({ doc: selectedId ?? '' }, { replace: true })}
+              onPrinted={printedDoc}
             />
           </div>
         </div>

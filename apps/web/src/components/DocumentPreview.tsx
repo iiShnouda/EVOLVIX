@@ -3,7 +3,6 @@ import { ItemLink } from './ItemLink';
 import { DocumentActivity } from './DocumentActivity';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
-  formatDate,
   formatDateHM,
   formatMoney,
   formatNumber,
@@ -125,7 +124,7 @@ export function DocumentPreview({
   const can = useCan();
   const navigate = useNavigate();
   const paper = useRef<HTMLDivElement>(null);
-  const [options, setOptions] = usePaperOptions();
+  const [options] = usePaperOptions();
   const ready = !loading && !!doc;
   const canPrint = !!doc && mayPrint(can, doc);
   // Printing opens the setup first (the paper and what shows), then prints from there.
@@ -193,7 +192,6 @@ export function DocumentPreview({
                 onClick={() => navigate(`/sales/invoices/${doc.id}`)}
               />
             )}
-            <PrintOptions options={options} onChange={setOptions} />
             {doc.type === 'PURCHASE_INVOICE' && can('labels:print') && (
               <Button
                 size="sm"
@@ -217,7 +215,7 @@ export function DocumentPreview({
             {onClose && (
               <button
                 onClick={onClose}
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 lg:hidden"
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2"
                 aria-label={t('common.close')}
               >
                 <Icon name="close" size={18} />
@@ -310,12 +308,6 @@ export function InvoicePaper({
             <p className="text-warning">
               {t('doc.enteredAt')}{' '}
               <span className="tnum">{formatDateHM(doc.enteredAt, locale)}</span>
-            </p>
-          )}
-          {doc.type === 'SALES_INVOICE' && doc.dueDate && (
-            <p>
-              {t('invoice.dueDate')}:{' '}
-              <span className="font-medium text-fg tnum">{formatDate(doc.dueDate, locale)}</span>
             </p>
           )}
           {isQuote && doc.invoiceNumber && (
@@ -583,49 +575,6 @@ function PaperChoice() {
           </button>
         ))}
       </div>
-    </div>
-  );
-}
-
-/**
- * Choose what the printout carries, its type size and bold; the columns follow the table's own
- * column choice. Every change shows at once on the document behind it.
- */
-export function PrintOptions({
-  options,
-  onChange,
-}: {
-  options: PaperOptions;
-  onChange: ReturnType<typeof usePaperOptions>[1];
-}) {
-  const { t } = useT();
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-  return (
-    <div ref={box} className="relative" data-noprint>
-      <Button
-        size="sm"
-        variant="ghost"
-        icon="settings"
-        aria-label={t('print.options')}
-        title={t('print.options')}
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      />
-      {open && (
-        <div className="absolute end-0 z-30 mt-1 max-h-[70vh] w-60 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
-          <p className="px-2 py-1 text-xs font-semibold text-muted">{t('print.options')}</p>
-          <PrintOptionsPanel options={options} onChange={onChange} />
-        </div>
-      )}
     </div>
   );
 }
