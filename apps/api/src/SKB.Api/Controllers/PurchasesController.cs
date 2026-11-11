@@ -106,6 +106,7 @@ public sealed class PurchasesController : ControllerBase
             dto = dto with { State = st.State, Owed = st.Owed };
         var pages = await _db.DocumentImages.CountAsync(x => x.DocumentId == doc.Id);
         if (pages > 0) dto = dto with { HasImage = true, ImagePages = pages };
+        dto = await InvoiceLines.WithCodesAsync(_db, dto);
         return Ok(dto);
     }
 

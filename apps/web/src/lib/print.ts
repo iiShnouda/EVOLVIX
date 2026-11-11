@@ -56,6 +56,8 @@ function pageRule(custom?: string) {
 export interface PrintJob {
   node: HTMLElement;
   fileTitle: string;
+  /** Called once it is really printed (not when the editor is closed without printing). */
+  onPrinted?: () => void;
 }
 
 /** Opens the print editor (components/PrintEditor.tsx registers it); none = print at once. */
@@ -140,10 +142,18 @@ export function printCopy(el: HTMLElement, frame?: PrintFrame): HTMLElement {
  * Every print button (owner, 2026-10-02: "show me what the paper carries, let me take things off
  * and change them, then print"): the copy opens in the print editor first; it prints from there.
  */
-export function printElement(el: HTMLElement, fileTitle: string, frame?: PrintFrame) {
+export function printElement(
+  el: HTMLElement,
+  fileTitle: string,
+  frame?: PrintFrame,
+  onPrinted?: () => void,
+) {
   const node = printCopy(el, frame);
-  if (openEditor) openEditor({ node, fileTitle });
-  else printNow(node, fileTitle);
+  if (openEditor) openEditor({ node, fileTitle, onPrinted });
+  else {
+    printNow(node, fileTitle);
+    onPrinted?.();
+  }
 }
 
 /** Print (or save as PDF) this copy now, as it is. */

@@ -769,6 +769,8 @@ export interface DocumentLine {
   id: string;
   productId: string;
   productName: string;
+  /** The item's code (SKU), on a document read to be shown or printed. */
+  productCode?: string | null;
   /** Quantity in base units (what stock moved by) = unitQuantity x unitFactor. */
   quantity: number;
   /** The unit the line was entered in, its size, and the quantity in it. */
@@ -896,6 +898,11 @@ export interface SalesDocument {
   hasImage?: boolean;
   /** How many pages of it were photographed (owner, 2026-10-19). */
   imagePages?: number;
+  /**
+   * On a sales invoice (posted or waiting): what the customer owed just before it, minor units —
+   * only for whoever may see the customer's balance (owner, 2026-11-10).
+   */
+  previousBalance?: number | null;
 }
 
 // ---------------------------------------------------------------------------

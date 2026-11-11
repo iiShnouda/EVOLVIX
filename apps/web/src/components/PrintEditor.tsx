@@ -25,7 +25,14 @@ export function PrintEditorHost() {
     return () => setPrintEditor(null);
   }, []);
   if (!job) return null;
-  return <PrintEditor source={job.node} fileTitle={job.fileTitle} onClose={() => setJob(null)} />;
+  return (
+    <PrintEditor
+      source={job.node}
+      fileTitle={job.fileTitle}
+      onPrinted={job.onPrinted}
+      onClose={() => setJob(null)}
+    />
+  );
 }
 
 /** The cells of a table's column, whatever row they are in (a wide cell counts for each column it covers). */
@@ -247,7 +254,9 @@ export function PrintEditor({
     >
       <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <div className="space-y-3">
-          <div className="space-y-1 rounded-[var(--radius-app)] border border-line p-1">
+          {/* The choices stay beside the page and scroll on their own; Print is always in reach. */}
+          <div className="space-y-1 rounded-[var(--radius-app)] border border-line p-1 lg:max-h-[calc(92vh-11rem)] lg:overflow-y-auto">
+            <p className="px-2 pt-1 text-xs font-semibold text-muted">{t('print.group.paper')}</p>
             <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
               <span>{t('print.paper')}</span>
               <div className="flex overflow-hidden rounded-md border border-line">
@@ -282,7 +291,7 @@ export function PrintEditor({
                 </div>
               </div>
             )}
-            {side && <div className="border-t border-line pt-1">{side}</div>}
+            {side}
           </div>
           <div className="flex gap-2">
             <Button icon="print" className="flex-1" onClick={() => void print()}>

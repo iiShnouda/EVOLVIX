@@ -96,6 +96,15 @@ public static class InvoiceLines
         return rows.ToDictionary(u => u.ProductId, u => Loc.Name(u.Unit));
     }
 
+    /// <summary>The document with each line's item code (owner, 2026-11-10: the code is a column of the invoice).</summary>
+    public static async Task<SKB.Api.Models.SalesDetailDto> WithCodesAsync(AppDbContext db, SKB.Api.Models.SalesDetailDto dto)
+    {
+        var ids = dto.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).Distinct().ToList();
+        var codes = await db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku }).ToDictionaryAsync(p => p.Id.ToString(), p => p.Sku);
+        return dto with { Lines = dto.Lines.Select(l => l with { ProductCode = codes.GetValueOrDefault(l.ProductId) }).ToArray() };
+    }
+
     /// <summary>Load what <see cref="Mapper.ToDetail"/> shows of a document just posted.</summary>
     public static async Task LoadForDetailAsync(AppDbContext db, SalesDocument doc)
     {

@@ -64,17 +64,20 @@ public record DocumentListTotalsDto(int Count, long GrandTotal, long PaidAmount,
 /// <param name="ReturnedQuantity">For an invoice line: base units already returned against it (0 on a return).</param>
 /// <param name="WarehouseName">Warehouse the goods left from / arrived into.</param>
 /// <param name="BaseUnitName">The item's base unit (what <paramref name="Quantity"/> counts).</param>
+/// <param name="ProductCode">The item's code (SKU), where the document is read to be shown or printed.</param>
 public record DocumentLineDto(
     string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal,
     long UnitCost, long LineProfit, int ReturnedQuantity, string? WarehouseId, string? WarehouseName,
     string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName,
-    bool IsBonus, long DocDiscount);
+    bool IsBonus, long DocDiscount, string? ProductCode = null);
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
 public record DocumentChargeDto(string Kind, decimal? Rate, long? FixedAmount, long Amount, string? Label);
 
 /// <param name="SourceDocumentId">For a return: the invoice it reverses.</param>
+/// <param name="PreviousBalance">On a sales invoice (posted or waiting), for whoever may see the customer's
+/// balance: what the customer owed just before it (<see cref="Services.PreviousBalance"/>); else null.</param>
 /// <param name="PriceLevelName">The price level the invoice was priced at.</param>
 public record SalesDetailDto(
     string Id, string Number, string Type, string Status, string BranchName, string PartyName,
@@ -90,7 +93,7 @@ public record SalesDetailDto(
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
     string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null,
-    bool HasImage = false, int ImagePages = 0, string? SeasonKind = null);
+    bool HasImage = false, int ImagePages = 0, string? SeasonKind = null, long? PreviousBalance = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>

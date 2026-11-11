@@ -1,7 +1,8 @@
 import { useRef, useState, type Ref } from 'react';
 import { ItemLink } from '../components/ItemLink';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
+  amountInWords,
   companyToday,
   formatDate,
   formatMoney,
@@ -18,7 +19,6 @@ import { PartyPicker } from '../components/PartyPicker';
 import { CompanyMark } from '../components/CompanyBadge';
 import {
   InvoicePaper,
-  PrintOptions,
   approvalText,
   usePaperOptions,
   PAPER_SIZES,
@@ -85,10 +85,13 @@ export function CustomerInvoicesPage() {
   const canLineDiscount = can('sales:discount_line');
   const canDiscountCombined = can('sales:discount_combined');
   const canLock = can('sales:lock');
-  const [from, setFrom] = useState(companyToday);
-  const [to, setTo] = useState(companyToday);
+  // `?day=` opens on that day (an invoice's own); today otherwise.
+  const [params] = useSearchParams();
+  const linkedDay = /^\d{4}-\d{2}-\d{2}$/.test(params.get('day') ?? '') ? params.get('day')! : null;
+  const [from, setFrom] = useState(() => linkedDay ?? companyToday());
+  const [to, setTo] = useState(() => linkedDay ?? companyToday());
   const data = useCustomerInvoices(partyId || null, from, to);
-  const [options, setOptions] = usePaperOptions();
+  const [options] = usePaperOptions();
   const [party, setParty] = useState<Party | null>(null);
   const shownParty = party?.id === partyId ? party : (data.data?.party ?? null);
   const invoices = data.data?.invoices ?? [];
@@ -107,7 +110,14 @@ export function CustomerInvoicesPage() {
   const posted = invoices.filter((d) => d.type === 'SALES_INVOICE');
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
-  const paid = posted.reduce((s, d) => s + d.paidAmount, 0);
+  // Everything settled since the period began (owner, 2026-11-10): money at the counter and after,
+  // cheques, discounts given later — so the summary adds up: before + invoices − returns − paid = now.
+  const paid = data.data
+    ? data.data.previousBalance +
+      posted.reduce((n, d) => n + d.grandTotal, 0) -
+      returnsTotal -
+      data.data.balance
+    : 0;
   // Printing the combined invoices freezes them (owner, 2026-10-13): the accountant has finished with
   // them, so no one changes them afterwards. Only the posted invoices are locked, and only if allowed.
   const lockPostedForPrint = () => {
@@ -178,7 +188,6 @@ export function CustomerInvoicesPage() {
             onChange={(e) => setTo(e.target.value || from)}
           />
         </label>
-        <PrintOptions options={options} onChange={setOptions} />
       </Card>
 
       {!partyId ? (
@@ -282,7 +291,7 @@ export function CustomerInvoicesPage() {
                 {returnsTotal > 0 && (
                   <Line label={t('together.net')} value={money(total - returnsTotal)} strong />
                 )}
-                {paid > 0 && <Line label={t('sales.paid')} value={money(paid)} />}
+                {paid !== 0 && <Line label={t('sales.paid')} value={money(paid)} />}
                 <div className="my-1 border-t border-line" />
                 <Line label={t('together.balance')} value={money(data.data!.balance)} strong />
               </dl>
@@ -309,8 +318,14 @@ export function CustomerInvoicesPage() {
                   icon="print"
                   onClick={() => {
                     if (!combined.current) return;
-                    lockPostedForPrint();
-                    printElement(combined.current, printName(t('together.title')));
+                    // Locked once it is really printed (owner, 2026-11-10: opening the print
+                    // setup and cancelling locked them all).
+                    printElement(
+                      combined.current,
+                      printName(t('together.title')),
+                      undefined,
+                      lockPostedForPrint,
+                    );
                   }}
                 >
                   {t('together.printCombined')}
@@ -320,8 +335,12 @@ export function CustomerInvoicesPage() {
                   icon="print"
                   onClick={() => {
                     if (!everything.current) return;
-                    lockPostedForPrint();
-                    printElement(everything.current, printName(t('together.title')));
+                    printElement(
+                      everything.current,
+                      printName(t('together.title')),
+                      undefined,
+                      lockPostedForPrint,
+                    );
                   }}
                 >
                   {t('together.printAll')}
@@ -672,6 +691,14 @@ function CombinedPaper({
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const back = returns.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
+  const postedTotal = invoices
+    .filter((d) => d.type === 'SALES_INVOICE')
+    .reduce((s, d) => s + d.grandTotal, 0);
+  const paid = previousBalance + postedTotal - back - balance;
+  const quantity = invoices.reduce(
+    (n, d) => n + d.lines.reduce((q, l) => q + (l.unitQuantity || l.quantity), 0),
+    0,
+  );
   const anyLineDiscount = [...invoices, ...returns].some((d) =>
     d.lines.some((l) => l.discount > 0),
   );
@@ -710,9 +737,14 @@ function CombinedPaper({
           <table className="w-full text-xs">
             <thead className="text-muted">
               <tr>
-                <th className="px-2 py-1 text-start font-medium">{t('inventory.products')}</th>
-                <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
+                {shows('itemCode') && (
+                  <th className="w-px whitespace-nowrap px-2 py-1 text-start font-medium">
+                    {t('invoice.codeColumn')}
+                  </th>
+                )}
+                <th className="px-2 py-1 text-start font-medium">{t('invoice.itemName')}</th>
                 <th className="px-2 py-1 text-end font-medium">{t('sales.unitPrice')}</th>
+                <th className="px-2 py-1 text-end font-medium">{t('sales.qty')}</th>
                 {anyLineDiscount && (
                   <th className="px-2 py-1 text-end font-medium">{t('col.discount')}</th>
                 )}
@@ -722,13 +754,18 @@ function CombinedPaper({
             <tbody className="divide-y divide-[var(--c-line)]">
               {doc.lines.map((l) => (
                 <tr key={l.id}>
+                  {shows('itemCode') && (
+                    <td className="whitespace-nowrap px-2 py-1 tnum">
+                      <bdi>{l.productCode}</bdi>
+                    </td>
+                  )}
                   <td className="px-2 py-1">
                     <ItemLink id={l.productId} name={l.productName} />
                   </td>
+                  <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
                   <td className="px-2 py-1 text-end tnum">
                     {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName}
                   </td>
-                  <td className="px-2 py-1 text-end tnum">{money(l.unitPrice)}</td>
                   {anyLineDiscount && (
                     <td className="px-2 py-1 text-end tnum">
                       {l.discount > 0 ? money(l.discount) : ''}
@@ -741,17 +778,25 @@ function CombinedPaper({
           </table>
         </TableColumns>
       )}
+      {/* Every charge of the invoice — its discounts and also its tax and additions — so its lines
+          add up to its total on paper. */}
       {doc.charges
-        .filter((c) => c.amount !== 0 && (c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT'))
-        .map((c, i) => (
-          <div key={i} className="flex justify-between border-t border-line px-2.5 py-1 text-xs">
-            <span className="text-muted">
-              {t(`charge.${c.kind}`)}
-              {c.rate != null && ` (${formatNumber(c.rate, locale)}%)`}
-            </span>
-            <span className="tnum">−{money(c.amount)}</span>
-          </div>
-        ))}
+        .filter((c) => c.amount !== 0)
+        .map((c, i) => {
+          const off = c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT';
+          return (
+            <div key={i} className="flex justify-between border-t border-line px-2.5 py-1 text-xs">
+              <span className="text-muted">
+                {c.label ?? t(`charge.${c.kind}`)}
+                {c.rate != null && ` (${formatNumber(c.rate, locale)}%)`}
+              </span>
+              <span className="tnum">
+                {off ? '−' : ''}
+                {money(c.amount)}
+              </span>
+            </div>
+          );
+        })}
     </div>
   );
   return (
@@ -813,17 +858,29 @@ function CombinedPaper({
           </section>
         );
       })}
+      {/* What was owed before first (owner, 2026-11-10), then the period, what was paid and now. */}
       {shows('totals') && (
         <dl className="mt-3 space-y-1 border-t-2 border-fg/70 pt-2">
+          {shows('previous') && (
+            <Line label={t('together.previous')} value={money(previousBalance)} />
+          )}
           <Line label={t('together.total')} value={money(total)} strong />
           {discounts > 0 && <Line label={t('together.discountsGiven')} value={money(discounts)} />}
           {back > 0 && <Line label={t('together.returnsTotal')} value={money(-back)} />}
           {back > 0 && <Line label={t('together.net')} value={money(total - back)} strong />}
-          <Line label={t('together.previous')} value={money(previousBalance)} />
+          {paid !== 0 && <Line label={t('sales.paid')} value={money(paid)} />}
           <div className="border-t border-line pt-1">
             <Line label={t('together.balance')} value={money(balance)} strong />
           </div>
+          {shows('quantity') && (
+            <Line label={t('invoice.totalQuantity')} value={formatNumber(quantity, locale)} />
+          )}
         </dl>
+      )}
+      {shows('words') && balance > 0 && (
+        <p className="mt-3 rounded-[var(--radius-app)] border border-line px-3 py-2 text-xs font-medium">
+          {t('together.balance')}: {amountInWords(balance, currency, locale)}
+        </p>
       )}
     </div>
   );

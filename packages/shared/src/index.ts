@@ -1,5 +1,6 @@
 export * from './types';
 export * from './money';
+export * from './words';
 export * from './units';
 export * from './idRules';
 export * from './charges';
