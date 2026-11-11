@@ -69,6 +69,8 @@ interface Entry {
   pieces?: number;
   hex?: string | null;
   warehouseIds?: string[];
+  /** A department whose invoices name their season (owner, 2026-11-10). */
+  hasSeasons?: boolean;
   isCurrent?: boolean;
   /** A season's kind: only one added by hand (CUSTOM) is renamed; "no season" stays. */
   kind?: string;
@@ -276,6 +278,8 @@ function AddEntry({
   const create = useCreateCatalogEntry(list);
   const [names, setNames] = useState<NameValues>('');
   const [prefix, setPrefix] = useState('');
+  // A new department comes by season unless switched off (owner, 2026-11-10: "all departments").
+  const [seasoned, setSeasoned] = useState(true);
   const only = stores.length === 1 ? [stores[0]!.id] : [];
   const [places, setPlaces] = useState<string[]>(only);
   const placed = tab !== 'departments' || places.length > 0 || stores.length === 0;
@@ -297,12 +301,14 @@ function AddEntry({
             ? {
                 ...typed,
                 prefix: prefix.trim() || undefined,
+                hasSeasons: seasoned,
                 ...(stores.length ? { warehouseIds: places } : {}),
               }
             : { ...typed, pieces: Math.max(1, Math.floor(Number(pieces) || 1)) };
       await create.mutateAsync(input);
       setNames('');
       setPrefix('');
+      setSeasoned(true);
       setPieces('1');
       setPlaces(only);
     } catch {
@@ -333,6 +339,16 @@ function AddEntry({
               value={prefix}
               onChange={(e) => setPrefix(e.target.value)}
             />
+          </label>
+        )}
+        {tab === 'departments' && (
+          <label className="flex h-9 items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={seasoned}
+              onChange={(e) => setSeasoned(e.target.checked)}
+            />
+            {t('setup.hasSeasons')}
           </label>
         )}
         {tab === 'units' && (
@@ -426,6 +442,7 @@ function EntryRow({
   const [editing, setEditing] = useState(false);
   const [names, setNames] = useState<NameValues>(namesFrom(entry.name));
   const [prefix, setPrefix] = useState(entry.prefix ?? '');
+  const [seasoned, setSeasoned] = useState(!!entry.hasSeasons);
   const [pieces, setPieces] = useState(String(entry.pieces ?? 1));
   const isDepartment = tab === 'departments';
   const isSeason = tab === 'seasons';
@@ -458,6 +475,7 @@ function EntryRow({
     const input: Record<string, unknown> = { ...changedNames(names, entry.name) };
     if (tab === 'departments' && prefix.trim() !== (entry.prefix ?? ''))
       input.prefix = prefix.trim();
+    if (isDepartment && seasoned !== !!entry.hasSeasons) input.hasSeasons = seasoned;
     if (tab === 'units') input.pieces = Math.max(1, Math.floor(Number(pieces) || 1));
     if (isDepartment && stores.length && [...places].sort().join() !== [...where].sort().join())
       input.warehouseIds = places;
@@ -484,6 +502,16 @@ function EntryRow({
                 value={prefix}
                 onChange={(e) => setPrefix(e.target.value)}
               />
+            </label>
+          )}
+          {tab === 'departments' && (
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={seasoned}
+                onChange={(e) => setSeasoned(e.target.checked)}
+              />
+              {t('setup.hasSeasons')}
             </label>
           )}
           {tab === 'units' && (
@@ -513,6 +541,9 @@ function EntryRow({
             <Badge tone="info">
               <span dir="ltr">{entry.prefix}</span>
             </Badge>
+          )}
+          {isDepartment && entry.hasSeasons && (
+            <Badge tone="neutral">{t('setup.hasSeasons')}</Badge>
           )}
           {entry.isCurrent && <Badge tone="brand">{t('setup.currentSeason')}</Badge>}
           {entry.isActive === false && <Badge>{t('setup.closed')}</Badge>}
@@ -568,6 +599,7 @@ function EntryRow({
                   onClick={() => {
                     setNames(namesFrom(entry.name));
                     setPrefix(entry.prefix ?? '');
+                    setSeasoned(!!entry.hasSeasons);
                     setPieces(String(entry.pieces ?? 1));
                     setPlaces(where);
                     setEditing(true);

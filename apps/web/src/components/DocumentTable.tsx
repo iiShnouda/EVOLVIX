@@ -110,7 +110,11 @@ export function DocumentTable({
           {
             key: 'department',
             label: 'invoice.department',
-            cell: (d) => d.departmentName ?? '',
+            // With its season, when it names one (owner, 2026-11-10).
+            cell: (d) =>
+              [d.departmentName, d.seasonKind ? t(`seasonKind.${d.seasonKind}`) : null]
+                .filter(Boolean)
+                .join(' · '),
           } satisfies Column,
         ]
       : []),
