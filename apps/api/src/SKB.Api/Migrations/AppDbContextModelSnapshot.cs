@@ -2849,6 +2849,12 @@ namespace SKB.Api.Migrations
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
+                    b.Property<int?>("MoneyHistoryDays")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("NoMoneyAccounts")
+                        .HasColumnType("boolean");
+
                     b.PrimitiveCollection<List<string>>("OtherPhoneLabels")
                         .IsRequired()
                         .HasColumnType("text[]");

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  formatDate,
   formatDateTime,
   formatMoney,
+  formatTime,
   toMinor,
   type CashHandover,
   type TranslationKey,
@@ -12,6 +14,8 @@ import { Sheet } from '../components/Sheet';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
+import { TableColumns } from '../components/TableColumns';
+import { useDeviceInfo } from '../lib/device';
 import { useCashHandovers, useHandoverBoxes, useHandoverStep, useSendCash } from '../lib/queries';
 
 const input =
@@ -40,7 +44,10 @@ export function HandoversPage() {
   const [params, setParams] = useSearchParams();
   const side = (params.get('side') ?? (can('cash:handover_receive') ? 'in' : 'out')) as Side;
   const [status, setStatus] = useState('');
-  const list = useCashHandovers(side, status);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const list = useCashHandovers(side, status, { from, to });
+  const { deviceClass } = useDeviceInfo();
 
   return (
     <div className="space-y-5">
@@ -81,6 +88,26 @@ export function HandoversPage() {
             ))}
           </select>
         </label>
+        <label className="block shrink-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('money.from')}</span>
+          <input
+            type="date"
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+        <label className="block shrink-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('money.to')}</span>
+          <input
+            type="date"
+            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
       </div>
       {list.isLoading ? (
         <div className="grid place-items-center py-10">
@@ -90,6 +117,8 @@ export function HandoversPage() {
         <Card>
           <EmptyState title={t('hand.none')} icon="receipts" />
         </Card>
+      ) : deviceClass === 'desktop' ? (
+        <HandoverTable rows={list.data} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {list.data.map((h) => (
@@ -213,6 +242,169 @@ function SendCard({ initialFrom }: { initialFrom: string }) {
         </Button>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Every handover in columns (owner, 2026-11-10: "everything in columns, they show the detail
+ * better"): number, from which box and branch, to which, the amount, its state, who sent it and
+ * when, who received or called it off and when, why, the notes and the transfer voucher.
+ */
+function HandoverTable({ rows }: { rows: CashHandover[] }) {
+  const { t, locale } = useT();
+  const [cancelling, setCancelling] = useState<CashHandover | null>(null);
+  const step = useHandoverStep();
+  const when = (iso: string | null | undefined) =>
+    iso ? `${formatDate(iso, locale)} ${formatTime(iso, locale)}` : '';
+  const total = rows.reduce((sum, h) => sum + (h.status === 'CANCELLED' ? 0 : h.amount), 0);
+  const cell = 'p-2 align-top';
+  return (
+    <Card padded={false} className="overflow-hidden">
+      {step.error && <p className="p-3 text-sm text-destructive">{errorText(t, step.error)}</p>}
+      <TableColumns id="handovers" className="pt-2">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1200px] text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className={`${cell} text-start font-medium`}>{t('hand.number')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.from')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.fromBranch')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.to')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.toBranch')}</th>
+                <th className={`${cell} text-end font-medium`}>{t('common.amount')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('common.status')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.sentBy')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.sentAt')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.doneBy')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.doneAt')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.reason')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('invoice.notes')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.voucher')}</th>
+                <th className={`${cell} text-start font-medium`}>{t('hand.actions')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {rows.map((h) => (
+                <tr key={h.id} className="hover:bg-surface-2/60">
+                  <td className={`${cell} whitespace-nowrap tnum`}>
+                    <bdi>{h.number}</bdi>
+                  </td>
+                  <td className={cell}>{h.fromAccountName}</td>
+                  <td className={`${cell} text-muted`}>{h.fromBranchName}</td>
+                  <td className={cell}>{h.toAccountName}</td>
+                  <td className={`${cell} text-muted`}>{h.toBranchName}</td>
+                  <td
+                    className={`${cell} whitespace-nowrap text-end font-semibold tnum ${h.status === 'CANCELLED' ? 'text-faint line-through' : ''}`}
+                  >
+                    {formatMoney(h.amount, h.currency, locale)}
+                  </td>
+                  <td className={cell}>
+                    <Badge tone={STATUS_TONE[h.status]}>{t(`hand.status.${h.status}`)}</Badge>
+                  </td>
+                  <td className={cell}>{h.sentByName}</td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>{when(h.sentAt)}</td>
+                  <td className={cell}>{h.doneByName ?? ''}</td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>{when(h.doneAt)}</td>
+                  <td className={`${cell} text-muted`}>
+                    <bdi>{h.reason ?? ''}</bdi>
+                  </td>
+                  <td className={`${cell} text-muted`}>
+                    <bdi>{h.notes ?? ''}</bdi>
+                  </td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>
+                    <bdi>{h.voucherNumber ?? ''}</bdi>
+                  </td>
+                  <td className={`${cell} whitespace-nowrap`} data-noprint>
+                    <div className="flex gap-1">
+                      {h.canReceive && (
+                        <Button
+                          size="sm"
+                          icon="check"
+                          loading={step.isPending}
+                          onClick={() => step.mutate({ id: h.id, step: 'receive' })}
+                        >
+                          {t('hand.receive')}
+                        </Button>
+                      )}
+                      {h.canCancel && (
+                        <Button size="sm" variant="ghost" onClick={() => setCancelling(h)}>
+                          {t('hand.cancel')}
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-surface-2 font-semibold">
+              <tr>
+                <td className={cell}>{t('ledger.total')}</td>
+                <td className={cell} />
+                <td className={cell} />
+                <td className={cell} />
+                <td className={cell} />
+                <td className={`${cell} whitespace-nowrap text-end tnum`}>
+                  {rows[0] ? formatMoney(total, rows[0].currency, locale) : ''}
+                </td>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <td key={i} className={cell} />
+                ))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </TableColumns>
+      {cancelling && <CancelSheet h={cancelling} step={step} onClose={() => setCancelling(null)} />}
+    </Card>
+  );
+}
+
+function CancelSheet({
+  h,
+  step,
+  onClose,
+}: {
+  h: CashHandover;
+  step: ReturnType<typeof useHandoverStep>;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const [reason, setReason] = useState('');
+  return (
+    <Sheet
+      title={`${t('hand.cancel')} ${h.number}`}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+    >
+      <p className="text-sm">{t('hand.cancelAsk')}</p>
+      <label className="mt-3 block">
+        <span className="mb-1 block text-xs text-muted">{t('hand.reason')}</span>
+        <input
+          className={input}
+          value={reason}
+          maxLength={300}
+          autoFocus
+          onChange={(e) => setReason(e.target.value)}
+        />
+      </label>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button
+          variant="danger"
+          loading={step.isPending}
+          onClick={() =>
+            step.mutate(
+              { id: h.id, step: 'cancel', reason: reason.trim() || undefined },
+              { onSuccess: onClose },
+            )
+          }
+        >
+          {t('hand.cancel')}
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 

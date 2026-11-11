@@ -364,6 +364,8 @@ export interface AuthUser {
   departmentIds?: string[] | null;
   /** The most discount they may give (% of a line's worth); null = no limit. */
   maxDiscountPercent?: number | null;
+  /** How many days back they see money that moved; null = everything. */
+  moneyHistoryDays?: number | null;
 }
 
 export interface BranchOption {
@@ -1111,6 +1113,14 @@ export interface MoneyMovement {
   notes: string | null;
   createdByName: string;
   voucherId: string | null;
+  /** The document behind it, to open it: SALES_INVOICE, RECEIPT, TRANSFER, NOTE… */
+  documentId?: string | null;
+  documentKind?: string | null;
+  /** Where the money came from or went to: CUSTOMER, SUPPLIER, CARRIER, ACCOUNT, EXPENSE, EMPLOYEE, SALARIES. */
+  counterpartKind?: string | null;
+  counterpartName?: string | null;
+  counterpartCode?: number | null;
+  branchName?: string | null;
 }
 
 /** An account's movements over a period; one day = the daily cash report. */
@@ -1123,6 +1133,8 @@ export interface AccountStatement {
   totalOut: number;
   closing: number;
   movements: MoneyMovement[];
+  /** The first day the person sees money of (their access); null = from the start. */
+  earliest?: string | null;
 }
 
 export interface VoucherLine {
@@ -1907,6 +1919,10 @@ export interface StaffMember {
   departmentIds?: string[];
   /** Their own discount limit (%); null = the company's. */
   maxDiscountPercent?: number | null;
+  /** No cash box, bank or wallet at all. */
+  noMoneyAccounts?: boolean;
+  /** How many days back they see money that moved; null = everything. */
+  moneyHistoryDays?: number | null;
 }
 
 /** PUT /staff/{id}/access: what one person may work with (every field replaces what was there). */
@@ -1919,6 +1935,10 @@ export interface StaffAccessInput {
   departmentIds: string[];
   /** null = the company's limit. */
   maxDiscountPercent: number | null;
+  /** No cash box, bank or wallet at all. */
+  noMoneyAccounts?: boolean;
+  /** How many days back they see money that moved; null = everything. */
+  moneyHistoryDays?: number | null;
 }
 
 export interface RoleInfo {
@@ -2144,6 +2164,9 @@ export interface LedgerLine {
   /** The document behind the line, to open it, and what it is (SALES_INVOICE, RECEIPT, NOTE…). */
   documentId?: string | null;
   documentKind?: string | null;
+  /** Who posted it, and the accounts on the other side of its entry. */
+  createdByName?: string | null;
+  counterpart?: string | null;
 }
 
 /** One item line of an invoice or return on a statement (no cost). */

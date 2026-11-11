@@ -328,6 +328,9 @@ public sealed class StaffController : ControllerBase
             return Bad("department_not_found", "A department was not found.");
         if (req.MaxDiscountPercent is < 0 or > 100)
             return Bad("bad_percent", "A discount limit is between 0% and 100%.");
+        if (req.MoneyHistoryDays is < 1 or > 3660)
+            return Bad("bad_history_days", "The days of money history are between 1 and 3660.");
+        if (req.NoMoneyAccounts) accountIds = new List<Guid>();
         if (warehouseIds is null) return Bad("warehouse_not_found", "A warehouse was not found.");
         if (accountIds is null) return Bad("account_not_found", "A money account was not found.");
         if (branchIds.Count + warehouseIds.Count + accountIds.Count > 500) return Bad("too_many", "That's too many.");
@@ -353,11 +356,13 @@ public sealed class StaffController : ControllerBase
             && (warehouseIds.Count == 0 || warehouseIds.Any(w => !myWarehouses.Contains(w))))
             return Forbidden("not_your_warehouse", "You can only give warehouses you use yourself.");
         if (Access.MoneyAccounts(User) is { } myAccounts
-            && (accountIds.Count == 0 || accountIds.Any(a => !myAccounts.Contains(a))))
+            && ((accountIds.Count == 0 && !req.NoMoneyAccounts) || accountIds.Any(a => !myAccounts.Contains(a))))
             return Forbidden("not_your_account", "You can only give money accounts you use yourself.");
         if (Access.Departments(User) is { } myDepartments
             && (departmentIds.Count == 0 || departmentIds.Any(d => !myDepartments.Contains(d))))
             return Forbidden("not_your_department", "You can only give departments you work in yourself.");
+        if (Access.MoneyHistoryDays(User) is int myDays && (req.MoneyHistoryDays ?? int.MaxValue) > myDays)
+            return Forbidden("over_your_history", $"You can give up to your own {myDays} days of money history.");
         if (Access.MaxDiscount(User) is int myMax)
         {
             var theirMax = req.MaxDiscountPercent
@@ -372,6 +377,8 @@ public sealed class StaffController : ControllerBase
         staff.MoneyAccountIds = accountIds;
         staff.DepartmentIds = departmentIds;
         staff.MaxDiscountPercent = req.MaxDiscountPercent;
+        staff.NoMoneyAccounts = req.NoMoneyAccounts;
+        staff.MoneyHistoryDays = req.MoneyHistoryDays;
         await _db.SaveChangesAsync();
         await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == id));
         await AuditAsync("access", "staff", id);
@@ -593,7 +600,8 @@ public sealed class StaffController : ControllerBase
         s.DepartmentIds.Select(x => x.ToString()).ToArray(), s.MaxDiscountPercent, s.Code,
         s.CustomRoleId?.ToString(), s.CustomRole?.Name, s.OtherPhones.ToArray(),
         s.OtherPhones.Select((_, i) => i < s.OtherPhoneLabels.Count ? s.OtherPhoneLabels[i] : "").ToArray(),
-        s.PasswordNote is not null);
+        s.PasswordNote is not null, s.Role != Role.OWNER && s.NoMoneyAccounts,
+        s.Role == Role.OWNER ? null : s.MoneyHistoryDays);
 
     private static string? Clean(string? s, int max)
     {

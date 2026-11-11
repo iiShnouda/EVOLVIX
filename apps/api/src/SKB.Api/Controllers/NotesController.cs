@@ -72,7 +72,8 @@ public sealed class NotesController : ControllerBase
     public async Task<ActionResult<PaginatedDto<NoteDto>>> List(
         [FromQuery] string? direction = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
         [FromQuery] bool? open = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null, [FromQuery] string? kind = null, [FromQuery] string? dueFrom = null,
+        [FromQuery] string? dueTo = null, [FromQuery] string? branchId = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -90,6 +91,11 @@ public sealed class NotesController : ControllerBase
         if (Enum.TryParse<NoteStatus>(status, true, out var st)) q = q.Where(n => n.Status == st);
         if (Guid.TryParse(partyId, out var p)) q = q.Where(n => n.PartyId == p || n.EndorsedToId == p);
         if (open == true) q = q.Where(n => Open.Contains(n.Status));
+        if (Enum.TryParse<NoteKind>(kind, true, out var k)) q = q.Where(n => n.Kind == k);
+        if (Guid.TryParse(branchId, out var bid)) q = q.Where(n => n.BranchId == bid);
+        // Due dates are calendar days (00:00 UTC).
+        if (CompanyClock.ParseDay(dueFrom) is DateOnly dueA) q = q.Where(n => n.DueDate >= CompanyClock.AsDate(dueA));
+        if (CompanyClock.ParseDay(dueTo) is DateOnly dueB) q = q.Where(n => n.DueDate <= CompanyClock.AsDate(dueB));
         var total = await q.CountAsync();
         var rows = await WithDetails(q).OrderBy(n => n.DueDate).ThenBy(n => n.Ref)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
@@ -134,7 +140,8 @@ public sealed class NotesController : ControllerBase
     public async Task<ActionResult<PortfolioDto[]>> Portfolios()
     {
         var q = _db.Portfolios.AsNoTracking().Include(p => p.Account).Include(p => p.Branch).Include(p => p.CreatedBy)
-            .Include(p => p.Notes).InBranches(User, p => p.BranchId);
+            .Include(p => p.Notes).InBranches(User, p => p.BranchId)
+            .Where(p => p.CreatedAt >= (Access.MoneySince(User) ?? DateTime.MinValue));
         var rows = await q.OrderByDescending(p => p.CreatedAt).Take(200).AsSplitQuery().ToListAsync();
         var currency = await CurrencyAsync();
         return Ok(rows.Select(p => new PortfolioDto(p.Id.ToString(), p.Number, Loc.Name(p.Account), Loc.Name(p.Branch),
@@ -565,7 +572,17 @@ public sealed class NotesController : ControllerBase
 
     // ------------------------------------------------------------------ helpers
 
-    private IQueryable<Note> Scoped() => _db.Notes.InBranches(User, n => n.BranchId);
+    /// <summary>
+    /// The branch's papers. Someone who sees only the last days of money (their access) sees the papers
+    /// still open and those with a step in those days; older finished ones are not theirs to see.
+    /// </summary>
+    private IQueryable<Note> Scoped()
+    {
+        var q = _db.Notes.InBranches(User, n => n.BranchId);
+        if (Access.MoneySince(User) is DateTime since)
+            q = q.Where(n => Open.Contains(n.Status) || n.Events.Any(e => e.CreatedAt >= since));
+        return q;
+    }
 
     private static IQueryable<Note> WithDetails(IQueryable<Note> q) => q.AsNoTracking()
         .Include(n => n.Party).Include(n => n.EndorsedTo).Include(n => n.Branch).Include(n => n.Portfolio)

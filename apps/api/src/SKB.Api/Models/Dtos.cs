@@ -10,7 +10,7 @@ public record AuthUserDto(
     string Id, string FullName, string Email, string Role, string BranchId, string[] Permissions,
     bool AllBranches = false, BranchOptionDto[]? Branches = null, string[]? WarehouseIds = null,
     string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null,
-    string? RoleName = null);
+    string? RoleName = null, int? MoneyHistoryDays = null);
 
 public record BranchOptionDto(string Id, string Name, bool IsActive = true);
 
@@ -782,7 +782,8 @@ public record StaffDto(
     bool? AllBranches = null, bool SeesAllBranches = false, string[]? BranchIds = null, string[]? WarehouseIds = null,
     string[]? MoneyAccountIds = null, string[]? DepartmentIds = null, int? MaxDiscountPercent = null, int Code = 0,
     string? CustomRoleId = null, string? CustomRoleName = null, string[]? OtherPhones = null,
-    string[]? OtherPhoneLabels = null, bool HasPasswordNote = false);
+    string[]? OtherPhoneLabels = null, bool HasPasswordNote = false, bool NoMoneyAccounts = false,
+    int? MoneyHistoryDays = null);
 
 /// <summary>
 /// What one person may work with; every field replaces what was there. No departments = every
@@ -790,7 +791,8 @@ public record StaffDto(
 /// </summary>
 public record StaffAccessRequest(
     bool? AllBranches, string[]? BranchIds, string[]? WarehouseIds, string[]? MoneyAccountIds,
-    string[]? DepartmentIds = null, int? MaxDiscountPercent = null);
+    string[]? DepartmentIds = null, int? MaxDiscountPercent = null, bool NoMoneyAccounts = false,
+    int? MoneyHistoryDays = null);
 
 /// <param name="CustomRoleId">A role the company made; the person then works like its base role.</param>
 public record CreateStaffRequest(
@@ -872,12 +874,13 @@ public record CancelHandoverRequest(string? Reason = null);
 public record MoneyMovementDto(
     string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,
     string? Reference, string? MethodReference, string? PartyName, string? Notes, string CreatedByName,
-    string? VoucherId);
+    string? VoucherId, string? DocumentId = null, string? DocumentKind = null, string? CounterpartKind = null,
+    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null);
 
 /// <summary>An account's movements over a period (a day = the daily cash report, حركة اليوم).</summary>
 public record AccountStatementDto(
     MoneyAccountDto Account, string From, string To, long Opening, long TotalIn, long TotalOut, long Closing,
-    MoneyMovementDto[] Movements);
+    MoneyMovementDto[] Movements, string? Earliest = null);
 
 public record VoucherLineRequest(string? Method, string? AccountId, long Amount, string? Reference = null);
 
@@ -944,7 +947,7 @@ public record LedgerLineDto(
     string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
     string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
     StatementItemDto[]? Items = null, int EntrySerial = 0, string? DepartmentName = null, string? WarehouseName = null,
-    string? DocumentId = null, string? DocumentKind = null);
+    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null);
 
 /// <summary>One item line of an invoice or return on a statement (no cost).</summary>
 public record StatementItemDto(

@@ -55,9 +55,21 @@ export function StatementPage() {
   const can = useCan();
   const [params, setParams] = useSearchParams();
   const kinds = KINDS.filter((k) => can(k.permission));
-  const [kind, setKind] = useState<Kind>('CUSTOMER');
+  // `?kind=CASH&account=<id>` opens a cash box's or bank's (the Cash & Banks page's button).
+  const [kind, setKind] = useState<Kind>(() => {
+    const asked = params.get('kind') as Kind | null;
+    return asked && KINDS.some((k) => k.kind === asked) ? asked : 'CUSTOMER';
+  });
   const [party, setParty] = useState<Party | null>(null);
-  const [pick, setPick] = useState('');
+  const [pick, setPick] = useState(() => params.get('account') ?? '');
+  const askedAccount = params.get('account');
+  const [seenAccount, setSeenAccount] = useState(askedAccount);
+  if (askedAccount && askedAccount !== seenAccount) {
+    setSeenAccount(askedAccount);
+    const asked = params.get('kind') as Kind | null;
+    if (asked && KINDS.some((k) => k.kind === asked)) setKind(asked);
+    setPick(askedAccount);
+  }
   const linked = params.get('party');
   const [loaded, setLoaded] = useState<string | null>(null);
   if (linked && linked !== loaded && linked !== party?.id) {

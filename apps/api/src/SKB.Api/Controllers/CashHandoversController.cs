@@ -43,7 +43,8 @@ public sealed class CashHandoversController : ControllerBase
     /// SENT (on its way), RECEIVED, CANCELLED; <paramref name="side"/>: "in" (to my boxes) or "out".
     /// </summary>
     [HttpGet("cash-handovers")]
-    public async Task<ActionResult<CashHandoverDto[]>> List([FromQuery] string? status = null, [FromQuery] string? side = null)
+    public async Task<ActionResult<CashHandoverDto[]>> List([FromQuery] string? status = null, [FromQuery] string? side = null,
+        [FromQuery] string? from = null, [FromQuery] string? to = null)
     {
         if (!User.HasAny(Permissions.CashHandoverSend, Permissions.CashHandoverReceive, Permissions.MoneyAccounts))
             return Forbid();
@@ -56,6 +57,10 @@ public sealed class CashHandoversController : ControllerBase
             _ => q.Where(h => mine.Contains(h.ToAccountId) || mine.Contains(h.FromAccountId)),
         };
         if (Enum.TryParse<HandoverStatus>(status, true, out var st)) q = q.Where(h => h.Status == st);
+        // Sent between two company days; no further back than the person sees money (their access).
+        if (CompanyClock.ParseDay(from) is DateOnly fromDay) q = q.Where(h => h.SentAt >= CompanyClock.StartOf(fromDay));
+        if (CompanyClock.ParseDay(to) is DateOnly toDay) q = q.Where(h => h.SentAt < CompanyClock.StartOf(toDay.AddDays(1)));
+        if (Access.MoneySince(User) is DateTime since) q = q.Where(h => h.SentAt >= since || h.Status == HandoverStatus.SENT);
         var rows = await q.OrderByDescending(h => h.SentAt).Take(500).ToListAsync();
         var currency = await CurrencyAsync();
         return Ok(rows.Select(h => ToDto(h, currency)).ToArray());
@@ -194,7 +199,9 @@ public sealed class CashHandoversController : ControllerBase
     private async Task<CashHandover?> LockAsync(Guid id)
     {
         var mine = _money.Visible(User).Select(a => a.Id);
-        if (!await _db.CashHandovers.AnyAsync(h => h.Id == id && (mine.Contains(h.FromAccountId) || mine.Contains(h.ToAccountId))))
+        var since = Access.MoneySince(User) ?? DateTime.MinValue;
+        if (!await _db.CashHandovers.AnyAsync(h => h.Id == id && (mine.Contains(h.FromAccountId) || mine.Contains(h.ToAccountId))
+                                                   && (h.SentAt >= since || h.Status == HandoverStatus.SENT)))
             return null;
         return await _db.CashHandovers.FromSqlInterpolated($"SELECT * FROM \"CashHandovers\" WHERE \"Id\" = {id} FOR UPDATE")
             .FirstOrDefaultAsync();
