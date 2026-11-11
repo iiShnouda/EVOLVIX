@@ -1720,13 +1720,19 @@ export function useDeleteMoneyAccount() {
 // Cash handovers (owner, 2026-10-02): a box's cash sent up, confirmed where it arrives
 // ---------------------------------------------------------------------------
 
-export function useCashHandovers(side: '' | 'in' | 'out', status: string) {
+export function useCashHandovers(
+  side: '' | 'in' | 'out',
+  status: string,
+  period: { from?: string; to?: string } = {},
+) {
   return useQuery({
-    queryKey: ['money', 'handovers', side, status],
+    queryKey: ['money', 'handovers', side, status, period.from ?? '', period.to ?? ''],
     queryFn: () => {
       const q = new URLSearchParams();
       if (side) q.set('side', side);
       if (status) q.set('status', status);
+      if (period.from) q.set('from', period.from);
+      if (period.to) q.set('to', period.to);
       return api.get<CashHandover[]>(`/cash-handovers?${q}`);
     },
   });
@@ -1899,8 +1905,19 @@ export function useNotes(params: {
   status?: string;
   /** A paper's number, our reference, bank, drawer or the party's name or code. */
   search?: string;
+  kind?: string;
+  partyId?: string;
+  /** Due between two days (yyyy-mm-dd). */
+  dueFrom?: string;
+  dueTo?: string;
+  page?: number;
 }) {
   const query = new URLSearchParams({ pageSize: '100' });
+  if (params.kind) query.set('kind', params.kind);
+  if (params.partyId) query.set('partyId', params.partyId);
+  if (params.dueFrom) query.set('dueFrom', params.dueFrom);
+  if (params.dueTo) query.set('dueTo', params.dueTo);
+  if (params.page && params.page > 1) query.set('page', String(params.page));
   if (params.direction) query.set('direction', params.direction);
   if (params.status) query.set('status', params.status);
   if (params.search?.trim()) query.set('search', params.search.trim());
