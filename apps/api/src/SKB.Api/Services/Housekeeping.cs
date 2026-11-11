@@ -52,6 +52,8 @@ public sealed class Housekeeping : BackgroundService
         var sessions = await db.Sessions.Where(s => s.ExpiresAt < ended || (s.RevokedAt != null && s.RevokedAt < ended))
             .ExecuteDeleteAsync(stop);
         var drafts = await db.WorkDrafts.Where(d => d.UpdatedAt < now - DraftsController.KeepFor).ExecuteDeleteAsync(stop);
+        // Columns left off paper only are no longer a choice (owner, 2026-11-10): prints follow the screen.
+        await db.StaffPreferences.Where(p => p.Key.StartsWith("columns:print:")).ExecuteDeleteAsync(stop);
         if (notes + sessions + drafts > 0)
             _log.LogInformation("Housekeeping: {Notes} notifications, {Sessions} sessions, {Drafts} drafts cleared",
                 notes, sessions, drafts);

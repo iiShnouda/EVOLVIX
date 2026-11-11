@@ -25,8 +25,8 @@ import { useHiddenColumns } from '../lib/queries';
  * as a grid whose cells take their place from CSS `order` (row by row), so no table needs a change.
  * A table with cells spanning several columns keeps its order.
  *
- * Each column can also be left off the printed page only (owner, 2026-10-22: "choose which column I
- * can print, on every page"), kept per person the same way.
+ * A printout carries the columns as they are shown (owner, 2026-11-10: the separate "print this
+ * column" choice is gone).
  */
 export function TableColumns({
   id,
@@ -63,7 +63,6 @@ export function TableColumns({
   const [headers, setHeaders] = useState<string[]>([]);
   const [spans, setSpans] = useState(false);
   const [hidden, setHidden] = useHiddenColumns(id);
-  const [noPrint, setNoPrint] = useHiddenColumns(`print:${id}`);
   const [savedOrder, setOrder] = useHiddenColumns(`order:${id}`);
   const [savedWidths, setWidths] = useHiddenColumns(`width:${id}`);
   // While a column's edge is being dragged, its width before it is saved.
@@ -98,21 +97,9 @@ export function TableColumns({
   const positions = headers
     .map((h, i) => (h && hidden.includes(h) ? i + 1 : 0))
     .filter((n) => n > 0);
-  const printOff = headers
-    .map((h, i) => (h && noPrint.includes(h) && !hidden.includes(h) ? i + 1 : 0))
-    .filter((n) => n > 0);
-  const css = [
-    ...positions.map(
-      (n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n}){display:none}`,
-    ),
-    ...(printOff.length
-      ? [
-          `@media print{${printOff
-            .map((n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n})`)
-            .join(',')},[data-cols="${scope}"] [data-print-off]{display:none!important}}`,
-        ]
-      : []),
-  ].join('\n');
+  const css = positions
+    .map((n) => `[data-cols="${scope}"] tr:not([data-span]) > :nth-child(${n}){display:none}`)
+    .join('\n');
   // Columns with a unique, non-empty header can move; the others keep their place.
   const movable = headers.filter((h) => h && headers.indexOf(h) === headers.lastIndexOf(h));
   const known = savedOrder.filter((h) => movable.includes(h));
@@ -197,13 +184,16 @@ export function TableColumns({
 
   const sortAt = sort ? headers.indexOf(sort.label) : -1;
   // Every title shows it sorts (owner, 2026-10-21: the arrows on each column); the one in use
-  // shows which way.
+  // shows which way, in the theme's colour (owner, 2026-11-10: the arrows were not clear). The
+  // arrows are drawn shapes, the same on every device and font.
+  const th = `${w} thead tr:first-child > th`;
   const sortCss =
-    `${w} thead tr:first-child > th:not(:empty):not(:has(input))::after{content:" \\21C5";font-size:9px;opacity:.35}` +
+    `${th}:not(:empty):not(:has(input))::after{content:"";${arrow(SORT_BOTH)}opacity:.6}` +
+    `${th}:not(:empty):not(:has(input)):hover::after{opacity:1}` +
     (sortAt >= 0
-      ? `${w} thead tr:first-child > th:nth-child(${sortAt + 1})::after{content:"${
-          sort!.dir === -1 ? ' \\25BC' : ' \\25B2'
-        }";font-size:9px;opacity:.8}`
+      ? `${th}:nth-child(${sortAt + 1}){color:var(--c-brand)}${th}:nth-child(${sortAt + 1})::after{${arrow(
+          sort!.dir === -1 ? SORT_DOWN : SORT_UP,
+        )}background-color:var(--c-brand);opacity:1}`
       : '');
 
   // The rows on the screen in the chosen order, kept so as rows come and go.
@@ -264,7 +254,14 @@ export function TableColumns({
   function onPointerMove(e: ReactPointerEvent) {
     if (e.pointerType !== 'mouse' || e.buttons || !box.current) return;
     const cell = headerCell(e.target);
-    box.current.style.cursor = cell && !spans && nearEdge(cell.th, e.clientX) ? 'col-resize' : '';
+    // A title's edge resizes; the rest of a title sorts.
+    box.current.style.cursor = !cell
+      ? ''
+      : !spans && nearEdge(cell.th, e.clientX)
+        ? 'col-resize'
+        : headers[cell.index] && !cell.th.querySelector('input')
+          ? 'pointer'
+          : '';
   }
   function onPointerDown(e: ReactPointerEvent) {
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
@@ -342,23 +339,15 @@ export function TableColumns({
 
   // Rows that span columns (a totals label over several): hide their one-column cells that sit
   // under a hidden column; a cell spanning several stays.
-  const hiddenKey = `${positions.join(',')}|${printOff.join(',')}`;
+  const hiddenKey = positions.join(',');
   useLayoutEffect(() => {
     const apply = () => {
       const off = new Set(positions);
-      const offPrint = new Set(printOff);
-      // The title of a column left off paper says so: the printout's copy leaves it out (print.ts).
-      box.current?.querySelectorAll('thead tr:first-child > th').forEach((th, i) => {
-        if (offPrint.has(i + 1)) th.setAttribute('data-print-off', '');
-        else th.removeAttribute('data-print-off');
-      });
       box.current?.querySelectorAll('tr[data-span]').forEach((row) => {
         let col = 1;
         for (const cell of [...row.children] as HTMLTableCellElement[]) {
           const span = cell.colSpan || 1;
           cell.style.display = span === 1 && off.has(col) ? 'none' : '';
-          if (span === 1 && offPrint.has(col)) cell.setAttribute('data-print-off', '');
-          else cell.removeAttribute('data-print-off');
           col += span;
         }
       });
@@ -375,10 +364,6 @@ export function TableColumns({
     setHidden(hidden.includes(label) ? hidden.filter((h) => h !== label) : [...hidden, label]);
   }
 
-  function togglePrint(label: string) {
-    setNoPrint(noPrint.includes(label) ? noPrint.filter((h) => h !== label) : [...noPrint, label]);
-  }
-
   return (
     <div className={className}>
       {(choices.length > 1 || toolbar) && (
@@ -388,12 +373,7 @@ export function TableColumns({
               choices={choices}
               hidden={hidden}
               onToggle={toggle}
-              noPrint={noPrint}
-              onTogglePrint={togglePrint}
-              onReset={() => {
-                setHidden([]);
-                setNoPrint([]);
-              }}
+              onReset={() => setHidden([])}
               onMove={onMove ?? (spans ? undefined : move)}
               ordered={!onMove && known.length > 0}
               onResetOrder={() => setOrder([])}
@@ -442,8 +422,6 @@ function ColumnMenu({
   choices,
   hidden,
   onToggle,
-  noPrint,
-  onTogglePrint,
   onReset,
   onMove,
   ordered,
@@ -454,9 +432,6 @@ function ColumnMenu({
   choices: string[];
   hidden: string[];
   onToggle: (label: string) => void;
-  /** Columns shown on the screen but left off the printed page. */
-  noPrint: string[];
-  onTogglePrint: (label: string) => void;
   onReset: () => void;
   onMove?: (label: string, step: -1 | 1) => void;
   /** The person has put the columns in their own order (offer to undo it). */
@@ -478,56 +453,39 @@ function ColumnMenu({
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
   const count = choices.filter((c) => hidden.includes(c)).length;
-  const offPrint = choices.filter((c) => noPrint.includes(c) && !hidden.includes(c)).length;
   return (
     <div ref={menu} className="relative shrink-0">
+      {/* A real button, clear in every theme (owner, 2026-11-10: the menu was hard to see). */}
       <button
         type="button"
-        className="flex h-7 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-surface-2 hover:text-fg"
+        className={`flex h-8 items-center gap-1.5 rounded-[var(--radius-app)] border bg-surface px-2.5 text-xs font-medium shadow-sm transition-colors hover:border-brand hover:text-brand ${
+          open ? 'border-brand text-brand' : 'border-line text-fg'
+        }`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
+        <Icon name="columns" size={15} />
         {t('list.columns')}
-        {count > 0 && <span className="tnum">({count})</span>}
-        {offPrint > 0 && (
-          <span className="inline-flex items-center gap-0.5 tnum">
-            <Icon name="print" size={12} />
-            {offPrint}
+        {count > 0 && (
+          <span className="rounded-full bg-brand-soft px-1.5 text-[11px] text-brand tnum">
+            {count}
           </span>
         )}
-        <Icon name="chevronDown" size={14} />
+        <Icon name="chevronDown" size={14} className={open ? 'rotate-180' : undefined} />
       </button>
       {open && (
         <div className="absolute start-0 z-30 mt-1 max-h-96 w-72 max-w-[calc(100vw-2rem)] overflow-auto rounded-[var(--radius-app)] border border-line bg-surface p-1 shadow-[var(--shadow-card)]">
-          <div className="flex items-center gap-1 px-2 pb-1 text-[11px] text-muted">
-            <span className="w-4 text-center" title={t('list.showColumn')}>
-              <Icon name="eye" size={13} />
-            </span>
-            <span className="w-4 text-center" title={t('list.printColumn')}>
-              <Icon name="print" size={13} />
-            </span>
-            <span className="ms-1">{t('list.showAndPrint')}</span>
-          </div>
           {choices.map((c, i) => (
             <div key={c} className="flex items-center gap-1 rounded-md hover:bg-surface-2">
-              <span className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 text-sm">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2 py-1.5 text-sm">
                 <input
                   type="checkbox"
                   className="w-4 shrink-0"
-                  aria-label={`${t('list.showColumn')} ${c}`}
                   checked={!hidden.includes(c)}
                   onChange={() => onToggle(c)}
                 />
-                <input
-                  type="checkbox"
-                  className="w-4 shrink-0"
-                  aria-label={`${t('list.printColumn')} ${c}`}
-                  disabled={hidden.includes(c)}
-                  checked={!hidden.includes(c) && !noPrint.includes(c)}
-                  onChange={() => onTogglePrint(c)}
-                />
-                <span className="ms-1 truncate">{c}</span>
-              </span>
+                <span className="truncate">{c}</span>
+              </label>
               {onMove && (
                 <>
                   <button
@@ -554,7 +512,7 @@ function ColumnMenu({
               )}
             </div>
           ))}
-          {(count > 0 || offPrint > 0) && (
+          {count > 0 && (
             <button
               type="button"
               className="mt-1 w-full rounded-md px-2 py-1.5 text-start text-xs text-brand hover:bg-surface-2"
@@ -590,6 +548,15 @@ function ColumnMenu({
   );
 }
 
+/** The sort arrows: both (the column sorts), or the one in use (up = smallest first). */
+const svg = (d: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 14'><path d='${d}'/></svg>`)}")`;
+const SORT_BOTH = svg('M5 0.5 9.5 5.5h-9zM0.5 8.5h9L5 13.5z');
+const SORT_UP = svg('M5 0.5 9.5 5.5h-9z');
+const SORT_DOWN = svg('M0.5 8.5h9L5 13.5z');
+const arrow = (shape: string) =>
+  `display:inline-block;width:.6em;height:.9em;margin-inline-start:.35em;vertical-align:-.1em;background-color:currentColor;-webkit-mask:${shape} center/contain no-repeat;mask:${shape} center/contain no-repeat;`;
+
 const collator = new Intl.Collator(['ar', 'en'], { numeric: true, sensitivity: 'base' });
 const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 
@@ -599,6 +566,21 @@ function sortValue(cell: Element | undefined): number | string {
     .replace(/[\u200e\u200f\u061c]/g, '')
     .replace(/[٠-٩]/g, (d) => String(ARABIC_DIGITS.indexOf(d)))
     .trim();
+  // A date (24/10/2026, maybe with its time) sorts by when it was, not by its first digits.
+  const date = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[,،]?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(
+    text,
+  );
+  if (date) {
+    const [, d, m, y, h = '0', mi = '0', s = '0'] = date;
+    return (
+      Number(y) * 1e10 +
+      Number(m) * 1e8 +
+      Number(d) * 1e6 +
+      Number(h) * 1e4 +
+      Number(mi) * 100 +
+      Number(s)
+    );
+  }
   const bare = text.replace(/ج\.م\.?|EGP|%|٪/g, '').replace(/[\s\u00a0]/g, '');
   if (/^[-−]?[\d,]*\.?\d+$/.test(bare)) return Number(bare.replace(/,/g, '').replace('−', '-'));
   return text;
