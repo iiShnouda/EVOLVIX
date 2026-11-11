@@ -3,6 +3,7 @@ import { ItemLink } from './ItemLink';
 import { DocumentActivity } from './DocumentActivity';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
+  amountInWords,
   formatDateHM,
   formatMoney,
   formatNumber,
@@ -28,7 +29,7 @@ import { useHiddenColumns, usePrintPaper } from '../lib/queries';
 import { StateBadge } from './StateBadge';
 
 /** The parts of a printed document a person may leave out (owner, 2026-10-01). */
-const PRINT_PARTS = [
+export const PRINT_PARTS = [
   'company',
   'party',
   'meta',
@@ -37,10 +38,30 @@ const PRINT_PARTS = [
   'totals',
   'notes',
   'staff',
+  // Each on its own (owner, 2026-11-10): the rep, the department, the delivery; the item code
+  // column; and under the items the previous balance, the total quantity and the amount in words.
+  'rep',
+  'department',
+  'delivery',
+  'itemCode',
+  'previous',
+  'quantity',
+  'words',
 ] as const;
 /** What a printout leaves out unless turned on (owner, 2026-10-02: the codes don't show). */
 const PRINT_EXTRAS = ['partyCode', 'repCode'] as const;
 type PrintPart = (typeof PRINT_PARTS)[number] | (typeof PRINT_EXTRAS)[number];
+/** The print options in the order and groups they are offered (owner, 2026-11-10). */
+const PRINT_GROUPS: { title: TranslationKey; parts: PrintPart[] }[] = [
+  { title: 'print.group.header', parts: ['company', 'states'] },
+  { title: 'print.group.party', parts: ['party', 'partyCode', 'delivery'] },
+  {
+    title: 'print.group.document',
+    parts: ['department', 'rep', 'repCode', 'meta', 'notes', 'staff'],
+  },
+  { title: 'print.group.lines', parts: ['lines', 'itemCode'] },
+  { title: 'print.group.totals', parts: ['totals', 'previous', 'quantity', 'words'] },
+];
 /** Type sizes of a printout, as a scale of the normal one. */
 export const PAPER_SIZES = { S: 0.9, M: 1, L: 1.15, XL: 1.3 } as const;
 export type PaperTextSize = keyof typeof PAPER_SIZES;
@@ -276,6 +297,12 @@ export function InvoicePaper({
   const anyLineDiscount = doc.lines.some((l) => l.discount > 0);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
+  const delivery =
+    shows('delivery') && !!doc.deliveryMethod && doc.deliveryMethod !== 'PICKUP' && !isPurchaseSide;
+  const withCode = shows('itemCode') && doc.lines.some((l) => l.productCode);
+  // What the customer owed before it: the server sends it only to whoever may see their balance.
+  const previous = shows('previous') ? (doc.previousBalance ?? null) : null;
+  const totalQuantity = doc.lines.reduce((n, l) => n + (l.unitQuantity || l.quantity), 0);
 
   return (
     <div
@@ -327,6 +354,20 @@ export function InvoicePaper({
               {t('return.against')}: <span className="font-medium text-fg">{doc.sourceNumber}</span>
             </p>
           )}
+          {shows('department') && doc.departmentName && (
+            <p>
+              {t('invoice.department')}:{' '}
+              <span className="font-medium text-fg">{doc.departmentName}</span>
+            </p>
+          )}
+          {shows('rep') && doc.repName && (
+            <p>
+              {t('invoice.rep')}:{' '}
+              <span className="font-medium text-fg">
+                <CodeName code={shows('repCode') ? doc.repCode : null} name={doc.repName} />
+              </span>
+            </p>
+          )}
           {shows('meta') && (
             <div>
               {doc.status === 'CANCELLED' && doc.cancelReason && (
@@ -339,20 +380,6 @@ export function InvoicePaper({
                 <p className="text-destructive">
                   {t('order.rejectedBecause')}{' '}
                   <span className="font-medium">{doc.rejectReason}</span>
-                </p>
-              )}
-              {doc.departmentName && (
-                <p>
-                  {t('invoice.department')}:{' '}
-                  <span className="font-medium text-fg">{doc.departmentName}</span>
-                </p>
-              )}
-              {doc.repName && (
-                <p>
-                  {t('invoice.rep')}:{' '}
-                  <span className="font-medium text-fg">
-                    <CodeName code={shows('repCode') ? doc.repCode : null} name={doc.repName} />
-                  </span>
                 </p>
               )}
               {doc.paidAccountName && doc.paidAmount > 0 && (
@@ -387,23 +414,28 @@ export function InvoicePaper({
         </div>
       )}
 
-      {shows('party') && (
-        <div className="mb-4 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
-          <p className="text-xs text-muted">
-            {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
-          </p>
-          <p className="font-medium">
-            <PartyLink
-              id={doc.partyId}
-              code={shows('partyCode') ? doc.partyCode : null}
-              name={doc.partyName}
-            />
-          </p>
-          {doc.deliveryMethod && doc.deliveryMethod !== 'PICKUP' && (
-            <div className="mt-2 border-t border-line pt-2 text-xs text-muted">
+      {/* The customer, and beside it how the goods reach them: each can be left out. */}
+      {(shows('party') || delivery) && (
+        <div className="mb-4 flex flex-wrap gap-2 text-sm">
+          {shows('party') && (
+            <div className="min-w-0 flex-1 basis-48 rounded-[var(--radius-app)] bg-surface-2 p-3">
+              <p className="text-xs text-muted">
+                {isPurchaseSide ? t('invoice.supplier') : t('sales.customer')}
+              </p>
+              <p className="font-medium">
+                <PartyLink
+                  id={doc.partyId}
+                  code={shows('partyCode') ? doc.partyCode : null}
+                  name={doc.partyName}
+                />
+              </p>
+            </div>
+          )}
+          {delivery && (
+            <div className="min-w-0 flex-1 basis-48 rounded-[var(--radius-app)] border border-line p-3 text-xs text-muted">
               <p>
                 {t('delivery.method')}:{' '}
-                <span className="font-medium text-fg">{t(`delivery.${doc.deliveryMethod}`)}</span>
+                <span className="font-medium text-fg">{t(`delivery.${doc.deliveryMethod!}`)}</span>
                 {doc.deliveryStatus && <> · {t(`delivery.status.${doc.deliveryStatus}`)}</>}
               </p>
               {(doc.carrierName || doc.driverName) && (
@@ -422,16 +454,22 @@ export function InvoicePaper({
         </div>
       )}
 
-      {/* Line items: quantity, price of one, its discount (only if any) and the total. */}
+      {/* Line items (owner, 2026-11-10): code, name, price of one, quantity, its discount (only
+          when a line has one) and the total. */}
       {shows('lines') && (
         <div className="overflow-hidden rounded-[var(--radius-app)] border border-line">
-          <TableColumns id="document.lines">
+          <TableColumns id="invoice.lines">
             <table className="w-full text-sm">
               <thead className="bg-surface-2 text-xs text-muted">
                 <tr>
-                  <th className="p-2 text-start font-medium">{t('inventory.products')}</th>
-                  <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
+                  {withCode && (
+                    <th className="w-px whitespace-nowrap p-2 text-start font-medium">
+                      {t('invoice.codeColumn')}
+                    </th>
+                  )}
+                  <th className="p-2 text-start font-medium">{t('invoice.itemName')}</th>
                   <th className="p-2 text-end font-medium">{t('sales.unitPrice')}</th>
+                  <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
                   {anyLineDiscount && (
                     <th className="p-2 text-end font-medium">{t('col.discount')}</th>
                   )}
@@ -441,6 +479,11 @@ export function InvoicePaper({
               <tbody className="divide-y divide-[var(--c-line)]">
                 {doc.lines.map((l) => (
                   <tr key={l.id}>
+                    {withCode && (
+                      <td className="whitespace-nowrap p-2 text-xs tnum">
+                        <bdi>{l.productCode}</bdi>
+                      </td>
+                    )}
                     <td className="p-2">
                       <ItemLink id={l.productId} name={l.productName} />
                       {l.warehouseName && (
@@ -455,6 +498,7 @@ export function InvoicePaper({
                         </span>
                       )}
                     </td>
+                    <td className="p-2 text-end tnum">{money(l.unitPrice)}</td>
                     <td className="p-2 text-end tnum">
                       {formatNumber(l.unitQuantity || l.quantity, locale)}{' '}
                       <span className="text-xs text-muted">{l.unitName}</span>
@@ -464,7 +508,6 @@ export function InvoicePaper({
                         </span>
                       )}
                     </td>
-                    <td className="p-2 text-end tnum">{money(l.unitPrice)}</td>
                     {anyLineDiscount && (
                       <td className="p-2 text-end tnum">
                         {l.discount > 0 ? money(l.discount) : ''}
@@ -487,8 +530,17 @@ export function InvoicePaper({
         </div>
       )}
 
-      {shows('totals') && (
+      {/* Under the items (owner, 2026-11-10): what was owed before, then how many pieces. */}
+      {(previous != null || shows('quantity')) && (
         <dl className="mt-4 space-y-1.5 text-sm">
+          {previous != null && <Row label={t('invoice.previousBalance')} value={money(previous)} />}
+          {shows('quantity') && (
+            <Row label={t('invoice.totalQuantity')} value={formatNumber(totalQuantity, locale)} />
+          )}
+        </dl>
+      )}
+      {shows('totals') && (
+        <dl className="mt-2 space-y-1.5 text-sm">
           <Row label={t('sales.subtotal')} value={money(doc.subtotal)} />
           {lineDiscounts > 0 && <Row label={t('sales.discount')} value={money(-lineDiscounts)} />}
           {/* The invoice's own discounts and additions, in the order they applied; tax only when
@@ -526,6 +578,12 @@ export function InvoicePaper({
             </>
           )}
         </dl>
+      )}
+      {/* The total in words, in the language it prints in. */}
+      {shows('words') && doc.grandTotal > 0 && (
+        <p className="mt-3 rounded-[var(--radius-app)] border border-line px-3 py-2 text-sm font-medium">
+          {amountInWords(doc.grandTotal, doc.currency, locale)}
+        </p>
       )}
       {shows('notes') && doc.notes && (
         <p className="mt-4 whitespace-pre-wrap rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
@@ -618,19 +676,25 @@ function PrintOptionsPanel({
         />
         <span className="font-bold">{t('print.bold')}</span>
       </label>
-      <div className="my-1 border-t border-line" />
-      {[...PRINT_PARTS, ...PRINT_EXTRAS].map((part) => (
-        <label
-          key={part}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2"
-        >
-          <input
-            type="checkbox"
-            checked={options.shows(part)}
-            onChange={() => onChange.toggle(part)}
-          />
-          {t(`print.${part}`)}
-        </label>
+      {PRINT_GROUPS.map((g) => (
+        <fieldset key={g.title} className="mt-1 border-t border-line pt-1">
+          <legend className="px-2 text-xs font-semibold text-muted">{t(g.title)}</legend>
+          <div className="grid grid-cols-2 gap-x-1 lg:grid-cols-1">
+            {g.parts.map((part) => (
+              <label
+                key={part}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-surface-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={options.shows(part)}
+                  onChange={() => onChange.toggle(part)}
+                />
+                {t(`print.${part}`)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       ))}
     </>
   );
