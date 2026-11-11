@@ -129,6 +129,11 @@ public sealed class SalesController : ControllerBase
         if (doc.Type == DocumentType.SALES_INVOICE
             && (await DocumentLists.StatesAsync(_db, new[] { doc.Id })).TryGetValue(doc.Id, out var st))
             dto = dto with { State = st.State, Owed = st.Owed };
+        // What the customer owed before it, for whoever may see their balance (owner, 2026-11-10).
+        if (doc.Party is not null && Mapper.MaySeeBalance(doc.Party.Types, User)
+            && (await PreviousBalance.ForAsync(_db, doc.PartyId, new[] { doc })).TryGetValue(doc.Id, out var before))
+            dto = dto with { PreviousBalance = before };
+        dto = await InvoiceLines.WithCodesAsync(_db, dto);
         return Ok(Costs.Guard(User, dto));
     }
 
@@ -281,10 +286,14 @@ public sealed class SalesController : ControllerBase
             docs.Where(d => d.Type == DocumentType.SALES_INVOICE).Select(d => d.Id).ToList());
         var invoices = new List<SalesDetailDto>();
         var returns = new List<SalesDetailDto>();
+        var before = Mapper.MaySeeBalance(party.Types, User)
+            ? await PreviousBalance.ForAsync(_db, partyId, docs) : new Dictionary<Guid, long>();
         foreach (var d in docs)
         {
             var dto = Mapper.ToDetail(d, null, await InvoiceLines.BaseUnitNamesAsync(_db, d)) with { Edited = edited.Contains(d.Id) };
             if (states.TryGetValue(d.Id, out var st)) dto = dto with { State = st.State, Owed = st.Owed };
+            if (before.TryGetValue(d.Id, out var owedBefore)) dto = dto with { PreviousBalance = owedBefore };
+            dto = await InvoiceLines.WithCodesAsync(_db, dto);
             (d.Type == DocumentType.SALES_RETURN ? returns : invoices).Add(Costs.Guard(User, dto));
         }
         // What they owed before these: the balance less what the posted ones still put on it, plus
