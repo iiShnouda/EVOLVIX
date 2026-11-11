@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatDate, type Locale, type TranslationKey } from '@skb/shared';
+import { formatDate, formatMonth, type Locale, type TranslationKey } from '@skb/shared';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
 import { useT } from '../lib/i18n';
@@ -17,13 +17,10 @@ const MODES: { mode: PeriodMode; label: TranslationKey }[] = [
 const dateInput =
   'h-8 rounded-lg border border-line bg-surface px-2 text-xs outline-none focus:border-brand tnum';
 
-/** The period in words: a day, "Sep 2026", "2026", or "from – to". */
+/** The period in numbers: a day, "09/2026", "2026", or "from – to". */
 export function periodLabel(p: Period, locale: Locale): string {
-  const intl = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
-  const at = (d: string) => new Date(`${d}T12:00:00Z`);
   if (p.mode === 'day') return formatDate(p.from, locale);
-  if (p.mode === 'month')
-    return at(p.from).toLocaleDateString(intl, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  if (p.mode === 'month') return formatMonth(p.from, locale);
   if (p.mode === 'year') return p.from.slice(0, 4);
   return `${formatDate(p.from, locale)} – ${formatDate(p.to, locale)}`;
 }

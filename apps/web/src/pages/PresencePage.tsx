@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   NAV_ITEMS,
-  companyTimeZone,
   en,
+  formatClock,
   formatNumber,
   type ActivityEvent,
   type PresenceEntry,
@@ -73,12 +73,7 @@ export function PresencePage() {
 
   const minutes = (iso: string) =>
     Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
-  const time = (iso: string) =>
-    new Date(iso).toLocaleTimeString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: companyTimeZone(),
-    });
+  const time = (iso: string) => formatClock(iso, locale);
   const active = (p: PresenceEntry) => now - new Date(p.lastActiveAt).getTime() < ACTIVE_MS;
   const people = data ?? [];
   const activeCount = people.filter(active).length;

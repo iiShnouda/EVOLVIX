@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   companyToday,
   formatMoney,
+  formatDate,
   formatNumber,
   toMajor,
   toMinor,
@@ -177,7 +178,7 @@ function ListsTab() {
                       {!l.forEveryone &&
                         ` · ${t('pl.partiesCount')} ${formatNumber(l.parties, locale)}`}
                       {(l.validFrom || l.validTo) &&
-                        ` · ${l.validFrom ?? '…'} → ${l.validTo ?? t('pl.openEnded')}`}
+                        ` · ${l.validFrom ? formatDate(l.validFrom, locale) : '…'} → ${l.validTo ? formatDate(l.validTo, locale) : t('pl.openEnded')}`}
                     </span>
                   </button>
                 </li>

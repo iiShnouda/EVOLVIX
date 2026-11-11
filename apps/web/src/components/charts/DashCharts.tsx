@@ -1,5 +1,12 @@
 import { useId, useState } from 'react';
-import { formatDate, formatMoney, type Locale, type TrendPoint } from '@skb/shared';
+import {
+  formatDate,
+  formatDayMonth,
+  formatMoney,
+  formatMonth,
+  type Locale,
+  type TrendPoint,
+} from '@skb/shared';
 
 /** A smooth path through points (Catmull-Rom as cubic Béziers). */
 function smooth(points: [number, number][]): string {
@@ -103,17 +110,9 @@ export function AreaTrend({
   const step = Math.max(1, Math.ceil(data.length / (narrow ? 4 : 8)));
   const shown = hover != null ? data[hover] : null;
   const money = (v: number) => formatMoney(v, currency, locale);
+  // Numbers only (owner, 2026-11-10): 24/10 for a day, 10/2026 for a month.
   const dayLabel = (date: string) =>
-    new Date(date).toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-      ...(monthly
-        ? { month: 'short', ...(data.length > 12 ? { year: '2-digit' } : {}) }
-        : data.length > 8
-          ? { day: 'numeric', month: 'short' }
-          : data.length > 1
-            ? { weekday: 'short' }
-            : { day: 'numeric', month: 'short' }),
-      timeZone: 'UTC',
-    });
+    monthly ? formatMonth(date, locale) : formatDayMonth(date.slice(0, 10), locale);
 
   return (
     <div className="relative">
@@ -226,12 +225,7 @@ export function AreaTrend({
           style={{ left: `${Math.min(85, Math.max(15, (x(hover!) / W) * 100))}%` }}
         >
           <p className="mb-1 font-semibold">
-            {monthly
-              ? new Date(`${shown.date}T12:00:00Z`).toLocaleDateString(
-                  locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
-                  { month: 'long', year: 'numeric', timeZone: 'UTC' },
-                )
-              : formatDate(shown.date, locale)}
+            {monthly ? formatMonth(shown.date, locale) : formatDate(shown.date, locale)}
           </p>
           <p className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-brand" /> {labels.sales}:{' '}

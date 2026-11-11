@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   formatDate,
   formatMoney,
+  formatMonth,
   formatNumber,
   toMinor,
   type AttendanceStatus,
@@ -201,13 +202,7 @@ function RunsTab() {
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const money = (v: number) => formatMoney(v, currency, locale);
-  const monthName = new Date(`${month}-15`).toLocaleDateString(
-    locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US',
-    {
-      month: 'long',
-      year: 'numeric',
-    },
-  );
+  const monthName = formatMonth(month, locale);
   const r = run.data;
   const title = `${t('payroll.title')} — ${monthName}${r?.branchName ? ` · ${r.branchName}` : ''}`;
   const cols: { key: keyof PayrollRun['lines'][number]; label: TranslationKey; minus?: boolean }[] =
