@@ -150,8 +150,12 @@ function PeopleTab() {
           : `${t('access.summarySome')} ${formatNumber(s.branchIds.length + 1, locale)}`,
       s.warehouseIds.length > 0 &&
         `${t('access.limitedWarehouses')} ${formatNumber(s.warehouseIds.length, locale)}`,
-      s.moneyAccountIds.length > 0 &&
-        `${t('access.limitedAccounts')} ${formatNumber(s.moneyAccountIds.length, locale)}`,
+      s.noMoneyAccounts
+        ? t('access.noneAccounts')
+        : s.moneyAccountIds.length > 0 &&
+          `${t('access.limitedAccounts')} ${formatNumber(s.moneyAccountIds.length, locale)}`,
+      s.moneyHistoryDays != null &&
+        `${t('access.historyLimited')} ${formatNumber(s.moneyHistoryDays, locale)}`,
     ]
       .filter(Boolean)
       .join(' · ');
@@ -708,6 +712,13 @@ function PersonAccess({ person }: { person: StaffMember }) {
     accounts: new Set(person.moneyAccountIds),
     someWarehouses: person.warehouseIds.length > 0,
     someAccounts: person.moneyAccountIds.length > 0,
+    noAccounts: !!person.noMoneyAccounts,
+    history: (person.moneyHistoryDays == null
+      ? 'all'
+      : person.moneyHistoryDays === 30
+        ? 'month'
+        : 'days') as 'all' | 'month' | 'days',
+    days: person.moneyHistoryDays == null ? '' : String(person.moneyHistoryDays),
     departments: new Set(person.departmentIds ?? []),
     someDepartments: (person.departmentIds ?? []).length > 0,
     maxDiscount: person.maxDiscountPercent == null ? '' : String(person.maxDiscountPercent),
@@ -725,6 +736,8 @@ function PersonAccess({ person }: { person: StaffMember }) {
     person.moneyAccountIds,
     person.departmentIds,
     person.maxDiscountPercent,
+    person.noMoneyAccounts,
+    person.moneyHistoryDays,
   ]);
 
   const isOwner = person.role === 'OWNER';
@@ -751,11 +764,15 @@ function PersonAccess({ person }: { person: StaffMember }) {
   const badDiscount =
     maxDiscount !== null &&
     !(Number.isInteger(maxDiscount) && maxDiscount >= 0 && maxDiscount <= 100);
+  const days = f.history === 'days' ? Number(f.days) : f.history === 'month' ? 30 : null;
+  const badDays = days !== null && !(Number.isInteger(days) && days >= 1 && days <= 3660);
   const input = {
     allBranches: f.mode === 'role' ? null : f.mode === 'all',
     branchIds: f.mode === 'some' ? [...f.branches].filter((id) => id !== person.branchId) : [],
     warehouseIds: f.someWarehouses ? pickedWarehouses : [],
-    moneyAccountIds: f.someAccounts ? pickedAccounts : [],
+    moneyAccountIds: f.someAccounts && !f.noAccounts ? pickedAccounts : [],
+    noMoneyAccounts: f.noAccounts,
+    moneyHistoryDays: badDays ? null : days,
     departmentIds: f.someDepartments ? pickedDepartments : [],
     maxDiscountPercent: badDiscount ? null : maxDiscount,
   };
@@ -766,10 +783,12 @@ function PersonAccess({ person }: { person: StaffMember }) {
     !same(input.warehouseIds, person.warehouseIds) ||
     !same(input.moneyAccountIds, person.moneyAccountIds) ||
     !same(input.departmentIds, person.departmentIds ?? []) ||
-    input.maxDiscountPercent !== (person.maxDiscountPercent ?? null);
+    input.maxDiscountPercent !== (person.maxDiscountPercent ?? null) ||
+    input.noMoneyAccounts !== !!person.noMoneyAccounts ||
+    input.moneyHistoryDays !== (person.moneyHistoryDays ?? null);
   const missing =
     (f.someWarehouses && pickedWarehouses.length === 0) ||
-    (f.someAccounts && pickedAccounts.length === 0) ||
+    (f.someAccounts && !f.noAccounts && pickedAccounts.length === 0) ||
     (f.someDepartments && pickedDepartments.length === 0);
 
   const toggle = (key: 'branches' | 'warehouses' | 'accounts' | 'departments', id: string) =>
@@ -875,16 +894,21 @@ function PersonAccess({ person }: { person: StaffMember }) {
                 {t('access.moneyAccounts')}
               </legend>
               {radio(
-                !f.someAccounts,
-                () => setF((s) => ({ ...s, someAccounts: false })),
+                !f.someAccounts && !f.noAccounts,
+                () => setF((s) => ({ ...s, someAccounts: false, noAccounts: false })),
                 t('access.everyOne'),
               )}
               {radio(
-                f.someAccounts,
-                () => setF((s) => ({ ...s, someAccounts: true })),
+                f.someAccounts && !f.noAccounts,
+                () => setF((s) => ({ ...s, someAccounts: true, noAccounts: false })),
                 t('access.onlyTicked'),
               )}
-              {f.someAccounts && (
+              {radio(
+                f.noAccounts,
+                () => setF((s) => ({ ...s, noAccounts: true })),
+                t('access.noAccounts'),
+              )}
+              {f.someAccounts && !f.noAccounts && (
                 <div className="ms-6 grid gap-x-4 sm:grid-cols-2">
                   {accounts.map((a) => (
                     <label key={a.id} className={box}>
@@ -906,6 +930,49 @@ function PersonAccess({ person }: { person: StaffMember }) {
                     </label>
                   ))}
                 </div>
+              )}
+            </fieldset>
+          )}
+
+          {seesAccounts && !f.noAccounts && (
+            <fieldset className="space-y-1">
+              <legend className="mb-1 text-xs font-medium text-muted">
+                {t('access.moneyHistory')}
+              </legend>
+              {radio(
+                f.history === 'all',
+                () => setF((s) => ({ ...s, history: 'all' })),
+                t('access.historyAll'),
+              )}
+              {radio(
+                f.history === 'month',
+                () => setF((s) => ({ ...s, history: 'month' })),
+                t('access.historyMonth'),
+              )}
+              {radio(
+                f.history === 'days',
+                () => setF((s) => ({ ...s, history: 'days', days: s.days || '7' })),
+                t('access.historyDays'),
+              )}
+              {f.history === 'days' && (
+                <label className="ms-6 block max-w-[10rem]">
+                  <span className="mb-0.5 block text-xs text-muted">{t('access.days')}</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={3660}
+                    disabled={!editable}
+                    value={f.days}
+                    onChange={(e) => setF((s) => ({ ...s, days: e.target.value }))}
+                    className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand tnum"
+                  />
+                  {badDays && (
+                    <span className="mt-0.5 block text-xs text-destructive">
+                      {t('error.bad_history_days')}
+                    </span>
+                  )}
+                </label>
               )}
             </fieldset>
           )}
@@ -973,7 +1040,7 @@ function PersonAccess({ person }: { person: StaffMember }) {
                 size="sm"
                 icon="check"
                 loading={save.isPending}
-                disabled={!dirty || missing || badDiscount}
+                disabled={!dirty || missing || badDiscount || badDays}
                 onClick={() => save.mutate({ id: person.id, input })}
               >
                 {t('common.save')}

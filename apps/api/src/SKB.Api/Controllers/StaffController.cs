@@ -329,7 +329,7 @@ public sealed class StaffController : ControllerBase
         if (req.MaxDiscountPercent is < 0 or > 100)
             return Bad("bad_percent", "A discount limit is between 0% and 100%.");
         if (req.MoneyHistoryDays is < 1 or > 3660)
-            return Bad("bad_days", "The days of money history are between 1 and 3660.");
+            return Bad("bad_history_days", "The days of money history are between 1 and 3660.");
         if (req.NoMoneyAccounts) accountIds = new List<Guid>();
         if (warehouseIds is null) return Bad("warehouse_not_found", "A warehouse was not found.");
         if (accountIds is null) return Bad("account_not_found", "A money account was not found.");
