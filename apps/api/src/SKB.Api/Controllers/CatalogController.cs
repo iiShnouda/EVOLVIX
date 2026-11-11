@@ -302,7 +302,7 @@ public sealed class CatalogController : ControllerBase
     public async Task<ActionResult<DepartmentDto>> CreateDepartment([FromBody] CreateNamedRequest req,
         [FromServices] AccessService access, [FromServices] WarehouseService warehouses)
     {
-        var department = new Department();
+        var department = new Department { HasSeasons = req.HasSeasons == true };
         var error = await NameAsync(department, req.Name, _db.Departments, "department")
                     ?? PrefixOf(department, req.Prefix);
         if (error is not null) return error;
@@ -332,6 +332,7 @@ public sealed class CatalogController : ControllerBase
                     ?? await PlaceAsync(id, req.WarehouseIds, warehouses);
         if (error is not null) return error;
         if (req.IsActive is bool active) department.IsActive = active;
+        if (req.HasSeasons is bool seasons) department.HasSeasons = seasons;
         await SaveAsync("update", "department", department.Id);
         return Ok(ToDto(department, await _db.Categories.CountAsync(c => c.DepartmentId == id)) with
         {
@@ -435,7 +436,7 @@ public sealed class CatalogController : ControllerBase
         .Select(w => w.ToString()).ToArray();
 
     private static DepartmentDto ToDto(Department d, int count) =>
-        new(d.Id.ToString(), Loc.Name(d), d.IsActive, count, d.Prefix);
+        new(d.Id.ToString(), Loc.Name(d), d.IsActive, count, d.Prefix, HasSeasons: d.HasSeasons);
 
     /// <summary>Set a department's code prefix (null = leave it).</summary>
     private ActionResult? PrefixOf(Department department, string? raw)

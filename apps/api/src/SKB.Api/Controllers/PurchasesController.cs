@@ -215,6 +215,8 @@ public sealed class PurchasesController : ControllerBase
     [Authorize(Policy = Permissions.PurchasesCreate)]
     public async Task<ActionResult<SalesDetailDto>> Create([FromBody] CreatePurchaseInvoiceRequest req)
     {
+        if (!string.IsNullOrWhiteSpace(req.SeasonKind) && !Seasons.IsInvoiceKind(req.SeasonKind, sale: false))
+            return BadRequest(new { message = "Choose summer or winter.", code = "bad_season" });
         // A supplier's invoice entered late carries its own day (owner, 2026-10-02).
         var (when, dateCode, dateMessage) = await Backdate.CheckAsync(_db, User, req.DocumentDate);
         if (dateCode is not null) return BadRequest(new { message = dateMessage, code = dateCode });
@@ -319,6 +321,8 @@ public sealed class PurchasesController : ControllerBase
             PartyId = partyId, StaffId = staffId, IssueDate = DateTime.UtcNow,
             DueDate = ParseDate(req.DueDate), Currency = settings.Currency, Notes = req.Notes,
             PriceLevelId = level?.Id,
+            // Summer or winter, as chosen after the department (owner, 2026-11-10).
+            SeasonKind = Seasons.IsInvoiceKind(req.SeasonKind, sale: false) ? req.SeasonKind : null,
         };
 
         for (var i = 0; i < resolved.Count; i++)

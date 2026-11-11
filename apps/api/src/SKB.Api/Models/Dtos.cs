@@ -48,7 +48,7 @@ public record SalesSummaryDto(
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
     string? Notes = null, string? State = null, bool Edited = false, bool OverLimit = false,
-    string? ApprovalNote = null, string? PartyId = null, int? RepCode = null);
+    string? ApprovalNote = null, string? PartyId = null, int? RepCode = null, string? SeasonKind = null);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
@@ -90,7 +90,7 @@ public record SalesDetailDto(
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
     string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null,
-    bool HasImage = false, int ImagePages = 0);
+    bool HasImage = false, int ImagePages = 0, string? SeasonKind = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
@@ -153,7 +153,7 @@ public record CreateSalesInvoiceRequest(
     ChargeRequest[]? Charges = null, string? RepId = null,
     string? DeliveryMethod = null, string? DeliveryAddress = null, string? DriverId = null, string? CarrierId = null,
     string? PaidAccountId = null, string? DepartmentId = null, string? PriceBasis = null, string? BranchId = null,
-    string? DocumentDate = null);
+    string? DocumentDate = null, string? SeasonKind = null);
 
 /// <summary>
 /// Approving a pending invoice: what the customer pays now and into which account; optionally new
@@ -207,7 +207,7 @@ public record CreatePurchaseInvoiceRequest(
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
     string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
     string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null,
-    string? DocumentDate = null);
+    string? DocumentDate = null, string? SeasonKind = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
 /// <param name="Code">The person's number (كود), shown beside the name.</param>
@@ -643,7 +643,7 @@ public record UpdateCategoryRequest(string? Name = null, string? DepartmentId = 
 
 /// <summary>A sales department (قسم): a group of categories.</summary>
 public record DepartmentDto(string Id, string Name, bool IsActive, int CategoryCount, string? Prefix = null,
-    string[]? WarehouseIds = null, int ItemCount = 0);
+    string[]? WarehouseIds = null, int ItemCount = 0, bool HasSeasons = false);
 
 /// <param name="Kind">SUMMER, WINTER, NONE (no season) or CUSTOM.</param>
 /// <param name="IsCurrent">The season it is now (by the company's date).</param>
@@ -663,13 +663,14 @@ public record VariantOptionDto(
 /// A new unit / category / size / color: its name, as typed. A department also says which warehouses
 /// (so which branches) have it (owner, 2026-10-11); null leaves that as it was.
 /// </summary>
+/// <param name="HasSeasons">A department whose invoices name their season (owner, 2026-11-10); not given = no.</param>
 public record CreateNamedRequest(string? Name = null, string? Prefix = null, int? Pieces = null,
-    string[]? WarehouseIds = null);
+    string[]? WarehouseIds = null, bool? HasSeasons = null);
 
 /// <summary>Any field left null is unchanged.</summary>
 public record UpdateNamedRequest(
     string? Name = null, bool? IsActive = null, int? SortOrder = null, string? Prefix = null, int? Pieces = null,
-    string? Hex = null, string[]? WarehouseIds = null);
+    string? Hex = null, string[]? WarehouseIds = null, bool? HasSeasons = null);
 
 public record CreatePriceLevelRequest(string? Side, string? Name = null);
 

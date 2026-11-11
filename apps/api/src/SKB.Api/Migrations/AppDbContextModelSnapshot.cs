@@ -648,6 +648,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("HasSeasons")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -2505,6 +2508,10 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid?>("RepId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("SeasonKind")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<Guid?>("SourceDocumentId")
                         .HasColumnType("uuid");

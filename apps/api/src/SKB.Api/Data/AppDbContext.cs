@@ -367,6 +367,7 @@ public class AppDbContext : DbContext
         b.Entity<WarehouseDepartment>().HasIndex(x => x.DepartmentId);
         b.Entity<Season>().Property(x => x.Name).HasMaxLength(60);
         b.Entity<Season>().Property(x => x.Kind).HasMaxLength(10);
+        b.Entity<SalesDocument>().Property(x => x.SeasonKind).HasMaxLength(10);
         b.Entity<Season>().HasIndex(x => new { x.Kind, x.Year });
         b.Entity<Product>().HasIndex(p => p.SeasonId);
         b.Entity<Branch>().Property(x => x.Prefix).HasMaxLength(10);
