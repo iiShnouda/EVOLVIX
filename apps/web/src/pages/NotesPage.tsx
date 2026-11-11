@@ -4,6 +4,7 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  formatTime,
   type Note,
   type NoteDirection,
   type NoteStatus,
@@ -17,6 +18,11 @@ import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
 import { useNotePhoto } from '../components/NotePhoto';
 import { useT, joinList } from '../lib/i18n';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { useDeviceInfo } from '../lib/device';
+import { TableColumns } from '../components/TableColumns';
+import { Pager } from '../components/Pager';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { CodeName } from '../components/CodeName';
@@ -105,6 +111,13 @@ export function NotesPage() {
   // `?receiveFor=<party>&amount=<minor>` (e.g. after approving an invoice) opens the receive page
   // for that customer.
   const receiveFor = params.get('receiveFor');
+  // `?note=<id>` (a statement line) opens that paper.
+  const noteId = params.get('note');
+  const linkedNote = useQuery({
+    queryKey: ['notes', 'detail', noteId],
+    queryFn: () => api.get<Note>(`/notes/${noteId}`),
+    enabled: !!noteId,
+  });
   useEffect(() => {
     if (receiveFor && can('notes:receive'))
       navigate(
@@ -168,6 +181,16 @@ export function NotesPage() {
       {tab === 'receivable' && <NotesTab direction="RECEIVABLE" />}
       {tab === 'payable' && <NotesTab direction="PAYABLE" />}
       {tab === 'portfolios' && <PortfoliosTab />}
+      {noteId && linkedNote.data && (
+        <NoteSheet
+          n={linkedNote.data}
+          onClose={() => {
+            const p = new URLSearchParams(params);
+            p.delete('note');
+            setParams(p, { replace: true });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -288,7 +311,22 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
   const [status, setStatus] = useState<NoteStatus | ''>('');
   const [search, setSearch] = useState('');
   const term = useDeferredValue(search);
-  const { data, isLoading } = useNotes({ direction, status: status || undefined, search: term });
+  const [kind, setKind] = useState('');
+  const [party, setParty] = useState<Party | null>(null);
+  const [dueFrom, setDueFrom] = useState('');
+  const [dueTo, setDueTo] = useState('');
+  const [page, setPage] = useState(1);
+  const { deviceClass } = useDeviceInfo();
+  const { data, isLoading } = useNotes({
+    direction,
+    status: status || undefined,
+    search: term,
+    kind: kind || undefined,
+    partyId: party?.id,
+    dueFrom: dueFrom || undefined,
+    dueTo: dueTo || undefined,
+    page,
+  });
   const [open, setOpen] = useState<Note | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [depositing, setDepositing] = useState(false);
@@ -304,7 +342,10 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
               key={s || 'all'}
               type="button"
               aria-pressed={status === s}
-              onClick={() => setStatus(s)}
+              onClick={() => {
+                setStatus(s);
+                setPage(1);
+              }}
               className={`h-8 rounded-full border px-3 text-xs font-medium transition-colors ${
                 status === s
                   ? 'border-brand bg-brand-soft text-brand'
@@ -320,7 +361,10 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
           placeholder={t('cheque.findHint')}
           aria-label={t('cheque.find')}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
         />
         {canDeposit && picked.length > 0 && (
           <Button size="sm" onClick={() => setDepositing(true)}>
@@ -328,12 +372,79 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
           </Button>
         )}
       </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('notes.kindCol')}</span>
+          <select
+            className={small}
+            value={kind}
+            onChange={(e) => {
+              setKind(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">{t('notes.allKinds')}</option>
+            {(['CHEQUE', 'PROMISSORY_NOTE'] as const).map((k) => (
+              <option key={k} value={k}>
+                {t(`notes.kind.${k}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <PartyPicker
+          type={direction === 'RECEIVABLE' ? 'CUSTOMER' : 'SUPPLIER'}
+          withCode
+          value={party}
+          onChange={(p) => {
+            setParty(p);
+            setPage(1);
+          }}
+          label={t('notes.party')}
+          placeholder={t('notes.allParties')}
+        />
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('notes.dueFrom')}</span>
+          <input
+            type="date"
+            className={small}
+            value={dueFrom}
+            max={dueTo || undefined}
+            onChange={(e) => {
+              setDueFrom(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('notes.dueTo')}</span>
+          <input
+            type="date"
+            className={small}
+            value={dueTo}
+            min={dueFrom || undefined}
+            onChange={(e) => {
+              setDueTo(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+      </div>
       {isLoading ? (
         <Loading />
       ) : !data || data.items.length === 0 ? (
         <Card>
           <EmptyState title={t('notes.empty')} icon="notes" />
         </Card>
+      ) : deviceClass === 'desktop' ? (
+        <NotesTable
+          rows={data.items}
+          canDeposit={canDeposit}
+          picked={picked}
+          onPick={(id) =>
+            setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
+          }
+          onOpen={setOpen}
+        />
       ) : (
         <Card padded={false} className="overflow-hidden">
           <ul className="divide-y divide-line">
@@ -389,6 +500,17 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
           </ul>
         </Card>
       )}
+      {data && data.total > data.pageSize && (
+        <div className="flex justify-end">
+          <Pager
+            page={page}
+            size={data.pageSize}
+            pages={Math.ceil(data.total / data.pageSize)}
+            onPage={setPage}
+            onSize={() => undefined}
+          />
+        </div>
+      )}
       {open && <NoteSheet n={open} onClose={() => setOpen(null)} />}
       {depositing && (
         <DepositSheet
@@ -400,6 +522,182 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
         />
       )}
     </div>
+  );
+}
+
+/** When a paper reached a state, and where or to whom (its history). */
+function stepOf(n: Note, statuses: NoteStatus[]) {
+  const e = [...n.events].reverse().find((x) => statuses.includes(x.toStatus));
+  return e ?? null;
+}
+
+/**
+ * Every paper in columns (owner, 2026-11-10: "more order, every detail, in columns"): our reference,
+ * kind and number, bank, party, amount, when it came and when it falls due, its state and each step
+ * with its date — deposited where, collected or paid into which account, endorsed to whom,
+ * bounced, cancelled or lost — the invoices it settled, the branch, who took it and the remark.
+ */
+function NotesTable({
+  rows,
+  canDeposit,
+  picked,
+  onPick,
+  onOpen,
+}: {
+  rows: Note[];
+  canDeposit: boolean;
+  picked: string[];
+  onPick: (id: string) => void;
+  onOpen: (n: Note) => void;
+}) {
+  const { t, locale } = useT();
+  const day = (iso: string | null | undefined) => (iso ? formatDate(iso, locale) : '');
+  const at = (iso: string) => `${formatDate(iso, locale)} ${formatTime(iso, locale)}`;
+  const step = (n: Note, statuses: NoteStatus[], what: (e: Note['events'][number]) => string) => {
+    const e = stepOf(n, statuses);
+    if (!e) return '';
+    return (
+      <span className="block">
+        <span className="whitespace-nowrap tnum">{at(e.createdAt)}</span>
+        {what(e) && <span className="block text-muted">{what(e)}</span>}
+      </span>
+    );
+  };
+  const total = rows.reduce((sum, n) => sum + n.amount, 0);
+  const cell = 'p-2 align-top';
+  const head = (k: TranslationKey, end = false) => (
+    <th className={`${cell} font-medium ${end ? 'text-end' : 'text-start'}`}>{t(k)}</th>
+  );
+  return (
+    <Card padded={false} className="overflow-hidden">
+      <TableColumns id="notes.list" className="pt-2">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1500px] text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                {canDeposit && <th className={cell} />}
+                {head('notes.ref')}
+                {head('notes.kindCol')}
+                {head('notes.number')}
+                {head('notes.bank')}
+                {head('notes.party')}
+                {head('common.amount', true)}
+                {head('notes.receivedCol')}
+                {head('notes.due')}
+                {head('notes.statusCol')}
+                {head('notes.depositedCol')}
+                {head('notes.collectedCol')}
+                {head('notes.endorsedCol')}
+                {head('notes.bouncedCol')}
+                {head('notes.invoicesCol')}
+                {head('notes.drawer')}
+                {head('notes.branchCol')}
+                {head('notes.byCol')}
+                {head('notes.remark')}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {rows.map((n) => (
+                <tr key={n.id} className="hover:bg-surface-2/60">
+                  {canDeposit && (
+                    <td className={cell}>
+                      <input
+                        type="checkbox"
+                        aria-label={n.ref}
+                        disabled={n.status !== 'IN_HAND'}
+                        checked={picked.includes(n.id)}
+                        onChange={() => onPick(n.id)}
+                      />
+                    </td>
+                  )}
+                  <td className={`${cell} whitespace-nowrap tnum`}>
+                    <button
+                      type="button"
+                      className="text-brand hover:underline"
+                      onClick={() => onOpen(n)}
+                    >
+                      <bdi>{n.ref}</bdi>
+                    </button>
+                  </td>
+                  <td className={cell}>{t(`notes.kind.${n.kind}`)}</td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>
+                    <bdi>{n.serialNumber}</bdi>
+                    {n.hasPhoto && (
+                      <Icon name="camera" size={13} className="ms-1 inline text-muted" />
+                    )}
+                  </td>
+                  <td className={cell}>{n.bankName ?? ''}</td>
+                  <td className={cell}>
+                    <PartyLink id={n.partyId} code={n.partyCode} name={n.partyName} />
+                  </td>
+                  <td className={`${cell} whitespace-nowrap text-end font-semibold tnum`}>
+                    {formatMoney(n.amount, n.currency, locale)}
+                  </td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>
+                    {day(n.receivedOn ?? n.createdAt)}
+                    {n.broughtBy && <span className="block text-muted">{n.broughtBy}</span>}
+                  </td>
+                  <td className={`${cell} whitespace-nowrap tnum`}>{day(n.dueDate)}</td>
+                  <td className={cell}>
+                    <span className="flex flex-wrap gap-1">
+                      <Badge tone={TONE[n.status]}>{t(`notes.status.${n.status}`)}</Badge>
+                      {n.overdue && <Badge tone="destructive">{t('notes.overdue')}</Badge>}
+                    </span>
+                  </td>
+                  <td className={cell}>
+                    {step(n, ['UNDER_COLLECTION'], (e) =>
+                      [e.accountName, n.portfolioNumber].filter(Boolean).join(' · '),
+                    )}
+                  </td>
+                  <td className={cell}>
+                    {step(n, ['COLLECTED', 'PAID'], (e) => e.accountName ?? '')}
+                  </td>
+                  <td className={cell}>
+                    {step(n, ['ENDORSED'], (e) => e.partyName ?? n.endorsedToName ?? '')}
+                  </td>
+                  <td className={cell}>
+                    {step(n, ['BOUNCED', 'CANCELLED', 'LOST'], (e) =>
+                      [t(`notes.status.${e.toStatus}`), e.remark].filter(Boolean).join(' · '),
+                    )}
+                  </td>
+                  <td className={`${cell} tnum`}>
+                    {n.allocations.map((a) => (
+                      <span key={a.documentId} className="block whitespace-nowrap">
+                        <bdi>{a.number}</bdi> · {formatMoney(a.amount, n.currency, locale)}
+                      </span>
+                    ))}
+                  </td>
+                  <td className={cell}>{n.drawer ?? ''}</td>
+                  <td className={`${cell} text-muted`}>{n.branchName}</td>
+                  <td className={`${cell} text-muted`}>
+                    {n.createdByName}
+                    <span className="block whitespace-nowrap tnum">{at(n.createdAt)}</span>
+                  </td>
+                  <td className={`${cell} text-muted`}>
+                    <span className="line-clamp-2">{n.remark ?? ''}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-surface-2 font-semibold">
+              <tr>
+                {canDeposit && <td className={cell} />}
+                <td className={cell}>{t('ledger.total')}</td>
+                {Array.from({ length: 4 }, (_, i) => (
+                  <td key={i} className={cell} />
+                ))}
+                <td className={`${cell} whitespace-nowrap text-end tnum`}>
+                  {rows[0] ? formatMoney(total, rows[0].currency, locale) : ''}
+                </td>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <td key={i} className={cell} />
+                ))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </TableColumns>
+    </Card>
   );
 }
 
