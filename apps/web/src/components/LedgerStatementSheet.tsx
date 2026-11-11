@@ -2,6 +2,7 @@ import { Fragment, useRef, useState, type ReactNode } from 'react';
 import {
   formatDate,
   formatMoney,
+  formatTime,
   type LedgerLine,
   type LedgerStatement,
   type TranslationKey,
@@ -397,47 +398,11 @@ export function StatementBody({
           >
             {t('statement.lines')}
           </SectionHeading>
-          {isParty ? (
+          {/* Every statement in columns (owner, 2026-11-10). */}
+          {isParty || data.lines.length > 0 ? (
             <PartyStatementTable data={data} from={from} />
-          ) : data.lines.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">{t('ledger.noLines')}</p>
           ) : (
-            <ul className="mt-3 divide-y divide-line">
-              {data.lines.map((l, i) => (
-                <li
-                  key={`${l.entryId}-${i}`}
-                  className="flex items-start justify-between gap-3 py-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">
-                      {entryTitle(t, l.sourceType, l.description)}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {formatDate(l.date, locale)} · <span className="tnum">{l.number}</span> ·{' '}
-                      {t(`ledger.source.${l.sourceType}` as TranslationKey)}
-                      {l.accountCode ? ` · ${l.accountCode} ${l.accountName}` : ''}
-                    </p>
-                    {l.memo && <p className="truncate text-xs text-faint">{l.memo}</p>}
-                  </div>
-                  <div className="shrink-0 text-end">
-                    <p className="tnum">
-                      {l.debit > 0 ? (
-                        <span className="text-positive">
-                          {t('ledger.drSide')} <bdi>{money(l.debit)}</bdi>
-                        </span>
-                      ) : (
-                        <span className="text-destructive">
-                          {t('ledger.crSide')} <bdi>{money(l.credit)}</bdi>
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs">
-                      <SidedMoney value={l.balance} currency={data.currency} />
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <p className="mt-4 text-sm text-muted">{t('ledger.noLines')}</p>
           )}
           {after}
         </div>
@@ -471,8 +436,12 @@ export function lineKind(t: (k: TranslationKey) => string, l: LedgerLine): strin
 type ColKey =
   | 'seq'
   | 'date'
+  | 'time'
   | 'kind'
   | 'doc'
+  | 'side'
+  | 'account'
+  | 'by'
   | 'branch'
   | 'department'
   | 'warehouse'
@@ -483,12 +452,16 @@ type ColKey =
 const DEFAULT_ORDER: ColKey[] = [
   'seq',
   'date',
+  'time',
   'kind',
   'doc',
+  'side',
+  'account',
   'branch',
   'department',
   'warehouse',
   'note',
+  'by',
   'debit',
   'credit',
   'balance',
@@ -496,8 +469,12 @@ const DEFAULT_ORDER: ColKey[] = [
 const COL_LABEL: Record<ColKey, TranslationKey> = {
   seq: 'ledger.entryNumber',
   date: 'ledger.date',
+  time: 'ledger.timeCol',
   kind: 'ledger.kindCol',
   doc: 'ledger.docNumber',
+  side: 'ledger.counterpartCol',
+  account: 'ledger.account',
+  by: 'ledger.byCol',
   branch: 'ledger.branchCol',
   department: 'invoice.department',
   warehouse: 'warehouse.label',
@@ -527,8 +504,13 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
     department: (l) => l.departmentName,
     warehouse: (l) => l.warehouseName,
     note: (l) => l.note,
+    side: (l) => l.counterpart,
+    by: (l) => l.createdByName,
   };
-  const used = (k: ColKey) => !OPTIONAL[k] || data.lines.some((l) => !!OPTIONAL[k]!(l));
+  // A group's statement covers several accounts: then each line says which.
+  const accounts = new Set(data.lines.map((l) => l.accountCode)).size;
+  const used = (k: ColKey) =>
+    k === 'account' ? accounts > 1 : !OPTIONAL[k] || data.lines.some((l) => !!OPTIONAL[k]!(l));
   const order: ColKey[] = [
     ...saved.filter((k): k is ColKey => (DEFAULT_ORDER as string[]).includes(k)),
     ...DEFAULT_ORDER.filter((k) => !saved.includes(k)),
@@ -566,9 +548,16 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
       case 'seq':
         return i;
       case 'date':
+      case 'time':
         return l.date;
       case 'kind':
         return lineKind(t, l);
+      case 'side':
+        return l.counterpart ?? '';
+      case 'account':
+        return l.accountCode;
+      case 'by':
+        return l.createdByName ?? '';
       case 'doc':
         return l.documentNumber ?? l.number ?? '';
       case 'branch':
@@ -642,6 +631,18 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
         return i + 1;
       case 'date':
         return formatDate(l.date, locale);
+      case 'time':
+        return formatTime(l.date, locale);
+      case 'side':
+        return <bdi className="line-clamp-2">{l.counterpart ?? ''}</bdi>;
+      case 'by':
+        return l.createdByName ?? '';
+      case 'account':
+        return (
+          <span className="line-clamp-2">
+            <bdi>{l.accountCode}</bdi> {l.accountName}
+          </span>
+        );
       case 'kind':
         return (
           <span className="line-clamp-2">
@@ -729,8 +730,13 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                   {lineKind(t, l)}
                 </p>
                 <p className="text-xs text-muted tnum">
-                  {formatDate(l.date, locale)} · {docLink(l)}
+                  {formatDate(l.date, locale)} {formatTime(l.date, locale)} · {docLink(l)}
                 </p>
+                {(l.counterpart || l.createdByName) && (
+                  <p className="text-xs text-muted">
+                    {[l.counterpart, l.createdByName].filter(Boolean).join(' · ')}
+                  </p>
+                )}
               </div>
               <div className="shrink-0 text-end">
                 {l.debit > 0 ? (
@@ -826,8 +832,10 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                       <td
                         key={k}
                         className={`${cell} ${NUMERIC.has(k) ? 'whitespace-nowrap text-end tnum' : ''} ${
-                          k === 'date' || k === 'seq' || k === 'doc' ? 'whitespace-nowrap tnum' : ''
-                        } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'note' ? 'text-muted' : ''}`}
+                          k === 'date' || k === 'time' || k === 'seq' || k === 'doc'
+                            ? 'whitespace-nowrap tnum'
+                            : ''
+                        } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'note' || k === 'by' ? 'text-muted' : ''}`}
                       >
                         {value(k, l, i)}
                       </td>

@@ -5,6 +5,7 @@ import {
   formatDateTime,
   formatMoney,
   formatNumber,
+  formatTime,
   type TranslationKey,
 } from '@skb/shared';
 import { useQuery } from '@tanstack/react-query';
@@ -154,30 +155,63 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
           {d.lines.length === 0 ? (
             <p className="py-4 text-sm text-muted">{t('money.noMovements')}</p>
           ) : (
-            <ul className="divide-y divide-line">
-              {d.lines.map((l) => (
-                <li key={l.id} className="flex items-start justify-between gap-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {l.category}
-                      <span className="ms-2 text-xs font-normal text-muted tnum" dir="ltr">
-                        {l.number}
-                      </span>
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {[l.accountName, l.branchName, l.notes].filter(Boolean).join(' · ')}
-                    </p>
-                    <p className="text-xs text-faint">
-                      {formatDateTime(l.date, locale)}
-                      {l.createdByName ? ` · ${l.createdByName}` : ''}
-                    </p>
-                  </div>
-                  <span className="shrink-0 font-semibold tnum text-destructive">
-                    {money(l.amount)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            // Every expense in columns (owner, 2026-11-10): when, what, from which box, who.
+            <div className="overflow-x-auto">
+              <TableColumns id="statement.expense">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="p-2 text-start font-medium">{t('ledger.entryNumber')}</th>
+                      <th className="p-2 text-start font-medium">{t('common.date')}</th>
+                      <th className="p-2 text-start font-medium">{t('money.time')}</th>
+                      <th className="p-2 text-start font-medium">{t('money.document')}</th>
+                      <th className="p-2 text-start font-medium">{t('statement.expenses')}</th>
+                      <th className="p-2 text-start font-medium">{t('money.counterpart')}</th>
+                      <th className="p-2 text-start font-medium">{t('ledger.branchCol')}</th>
+                      <th className="p-2 text-start font-medium">{t('ledger.noteCol')}</th>
+                      <th className="p-2 text-start font-medium">{t('money.createdBy')}</th>
+                      <th className="p-2 text-end font-medium">{t('common.amount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {d.lines.map((l, i) => (
+                      <tr key={l.id} className="hover:bg-surface-2/60">
+                        <td className="p-2 tnum">{i + 1}</td>
+                        <td className="whitespace-nowrap p-2 tnum">{formatDate(l.date, locale)}</td>
+                        <td className="whitespace-nowrap p-2 tnum">{formatTime(l.date, locale)}</td>
+                        <td className="whitespace-nowrap p-2 tnum">
+                          <bdi>{l.number}</bdi>
+                        </td>
+                        <td className="p-2">{l.category}</td>
+                        <td className="p-2">{l.accountName ?? ''}</td>
+                        <td className="p-2 text-muted">{l.branchName ?? ''}</td>
+                        <td className="p-2 text-muted">
+                          <span className="line-clamp-2">{l.notes ?? ''}</span>
+                        </td>
+                        <td className="p-2 text-muted">{l.createdByName ?? ''}</td>
+                        <td className="whitespace-nowrap p-2 text-end font-semibold tnum text-destructive">
+                          {money(l.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-surface-2 font-semibold">
+                    <tr>
+                      <td className="p-2">{t('ledger.total')}</td>
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2" />
+                      <td className="p-2 text-end tnum">{money(d.total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </TableColumns>
+            </div>
           )}
         </>
       )}

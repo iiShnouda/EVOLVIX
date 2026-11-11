@@ -5,6 +5,9 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  formatTime,
+  addDays,
+  type MoneyMovement,
   toMajor,
   toMinor,
   type MoneyAccount,
@@ -27,6 +30,11 @@ import { confirm } from '../lib/confirm';
 import { useReportTools } from '../lib/report';
 import { ReportActions } from '../components/ReportActions';
 import { useAuth } from '../stores/auth';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api';
+import { useDeviceInfo } from '../lib/device';
+import { TableColumns } from '../components/TableColumns';
+import { DocumentPreview } from '../components/DocumentPreview';
 import { useWorkBranch } from '../stores/workBranch';
 import { codeName } from '../components/CodeName';
 import {
@@ -44,6 +52,7 @@ import {
   useDeleteExpenseCategory,
   useUpdateMoneyAccount,
   useDeleteMoneyAccount,
+  useDocument,
   useVouchers,
   useWarehouses,
   type VoucherKind,
@@ -253,13 +262,13 @@ function AccountSelect({
 
 function AccountsTab() {
   const { t } = useT();
+  const navigate = useNavigate();
   const can = useCan();
   const canAny = useCanAny();
   const { data, isLoading } = useMoneyAccounts();
   const [showClosed, setShowClosed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<MoneyAccount | null>(null);
-  const [statement, setStatement] = useState<MoneyAccount | null>(null);
 
   const groups = useMemo(() => {
     const m = new Map<string, MoneyAccount[]>();
@@ -303,7 +312,9 @@ function AccountsTab() {
                   key={a.id}
                   a={a}
                   onStatement={
-                    canAny('money:accounts', 'statement:money') ? () => setStatement(a) : undefined
+                    canAny('money:accounts', 'statement:money')
+                      ? () => navigate(`/statement?kind=CASH&account=${a.id}`)
+                      : undefined
                   }
                   onEdit={
                     canAny('money_accounts:edit', 'money_accounts:main', 'money_accounts:delete')
@@ -320,7 +331,6 @@ function AccountsTab() {
       {editing && (
         <EditAccountSheet key={editing.id} a={editing} onClose={() => setEditing(null)} />
       )}
-      {statement && <StatementSheet a={statement} onClose={() => setStatement(null)} />}
     </div>
   );
 }
@@ -772,53 +782,226 @@ function EditAccountSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void
   );
 }
 
-function StatementSheet({ a, onClose }: { a: MoneyAccount; onClose: () => void }) {
-  const { t } = useT();
-  return (
-    <Sheet
-      title={`${t('money.statement')} — ${a.name}`}
-      onClose={onClose}
-      closeLabel={t('common.close')}
-      wide
-    >
-      <MoneyStatementBody a={a} />
-    </Sheet>
-  );
-}
+type MoveCol =
+  | 'seq'
+  | 'date'
+  | 'time'
+  | 'kind'
+  | 'doc'
+  | 'side'
+  | 'branch'
+  | 'method'
+  | 'ref'
+  | 'notes'
+  | 'by'
+  | 'in'
+  | 'out'
+  | 'balance';
+const MOVE_COLS: { key: MoveCol; label: TranslationKey; num?: boolean }[] = [
+  { key: 'seq', label: 'ledger.entryNumber' },
+  { key: 'date', label: 'common.date' },
+  { key: 'time', label: 'money.time' },
+  { key: 'kind', label: 'money.docKind' },
+  { key: 'doc', label: 'money.document' },
+  { key: 'side', label: 'money.counterpart' },
+  { key: 'branch', label: 'ledger.branchCol' },
+  { key: 'method', label: 'money.method' },
+  { key: 'ref', label: 'money.methodRef' },
+  { key: 'notes', label: 'ledger.noteCol' },
+  { key: 'by', label: 'money.createdBy' },
+  { key: 'in', label: 'money.inCol', num: true },
+  { key: 'out', label: 'money.outCol', num: true },
+  { key: 'balance', label: 'money.balanceCol', num: true },
+];
+/** Documents that open in the invoice preview from a statement line. */
+const PREVIEWED = new Set(['SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_INVOICE', 'PURCHASE_RETURN']);
+const VOUCHER_KINDS = new Set([
+  'RECEIPT',
+  'PAYMENT',
+  'EXPENSE',
+  'TRANSFER',
+  'DISCOUNT',
+  'DISCOUNT_RECEIVED',
+]);
 
-/** A cash box's or bank's statement between two days; also on the statement page (كشف الحساب). */
+/**
+ * A cash box's or bank's statement (كشف حساب), the new way (owner, 2026-11-10): the period, the four
+ * figures, then one line per movement in the order it happened — its date and time, what it is, its
+ * document (it opens), where the money came from or went to, the branch, how it was paid, the notes,
+ * who made it, in, out and the balance after it — in columns that can be hidden and moved; a card
+ * per line on a phone. Also on the statement page (كشف الحساب).
+ */
 export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
   const { t, locale } = useT();
-  const [from, setFrom] = useState(today());
-  const [to, setTo] = useState(today());
+  const navigate = useNavigate();
+  const { deviceClass } = useDeviceInfo();
+  const historyDays = useAuth((s) => s.user?.moneyHistoryDays);
+  const earliestOwn = historyDays ? addDays(today(), -historyDays) : '';
+  const [from, setFrom] = useState(() => today());
+  const [to, setTo] = useState(() => today());
   const { data, isLoading, error } = useAccountStatement(a.id, from, to);
   const money = (v: number) => formatMoney(v, a.currency, locale);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
+  const [preview, setPreview] = useState<{ id: string; scope: 'sales' | 'purchases' } | null>(null);
+  const doc = useDocument(preview?.scope ?? 'sales', preview?.id ?? null);
+  const [voucherId, setVoucherId] = useState<string | null>(null);
+  const voucher = useQuery({
+    queryKey: ['vouchers', 'detail', voucherId],
+    queryFn: () => api.get<Voucher>(`/vouchers/${voucherId}`),
+    enabled: !!voucherId,
+  });
+  const earliest = data?.earliest ?? earliestOwn;
+  const heading = `${t('money.statement')} — ${a.name}`;
+  const period = `${formatDate(data?.from ?? from, locale)} – ${formatDate(data?.to ?? to, locale)}`;
+
+  const side = (m: MoneyMovement) =>
+    m.counterpartKind
+      ? [
+          t(`money.side.${m.counterpartKind}` as TranslationKey),
+          m.counterpartName ? codeName(m.counterpartCode ?? null, m.counterpartName) : '',
+        ]
+          .filter(Boolean)
+          .join(': ')
+      : (m.partyName ?? '');
+  const kindOf = (m: MoneyMovement) => t(`money.move.${m.kind}` as TranslationKey);
+  const methodOf = (m: MoneyMovement) =>
+    m.method && m.kind !== 'OPENING' ? t(`money.method.${m.method}` as TranslationKey) : '';
+  const open = (m: MoneyMovement) => {
+    if (!m.documentId || !m.documentKind) return;
+    if (PREVIEWED.has(m.documentKind))
+      setPreview({
+        id: m.documentId,
+        scope: m.documentKind.startsWith('PURCHASE') ? 'purchases' : 'sales',
+      });
+    else if (VOUCHER_KINDS.has(m.documentKind)) setVoucherId(m.documentId);
+    else if (m.documentKind === 'NOTE') navigate(`/notes?note=${m.documentId}`);
+  };
+  const docLink = (m: MoneyMovement) => {
+    const number = m.reference ?? '';
+    const opens =
+      m.documentId &&
+      m.documentKind &&
+      (PREVIEWED.has(m.documentKind) ||
+        VOUCHER_KINDS.has(m.documentKind) ||
+        m.documentKind === 'NOTE');
+    if (!opens) return <bdi className="whitespace-nowrap">{number}</bdi>;
+    return (
+      <button
+        type="button"
+        className="whitespace-nowrap text-brand hover:underline"
+        onClick={() => open(m)}
+      >
+        <bdi>{number}</bdi>
+      </button>
+    );
+  };
+  const cell = (k: MoveCol, m: MoneyMovement, i: number): ReactNode => {
+    switch (k) {
+      case 'seq':
+        return i + 1;
+      case 'date':
+        return formatDate(m.createdAt, locale);
+      case 'time':
+        return formatTime(m.createdAt, locale);
+      case 'kind':
+        return kindOf(m);
+      case 'doc':
+        return docLink(m);
+      case 'side':
+        return <bdi>{side(m)}</bdi>;
+      case 'branch':
+        return m.branchName ?? '';
+      case 'method':
+        return methodOf(m);
+      case 'ref':
+        return <bdi>{m.methodReference ?? ''}</bdi>;
+      case 'notes':
+        return <span className="line-clamp-2">{m.notes ?? ''}</span>;
+      case 'by':
+        return m.createdByName;
+      case 'in':
+        return m.amount > 0 ? money(m.amount) : '';
+      case 'out':
+        return m.amount < 0 ? money(-m.amount) : '';
+      case 'balance':
+        return money(m.balanceAfter);
+    }
+  };
+
+  function excel() {
+    if (!data) return;
+    const text = (k: MoveCol, m: MoneyMovement, i: number): unknown => {
+      switch (k) {
+        case 'seq':
+          return i + 1;
+        case 'date':
+          return formatDate(m.createdAt, locale);
+        case 'time':
+          return formatTime(m.createdAt, locale);
+        case 'kind':
+          return kindOf(m);
+        case 'doc':
+          return m.reference ?? '';
+        case 'side':
+          return side(m);
+        case 'branch':
+          return m.branchName ?? '';
+        case 'method':
+          return methodOf(m);
+        case 'ref':
+          return m.methodReference ?? '';
+        case 'notes':
+          return m.notes ?? '';
+        case 'by':
+          return m.createdByName;
+        case 'in':
+          return m.amount > 0 ? { money: m.amount } : null;
+        case 'out':
+          return m.amount < 0 ? { money: -m.amount } : null;
+        case 'balance':
+          return { money: m.balanceAfter };
+      }
+    };
+    report.excel(
+      heading,
+      period,
+      MOVE_COLS.map((c) => t(c.label)),
+      [
+        MOVE_COLS.map((c) =>
+          c.key === 'kind'
+            ? t('money.openingBal')
+            : c.key === 'balance'
+              ? { money: data.opening }
+              : '',
+        ),
+        ...data.movements.map((m, i) => MOVE_COLS.map((c) => text(c.key, m, i))),
+      ] as never,
+      MOVE_COLS.map((c, i) =>
+        i === 0
+          ? t('ledger.total')
+          : c.key === 'in'
+            ? { money: data.totalIn }
+            : c.key === 'out'
+              ? { money: data.totalOut }
+              : c.key === 'balance'
+                ? { money: data.closing }
+                : '',
+      ) as never,
+    );
+  }
 
   return (
     <>
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="order-last ms-auto">
-          <ReportActions
-            scope="money"
-            disabled={!data}
-            onPrint={() =>
-              report.print(
-                paper.current,
-                `${t('money.statement')} — ${a.name}`,
-                `${formatDate(from, locale)} – ${formatDate(to, locale)}`,
-              )
-            }
-          />
-        </div>
+      <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-app)] border border-line bg-surface-2/50 p-3">
         <Field label={t('money.from')}>
           <input
             className={small}
             type="date"
             value={from}
+            min={earliest || undefined}
             max={to}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => setFrom(e.target.value || from)}
           />
         </Field>
         <Field label={t('money.to')}>
@@ -827,67 +1010,189 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
             type="date"
             value={to}
             min={from}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => setTo(e.target.value || to)}
           />
         </Field>
+        {earliest && (
+          <p className="pb-2 text-xs text-muted">
+            {t('money.historyFrom')}: <span className="tnum">{formatDate(earliest, locale)}</span>
+          </p>
+        )}
+        <div className="ms-auto">
+          <ReportActions
+            scope="money"
+            disabled={!data}
+            onPrint={() => report.print(paper.current, heading, period)}
+            onExcel={excel}
+          />
+        </div>
       </div>
       {error && <p className="mt-3 text-sm text-destructive">{errorText(t, error)}</p>}
       {isLoading || !data ? (
         <Loading />
       ) : (
         <div ref={paper}>
-          <dl className="mt-4 grid grid-cols-2 gap-2 rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm sm:grid-cols-4">
+          <dl className="mt-4 grid grid-cols-2 overflow-hidden rounded-[var(--radius-app)] border border-line text-sm sm:grid-cols-4">
             {(
               [
                 ['money.openingBal', data.opening, ''],
                 ['money.in', data.totalIn, 'text-positive'],
                 ['money.out', data.totalOut, 'text-destructive'],
-                ['money.closing', data.closing, 'font-semibold'],
+                ['money.closing', data.closing, 'font-bold'],
               ] as const
-            ).map(([k, v, cls]) => (
-              <div key={k} className="min-w-0">
+            ).map(([k, v, cls], i) => (
+              <div
+                key={k}
+                className={`border-line p-3 ${i < 3 ? 'border-e' : ''} ${i < 2 ? 'border-b sm:border-b-0' : ''} ${i === 1 ? 'border-e-0 sm:border-e' : ''} ${i === 3 ? 'bg-brand-soft/60' : ''}`}
+              >
                 <dt className="text-xs text-muted">{t(k)}</dt>
-                <dd className={`tnum ${cls}`}>{money(v)}</dd>
+                <dd className={`mt-0.5 font-semibold tnum ${cls}`}>{money(v)}</dd>
               </div>
             ))}
           </dl>
-          {data.movements.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">{t('money.noMovements')}</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-line">
-              {data.movements.map((m) => (
-                <li key={m.id} className="flex items-start justify-between gap-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {t(`money.move.${m.kind}`)}
-                      {m.method && m.kind !== 'OPENING' && (
-                        <span className="text-xs font-normal text-muted">
-                          {' '}
-                          · {t(`money.method.${m.method}`)}
-                        </span>
+          {deviceClass !== 'desktop' ? (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
+                <span>{t('money.openingBal')}</span>
+                <span className="tnum">{money(data.opening)}</span>
+              </div>
+              {data.movements.length === 0 && (
+                <p className="p-3 text-sm text-muted">{t('money.noMovements')}</p>
+              )}
+              {data.movements.map((m, i) => (
+                <div
+                  key={m.id}
+                  className="rounded-[var(--radius-app)] border border-line p-3 text-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        <span className="me-1 text-xs text-faint tnum">{i + 1}</span>
+                        {kindOf(m)} {docLink(m)}
+                      </p>
+                      <p className="text-xs text-muted">
+                        <bdi>{side(m)}</bdi>
+                      </p>
+                      <p className="text-xs text-faint tnum">
+                        {formatDate(m.createdAt, locale)} {formatTime(m.createdAt, locale)} ·{' '}
+                        {m.createdByName}
+                      </p>
+                      {(m.branchName || methodOf(m) || m.methodReference || m.notes) && (
+                        <p className="text-xs text-muted">
+                          {[m.branchName, methodOf(m), m.methodReference, m.notes]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
                       )}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {[m.reference, m.partyName, m.methodReference, m.notes]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </p>
-                    <p className="text-xs text-faint">
-                      {formatDateTime(m.createdAt, locale)} · {m.createdByName}
-                    </p>
+                    </div>
+                    <div className="shrink-0 text-end tnum">
+                      <p className={m.amount >= 0 ? 'text-positive' : 'text-destructive'}>
+                        <span aria-hidden="true">{m.amount >= 0 ? '+' : '−'}</span>
+                        <bdi>{money(Math.abs(m.amount))}</bdi>
+                      </p>
+                      <p className="text-xs text-muted">{money(m.balanceAfter)}</p>
+                    </div>
                   </div>
-                  <div className="shrink-0 text-end tnum">
-                    <p className={m.amount >= 0 ? 'text-positive' : 'text-destructive'}>
-                      <span aria-hidden="true">{m.amount >= 0 ? '+' : '−'}</span>
-                      <bdi>{money(Math.abs(m.amount))}</bdi>
-                    </p>
-                    <p className="text-xs text-muted">{money(m.balanceAfter)}</p>
-                  </div>
-                </li>
+                </div>
               ))}
-            </ul>
+              <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm font-semibold">
+                <span>{t('money.closing')}</span>
+                <span className="tnum">{money(data.closing)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-[var(--radius-app)] border border-line">
+              <TableColumns id="statement.money" className="pt-2">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1100px] text-sm">
+                    <thead className="bg-surface-2 text-xs text-muted">
+                      <tr>
+                        {MOVE_COLS.map((c) => (
+                          <th
+                            key={c.key}
+                            className={`p-2 font-medium ${c.num ? 'text-end' : 'text-start'}`}
+                          >
+                            {t(c.label)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      <tr className="bg-surface-2/50 font-medium">
+                        {MOVE_COLS.map((c) => (
+                          <td key={c.key} className={`p-2 ${c.num ? 'text-end tnum' : ''}`}>
+                            {c.key === 'kind'
+                              ? t('money.openingBal')
+                              : c.key === 'date'
+                                ? formatDate(data.from, locale)
+                                : c.key === 'balance'
+                                  ? money(data.opening)
+                                  : null}
+                          </td>
+                        ))}
+                      </tr>
+                      {data.movements.map((m, i) => (
+                        <tr key={m.id} className="hover:bg-surface-2/60">
+                          {MOVE_COLS.map((c) => (
+                            <td
+                              key={c.key}
+                              className={`p-2 align-top ${
+                                c.num
+                                  ? `whitespace-nowrap text-end tnum ${c.key === 'in' ? 'text-positive' : c.key === 'out' ? 'text-destructive' : ''}`
+                                  : ['seq', 'date', 'time', 'doc'].includes(c.key)
+                                    ? 'whitespace-nowrap tnum'
+                                    : ['branch', 'method', 'ref', 'notes', 'by'].includes(c.key)
+                                      ? 'text-muted'
+                                      : ''
+                              }`}
+                            >
+                              {cell(c.key, m, i)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-surface-2 font-semibold">
+                      <tr>
+                        {MOVE_COLS.map((c, i) => (
+                          <td key={c.key} className={`p-2 ${c.num ? 'text-end tnum' : ''}`}>
+                            {i === 0
+                              ? t('ledger.total')
+                              : c.key === 'in'
+                                ? money(data.totalIn)
+                                : c.key === 'out'
+                                  ? money(data.totalOut)
+                                  : c.key === 'balance'
+                                    ? money(data.closing)
+                                    : null}
+                          </td>
+                        ))}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </TableColumns>
+              {data.movements.length === 0 && (
+                <p className="p-3 text-sm text-muted">{t('money.noMovements')}</p>
+              )}
+            </div>
           )}
         </div>
+      )}
+      {preview && (
+        <Sheet
+          title={doc.data?.number ?? ''}
+          onClose={() => setPreview(null)}
+          closeLabel={t('common.close')}
+          wide
+        >
+          <div className="h-[75vh]">
+            <DocumentPreview doc={doc.data} loading={doc.isFetching} />
+          </div>
+        </Sheet>
+      )}
+      {voucherId && voucher.data && (
+        <VoucherSheet v={voucher.data} onClose={() => setVoucherId(null)} />
       )}
     </>
   );
