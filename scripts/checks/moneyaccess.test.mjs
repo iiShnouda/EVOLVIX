@@ -103,7 +103,7 @@ console.log('== a box, with the last 30 days only');
 eq(
   'a bad number of days',
   (await access({ moneyAccountIds: [box.id], moneyHistoryDays: 0 })).data?.code,
-  'bad_days',
+  'bad_history_days',
 );
 r = ok('one box, 30 days', await access({ moneyAccountIds: [box.id], moneyHistoryDays: 30 }));
 eq('kept', [r.noMoneyAccounts, r.moneyHistoryDays, r.moneyAccountIds], [false, 30, [box.id]]);
