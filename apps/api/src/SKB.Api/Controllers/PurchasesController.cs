@@ -55,6 +55,8 @@ public sealed class PurchasesController : ControllerBase
         string? search, string? status, string? from, string? to, string? payment)
     {
         var q = _db.SalesDocuments.Where(d => d.Type == type).InBranches(User, d => d.BranchId);
+        // Searched by its number, a document is found whatever the period says (owner, 2026-11-10).
+        if (DocumentLists.ByNumber(Request.Query["number"])) from = to = null;
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);

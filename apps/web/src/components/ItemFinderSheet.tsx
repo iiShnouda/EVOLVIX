@@ -115,6 +115,7 @@ export function ItemFinderSheet({
   inStockFirst,
   checkStock,
   onInvoice,
+  tookBefore,
   branchId,
   lockPlace,
   browse,
@@ -132,6 +133,8 @@ export function ItemFinderSheet({
   checkStock?: boolean;
   /** Base quantity of each item already on the invoice. */
   onInvoice?: Map<string, number>;
+  /** An invoice being changed: what it already took of each item (base units), still there for it. */
+  tookBefore?: Map<string, number>;
   /** The invoice's branch: the search starts in it. */
   branchId?: string;
   /** A sale's branch, warehouse and department are the invoice's: shown, not changed. */
@@ -196,7 +199,9 @@ export function ItemFinderSheet({
   const qtyOf = (p: Product) => Math.max(0, Math.floor(Number(qty[p.id]) || 0));
   const factorOf = (p: Product) => p.units.find((u) => u.unitId === unitOf(p))?.factor ?? 1;
   const overStock = (p: Product) =>
-    !!checkStock && qtyOf(p) * factorOf(p) + (onInvoice?.get(p.id) ?? 0) > p.stockOnHand;
+    !!checkStock &&
+    qtyOf(p) * factorOf(p) + (onInvoice?.get(p.id) ?? 0) >
+      p.stockOnHand + (tookBefore?.get(p.id) ?? 0);
   const picked = rows.filter((p) => qtyOf(p) > 0);
   const pickedQty = picked.reduce((n, p) => n + qtyOf(p), 0);
   const allPicked = rows.length > 0 && rows.every((p) => qtyOf(p) > 0);
@@ -217,7 +222,11 @@ export function ItemFinderSheet({
   function addNow(p: Product, index: number) {
     const quantity = qtyOf(p) || 1;
     // Never more than is in stock (owner, 2026-10-02); the server refuses it too.
-    if (checkStock && quantity * factorOf(p) + (onInvoice?.get(p.id) ?? 0) > p.stockOnHand) {
+    if (
+      checkStock &&
+      quantity * factorOf(p) + (onInvoice?.get(p.id) ?? 0) >
+        p.stockOnHand + (tookBefore?.get(p.id) ?? 0)
+    ) {
       setStop(`${p.name}: ${t('finder.overStock')}`);
       return;
     }
@@ -517,7 +526,8 @@ export function ItemFinderSheet({
                       const on = qtyOf(p) > 0;
                       const over = overStock(p);
                       const already = onInvoice?.get(p.id) ?? 0;
-                      const empty = !!checkStock && p.stockOnHand - already <= 0;
+                      const empty =
+                        !!checkStock && p.stockOnHand + (tookBefore?.get(p.id) ?? 0) - already <= 0;
                       return (
                         <tr
                           key={p.id}

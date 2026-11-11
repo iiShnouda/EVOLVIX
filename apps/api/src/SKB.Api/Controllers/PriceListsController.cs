@@ -330,7 +330,8 @@ public sealed class PriceListsController : ControllerBase
                 return StatusCode(403, new { message = "Selling at the supply price needs permission to see costs.", code = "cost_basis_not_allowed" });
             priced = PriceBasis.Apply(bases, listed, lines, last);
         }
-        var seeCost = Can(Permissions.CostsView);
+        // On a sale, what the goods cost goes with the profit (owner, 2026-11-10).
+        var seeCost = Can(Permissions.CostsView) && (!isSale || Can(Permissions.ProfitView));
         return Ok(new PricingDto(level?.Id.ToString(), priced.Select((x, i) => new PricedLineDto(
             x.UnitPrice, x.Discount, x.Source, x.ListName, x.BreakBp, listed[i].UnitPrice,
             seeCost ? lines[i].BaseCost * lines[i].Unit.Factor : null,

@@ -1,5 +1,5 @@
 import { confirm } from '../lib/confirm';
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   companyToday,
@@ -17,6 +17,8 @@ import { useT } from '../lib/i18n';
 import { useAuth } from '../stores/auth';
 import { TOGETHER_PERMISSIONS, useMayOverride } from '../lib/can';
 import { useWorkPlace } from '../lib/workPlace';
+import { keepListFilters, readListFilters } from '../lib/listFilters';
+import { useTab } from '../lib/tabs';
 import {
   useApproveLimit,
   useCompanySettings,
@@ -133,38 +135,34 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   }, [linkedId]);
   // Filters: number or customer, department, status, company days.
   // Three searches (owner, 2026-10-06): the number, the customer's name, the customer's code.
-  const [number, setNumber] = useState('');
-  const [partyName, setPartyName] = useState('');
-  const [partyCode, setPartyCode] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [status, setStatus] = useState('');
-  const [from, setFrom] = useState(companyToday);
-  const [to, setTo] = useState(companyToday);
+  // Coming back to the list finds them as they were left (owner, 2026-11-10): kept for this
+  // person and tab while the app is open.
+  const tabId = useTab().id;
+  const filtersKey = `skb.list.${myId ?? ''}.${scope}.${tabId}`;
+  const [kept] = useState(() => readListFilters(filtersKey));
+  const [number, setNumber] = useState(kept.number ?? '');
+  const [partyName, setPartyName] = useState(kept.partyName ?? '');
+  const [partyCode, setPartyCode] = useState(kept.partyCode ?? '');
+  const [departmentId, setDepartmentId] = useState(kept.departmentId ?? '');
+  const [status, setStatus] = useState(kept.status ?? '');
+  const [from, setFrom] = useState(() => kept.from ?? companyToday());
+  const [to, setTo] = useState(() => kept.to ?? companyToday());
   // Invoices: one payment state (owner, 2026-10-01) instead of status + payment.
   // An old link to the pending list opens the invoices waiting for approval.
-  const [state, setState] = useState(tab === 'orders' ? 'AWAITING' : '');
-  const [branchId, setBranchId] = useState('');
-  const [warehouseId, setWarehouseId] = useState('');
+  const [state, setState] = useState(tab === 'orders' ? 'AWAITING' : (kept.state ?? ''));
   const myBranches = useAuth((s) => s.user?.branches ?? []);
-  // The filters start at the branch, warehouse and department the person works in (owner,
-  // 2026-10-02); picking one here changes it everywhere.
-  const [place, setPlace] = useWorkPlace();
-  const [placed, setPlaced] = useState(false);
-  useEffect(() => {
-    // Purchases start on everything (owner, 2026-10-19): nothing chosen until the person picks.
-    if (!isSales) return;
-    if (placed || (!place.branchId && !place.warehouseId && !place.departmentId)) return;
-    setPlaced(true);
-    if (place.branchId) setBranchId(place.branchId);
-    if (place.warehouseId) setWarehouseId(place.warehouseId);
-    if (isSales && place.departmentId) setDepartmentId(place.departmentId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place.branchId, place.warehouseId, place.departmentId]);
+  const [branchId, setBranchId] = useState(
+    kept.branchId && myBranches.some((b) => b.id === kept.branchId) ? kept.branchId : '',
+  );
+  const [warehouseId, setWarehouseId] = useState(kept.warehouseId ?? '');
+  // The list opens on every branch, warehouse and department (owner, 2026-11-10: the place the
+  // person works in must not narrow it); picking one here still makes it their working place.
+  const [, setPlace] = useWorkPlace();
   const warehouses = useWarehouses(true);
   const shownWarehouses = (warehouses.data ?? []).filter(
     (w) => w.kind !== 'TRANSIT' && (!branchId || w.branchId === branchId),
   );
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Number(kept.page) || 1));
   // Rows per page, kept per person (owner, 2026-10-01).
   const [pageSize, setPageSize] = usePageSize(`documents.${scope}`, 50);
   const departments = useDepartments();
@@ -180,18 +178,61 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     partyCode: dCode || undefined,
     status: status || undefined,
     departmentId: kind === 'invoices' || isSales ? departmentId || undefined : undefined,
-    from: from || undefined,
-    to: to || undefined,
+    // A number is the same in no two documents: searched by it, the period doesn't count.
+    from: dNumber ? undefined : from || undefined,
+    to: dNumber ? undefined : to || undefined,
     state: kind === 'invoices' && state ? state : undefined,
     branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
     enabled: listed,
   });
-  // Another filter starts again at the first page.
-  useEffect(
-    () => setPage(1),
-    [kind, deferredSearch, status, departmentId, from, to, state, branchId, warehouseId, pageSize],
-  );
+  // Another filter starts again at the first page (not when the list is opened as it was left).
+  const filterKey = [
+    kind,
+    deferredSearch,
+    status,
+    departmentId,
+    from,
+    to,
+    state,
+    branchId,
+    warehouseId,
+    pageSize,
+  ].join('\u0001');
+  const lastFilter = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilter.current === filterKey) return;
+    lastFilter.current = filterKey;
+    setPage(1);
+  }, [filterKey]);
+  useEffect(() => {
+    keepListFilters(filtersKey, {
+      number,
+      partyName,
+      partyCode,
+      departmentId,
+      status,
+      from,
+      to,
+      state,
+      branchId,
+      warehouseId,
+      page: String(page),
+    });
+  }, [
+    filtersKey,
+    number,
+    partyName,
+    partyCode,
+    departmentId,
+    status,
+    from,
+    to,
+    state,
+    branchId,
+    warehouseId,
+    page,
+  ]);
   const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / pageSize));
   // Escape closes an open document (unless a sheet over it is open: it closes that first).
   useEffect(() => {
@@ -540,7 +581,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 </select>
               </label>
             )}
-            <label className="block w-40 min-w-0">
+            <label className={`block w-40 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
               <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
               <input
                 type="date"
@@ -550,7 +591,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 onChange={(e) => setFrom(e.target.value)}
               />
             </label>
-            <label className="block w-40 min-w-0">
+            <label className={`block w-40 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
               <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
               <input
                 type="date"

@@ -127,10 +127,15 @@ export function InvoiceBuilderPage({
   const navigate = useNavigate();
   const can = useCan();
   const owner = useMayOverride();
-  /** Cost, markup and profit are the owner's unless given (costs:view); the server sends 0 otherwise. */
-  const seeCosts = can('costs:view');
   // Profit has its own permission and the show/hide switch (owner, 2026-10-17).
   const seeProfit = can('profit:view');
+  /**
+   * What the goods cost shows on an invoice only to whoever sees its profit (owner, 2026-11-10:
+   * "nobody sees the total cost without the profit permission"); the server sends 0 without costs:view.
+   */
+  const seeCosts = can('costs:view') && seeProfit;
+  // Selling at the supply price is still for whoever may see supply prices.
+  const mayCostBasis = can('costs:view');
 
   const settings = useCompanySettings();
   const canOverride = can('sales:override_floor');
@@ -153,9 +158,12 @@ export function InvoiceBuilderPage({
   const [pickedRep, setPickedRep] = useState('');
   /** The rep's code while it is being typed (null = show the chosen rep's). */
   const [repCode, setRepCode] = useState<string | null>(null);
-  const [dueDate, setDueDate] = useState(companyToday);
+  // An invoice has one date, its own (owner, 2026-11-10); one changed keeps the due date it had.
+  const [dueDate, setDueDate] = useState('');
   // The day it happened, if it is written later (owner, 2026-10-02).
   const [docDate, setDocDate] = useState(companyToday);
+  /** The saved invoice being changed or shown, as it was loaded. */
+  const [viewed, setViewed] = useState<SalesDocument | null>(null);
   const repId = pickedRep || ((reps.data ?? []).some((r) => r.id === me?.id) ? (me?.id ?? '') : '');
   const repCodeMissing = !!repCode && !(reps.data ?? []).some((r) => String(r.code) === repCode);
 
@@ -257,8 +265,21 @@ export function InvoiceBuilderPage({
       warehouseStock.data.items.map((i) => [i.id, { qty: i.stockOnHand, cost: i.avgCost }]),
     );
   }, [warehouseId, warehouseStock.data]);
-  /** Base units of `p` in the chosen warehouse (company total until that list has loaded). */
-  const available = (p: Product) => (stockHere ? (stockHere.get(p.id)?.qty ?? 0) : p.stockOnHand);
+  // What the invoice being changed itself took from this warehouse, per item (base units).
+  const tookHere = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!viewed || viewed.status === 'CANCELLED' || viewed.type !== 'SALES_INVOICE') return m;
+    for (const l of viewed.lines)
+      if (!warehouseId || l.warehouseId === warehouseId)
+        m.set(l.productId, (m.get(l.productId) ?? 0) + l.quantity);
+    return m;
+  }, [viewed, warehouseId]);
+  /**
+   * Base units of `p` in the chosen warehouse (company total until that list has loaded). An
+   * invoice being changed already took its own goods (owner, 2026-11-10): they count as there.
+   */
+  const available = (p: Product) =>
+    (stockHere ? (stockHere.get(p.id)?.qty ?? 0) : p.stockOnHand) + (tookHere.get(p.id) ?? 0);
   /** Cost is per branch: the average cost of one base unit where the goods leave / arrive. */
   const costOf = (p: Product) => stockHere?.get(p.id)?.cost ?? p.costPrice;
 
@@ -275,8 +296,8 @@ export function InvoiceBuilderPage({
   const [categoryFilter, setCategoryFilter] = useState('');
   const [inStockOnly, setInStockOnly] = useState(true);
   const [scanning, setScanning] = useState(false);
-  /** How many the next item comes in (كمية), as in the old program; back to 1 after each. */
-  const [addQty, setAddQty] = useState('1');
+  /** How many the next item comes in (كمية), as in the old program; empty = 1 (owner, 2026-11-10). */
+  const [addQty, setAddQty] = useState('');
   const [finding, setFinding] = useState(false);
   // A supplier brought back with the draft shows in the picker too.
   useEffect(() => {
@@ -417,7 +438,7 @@ export function InvoiceBuilderPage({
   function addProduct(p: Product, unitId?: string | null, focus = true, quantity?: number) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
     const qty = Math.max(1, Math.floor(quantity ?? (Number(addQty) || 1)));
-    if (quantity === undefined) setAddQty('1');
+    if (quantity === undefined) setAddQty('');
     setStaged((prev) => {
       const existing = prev.find((l) => l.product.id === p.id && l.unitId === unit);
       if (existing)
@@ -649,7 +670,7 @@ export function InvoiceBuilderPage({
         priceLevelId,
         repId: repId || undefined,
         departmentId: departmentId || undefined,
-        dueDate: dueDate || undefined,
+        dueDate: editId ? dueDate || undefined : undefined,
         documentDate: editId || asOrder ? undefined : dayToSend(docDate),
         deliveryMethod: delivery.method,
         deliveryAddress:
@@ -769,7 +790,6 @@ export function InvoiceBuilderPage({
   // Changing a saved invoice: its customer, choices, lines and discounts fill the screen.
   const [loadingEdit, setLoadingEdit] = useState(!!editId);
   const [editedNumber, setEditedNumber] = useState('');
-  const [viewed, setViewed] = useState<SalesDocument | null>(null);
   const [printing, setPrinting] = useState(false);
   useEffect(() => {
     if (!editId) return;
@@ -985,7 +1005,7 @@ export function InvoiceBuilderPage({
                           })
                         }
                       >
-                        {(seeCosts
+                        {(mayCostBasis
                           ? (['LIST', 'LAST', 'COST'] as const)
                           : (['LIST', 'LAST'] as const)
                         ).map((b) => (
@@ -1556,17 +1576,6 @@ export function InvoiceBuilderPage({
                 </label>
               </div>
               {!editId && <DocumentDateField value={docDate} onChange={setDocDate} />}
-              {/* When a sale on account should be paid (تاريخ الاستحقاق); empty = no date. */}
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.dueDate')}</span>
-                <input
-                  type="date"
-                  className={`${field} tnum`}
-                  min={editId ? undefined : companyToday()}
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </label>
             </Card>
 
             <DeliveryCard
@@ -1745,6 +1754,7 @@ export function InvoiceBuilderPage({
                       inStockFirst
                       checkStock
                       onInvoice={onInvoice}
+                      tookBefore={tookHere}
                       onClose={() => setFinding(false)}
                       onAdd={(items, close) => {
                         items.forEach((i) => addProduct(i.product, i.unitId, false, i.quantity));

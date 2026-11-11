@@ -161,6 +161,9 @@ public static class DocumentLists
         return q;
     }
 
+    /// <summary>Whether the list is searched by document number: the period then doesn't count (owner, 2026-11-10).</summary>
+    public static bool ByNumber(string? number) => !string.IsNullOrWhiteSpace(number);
+
     /// <summary>
     /// The separate searches (owner, 2026-10-06): the document number, the customer's / supplier's
     /// name and their code, each in its own box; all that are given must match.

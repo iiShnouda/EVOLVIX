@@ -82,6 +82,9 @@ public sealed class SalesController : ControllerBase
         // "none" = documents of no department.
         if (departmentId == "none") q = q.Where(d => d.DepartmentId == null);
         else if (Guid.TryParse(departmentId, out var dept)) q = q.Where(d => d.DepartmentId == dept);
+        // No two documents share a number (owner, 2026-11-10): one searched by its number is found
+        // whatever the period says.
+        if (DocumentLists.ByNumber(Request.Query["number"])) from = to = null;
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
