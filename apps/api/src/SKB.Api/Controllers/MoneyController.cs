@@ -838,7 +838,10 @@ public sealed class MoneyController : ControllerBase
 
     private IQueryable<Voucher> ScopedVouchers()
     {
-        return _db.Vouchers.InBranches(User, v => v.BranchId);
+        var q = _db.Vouchers.InBranches(User, v => v.BranchId);
+        // No further back than the person sees money (their access).
+        if (Access.MoneySince(User) is DateTime since) q = q.Where(v => v.CreatedAt >= since);
+        return q;
     }
 
     private static IQueryable<Voucher> WithDetails(IQueryable<Voucher> q) => q.AsNoTracking()

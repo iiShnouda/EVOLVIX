@@ -139,6 +139,7 @@ public static class Access
         if (access.MoneyAccounts is { } m) yield return new Claim("moneyAccounts", string.Join(',', m));
         if (access.Departments is { } d) yield return new Claim("departments", string.Join(',', d));
         if (access.MaxDiscountPercent is int max) yield return new Claim("maxDiscount", max.ToString());
+        if (access.MoneyHistoryDays is int days) yield return new Claim("moneyDays", days.ToString());
     }
 
     /// <summary>
@@ -189,7 +190,7 @@ public static class Access
 /// <param name="MaxDiscountPercent">The most discount they may give; null = no limit.</param>
 public sealed record StaffAccess(
     bool AllBranches, IReadOnlyList<Branch> Branches, Guid[]? Warehouses, Guid[]? MoneyAccounts,
-    Guid[]? Departments = null, int? MaxDiscountPercent = null);
+    Guid[]? Departments = null, int? MaxDiscountPercent = null, int? MoneyHistoryDays = null);
 
 /// <summary>What was just added, for <see cref="AccessService.KeepNewHiddenAsync"/>.</summary>
 public enum NewKind { Branch, Warehouse, MoneyAccount, Department }
@@ -207,7 +208,8 @@ public sealed class AccessService
     /// <summary>May this person use the money account (its branch is theirs, and it's on their list if they have one)?</summary>
     public static bool CanUseAccount(Staff s, MoneyAccount a) =>
         (SeesAll(s) || s.BranchId == a.BranchId || s.BranchIds.Contains(a.BranchId))
-        && (s.Role == Role.OWNER || s.MoneyAccountIds.Count == 0 || s.MoneyAccountIds.Contains(a.Id));
+        && (s.Role == Role.OWNER
+            || (!s.NoMoneyAccounts && (s.MoneyAccountIds.Count == 0 || s.MoneyAccountIds.Contains(a.Id))));
 
     /// <summary>
     /// Something new is hidden from everyone until they are given it (owner decision 2026-10-02):
@@ -243,6 +245,7 @@ public sealed class AccessService
                     if (mine && !s.WarehouseIds.Contains(newId)) s.WarehouseIds.Add(newId);
                     break;
                 case NewKind.MoneyAccount:
+                    if (s.NoMoneyAccounts) break; // they have none, and a new one changes nothing
                     if (s.MoneyAccountIds.Count == 0)
                         s.MoneyAccountIds = await _db.MoneyAccounts.Where(a => a.Id != newId
                                 && (SeesAll(s) || a.BranchId == s.BranchId || s.BranchIds.Contains(a.BranchId)))
@@ -275,11 +278,13 @@ public sealed class AccessService
         if (staff.Role != Role.OWNER && staff.MoneyAccountIds.Count > 0)
             accounts = await _db.MoneyAccounts.Where(a => staff.MoneyAccountIds.Contains(a.Id) && ids.Contains(a.BranchId))
                 .Select(a => a.Id).ToArrayAsync();
+        if (staff.Role != Role.OWNER && staff.NoMoneyAccounts) accounts = Array.Empty<Guid>();
         Guid[]? departments = null;
         if (staff.Role != Role.OWNER && staff.DepartmentIds.Count > 0)
             departments = await _db.Departments.Where(d => staff.DepartmentIds.Contains(d.Id))
                 .Select(d => d.Id).ToArrayAsync();
-        return new StaffAccess(all, mine, warehouses, accounts, departments, await MaxDiscountAsync(staff));
+        return new StaffAccess(all, mine, warehouses, accounts, departments, await MaxDiscountAsync(staff),
+            staff.Role == Role.OWNER ? null : staff.MoneyHistoryDays);
     }
 
     /// <summary>The person's discount limit: their own, else the company's; the owner has none (null).</summary>

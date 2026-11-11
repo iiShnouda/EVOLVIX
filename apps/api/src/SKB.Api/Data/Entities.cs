@@ -173,6 +173,13 @@ public class Staff
     public List<Guid> WarehouseIds { get; set; } = new();
     /// <summary>Only these cash boxes, banks and wallets (none = every one in their branches).</summary>
     public List<Guid> MoneyAccountIds { get; set; } = new();
+    /// <summary>No cash box, bank or wallet at all (owner, 2026-11-10); <see cref="MoneyAccountIds"/> is then empty.</summary>
+    public bool NoMoneyAccounts { get; set; }
+    /// <summary>
+    /// How many days back they see money that moved — statements, vouchers, handovers, cheques (owner,
+    /// 2026-11-10: "a cash box, but only one month of what went through it"); null = everything.
+    /// </summary>
+    public int? MoneyHistoryDays { get; set; }
     /// <summary>Only these sales departments (none = every department).</summary>
     public List<Guid> DepartmentIds { get; set; } = new();
     /// <summary>
