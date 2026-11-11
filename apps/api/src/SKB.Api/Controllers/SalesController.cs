@@ -723,10 +723,11 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>
     /// Change a posted sales invoice (owner decision 2026-10-01): what it moved — stock, the
-    /// customer's balance, money paid now and its ledger entry — is reversed, and it is posted again
-    /// from the request under its own number and date, checked like a new invoice. Not once goods
-    /// were returned on it, payments or notes were taken against it, it went out for delivery, or
-    /// it is in a locked period.
+    /// customer's balance and its ledger entry — is reversed, and it is posted again from the request
+    /// under its own number and date, checked like a new invoice. Money taken on it stays (owner,
+    /// 2026-11-10): paid at the counter, by receipts or by cheques, and more than the new total is the
+    /// customer's credit; a cash customer settles the difference at once. Not once goods were returned
+    /// on it, it went out for delivery, or it is in a locked period.
     /// </summary>
     [HttpPut("invoices/{id:guid}")]
     [AnyPermission(Permissions.SalesEdit, Permissions.SalesCreate)]
@@ -787,16 +788,25 @@ public sealed class SalesController : ControllerBase
     /// money paid now, and the ledger. The caller holds the transaction and the invoice's row lock;
     /// the changes are saved (not committed) so what follows reads them.
     /// </summary>
-    private async Task<InvoiceLines.LineError?> ReverseInvoiceAsync(SalesDocument doc, Guid staffId)
+    /// <param name="keepMoney">A change (owner, 2026-11-10: "the money and cheques stay on his account"):
+    /// money paid at the counter stays where it is, and receipts and cheques taken against the invoice
+    /// stay too; only what the invoice itself put on the account comes off. A cancellation sends the
+    /// counter money back out and is refused while receipts or cheques are on the invoice.</param>
+    private async Task<InvoiceLines.LineError?> ReverseInvoiceAsync(SalesDocument doc, Guid staffId,
+        bool keepMoney = false)
     {
         if (doc.Status == DocumentStatus.CANCELLED)
             return new("invoice_cancelled", "This invoice is already cancelled.");
+        var lineIds = doc.Lines.Select(l => l.Id).ToList();
         if (await _db.SalesDocuments.AnyAsync(d => d.SourceDocumentId == doc.Id && d.Type == DocumentType.SALES_RETURN
-                                                   && d.Status != DocumentStatus.CANCELLED))
+                                                   && d.Status != DocumentStatus.CANCELLED)
+            || await _db.DocumentLines.AnyAsync(l => l.SourceLineId != null && lineIds.Contains(l.SourceLineId.Value)
+                                                     && l.Document!.Type == DocumentType.SALES_RETURN
+                                                     && l.Document.Status != DocumentStatus.CANCELLED))
             return new("invoice_has_returns", "Goods were returned on this invoice, so it can no longer be changed.");
-        if (await _db.VoucherAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Voucher!.Status == VoucherStatus.POSTED))
+        if (!keepMoney && await _db.VoucherAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Voucher!.Status == VoucherStatus.POSTED))
             return new("invoice_has_payments", "Payments were received against this invoice. Cancel those vouchers first.");
-        if (await _db.NoteAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Note!.Status != NoteStatus.CANCELLED))
+        if (!keepMoney && await _db.NoteAllocations.AnyAsync(a => a.DocumentId == doc.Id && a.Note!.Status != NoteStatus.CANCELLED))
             return new("invoice_has_notes", "Cheques or notes were taken against this invoice. Cancel them first.");
         if (doc.DeliveryStatus is DeliveryStatus.OUT_FOR_DELIVERY or DeliveryStatus.DELIVERED or DeliveryStatus.RETURNED
             || await _db.ShipmentInvoices.AnyAsync(x => x.DocumentId == doc.Id && x.Shipment!.Status != ShipmentStatus.CANCELLED))
@@ -813,18 +823,22 @@ public sealed class SalesController : ControllerBase
                 _inventory.ReceiveValue(product, line.Warehouse!, line.Quantity, line.LineCost,
                     StockMovementType.SALE_CANCELLED, doc.Id, doc.Number);
 
-        // The customer no longer owes it; money paid on it now goes back out.
+        // The customer no longer owes what it put on their account; money paid at the counter goes
+        // back out (a cancellation) or stays where it is (a change).
         await MoneyService.LockPartiesAsync(_db, doc.PartyId);
         var party = await _db.Parties.FirstAsync(p => p.Id == doc.PartyId);
         await _db.Entry(party).ReloadAsync();
-        party.Balance -= doc.GrandTotal - doc.PaidAmount;
+        party.Balance -= doc.GrandTotal - doc.PaidDirect;
         MoneyAccount? paidInto = null;
-        if (doc.PaidAmount > 0 && doc.PaidAccountId is Guid accountId)
+        if (doc.PaidDirect > 0 && doc.PaidAccountId is Guid accountId)
         {
             paidInto = (await _money.LockAsync(new[] { accountId }))[accountId];
-            var moneyError = _money.Move(paidInto, -doc.PaidAmount, MoneyMovementKind.CANCELLATION, staffId, doc.Number,
-                documentId: doc.Id, partyId: doc.PartyId);
-            if (moneyError is not null) return new(moneyError.Code, moneyError.Message);
+            if (!keepMoney)
+            {
+                var moneyError = _money.Move(paidInto, -doc.PaidDirect, MoneyMovementKind.CANCELLATION, staffId, doc.Number,
+                    documentId: doc.Id, partyId: doc.PartyId);
+                if (moneyError is not null) return new(moneyError.Code, moneyError.Message);
+            }
         }
         await _ledger.PostSalesInvoiceReversalAsync(doc, party, paidInto, staffId, doc.Number);
         await _db.SaveChangesAsync();
@@ -1333,6 +1347,7 @@ public sealed class SalesController : ControllerBase
         // are back before the new version is checked and posted.
         SalesDocument? edited = null;
         long editedTotal = 0;
+        (long Counter, Guid? Account, long Allocated)? paidBefore = null;
         if (editId is Guid eid)
         {
             await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {eid} FOR UPDATE");
@@ -1340,7 +1355,9 @@ public sealed class SalesController : ControllerBase
                 .AsSplitQuery().FirstOrDefaultAsync(d => d.Id == eid);
             if (edited is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
             editedTotal = edited.GrandTotal;
-            var reverseError = await ReverseInvoiceAsync(edited, staffId);
+            // What was paid stays (owner, 2026-11-10): at the counter, and by receipts and cheques.
+            paidBefore = (edited.PaidDirect, edited.PaidAccountId, Math.Max(0, edited.PaidAmount - edited.PaidDirect));
+            var reverseError = await ReverseInvoiceAsync(edited, staffId, keepMoney: true);
             if (reverseError is not null) return InvoiceLines.Refuse(this, reverseError);
         }
         // Its goods leave again at the cost they had (owner, 2026-10-24): only more of an item than
@@ -1657,6 +1674,10 @@ public sealed class SalesController : ControllerBase
                 Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
         }
         doc.PaidAmount = Math.Clamp(req.PaidAmount, 0, grand);
+        // A change keeps what was paid at the counter where it is, even over the new total (the rest is
+        // the customer's credit); a cash customer settles the difference now.
+        if (paidBefore is { } was)
+            doc.PaidAmount = party.IsCashCustomer ? grand : was.Counter;
         doc.PaidDirect = doc.PaidAmount;
         // A cash customer (عميل نقدي) pays the whole invoice now.
         if (party.IsCashCustomer && doc.PaidAmount < grand)
@@ -1665,14 +1686,15 @@ public sealed class SalesController : ControllerBase
                 message = $"{party.Name} is a cash customer: the whole {InvoiceLines.Major(grand)} is paid now.",
                 code = "cash_customer_must_pay",
             });
+        // The customer owes us the unpaid balance (receivable → positive). Receipts and cheques against
+        // a changed invoice are already off it.
+        await MoneyService.LockPartiesAsync(_db, party.Id);
+        await _db.Entry(party).ReloadAsync();
+        party.Balance += grand - doc.PaidDirect;
+        doc.PaidAmount = doc.PaidDirect + (paidBefore?.Allocated ?? 0);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
             : DocumentStatus.CONFIRMED;
-
-        // The customer owes us the unpaid balance (receivable → positive).
-        await MoneyService.LockPartiesAsync(_db, party.Id);
-        await _db.Entry(party).ReloadAsync();
-        party.Balance += grand - doc.PaidAmount;
         // Not over their purchase limit (حد الائتمان): whoever makes it, a new sale over it waits for
         // the accountant instead (Create), whose approval is the decision on the limit (owner,
         // 2026-10-02). A change to a posted invoice that takes the customer over it is saved, and
@@ -1695,13 +1717,36 @@ public sealed class SalesController : ControllerBase
 
         // Money paid now lands in a money account: the one picked, else the branch's cash box.
         MoneyAccount? paidInto = null;
-        if (doc.PaidAmount > 0)
+        if (paidBefore is { } was0 && doc.PaidDirect > 0 && (was0.Account is not null || party.IsCashCustomer))
+        {
+            // A change: the counter money stays in its account; only a cash customer's difference moves.
+            var (account, moneyError) = was0.Account is Guid was0In
+                ? ((await _money.LockAsync(new[] { was0In }))[was0In], (MoneyService.MoneyError?)null)
+                : await _money.ForDocumentAsync(req.PaidAccountId, branchId, User);
+            if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+            paidInto = account!;
+            doc.PaidAccountId = account!.Id;
+            var difference = doc.PaidDirect - (was0.Account is null ? 0 : was0.Counter);
+            moneyError = _money.Move(account, difference,
+                difference > 0 ? MoneyMovementKind.SALE_PAID : MoneyMovementKind.CANCELLATION, staffId, doc.Number,
+                documentId: doc.Id, partyId: party.Id);
+            if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+        }
+        else if (paidBefore is { Account: Guid gone, Counter: > 0 })
+        {
+            // A cash customer's invoice brought to nothing: the counter money goes back out.
+            var account = (await _money.LockAsync(new[] { gone }))[gone];
+            var moneyError = _money.Move(account, -paidBefore.Value.Counter, MoneyMovementKind.CANCELLATION, staffId,
+                doc.Number, documentId: doc.Id, partyId: party.Id);
+            if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+        }
+        else if (doc.PaidDirect > 0 && paidBefore is null)
         {
             var (account, moneyError) = await _money.ForDocumentAsync(req.PaidAccountId, branchId, User);
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
             paidInto = account!;
             doc.PaidAccountId = account!.Id;
-            _money.Move(account, doc.PaidAmount, MoneyMovementKind.SALE_PAID, staffId, doc.Number,
+            _money.Move(account, doc.PaidDirect, MoneyMovementKind.SALE_PAID, staffId, doc.Number,
                 documentId: doc.Id, partyId: party.Id);
         }
         await _ledger.PostSalesInvoiceAsync(doc, party, paidInto, staffId);
