@@ -56,6 +56,21 @@ public static class Access
     /// <summary>Only these sales departments; null = every department.</summary>
     public static Guid[]? Departments(ClaimsPrincipal u) => Ids(u, "departments");
 
+    /// <summary>
+    /// How many days back the person sees money that moved (owner, 2026-11-10: "a cash box, but only
+    /// one month of what went through it"); null = everything.
+    /// </summary>
+    public static int? MoneyHistoryDays(ClaimsPrincipal u) =>
+        int.TryParse(u.FindFirst("moneyDays")?.Value, out var d) && d > 0 ? d : null;
+
+    /// <summary>The first company day of money movements the person sees; null = from the start.</summary>
+    public static DateOnly? MoneyFromDay(ClaimsPrincipal u) =>
+        MoneyHistoryDays(u) is int d ? CompanyClock.Today.AddDays(-d) : null;
+
+    /// <summary>The instant <see cref="MoneyFromDay"/> starts; null = from the start.</summary>
+    public static DateTime? MoneySince(ClaimsPrincipal u) =>
+        MoneyFromDay(u) is DateOnly day ? CompanyClock.StartOf(day) : null;
+
     public static bool CanUseDepartment(ClaimsPrincipal u, Guid departmentId) =>
         Departments(u) is not { } mine || mine.Contains(departmentId);
 

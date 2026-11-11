@@ -868,12 +868,13 @@ public record CancelHandoverRequest(string? Reason = null);
 public record MoneyMovementDto(
     string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,
     string? Reference, string? MethodReference, string? PartyName, string? Notes, string CreatedByName,
-    string? VoucherId);
+    string? VoucherId, string? DocumentId = null, string? DocumentKind = null, string? CounterpartKind = null,
+    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null);
 
 /// <summary>An account's movements over a period (a day = the daily cash report, حركة اليوم).</summary>
 public record AccountStatementDto(
     MoneyAccountDto Account, string From, string To, long Opening, long TotalIn, long TotalOut, long Closing,
-    MoneyMovementDto[] Movements);
+    MoneyMovementDto[] Movements, string? Earliest = null);
 
 public record VoucherLineRequest(string? Method, string? AccountId, long Amount, string? Reference = null);
 
@@ -940,7 +941,7 @@ public record LedgerLineDto(
     string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
     string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
     StatementItemDto[]? Items = null, int EntrySerial = 0, string? DepartmentName = null, string? WarehouseName = null,
-    string? DocumentId = null, string? DocumentKind = null);
+    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null);
 
 /// <summary>One item line of an invoice or return on a statement (no cost).</summary>
 public record StatementItemDto(

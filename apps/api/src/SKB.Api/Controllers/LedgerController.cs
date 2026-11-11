@@ -170,7 +170,11 @@ public sealed class LedgerController : ControllerBase
         var hidden = await HiddenAccountIdsAsync();
         if (hidden.Contains(id)) return StatusCode(403, Costs.Refusal);
         ids.ExceptWith(hidden);
-        return await StatementAsync($"{account.Code} {NameOf(account)}", VisibleLines().Where(l => ids.Contains(l.AccountId)), from, to);
+        // Cash boxes and banks: no further back than the person sees money (their access).
+        var money = Access.MoneyFromDay(User) is not null
+                    && await _db.LedgerAccounts.AnyAsync(a => ids.Contains(a.Id) && a.MoneyAccountId != null);
+        return await StatementAsync($"{account.Code} {NameOf(account)}", VisibleLines().Where(l => ids.Contains(l.AccountId)), from, to,
+            earliest: money ? Access.MoneyFromDay(User) : null);
     }
 
     /// <summary>A customer's / supplier's / carrier's statement (كشف حساب): every line on their accounts.</summary>
@@ -227,7 +231,63 @@ public sealed class LedgerController : ControllerBase
             if (!Guid.TryParse(warehouseId, out var wh)) return Bad("warehouse_not_found", "Warehouse not found.");
             lines = lines.Where(l => _db.DocumentLines.Any(dl => dl.DocumentId == l.Entry!.SourceId && dl.WarehouseId == wh));
         }
-        return await StatementAsync(party.Name, lines, from, to, (rows, dto) => DetailAsync(rows, dto, items));
+        return await StatementAsync(party.Name, lines, from, to, (rows, dto) => DetailAsync(rows, dto, items),
+            ownDay: true);
+    }
+
+    /// <summary>
+    /// The day a line stands on in a party's statement: an invoice's posting on the invoice's own day.
+    /// A changed invoice is posted again when it is changed, but it is still that day's invoice (owner,
+    /// 2026-11-10: the balance before a period counts it from its day, not from the day it was changed).
+    /// </summary>
+    private IQueryable<JournalLine> Dated(IQueryable<JournalLine> lines, DateTime? from, DateTime? before, bool ownDay)
+    {
+        if (!ownDay)
+        {
+            if (from is DateTime a) lines = lines.Where(l => l.Entry!.Date >= a);
+            if (before is DateTime b) lines = lines.Where(l => l.Entry!.Date < b);
+            return lines;
+        }
+        if (from is DateTime f)
+            lines = lines.Where(l => (l.Entry!.SourceType == "SALES_INVOICE"
+                ? _db.SalesDocuments.Where(d => d.Id == l.Entry.SourceId).Select(d => (DateTime?)d.IssueDate).FirstOrDefault() ?? l.Entry.Date
+                : l.Entry.Date) >= f);
+        if (before is DateTime t)
+            lines = lines.Where(l => (l.Entry!.SourceType == "SALES_INVOICE"
+                ? _db.SalesDocuments.Where(d => d.Id == l.Entry.SourceId).Select(d => (DateTime?)d.IssueDate).FirstOrDefault() ?? l.Entry.Date
+                : l.Entry.Date) < t);
+        return lines;
+    }
+
+    private static readonly string[] SideNoise = { LedgerKeys.VatInput, LedgerKeys.VatOutput, LedgerKeys.Rounding };
+
+    /// <summary>
+    /// Where each line's amount came from or went to: the accounts on the other side of its entry (the
+    /// cash box of a receipt, the customer of a box's receipt, the expense item, the other box of a
+    /// transfer…), leaving out taxes, rounding and a sale's cost lines.
+    /// </summary>
+    private async Task<Dictionary<Guid, string?>> CounterpartsAsync(List<JournalLine> rows)
+    {
+        var entryIds = rows.Select(r => r.EntryId).Distinct().ToList();
+        var all = await WithLinks(_db.LedgerAccounts).ToDictionaryAsync(a => a.Id);
+        var byEntry = (await _db.JournalLines.AsNoTracking().Where(l => entryIds.Contains(l.EntryId))
+                .Select(l => new { l.Id, l.EntryId, l.AccountId, l.Debit, l.LineNo }).ToListAsync())
+            .ToLookup(l => l.EntryId);
+        var hidden = await HiddenAccountIdsAsync();
+        var result = new Dictionary<Guid, string?>();
+        foreach (var r in rows)
+        {
+            var mine = all.GetValueOrDefault(r.AccountId);
+            var others = byEntry[r.EntryId].Where(l => l.Id != r.Id && (l.Debit > 0) != (r.Debit > 0)).OrderBy(l => l.LineNo)
+                .Select(l => all.GetValueOrDefault(l.AccountId)).Where(a => a is not null && a.Id != r.AccountId
+                    && !(a.PartyId != null && a.PartyId == mine?.PartyId) && !hidden.Contains(a.Id)).ToList();
+            var hasCost = byEntry[r.EntryId].Any(l => all.GetValueOrDefault(l.AccountId)?.SystemKey == LedgerKeys.Cogs);
+            var kept = others.Where(a => a!.SystemKey is null || !(SideNoise.Contains(a.SystemKey)
+                || (hasCost && a.SystemKey is LedgerKeys.Cogs or LedgerKeys.Inventory))).ToList();
+            var names = (kept.Count > 0 ? kept : others).Select(a => NameOf(a!)).Distinct().Take(4).ToList();
+            result[r.Id] = names.Count == 0 ? null : string.Join("، ", names);
+        }
+        return result;
     }
 
     private static readonly string[] DocumentSources =
@@ -308,27 +368,52 @@ public sealed class LedgerController : ControllerBase
     }
 
     private async Task<ActionResult<LedgerStatementDto>> StatementAsync(string title, IQueryable<JournalLine> lines,
-        string? from, string? to, Func<List<JournalLine>, LedgerLineDto[], Task<LedgerLineDto[]>>? detail = null)
+        string? from, string? to, Func<List<JournalLine>, LedgerLineDto[], Task<LedgerLineDto[]>>? detail = null,
+        bool ownDay = false, DateOnly? earliest = null)
     {
+        // Someone who sees only the last days of money: a cash box's or bank's lines start no earlier.
+        if (earliest is DateOnly first)
+        {
+            var today = CompanyClock.Today;
+            var f = CompanyClock.ParseDay(from) ?? new DateOnly(today.Year, 1, 1);
+            var t = CompanyClock.ParseDay(to) ?? today;
+            from = (f < first ? first : f).ToString("yyyy-MM-dd");
+            to = (t < first ? first : t).ToString("yyyy-MM-dd");
+        }
         if (!Range(from, to, out var fromDay, out var toDay, out var start, out var end))
             return Bad("bad_range", "Choose up to five years, the start before the end.");
-        var opening = await lines.Where(l => l.Entry!.Date < start).SumAsync(l => (long?)(l.Debit - l.Credit)) ?? 0;
-        var rows = await lines.AsNoTracking().Include(l => l.Entry).Include(l => l.Account)
-            .Where(l => l.Entry!.Date >= start && l.Entry.Date < end)
+        var opening = await Dated(lines, null, start, ownDay).SumAsync(l => (long?)(l.Debit - l.Credit)) ?? 0;
+        var period = Dated(lines, start, end, ownDay);
+        // The totals are of the whole period, however many lines are listed.
+        var debit = await period.SumAsync(l => (long?)l.Debit) ?? 0;
+        var credit = await period.SumAsync(l => (long?)l.Credit) ?? 0;
+        var rows = await period.AsNoTracking().Include(l => l.Entry).ThenInclude(e => e!.CreatedBy).Include(l => l.Account)
             .OrderBy(l => l.Entry!.Date).ThenBy(l => l.Entry!.CreatedAt).ThenBy(l => l.LineNo)
             .Take(10000).ToListAsync();
+        var when = rows.ToDictionary(l => l.Id, l => l.Entry!.Date);
+        if (ownDay)
+        {
+            var ids = rows.Where(l => l.Entry!.SourceType == "SALES_INVOICE" && l.Entry.SourceId != null)
+                .Select(l => l.Entry!.SourceId!.Value).Distinct().ToList();
+            var days = await _db.SalesDocuments.AsNoTracking().Where(d => ids.Contains(d.Id))
+                .Select(d => new { d.Id, d.IssueDate }).ToDictionaryAsync(d => d.Id, d => d.IssueDate);
+            foreach (var l in rows)
+                if (l.Entry!.SourceType == "SALES_INVOICE" && l.Entry.SourceId is Guid doc && days.TryGetValue(doc, out var day))
+                    when[l.Id] = day;
+            rows = rows.OrderBy(l => when[l.Id]).ThenBy(l => l.Entry!.Serial).ThenBy(l => l.LineNo).ToList();
+        }
         var names = await AccountNamesAsync(rows.Select(r => r.AccountId));
+        var sides = await CounterpartsAsync(rows);
         var running = opening;
         var dto = rows.Select(l =>
         {
             running += l.Debit - l.Credit;
-            return new LedgerLineDto(l.EntryId.ToString(), l.Entry!.Date.ToString("o"), l.Entry.Number, l.Entry.Description,
+            return new LedgerLineDto(l.EntryId.ToString(), when[l.Id].ToString("o"), l.Entry!.Number, l.Entry.Description,
                 l.Entry.SourceType, l.Entry.SourceId?.ToString(), l.Account!.Code, names[l.AccountId], l.Debit, l.Credit,
-                l.Memo, running, EntrySerial: l.Entry.Serial);
+                l.Memo, running, EntrySerial: l.Entry.Serial, CreatedByName: l.Entry.CreatedBy?.FullName,
+                Counterpart: sides.GetValueOrDefault(l.Id));
         }).ToArray();
         if (detail is not null) dto = await detail(rows, dto);
-        var debit = rows.Sum(l => l.Debit);
-        var credit = rows.Sum(l => l.Credit);
         return Ok(new LedgerStatementDto(title, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
             opening, debit, credit, opening + debit - credit, dto, await CurrencyAsync()));
     }

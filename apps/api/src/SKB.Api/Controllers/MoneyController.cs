@@ -200,8 +200,11 @@ public sealed class MoneyController : ControllerBase
     }
 
     /// <summary>
-    /// An account's movements between two days (UTC), with the balance before and after. One day =
-    /// the daily cash report (حركة اليوم).
+    /// An account's movements between two company days, in the order they happened, with the balance
+    /// before and after. One day = the daily cash report (حركة اليوم). A movement dated on an earlier
+    /// day (a back-dated voucher) sits on its day, so the balance before a period is what had moved
+    /// before it — not the balance when the last of them was typed (owner, 2026-11-10). Each line says
+    /// what it is, its document, who or what the money came from or went to, the branch and who made it.
     /// </summary>
     [HttpGet("money-accounts/{id:guid}/movements")]
     [AnyPermission(Permissions.MoneyAccounts, Permissions.StatementMoney)]
@@ -212,23 +215,103 @@ public sealed class MoneyController : ControllerBase
         if (account is null) return NotFound(new { message = "Money account not found.", code = "not_found" });
         var fromDay = CompanyClock.ParseDay(from) ?? CompanyClock.Today;
         var toDay = CompanyClock.ParseDay(to) ?? fromDay;
-        if (toDay < fromDay || toDay.DayNumber - fromDay.DayNumber > 366)
-            return Bad("bad_range", "Choose up to a year, the start before the end.");
+        // Someone who sees only the last days of money: the period starts no earlier than that.
+        var earliest = Access.MoneyFromDay(User);
+        if (earliest is DateOnly first)
+        {
+            if (fromDay < first) fromDay = first;
+            if (toDay < first) toDay = first;
+        }
+        if (toDay < fromDay || toDay.DayNumber - fromDay.DayNumber > 5 * 366)
+            return Bad("bad_range", "Choose up to five years, the start before the end.");
         var (start, end) = CompanyClock.Days(fromDay, toDay);
 
-        var opening = await _db.MoneyMovements.Where(m => m.AccountId == id && m.CreatedAt < start)
-            .OrderByDescending(m => m.Seq).Select(m => (long?)m.BalanceAfter).FirstOrDefaultAsync() ?? 0;
-        var rows = await _db.MoneyMovements.AsNoTracking().Include(m => m.Party).Include(m => m.CreatedBy)
-            .Where(m => m.AccountId == id && m.CreatedAt >= start && m.CreatedAt < end)
-            .OrderBy(m => m.Seq).Take(5000).ToListAsync();
-        var totalIn = rows.Where(m => m.Amount > 0).Sum(m => m.Amount);
-        var totalOut = rows.Where(m => m.Amount < 0).Sum(m => -m.Amount);
+        var all = _db.MoneyMovements.AsNoTracking().Where(m => m.AccountId == id);
+        var opening = await all.Where(m => m.CreatedAt < start).SumAsync(m => (long?)m.Amount) ?? 0;
+        var period = all.Where(m => m.CreatedAt >= start && m.CreatedAt < end);
+        var totalIn = await period.Where(m => m.Amount > 0).SumAsync(m => (long?)m.Amount) ?? 0;
+        var totalOut = -(await period.Where(m => m.Amount < 0).SumAsync(m => (long?)m.Amount) ?? 0);
+        var rows = await period.Include(m => m.Party).Include(m => m.CreatedBy)
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Seq).Take(10000).ToListAsync();
         var up = await _money.UpTargetsAsync();
         return Ok(new AccountStatementDto(ToDto(account, up(account)), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"),
-            opening, totalIn, totalOut, opening + totalIn - totalOut,
-            rows.Select(m => new MoneyMovementDto(m.Id.ToString(), m.Seq, m.CreatedAt.ToString("o"), m.Kind.ToString(),
-                m.Amount, m.BalanceAfter, m.Method?.ToString(), m.Reference, m.MethodReference, m.Party?.Name, m.Notes,
-                m.CreatedBy?.FullName ?? "", m.VoucherId?.ToString())).ToArray()));
+            opening, totalIn, totalOut, opening + totalIn - totalOut, await MovementDtosAsync(account, rows, opening),
+            earliest?.ToString("yyyy-MM-dd")));
+    }
+
+    /// <summary>
+    /// The movements as the statement shows them: the running balance from <paramref name="opening"/>,
+    /// the document behind each (to open it) and where the money came from or went to — the customer,
+    /// supplier or shipping company, the other cash box or bank, the expense item, the employee.
+    /// </summary>
+    private async Task<MoneyMovementDto[]> MovementDtosAsync(MoneyAccount account, List<MoneyMovement> rows, long opening)
+    {
+        var voucherIds = rows.Where(m => m.VoucherId != null).Select(m => m.VoucherId!.Value).Distinct().ToList();
+        var vouchers = await _db.Vouchers.AsNoTracking().Include(v => v.ExpenseCategory).ThenInclude(c => c!.Parent)
+            .Include(v => v.FromAccount).Include(v => v.ToAccount).Include(v => v.Branch).Include(v => v.Party)
+            .Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
+        var docIds = rows.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
+        var docs = await _db.SalesDocuments.AsNoTracking().Include(d => d.Branch).Include(d => d.Party)
+            .Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+        var settlementIds = rows.Where(m => m.SettlementId != null).Select(m => m.SettlementId!.Value).Distinct().ToList();
+        var settlements = await _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier)
+            .Where(x => settlementIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var noteRefs = rows.Where(m => m.Kind is MoneyMovementKind.NOTE_COLLECTED or MoneyMovementKind.NOTE_PAID && m.Reference != null)
+            .Select(m => m.Reference!).Distinct().ToList();
+        var notes = (await _db.Notes.AsNoTracking().Include(n => n.Branch).Where(n => noteRefs.Contains(n.Ref))
+            .Select(n => new { n.Ref, n.Id, Branch = n.Branch!.Name }).ToListAsync())
+            .GroupBy(n => n.Ref).ToDictionary(g => g.Key, g => g.First());
+        var branch = Loc.Name(account.Branch);
+
+        static string PartyKind(Party p) => p.Types.Contains(nameof(PartyType.CUSTOMER)) ? "CUSTOMER"
+            : p.Types.Contains(nameof(PartyType.SUPPLIER)) ? "SUPPLIER" : "CARRIER";
+        var running = opening;
+        return rows.Select(m =>
+        {
+            running += m.Amount;
+            string? docId = null, docKind = null, sideKind = null, sideName = null, branchName = branch;
+            int? sideCode = null;
+            void Side(Party? p)
+            {
+                if (p is null) return;
+                (sideKind, sideName, sideCode) = (PartyKind(p), p.Name, p.Code);
+            }
+            Side(m.Party);
+            if (m.VoucherId is Guid vid && vouchers.TryGetValue(vid, out var v))
+            {
+                (docId, docKind, branchName) = (v.Id.ToString(), v.Type.ToString(), Loc.Name(v.Branch));
+                if (v.Type == VoucherType.TRANSFER)
+                {
+                    var other = v.FromAccountId == account.Id ? v.ToAccount : v.FromAccount;
+                    if (other is not null) (sideKind, sideName) = ("ACCOUNT", Loc.Name(other));
+                }
+                else if (v.Type == VoucherType.EXPENSE)
+                    (sideKind, sideName) = ("EXPENSE", v.ExpenseCategory is null ? null
+                        : v.ExpenseCategory.Parent is null ? Loc.Name(v.ExpenseCategory)
+                        : $"{Loc.Name(v.ExpenseCategory.Parent)} › {Loc.Name(v.ExpenseCategory)}");
+                else Side(v.Party);
+            }
+            else if (m.DocumentId is Guid did && docs.TryGetValue(did, out var d))
+            {
+                (docId, docKind, branchName) = (d.Id.ToString(), d.Type.ToString(), Loc.Name(d.Branch));
+                Side(d.Party);
+            }
+            else if (m.SettlementId is Guid sid && settlements.TryGetValue(sid, out var st))
+            {
+                (docId, docKind) = (st.Id.ToString(), "CARRIER_SETTLEMENT");
+                Side(st.Carrier);
+            }
+            else if (m.Reference is not null && notes.TryGetValue(m.Reference, out var n)
+                     && m.Kind is MoneyMovementKind.NOTE_COLLECTED or MoneyMovementKind.NOTE_PAID)
+                (docId, docKind, branchName) = (n.Id.ToString(), "NOTE", n.Branch);
+            else if (m.Kind is MoneyMovementKind.ADVANCE_PAID or MoneyMovementKind.ADVANCE_CANCELLED)
+                (sideKind, sideName) = ("EMPLOYEE", m.Notes);
+            else if (m.Kind == MoneyMovementKind.SALARY_PAID) sideKind = "SALARIES";
+            return new MoneyMovementDto(m.Id.ToString(), m.Seq, m.CreatedAt.ToString("o"), m.Kind.ToString(),
+                m.Amount, running, m.Method?.ToString(), m.Reference, m.MethodReference, m.Party?.Name,
+                sideKind == "EMPLOYEE" ? null : m.Notes, m.CreatedBy?.FullName ?? "", m.VoucherId?.ToString(),
+                docId, docKind, sideKind, sideName, sideCode, branchName);
+        }).ToArray();
     }
 
     // ------------------------------------------------------------------ open invoices
