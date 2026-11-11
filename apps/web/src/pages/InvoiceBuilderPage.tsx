@@ -34,6 +34,7 @@ import { useDeviceInfo } from '../lib/device';
 import { useWorkPlace } from '../lib/workPlace';
 import { onlyChoice } from '../lib/onlyChoice';
 import { ItemLifeSheet } from '../components/ItemLifeSheet';
+import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
@@ -74,6 +75,8 @@ interface Line {
    * stays, following the quantity — so much for so many pieces of the item's smallest unit.
    */
   kept?: { discount: number; pieces: number };
+  /** The line's discount as typed while the invoice is changed (sales:discount_line; owner, 2026-11-10). */
+  given?: { mode: LineDiscountMode; value: string };
 }
 
 /** A line as kept in a draft. */
@@ -87,6 +90,7 @@ const keepLine = (l: Line) => ({
   bonus: l.bonus,
   basis: l.basis,
   kept: l.kept,
+  given: l.given,
 });
 
 /** An invoice discount as typed: a percent or an amount. */
@@ -148,6 +152,12 @@ export function InvoiceBuilderPage({
   const canPriceBasis = can('sales:price_basis');
   // The customer's shipping company and address are theirs unless this person may change them.
   const canChangeShipping = can('sales:change_shipping');
+  // An invoice being changed: its discounts may be changed by whoever gives that kind (owner,
+  // 2026-11-10); a new invoice still has none.
+  const editing = !!editId && !readOnly;
+  const canEditDiscount = editing && can('sales:discount');
+  const canEditExtra = editing && (can('sales:discount') || can('sales:discount_combined'));
+  const canEditLineDiscount = editing && can('sales:discount_line');
   // Order of the line columns, kept per person.
   const [columnOrder, setColumnOrder] = useHiddenColumns('order.invoice.sale');
   const [cashAccountId, setCashAccountId] = useState('');
@@ -533,7 +543,16 @@ export function InvoiceBuilderPage({
       !l.bonus && l.kept
         ? Math.min(gross, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
         : 0;
-    const discount = kept > 0 ? kept : autoDiscountOf(l, i);
+    // Typed while changing the invoice: that instead (none typed = none).
+    const typed =
+      !l.bonus && l.given
+        ? lineDiscount(l.given.mode, l.given.value, gross, l.quantity * factor)
+        : 0;
+    const discount = l.given
+      ? typed || autoDiscountOf(l, i)
+      : kept > 0
+        ? kept
+        : autoDiscountOf(l, i);
     const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
     return {
       line: l,
@@ -779,6 +798,7 @@ export function InvoiceBuilderPage({
                 l.kept && l.kept.discount > 0 && l.kept.pieces > 0
                   ? { discount: Math.round(l.kept.discount), pieces: Math.round(l.kept.pieces) }
                   : undefined,
+              given: l.given && typeof l.given.value === 'string' ? { ...l.given } : undefined,
             },
           ];
         });
@@ -1225,12 +1245,49 @@ export function InvoiceBuilderPage({
     );
 
   /** What the line's discount comes to: the accountant's, or a quantity discount. */
-  const lineDiscountCell = (r: Row) =>
-    !r.line.bonus && r.discount > 0 ? (
+  const lineDiscountCell = (r: Row) => {
+    if (canEditLineDiscount && isOpen(r.line.key) && !r.line.bonus) {
+      const given: NonNullable<Line['given']> =
+        r.line.given ??
+        (r.discount > 0
+          ? { mode: 'amount', value: String(toMajor(r.discount)) }
+          : { mode: 'percent', value: '' });
+      return (
+        <span className="flex items-center gap-1">
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            className={`${cell} w-20 tnum`}
+            aria-label={t('invoice.lineDiscount')}
+            placeholder="0"
+            value={given.value}
+            onChange={(e) => updateLine(r.line.key, { given: { ...given, value: e.target.value } })}
+          />
+          <select
+            className={`${cell} px-1`}
+            aria-label={t('invoice.lineDiscountMode')}
+            value={given.mode}
+            onChange={(e) =>
+              updateLine(r.line.key, {
+                given: { ...given, mode: e.target.value as LineDiscountMode },
+              })
+            }
+          >
+            <option value="percent">%</option>
+            <option value="piece">{t('invoice.perPiece')}</option>
+            <option value="amount">{t('invoice.onLine')}</option>
+          </select>
+        </span>
+      );
+    }
+    return !r.line.bonus && r.discount > 0 ? (
       <span className="whitespace-nowrap text-xs text-warning tnum">
         −{formatMoney(r.discount, currency, locale)}
       </span>
     ) : null;
+  };
 
   // The lines table (owner, 2026-10-01): stock, selling and supply price, last price, the
   // increase, before and after discount; each column may be hidden and put in its own place.
@@ -1978,12 +2035,14 @@ export function InvoiceBuilderPage({
                 <KeptDiscount
                   label={t('charge.DISCOUNT')}
                   value={discount1}
+                  onChange={canEditDiscount ? setDiscount1 : undefined}
                   amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
                   currency={currency}
                 />
                 <KeptDiscount
                   label={t('charge.EXTRA_DISCOUNT')}
                   value={discount2}
+                  onChange={canEditExtra ? setDiscount2 : undefined}
                   amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
                   currency={currency}
                 />
@@ -2140,19 +2199,57 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   );
 }
 
-/** An invoice discount a changed invoice already has: its percent (if one) and what it comes to. */
+/**
+ * An invoice discount a changed invoice already has: its percent (if one) and what it comes to.
+ * With `onChange` (whoever may give it), typed here: a percent or an amount, empty = none.
+ */
 function KeptDiscount({
   label,
   value,
+  onChange,
   amount,
   currency,
 }: {
   label: string;
   value: DiscountInput;
+  onChange?: (v: DiscountInput) => void;
   amount: number;
   currency: string;
 }) {
   const { locale } = useT();
+  if (onChange)
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <dt className="min-w-0 text-muted">{label}</dt>
+        <dd className="flex shrink-0 items-center gap-1">
+          {amount > 0 && (
+            <span className="text-xs text-warning tnum">
+              −{formatMoney(amount, currency, locale)}
+            </span>
+          )}
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            className={`${field} !h-8 !w-20 tnum`}
+            aria-label={label}
+            placeholder="0"
+            value={value.value}
+            onChange={(e) => onChange({ ...value, value: e.target.value })}
+          />
+          <select
+            className={`${field} !h-8 !w-auto px-1`}
+            aria-label={label}
+            value={value.mode}
+            onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountInput['mode'] })}
+          >
+            <option value="percent">%</option>
+            <option value="amount">{currency}</option>
+          </select>
+        </dd>
+      </div>
+    );
   if (!value.value) return null;
   return (
     <Row
@@ -2182,6 +2279,7 @@ interface InvoiceDraft {
     bonus: boolean;
     basis?: PriceBasis;
     kept?: { discount: number; pieces: number };
+    given?: { mode: LineDiscountMode; value: string };
   }[];
   /** Items being prepared, not on the invoice yet. */
   staged?: InvoiceDraft['lines'];

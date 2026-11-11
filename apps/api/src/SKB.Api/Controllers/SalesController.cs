@@ -734,9 +734,10 @@ public sealed class SalesController : ControllerBase
         if (doc is null) return NotFound(new { message = "Invoice not found.", code = "not_found" });
         var gate = CheckEditable(doc.StaffId, doc.CreatedAt, doc.EditLocked, Permissions.SalesEdit);
         if (gate is not null) return gate;
-        // Its discounts stay as they are: the accountant changes them from the customer's invoices.
+        // Its discounts stay as they are, unless the person may give that kind of discount (owner,
+        // 2026-11-10: "I can't change the discount while editing"): then within their limit.
         return await CreateCore(req, DocumentType.SALES_INVOICE, fromId: null, branch: doc.BranchId,
-            discounts: DiscountMode.Keep, editId: id);
+            discounts: DiscountMode.Edit, editId: id);
     }
 
     /// <summary>
@@ -1123,6 +1124,11 @@ public sealed class SalesController : ControllerBase
         None,
         /// <summary>Its items are changed: the discounts it has stay exactly as they are.</summary>
         Keep,
+        /// <summary>
+        /// A posted invoice is changed (owner, 2026-11-10): like <see cref="Keep"/>, but a discount may
+        /// change with its kind's permission, within the person's limit.
+        /// </summary>
+        Edit,
         /// <summary>The accountant's discount: a kind that changes needs its permission and keeps to their limit.</summary>
         Give,
         /// <summary>Approved already (a valid quotation, the system accepting a pending invoice).</summary>
@@ -1276,7 +1282,7 @@ public sealed class SalesController : ControllerBase
             if (line.IsBonus)
             {
                 // Changing its items keeps the free goods it had (checked below, once the units are known).
-                if (!Approved(Permissions.SalesBonus) && discounts != DiscountMode.Keep)
+                if (!Approved(Permissions.SalesBonus) && discounts is not (DiscountMode.Keep or DiscountMode.Edit))
                     return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
                 if (line.UnitPrice != 0 || line.Discount != 0)
                     return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
@@ -1362,7 +1368,7 @@ public sealed class SalesController : ControllerBase
         }
         // An invoice whose items are changed keeps the free goods it had (owner, 2026-10-24): no more of
         // an item than before without the permission.
-        if (discounts == DiscountMode.Keep && !Approved(Permissions.SalesBonus))
+        if (discounts is DiscountMode.Keep or DiscountMode.Edit && !Approved(Permissions.SalesBonus))
         {
             var had = ((edited ?? baseline)?.Lines ?? []).Where(l => l.IsBonus)
                 .GroupBy(l => l.ProductId).ToDictionary(g => g.Key, g => g.Sum(l => (long)l.Quantity));
@@ -1433,8 +1439,8 @@ public sealed class SalesController : ControllerBase
             var invoiceGiven = Changed(ChargeKind.DISCOUNT);
             var extraGiven = Changed(ChargeKind.EXTRA_DISCOUNT);
             discountChanged = lineGiven is not null || invoiceGiven || extraGiven;
-            // Not while an invoice is made or its items changed (owner, 2026-10-24).
-            if (discountChanged && discounts != DiscountMode.Give)
+            // Not while an invoice is made or a pending one's items changed (owner, 2026-10-24).
+            if (discountChanged && discounts is not (DiscountMode.Give or DiscountMode.Edit))
                 return InvoiceLines.Refuse(this, new("discount_on_customer_invoices",
                     "Discounts are given from the customer's invoices."));
             if (lineGiven is not null && !Can(Permissions.SalesDiscountLine))

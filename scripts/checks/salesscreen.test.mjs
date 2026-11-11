@@ -175,4 +175,108 @@ eq(
 );
 eq('the owner sees it', (await owner.post('/pricing/sale', ask)).data?.lines?.[0]?.unitCost, 500);
 
+console.log('== discounts while changing an invoice');
+ok(
+  'more stock of B',
+  await owner.post('/purchases/invoices', {
+    partyId: supplier.id,
+    warehouseId: wh.id,
+    taxPercent: 0,
+    lines: [{ productId: b.id, quantity: 40, unitCost: 500 }],
+  }),
+);
+const editor = async (name, permissions, max) => {
+  const s = ok(
+    `${name}`,
+    await owner.post('/staff', {
+      fullName: `Scr ${name} ${tag}`,
+      email: `scr.${name}.${tag}@skb.local`,
+      password: PASS,
+      role: 'SALES',
+      branchId: owner.user.branchId,
+    }),
+  );
+  ok(
+    '…their permissions',
+    await owner.put(`/staff/${s.id}/permissions`, {
+      granted: ['sales:edit', ...permissions],
+      revoked: [],
+    }),
+  );
+  if (max != null)
+    ok(`…limit ${max}%`, await owner.put(`/staff/${s.id}/access`, { maxDiscountPercent: max }));
+  return login(`scr.${name}.${tag}@skb.local`, PASS);
+};
+const plain = await editor('plain', []);
+const liner = await editor('liner', ['sales:discount_line'], 10);
+const giver = await editor('giver', ['sales:discount'], 10);
+const d0 = ok(
+  'an invoice: 10 of B at 10.00',
+  await owner.post('/sales/invoices', sale([line(b, 10)])),
+);
+const put = (who, lines, charges) =>
+  who.put(`/sales/invoices/${d0.id}`, sale(lines, charges ? { charges } : {}));
+const off = (discount, quantity = 10) => [{ ...line(b, quantity), discount }];
+eq(
+  'no discount permission: a line discount is refused',
+  (await put(plain, off(500))).data?.code,
+  'discount_not_allowed',
+);
+eq(
+  '…and an invoice discount',
+  (await put(plain, off(0), [{ kind: 'DISCOUNT', percent: 5 }])).data?.code,
+  'discount_not_allowed',
+);
+eq(
+  'the invoice-discount permission does not give line discounts',
+  (await put(giver, off(500))).data?.code,
+  'discount_not_allowed',
+);
+eq(
+  'the line-discount permission does not give invoice discounts',
+  (await put(liner, off(0), [{ kind: 'DISCOUNT', percent: 5 }])).data?.code,
+  'discount_not_allowed',
+);
+eq(
+  'over the person’s limit is refused',
+  (await put(liner, off(1500))).data?.code,
+  'discount_over_limit',
+);
+const l1 = ok('a line discount of 5.00 within the limit', await put(liner, off(500)));
+eq('…on the invoice', [l1.lines[0].discount, l1.grandTotal], [500, 9500]);
+const k1 = ok(
+  'someone without it changes the quantity: the discount follows',
+  await put(plain, off(250, 5)),
+);
+eq('…kept', [k1.lines[0].discount, k1.grandTotal], [250, 4750]);
+eq(
+  'an invoice discount over the limit is refused',
+  (await put(giver, off(250, 5), [{ kind: 'DISCOUNT', percent: 8 }])).data?.code,
+  'discount_over_limit',
+);
+const g1 = ok(
+  'an invoice discount of 4%',
+  await put(giver, off(250, 5), [{ kind: 'DISCOUNT', percent: 4 }]),
+);
+eq('…taken off', [g1.discountTotal, g1.grandTotal], [440, 4560]);
+eq(
+  'someone without it cannot remove it',
+  (await put(plain, off(250, 5))).data?.code,
+  'discount_not_allowed',
+);
+ok(
+  '…but keeps it while changing the items',
+  await put(plain, off(300, 6), [{ kind: 'DISCOUNT', percent: 4 }]),
+);
+const g2 = ok('whoever gives it removes it', await put(giver, off(300, 6)));
+eq('…gone', [g2.charges.filter((c) => c.kind === 'DISCOUNT').length, g2.grandTotal], [0, 5700]);
+const l2 = ok('the line discount removed', await put(liner, off(0, 6)));
+eq('…none left', [l2.discountTotal, l2.grandTotal], [0, 6000]);
+eq(
+  'a new invoice still takes no discount',
+  (await owner.post('/sales/invoices', sale(off(500)))).data?.code,
+  'discount_on_customer_invoices',
+);
+eq('the changes are edits', (await owner.get(`/sales/invoices/${d0.id}`)).data.edited, true);
+
 process.exit(summary('salesscreen') ? 1 : 0);

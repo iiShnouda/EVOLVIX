@@ -112,8 +112,10 @@ eq(
 const kept = { ...sale(2), lines: [{ productId: item.id, quantity: 2, unitPrice: 1000, discount: 50 }], charges: [{ kind: 'DISCOUNT', percent: 5 }] };
 const d3 = ok('2 instead of 4, its discounts kept', await accountant.put(`/sales/invoices/${d.id}`, kept));
 eq('…the line’s halved with it, the 5% the same', [d3.lines[0].discount, d3.discountTotal], [50, 50 + 98]);
-eq('a bigger one is refused there', (await accountant.put(`/sales/invoices/${d.id}`, { ...kept, lines: [{ ...kept.lines[0], discount: 60 }] })).data?.code, 'discount_on_customer_invoices');
-eq('so is another invoice discount', (await accountant.put(`/sales/invoices/${d.id}`, { ...kept, charges: [{ kind: 'DISCOUNT', percent: 6 }] })).data?.code, 'discount_on_customer_invoices');
+// Whoever gives discounts may change them there too (owner, 2026-11-10; salesscreen.test has the rest).
+const d4 = ok('a bigger line discount and another invoice discount are taken there', await accountant.put(`/sales/invoices/${d.id}`, { ...kept, lines: [{ ...kept.lines[0], discount: 60 }], charges: [{ kind: 'DISCOUNT', percent: 6 }] }));
+eq('…both on it', [d4.lines[0].discount, d4.charges.find((c) => c.kind === 'DISCOUNT')?.rate], [60, 6]);
+ok('and put back', await accountant.put(`/sales/invoices/${d.id}`, kept));
 
 console.log('== each kind of discount works alone');
 const soloEmail = `lockdisc.${tag}@skb.local`;
