@@ -78,8 +78,6 @@ export const createSalesInvoiceSchema = z.object({
   dueDate: z.string().optional(),
   /** The day it happened, if not today (needs documents:backdate; owner, 2026-10-02). */
   documentDate: z.string().optional(),
-  /** Its season after the department (owner, 2026-11-10): SUMMER, WINTER or (a sale) NONE. */
-  seasonKind: z.enum(['SUMMER', 'WINTER', 'NONE']).optional(),
   paidAmount: z.number().int().min(0).default(0),
   /** Request to sell below the configured floor (still never below cost). */
   overrideFloor: z.boolean().optional().default(false),
@@ -135,8 +133,6 @@ export const createPurchaseInvoiceSchema = z.object({
   dueDate: z.string().optional(),
   /** The day it happened, if not today (needs documents:backdate; owner, 2026-10-02). */
   documentDate: z.string().optional(),
-  /** Its season after the department (owner, 2026-11-10): SUMMER, WINTER or (a sale) NONE. */
-  seasonKind: z.enum(['SUMMER', 'WINTER', 'NONE']).optional(),
   paidAmount: z.number().int().min(0).default(0),
   /** Default warehouse for every line; none = the user's branch default. */
   warehouseId: z.string().uuid().optional(),

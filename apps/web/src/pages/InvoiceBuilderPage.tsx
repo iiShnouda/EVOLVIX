@@ -15,7 +15,6 @@ import {
   type PriceBasis,
   type Product,
   type SalesDocument,
-  type SeasonKind,
   companyToday,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
@@ -269,9 +268,6 @@ export function InvoiceBuilderPage({
     (d) => !warehouseDepartments?.length || warehouseDepartments.includes(d.id),
   );
   const departmentOk = !departmentId || shownDepartments.some((d) => d.id === departmentId);
-  // Then its season, when the department comes by season (owner, 2026-11-10).
-  const [seasonKind, setSeasonKind] = useState<SeasonKind | ''>('');
-  const seasonAsked = !!departmentList.data?.find((d) => d.id === departmentId)?.hasSeasons;
   const warehouseStock = useInventory({ warehouseId: warehouseId || undefined });
   const stockHere = useMemo(() => {
     if (!warehouseId || !warehouseStock.data) return null;
@@ -632,7 +628,6 @@ export function InvoiceBuilderPage({
     ...((departmentRequired && !departmentId) || !departmentOk
       ? [t('invoice.chooseDepartment')]
       : []),
-    ...(seasonAsked && !seasonKind ? [t('invoice.chooseSeason')] : []),
     ...(!repId ? [t('invoice.chooseRep')] : []),
     ...(delivery.method === 'SHIPPING_COMPANY' && !delivery.carrierId
       ? [t('delivery.pickCarrier')]
@@ -656,7 +651,6 @@ export function InvoiceBuilderPage({
     !!repId &&
     !(departmentRequired && !departmentId) &&
     departmentOk &&
-    !(seasonAsked && !seasonKind) &&
     // A sale names its branch and warehouse (owner decision 2026-10-01).
     !(!editId && (!pickedBranch || !warehouseId)) &&
     staged.length === 0 &&
@@ -695,7 +689,6 @@ export function InvoiceBuilderPage({
         priceLevelId,
         repId: repId || undefined,
         departmentId: departmentId || undefined,
-        seasonKind: seasonAsked && seasonKind ? seasonKind : undefined,
         dueDate: editId ? dueDate || undefined : undefined,
         documentDate: editId || asOrder ? undefined : dayToSend(docDate),
         deliveryMethod: delivery.method,
@@ -740,7 +733,6 @@ export function InvoiceBuilderPage({
             repId: pickedRep,
             dueDate,
             departmentId: pickedDepartment,
-            seasonKind,
             levelId: pickedLevel,
             delivery,
             lines: lines.map(keepLine),
@@ -762,8 +754,6 @@ export function InvoiceBuilderPage({
       setPickedRep(text(d.repId));
       setDueDate(text(d.dueDate));
       setPickedDepartment(text(d.departmentId));
-      if (SEASON_KINDS.includes(d.seasonKind as SeasonKind))
-        setSeasonKind(d.seasonKind as SeasonKind);
       setPickedLevel(text(d.levelId));
       if (d.delivery && METHODS.includes(d.delivery.method))
         setDelivery({
@@ -856,7 +846,6 @@ export function InvoiceBuilderPage({
       setPickedRep(doc.repId ?? '');
       setDueDate(doc.dueDate ? doc.dueDate.slice(0, 10) : '');
       setPickedDepartment(doc.departmentId ?? '');
-      setSeasonKind(doc.seasonKind ?? '');
       setDelivery({
         method:
           doc.deliveryMethod && METHODS.includes(doc.deliveryMethod)
@@ -1600,7 +1589,6 @@ export function InvoiceBuilderPage({
                       aria-invalid={departmentRequired && !departmentId}
                       onChange={(e) => {
                         setPickedDepartment(e.target.value);
-                        setSeasonKind('');
                         setPlace({ departmentId: e.target.value });
                       }}
                     >
@@ -1612,27 +1600,6 @@ export function InvoiceBuilderPage({
                       {shownDepartments.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {seasonAsked && (
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('invoice.season')}</span>
-                    <select
-                      className={`${field} ${!seasonKind ? 'border-warning' : ''}`}
-                      value={seasonKind}
-                      required
-                      aria-invalid={!seasonKind}
-                      onChange={(e) => setSeasonKind(e.target.value as SeasonKind)}
-                    >
-                      <option value="" disabled>
-                        {t('invoice.chooseSeason')}
-                      </option>
-                      {SEASON_KINDS.map((k) => (
-                        <option key={k} value={k}>
-                          {t(`seasonKind.${k}`)}
                         </option>
                       ))}
                     </select>
@@ -2322,7 +2289,6 @@ interface InvoiceDraft {
   repId: string;
   dueDate?: string;
   departmentId: string;
-  seasonKind?: string;
   levelId: string;
   delivery: DeliveryValue;
   lines: {
@@ -2351,9 +2317,6 @@ interface DeliveryValue {
   address: string;
   carrierId: string;
 }
-
-/** The seasons a sale names (owner, 2026-11-10). */
-const SEASON_KINDS: SeasonKind[] = ['SUMMER', 'WINTER', 'NONE'];
 
 /** Picked up at the office, or sent by a shipping company (the customer pays it directly). */
 const METHODS: DeliveryMethod[] = ['PICKUP', 'SHIPPING_COMPANY'];

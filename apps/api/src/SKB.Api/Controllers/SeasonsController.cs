@@ -39,22 +39,6 @@ public sealed class SeasonsController : ControllerBase
             .Select(s => Seasons.ToDto(s, now)).ToArray());
     }
 
-    /// <summary>
-    /// The season (with its year) an invoice of this kind, dated this day, gives its new items (owner,
-    /// 2026-11-10): summer or winter, the one running that day or the next; added if missing.
-    /// </summary>
-    [HttpGet("of")]
-    [Authorize]
-    public async Task<ActionResult<SeasonDto>> Of([FromQuery] string? kind, [FromQuery] string? date)
-    {
-        if (!Seasons.IsInvoiceKind(kind, sale: false))
-            return BadRequest(new { message = "Choose summer or winter.", code = "bad_season" });
-        var day = DateOnly.TryParse(date, out var d) ? d : CompanyClock.Today;
-        var season = await Seasons.ForAsync(_db, kind!, day);
-        if (!season.IsActive) { season.IsActive = true; await _db.SaveChangesAsync(); }
-        return Ok(Seasons.ToDto(season, (await Seasons.CurrentAsync(_db))?.Id));
-    }
-
     [HttpPost]
     [Authorize(Policy = Permissions.SeasonsCreate)]
     public async Task<ActionResult<SeasonDto>> Create([FromBody] CreateSeasonRequest req)

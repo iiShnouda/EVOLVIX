@@ -20,29 +20,6 @@ public static class Seasons
     public static (string Kind, int Year) Of(DateOnly day) =>
         day.Month is >= 4 and <= 9 ? (Summer, day.Year) : (Winter, day.Month >= 10 ? day.Year + 1 : day.Year);
 
-    /// <summary>The kinds an invoice names (owner, 2026-11-10): a purchase is summer or winter, a sale may be of none.</summary>
-    public static bool IsInvoiceKind(string? kind, bool sale) => kind is Summer or Winter || (sale && kind == None);
-
-    /// <summary>
-    /// The season of <paramref name="kind"/> goods bought on <paramref name="day"/> are for (owner,
-    /// 2026-11-10: "the year matters only for the item"): the one running then, else the next one.
-    /// </summary>
-    public static int YearOf(string kind, DateOnly day) =>
-        kind == Winter ? (day.Month <= 3 ? day.Year : day.Year + 1) : (day.Month >= 10 ? day.Year + 1 : day.Year);
-
-    /// <summary>That season (summer or winter of its year), added if it isn't there yet.</summary>
-    public static async Task<Season> ForAsync(AppDbContext db, string kind, DateOnly day)
-    {
-        var year = YearOf(kind, day);
-        var season = await db.Seasons.FirstOrDefaultAsync(s => s.Kind == kind && s.Year == year);
-        if (season is not null) return season;
-        season = new Season { Kind = kind, Year = year };
-        season.Name = NameOf(season, "ar");
-        db.Seasons.Add(season);
-        await db.SaveChangesAsync();
-        return season;
-    }
-
     /// <summary>The name a system season is shown with; a hand-made one keeps its own.</summary>
     public static string NameOf(Season s, string? lang = null)
     {
