@@ -115,6 +115,24 @@ turns memory accounting on (`cgroup_enable=memory` in `/boot/firmware/cmdline.tx
 only: there is deliberately no command line in the app. To run commands, use SSH from your own
 device (see Firewall below), which the firewall allows only from the admin devices.
 
+## The server's log
+
+The server writes what it does to a file per day (`evolvix-YYYY-MM-DD.log`, one line per entry) in
+`./logs` beside `docker-compose.yml` (`LOGS_DIR` to put it elsewhere). The owner reads it in the app
+(**Server log**, the owner's alone): a day's lines by level, source (the server, or errors the app
+ran into on someone's device), text or request number, and downloads a day as a text file. When
+something fails, the app shows a request number; search it on that page to find what happened.
+
+- Each request: its number, method, address (without anything private from it), status, how long it
+  took, who and which branch. Errors with their details; slow requests (over `LOGS_SLOW_MS`, 3000 ms)
+  and failed sign-ins as warnings.
+- Never written: passwords, tokens, cookies, keys, licence codes, connection strings, what is sent or
+  answered, or what people typed in a search. The folder and files are readable by the service alone.
+- Kept `LOGS_KEEP_DAYS` days (30); a day over `LOGS_MAX_DAY_MB` (50 MB) keeps only warnings and errors.
+- Other settings (environment, `Logs__…`): `Logs__Enabled` (true), `Logs__Level` (Information),
+  `Logs__ClientErrorsPerMinute` (20 reports a minute from each person). Without Docker the default
+  folder is `logs` beside the app.
+
 ## On a Raspberry Pi 5 (16 GB)
 Everything runs on it as is (all the images are built for ARM64): use **64-bit Raspberry Pi OS**,
 install Docker, then the same `docker compose --profile full up -d --build`.

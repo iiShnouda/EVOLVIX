@@ -149,7 +149,7 @@ console.log('== scrubbing');
 const secret = `hunter2-${tag}`;
 const token = `tok-${tag}`;
 const r3 = await raw(
-  `/branches?password=${secret}&access_token=${token}&apiKey=k-${tag}&email=ali-${tag}@x.com&search=Ahmed+${tag}&page=2`,
+  `/branches?password=${secret}&access_token=${token}&apiKey=k-${tag}&email=ali-${tag}@x.com&search=Ahmed+${tag}&page=2&number=INV-${tag}&tab=items`,
   owner.token,
 );
 const l3 = await linesOf(r3.headers.get('x-request-id'));
@@ -160,7 +160,12 @@ check(
   !p3.includes(secret) && !p3.includes(token) && !p3.includes(`k-${tag}`),
   p3,
 );
-check('no email or typed text', !p3.includes(`ali-${tag}`) && !p3.includes(`Ahmed`), p3);
+check(
+  'no email or typed text',
+  !p3.includes(`ali-${tag}`) && !p3.includes(`Ahmed`) && !p3.includes(`INV-${tag}`),
+  p3,
+);
+check("the app's own choices stay", p3.includes('tab=items'), p3);
 check(
   'the names stay, a plain number too',
   /password=\*\*\*/.test(p3) && p3.includes('page=2'),
@@ -363,7 +368,19 @@ if (process.env.LOGS_DIR) {
 
 // ------------------------------------------------------------------ a few reports a minute
 console.log('== rate limit');
-const mona = await login('mona@skb.local');
+// A new person each run, so a run straight after another starts with a fresh minute.
+const floodEmail = `flood-${tag}@skb.local`;
+ok(
+  'a person to report',
+  await owner.post('/staff', {
+    fullName: `Flood ${tag}`,
+    email: floodEmail,
+    password: 'ChangeMe!Staff123',
+    role: 'ADMIN',
+    branchId: branch.id,
+  }),
+);
+const mona = await login(floodEmail, 'ChangeMe!Staff123');
 const codes = [];
 for (let i = 0; i < 30; i++)
   codes.push((await mona.post('/client-errors', { message: `flood ${tag} ${i}` })).status);

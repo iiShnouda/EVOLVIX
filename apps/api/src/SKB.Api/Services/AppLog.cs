@@ -64,8 +64,20 @@ public static partial class LogScrub
     [GeneratedRegex(SecretName + "|email|phone|mobile|name|search|query|text|note|address|^q$", RegexOptions.IgnoreCase)]
     private static partial Regex PrivateKey();
 
-    [GeneratedRegex(@"^[A-Za-z0-9_.:,\-]{0,64}$")]
+    /// <summary>A number, an id, a date or a time, yes/no: shown whatever its name.</summary>
+    [GeneratedRegex(@"^(?:-?\d{1,12}(?:\.\d{1,6})?|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?|true|false)$", RegexOptions.IgnoreCase)]
     private static partial Regex PlainValue();
+
+    /// <summary>A word from the app's own choices (a tab, a kind, a sort), for the names below.</summary>
+    [GeneratedRegex(@"^[A-Za-z_\-]{1,30}$")]
+    private static partial Regex ChoiceValue();
+
+    /// <summary>Names whose values are the app's own choices, never typed by a person.</summary>
+    private static readonly HashSet<string> ChoiceKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "tab", "type", "kind", "status", "state", "level", "source", "sort", "dir", "order", "mode", "view",
+        "group", "groupBy", "by", "period", "scope", "lang", "all", "include", "basis", "side",
+    };
 
     [GeneratedRegex(@"(?<![\w.~-])(?:/(?:home|root|var|usr|opt|etc|tmp|srv|mnt|media|app|data|backups|updates|host|proc|sys|run|private|Users)|[A-Za-z]:\\|\\\\[\w.-]+\\)[^\s""'<>|:]*[/\\]([^/\\\s""'<>|:]*)")]
     private static partial Regex FolderPath();
@@ -115,7 +127,8 @@ public static partial class LogScrub
 
     /// <summary>
     /// A query string as it is logged: the names, and a value only when it is plainly an id, a number,
-    /// a date or a word; anything secret, personal or typed freely is hidden.
+    /// a date, yes/no, or one of the app's own choices (a tab, a kind); anything secret, personal or
+    /// typed freely (a search, a number typed to look for) is hidden.
     /// </summary>
     public static string Query(IQueryCollection query)
     {
@@ -127,8 +140,9 @@ public static partial class LogScrub
             if (sb.Length > 1) sb.Append('&');
             var name = Clean(key, 40);
             var value = values.Count == 1 ? values[0] ?? "" : Hidden;
-            sb.Append(name).Append('=')
-                .Append(value.Length == 0 ? "" : PrivateKey().IsMatch(name) || !PlainValue().IsMatch(value) ? Hidden : value);
+            var shown = value.Length == 0 || PrivateKey().IsMatch(name) ? value.Length == 0 ? "" : Hidden
+                : PlainValue().IsMatch(value) || (ChoiceKeys.Contains(name) && ChoiceValue().IsMatch(value)) ? value : Hidden;
+            sb.Append(name).Append('=').Append(shown);
         }
         return sb.ToString();
     }

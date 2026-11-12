@@ -69,6 +69,12 @@ services:
       # The owner's updates page (owner, 2026-10-11): the app only leaves "check" or "update" in this
       # folder; the server's updater (scripts/update-server.sh, set up by install-server.sh) does it.
       Updates__Folder: /updates
+      # The server's log (owner, 2026-11-12): a file per day in ./logs, read on the owner's Logs page.
+      # Never passwords, tokens, keys or what people typed. See COMPANY-SERVER.md.
+      Logs__Folder: /logs
+      Logs__KeepDays: "${LOGS_KEEP_DAYS:-30}"
+      Logs__MaxDayMb: "${LOGS_MAX_DAY_MB:-50}"
+      Logs__SlowMs: "${LOGS_SLOW_MS:-3000}"
       # Public storefront (owner, 2026-10-13): push the scrubbed catalogue + photos OUT to a Cloudflare
       # R2 bucket when products change; the KM Collection site on Pages reads them. Outbound only — the
       # server never faces the public. Leave blank to keep it off.
@@ -80,6 +86,7 @@ services:
     volumes:
       - "${BACKUP_DIR:-./backups}:/backups"
       - "${UPDATES_DIR:-/var/lib/evolvix/updates}:/updates"
+      - "${LOGS_DIR:-./logs}:/logs"
       # The machine's control groups, read-only: each part's processor and memory for the monitor.
       - /sys/fs/cgroup:/host/cgroup:ro
     ports:
