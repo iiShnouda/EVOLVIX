@@ -13,6 +13,7 @@ import {
 import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { PeriodBars } from '../components/charts/PeriodBars';
 import { ProfitabilityPage } from './ProfitabilityPage';
+import { AssortmentTab } from './AssortmentTab';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
@@ -31,7 +32,16 @@ import {
 import { TableColumns } from '../components/TableColumns';
 import { CodeName, codeName } from '../components/CodeName';
 
-type Tab = 'pl' | 'profit' | 'monthly' | 'performance' | 'parties' | 'aging' | 'items' | 'changes';
+type Tab =
+  | 'pl'
+  | 'profit'
+  | 'monthly'
+  | 'performance'
+  | 'parties'
+  | 'aging'
+  | 'items'
+  | 'assortment'
+  | 'changes';
 /** Each report is a permission of its own (owner, 2026-10-23). */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'pl', label: 'pnl.title', permission: 'reports:pl' },
@@ -41,6 +51,7 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'parties', label: 'analytics.tabParties', permission: 'reports:parties' },
   { key: 'aging', label: 'analytics.tabAging', permission: 'reports:aging' },
   { key: 'items', label: 'analytics.tabItems', permission: 'reports:items' },
+  { key: 'assortment', label: 'analytics.tabAssortment', permission: 'reports:assortment' },
   { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
@@ -86,6 +97,7 @@ export function AnalyticsPage() {
       {tab === 'parties' && <PartiesTab />}
       {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
+      {tab === 'assortment' && <AssortmentTab />}
       {tab === 'changes' && <ChangesTab />}
     </div>
   );

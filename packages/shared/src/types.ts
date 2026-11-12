@@ -277,6 +277,7 @@ export type Permission =
   | 'reports:aging'
   | 'reports:items'
   | 'reports:changes'
+  | 'reports:assortment'
   | 'reports:print'
   | 'reports:export'
   | 'audit:view'
@@ -2432,6 +2433,59 @@ export interface ItemMovement {
     lastSale: string | null;
   }[];
   currency: string;
+}
+
+/** One row of the analysis by supplier and department (owner, 2026-11-11). */
+export interface AssortmentRow {
+  id: string;
+  name: string;
+  kind:
+    | 'SUPPLIER'
+    | 'NO_SUPPLIER'
+    | 'DEPARTMENT'
+    | 'NO_DEPARTMENT'
+    | 'GROUP'
+    | 'DIRECT'
+    | 'ITEM'
+    | 'TOTAL';
+  code: string | null;
+  detail: string | null;
+  supplier: string | null;
+  hasChildren: boolean;
+  items: number;
+  soldQty: number;
+  returnedQty: number;
+  sales: number;
+  returns: number;
+  netSales: number;
+  profit: number;
+  purchasedQty: number;
+  purchases: number;
+  stockQty: number;
+  stockValue: number;
+}
+
+export interface Assortment {
+  by: 'supplier' | 'department' | 'item';
+  from: string;
+  to: string;
+  rows: AssortmentRow[];
+  total: AssortmentRow;
+  path: { id: string; name: string; kind: 'DEPARTMENT' | 'GROUP' }[];
+  /** Left out for the person: 'profit', 'costs', 'purchases'. */
+  hidden: string[];
+  currency: string;
+}
+
+/** What the analysis by supplier and department is asked for. */
+export interface AssortmentQuery {
+  by: 'supplier' | 'department' | 'item';
+  from: string;
+  to: string;
+  supplierIds: string[];
+  departmentId?: string;
+  groupId?: string;
+  seasonId?: string;
 }
 
 /** One row of the activity log (سجل النشاط): who did what, when and from where. */

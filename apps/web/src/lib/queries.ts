@@ -54,6 +54,8 @@ import type {
   DashboardData,
   DashboardMore,
   DashFilter,
+  Assortment,
+  AssortmentQuery,
   InventoryList,
   ItemCard,
   ItemLife,
@@ -2057,6 +2059,20 @@ export function useTopParties(from: string, to: string, side: 'customers' | 'sup
       api.get<TopParty[]>(
         `/analytics/top-parties?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&side=${side}&limit=15`,
       ),
+  });
+}
+
+/** Items by supplier and by department (owner, 2026-11-11), a level of the tree at a time. */
+export function useAssortment(q: AssortmentQuery) {
+  const query = new URLSearchParams({ by: q.by, from: q.from, to: q.to });
+  if (q.supplierIds.length) query.set('supplierIds', q.supplierIds.join(','));
+  if (q.departmentId) query.set('departmentId', q.departmentId);
+  if (q.groupId) query.set('groupId', q.groupId);
+  if (q.seasonId) query.set('seasonId', q.seasonId);
+  return useQuery({
+    queryKey: ['analytics', 'assortment', query.toString()],
+    queryFn: () => api.get<Assortment>(`/analytics/assortment?${query}`),
+    placeholderData: (prev) => prev,
   });
 }
 
