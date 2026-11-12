@@ -415,7 +415,7 @@ public sealed class NotificationService
         static string Shape(string? ua) => System.Text.RegularExpressions.Regex.Replace(ua ?? "", @"[\d._]+", "");
         var agent = ctx.UserAgent ?? "";
         var seen = (await _db.Sessions.AsNoTracking().Where(s => s.StaffId == staff.Id)
-            .Select(s => s.UserAgent).Distinct().Take(500).ToListAsync()).Select(Shape).ToHashSet();
+            .Select(s => s.UserAgent).Distinct().ToListAsync()).Select(Shape).ToHashSet();
         if (seen.Count == 0 || seen.Contains(Shape(agent))) return;
         Add(staff.Id, NewSignIn, null, message: ctx.DeviceLabel,
             data: new { device = PresenceTracker.DeviceOf(agent), ip = ctx.Ip });

@@ -48,7 +48,9 @@ export function notificationDetail(n: AppNotification, t: Translate, locale: Loc
     case 'TRANSFER_CANCELLED':
       parts.push(
         n.documentNumber,
-        n.partyName && n.departmentName ? `${n.partyName} ← ${n.departmentName}` : null,
+        n.partyName && n.departmentName
+          ? `${n.partyName} ${locale === 'ar' ? '←' : '→'} ${n.departmentName}`
+          : null,
       );
       break;
     case 'PAYROLL_POSTED':
