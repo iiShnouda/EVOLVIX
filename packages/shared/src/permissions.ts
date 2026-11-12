@@ -580,7 +580,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'owner_only',
-        permissions: ['system:monitor', 'system:update', 'data:import', 'license:manage'],
+        permissions: [
+          'system:monitor',
+          'system:update',
+          'system:logs',
+          'data:import',
+          'license:manage',
+        ],
       },
     ],
   },

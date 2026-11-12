@@ -68,6 +68,7 @@ import { ActivityPage } from './pages/ActivityPage';
 import { PresencePage } from './pages/PresencePage';
 import { SystemPage } from './pages/SystemPage';
 import { UpdatesPage } from './pages/UpdatesPage';
+import { LogsPage } from './pages/LogsPage';
 import { ImportPage } from './pages/ImportPage';
 import { LicensePage } from './pages/LicensePage';
 import { PayrollPage } from './pages/PayrollPage';
@@ -362,6 +363,7 @@ const routes = createRoutesFromElements(
       <Route path="/presence" element={<PresencePage />} />
       <Route path="/system" element={<SystemPage />} />
       <Route path="/updates" element={<UpdatesPage />} />
+      <Route path="/logs" element={<LogsPage />} />
       <Route path="/import" element={<ImportPage />} />
       <Route path="/license" element={<LicensePage />} />
       <Route path="/payroll" element={<PayrollPage />} />

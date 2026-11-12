@@ -15,6 +15,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code?: string,
+    /** The server's number for the request, to quote to the owner when it failed on the server. */
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -84,7 +86,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    const error = new ApiError(res.status, payload.message ?? res.statusText, payload.code);
+    const error = new ApiError(
+      res.status,
+      payload.message ?? res.statusText,
+      payload.code,
+      payload.requestId ?? res.headers.get('X-Request-Id') ?? undefined,
+    );
     // A rule the owner may go past (owner, 2026-10-22): warn them what it is, and only if they
     // choose to go on, send it again saying so. Everyone else just gets the refusal.
     if (res.headers.get(OWNER_CAN_OVERRIDE) === '1' && !hasOverride(headers)) {

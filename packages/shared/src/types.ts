@@ -328,7 +328,8 @@ export type Permission =
   | 'system:monitor'
   | 'system:update'
   | 'data:import'
-  | 'license:manage';
+  | 'license:manage'
+  | 'system:logs';
 
 export interface Staff {
   id: string;
@@ -3243,6 +3244,43 @@ export interface Release {
 }
 export type UpdateState = 'idle' | 'waiting' | 'checking' | 'updating' | 'failed';
 export type UpdateStep = 'fetch' | 'backup' | 'download' | 'build' | 'restart' | 'done';
+/** One line of the server's log (owner, 2026-11-12). `id` is its place in the day. */
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
+export type LogSource = 'server' | 'client';
+export interface LogEntry {
+  id: number;
+  time: string;
+  level: LogLevel;
+  source: LogSource;
+  category: string | null;
+  message: string;
+  /** The stack trace, when there was an error. */
+  exception: string | null;
+  requestId: string | null;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  ms: number | null;
+  userId: string | null;
+  user: string | null;
+  branch: string | null;
+  /** A client error: the page, the app's build and the browser. */
+  route: string | null;
+  version: string | null;
+  userAgent: string | null;
+}
+/** A page of a day's log, newest first: `older` continues it, `end` asks for what came since. */
+export interface LogPage {
+  /** False when the server doesn't keep a log (switched off or its folder can't be written). */
+  enabled: boolean;
+  day: string;
+  /** The days that have a log, newest first (yyyy-MM-dd). */
+  days: string[];
+  entries: LogEntry[];
+  older: number | null;
+  end: number;
+}
+
 export interface SystemUpdates {
   /** The server's updater is set up (install-server.sh). */
   enabled: boolean;
