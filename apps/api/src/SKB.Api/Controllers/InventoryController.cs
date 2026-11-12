@@ -510,7 +510,8 @@ public sealed class InventoryController : ControllerBase
                 seeSuppliers ? p.Supplier?.Name : null, DepartmentOf(id),
                 w?.Branch is null ? null : Loc.Name(w.Branch), w is null ? null : Loc.Name(w),
                 q, Money(v), seeCosts ? supply.TryGetValue(id, out var sc) ? sc : q != 0 ? v / q : p.CostPrice : null,
-                seePrices ? p.SalePrice : null, p.ReorderLevel, IsLow(p, qtyOf.GetValueOrDefault(id)), qtyOf.GetValueOrDefault(id) <= 0);
+                seePrices ? p.SalePrice : null, p.ReorderLevel, IsLow(p, qtyOf.GetValueOrDefault(id)), qtyOf.GetValueOrDefault(id) <= 0,
+                seeSuppliers ? p.Supplier?.Code : null);
         }
         // Item by item and place by place (owner, 2026-10-21: the branch, department and warehouse of
         // each, in one list instead of the department and warehouse tables).
@@ -520,17 +521,22 @@ public sealed class InventoryController : ControllerBase
                 .Concat(keep.Where(id => !placed.Contains(id)).Select(id => Item(id, null, 0, 0)))
                 .OrderByDescending(r => r.Value ?? 0).ThenByDescending(r => r.Quantity).ThenBy(r => r.Label).ToArray()
             : Array.Empty<ValuationItemDto>();
+        // At sale prices too, for whoever may see them (owner, 2026-11-10: the page reorganised).
+        long? SaleOf(IEnumerable<(Guid Product, int Qty)> ls) =>
+            seePrices ? ls.Sum(l => (long)l.Qty * products[l.Product].SalePrice) : null;
         var categoryRows = Has(Permissions.ValuationDepartments)
             ? keep.GroupBy(DepartmentOf)
                 .Select(g => new ValuationRowDto(g.Key, g.Key,
                     lines.Where(l => g.Contains(l.Product)).Sum(l => l.Qty),
-                    Money(lines.Where(l => g.Contains(l.Product)).Sum(l => l.Value)), g.Count()))
+                    Money(lines.Where(l => g.Contains(l.Product)).Sum(l => l.Value)), g.Count(),
+                    SaleOf(lines.Where(l => g.Contains(l.Product)).Select(l => (l.Product, l.Qty)))))
                 .OrderByDescending(r => r.Value ?? 0).ThenByDescending(r => r.Count).ToArray()
             : Array.Empty<ValuationRowDto>();
         var warehouseRows = Has(Permissions.ValuationWarehouses)
             ? lines.GroupBy(l => l.Warehouse)
                 .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(warehouses[g.Key]),
-                    g.Sum(l => l.Qty), Money(g.Sum(l => l.Value)), g.Where(l => l.Qty != 0).Select(l => l.Product).Distinct().Count()))
+                    g.Sum(l => l.Qty), Money(g.Sum(l => l.Value)), g.Where(l => l.Qty != 0).Select(l => l.Product).Distinct().Count(),
+                    SaleOf(g.Select(l => (l.Product, l.Qty))), Loc.Name(warehouses[g.Key].Branch)))
                 .OrderByDescending(r => r.Value ?? 0).ToArray()
             : Array.Empty<ValuationRowDto>();
         var modelRows = Has(Permissions.ValuationItems)
@@ -548,7 +554,8 @@ public sealed class InventoryController : ControllerBase
             date.ToString("yyyy-MM-dd"), await CurrencyAsync(), wid?.ToString(),
             totalsToo ? lines.Sum(l => l.Qty) : 0, totalsToo ? Money(lines.Sum(l => l.Value)) : null,
             totalsToo ? totalItems : 0, totalsToo ? keep.Count : 0,
-            categoryRows, itemRows, warehouseRows, modelRows));
+            categoryRows, itemRows, warehouseRows, modelRows,
+            totalsToo ? SaleOf(lines.Select(l => (l.Product, l.Qty))) : null));
     }
 
     /// <summary>

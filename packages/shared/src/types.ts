@@ -1608,6 +1608,10 @@ export interface ValuationRow {
   value: number | null;
   /** How many items. */
   count: number;
+  /** At sale prices, for whoever may see them. */
+  saleValue?: number | null;
+  /** A warehouse's branch. */
+  group?: string | null;
 }
 
 /** One item in one place (branch / warehouse) of the valuation; each column only for whoever may see it. */
@@ -1628,6 +1632,8 @@ export interface ValuationItem {
   reorderLevel: number;
   low: boolean;
   empty: boolean;
+  /** The supplier's own number (كود المورد). */
+  supplierPartyCode?: number | null;
 }
 
 /** Stock valuation (تقييم المخزن) at the end of `asOf`: quantity × weighted-average cost. */
@@ -1646,6 +1652,8 @@ export interface Valuation {
   warehouses: ValuationRow[];
   /** Size/color variants rolled up to their model. */
   models: ValuationRow[];
+  /** All of it at sale prices, for whoever may see them. */
+  saleValue?: number | null;
 }
 
 // ---------------------------------------------------------------------------

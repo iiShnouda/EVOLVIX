@@ -278,4 +278,45 @@ console.log('== transfers by period, from, to and department');
   );
 }
 
+console.log('== the valuation: totals, by warehouse and branch, by department, at sale prices');
+{
+  const v = ok('valuation', await owner.get('/inventory/valuation'));
+  eq(
+    'warehouses add up to the total',
+    v.warehouses.reduce((s, r) => s + r.quantity, 0),
+    v.quantity,
+  );
+  eq(
+    'their values too',
+    v.warehouses.reduce((s, r) => s + r.value, 0),
+    v.value,
+  );
+  eq(
+    'and at sale prices',
+    v.warehouses.reduce((s, r) => s + r.saleValue, 0),
+    v.saleValue,
+  );
+  check(
+    'each warehouse with its branch',
+    v.warehouses.every((r) => r.group),
+    v.warehouses[0],
+  );
+  eq(
+    'departments add up too',
+    v.categories.reduce((s, r) => s + r.quantity, 0),
+    v.quantity,
+  );
+  const row = v.items.find((r) => r.productId === shirt.id && r.quantity > 0);
+  eq('an item with its supplier code', row?.supplierPartyCode, factory.code);
+  const g = ok(
+    'one group',
+    await owner.get(`/inventory/valuation?departmentId=${dept.id}&groupId=${polo.id}`),
+  );
+  check(
+    'only its items',
+    g.items.length > 0 && g.items.every((r) => r.productId === shirt.id),
+    g.items.map((r) => r.label),
+  );
+}
+
 process.exit(summary('stock') ? 1 : 0);

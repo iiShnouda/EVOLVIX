@@ -355,20 +355,24 @@ public record ItemLifeDto(
     ItemLifeTotalsDto Totals, ItemLifeLineDto[]? Purchases, ItemLifeLineDto[]? Sales, ItemLifeLineDto[]? Returns,
     bool Prices, WarehouseStockDto[] Stock);
 
-/// <summary>A valuation row; <c>Value</c> only for whoever may see costs; <c>Count</c> = how many items.</summary>
-public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count);
+/// <summary>A valuation row; <c>Value</c> only for whoever may see costs; <c>Count</c> = how many items;
+/// <c>SaleValue</c> at sale prices for whoever may see them; <c>Group</c> = a warehouse's branch.</summary>
+public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count,
+    long? SaleValue = null, string? Group = null);
 
 /// <summary>One item of the valuation; each column only for whoever may see it (owner, 2026-10-19).</summary>
 public record ValuationItemDto(string Key, string ProductId, string Code, string Label, string? Supplier,
     string? Department, string? Branch, string? Warehouse,
-    int Quantity, long? Value, long? SupplyPrice, long? SalePrice, int ReorderLevel, bool Low, bool Empty);
+    int Quantity, long? Value, long? SupplyPrice, long? SalePrice, int ReorderLevel, bool Low, bool Empty,
+    int? SupplierPartyCode = null);
 
 /// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>
 /// <remarks>By category, item, warehouse and model (size/color variants rolled up). <c>WarehouseId</c> is
 /// set when limited to one warehouse. Quantities are in base units.</remarks>
 public record ValuationDto(
     string AsOf, string Currency, string? WarehouseId, int Quantity, long? Value, int TotalItems, int ItemCount,
-    ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models);
+    ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models,
+    long? SaleValue = null);
 
 /// <param name="WarehouseId">Where it was counted; none = the request's warehouse.</param>
 public record StocktakeLineRequest(string ProductId, int CountedQuantity, string? WarehouseId = null);
