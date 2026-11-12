@@ -950,7 +950,9 @@ public record MoneyMovementDto(
     string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,
     string? Reference, string? MethodReference, string? PartyName, string? Notes, string CreatedByName,
     string? VoucherId, string? DocumentId = null, string? DocumentKind = null, string? CounterpartKind = null,
-    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null);
+    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null,
+    int? EntrySerial = null, string? PartyId = null, string[]? PartyTypes = null, string? DepartmentName = null,
+    string? WarehouseName = null, string? RepName = null);
 
 /// <summary>An account's movements over a period (a day = the daily cash report, حركة اليوم).</summary>
 public record AccountStatementDto(
@@ -1017,12 +1019,16 @@ public record UpdateLedgerAccountRequest(string? Name = null, bool? IsActive = n
 /// cash box / bank of a receipt or payment, the bank of a cheque.</param>
 /// <param name="Note">The document's own notes (ملحوظة).</param>
 /// <param name="Items">With <c>items=true</c>, an invoice's or return's lines (كشف أصناف).</param>
+/// <param name="RepName">The sales rep (المندوب) of the document behind the line.</param>
+/// <param name="PartyId">The customer / supplier / carrier of the document behind the line (opens their statement).</param>
 public record LedgerLineDto(
     string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
     string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
     string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
     StatementItemDto[]? Items = null, int EntrySerial = 0, string? DepartmentName = null, string? WarehouseName = null,
-    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null);
+    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null,
+    string? RepName = null, string? PartyId = null, string? PartyName = null, int? PartyCode = null,
+    string[]? PartyTypes = null);
 
 /// <summary>One item line of an invoice or return on a statement (no cost).</summary>
 public record StatementItemDto(

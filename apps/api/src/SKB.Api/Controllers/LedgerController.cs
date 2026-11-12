@@ -175,8 +175,9 @@ public sealed class LedgerController : ControllerBase
         // Cash boxes and banks: no further back than the person sees money (their access).
         var money = Access.MoneyFromDay(User) is not null
                     && await _db.LedgerAccounts.AnyAsync(a => ids.Contains(a.Id) && a.MoneyAccountId != null);
+        // Each line says what document it came from, as on a customer's statement (owner, 2026-11-12).
         return await StatementAsync($"{account.Code} {NameOf(account)}", VisibleLines().Where(l => ids.Contains(l.AccountId)), from, to,
-            earliest: money ? Access.MoneyFromDay(User) : null);
+            (rows, dto) => DetailAsync(rows, dto, false), earliest: money ? Access.MoneyFromDay(User) : null);
     }
 
     /// <summary>A customer's / supplier's / carrier's statement (كشف حساب): every line on their accounts.</summary>
@@ -304,10 +305,15 @@ public sealed class LedgerController : ControllerBase
         var voucherIds = Ids("VOUCHER");
         var noteIds = Ids("NOTE");
         var docs = await _db.SalesDocuments.AsNoTracking().Include(d => d.Department).Include(d => d.PaidAccount)
+            .Include(d => d.Rep).Include(d => d.Party)
             .Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
         var vouchers = await _db.Vouchers.AsNoTracking().Include(v => v.FromAccount).Include(v => v.ToAccount)
-            .Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
-        var notes = await _db.Notes.AsNoTracking().Where(n => noteIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id);
+            .Include(v => v.Party).Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
+        var notes = await _db.Notes.AsNoTracking().Include(n => n.Party).Where(n => noteIds.Contains(n.Id))
+            .ToDictionaryAsync(n => n.Id);
+        // The customer / supplier / carrier of the document, so their name opens their statement.
+        static LedgerLineDto WithParty(LedgerLineDto l, Party? p) => p is null ? l
+            : l with { PartyId = p.Id.ToString(), PartyName = p.Name, PartyCode = p.Code, PartyTypes = p.Types.ToArray() };
         var branchIds = rows.Where(r => r.Entry!.BranchId != null).Select(r => r.Entry!.BranchId!.Value).Distinct().ToList();
         var branches = await _db.Branches.AsNoTracking().Where(b => branchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id, b => Loc.Name(b));
         // Where each document's goods went or came from (one or more warehouses).
@@ -337,7 +343,7 @@ public sealed class LedgerController : ControllerBase
             var branch = entry.BranchId is Guid b ? branches.GetValueOrDefault(b) : null;
             if (entry.SourceId is not Guid source) return line with { BranchName = branch };
             if (docs.TryGetValue(source, out var d))
-                return line with
+                return WithParty(line, d.Party) with
                 {
                     // What was paid on the spot went through a cash box or bank: that is its book.
                     DocumentNumber = d.Number,
@@ -349,18 +355,19 @@ public sealed class LedgerController : ControllerBase
                     Items = listed.Add(d.Id) ? itemLines.GetValueOrDefault(d.Id) : null,
                     DepartmentName = d.Department is null ? null : Loc.Name(d.Department),
                     WarehouseName = StoresOf(d.Id), DocumentId = d.Id.ToString(), DocumentKind = d.Type.ToString(),
+                    RepName = d.Rep?.FullName,
                 };
             if (vouchers.TryGetValue(source, out var v))
             {
                 var account = v.ToAccount ?? v.FromAccount;
-                return line with
+                return WithParty(line, v.Party) with
                 {
                     DocumentNumber = v.Number, Book = account is null ? null : Loc.Name(account), Note = v.Notes,
                     BranchName = branch, DocumentId = v.Id.ToString(), DocumentKind = v.Type.ToString(),
                 };
             }
             if (notes.TryGetValue(source, out var n))
-                return line with
+                return WithParty(line, n.Party) with
                 {
                     DocumentNumber = n.SerialNumber, Book = n.BankName, Note = n.Remark, BranchName = branch,
                     DocumentId = n.Id.ToString(), DocumentKind = "NOTE",

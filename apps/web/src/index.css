@@ -377,7 +377,19 @@ input::-ms-clear {
   cursor: pointer;
 }
 
+/* Names and numbers that open something are plain text on paper and in the print editor. */
+.print-sheet .nav-link,
+#print-root .nav-link {
+  color: inherit !important;
+  text-decoration: none !important;
+  pointer-events: none;
+}
+
 @media print {
+  .nav-link {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
   :root,
   :root[data-theme='dark'],
   :root[data-skin][data-theme] {

@@ -1169,6 +1169,15 @@ export interface MoneyMovement {
   counterpartName?: string | null;
   counterpartCode?: number | null;
   branchName?: string | null;
+  /** The journal entry (رقم القيد) of the document behind it. */
+  entrySerial?: number | null;
+  /** The customer / supplier / carrier, to open their statement. */
+  partyId?: string | null;
+  partyTypes?: string[] | null;
+  /** An invoice's or return's sales department, warehouse(s) and sales rep. */
+  departmentName?: string | null;
+  warehouseName?: string | null;
+  repName?: string | null;
 }
 
 /** An account's movements over a period; one day = the daily cash report. */
@@ -2367,6 +2376,13 @@ export interface LedgerLine {
   /** Who posted it, and the accounts on the other side of its entry. */
   createdByName?: string | null;
   counterpart?: string | null;
+  /** The document's sales rep (المندوب). */
+  repName?: string | null;
+  /** The customer / supplier / carrier of the document behind the line, to open their statement. */
+  partyId?: string | null;
+  partyName?: string | null;
+  partyCode?: number | null;
+  partyTypes?: string[] | null;
 }
 
 /** One item line of an invoice or return on a statement (no cost). */
