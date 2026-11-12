@@ -530,6 +530,12 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("CurrentSeasonId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("DailySummaryDay")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DailySummaryMinute")
+                        .HasColumnType("integer");
+
                     b.Property<int>("DefaultMarkupPercent")
                         .HasColumnType("integer");
 
@@ -570,6 +576,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<bool>("MissingAttendanceIsAbsent")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("NoteAlertDays")
+                        .HasColumnType("integer");
 
                     b.Property<int>("OvertimePercent")
                         .HasColumnType("integer");
@@ -1472,6 +1481,9 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("AccountId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AlertStage")
+                        .HasColumnType("integer");
+
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
@@ -1657,6 +1669,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Data")
+                        .HasColumnType("text");
 
                     b.Property<string>("DepartmentName")
                         .HasColumnType("text");

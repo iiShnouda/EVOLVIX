@@ -31,6 +31,35 @@ public sealed class InventoryService
     private readonly Dictionary<(Guid Product, Guid Pool), StockCost> _pools = new();
     private readonly Dictionary<Guid, Guid> _poolOfWarehouse = new();
     private readonly Dictionary<Guid, Product> _locked = new();
+    // What each touched store held, and each touched item in all, before this request moved it (for the bell).
+    private readonly Dictionary<(Guid Product, Guid Warehouse), (Warehouse Warehouse, int Before)> _touched = new();
+    private readonly Dictionary<Guid, int> _totalBefore = new();
+
+    /// <summary>An item that ran out in a store, or came down to its reorder level, in this request.</summary>
+    public sealed record RunDown(Product Product, Guid WarehouseId, bool Out, int WarehouseQty);
+
+    /// <summary>
+    /// What this request's moves did to stock, compared with before it: a store that held the item and
+    /// now holds none, and an item whose total came down to its reorder level (from above it). Read once.
+    /// </summary>
+    public List<RunDown> TakeRunDowns()
+    {
+        var list = new List<RunDown>();
+        var lowTold = new HashSet<Guid>();
+        foreach (var ((productId, warehouseId), (warehouse, before)) in _touched)
+        {
+            if (warehouse.Kind != WarehouseKind.STORE || !_locked.TryGetValue(productId, out var product)) continue;
+            var now = _balances.TryGetValue((productId, warehouseId), out var b) ? b.Quantity : 0;
+            if (before > 0 && now <= 0) list.Add(new RunDown(product, warehouseId, true, now));
+            else if (now < before && product.ReorderLevel > 0 && product.StockOnHand > 0
+                     && product.StockOnHand <= product.ReorderLevel
+                     && _totalBefore.GetValueOrDefault(productId) > product.ReorderLevel && lowTold.Add(productId))
+                list.Add(new RunDown(product, warehouseId, false, now));
+        }
+        _touched.Clear();
+        _totalBefore.Clear();
+        return list;
+    }
 
     public InventoryService(AppDbContext db) => _db = db;
 
@@ -311,6 +340,8 @@ public sealed class InventoryService
             _balances[(product.Id, warehouse.Id)] = balance;
         }
 
+        _touched.TryAdd((product.Id, warehouse.Id), (warehouse, balance.Quantity));
+        _totalBefore.TryAdd(product.Id, product.StockOnHand);
         balance.Quantity += signedQty;
         balance.UpdatedAt = DateTime.UtcNow;
         product.StockOnHand += signedQty;

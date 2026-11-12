@@ -146,7 +146,7 @@ public sealed class CashHandoversController : ControllerBase
         handover.DoneById = Me();
         handover.DoneAt = DateTime.UtcNow;
         handover.VoucherId = voucher.Id;
-        _notify.CashDone(handover, from, to, User);
+        await _notify.CashDoneAsync(handover, from, to, User);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("receive", handover.Id, to.BranchId);
@@ -181,7 +181,7 @@ public sealed class CashHandoversController : ControllerBase
         handover.DoneById = Me();
         handover.DoneAt = DateTime.UtcNow;
         handover.Reason = Text(req?.Reason, 300);
-        _notify.CashDone(handover, from, to, User);
+        await _notify.CashDoneAsync(handover, from, to, User);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("cancel", handover.Id, from.BranchId);

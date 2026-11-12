@@ -112,9 +112,11 @@ public sealed class UpdateChecker : BackgroundService
     private static readonly TimeSpan Every = TimeSpan.FromMinutes(15);
     private readonly UpdateService _updates;
     private readonly ILogger<UpdateChecker> _log;
+    private readonly IServiceScopeFactory _scopes;
 
-    public UpdateChecker(UpdateService updates, ILogger<UpdateChecker> log)
+    public UpdateChecker(UpdateService updates, ILogger<UpdateChecker> log, IServiceScopeFactory scopes)
     {
+        _scopes = scopes;
         _updates = updates;
         _log = log;
     }
@@ -127,7 +129,14 @@ public sealed class UpdateChecker : BackgroundService
         {
             try
             {
-                if (_updates.Read().State is "idle" or "failed") _updates.Request("check");
+                var view = _updates.Read();
+                // A new version is out: whoever updates the server hears of it (once a week per count).
+                if (view.Behind > 0)
+                {
+                    using var scope = _scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<NotificationService>().UpdateAvailableAsync(view.Behind);
+                }
+                if (view.State is "idle" or "failed") _updates.Request("check");
             }
             catch (Exception e)
             {

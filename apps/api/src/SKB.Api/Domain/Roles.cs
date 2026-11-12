@@ -80,6 +80,12 @@ public static class Permissions
     public const string SalesLock = "sales:lock";
     /// <summary>Be told of each new sales invoice (customer and department), e.g. the accountant who takes the payment.</summary>
     public const string SalesInvoiceAlerts = "sales:invoice_alerts";
+    /// <summary>The bell: cheques and notes falling due, overdue or bounced in my branches (owner, 2026-11-12).</summary>
+    public const string NotifyCheques = "notifications:cheques";
+    /// <summary>The bell: an item ran out, or came down to its reorder level, in my stores (owner, 2026-11-12).</summary>
+    public const string NotifyStock = "notifications:stock";
+    /// <summary>The bell: the day's summary (sales, collections, boxes) at the company's chosen time (owner, 2026-11-12).</summary>
+    public const string NotifyDailySummary = "notifications:daily_summary";
     /// <summary>
     /// Issue a sales return (restock + credit the customer). Separate from SalesCreate on purpose:
     /// a return moves money back out, so it is not granted to the SALES role by default.
@@ -666,7 +672,8 @@ public static class Permissions
         DashboardTopCustomers, DashboardBranches, DashboardRecent, DashboardAccounts, DashboardNotesDue,
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
         SalesReturnsView, SalesTogether, SalesPrint, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
-        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnCancel, SalesChangePrice,
+        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, NotifyCheques, NotifyStock, NotifyDailySummary,
+        SalesReturn, SalesReturnCancel, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
@@ -741,7 +748,7 @@ public static class RolePermissions
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
             Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesCancel,
             Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesLock,
-            Permissions.SalesInvoiceAlerts, Permissions.SalesReturn,
+            Permissions.SalesInvoiceAlerts, Permissions.NotifyCheques, Permissions.NotifyStock, Permissions.SalesReturn,
             Permissions.SalesChangePrice, Permissions.SalesRaisePrice, Permissions.SalesChoosePriceLevel,
             Permissions.SalesPriceBasis, Permissions.SalesOverrideFloor, Permissions.SalesDiscount,
             Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined, Permissions.SalesBonus,
@@ -826,7 +833,7 @@ public static class RolePermissions
         {
             Permissions.DashboardKpiSales, Permissions.DashboardKpiPurchases, Permissions.DashboardKpiReceivables,
             Permissions.DashboardKpiPayables, Permissions.DashboardKpiCash, Permissions.DashboardKpiLowStock,
-            Permissions.DashboardTrend, Permissions.DashboardRecent, Permissions.DashboardLowStock,
+            Permissions.DashboardTrend, Permissions.DashboardRecent, Permissions.DashboardLowStock, Permissions.NotifyStock,
             Permissions.DeliveryView, Permissions.ShipmentsView, Permissions.SettlementsView,
             Permissions.DeliveryStatus, Permissions.ShipmentsCreate, Permissions.ShipmentsProgress,
             Permissions.ShipmentsReturn, Permissions.ShipmentsCancel, Permissions.PurchasesView,

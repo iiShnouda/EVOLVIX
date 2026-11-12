@@ -576,6 +576,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: 'notifications',
+    sections: [
+      {
+        key: 'notifications',
+        permissions: [
+          'notifications:cheques',
+          'notifications:stock',
+          'notifications:daily_summary',
+        ],
+      },
+    ],
+  },
+  {
     key: 'system',
     sections: [
       {

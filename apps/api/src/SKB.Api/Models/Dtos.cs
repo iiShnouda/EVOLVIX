@@ -258,7 +258,8 @@ public record CompanySettingsDto(
     string? Address = null, string? Phone = null, string? Email = null, string? TaxNumber = null,
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
     int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
-    bool HideNewPlaces = true, int IdleMinutes = 30, string? CurrentSeasonId = null);
+    bool HideNewPlaces = true, int IdleMinutes = 30, string? CurrentSeasonId = null,
+    int? DailySummaryMinute = null, int NoteAlertDays = 3);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -283,7 +284,7 @@ public record UpdateSettingsRequest(
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
     int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null,
-    string? CurrentSeasonId = null);
+    string? CurrentSeasonId = null, int? DailySummaryMinute = null, int? NoteAlertDays = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 
@@ -1262,9 +1263,23 @@ public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds 
 
 public record NotificationDto(
     string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,
-    string? ActorName, string? Message, string CreatedAt, bool Read, string? DepartmentName = null);
+    string? ActorName, string? Message, string CreatedAt, bool Read, string? DepartmentName = null,
+    System.Text.Json.JsonElement? Data = null);
 
-public record NotificationsDto(int Unread, NotificationDto[] Items);
+public record NotificationsDto(int Unread, NotificationDto[] Items, bool More = false);
+
+/// <summary>
+/// My notification choices: the kinds I may be sent (what my permissions allow), those I switched
+/// off, the ones that can't be, and whether a chime / a system notification is wanted.
+/// </summary>
+public record NotificationPrefsDto(string[] Offered, string[] Off, string[] AlwaysOn, bool Sound, bool Device);
+
+public record SaveNotificationPrefsRequest(string[]? Off, bool? Sound, bool? Device);
+
+/// <summary>Development/tests: run the daily jobs now (cheque alerts, the summary for <c>Day</c> or the usual day).</summary>
+public record RunDailyRequest(string? Day = null);
+
+public record RunDailyDto(int Notes, int Summaries, string Day);
 
 /// <summary>Work in progress kept for one screen while the app updates (see WorkDraft).</summary>
 public record WorkDraftDto(string Key, string Data, string UpdatedAt);

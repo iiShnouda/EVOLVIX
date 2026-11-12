@@ -24,9 +24,11 @@ public sealed class LedgerController : ControllerBase
     private readonly AppDbContext _db;
     private readonly LedgerService _ledger;
     private readonly AuditService _audit;
+    private readonly NotificationService _notify;
 
-    public LedgerController(AppDbContext db, LedgerService ledger, AuditService audit)
+    public LedgerController(AppDbContext db, LedgerService ledger, AuditService audit, NotificationService notify)
     {
+        _notify = notify;
         _db = db;
         _ledger = ledger;
         _audit = audit;
@@ -690,8 +692,10 @@ public sealed class LedgerController : ControllerBase
         }
         var settings = await _db.CompanySettings.FirstOrDefaultAsync();
         if (settings is null) return Bad("no_settings", "Company settings are missing.");
+        var changed = settings.LockDate != value;
         settings.LockDate = value;
         settings.UpdatedAt = DateTime.UtcNow;
+        if (changed) await _notify.PeriodLockAsync(value, User);
         await _db.SaveChangesAsync();
         await AuditAsync("lock", "ledger", settings.Id);
         return Ok(new LockDateDto(value?.ToString("yyyy-MM-dd")));
@@ -786,6 +790,8 @@ public sealed class LedgerController : ControllerBase
             await _db.SaveChangesAsync();
             if (y == req.Year) (entry, profit) = (posted, -net.Sum(n => n.Net));
         }
+        await _notify.YearClosedAsync(req.Year, User);
+        await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("close_year", "ledger", entry?.Id ?? Guid.Empty);
         // (A year whose earnings were all undone since has nothing left to close.)

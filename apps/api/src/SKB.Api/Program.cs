@@ -64,6 +64,7 @@ builder.Services.AddScoped<PayrollService>();
 builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
 builder.Services.AddHostedService<Housekeeping>();
+builder.Services.AddHostedService<NotificationJobs>();
 
 // The public storefront publisher (owner, 2026-10-13): pushes the scrubbed catalogue + photos OUT to
 // Cloudflare R2 when products change. R2 when configured; a memory target in Development for the

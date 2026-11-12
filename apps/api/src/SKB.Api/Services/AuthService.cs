@@ -19,10 +19,12 @@ public sealed class AuthService
     private readonly PermissionService _permissions;
     private readonly AccessService _access;
     private readonly LicenseService _license;
+    private readonly NotificationService _notify;
 
     public AuthService(AppDbContext db, TokenService tokens, AuditService audit, IPasswordHasher<Staff> hasher,
-        PermissionService permissions, AccessService access, LicenseService license)
+        PermissionService permissions, AccessService access, LicenseService license, NotificationService notify)
     {
+        _notify = notify;
         _license = license;
         _access = access;
         _db = db;
@@ -64,6 +66,8 @@ public sealed class AuthService
             return new LoginResult(null!, "", "", Refused: "license_expired");
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
+        // A browser or app this account was not signed in from before: its owner is told (security).
+        await _notify.NewSignInAsync(staff, ctx);
         var (refresh, device) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
         var access = _tokens.IssueAccessToken(staff, permissions, scope, device);
         await _audit.RecordAsync(staff.Id.ToString(), staff.FullName, "auth.login", "auth",

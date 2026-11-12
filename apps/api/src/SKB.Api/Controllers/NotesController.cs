@@ -30,9 +30,12 @@ public sealed class NotesController : ControllerBase
     private readonly MoneyService _money;
     private readonly LedgerService _ledger;
     private readonly AuditService _audit;
+    private readonly NotificationService _notify;
 
-    public NotesController(AppDbContext db, MoneyService money, LedgerService ledger, AuditService audit)
+    public NotesController(AppDbContext db, MoneyService money, LedgerService ledger, AuditService audit,
+        NotificationService notify)
     {
+        _notify = notify;
         _db = db;
         _money = money;
         _ledger = ledger;
@@ -552,6 +555,7 @@ public sealed class NotesController : ControllerBase
                 _ => Bad("bad_transition", problem),
             };
         Step(note, to, note.AccountId, partyOf?.Invoke(note), Text(remark, 500));
+        if (to == NoteStatus.BOUNCED) await _notify.NoteBouncedAsync(note, User);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync(action, note.Id, note.BranchId);

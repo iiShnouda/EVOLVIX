@@ -32,10 +32,12 @@ public sealed class TransfersController : ControllerBase
     private readonly InventoryService _inventory;
     private readonly WarehouseService _warehouses;
     private readonly AuditService _audit;
+    private readonly NotificationService _notify;
 
     public TransfersController(AppDbContext db, InventoryService inventory, WarehouseService warehouses,
-        AuditService audit)
+        AuditService audit, NotificationService notify)
     {
+        _notify = notify;
         _db = db;
         _inventory = inventory;
         _warehouses = warehouses;
@@ -208,6 +210,9 @@ public sealed class TransfersController : ControllerBase
         }
 
         _db.StockTransfers.Add(transfer);
+        // Waiting at the other store: whoever receives there is told; and a store emptied by it.
+        if (transfer.Status == TransferStatus.SENT) await _notify.TransferSentAsync(transfer, source, destination, User);
+        await _notify.StockAsync(_inventory, User);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
@@ -379,6 +384,7 @@ public sealed class TransfersController : ControllerBase
             transfer.CancelledById = staffId;
             transfer.CancelledAt = DateTime.UtcNow;
         }
+        await _notify.TransferDoneAsync(transfer, transfer.FromWarehouse!, transfer.ToWarehouse!, User);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
