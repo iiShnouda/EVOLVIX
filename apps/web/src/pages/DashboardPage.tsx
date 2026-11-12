@@ -272,26 +272,24 @@ export function DashboardPage() {
           />
         )}
 
-        <div className="grid gap-4 [&>*]:min-w-0 xl:grid-cols-3">
-          {shows('recent') && (
-            <HistoryCard
-              {...cardPeriod('recent')}
-              className="xl:col-span-2"
-              onOpen={(doc) =>
-                navigate(
-                  `/${doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}?${
-                    doc.type.endsWith('RETURN') ? 'tab=returns&' : ''
-                  }doc=${doc.id}`,
-                )
-              }
-            />
-          )}
-          <div className="space-y-4">
-            {more && shows('alerts') && <AlertsCard />}
-            {more?.notesDue && shows('notesDue') && <NotesDueCard {...cardPeriod('notesDue')} />}
-            {more?.accounts && shows('accounts') && <AccountsCard />}
-            {shows('lowStock') && <LowStockCard data={data} />}
-          </div>
+        {/* The latest documents across the page: they say where each belongs (owner, 2026-11-11). */}
+        {shows('recent') && (
+          <HistoryCard
+            {...cardPeriod('recent')}
+            onOpen={(doc) =>
+              navigate(
+                `/${doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}?${
+                  doc.type.endsWith('RETURN') ? 'tab=returns&' : ''
+                }doc=${doc.id}`,
+              )
+            }
+          />
+        )}
+        <div className="grid items-start gap-4 [&>*]:min-w-0 md:grid-cols-2 xl:grid-cols-4">
+          {more && shows('alerts') && <AlertsCard />}
+          {more?.notesDue && shows('notesDue') && <NotesDueCard {...cardPeriod('notesDue')} />}
+          {more?.accounts && shows('accounts') && <AccountsCard />}
+          {shows('lowStock') && <LowStockCard data={data} />}
         </div>
 
         {choosing && (
@@ -919,8 +917,10 @@ function HistoryCard({
                       <span className="flex items-center gap-2">
                         <DocIcon type={doc.type} />
                         <span className="min-w-0">
-                          <span className="block text-xs font-medium text-muted">{kind(doc)}</span>
-                          <span className="block tnum">
+                          <span className="block whitespace-nowrap text-xs font-medium text-muted">
+                            {kind(doc)}
+                          </span>
+                          <span className="block whitespace-nowrap tnum">
                             <bdi>{doc.number}</bdi>
                           </span>
                         </span>
@@ -929,7 +929,7 @@ function HistoryCard({
                     <td className="max-w-[12rem] px-3 py-2.5 font-medium">
                       <CodeName code={doc.partyCode} name={doc.partyName} truncate />
                     </td>
-                    <td className="px-3 py-2.5">{doc.branchName}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5">{doc.branchName}</td>
                     <td className="max-w-[10rem] px-3 py-2.5">
                       {doc.warehouseNames.join('، ') || '—'}
                     </td>
