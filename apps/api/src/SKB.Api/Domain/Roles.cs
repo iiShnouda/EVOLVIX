@@ -657,6 +657,11 @@ public static class Permissions
     /// also issue licences to customers (owner, 2026-10-15). The owner's alone.
     /// </summary>
     public const string LicenseManage = "license:manage";
+    /// <summary>
+    /// Read the server's log (what it did, warnings, errors with their stack traces, errors the app
+    /// reported from people's devices) and download a day of it (owner, 2026-11-12). The owner's alone.
+    /// </summary>
+    public const string SystemLogs = "system:logs";
 
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
@@ -709,10 +714,11 @@ public static class Permissions
         WarehousesDelete, SettingsCompany, SettingsLogo, SettingsPricing, SettingsRules,
         SettingsSecurity, SettingsNumbering, SettingsStorefront, BackupCreate, CostsView, ProfitView,
         DocumentsBackdate, RulesOverride, SystemMonitor, SystemUpdate, DataImport, LicenseManage,
+        SystemLogs,
     };
 
     /// <summary>Held by the owner alone: never by the admin, a role or a grant.</summary>
-    public static readonly string[] OwnerOnly = { SystemMonitor, SystemUpdate, DataImport, LicenseManage };
+    public static readonly string[] OwnerOnly = { SystemMonitor, SystemUpdate, DataImport, LicenseManage, SystemLogs };
 }
 
 public static class RolePermissions
