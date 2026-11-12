@@ -1862,6 +1862,9 @@ export interface StockTransferLine {
   /** Average cost when sent, minor units. */
   unitCost: number;
   value: number;
+  code?: string | null;
+  /** The item's (main) department. */
+  department?: string | null;
 }
 
 export interface StockTransfer {
@@ -1889,6 +1892,25 @@ export interface StockTransfer {
   canReceive: boolean;
   /** The current user may cancel it now (goods go back to the source). */
   canCancel: boolean;
+  fromBranchId?: string | null;
+  toBranchId?: string | null;
+  /** The departments of the items it moved. */
+  departments?: string[] | null;
+}
+
+/** Transfers found by the filters (a page of them), with the pieces and value of all found. */
+export interface TransferList extends Paginated<StockTransfer> {
+  quantity: number;
+  /** Only for whoever may see costs. */
+  value: number | null;
+}
+
+/** A warehouse on the transfers one may see, for the from / to filters. */
+export interface TransferPlace {
+  warehouseId: string;
+  warehouseName: string;
+  branchId: string;
+  branchName: string;
 }
 
 export interface BranchWithWarehouses {

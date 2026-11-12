@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DocumentActivity } from '../components/DocumentActivity';
 import {
+  formatDate,
   formatDateTime,
   formatMoney,
   formatNumber,
   type StockTransfer,
   type TransferStatus,
 } from '@skb/shared';
+import { useDeviceInfo } from '../lib/device';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
@@ -17,10 +19,13 @@ import { ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import {
   useCompanySettings,
+  useDepartments,
   useFinishTransfer,
   usePageSize,
   useTransfer,
+  useTransferPlaces,
   useTransfers,
+  type TransferFilter,
 } from '../lib/queries';
 import { Pager } from '../components/Pager';
 import { TableColumns } from '../components/TableColumns';
@@ -42,7 +47,7 @@ const STATUS_TONE: Record<TransferStatus, Tone> = {
  * are still on the way. `?tab=all` shows every permit; `?doc=<id>` opens one.
  */
 export function TransfersPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // No goods "in transit" (owner decision 2026-10-01): every permit is listed; the list of permits
@@ -56,7 +61,21 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
 
   const [size, setSize] = usePageSize('transfers', 50);
   const [page, setPage] = useState(1);
-  const list = useTransfers({ page, pageSize: size, status: tab === 'open' ? 'SENT' : undefined });
+  // Every transfer over a period, from which branch, warehouse and department to which (owner,
+  // 2026-11-10).
+  const [filter, setFilterState] = useState<TransferFilter>({});
+  const setFilter = (patch: TransferFilter) => {
+    setFilterState((f) => ({ ...f, ...patch }));
+    setPage(1);
+  };
+  const list = useTransfers({
+    page,
+    pageSize: size,
+    status: tab === 'open' ? 'SENT' : undefined,
+    ...filter,
+  });
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
+  const seeCosts = useCan()('costs:view');
   const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / size));
   // A transfer opens on its own page (owner, 2026-10-19); old `?doc=` links still land there.
   const linkedId = params.get('doc');
@@ -121,8 +140,19 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
         </div>
       )}
 
+      <TransferFilters filter={filter} onChange={setFilter} />
+
       <div>
-        <div className="mb-2 flex justify-end">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          {list.data && (
+            <p className="text-sm text-muted tnum">
+              {t('transfer.title')}: {formatNumber(list.data.total, locale)} ·{' '}
+              {t('transfer.pieces')}: {formatNumber(list.data.quantity, locale)}
+              {seeCosts &&
+                list.data.value != null &&
+                ` · ${t('inventory.value')}: ${formatMoney(list.data.value, currency, locale)}`}
+            </p>
+          )}
           <Pager
             page={Math.min(page, pages)}
             size={size}
@@ -141,7 +171,7 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
             </div>
           ) : rows.length === 0 ? (
             <EmptyState title={t('transfer.none')} icon="inventory" />
-          ) : (
+          ) : isPhone ? (
             <ul className="divide-y divide-[var(--c-line)]">
               {rows.map((tr) => (
                 <li key={tr.id}>
@@ -153,10 +183,151 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
                 </li>
               ))}
             </ul>
+          ) : (
+            <TableColumns id="transfers.list" className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap text-sm">
+                <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-3 text-start font-medium">{t('transfer.number')}</th>
+                    <th className="p-3 text-start font-medium">{t('common.date')}</th>
+                    <th className="p-3 text-start font-medium">{t('transfer.fromBranch')}</th>
+                    <th className="p-3 text-start font-medium">{t('transfer.fromWarehouse')}</th>
+                    <th className="p-3 text-start font-medium">{t('transfer.toBranch')}</th>
+                    <th className="p-3 text-start font-medium">{t('transfer.toWarehouse')}</th>
+                    <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
+                    <th className="p-3 text-end font-medium">{t('transfer.pieces')}</th>
+                    {seeCosts && (
+                      <th className="p-3 text-end font-medium">{t('inventory.value')}</th>
+                    )}
+                    <th className="p-3 text-start font-medium">{t('common.status')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((tr) => (
+                    <tr
+                      key={tr.id}
+                      onClick={() => navigate(`/inventory/transfers/${tr.id}`)}
+                      className="cursor-pointer transition-colors hover:bg-surface-2"
+                    >
+                      <td className="p-3 font-medium tnum" dir="ltr">
+                        {tr.number}
+                      </td>
+                      <td className="p-3 text-muted tnum">
+                        {formatDateTime(tr.createdAt, locale)}
+                      </td>
+                      <td className="p-3">{tr.fromBranchName}</td>
+                      <td className="p-3">{tr.fromWarehouseName}</td>
+                      <td className="p-3">{tr.toBranchName}</td>
+                      <td className="p-3">{tr.toWarehouseName}</td>
+                      <td className="p-3 text-muted">{(tr.departments ?? []).join('، ')}</td>
+                      <td className="p-3 text-end tnum">{formatNumber(tr.quantity, locale)}</td>
+                      {seeCosts && (
+                        <td className="p-3 text-end tnum">
+                          {formatMoney(tr.value, currency, locale)}
+                        </td>
+                      )}
+                      <td className="p-3">
+                        <Badge tone={STATUS_TONE[tr.status]}>
+                          {t(`transfer.status.${tr.status}`)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableColumns>
           )}
         </Card>
       </div>
     </div>
+  );
+}
+
+const field =
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+
+/** The period, the sending and the receiving branch and warehouse, and a department. */
+function TransferFilters({
+  filter,
+  onChange,
+}: {
+  filter: TransferFilter;
+  onChange: (patch: TransferFilter) => void;
+}) {
+  const { t } = useT();
+  const places = useTransferPlaces().data ?? [];
+  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
+  const branches = [...new Map(places.map((p) => [p.branchId, p.branchName])).entries()];
+  const stores = (branchId?: string) => places.filter((p) => !branchId || p.branchId === branchId);
+  const select = (
+    label: string,
+    value: string | undefined,
+    options: [string, string][],
+    set: (v: string | undefined) => void,
+  ) => (
+    <label className="block">
+      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      <select
+        className={field}
+        value={value ?? ''}
+        onChange={(e) => set(e.target.value || undefined)}
+      >
+        <option value="">{t('common.all')}</option>
+        {options.map(([id, name]) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <Card className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+      <label className="block">
+        <span className="mb-0.5 block text-xs text-muted">{t('money.from')}</span>
+        <input
+          type="date"
+          className={field}
+          value={filter.from ?? ''}
+          max={filter.to}
+          onChange={(e) => onChange({ from: e.target.value || undefined })}
+        />
+      </label>
+      <label className="block">
+        <span className="mb-0.5 block text-xs text-muted">{t('money.to')}</span>
+        <input
+          type="date"
+          className={field}
+          value={filter.to ?? ''}
+          min={filter.from}
+          onChange={(e) => onChange({ to: e.target.value || undefined })}
+        />
+      </label>
+      {select(t('transfer.fromBranch'), filter.fromBranchId, branches, (v) =>
+        onChange({ fromBranchId: v, fromWarehouseId: undefined }),
+      )}
+      {select(
+        t('transfer.fromWarehouse'),
+        filter.fromWarehouseId,
+        stores(filter.fromBranchId).map((p) => [p.warehouseId, p.warehouseName]),
+        (v) => onChange({ fromWarehouseId: v }),
+      )}
+      {select(t('transfer.toBranch'), filter.toBranchId, branches, (v) =>
+        onChange({ toBranchId: v, toWarehouseId: undefined }),
+      )}
+      {select(
+        t('transfer.toWarehouse'),
+        filter.toWarehouseId,
+        stores(filter.toBranchId).map((p) => [p.warehouseId, p.warehouseName]),
+        (v) => onChange({ toWarehouseId: v }),
+      )}
+      {select(
+        t('invoice.department'),
+        filter.departmentId,
+        departments.map((d) => [d.id, d.name]),
+        (v) => onChange({ departmentId: v }),
+      )}
+    </Card>
   );
 }
 
@@ -218,9 +389,13 @@ function TransferRow({
           <Badge tone={STATUS_TONE[tr.status]}>{t(`transfer.status.${tr.status}`)}</Badge>
         </span>
         <span className="mt-0.5 block truncate text-sm">
-          {tr.fromWarehouseName} <span className="inline-block text-muted flip-rtl">→</span>{' '}
+          {tr.fromBranchName} / {tr.fromWarehouseName}{' '}
+          <span className="inline-block text-muted flip-rtl">→</span> {tr.toBranchName} /{' '}
           {tr.toWarehouseName}
         </span>
+        {(tr.departments?.length ?? 0) > 0 && (
+          <span className="block truncate text-xs text-muted">{tr.departments!.join('، ')}</span>
+        )}
         <span className="text-xs text-muted tnum">{formatDateTime(tr.createdAt, locale)}</span>
       </span>
       <span className="text-end tnum">
@@ -349,7 +524,9 @@ function TransferDetail({
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs text-muted">
             <tr>
-              <th className="p-3 text-start font-medium">{t('inventory.products')}</th>
+              <th className="p-3 text-start font-medium">{t('inventory.sku')}</th>
+              <th className="p-3 text-start font-medium">{t('inventory.itemName')}</th>
+              <th className="p-3 text-start font-medium">{t('invoice.department')}</th>
               <th className="p-3 text-end font-medium">{t('inventory.qty')}</th>
               {seeCosts && <th className="p-3 text-end font-medium">{t('inventory.value')}</th>}
             </tr>
@@ -357,9 +534,13 @@ function TransferDetail({
           <tbody className="divide-y divide-[var(--c-line)]">
             {tr.lines.map((l) => (
               <tr key={l.id}>
+                <td className="p-3 text-muted tnum" dir="ltr">
+                  {l.code ?? ''}
+                </td>
                 <td className="p-3">
                   <ItemLink id={l.productId} name={l.productName} />
                 </td>
+                <td className="p-3 text-muted">{l.department ?? ''}</td>
                 <td className="p-3 text-end tnum">{formatNumber(l.quantity, locale)}</td>
                 {seeCosts && (
                   <td className="p-3 text-end tnum">{formatMoney(l.value, currency, locale)}</td>
@@ -368,6 +549,8 @@ function TransferDetail({
             ))}
             <tr className="bg-surface-2 font-semibold">
               <td className="p-3">{t('common.total')}</td>
+              <td className="p-3" />
+              <td className="p-3" />
               <td className="p-3 text-end tnum">{formatNumber(tr.quantity, locale)}</td>
               {seeCosts && (
                 <td className="p-3 text-end tnum">{formatMoney(tr.value, currency, locale)}</td>

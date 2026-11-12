@@ -409,7 +409,8 @@ public record WarehouseOptionDto(string Id, string Name, string BranchName);
 
 /// <param name="UnitCost">Average cost when sent, minor units.</param>
 public record StockTransferLineDto(
-    string Id, string ProductId, string ProductName, int Quantity, long UnitCost, long Value);
+    string Id, string ProductId, string ProductName, int Quantity, long UnitCost, long Value,
+    string? Code = null, string? Department = null);
 
 /// <param name="CanReceive">The caller may confirm receipt now.</param>
 /// <param name="CanCancel">The caller may cancel it now (goods go back to the source).</param>
@@ -420,7 +421,14 @@ public record StockTransferDto(
     string CreatedAt, string CreatedByName,
     string? ReceivedAt, string? ReceivedByName, string? CancelledAt, string? CancelledByName,
     string? Notes, int Quantity, long Value, StockTransferLineDto[] Lines,
-    bool CanReceive, bool CanCancel);
+    bool CanReceive, bool CanCancel,
+    string? FromBranchId = null, string? ToBranchId = null, string[]? Departments = null);
+
+/// <summary>Transfers found by the filters, a page of them, with the pieces and value of all found.</summary>
+public record TransferListDto(StockTransferDto[] Items, int Total, int Page, int PageSize, int Quantity, long? Value);
+
+/// <summary>A warehouse found on the transfers one may see (for the from / to filters).</summary>
+public record TransferPlaceDto(string WarehouseId, string WarehouseName, string BranchId, string BranchName);
 
 public record CreateTransferLineRequest(string ProductId, int Quantity);
 

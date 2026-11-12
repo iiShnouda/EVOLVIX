@@ -224,4 +224,58 @@ check('two warehouses to count', !!wh2, stores.length);
   eq('a sales person does not', (await karim.get('/inventory/stocktake/sheet')).status, 403);
 }
 
+console.log('== transfers by period, from, to and department');
+{
+  const send = async (from, to, item, quantity) =>
+    ok(
+      `send ${quantity}`,
+      await owner.post('/transfers', {
+        fromWarehouseId: from.id,
+        toWarehouseId: to.id,
+        lines: [{ productId: item.id, quantity }],
+      }),
+    );
+  const t1 = await send(wh, wh2, shirt, 2);
+  const t2 = await send(wh2, wh, sock, 1);
+  eq(
+    'each line with its code and department',
+    [t1.lines[0].code, t1.lines[0].department],
+    [shirt.sku, dept.name],
+  );
+  eq('the transfer names its departments', t1.departments, [dept.name]);
+  eq('and its branches', [t1.fromBranchId, t1.toBranchId], [wh.branchId, wh2.branchId]);
+  const list = async (q) => ok(`transfers ${q}`, await owner.get(`/transfers?pageSize=100&${q}`));
+  const ids = (r) => r.items.map((x) => x.id);
+  const period = `from=${today}&to=${today}`;
+  const out = await list(`${period}&fromWarehouseId=${wh.id}&toWarehouseId=${wh2.id}`);
+  check('from one warehouse to another', ids(out).includes(t1.id) && !ids(out).includes(t2.id));
+  check(
+    'every one found goes that way',
+    out.items.every((x) => x.fromWarehouseId === wh.id && x.toWarehouseId === wh2.id),
+  );
+  const back = await list(`${period}&fromBranchId=${wh2.branchId}&toBranchId=${wh.branchId}`);
+  check(
+    'from one branch to another',
+    ids(back).includes(t2.id) &&
+      back.items.every((x) => x.fromBranchId === wh2.branchId && x.toBranchId === wh.branchId),
+  );
+  const ofDept = await list(`${period}&departmentId=${dept2.id}`);
+  check('by department', ids(ofDept).includes(t2.id) && !ids(ofDept).includes(t1.id));
+  const before = await list(`from=${addDays(today, -9)}&to=${addDays(today, -1)}`);
+  check('not in an earlier period', !ids(before).includes(t1.id) && !ids(before).includes(t2.id));
+  const all = await list(period);
+  eq(
+    'the pieces of all found',
+    all.quantity,
+    all.items.reduce((s, x) => s + x.quantity, 0),
+  );
+  check('with their value', typeof all.value === 'number');
+  const places = ok('the places to filter by', await owner.get('/transfers/places'));
+  check(
+    'both ends there',
+    [wh.id, wh2.id].every((id) => places.some((p) => p.warehouseId === id)),
+    places.length,
+  );
+}
+
 process.exit(summary('stock') ? 1 : 0);

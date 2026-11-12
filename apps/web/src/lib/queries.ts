@@ -58,6 +58,8 @@ import type {
   ItemLife,
   StocktakeInput,
   StocktakeSheet,
+  TransferList,
+  TransferPlace,
   StocktakeResult,
   Valuation,
   Paginated,
@@ -788,15 +790,38 @@ export function useBranches() {
 // Transfer permits (إذن تحويل)
 // ---------------------------------------------------------------------------
 
-export function useTransfers(params: { page: number; pageSize?: number; status?: TransferStatus }) {
+export interface TransferFilter {
+  /** Sent between these company days (inclusive). */
+  from?: string;
+  to?: string;
+  fromBranchId?: string;
+  fromWarehouseId?: string;
+  toBranchId?: string;
+  toWarehouseId?: string;
+  departmentId?: string;
+}
+
+export function useTransfers(
+  params: { page: number; pageSize?: number; status?: TransferStatus } & TransferFilter,
+) {
   const query = new URLSearchParams({
     page: String(params.page),
     pageSize: String(params.pageSize ?? 30),
   });
-  if (params.status) query.set('status', params.status);
+  for (const [k, v] of Object.entries(params))
+    if (v && !['page', 'pageSize'].includes(k)) query.set(k, String(v));
   return useQuery({
     queryKey: ['inventory', 'transfers', params],
-    queryFn: () => api.get<Paginated<StockTransfer>>(`/transfers?${query}`),
+    queryFn: () => api.get<TransferList>(`/transfers?${query}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The warehouses (and branches) the transfer filters offer. */
+export function useTransferPlaces() {
+  return useQuery({
+    queryKey: ['inventory', 'transfers', 'places'],
+    queryFn: () => api.get<TransferPlace[]>('/transfers/places'),
   });
 }
 
