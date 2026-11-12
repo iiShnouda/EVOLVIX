@@ -1665,7 +1665,7 @@ export const en = {
   'notify.sound': 'Sound',
   'notify.device': 'Show on this device while the app is in the background',
   'notify.deviceAllow': 'Allow device notifications',
-  'notify.deviceBlocked': 'Device notifications are blocked in this browser\'s settings',
+  'notify.deviceBlocked': "Device notifications are blocked in this browser's settings",
   'notify.deviceUnsupported': 'This device does not support notifications here',
   'notify.back': 'Back',
   'notify.sum.sales': 'Sales',

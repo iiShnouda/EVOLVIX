@@ -40,6 +40,7 @@ import type {
   ApproveOrderInput,
   CustomerAccount,
   NotificationList,
+  NotificationPrefs,
   UpdateSettingsInput,
   BranchWithWarehouses,
   CreateBranchInput,
@@ -617,12 +618,26 @@ export function useRejectOrder() {
   });
 }
 
-/** My notifications (the bell); checked every 30 seconds while the app is open. */
-export function useNotifications() {
+/**
+ * My notifications (the bell): the newest page, and older pages as asked (`pages` = how many).
+ * Told live over the presence connection; checked every 30 seconds besides. Nothing is kept on the
+ * device (rule 1): the list lives in memory only.
+ */
+export function useNotifications(pages = 1, unreadOnly = false) {
   return useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api.get<NotificationList>('/notifications'),
+    queryKey: ['notifications', pages, unreadOnly],
+    queryFn: async () => {
+      const q = unreadOnly ? '&unread=true' : '';
+      let list = await api.get<NotificationList>(`/notifications?x=1${q}`);
+      for (let i = 1; i < pages && list.more; i++) {
+        const last = list.items[list.items.length - 1];
+        const next = await api.get<NotificationList>(`/notifications?before=${last?.id ?? ''}${q}`);
+        list = { unread: next.unread, items: [...list.items, ...next.items], more: next.more };
+      }
+      return list;
+    },
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -632,6 +647,33 @@ export function useReadNotification() {
     mutationFn: (id: string | 'all') =>
       api.post<void>(id === 'all' ? '/notifications/read-all' : `/notifications/${id}/read`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+/** Delete one of mine, or (`'read'`) every one I have read. */
+export function useDeleteNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string | 'read') => api.del<void>(`/notifications/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+/** What I want to be told of (kept on the server). */
+export function useNotificationPrefs() {
+  return useQuery({
+    queryKey: ['notification-prefs'],
+    queryFn: () => api.get<NotificationPrefs>('/notifications/preferences'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSaveNotificationPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<Pick<NotificationPrefs, 'off' | 'sound' | 'device'>>) =>
+      api.put<NotificationPrefs>('/notifications/preferences', input),
+    onSuccess: (data) => qc.setQueryData(['notification-prefs'], data),
   });
 }
 
