@@ -163,6 +163,49 @@ input[type='number'] {
   text-align: right;
 }
 
+/* Date boxes in numbers, day/month/year, on every device (owner, 2026-11-10): the browser's own
+   text is hidden and the box's `data-shown` (lib/dateBoxes.ts) drawn in its place. While a date is
+   typed with a keyboard the browser's own fields show, so what is typed can be seen. */
+input[data-shown]:not([data-shown='']) {
+  position: relative;
+}
+input[data-shown]:not([data-shown=''])::-webkit-datetime-edit,
+input[data-shown]:not([data-shown=''])::-webkit-date-and-time-value {
+  color: transparent;
+}
+input[data-shown]:not([data-shown=''])::before {
+  content: attr(data-shown);
+  position: absolute;
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+  padding-inline: inherit;
+  color: var(--c-fg);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+}
+input[data-shown]:disabled::before {
+  opacity: 0.6;
+}
+/* Where the browser puts its own text: date boxes read left to right in both languages (above),
+   the calendar button at the right. */
+input[data-shown]::before {
+  left: 0;
+  right: auto;
+}
+[dir='rtl'] input[data-shown]::before {
+  direction: rtl;
+}
+@media (pointer: fine) {
+  input[data-shown]:focus::-webkit-datetime-edit {
+    color: inherit;
+  }
+  input[data-shown]:focus::before {
+    content: none;
+  }
+}
+
 /* Safe-area helpers for notched iPhones / Android. */
 .safe-top {
   padding-top: env(safe-area-inset-top);
