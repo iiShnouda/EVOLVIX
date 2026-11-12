@@ -31,7 +31,7 @@ const ACTIONS: QuickAction[] = [
     label: 'qa.saleReturn',
     icon: 'returns',
     path: '/sales/returns/new',
-    anyOf: ['sales:return', 'sales:return_free'],
+    anyOf: ['sales:return'],
   },
   {
     id: 'together',
@@ -52,7 +52,7 @@ const ACTIONS: QuickAction[] = [
     label: 'qa.purchaseReturn',
     icon: 'returns',
     path: '/purchases/returns/new',
-    anyOf: ['purchases:return', 'purchases:return_free'],
+    anyOf: ['purchases:return'],
   },
   {
     id: 'receipt',

@@ -76,7 +76,6 @@ export type Permission =
   | 'sales:lock'
   | 'sales:invoice_alerts'
   | 'sales:return'
-  | 'sales:return_free'
   | 'sales:return_cancel'
   | 'sales:change_price'
   | 'sales:raise_price'
@@ -106,7 +105,6 @@ export type Permission =
   | 'purchases:create'
   | 'purchases:photos'
   | 'purchases:return'
-  | 'purchases:return_free'
   | 'purchases:return_cancel'
   | 'purchases:change_price'
   | 'purchases:choose_price_level'
@@ -799,6 +797,31 @@ export interface DocumentLine {
   /** Warehouse the goods left from (sale) or arrived into (purchase). */
   warehouseId?: string | null;
   warehouseName?: string | null;
+}
+
+/** An item the party can still return (owner, 2026-11-10), with its units and the invoice lines it can come from, newest first. */
+export interface ReturnableItem {
+  productId: string;
+  name: string;
+  sku: string;
+  units: { unitId: string; name: string; factor: number; barcode: string | null }[];
+  lines: ReturnableLine[];
+}
+
+export interface ReturnableLine {
+  lineId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  issueDate: string;
+  /** Base units on the invoice line, already returned, and left. */
+  quantity: number;
+  returned: number;
+  left: number;
+  /** What the whole line came to after its discounts (minor units, no tax). */
+  net: number;
+  isBonus: boolean;
+  /** When it can come back, while its invoice is younger than the hours in Settings. */
+  from: string | null;
 }
 
 export interface SalesDocument {

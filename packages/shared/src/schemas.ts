@@ -179,14 +179,13 @@ export const createReturnSchema = z.object({
 });
 export type CreateReturnInput = z.infer<typeof createReturnSchema>;
 
-/** A return typed line by line, without an invoice (owner decision 2026-10-01). */
+/** A return, the one way (owner, 2026-11-10): typed like an invoice, only what the party bought. */
 export const freeReturnLineSchema = z.object({
   productId: z.string().uuid(),
   unitId: z.string().uuid().optional(),
   quantity: z.number().int().min(1),
-  /** Price of one unit (minor units): the party's last invoice price unless the person may change it. */
-  unitPrice: z.number().int().min(0),
-  discount: z.number().int().min(0).default(0),
+  /** Take the pieces only from this invoice line. */
+  sourceLineId: z.string().uuid().optional(),
 });
 export type FreeReturnLineInput = z.infer<typeof freeReturnLineSchema>;
 
@@ -195,6 +194,8 @@ export const createFreeReturnSchema = z.object({
   branchId: z.string().uuid().optional(),
   warehouseId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
+  /** Take the items only from this invoice of theirs. */
+  invoiceId: z.string().uuid().optional(),
   lines: z.array(freeReturnLineSchema).min(1, 'Add at least one item to return'),
   notes: z.string().max(1000).optional(),
 });

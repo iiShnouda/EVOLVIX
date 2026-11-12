@@ -1,551 +1,325 @@
-import { useState } from 'react';
-import { useWorkDraft } from '../lib/workDraft';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   formatDate,
   formatMoney,
-  formatQuantity,
-  type DocumentLine,
   type Party,
+  type ReturnableItem,
+  type ReturnableLine,
+  type SalesDocument,
 } from '@skb/shared';
-import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
-import { useT } from '../lib/i18n';
-import { useCan } from '../lib/can';
-import { ApiError } from '../lib/api';
-import { useCreateReturn, useDocument, useDocumentList, type DocScope } from '../lib/queries';
-import { FreeReturnForm, ReturnBar } from './FreeReturnForm';
-import { TableColumns } from '../components/TableColumns';
+import { Button, Card, Spinner } from '../components/ui';
+import { PageHeader } from '../components/ui';
+import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
-import { useDeviceInfo } from '../lib/device';
+import { joinList, useT } from '../lib/i18n';
+import { onlyChoice } from '../lib/onlyChoice';
+import { useMayOverride } from '../lib/can';
 import { errorText } from '../lib/errors';
-import { codeName } from '../components/CodeName';
+import { useAuth } from '../stores/auth';
+import { useWorkDraft } from '../lib/workDraft';
+import { useWorkPlace } from '../lib/workPlace';
+import { useDeviceInfo } from '../lib/device';
+import { api } from '../lib/api';
+import {
+  useCompanySettings,
+  useCreateReturn,
+  useDepartments,
+  useReturnable,
+  useWarehouses,
+  type DocScope,
+} from '../lib/queries';
 
 const field =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
-/** A line's units, largest first: its own unit and, for a carton line, the item's base unit. */
-const unitsOf = (l: DocumentLine) =>
-  l.unitFactor > 1
-    ? [
-        { name: l.unitName, factor: l.unitFactor },
-        { name: l.baseUnitName, factor: 1 },
-      ]
-    : [{ name: l.unitName || l.baseUnitName, factor: 1 }];
+/** One line being returned: an item they bought, its unit and how many. */
+interface ReturnLine {
+  key: string;
+  productId: string;
+  unitId: string;
+  qty: string;
+}
+
+/** A return being typed, as kept through an app update. */
+interface ReturnDraft {
+  party: Party | null;
+  branch: string;
+  warehouse: string;
+  department: string;
+  invoiceId: string;
+  lines: ReturnLine[];
+  notes: string;
+}
+
+/** One line's preview: what it takes from which invoice lines, at what they paid (the server's figures are final). */
+interface Taken {
+  line: ReturnableLine;
+  qty: number;
+  value: number;
+}
+
+let nextKey = 1;
 
 /**
- * Sales return (مرتجع مبيعات) or purchase return (مرتجع مشتريات) against one invoice.
- * The user only picks quantities: price, discount and cost always come from the original
- * invoice line on the server. The totals here mirror the server's math so the user sees the
- * value, cost and profit being reversed before saving; the server's figures are final.
+ * Sales return (مرتجع مبيعات) or purchase return (مرتجع مشتريات), the one way (owner, 2026-11-10):
+ * laid out like the invoice — the party, branch, warehouse and department, then the items by code,
+ * barcode or name — but only what the party bought here, up to what is left. Each item comes from
+ * their invoices newest first (or from the invoice chosen), at what they paid after its discounts;
+ * the server takes the same pieces and has the last word. A return started from an invoice opens
+ * with that invoice chosen.
  */
 export function ReturnBuilderPage({ scope }: { scope: DocScope }) {
   const { id = '' } = useParams();
-  // A new return starts on the same page: the customer (by code or name), then their invoice.
-  return id ? <ReturnForm key={id} scope={scope} id={id} /> : <ReturnStart scope={scope} />;
+  return <ReturnForm key={id || 'new'} scope={scope} fromInvoice={id} />;
 }
 
-function ReturnForm({ scope, id }: { scope: DocScope; id: string }) {
+function ReturnForm({ scope, fromInvoice }: { scope: DocScope; fromInvoice: string }) {
   const isSale = scope === 'sales';
-  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const { t, locale } = useT();
-  // The cost and profit a sales return reverses are the owner's unless given (costs:view).
-  const seeCosts = useCan()('costs:view');
-  const seeProfit = useCan()('profit:view');
   const navigate = useNavigate();
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
+  const me = useAuth((s) => s.user);
+  const settings = useCompanySettings();
+  const mayOverride = useMayOverride();
+  const currency = settings.data?.currency ?? 'EGP';
 
-  const invoice = useDocument(scope, id);
-  const create = useCreateReturn(scope);
-  const serverError = create.error as ApiError | null;
+  // Branch, then warehouse, then department, as on the invoice.
+  const myBranches = me?.branches ?? [];
+  const [branch, setBranch] = useState(myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '');
+  const [warehouse, setWarehouse] = useState('');
+  const [department, setDepartment] = useState('');
+  const [invoiceId, setInvoiceId] = useState(fromInvoice);
+  const [place, setPlace] = useWorkPlace();
+  const placed = useRef(!!fromInvoice);
+  useEffect(() => {
+    if (placed.current || (!place.branchId && !place.warehouseId)) return;
+    placed.current = true;
+    if (place.branchId && myBranches.some((b) => b.id === place.branchId))
+      setBranch((b) => b || place.branchId);
+    if (place.warehouseId) setWarehouse((w) => w || place.warehouseId);
+    if (place.departmentId) setDepartment((d) => d || place.departmentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place.branchId, place.warehouseId, place.departmentId]);
+  const allWarehouses = useWarehouses(true);
+  const branchWarehouses = (allWarehouses.data ?? []).filter(
+    (w) => w.kind === 'STORE' && w.isActive && w.branchId === branch,
+  );
+  const warehouseId = branchWarehouses.some((w) => w.id === warehouse)
+    ? warehouse
+    : onlyChoice(branchWarehouses);
+  const departmentList = useDepartments();
+  const myDepartments = me?.departmentIds ?? null;
+  const onWarehouse = branchWarehouses.find((w) => w.id === warehouseId)?.departmentIds;
+  const departments = isSale
+    ? (departmentList.data ?? []).filter(
+        (d) =>
+          d.isActive &&
+          (!myDepartments || myDepartments.includes(d.id)) &&
+          (!onWarehouse?.length || onWarehouse.includes(d.id)),
+      )
+    : [];
+  const departmentId = departments.some((d) => d.id === department)
+    ? department
+    : onlyChoice(departments);
+  const departmentRequired =
+    isSale && departments.length > 0 && settings.data?.requireDepartment !== false;
 
-  /** Typed return quantity per line, and whether it is in the line's unit (carton) or base units. */
-  const [qty, setQty] = useState<Record<string, number>>({});
-  const [inBase, setInBase] = useState<Record<string, boolean>>({});
+  const [party, setParty] = useState<Party | null>(null);
+  const [lines, setLines] = useState<ReturnLine[]>([]);
   const [notes, setNotes] = useState('');
+  const [search, setSearch] = useState('');
+  const [code, setCode] = useState('');
+  const [codeNote, setCodeNote] = useState('');
+  const create = useCreateReturn(scope);
 
-  // What's typed is kept through an app update (lines of the invoice that are gone are skipped).
+  // Started from an invoice: its party, branch, department and warehouse, and only its items.
+  const [loading, setLoading] = useState(!!fromInvoice);
+  useEffect(() => {
+    if (!fromInvoice) return;
+    let gone = false;
+    void (async () => {
+      const doc = await api
+        .get<SalesDocument>(`/${scope}/invoices/${fromInvoice}`)
+        .catch(() => null);
+      const who = doc ? await api.get<Party>(`/parties/${doc.partyId}`).catch(() => null) : null;
+      if (gone) return;
+      if (doc && who) {
+        setParty(who);
+        if (doc.branchId) setBranch(doc.branchId);
+        setWarehouse(doc.lines[0]?.warehouseId ?? '');
+        setDepartment(doc.departmentId ?? '');
+      } else setInvoiceId('');
+      setLoading(false);
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [fromInvoice, scope]);
+
+  const returnable = useReturnable(
+    scope,
+    party?.id ?? '',
+    branch,
+    isSale ? departmentId || undefined : undefined,
+  );
+  const items = returnable.data ?? [];
+  const byId = new Map(items.map((i) => [i.productId, i]));
+  // The invoices they can return from, newest first, for the invoice filter.
+  const invoices = [
+    ...new Map(items.flatMap((i) => i.lines).map((l) => [l.invoiceId, l] as const)).values(),
+  ].sort((a, b) => b.issueDate.localeCompare(a.issueDate));
+  const chosenInvoice = invoices.some((i) => i.invoiceId === invoiceId) ? invoiceId : '';
+  const linesOf = (item: ReturnableItem) =>
+    item.lines.filter((l) => !chosenInvoice || l.invoiceId === chosenInvoice);
+  const shown = items.filter((i) => linesOf(i).length > 0);
+
   const work = useWorkDraft<ReturnDraft>(
-    1,
-    () => (Object.keys(qty).length === 0 && !notes ? null : { qty, inBase, notes }),
+    2,
+    () =>
+      lines.length === 0 && !notes
+        ? null
+        : { party, branch, warehouse, department, invoiceId, lines, notes },
     (d) => {
-      const text = (v: unknown) => (typeof v === 'string' ? v : '');
-      const numbers = Object.fromEntries(
-        Object.entries(d.qty ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0),
-      );
-      const flags = Object.fromEntries(
-        Object.entries(d.inBase ?? {}).filter(([, v]) => typeof v === 'boolean'),
-      );
-      setQty(numbers);
-      setInBase(flags);
-      setNotes(text(d.notes));
+      if (d.party && typeof d.party.id === 'string') setParty(d.party);
+      if (typeof d.branch === 'string') setBranch(d.branch);
+      if (typeof d.warehouse === 'string') setWarehouse(d.warehouse);
+      if (typeof d.department === 'string') setDepartment(d.department);
+      if (typeof d.invoiceId === 'string') setInvoiceId(d.invoiceId);
+      if (Array.isArray(d.lines))
+        setLines(
+          d.lines.filter(
+            (l) => l && typeof l.productId === 'string' && typeof l.unitId === 'string',
+          ),
+        );
+      if (typeof d.notes === 'string') setNotes(d.notes);
     },
   );
 
-  const backTo = `/${scope}`;
-  const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
-  const back = (
-    <Button variant="ghost" size="sm" icon="close" onClick={() => navigate(backTo)}>
-      {t('invoice.back')}
-    </Button>
-  );
+  function add(item: ReturnableItem, unitId?: string, qty?: number) {
+    const unit =
+      item.units.find((u) => u.unitId === unitId) ?? item.units.find((u) => u.factor === 1);
+    setLines((prev) => [
+      ...prev,
+      {
+        key: `r${nextKey++}`,
+        productId: item.productId,
+        unitId: unit?.unitId ?? '',
+        qty: String(qty ?? 1),
+      },
+    ]);
+    setSearch('');
+  }
+  const update = (key: string, patch: Partial<ReturnLine>) =>
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
-  if (invoice.isLoading) {
+  // What each line takes, newest invoice first, as the server will (fresh invoices only for the owner).
+  const left = new Map<string, number>();
+  const rows = lines.map((l) => {
+    const item = byId.get(l.productId);
+    const factor = item?.units.find((u) => u.unitId === l.unitId)?.factor ?? 1;
+    const qty = Math.max(0, Math.floor(Number(l.qty) || 0));
+    let need = qty * factor;
+    const taken: Taken[] = [];
+    let waits: string | null = null;
+    for (const s of item ? linesOf(item) : []) {
+      if (need <= 0) break;
+      if (s.from && !mayOverride) {
+        waits = waits ?? s.from;
+        continue;
+      }
+      const has = left.get(s.lineId) ?? s.left;
+      const take = Math.min(need, has);
+      if (take <= 0) continue;
+      left.set(s.lineId, has - take);
+      need -= take;
+      taken.push({ line: s, qty: take, value: Math.round((s.net * take) / s.quantity) });
+    }
+    const value = taken.reduce((sum, x) => sum + x.value, 0);
+    const room =
+      Math.floor(
+        (item ? linesOf(item) : [])
+          .filter((s) => !s.from || mayOverride)
+          .reduce((sum, s) => sum + s.left, 0) / factor,
+      ) || 0;
+    return { l, item, factor, qty, taken, value, short: need > 0, waits, room };
+  });
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  const ready =
+    !!party &&
+    !!branch &&
+    !!warehouseId &&
+    (!departmentRequired || !!departmentId) &&
+    rows.length > 0 &&
+    rows.every((r) => r.qty > 0 && !!r.item && !r.short);
+
+  async function save() {
+    if (!party) return;
+    try {
+      await create.mutateAsync({
+        partyId: party.id,
+        branchId: branch,
+        warehouseId,
+        departmentId: departmentId || undefined,
+        invoiceId: chosenInvoice || undefined,
+        lines: rows.map((r) => ({
+          productId: r.l.productId,
+          unitId: r.l.unitId || undefined,
+          quantity: r.qty,
+        })),
+        notes: notes.trim() || undefined,
+      });
+      work.finished();
+      navigate(`/${scope}?tab=returns`);
+    } catch {
+      /* shown below */
+    }
+  }
+
+  /** Everything left on the chosen invoice (or of what they bought), in base units. */
+  function addAll() {
+    setLines(
+      shown.map((item) => {
+        const base = item.units.find((u) => u.factor === 1) ?? item.units[0];
+        return {
+          key: `r${nextKey++}`,
+          productId: item.productId,
+          unitId: base?.unitId ?? '',
+          qty: String(
+            linesOf(item)
+              .filter((s) => !s.from || mayOverride)
+              .reduce((sum, s) => sum + s.left, 0),
+          ),
+        };
+      }),
+    );
+  }
+
+  const q = search.trim().toLowerCase();
+  const results = q
+    ? shown
+        .filter((i) => i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q))
+        .slice(0, 8)
+    : [];
+  const noParty = t(isSale ? 'return.pickParty' : 'return.pickSupplier');
+  const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
+  const locked = !party || !warehouseId;
+
+  if (loading) {
     return (
       <div className="grid place-items-center py-24 text-muted">
         <Spinner size={26} />
       </div>
     );
   }
-  const doc = invoice.data;
-  const expectedType = isSale ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
-  if (!doc || doc.type !== expectedType || doc.status === 'CANCELLED') {
-    return (
-      <div className="space-y-5">
-        <PageHeader title={title} action={back} />
-        <Card>
-          <EmptyState title={t('return.notReturnable')} icon="returns" />
-        </Card>
-      </div>
-    );
-  }
 
-  const currency = doc.currency;
-  const rows = doc.lines.map((l) => {
-    const remaining = Math.max(0, l.quantity - l.returnedQuantity);
-    const factor = Math.max(1, l.unitFactor);
-    // Quantities are typed in the line's unit (cartons of a carton line) or, for part of one, in
-    // base units; the server always counts base units.
-    const base = factor === 1 || !!inBase[l.id];
-    const step = base ? 1 : factor;
-    const typed = Math.max(0, qty[l.id] ?? 0);
-    const q = Math.min(typed * step, remaining);
-    // Proportional shares of the line's amount, discount and cost (the server settles the last piastre).
-    const share = (total: number) => (l.quantity > 0 ? Math.round((total * q) / l.quantity) : 0);
-    const discount = share(l.discount) + share(l.docDiscount);
-    const value = share(l.lineTotal + l.discount) - discount;
-    const cost = share(l.lineCost);
-    // What one of the line's units comes back at, after its discounts (owner, 2026-10-19: the
-    // price before the discount beside a value after it didn't add up).
-    const unitNet =
-      l.quantity > 0
-        ? Math.round(((l.lineTotal - l.docDiscount) * factor) / l.quantity)
-        : l.unitPrice;
-    return {
-      line: l,
-      remaining,
-      factor,
-      base,
-      step,
-      typed,
-      q,
-      value,
-      cost,
-      unitNet,
-      profit: value - cost,
-    };
-  });
-  const nothingLeft = rows.every((r) => r.remaining === 0);
-
-  // A line's return quantity and its unit, shared by the table (wide screens) and the cards (phones).
-  type Row = (typeof rows)[number];
-  const cell =
-    'h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand disabled:bg-surface-2';
-  const qtyInput = (r: Row, className = `${field} tnum`) => (
-    <input
-      type="number"
-      min={0}
-      max={Math.floor(r.remaining / r.step)}
-      disabled={r.remaining === 0}
-      className={className}
-      // Empty rather than 0, or typing after the 0 shows "0100" (owner, 2026-10-19).
-      value={r.typed || ''}
-      placeholder="0"
-      onChange={(e) =>
-        setQty((prev) => ({
-          ...prev,
-          [r.line.id]: Math.min(
-            Math.floor(r.remaining / r.step),
-            Math.max(0, Math.floor(Number(e.target.value) || 0)),
-          ),
-        }))
-      }
-    />
-  );
-  const unitSelect = (r: Row, className = field) => (
-    <select
-      className={className}
-      value={r.base ? 'base' : 'unit'}
-      disabled={r.remaining === 0}
-      onChange={(e) => {
-        const toBase = e.target.value === 'base';
-        setInBase((prev) => ({ ...prev, [r.line.id]: toBase }));
-        setQty((prev) => ({
-          ...prev,
-          [r.line.id]: toBase ? r.q : Math.floor(r.q / r.factor),
-        }));
-      }}
-    >
-      <option value="unit">{r.line.unitName}</option>
-      <option value="base">{r.line.baseUnitName}</option>
-    </select>
-  );
-
-  const value = rows.reduce((s, r) => s + r.value, 0);
-  const cost = rows.reduce((s, r) => s + r.cost, 0);
-  const profit = value - cost;
-  const invoiceTaxable = doc.subtotal - doc.discountTotal;
-  const tax = invoiceTaxable > 0 ? Math.round((doc.taxTotal * value) / invoiceTaxable) : 0;
-  const total = value + tax;
-  const anyQty = rows.some((r) => r.q > 0);
-  const canSave = anyQty && !create.isPending;
-
-  function setAll(fill: boolean) {
-    // Everything left: in the line's unit when it divides evenly, else in base units.
-    setInBase(
-      Object.fromEntries(
-        rows.map((r) => [r.line.id, r.factor > 1 && r.remaining % r.factor !== 0]),
-      ),
-    );
-    setQty(
-      Object.fromEntries(
-        rows.map((r) => [
-          r.line.id,
-          fill
-            ? r.factor > 1 && r.remaining % r.factor === 0
-              ? r.remaining / r.factor
-              : r.remaining
-            : 0,
-        ]),
-      ),
-    );
-  }
-
-  async function save() {
-    if (!doc) return;
-    try {
-      await create.mutateAsync({
-        invoiceId: doc.id,
-        input: {
-          lines: rows.filter((r) => r.q > 0).map((r) => ({ lineId: r.line.id, quantity: r.q })),
-          // On the account; a cash customer is paid back by the server (owner decision 2026-10-01).
-          refundAmount: 0,
-          notes: notes.trim() || undefined,
-        },
-      });
-      work.finished();
-      navigate(`${backTo}?tab=returns`);
-    } catch {
-      /* surfaced via serverError */
-    }
-  }
+  const priceOf = (r: (typeof rows)[number]) =>
+    r.qty > 0 && r.value > 0 ? Math.round(r.value / r.qty) : null;
+  const fromOf = (r: (typeof rows)[number]) =>
+    joinList([...new Set(r.taken.map((x) => x.line.invoiceNumber))]);
 
   return (
-    <div className="space-y-5">
-      <PageHeader title={title} action={back} />
-
-      <div className="space-y-4 pb-4">
-        <div className="min-w-0 space-y-4">
-          {/* Like the invoice: who, which invoice, its rep and department. */}
-          <Card className="grid gap-4 text-sm sm:grid-cols-2">
-            <div className="flex items-start gap-2">
-              <Info
-                className="w-24 shrink-0"
-                label={t('invoice.code')}
-                value={doc.partyCode ?? ''}
-              />
-              <Info
-                className="min-w-0 flex-1"
-                label={isSale ? t('sales.customer') : t('invoice.supplier')}
-                value={doc.partyName}
-              />
-            </div>
-            <div className="flex items-end gap-2">
-              <Info
-                className="min-w-0 flex-1"
-                label={t('return.against')}
-                value={`${doc.number} · ${formatDate(doc.issueDate, locale)}`}
-              />
-              <Button size="sm" variant="ghost" onClick={() => navigate(`/${scope}/returns/new`)}>
-                {t('return.otherInvoice')}
-              </Button>
-            </div>
-            {doc.repName && (
-              <Info label={t('invoice.rep')} value={codeName(doc.repCode, doc.repName)} />
-            )}
-            {doc.departmentName && (
-              <Info label={t('invoice.department')} value={doc.departmentName} />
-            )}
-          </Card>
-
-          <Card>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                {t('invoice.addItems')}
-              </h2>
-              {!nothingLeft && (
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setAll(false)}>
-                    {t('return.clear')}
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setAll(true)}>
-                    {t('return.all')}
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {nothingLeft ? (
-              <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
-                {t('return.nothingLeft')}
-              </p>
-            ) : !isPhone ? (
-              <TableColumns id={`return.${scope}`}>
-                <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                  <table className="w-full text-[13px]">
-                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                      <tr className="whitespace-nowrap">
-                        <th className="px-1.5 py-2 text-start font-medium">#</th>
-                        <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
-                        <th className="px-1.5 py-2 text-start font-medium">
-                          {t('warehouse.label')}
-                        </th>
-                        <th className="px-1.5 py-2 text-end font-medium">
-                          {t('return.onInvoice')}
-                        </th>
-                        <th className="px-1.5 py-2 text-end font-medium">
-                          {t('return.alreadyReturned')}
-                        </th>
-                        <th className="px-1.5 py-2 text-end font-medium">
-                          {t('return.remaining')}
-                        </th>
-                        <th className="px-1.5 py-2 text-start font-medium">{t('return.qty')}</th>
-                        <th className="px-1.5 py-2 text-end font-medium">
-                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}
-                        </th>
-                        <th className="px-1.5 py-2 text-end font-medium">{t('return.value')}</th>
-                        {isSale && seeProfit && (
-                          <th className="px-1.5 py-2 text-end font-medium">
-                            {t('return.profitReversed')}
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--c-line)]">
-                      {rows.map((r, i) => (
-                        <tr
-                          key={r.line.id}
-                          className={`${r.q > 0 ? 'bg-brand-soft/40' : ''} ${r.remaining === 0 ? 'opacity-60' : ''}`}
-                        >
-                          <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
-                          <td className="min-w-32 px-1.5 py-2 font-medium">{r.line.productName}</td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-muted">
-                            {r.line.warehouseName ?? ''}
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
-                            {formatQuantity(r.line.quantity, unitsOf(r.line), locale)}
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end text-muted tnum">
-                            {r.line.returnedQuantity
-                              ? formatQuantity(r.line.returnedQuantity, unitsOf(r.line), locale)
-                              : ''}
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
-                            {formatQuantity(r.remaining, unitsOf(r.line), locale)}
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-1.5">
-                            <span className="flex items-center gap-1">
-                              {qtyInput(r, `${cell} w-16 tnum`)}
-                              {r.factor > 1 && unitSelect(r, `${cell} w-24`)}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
-                            {formatMoney(isSale ? r.line.unitPrice : r.unitNet, currency, locale)} /{' '}
-                            {r.line.unitName}
-                          </td>
-                          <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
-                            {r.q > 0 ? formatMoney(r.value, currency, locale) : ''}
-                          </td>
-                          {isSale && seeProfit && (
-                            <td className="whitespace-nowrap px-1.5 py-2 text-end text-warning tnum">
-                              {r.q > 0 ? formatMoney(r.profit, currency, locale) : ''}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </TableColumns>
-            ) : (
-              <ul className="space-y-2">
-                {rows.map((r) => (
-                  <li
-                    key={r.line.id}
-                    className={`rounded-[var(--radius-app)] border p-3 ${r.q > 0 ? 'border-brand' : 'border-line'} ${
-                      r.remaining === 0 ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{r.line.productName}</p>
-                        <p className="text-xs text-muted tnum">
-                          {t('return.onInvoice')}:{' '}
-                          {formatQuantity(r.line.quantity, unitsOf(r.line), locale)} ·{' '}
-                          {t('return.alreadyReturned')}:{' '}
-                          {formatQuantity(r.line.returnedQuantity, unitsOf(r.line), locale)} ·{' '}
-                          {t('return.remaining')}:{' '}
-                          {formatQuantity(r.remaining, unitsOf(r.line), locale)}
-                        </p>
-                        <p className="text-xs text-muted tnum">
-                          {isSale ? t('invoice.price') : t('invoice.receiveCost')}{' '}
-                          {formatMoney(isSale ? r.line.unitPrice : r.unitNet, currency, locale)} /{' '}
-                          {r.line.unitName}
-                        </p>
-                      </div>
-                      <div className="flex items-end gap-2">
-                        <label className="block w-24">
-                          <span className="mb-0.5 block text-xs text-muted">{t('return.qty')}</span>
-                          {qtyInput(r)}
-                        </label>
-                        {r.factor > 1 && (
-                          <label className="block w-28">
-                            <span className="mb-0.5 block text-xs text-muted">
-                              {t('invoice.unit')}
-                            </span>
-                            {unitSelect(r)}
-                          </label>
-                        )}
-                      </div>
-                    </div>
-                    {r.q > 0 && (
-                      <p className="mt-2 text-xs tnum">
-                        {t('return.value')}:{' '}
-                        <span className="font-medium">
-                          {formatMoney(r.value, currency, locale)}
-                        </span>
-                        {isSale && seeProfit && (
-                          <>
-                            {' · '}
-                            {t('return.profitReversed')}:{' '}
-                            <span className="font-medium text-warning">
-                              {formatMoney(r.profit, currency, locale)}
-                            </span>
-                          </>
-                        )}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        <Card className="space-y-3">
-          <dl className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <Row label={t('return.value')} value={formatMoney(value, currency, locale)} />
-            {tax > 0 && <Row label={t('invoice.tax')} value={formatMoney(tax, currency, locale)} />}
-            {/* A purchase return's value is its cost: shown once (owner, 2026-10-19). */}
-            {isSale && seeCosts && (
-              <Row label={t('return.costBack')} value={formatMoney(cost, currency, locale)} />
-            )}
-            {isSale && seeProfit && (
-              <div className="flex items-center justify-between">
-                <dt className="text-muted">{t('return.profitReversed')}</dt>
-                <dd className="font-semibold tnum text-warning">
-                  {formatMoney(profit, currency, locale)}
-                </dd>
-              </div>
-            )}
-          </dl>
-          {doc.additionTotal > 0 && (
-            <p className="text-xs text-faint">{t('charge.feeNotRefunded')}</p>
-          )}
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('invoice.notes')}</span>
-            <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-          {!anyQty && !nothingLeft && <p className="text-xs text-muted">{t('return.pickQty')}</p>}
-        </Card>
-      </div>
-
-      <ReturnBar
-        total={formatMoney(total, currency, locale)}
-        error={errorText(t, serverError)}
-        saving={create.isPending}
-        disabled={!canSave}
-        onSave={save}
-      />
-    </div>
-  );
-}
-
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <dt className="text-muted">{label}</dt>
-      <dd className={`tnum ${strong ? 'text-base font-semibold' : ''}`}>{value}</dd>
-    </div>
-  );
-}
-
-/** A return being written, as kept through an app update. */
-interface ReturnDraft {
-  qty: Record<string, number>;
-  inBase: Record<string, boolean>;
-  notes: string;
-}
-
-/** A read-only field, laid out like the invoice's inputs. */
-function Info({
-  label,
-  value,
-  className,
-}: {
-  label: string;
-  value: string | number;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <span className="mb-0.5 block text-xs text-muted">{label}</span>
-      <div className="grid h-9 items-center truncate rounded-[var(--radius-app)] border border-line bg-surface-2 px-2.5 text-sm tnum">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/**
- * A new return, on the same page as the return itself (owner, 2026-10-01: the return page looks like
- * the sales page): the customer by code or name, then which of their invoices the goods came on.
- */
-function ReturnStart({ scope }: { scope: DocScope }) {
-  const isSale = scope === 'sales';
-  const { t, locale } = useT();
-  const navigate = useNavigate();
-  const [party, setParty] = useState<Party | null>(null);
-  // Typed line by line, without an invoice (owner decision 2026-10-01).
-  const [params, setParams] = useSearchParams();
-  const can = useCan();
-  const canFree = can(isSale ? 'sales:return_free' : 'purchases:return_free');
-  // Each kind of return is a permission of its own (owner, 2026-10-23): with only one, it opens alone.
-  const canFromInvoice = can(isSale ? 'sales:return' : 'purchases:return');
-  const free = canFree && (params.get('free') === '1' || !canFromInvoice);
-  const invoices = useDocumentList(scope, 'invoices', {
-    page: 1,
-    pageSize: 100,
-    search: party?.name,
-    enabled: !!party,
-  });
-  const rows = party
-    ? (invoices.data?.items ?? []).filter(
-        (d) => d.partyName === party.name && d.status !== 'CANCELLED',
-      )
-    : [];
-  const title = t(isSale ? 'return.newSale' : 'return.newPurchase');
-
-  return (
-    <div className="space-y-5">
+    <div className="space-y-4 pb-24">
       <PageHeader
         title={title}
         action={
@@ -559,94 +333,453 @@ function ReturnStart({ scope }: { scope: DocScope }) {
           </Button>
         }
       />
-      {canFree && canFromInvoice && (
-        <div className="inline-flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5 text-sm">
-          {([false, true] as const).map((f) => (
-            <button
-              key={String(f)}
-              type="button"
-              aria-pressed={free === f}
-              className={`rounded-[calc(var(--radius-app)-2px)] px-3 py-1.5 font-medium ${
-                free === f ? 'bg-brand text-brand-fg' : 'text-muted hover:text-fg'
-              }`}
-              onClick={() => setParams(f ? { free: '1' } : {}, { replace: true })}
+      <Card className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="sm:col-span-2">
+          <PartyPicker
+            type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
+            withCode
+            value={party}
+            onChange={(p) => {
+              setParty(p);
+              setLines([]);
+              setInvoiceId('');
+            }}
+            label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
+            placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+          />
+        </div>
+        <Labelled label={t('list.branch')}>
+          <select
+            className={`${field} ${!branch ? 'border-warning' : ''}`}
+            value={branch}
+            onChange={(e) => {
+              setBranch(e.target.value);
+              setWarehouse('');
+              setDepartment('');
+              setLines([]);
+              setPlace({ branchId: e.target.value, warehouseId: '', departmentId: '' });
+            }}
+          >
+            <option value="" disabled>
+              {t('invoice.chooseBranch')}
+            </option>
+            {myBranches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+        <Labelled label={t('list.warehouse')}>
+          <select
+            className={`${field} ${branch && !warehouseId ? 'border-warning' : ''}`}
+            value={warehouseId}
+            disabled={!branch}
+            onChange={(e) => {
+              setWarehouse(e.target.value);
+              setPlace({ branchId: branch, warehouseId: e.target.value, departmentId: '' });
+            }}
+          >
+            <option value="" disabled>
+              {t('invoice.chooseWarehouse')}
+            </option>
+            {branchWarehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+        {departments.length > 0 && (
+          <Labelled label={t('invoice.department')}>
+            <select
+              className={`${field} ${departmentRequired && warehouseId && !departmentId ? 'border-warning' : ''}`}
+              value={departmentId}
+              disabled={!warehouseId}
+              onChange={(e) => {
+                setDepartment(e.target.value);
+                setLines([]);
+                setPlace({ departmentId: e.target.value });
+              }}
             >
-              {t(f ? 'return.withoutInvoice' : 'return.fromInvoice')}
-            </button>
-          ))}
-        </div>
-      )}
-      {free ? (
-        <FreeReturnForm scope={scope} initialParty={party} />
-      ) : (
-        <div className="min-w-0 space-y-4">
-          <Card className="space-y-3">
-            <PartyPicker
-              type={isSale ? 'CUSTOMER' : 'SUPPLIER'}
-              withCode
-              value={party}
-              onChange={setParty}
-              label={t(isSale ? 'invoice.customer' : 'invoice.supplier')}
-              placeholder={t(isSale ? 'invoice.selectCustomer' : 'invoice.selectSupplier')}
+              <option value="" disabled={departmentRequired}>
+                {departmentRequired ? t('invoice.chooseDepartment') : t('invoice.noDepartment')}
+              </option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </Labelled>
+        )}
+        <Labelled label={t('return.invoice')}>
+          <select
+            className={field}
+            value={chosenInvoice}
+            disabled={!party || invoices.length === 0}
+            onChange={(e) => {
+              setInvoiceId(e.target.value);
+              setLines([]);
+            }}
+          >
+            <option value="">{t('return.anyInvoice')}</option>
+            {invoices.map((i) => (
+              <option key={i.invoiceId} value={i.invoiceId}>
+                {i.invoiceNumber} · {formatDate(i.issueDate, locale)}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+      </Card>
+
+      <Card className="space-y-3">
+        {/* The item's code (or barcode) in its own box first, as on the invoice: Enter adds it. */}
+        <div className="flex items-start gap-2">
+          <label className="block w-28 shrink-0 sm:w-36">
+            <span className="sr-only">{t('invoice.itemCode')}</span>
+            <input
+              className="h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm tnum outline-none focus:border-brand"
+              dir="ltr"
+              placeholder={t('invoice.itemCode')}
+              aria-label={t('invoice.itemCode')}
+              value={code}
+              disabled={locked}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setCodeNote('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !code.trim()) return;
+                e.preventDefault();
+                const c = code.trim().toLowerCase();
+                const bySku = shown.find((i) => i.sku.toLowerCase() === c);
+                const byBarcode = shown.find((i) =>
+                  i.units.some((u) => u.barcode?.toLowerCase() === c),
+                );
+                const hit = bySku ?? byBarcode;
+                if (!hit) {
+                  setCodeNote(`${code.trim()}: ${t('return.notBought')}`);
+                  return;
+                }
+                add(hit, byBarcode?.units.find((u) => u.barcode?.toLowerCase() === c)?.unitId);
+                setCode('');
+              }}
             />
-            <p className="text-xs text-faint">{t('return.pickCustomer')}</p>
-          </Card>
-          <Card>
-            <h2 className="mb-2 text-sm font-semibold text-muted">{t('return.pickInvoice')}</h2>
-            {!party ? (
-              <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
-                {t('return.pickCustomerFirst')}
-              </p>
-            ) : invoices.isLoading ? (
-              <div className="grid place-items-center py-6 text-muted">
-                <Spinner size={18} />
-              </div>
-            ) : rows.length === 0 ? (
-              <p className="text-sm text-muted">{t('return.noInvoices')}</p>
-            ) : (
-              <TableColumns id={`return.pick.${scope}`}>
-                <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-                  <table className="w-full whitespace-nowrap text-[13px]">
-                    <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                      <tr>
-                        <th className="px-2 py-2 text-start font-medium">{t('sales.number')}</th>
-                        <th className="px-2 py-2 text-start font-medium">{t('common.date')}</th>
-                        <th className="px-2 py-2 text-start font-medium">
-                          {t('invoice.department')}
-                        </th>
-                        <th className="px-2 py-2 text-end font-medium">{t('list.net')}</th>
-                        <th className="px-2 py-2 text-end font-medium">{t('list.owed')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--c-line)]">
-                      {rows.map((d) => (
-                        <tr
-                          key={d.id}
-                          className="cursor-pointer hover:bg-surface-2"
-                          onClick={() =>
-                            navigate(`/${scope}/invoices/${d.id}/return`, { replace: true })
-                          }
-                        >
-                          <td className="px-2 py-2 font-medium tnum">{d.number}</td>
-                          <td className="px-2 py-2 tnum">
-                            {formatDate(d.issueDate, locale, true)}
-                          </td>
-                          <td className="px-2 py-2 text-muted">{d.departmentName ?? ''}</td>
-                          <td className="px-2 py-2 text-end tnum">
-                            {formatMoney(d.grandTotal, d.currency, locale)}
-                          </td>
-                          <td className="px-2 py-2 text-end text-warning tnum">
-                            {d.owed ? formatMoney(d.owed, d.currency, locale) : ''}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </TableColumns>
+            {codeNote && <span className="mt-1 block text-xs text-destructive">{codeNote}</span>}
+          </label>
+          <div className="relative min-w-0 flex-1">
+            <span className="flex h-10 items-center gap-2 rounded-[var(--radius-app)] border border-line bg-surface px-3 focus-within:border-brand">
+              <Icon name="search" size={16} className="shrink-0 text-muted" />
+              <input
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                placeholder={t('invoice.searchProduct')}
+                value={search}
+                disabled={locked}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {returnable.isFetching && <Spinner size={14} />}
+            </span>
+            {results.length > 0 && (
+              <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-lg">
+                {results.map((i) => (
+                  <li key={i.productId}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
+                      onClick={() => add(i)}
+                    >
+                      <span className="min-w-0 truncate font-medium">{i.name}</span>
+                      <span className="shrink-0 text-xs text-muted tnum">{i.sku}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </Card>
+          </div>
+          {shown.length > 0 && (
+            <Button size="sm" variant="secondary" className="h-10" onClick={addAll}>
+              {t('return.all')}
+            </Button>
+          )}
         </div>
+
+        {!party ? (
+          <Empty>{noParty}</Empty>
+        ) : rows.length === 0 ? (
+          <Empty>{t('return.noItems')}</Empty>
+        ) : isPhone ? (
+          <ul className="space-y-2">
+            {rows.map((r) => (
+              <li
+                key={r.l.key}
+                className={`rounded-[var(--radius-app)] border p-3 ${r.short ? 'border-destructive' : 'border-line'}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{r.item?.name}</p>
+                    <p className="text-xs text-muted tnum">
+                      {r.item?.sku} · {t('return.remaining')}: {r.room}
+                    </p>
+                  </div>
+                  <RemoveButton
+                    onClick={() => setLines((p) => p.filter((x) => x.key !== r.l.key))}
+                  />
+                </div>
+                <div className="mt-2 flex items-end gap-2">
+                  <Labelled label={t('invoice.qty')} className="w-20">
+                    <QtyInput
+                      value={r.l.qty}
+                      max={r.room}
+                      onChange={(v) => update(r.l.key, { qty: v })}
+                    />
+                  </Labelled>
+                  <Labelled label={t('invoice.unit')} className="w-28">
+                    <UnitSelect row={r} onChange={(unitId) => update(r.l.key, { unitId })} />
+                  </Labelled>
+                  <p className="ms-auto text-sm font-semibold tnum">
+                    {formatMoney(r.value, currency, locale)}
+                  </p>
+                </div>
+                <RowNote row={r} fromOf={fromOf} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
+            <table className="w-full text-[13px]">
+              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                <tr className="whitespace-nowrap">
+                  <th className="px-1.5 py-2 text-start font-medium">#</th>
+                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
+                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
+                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
+                  <th className="px-1.5 py-2 text-end font-medium">{t('return.remaining')}</th>
+                  <th className="px-1.5 py-2 text-end font-medium">{t('return.pricePaid')}</th>
+                  <th className="px-1.5 py-2 text-start font-medium">{t('return.fromInvoices')}</th>
+                  <th className="px-1.5 py-2 text-end font-medium">{t('invoice.lineTotal')}</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {rows.map((r, i) => (
+                  <tr key={r.l.key} className={r.short ? 'bg-destructive-soft/40' : ''}>
+                    <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
+                    <td className="min-w-40 px-1.5 py-2">
+                      <span className="block font-medium">{r.item?.name}</span>
+                      <span className="block text-xs text-muted tnum">{r.item?.sku}</span>
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <UnitSelect
+                        row={r}
+                        onChange={(unitId) => update(r.l.key, { unitId })}
+                        className="w-28"
+                      />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <QtyInput
+                        value={r.l.qty}
+                        max={r.room}
+                        onChange={(v) => update(r.l.key, { qty: v })}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-1.5 py-2 text-end text-muted tnum">
+                      {r.room}
+                    </td>
+                    <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
+                      {priceOf(r) != null ? formatMoney(priceOf(r)!, currency, locale) : ''}
+                    </td>
+                    <td className="px-1.5 py-2 text-xs text-muted tnum">
+                      <RowNote row={r} fromOf={fromOf} inline />
+                    </td>
+                    <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
+                      {formatMoney(r.value, currency, locale)}
+                    </td>
+                    <td className="px-1 py-1.5">
+                      <RemoveButton
+                        onClick={() => setLines((p) => p.filter((x) => x.key !== r.l.key))}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <Labelled label={t('invoice.notes')}>
+          <input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Labelled>
+      </Card>
+
+      <ReturnBar
+        total={formatMoney(total, currency, locale)}
+        error={errorText(t, create.error)}
+        saving={create.isPending}
+        disabled={!ready || create.isPending}
+        onSave={save}
+      />
+    </div>
+  );
+}
+
+type Row = {
+  factor: number;
+  item: ReturnableItem | undefined;
+  l: ReturnLine;
+  short: boolean;
+  waits: string | null;
+  taken: Taken[];
+};
+
+function UnitSelect({
+  row,
+  onChange,
+  className = '',
+}: {
+  row: Row;
+  onChange: (unitId: string) => void;
+  className?: string;
+}) {
+  return (
+    <select
+      className={`${field} h-8 ${className}`}
+      value={row.l.unitId}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {(row.item?.units ?? []).map((u) => (
+        <option key={u.unitId} value={u.unitId}>
+          {u.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function QtyInput({
+  value,
+  max,
+  onChange,
+}: {
+  value: string;
+  max: number;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <input
+      type="number"
+      min={1}
+      max={max || undefined}
+      className={`${field} h-8 w-20 tnum`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+/** Which invoices a line comes from, or why it can't come back yet. */
+function RowNote({
+  row,
+  fromOf,
+  inline,
+}: {
+  row: Row;
+  fromOf: (r: Row & { qty: number; value: number; room: number }) => string;
+  inline?: boolean;
+}) {
+  const { t, locale } = useT();
+  const text =
+    row.short && row.waits
+      ? `${t('return.from')} ${formatDate(row.waits, locale, true)}`
+      : row.short
+        ? t('error.exceeds_returnable')
+        : fromOf(row as Row & { qty: number; value: number; room: number });
+  if (!text) return null;
+  return (
+    <span
+      className={`${inline ? '' : 'mt-1 block text-xs'} ${row.short ? 'text-destructive' : 'text-muted'}`}
+    >
+      {text}
+    </span>
+  );
+}
+
+function RemoveButton({ onClick }: { onClick: () => void }) {
+  const { t } = useT();
+  return (
+    <button
+      type="button"
+      className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-destructive-soft hover:text-destructive"
+      aria-label={t('invoice.remove')}
+      title={t('invoice.remove')}
+      onClick={onClick}
+    >
+      <Icon name="close" size={16} />
+    </button>
+  );
+}
+
+function Labelled({
+  label,
+  children,
+  className = '',
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-[var(--radius-app)] bg-surface-2 p-4 text-center text-sm text-muted">
+      {children}
+    </p>
+  );
+}
+
+/** The return's total and Save, kept at the bottom of the screen. */
+function ReturnBar({
+  total,
+  error,
+  saving,
+  disabled,
+  onSave,
+}: {
+  total: string;
+  error?: string | null;
+  saving: boolean;
+  disabled: boolean;
+  onSave: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className="sticky bottom-[var(--bottom-bar,0px)] z-10 -mx-1 rounded-t-2xl border border-line bg-surface px-4 py-3 shadow-[0_-8px_24px_-16px_rgba(15,23,42,.35)] pb-safe">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm text-muted">{t('invoice.grandTotal')}</span>
+          <span className="text-xl font-bold tnum">{total}</span>
+        </div>
+        <Button
+          className="ms-auto"
+          icon="check"
+          loading={saving}
+          disabled={disabled}
+          onClick={onSave}
+        >
+          {saving ? t('return.saving') : t('return.save')}
+        </Button>
+      </div>
+      {error && (
+        <p className="mt-2 rounded-[var(--radius-app)] bg-destructive-soft p-2 text-xs text-destructive">
+          {error}
+        </p>
       )}
     </div>
   );
