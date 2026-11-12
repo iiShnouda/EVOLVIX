@@ -299,8 +299,8 @@ public sealed class NotificationService
     /// <summary>
     /// After a sale or a transfer took goods out: a store that held an item and now holds none, or an
     /// item whose stock came down to its reorder level (from above it), is told to whoever follows
-    /// stock and uses that store. Told once: it can only run down again after it was restocked. The
-    /// seller hears it too, being the one who must know none is left.
+    /// stock and uses that store (not whoever made the sale or transfer: they see it on their screen).
+    /// Told once: it can only run down again after it was restocked.
     /// </summary>
     public async Task StockAsync(InventoryService inventory, ClaimsPrincipal actor)
     {
@@ -312,7 +312,7 @@ public sealed class NotificationService
         {
             if (!warehouses.TryGetValue(c.WarehouseId, out var w)) continue;
             var kind = c.Out ? StockOut : StockLow;
-            foreach (var p in await ForAsync(kind, null, p => p.Uses(w)))
+            foreach (var p in await ForAsync(kind, IdOf(actor), p => p.Uses(w)))
                 Add(p.Id, kind, actor, c.Product.Id, c.Product.Sku, c.Product.Name, Loc.Name(w),
                     data: new { qty = c.Out ? c.WarehouseQty : c.Product.StockOnHand, level = c.Product.ReorderLevel });
         }
