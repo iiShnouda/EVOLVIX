@@ -253,7 +253,9 @@ const loose = ok(
 );
 check('no supplier', (await find(`supplierId=none&name=${tag}`)).includes(loose.id));
 check('…a supplied one isn’t', !(await find(`supplierId=none&name=${tag}`)).includes(item.id));
-check('at its reorder level', (await find(`stock=low&name=${tag}`)).includes(loose.id));
+// None left is "out", not "low", even under its reorder level (owner, 2026-11-10).
+check('none left is out', (await find(`stock=out&name=${tag}`)).includes(loose.id));
+check('…not low', !(await find(`stock=low&name=${tag}`)).includes(loose.id));
 check('…a well-stocked one isn’t', !(await find(`stock=low&name=${tag}`)).includes(item.id));
 
 console.log('== statement: each entry has its own number (رقم القيد)');

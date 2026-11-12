@@ -292,7 +292,9 @@ eq('today: bought before it began', [k1.from, k1.openingBalance, k1.totalIn, k1.
 const k2 = await card(yesterday, yesterday);
 eq('yesterday: bought that day', [k2.openingBalance, k2.totalIn, k2.movements.length], [0, 5, 1]);
 const valued = async (asOf) =>
-  (await owner.get(`/inventory/valuation?asOf=${asOf}`)).data.items.find((r) => r.key === stockItem.id)?.quantity ?? 0;
+  (await owner.get(`/inventory/valuation?asOf=${asOf}`)).data.items
+    .filter((r) => r.productId === stockItem.id)
+    .reduce((n, r) => n + r.quantity, 0);
 eq('valued at the end of yesterday', await valued(yesterday), 5);
 eq('not the day before', await valued(addDays(today, -2)), 0);
 
