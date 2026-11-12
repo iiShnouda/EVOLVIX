@@ -315,11 +315,7 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
           header: shown.map((c) => c.label),
           rows: d.lines.map((l, i) => shown.map((c) => c.text(l, i))),
           total: shown.map((c, i) =>
-            c.label === t('common.amount')
-              ? { money: d.total }
-              : i === 0
-                ? t('ledger.total')
-                : '',
+            c.label === t('common.amount') ? { money: d.total } : i === 0 ? t('ledger.total') : '',
           ),
         }
       }

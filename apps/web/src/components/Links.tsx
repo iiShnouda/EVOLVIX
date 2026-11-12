@@ -42,13 +42,9 @@ export function docTarget(
     case 'PURCHASE_INVOICE':
       return can('purchases:view') ? `/purchases?doc=${id}` : null;
     case 'PURCHASE_RETURN':
-      return can('purchases:returns_view') || can('purchases:view')
-        ? `/purchases?doc=${id}`
-        : null;
+      return can('purchases:returns_view') || can('purchases:view') ? `/purchases?doc=${id}` : null;
     case 'NOTE':
-      return can('notes:view_receivable') || can('notes:view_payable')
-        ? `/notes?note=${id}`
-        : null;
+      return can('notes:view_receivable') || can('notes:view_payable') ? `/notes?note=${id}` : null;
     case 'STOCK_TRANSFER':
       return can('transfers:view') ? `/inventory/transfers/${id}` : null;
     default:

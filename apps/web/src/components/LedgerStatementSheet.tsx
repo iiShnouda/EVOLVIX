@@ -445,8 +445,7 @@ function useStatementColumns(data: LedgerStatement | undefined, isParty: boolean
   const [hidden] = useHiddenColumns(TABLE_ID);
   // A group's statement covers several accounts: then each line says which.
   const accounts = new Set((data?.lines ?? []).map((l) => l.accountCode)).size;
-  const used = (k: ColKey) =>
-    k === 'account' ? accounts > 1 : k === 'party' ? !isParty : true;
+  const used = (k: ColKey) => (k === 'account' ? accounts > 1 : k === 'party' ? !isParty : true);
   const order: ColKey[] = [
     ...saved.filter((k): k is ColKey => (DEFAULT_ORDER as string[]).includes(k)),
     ...DEFAULT_ORDER.filter((k) => !saved.includes(k)),
@@ -790,7 +789,11 @@ function PartyStatementTable({
                       <td
                         key={k}
                         className={`${cell} ${NUMERIC.has(k) ? 'whitespace-nowrap text-end tnum' : ''} ${
-                          k === 'date' || k === 'time' || k === 'seq' || k === 'doc' || k === 'entry'
+                          k === 'date' ||
+                          k === 'time' ||
+                          k === 'seq' ||
+                          k === 'doc' ||
+                          k === 'entry'
                             ? 'whitespace-nowrap tnum'
                             : ''
                         } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'rep' || k === 'note' || k === 'by' ? 'text-muted' : ''}`}

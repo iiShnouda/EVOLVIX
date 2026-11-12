@@ -966,11 +966,7 @@ function ChangesTab() {
                         </Link>
                       </td>
                       <td className="px-3 py-1.5">
-                        <PartyLink
-                          id={r.partyId}
-                          code={r.partyCode || null}
-                          name={r.partyName}
-                        />
+                        <PartyLink id={r.partyId} code={r.partyCode || null} name={r.partyName} />
                       </td>
                       <td className="px-3 py-1.5">{r.branchName}</td>
                       <td className="px-3 py-1.5">{r.staffName}</td>
