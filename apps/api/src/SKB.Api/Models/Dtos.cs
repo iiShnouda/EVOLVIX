@@ -1068,6 +1068,26 @@ public record DeadItemDto(string ProductId, string Sku, string Name, int Stock, 
 
 public record ItemMovementDto(string From, string To, ItemMoveDto[] TopMovers, DeadItemDto[] DeadStock, string Currency);
 
+/// <summary>
+/// One row of the analysis by supplier and department (owner, 2026-11-11: "what each supplier supplies,
+/// and to which department"): a supplier, a department or group of the tree, or an item, with its
+/// items, what sold and came back in the period, profit, what was bought and what is in stock.
+/// </summary>
+/// <param name="Kind">SUPPLIER, NO_SUPPLIER, DEPARTMENT, NO_DEPARTMENT, GROUP, DIRECT (straight in the
+/// department or group above) or ITEM.</param>
+/// <param name="Detail">A supplier's departments; an item's department and groups.</param>
+/// <param name="HasChildren">A department or group with groups under it (it opens to them).</param>
+public record AssortmentRowDto(string Id, string Name, string Kind, string? Code, string? Detail, string? Supplier,
+    bool HasChildren, int Items, long SoldQty, long ReturnedQty, long Sales, long Returns, long NetSales, long Profit,
+    long PurchasedQty, long Purchases, long StockQty, long StockValue);
+
+/// <param name="Path">The department and groups opened, from the top.</param>
+/// <param name="Hidden">What the person may not see and was left out: "profit", "costs", "purchases".</param>
+public record AssortmentDto(string By, string From, string To, AssortmentRowDto[] Rows, AssortmentRowDto Total,
+    AssortmentStepDto[] Path, string[] Hidden, string Currency);
+
+public record AssortmentStepDto(string Id, string Name, string Kind);
+
 // ---- Admin & close: activity log, aging, year-end close ----
 
 public record AuditEntryDto(

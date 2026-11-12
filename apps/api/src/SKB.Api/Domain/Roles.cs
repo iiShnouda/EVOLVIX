@@ -516,6 +516,8 @@ public static class Permissions
     public const string ReportsItems = "reports:items";
     /// <summary>Reports · Reports: Cancelled and changed invoices.</summary>
     public const string ReportsChanges = "reports:changes";
+    /// <summary>Reports · Reports: Items by supplier and department (owner, 2026-11-11).</summary>
+    public const string ReportsAssortment = "reports:assortment";
     /// <summary>Reports · Printing: Print.</summary>
     public const string ReportsPrint = "reports:print";
     /// <summary>Reports · Printing: Excel.</summary>
@@ -699,7 +701,7 @@ public static class Permissions
         EmployeesCreate, EmployeesEdit, EmployeesDelete, ShiftsCreate, ShiftsEdit, PayrollSettings, AttendanceEdit,
         AttendanceImport, PayrollAdjust, PayrollAdjustCancel, PayrollAdvance, PayrollAdvanceCancel, PayrollRun,
         PayrollPost, PayrollRunCancel, PayrollPay, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
-        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsPrint, ReportsExport, AuditView,
+        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsPrint, ReportsExport, AuditView,
         AuditExport, PresenceView, ChatUse, ChatMonitor, ChatGroups, ChatMute, AiChat, AiVoice, AiScanPurchase,
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
@@ -790,7 +792,7 @@ public static class RolePermissions
             Permissions.PayrollAdjustCancel, Permissions.PayrollAdvance, Permissions.PayrollAdvanceCancel,
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
-            Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges,
+            Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment,
             Permissions.ReportsPrint, Permissions.ReportsExport, Permissions.ChatUse,
             Permissions.DocumentsBackdate,
         },
@@ -864,7 +866,7 @@ public static class RolePermissions
             Permissions.MoneyAccounts, Permissions.VouchersView, Permissions.ExpenseCategoriesView,
             Permissions.MoneyPrint, Permissions.MoneyExport, Permissions.ReportsMonthly,
             Permissions.ReportsPerformance, Permissions.ReportsParties, Permissions.ReportsAging,
-            Permissions.ReportsItems, Permissions.ReportsPrint, Permissions.ReportsExport,
+            Permissions.ReportsItems, Permissions.ReportsAssortment, Permissions.ReportsPrint, Permissions.ReportsExport,
         },
         // Starts with nothing; the owner ticks exactly what the person may do (owner, 2026-10-23).
         [Role.NONE] = Array.Empty<string>(),
