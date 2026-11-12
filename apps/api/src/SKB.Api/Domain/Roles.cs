@@ -58,6 +58,8 @@ public static class Permissions
     public const string SalesTogether = "sales:together";
     /// <summary>Sales · View: Print invoices.</summary>
     public const string SalesPrint = "sales:print";
+    /// <summary>Sales · View: Save invoices as PDF.</summary>
+    public const string SalesPdf = "sales:pdf";
     /// <summary>Sales · Invoices: New sales invoice.</summary>
     public const string SalesCreate = "sales:create";
     /// <summary>
@@ -144,6 +146,8 @@ public static class Permissions
     public const string PurchasesPriceSheet = "purchases:price_sheet";
     /// <summary>Purchases · View: Print invoices.</summary>
     public const string PurchasesPrint = "purchases:print";
+    /// <summary>Purchases · View: Save invoices as PDF.</summary>
+    public const string PurchasesPdf = "purchases:pdf";
     /// <summary>Enter a supplier invoice and add its items to stock.</summary>
     public const string PurchasesCreate = "purchases:create";
     /// <summary>Purchases · Invoices: Supplier invoice photos.</summary>
@@ -170,6 +174,8 @@ public static class Permissions
     public const string InventoryView = "inventory:view";
     /// <summary>Stock · Items: Print.</summary>
     public const string InventoryPrint = "inventory:print";
+    /// <summary>Stock · Items: PDF.</summary>
+    public const string InventoryPdf = "inventory:pdf";
     /// <summary>Stock · Items: Excel.</summary>
     public const string InventoryExport = "inventory:export";
     /// <summary>Add items and item models (with their size × color variants).</summary>
@@ -225,10 +231,16 @@ public static class Permissions
     public const string InventoryStocktakeView = "inventory:stocktake_view";
     /// <summary>Post a count's differences (الجرد); opening the count is inventory:stocktake_view.</summary>
     public const string InventoryStocktake = "inventory:stocktake";
+    /// <summary>Stock · Stocktake: Print the count sheet.</summary>
+    public const string StocktakePrint = "stocktake:print";
+    /// <summary>Stock · Stocktake: Save the count sheet as PDF.</summary>
+    public const string StocktakePdf = "stocktake:pdf";
     /// <summary>Stock · Transfers: Transfer list.</summary>
     public const string TransfersView = "transfers:view";
     /// <summary>Stock · Transfers: Print a transfer.</summary>
     public const string TransfersPrint = "transfers:print";
+    /// <summary>Stock · Transfers: Save a transfer as PDF.</summary>
+    public const string TransfersPdf = "transfers:pdf";
     /// <summary>Send goods to another warehouse.</summary>
     public const string InventoryTransfer = "inventory:transfer";
     /// <summary>Change a transfer already sent: its items, quantities, destination or notes (owner, 2026-10-19).</summary>
@@ -239,6 +251,8 @@ public static class Permissions
     public const string InventoryTransferCancel = "inventory:transfer_cancel";
     /// <summary>Print barcode labels for items (label printer or sticker sheets).</summary>
     public const string LabelsPrint = "labels:print";
+    /// <summary>Save barcode labels as PDF.</summary>
+    public const string LabelsPdf = "labels:pdf";
     /// <summary>Stock · Price lists and quantity discounts: See price lists.</summary>
     public const string PriceListsView = "price_lists:view";
     /// <summary>Stock · Price lists and quantity discounts: New list.</summary>
@@ -316,6 +330,8 @@ public static class Permissions
     public const string PartiesIdCardsView = "parties:id_cards_view";
     /// <summary>Customers and suppliers · View: Print.</summary>
     public const string PartiesPrint = "parties:print";
+    /// <summary>Customers and suppliers · View: PDF.</summary>
+    public const string PartiesPdf = "parties:pdf";
     /// <summary>Add a customer (owner, 2026-10-19: customer, supplier and shipping company one each).</summary>
     public const string PartiesCreateCustomer = "parties:create_customer";
     /// <summary>Add a supplier (factories are suppliers).</summary>
@@ -350,6 +366,8 @@ public static class Permissions
     public const string StatementLedger = "statement:ledger";
     /// <summary>Statements · Printing: Print.</summary>
     public const string StatementPrint = "statement:print";
+    /// <summary>Statements · Printing: PDF.</summary>
+    public const string StatementPdf = "statement:pdf";
     /// <summary>Statements · Printing: Excel.</summary>
     public const string StatementExport = "statement:export";
 
@@ -362,6 +380,8 @@ public static class Permissions
     public const string ExpenseCategoriesView = "expense_categories:view";
     /// <summary>Cash and banks · View: Print.</summary>
     public const string MoneyPrint = "money:print";
+    /// <summary>Cash and banks · View: PDF.</summary>
+    public const string MoneyPdf = "money:pdf";
     /// <summary>Cash and banks · View: Excel.</summary>
     public const string MoneyExport = "money:export";
     /// <summary>Record money received from a customer or other party (سند قبض).</summary>
@@ -438,6 +458,8 @@ public static class Permissions
     public const string LedgerBalanceSheet = "ledger:balance_sheet";
     /// <summary>Ledger · View: Print.</summary>
     public const string LedgerPrint = "ledger:print";
+    /// <summary>Ledger · View: PDF.</summary>
+    public const string LedgerPdf = "ledger:pdf";
     /// <summary>Ledger · View: Excel.</summary>
     public const string LedgerExport = "ledger:export";
     /// <summary>Ledger · Actions: Add an account.</summary>
@@ -466,6 +488,10 @@ public static class Permissions
     public const string PayrollSetup = "payroll:setup";
     /// <summary>Payroll · View: Print.</summary>
     public const string PayrollPrint = "payroll:print";
+    /// <summary>Payroll · View: PDF.</summary>
+    public const string PayrollPdf = "payroll:pdf";
+    /// <summary>Payroll · View: Excel.</summary>
+    public const string PayrollExport = "payroll:export";
     /// <summary>Payroll · Employees: Add an employee.</summary>
     public const string EmployeesCreate = "employees:create";
     /// <summary>Payroll · Employees: Change an employee.</summary>
@@ -520,6 +546,8 @@ public static class Permissions
     public const string ReportsAssortment = "reports:assortment";
     /// <summary>Reports · Printing: Print.</summary>
     public const string ReportsPrint = "reports:print";
+    /// <summary>Reports · Printing: PDF.</summary>
+    public const string ReportsPdf = "reports:pdf";
     /// <summary>Reports · Printing: Excel.</summary>
     public const string ReportsExport = "reports:export";
 
@@ -528,6 +556,10 @@ public static class Permissions
     public const string AuditView = "audit:view";
     /// <summary>Activity log · Log: Excel.</summary>
     public const string AuditExport = "audit:export";
+    /// <summary>Activity log · Log: Print.</summary>
+    public const string AuditPrint = "audit:print";
+    /// <summary>Activity log · Log: PDF.</summary>
+    public const string AuditPdf = "audit:pdf";
     /// <summary>See who is signed in now and what they are doing.</summary>
     public const string PresenceView = "presence:view";
 
@@ -658,6 +690,16 @@ public static class Permissions
     /// </summary>
     public const string LicenseManage = "license:manage";
 
+    // ──── Printing ────
+    /// <summary>
+    /// Printing · Layout: Change the print options (paper, type size, what a document carries) and
+    /// the printout before it prints (owner, 2026-11-12). Without it a person prints with the
+    /// company's layout.
+    /// </summary>
+    public const string PrintSettings = "print:settings";
+    /// <summary>Printing · Layout: Make one's own print options the company's, used by everyone without <see cref="PrintSettings"/>.</summary>
+    public const string PrintDefault = "print:default";
+
     /// <summary>Every permission, used to register one authorization policy per permission.</summary>
     public static readonly string[] All =
     {
@@ -665,43 +707,43 @@ public static class Permissions
         DashboardKpiLowStock, DashboardTrend, DashboardToday, DashboardMonth, DashboardTopItems,
         DashboardTopCustomers, DashboardBranches, DashboardRecent, DashboardAccounts, DashboardNotesDue,
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
-        SalesReturnsView, SalesTogether, SalesPrint, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
+        SalesReturnsView, SalesTogether, SalesPrint, SalesPdf, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
         SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnCancel, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
-        PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
+        PurchasesPrint, PurchasesPdf, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
         PurchasesChangePrice, PurchasesChoosePriceLevel, PurchasesDiscount, PurchasesBonus, PurchasesChangeTax,
-        PurchasesAdditions, InventoryView, InventoryPrint, InventoryExport, ProductsCreate, ProductsEdit,
+        PurchasesAdditions, InventoryView, InventoryPrint, InventoryPdf, InventoryExport, ProductsCreate, ProductsEdit,
         ProductsClose, ProductsDelete, ProductsBarcodes, ProductsImages, PricesEdit, PricesBulkEdit, InventoryTotalItems,
         InventoryTotalQuantity, InventoryTotalSaleValue, InventoryTotalSupplyValue, InventoryTotalSold,
         InventoryCard, ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices,
         InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices,
-        ValuationSuppliers, InventoryStocktakeView, InventoryStocktake, TransfersView, TransfersPrint,
-        InventoryTransfer, InventoryTransferEdit, InventoryTransferReceive, InventoryTransferCancel, LabelsPrint,
+        ValuationSuppliers, InventoryStocktakeView, StocktakePrint, StocktakePdf, InventoryStocktake, TransfersView, TransfersPrint, TransfersPdf,
+        InventoryTransfer, InventoryTransferEdit, InventoryTransferReceive, InventoryTransferCancel, LabelsPrint, LabelsPdf,
         PriceListsView, PriceListsCreate, PriceListsEdit, PriceListsPrices, PriceListsCustomers, PriceListsDelete,
         QuantityBreaksView, QuantityBreaksEdit, DepartmentsCreate, DepartmentsEdit, DepartmentsClose,
         DepartmentsDelete, GroupsCreate, GroupsEdit, GroupsClose, GroupsDelete, UnitsCreate, UnitsEdit, UnitsClose,
         UnitsDelete, SizesCreate, SizesEdit, SizesClose, SizesDelete, ColorsCreate, ColorsEdit, ColorsClose,
         ColorsDelete, SeasonsCreate, SeasonsEdit, SeasonsDelete, PartiesView, PartiesContact, PartiesIdCardsView,
-        PartiesPrint, PartiesCreateCustomer, PartiesCreateSupplier, PartiesCreateCarrier, PartiesEdit,
+        PartiesPrint, PartiesPdf, PartiesCreateCustomer, PartiesCreateSupplier, PartiesCreateCarrier, PartiesEdit,
         PartiesClose, PartiesIdCardsEdit, PartiesSetPriceLevel, PartiesCreditLimit,
         StatementCustomers, StatementSuppliers, StatementCarriers, StatementMoney, StatementExpenses,
-        StatementWarehouses, StatementLedger, StatementPrint, StatementExport, MoneyAccounts, VouchersView,
-        ExpenseCategoriesView, MoneyPrint, MoneyExport, ReceiptsCreate, PaymentsCreate, ExpensesCreate,
+        StatementWarehouses, StatementLedger, StatementPrint, StatementPdf, StatementExport, MoneyAccounts, VouchersView,
+        ExpenseCategoriesView, MoneyPrint, MoneyPdf, MoneyExport, ReceiptsCreate, PaymentsCreate, ExpensesCreate,
         CashTransfer, VouchersCancel, VouchersDiscount, MoneyAccountsCreate, MoneyAccountsEdit,
         MoneyAccountsDelete, MoneyAccountsMain, ExpenseCategoriesCreate, ExpenseCategoriesEdit,
         ExpenseCategoriesClose, ExpenseCategoriesDelete, CashHandoverSend, CashHandoverReceive,
         NotesViewReceivable, NotesViewPayable, NotesPortfolios, NotesPhotos, NotesReceive, NotesIssue,
         NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse, NotesCancel, NotesLost, LedgerAccounts,
-        LedgerJournal, LedgerTrialBalance, LedgerIncomeStatement, LedgerBalanceSheet, LedgerPrint, LedgerExport,
+        LedgerJournal, LedgerTrialBalance, LedgerIncomeStatement, LedgerBalanceSheet, LedgerPrint, LedgerPdf, LedgerExport,
         LedgerAccountsCreate, LedgerAccountsEdit, LedgerPost, LedgerReverse, LedgerLock, LedgerCloseYear,
-        PayrollRuns, PayrollAttendance, PayrollEmployees, PayrollAdvances, PayrollSetup, PayrollPrint,
+        PayrollRuns, PayrollAttendance, PayrollEmployees, PayrollAdvances, PayrollSetup, PayrollPrint, PayrollPdf, PayrollExport,
         EmployeesCreate, EmployeesEdit, EmployeesDelete, ShiftsCreate, ShiftsEdit, PayrollSettings, AttendanceEdit,
         AttendanceImport, PayrollAdjust, PayrollAdjustCancel, PayrollAdvance, PayrollAdvanceCancel, PayrollRun,
         PayrollPost, PayrollRunCancel, PayrollPay, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
-        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsPrint, ReportsExport, AuditView,
+        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
         AuditExport, PresenceView, ChatUse, ChatMonitor, ChatGroups, ChatMute, AiChat, AiVoice, AiScanPurchase,
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
@@ -709,6 +751,7 @@ public static class Permissions
         WarehousesDelete, SettingsCompany, SettingsLogo, SettingsPricing, SettingsRules,
         SettingsSecurity, SettingsNumbering, SettingsStorefront, BackupCreate, CostsView, ProfitView,
         DocumentsBackdate, RulesOverride, SystemMonitor, SystemUpdate, DataImport, LicenseManage,
+        PrintSettings, PrintDefault,
     };
 
     /// <summary>Held by the owner alone: never by the admin, a role or a grant.</summary>
@@ -738,7 +781,7 @@ public static class RolePermissions
             Permissions.DashboardTopItems, Permissions.DashboardTopCustomers, Permissions.DashboardBranches,
             Permissions.DashboardRecent, Permissions.DashboardAccounts, Permissions.DashboardNotesDue,
             Permissions.DashboardAwaiting, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
-            Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
+            Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint, Permissions.SalesPdf,
             Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesCancel,
             Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesLock,
             Permissions.SalesInvoiceAlerts, Permissions.SalesReturn,
@@ -750,30 +793,30 @@ public static class RolePermissions
             Permissions.DeliveryStatus, Permissions.ShipmentsCreate, Permissions.ShipmentsProgress,
             Permissions.ShipmentsReturn, Permissions.ShipmentsCancel, Permissions.DeliverySettle,
             Permissions.PurchasesView, Permissions.PurchasesReturnsView, Permissions.PurchasesPriceSheet,
-            Permissions.PurchasesPrint, Permissions.PurchasesCreate, Permissions.PurchasesPhotos,
+            Permissions.PurchasesPrint, Permissions.PurchasesPdf, Permissions.PurchasesCreate, Permissions.PurchasesPhotos,
             Permissions.PurchasesReturn, Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
             Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
-            Permissions.InventoryPrint, Permissions.InventoryExport, Permissions.ProductsCreate,
+            Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.ProductsCreate,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes,
             Permissions.ProductsImages, Permissions.PricesEdit, Permissions.InventoryCard,
             Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
-            Permissions.InventoryStocktakeView, Permissions.InventoryStocktake, Permissions.TransfersView,
-            Permissions.TransfersPrint, Permissions.InventoryTransfer, Permissions.InventoryTransferReceive,
-            Permissions.InventoryTransferCancel, Permissions.LabelsPrint, Permissions.PriceListsView,
+            Permissions.InventoryStocktakeView, Permissions.StocktakePrint, Permissions.StocktakePdf, Permissions.InventoryStocktake, Permissions.TransfersView,
+            Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer, Permissions.InventoryTransferReceive,
+            Permissions.InventoryTransferCancel, Permissions.LabelsPrint, Permissions.LabelsPdf, Permissions.PriceListsView,
             Permissions.QuantityBreaksView, Permissions.DepartmentsCreate, Permissions.DepartmentsEdit,
             Permissions.DepartmentsClose, Permissions.GroupsCreate, Permissions.GroupsEdit,
             Permissions.GroupsClose, Permissions.UnitsCreate, Permissions.UnitsEdit, Permissions.UnitsClose,
             Permissions.SizesCreate, Permissions.SizesEdit, Permissions.SizesClose, Permissions.ColorsCreate,
             Permissions.ColorsEdit, Permissions.ColorsClose, Permissions.PartiesView, Permissions.PartiesContact,
-            Permissions.PartiesIdCardsView, Permissions.PartiesPrint, Permissions.PartiesCreateCustomer,
+            Permissions.PartiesIdCardsView, Permissions.PartiesPrint, Permissions.PartiesPdf, Permissions.PartiesCreateCustomer,
             Permissions.PartiesCreateSupplier, Permissions.PartiesCreateCarrier, Permissions.PartiesEdit,
             Permissions.PartiesClose, Permissions.PartiesIdCardsEdit, Permissions.PartiesSetPriceLevel,
             Permissions.PartiesCreditLimit, Permissions.StatementCustomers,
             Permissions.StatementSuppliers, Permissions.StatementCarriers, Permissions.StatementMoney,
             Permissions.StatementExpenses, Permissions.StatementWarehouses, Permissions.StatementLedger,
-            Permissions.StatementPrint, Permissions.StatementExport, Permissions.MoneyAccounts,
-            Permissions.VouchersView, Permissions.ExpenseCategoriesView, Permissions.MoneyPrint,
+            Permissions.StatementPrint, Permissions.StatementPdf, Permissions.StatementExport, Permissions.MoneyAccounts,
+            Permissions.VouchersView, Permissions.ExpenseCategoriesView, Permissions.MoneyPrint, Permissions.MoneyPdf,
             Permissions.MoneyExport, Permissions.ReceiptsCreate, Permissions.PaymentsCreate,
             Permissions.ExpensesCreate, Permissions.CashTransfer, Permissions.VouchersCancel,
             Permissions.VouchersDiscount, Permissions.MoneyAccountsCreate, Permissions.MoneyAccountsEdit,
@@ -784,16 +827,16 @@ public static class RolePermissions
             Permissions.NotesPhotos, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
             Permissions.NotesCancel, Permissions.NotesLost, Permissions.LedgerAccounts, Permissions.LedgerJournal,
-            Permissions.LedgerPrint, Permissions.LedgerExport, Permissions.LedgerAccountsCreate,
+            Permissions.LedgerPrint, Permissions.LedgerPdf, Permissions.LedgerExport, Permissions.LedgerAccountsCreate,
             Permissions.LedgerAccountsEdit, Permissions.LedgerPost, Permissions.LedgerReverse,
             Permissions.PayrollRuns, Permissions.PayrollAttendance, Permissions.PayrollEmployees,
-            Permissions.PayrollAdvances, Permissions.PayrollSetup, Permissions.PayrollPrint,
+            Permissions.PayrollAdvances, Permissions.PayrollSetup, Permissions.PayrollPrint, Permissions.PayrollPdf, Permissions.PayrollExport,
             Permissions.AttendanceEdit, Permissions.AttendanceImport, Permissions.PayrollAdjust,
             Permissions.PayrollAdjustCancel, Permissions.PayrollAdvance, Permissions.PayrollAdvanceCancel,
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
             Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment,
-            Permissions.ReportsPrint, Permissions.ReportsExport, Permissions.ChatUse,
+            Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport, Permissions.ChatUse,
             Permissions.DocumentsBackdate,
         },
         // Sales staff sell at the customer's price level and may only add to a price; lowering it or
@@ -807,15 +850,15 @@ public static class RolePermissions
             Permissions.DashboardTrend, Permissions.DashboardToday, Permissions.DashboardMonth,
             Permissions.DashboardTopItems, Permissions.DashboardTopCustomers, Permissions.DashboardBranches,
             Permissions.DashboardRecent, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
-            Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
+            Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint, Permissions.SalesPdf,
             Permissions.SalesCreate, Permissions.SalesReturn,
             Permissions.SalesRaisePrice, Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.DeliveryStatus, Permissions.ShipmentsCreate,
             Permissions.ShipmentsProgress, Permissions.ShipmentsReturn, Permissions.ShipmentsCancel,
-            Permissions.InventoryView, Permissions.InventoryPrint, Permissions.InventoryExport,
-            Permissions.InventoryCard, Permissions.TransfersView, Permissions.TransfersPrint,
+            Permissions.InventoryView, Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport,
+            Permissions.InventoryCard, Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf,
             Permissions.PriceListsView, Permissions.QuantityBreaksView, Permissions.PartiesView,
-            Permissions.PartiesContact, Permissions.PartiesIdCardsView, Permissions.PartiesPrint,
+            Permissions.PartiesContact, Permissions.PartiesIdCardsView, Permissions.PartiesPrint, Permissions.PartiesPdf,
             Permissions.PartiesCreateCustomer, Permissions.PartiesCreateSupplier, Permissions.PartiesCreateCarrier,
             Permissions.PartiesEdit, Permissions.PartiesIdCardsEdit, Permissions.StatementWarehouses,
             Permissions.ChatUse,
@@ -830,17 +873,17 @@ public static class RolePermissions
             Permissions.DeliveryView, Permissions.ShipmentsView, Permissions.SettlementsView,
             Permissions.DeliveryStatus, Permissions.ShipmentsCreate, Permissions.ShipmentsProgress,
             Permissions.ShipmentsReturn, Permissions.ShipmentsCancel, Permissions.PurchasesView,
-            Permissions.PurchasesReturnsView, Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint,
+            Permissions.PurchasesReturnsView, Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint, Permissions.PurchasesPdf,
             Permissions.PurchasesCreate, Permissions.PurchasesPhotos, Permissions.PurchasesReturn,
             Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
             Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
-            Permissions.InventoryPrint, Permissions.InventoryExport, Permissions.ProductsCreate,
+            Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.ProductsCreate,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes,
             Permissions.ProductsImages, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
-            Permissions.ProductsCardReturns, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
-            Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
-            Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel, Permissions.LabelsPrint,
+            Permissions.ProductsCardReturns, Permissions.InventoryStocktakeView, Permissions.StocktakePrint, Permissions.StocktakePdf, Permissions.InventoryStocktake,
+            Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer,
+            Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel, Permissions.LabelsPrint, Permissions.LabelsPdf,
             Permissions.PriceListsView, Permissions.QuantityBreaksView, Permissions.DepartmentsCreate,
             Permissions.DepartmentsEdit, Permissions.DepartmentsClose, Permissions.GroupsCreate,
             Permissions.GroupsEdit, Permissions.GroupsClose, Permissions.UnitsCreate, Permissions.UnitsEdit,
@@ -856,17 +899,17 @@ public static class RolePermissions
             Permissions.DashboardTopItems, Permissions.DashboardTopCustomers, Permissions.DashboardBranches,
             Permissions.DashboardRecent, Permissions.DashboardAccounts, Permissions.DashboardOverLimit,
             Permissions.DashboardLowStock, Permissions.SalesView, Permissions.SalesReturnsView,
-            Permissions.SalesTogether, Permissions.SalesPrint, Permissions.DeliveryView, Permissions.ShipmentsView,
+            Permissions.SalesTogether, Permissions.SalesPrint, Permissions.SalesPdf, Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.PurchasesView, Permissions.PurchasesReturnsView,
-            Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint, Permissions.InventoryView,
-            Permissions.InventoryPrint, Permissions.InventoryExport, Permissions.InventoryCard,
-            Permissions.TransfersView, Permissions.TransfersPrint, Permissions.PriceListsView,
-            Permissions.QuantityBreaksView, Permissions.PartiesView, Permissions.PartiesPrint,
+            Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint, Permissions.PurchasesPdf, Permissions.InventoryView,
+            Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.InventoryCard,
+            Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.PriceListsView,
+            Permissions.QuantityBreaksView, Permissions.PartiesView, Permissions.PartiesPrint, Permissions.PartiesPdf,
             Permissions.StatementMoney, Permissions.StatementExpenses, Permissions.StatementWarehouses,
             Permissions.MoneyAccounts, Permissions.VouchersView, Permissions.ExpenseCategoriesView,
-            Permissions.MoneyPrint, Permissions.MoneyExport, Permissions.ReportsMonthly,
+            Permissions.MoneyPrint, Permissions.MoneyPdf, Permissions.MoneyExport, Permissions.ReportsMonthly,
             Permissions.ReportsPerformance, Permissions.ReportsParties, Permissions.ReportsAging,
-            Permissions.ReportsItems, Permissions.ReportsAssortment, Permissions.ReportsPrint, Permissions.ReportsExport,
+            Permissions.ReportsItems, Permissions.ReportsAssortment, Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport,
         },
         // Starts with nothing; the owner ticks exactly what the person may do (owner, 2026-10-23).
         [Role.NONE] = Array.Empty<string>(),

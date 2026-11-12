@@ -1273,6 +1273,8 @@ public record TakeWorkDraftRequest(string Key);
 
 /// <summary>A person's screen preference (e.g. a table's hidden columns).</summary>
 public record SavePreferenceRequest(string Key, string Value);
+/// <summary>Asking to print, save as PDF or save as Excel on a page: its name, the kind, and what it is (for the log).</summary>
+public record OutputRequest(string? Page, string? Kind, string? Title);
 
 
 // ---------------------------------------------------------------- staff chat

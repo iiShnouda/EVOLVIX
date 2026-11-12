@@ -112,18 +112,21 @@ public sealed class PurchasesController : ControllerBase
 
     /// <summary>
     /// A purchase document is about to be printed (owner, 2026-10-24): printing is its own permission,
-    /// checked here before the web app prints, and written in the activity log.
+    /// checked here before the web app prints, and written in the activity log. Saving it as PDF
+    /// (<c>?kind=pdf</c>) is a permission of its own (owner, 2026-11-12).
     /// </summary>
     [HttpPost("invoices/{id:guid}/print")]
     [HttpPost("returns/{id:guid}/print")]
-    [Authorize(Policy = Permissions.PurchasesPrint)]
-    public async Task<ActionResult> Printed(Guid id)
+    public async Task<ActionResult> Printed(Guid id, [FromQuery] string? kind = null)
     {
+        var pdf = kind == "pdf";
+        if (!User.HasClaim("permission", pdf ? Permissions.PurchasesPdf : Permissions.PurchasesPrint))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var doc = await _db.SalesDocuments.AsNoTracking()
             .Where(d => d.Id == id && (d.Type == DocumentType.PURCHASE_INVOICE || d.Type == DocumentType.PURCHASE_RETURN))
             .InBranches(User, d => d.BranchId).FirstOrDefaultAsync();
         if (doc is null) return NotFound(new { message = "Document not found", code = "not_found" });
-        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "print",
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), pdf ? "pdf" : "print",
             doc.Type == DocumentType.PURCHASE_RETURN ? "purchase_return" : "purchase_invoice",
             doc.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString(), $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
