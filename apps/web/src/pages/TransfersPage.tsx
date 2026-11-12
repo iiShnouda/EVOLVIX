@@ -212,9 +212,7 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
                       <td className="p-3 font-medium tnum" dir="ltr">
                         {tr.number}
                       </td>
-                      <td className="p-3 text-muted tnum">
-                        {formatDateTime(tr.createdAt, locale)}
-                      </td>
+                      <td className="p-3 text-muted tnum">{formatDate(tr.createdAt, locale)}</td>
                       <td className="p-3">{tr.fromBranchName}</td>
                       <td className="p-3">{tr.fromWarehouseName}</td>
                       <td className="p-3">{tr.toBranchName}</td>
