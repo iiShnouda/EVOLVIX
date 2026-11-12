@@ -51,6 +51,14 @@
         {
           "ar": "في استلام الشيك: «من أحضر الشيك» بقت اختيار (العميل نفسه أو شخص آخر باسمه)، واللي استلم الشيك هو صاحب الحساب المسجّل تلقائيًا",
           "en": "Receiving a cheque: \"who brought it\" is now a choice (the customer himself, or someone else by name), and whoever is signed in is recorded as the receiver."
+        },
+        {
+          "ar": "لوحة التحكم: اختيار الفرع والمخزن والقسم ظاهر دايمًا جنب الفترة، حتى لو عندك فرع واحد",
+          "en": "Dashboard: the branch, warehouse and department pickers always show beside the period, even with one branch"
+        },
+        {
+          "ar": "فاتورة المبيعات: خانة الكمية بقت أكبر وأوضح، وتجهيز الصنف بالترتيب: الصنف ثم الوحدة ثم الكمية ثم السعر ثم إضافة؛ Enter في البحث يروح للكمية و Enter في الكمية يضيف الصنف ويرجع للبحث",
+          "en": "Sales invoice: a larger, clearer quantity box, and a prepared item reads item, unit, quantity, price, add; Enter in the search goes to the quantity, Enter in the quantity adds the item and returns to the search"
         }
       ],
       "fixes": [
@@ -73,6 +81,10 @@
         {
           "ar": "صورة الشيك اللي اتقرأت بقت تتحفظ مع الشيك",
           "en": "The photo a cheque was read from is now kept with the cheque."
+        },
+        {
+          "ar": "شيلنا موسم القسم من كل حتة (الفواتير، قائمة المبيعات، إعداد الأقسام)؛ موسم الصنف بسنته زي ما هو، وفاتورة المشتريات بترجع تختار الموسم بسنته من القائمة",
+          "en": "The department season is removed everywhere (invoices, sales list, department setup); the item's season with its year stays, and the purchase screen picks a season with its year from the list again"
         }
       ]
     },

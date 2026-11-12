@@ -329,8 +329,7 @@ One shape for every document type:
   one is chosen, at the price paid after discounts with its share of tax, back at the original cost.
 - An invoice with receipts or cheques against it may be edited: the money stays, the balance moves
   by the difference, anything paid over the new total is the customer's credit.
-- A department may work by season: its invoices name the season kind (summer / winter / none); the
-  item keeps the season with its year, given on purchase from the kind and the invoice's date.
+- Seasons belong to items only (the season with its year); a department season was tried and removed (2026-11-12).
 - Stock out = none left; low = some left at or under the reorder level.
 
 ### 2.6 Money — الخزينة والبنوك

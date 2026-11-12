@@ -371,8 +371,7 @@ Rebuild after changes: `pnpm --filter @skb/shared build`.
   An invoice with receipts or cheques can be edited: money stays, the balance moves by the
   difference, over-payment is credit; only `PaidDirect` (counter cash) is part of its entry.
 - **Stock status:** out = none left; low = some left at or under the reorder level.
-- **Seasons:** `Department.HasSeasons`; a sale/pending invoice in such a department needs
-  `SeasonKind` (SUMMER/WINTER/NONE); purchases' kind + invoice date → the item's season with year.
+- **Seasons** belong to items only (a season with its year); departments and invoices carry none (owner, 2026-11-12).
 - **Dashboard** follows the person's branches, departments, warehouses (documents by their lines'
   share) and money accounts, plus `branchId`/`warehouseId`/`departmentId` picks.
 - **Names** one field as typed; **money** integer minor units; **days** via `CompanyClock`.
