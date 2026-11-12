@@ -826,8 +826,15 @@ function NoteSheet({ n, onClose }: { n: Note; onClose: () => void }) {
             </Fact>
           )}
           {n.broughtBy && (
-            <Fact label={t(receivable ? 'cheque.broughtBy' : 'cheque.takenBy')}>{n.broughtBy}</Fact>
+            <Fact label={t(receivable ? 'cheque.broughtBy' : 'cheque.takenBy')}>
+              {n.broughtBy}
+              {n.broughtByParty &&
+                ` (${t(receivable ? 'cheque.byCustomer' : 'cheque.bySupplier')})`}
+            </Fact>
           )}
+          <Fact label={t(receivable ? 'cheque.receivedBy' : 'cheque.handedBy')}>
+            {n.createdByName}
+          </Fact>
           <Fact label={t('notes.due')}>{formatDate(n.dueDate, locale)}</Fact>
           <Fact label={t('notes.bank')}>{n.bankName ?? '—'}</Fact>
           {n.drawer && <Fact label={t('notes.drawer')}>{n.drawer}</Fact>}

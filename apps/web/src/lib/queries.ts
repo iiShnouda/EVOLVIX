@@ -142,6 +142,7 @@ import type {
   NotesSummary,
   Portfolio,
   CreateNoteInput,
+  Bank,
   NoteStepInput,
   IncomeStatement,
   BalanceSheet,
@@ -2119,6 +2120,23 @@ function invalidateAfterNote(qc: ReturnType<typeof useQueryClient>) {
 }
 
 /** Several cheques at once (a series): all saved, or none. */
+/** The banks cheques are drawn on (owner, 2026-11-12). */
+export function useBanks(enabled = true) {
+  return useQuery({
+    queryKey: ['notes', 'banks'],
+    queryFn: () => api.get<Bank[]>('/banks'),
+    enabled,
+  });
+}
+
+export function useAddBank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.post<Bank>('/banks', { name }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes', 'banks'] }),
+  });
+}
+
 export function useCreateNotes() {
   const qc = useQueryClient();
   return useMutation({

@@ -248,4 +248,70 @@ ok(
 );
 eq('one with money stays', (await owner.del(`/money-accounts/${used.id}`)).data?.code, 'in_use');
 
+console.log('== who brought it, who received it, and the banks (owner, 2026-11-12)');
+eq('received by whoever signed in', made[0].createdByName, mona.user.fullName);
+const self = ok(
+  'the customer himself brought it',
+  await mona.post('/notes/receive', {
+    ...cheque(7, 1000),
+    broughtBy: 'ignored',
+    broughtByParty: true,
+    createdById: owner.user.id,
+  }),
+);
+check('kept as the customer himself', self.broughtByParty === true, self);
+eq('…shown by his name', self.broughtBy, cust.name);
+eq('the receiver is still the one signed in', self.createdByName, mona.user.fullName);
+eq('someone else is kept by name', made[1].broughtByParty, false);
+
+eq("sales staff can't list banks", (await karim.get('/banks')).status, 403);
+eq('…nor add one', (await karim.post('/banks', { name: `Bank ${tag}` })).status, 403);
+eq('a name is needed', (await mona.post('/banks', { name: '  ' })).data?.code, 'bad_name');
+const bank = ok('a bank added', await mona.post('/banks', { name: `  Bank ${tag} ` }));
+eq('its name as typed, trimmed', bank.name, `Bank ${tag}`);
+eq(
+  'the same name again is the same bank',
+  (await mona.post('/banks', { name: `bank ${tag.toUpperCase()}` })).data?.id,
+  bank.id,
+);
+const banks = ok('the list', await mona.get('/banks'));
+check(
+  'it is on the list',
+  banks.some((b) => b.id === bank.id),
+);
+const misr = banks.find((b) => b.name === 'Banque Misr');
+check('a typed bank on the list is linked', !misr || made[0].bankId === misr.id, made[0]);
+const audit = ok('the audit', await owner.get('/audit?resource=bank&pageSize=50'));
+check(
+  'adding a bank is audited',
+  (audit.items ?? audit).some((e) => e.resourceId === bank.id && e.action === 'create'),
+);
+eq(
+  'an unknown bank refused',
+  (await mona.post('/notes/receive', { ...cheque(8, 1000), bankId: cust.id })).data?.code,
+  'bank_not_found',
+);
+const sameBank = ok(
+  'several cheques, one bank',
+  await mona.post('/notes/receive-many', {
+    notes: [9, 10, 11].map((n) => ({ ...cheque(n, 1000), bankName: undefined, bankId: bank.id })),
+  }),
+);
+check(
+  'each has the bank and its name',
+  sameBank.every((n) => n.bankId === bank.id && n.bankName === bank.name),
+  sameBank,
+);
+const typed = ok(
+  'a bank typed by name finds the one on the list',
+  await mona.post('/notes/receive', { ...cheque(12, 1000), bankName: `BANK ${tag}` }),
+);
+eq('…and points at it', typed.bankId, bank.id);
+eq('…keeping the list spelling', typed.bankName, bank.name);
+const found = ok(
+  'search by bank',
+  await mona.get(`/notes?search=${encodeURIComponent(bank.name)}`),
+);
+eq('finds them all', found.total, 4);
+
 summary('cheques');

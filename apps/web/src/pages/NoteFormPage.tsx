@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   addDays,
@@ -8,6 +8,7 @@ import {
   formatMoney,
   toMajor,
   toMinor,
+  type Bank,
   type ChequeScan,
   type NoteDirection,
   type NoteKind,
@@ -22,23 +23,34 @@ import { shrinkPhoto } from '../components/IdCards';
 import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
-import { useCreateNotes, useOpenInvoices } from '../lib/queries';
+import { useAddBank, useBanks, useCreateNotes, useOpenInvoices } from '../lib/queries';
+import { useCan } from '../lib/can';
+import { useAuth } from '../stores/auth';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 const cell =
   'h-8 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
 const minor = (v: string) => (v.trim() === '' ? 0 : toMinor(Number(v) || 0));
+/** A field the photo reading was unsure of (owner, 2026-11-12): highlighted until it is edited. */
+const doubt = ' !border-warning bg-warning-soft';
+type Checked = NonNullable<ChequeScan['check']>[number];
 
 interface Row {
   key: number;
   serial: string;
+  /** The bank's name; used only when the cheque has its own bank (`ownBank`), else the one for all. */
   bank: string;
+  ownBank: boolean;
   drawer: string;
   amount: string;
   due: string;
   photo: Blob | null;
   photoUrl: string | null;
+  /** Read from a photo with doubt: to be checked. */
+  check: Checked[];
+  /** The amount in words, as read from the photo. */
+  words: string | null;
 }
 
 /** Every so many days, two weeks, a month, 45 days… (owner, 2026-10-02). */
@@ -48,12 +60,49 @@ const blank = (due: string): Row => ({
   key: nextKey++,
   serial: '',
   bank: '',
+  ownBank: false,
   drawer: '',
   amount: '',
   due,
   photo: null,
   photoUrl: null,
+  check: [],
+  words: null,
 });
+
+/** One bank from the company's list; a name not on it (an older or scanned one) is still shown. */
+function BankSelect({
+  value,
+  banks,
+  onChange,
+  label,
+  className,
+}: {
+  value: string;
+  banks: Bank[];
+  onChange: (name: string) => void;
+  label: string;
+  className: string;
+}) {
+  const { t } = useT();
+  const known = value === '' || banks.some((b) => b.name === value);
+  return (
+    <select
+      aria-label={label}
+      className={className}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{t('cheque.pickBank')}</option>
+      {!known && <option value={value}>{value}</option>}
+      {banks.map((b) => (
+        <option key={b.id} value={b.name}>
+          {b.name}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 /**
  * Receiving or issuing cheques as a page of its own (owner, 2026-10-02): the customer or supplier by
@@ -71,7 +120,37 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
   const [party, setParty] = useState<Party | null>(null);
   const [kind, setKind] = useState<NoteKind>('CHEQUE');
   const [receivedOn, setReceivedOn] = useState(companyToday());
+  // The customer himself brought it, or someone else, by name (owner, 2026-11-12).
+  const [brought, setBrought] = useState<'party' | 'other'>('party');
   const [broughtBy, setBroughtBy] = useState('');
+  const me = useAuth((s) => s.user);
+  const can = useCan();
+  // The bank for all the cheques, picked once; a cheque may have its own (owner, 2026-11-12).
+  const banksQ = useBanks();
+  const banks = useMemo(() => banksQ.data ?? [], [banksQ.data]);
+  const addBank = useAddBank();
+  const [bank, setBank] = useState('');
+  const [newBank, setNewBank] = useState<string | null>(null);
+  const [bankError, setBankError] = useState<string | null>(null);
+  async function saveBank() {
+    if (!newBank?.trim()) return;
+    setBankError(null);
+    try {
+      const made = await addBank.mutateAsync(newBank.trim());
+      setBank(made.name);
+      setNewBank(null);
+    } catch (e) {
+      setBankError(errorText(t, e));
+    }
+  }
+  /** A bank read from a photo, spelled as on the list when it is there. */
+  const listed = (name: string | null) => {
+    const v = (name ?? '').trim();
+    return banks.find((b) => b.name.toLowerCase() === v.toLowerCase())?.name ?? v;
+  };
+  const bankOf = (r: Row) => (r.ownBank ? r.bank : bank).trim();
+  // Read from a photo with doubt: saving asks once to check the highlighted fields.
+  const [confirmed, setConfirmed] = useState(false);
   const [remark, setRemark] = useState('');
   const [rows, setRows] = useState<Row[]>(() => {
     const first = blank(companyToday());
@@ -101,7 +180,23 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
   );
 
   const set = (key: number, patch: Partial<Row>) =>
-    setRows((cur) => cur.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setRows((cur) =>
+      cur.map((r) =>
+        r.key === key
+          ? {
+              ...r,
+              ...patch,
+              // Edited by the person: no longer in doubt.
+              check: r.check.filter(
+                (c) =>
+                  !(c === 'amount' && 'amount' in patch) &&
+                  !(c === 'dueDate' && 'due' in patch) &&
+                  !(c === 'serial' && 'serial' in patch),
+              ),
+            }
+          : r,
+      ),
+    );
   const setPhoto = (key: number, blob: Blob | null) =>
     setRows((cur) =>
       cur.map((r) => {
@@ -121,7 +216,6 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
   const [each, setEach] = useState('');
   const [split, setSplit] = useState<'each' | 'total'>('each');
   const [firstSerial, setFirstSerial] = useState('');
-  const [seriesBank, setSeriesBank] = useState('');
   function makeSeries() {
     const n = Math.max(1, Math.min(60, Math.floor(Number(count) || 1)));
     const amounts: number[] = [];
@@ -156,7 +250,6 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           : i === 0
             ? firstSerial.trim()
             : '';
-      r.bank = seriesBank.trim();
       made.push(r);
     }
     rows.forEach((r) => r.photoUrl && URL.revokeObjectURL(r.photoUrl));
@@ -167,7 +260,40 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
   // ---- photos ----
   const [camera, setCamera] = useState<number | 'all' | null>(null);
   const [cropping, setCropping] = useState<Blob | null>(null);
-  const waiting = rows.filter((r) => !r.photo);
+  // The cheques a photo is cut for: those just read from it, else any without a photo.
+  const [cropFor, setCropFor] = useState<number[] | null>(null);
+  const waiting = rows.filter((r) => !r.photo && (!cropFor || cropFor.includes(r.key)));
+  // The photo the assistant just read: kept as the cheque's own photo (owner, 2026-11-12).
+  const scanned = useRef<Blob | null>(null);
+  function takeScan(found: ChequeScan[]) {
+    const photo = scanned.current;
+    scanned.current = null;
+    if (found.length === 0) return;
+    const top = bank || listed(found.find((c) => c.bank)?.bank ?? null);
+    if (top !== bank) setBank(top);
+    const made = found.map((c) => {
+      const name = listed(c.bank);
+      return {
+        ...blank(c.dueDate ?? rows.at(-1)?.due ?? companyToday()),
+        serial: c.serial ?? '',
+        bank: name,
+        ownBank: name !== '' && name !== top,
+        drawer: c.drawer ?? '',
+        amount: c.amount ? String(c.amount) : '',
+        check: c.check ?? [],
+        words: c.amountWords ?? null,
+      };
+    });
+    setRows((cur) => [...cur.filter((r) => r.serial || r.amount), ...made]);
+    setConfirmed(false);
+    if (!photo) return;
+    if (made.length === 1) setPhoto(made[0]!.key, photo);
+    else {
+      // One photo of several cheques: cut each one out of it.
+      setCropFor(made.map((r) => r.key));
+      setCropping(photo);
+    }
+  }
   function takePhotos(photos: Blob[]) {
     if (camera !== 'all' && camera !== null) {
       if (photos[0]) void shrinkPhoto(photos[0]).then((b) => setPhoto(camera, b));
@@ -214,11 +340,17 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
     if (minor(r.amount) <= 0) missing.push(`#${i + 1}: ${t('cheque.needAmount')}`);
     if (!r.due) missing.push(`#${i + 1}: ${t('cheque.needDue')}`);
   });
+  if (brought === 'other' && !broughtBy.trim()) missing.push(t('cheque.needBroughtBy'));
   if (over) missing.push(t('money.overAllocated'));
 
   async function save() {
     if (missing.length > 0 || !party) {
       setError(missing.join(' · '));
+      return;
+    }
+    if (!confirmed && rows.some((r) => r.check.length > 0)) {
+      setConfirmed(true);
+      setError(t('cheque.checkRead'));
       return;
     }
     setError(null);
@@ -245,11 +377,13 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           serialNumber: r.serial.trim(),
           amount: minor(r.amount),
           dueDate: r.due,
-          bankName: r.bank.trim() || undefined,
+          bankId: banks.find((b) => b.name === bankOf(r))?.id,
+          bankName: bankOf(r) || undefined,
           drawer: r.drawer.trim() || undefined,
           remark: remark.trim() || undefined,
           receivedOn,
-          broughtBy: broughtBy.trim() || undefined,
+          broughtByParty: brought === 'party',
+          broughtBy: brought === 'other' ? broughtBy.trim() || undefined : undefined,
           allocations,
         };
       });
@@ -316,18 +450,42 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
             onChange={(e) => setReceivedOn(e.target.value || companyToday())}
           />
         </label>
-        <label className="block sm:col-span-2">
+        <div className="sm:col-span-2">
           <span className="mb-0.5 block text-xs text-muted">
             {receivable ? t('cheque.broughtBy') : t('cheque.takenBy')}
           </span>
-          <input
-            className={field}
-            maxLength={100}
-            value={broughtBy}
-            onChange={(e) => setBroughtBy(e.target.value)}
-          />
-        </label>
-        <label className="block sm:col-span-2">
+          <span className="flex gap-2">
+            <select
+              aria-label={receivable ? t('cheque.broughtBy') : t('cheque.takenBy')}
+              className={`${field} ${brought === 'other' ? '!w-40 shrink-0' : ''}`}
+              value={brought}
+              onChange={(e) => setBrought(e.target.value as 'party' | 'other')}
+            >
+              <option value="party">
+                {receivable ? t('cheque.byCustomer') : t('cheque.bySupplier')}
+              </option>
+              <option value="other">{t('cheque.someoneElse')}</option>
+            </select>
+            {brought === 'other' && (
+              <input
+                aria-label={t('cheque.otherName')}
+                placeholder={t('cheque.otherName')}
+                className={field}
+                maxLength={100}
+                value={broughtBy}
+                onChange={(e) => setBroughtBy(e.target.value)}
+              />
+            )}
+          </span>
+        </div>
+        {/* Whoever is signed in received it (owner, 2026-11-12): no one to pick. */}
+        <div className="block">
+          <span className="mb-0.5 block text-xs text-muted">
+            {receivable ? t('cheque.receivedBy') : t('cheque.handedBy')}
+          </span>
+          <span className="flex h-9 items-center text-sm">{me?.fullName ?? ''}</span>
+        </div>
+        <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('notes.remark')}</span>
           <input
             className={field}
@@ -365,20 +523,56 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           {/* The assistant reads the cheques from one photo into rows to check (owner, 2026-10-06). */}
           <ScanButton<ChequeScan[]>
             kind="cheques"
-            onResult={(found) => {
-              if (found.length === 0) return;
-              setRows((cur) => [
-                ...cur.filter((r) => r.serial || r.amount),
-                ...found.map((c) => ({
-                  ...blank(c.dueDate ?? cur.at(-1)?.due ?? companyToday()),
-                  serial: c.serial ?? '',
-                  bank: c.bank ?? '',
-                  drawer: c.drawer ?? '',
-                  amount: c.amount ? String(c.amount) : '',
-                })),
-              ]);
-            }}
+            onPhoto={(photo) => (scanned.current = photo)}
+            onResult={takeScan}
           />
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block w-full sm:w-72">
+            <span className="mb-0.5 block text-xs text-muted">{t('cheque.bankAll')}</span>
+            <BankSelect
+              label={t('cheque.bankAll')}
+              className={field}
+              value={bank}
+              banks={banks}
+              onChange={setBank}
+            />
+          </label>
+          {can('notes:add_bank') &&
+            (newBank === null ? (
+              <Button size="sm" variant="ghost" icon="plus" onClick={() => setNewBank('')}>
+                {t('cheque.addBank')}
+              </Button>
+            ) : (
+              <span className="flex flex-wrap items-center gap-1">
+                <input
+                  aria-label={t('cheque.bankName')}
+                  placeholder={t('cheque.bankName')}
+                  className={`${field} !w-56`}
+                  maxLength={100}
+                  autoFocus
+                  value={newBank}
+                  onChange={(e) => setNewBank(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveBank();
+                    if (e.key === 'Escape') setNewBank(null);
+                  }}
+                />
+                <Button
+                  size="sm"
+                  icon="check"
+                  loading={addBank.isPending}
+                  onClick={() => void saveBank()}
+                >
+                  {t('common.save')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setNewBank(null)}>
+                  {t('common.cancel')}
+                </Button>
+              </span>
+            ))}
+          {bankError && <span className="text-xs text-destructive">{bankError}</span>}
         </div>
 
         {series && (
@@ -462,14 +656,6 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                 onChange={(e) => setFirstSerial(e.target.value)}
               />
             </label>
-            <label className="block">
-              <span className="mb-0.5 block text-xs text-muted">{t('notes.bank')}</span>
-              <input
-                className={field}
-                value={seriesBank}
-                onChange={(e) => setSeriesBank(e.target.value)}
-              />
-            </label>
             <div className="flex items-end">
               <Button className="w-full" icon="check" onClick={makeSeries}>
                 {t('cheque.makeSeries')}
@@ -501,7 +687,8 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   <td className="px-1 py-1">
                     <input
                       aria-label={`${t('notes.serial')} ${i + 1}`}
-                      className={`${cell} tnum`}
+                      title={r.check.includes('serial') ? t('cheque.checkThis') : undefined}
+                      className={`${cell} tnum${r.check.includes('serial') ? doubt : ''}`}
                       dir="ltr"
                       maxLength={40}
                       value={r.serial}
@@ -511,31 +698,57 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
                   <td className="px-1 py-1">
                     <input
                       aria-label={`${t('notes.amount')} ${i + 1}`}
+                      title={r.check.includes('amount') ? t('cheque.checkThis') : undefined}
                       type="number"
                       min={0}
                       step="0.01"
-                      className={`${cell} w-28 tnum`}
+                      className={`${cell} w-28 tnum${r.check.includes('amount') ? doubt : ''}`}
                       value={r.amount}
                       onChange={(e) => set(r.key, { amount: e.target.value })}
                     />
+                    {r.words && (
+                      <span className="mt-0.5 block max-w-40 text-xs text-muted">
+                        {t('cheque.inWords')}: {r.words}
+                      </span>
+                    )}
                   </td>
                   <td className="px-1 py-1">
                     <input
                       aria-label={`${t('notes.due')} ${i + 1}`}
                       type="date"
-                      className={`${cell} tnum`}
+                      title={r.check.includes('dueDate') ? t('cheque.checkThis') : undefined}
+                      className={`${cell} tnum${r.check.includes('dueDate') ? doubt : ''}`}
                       value={r.due}
                       onChange={(e) => set(r.key, { due: e.target.value })}
                     />
                   </td>
                   <td className="px-1 py-1">
-                    <input
+                    <select
                       aria-label={`${t('notes.bank')} ${i + 1}`}
-                      className={cell}
-                      maxLength={100}
-                      value={r.bank}
-                      onChange={(e) => set(r.key, { bank: e.target.value })}
-                    />
+                      className={`${cell} mb-1`}
+                      value={r.ownBank ? 'own' : 'same'}
+                      onChange={(e) =>
+                        set(r.key, {
+                          ownBank: e.target.value === 'own',
+                          bank: r.bank || bank,
+                        })
+                      }
+                    >
+                      <option value="same">
+                        {t('cheque.sameBank')}
+                        {bank ? ` (${bank})` : ''}
+                      </option>
+                      <option value="own">{t('cheque.otherBank')}</option>
+                    </select>
+                    {r.ownBank && (
+                      <BankSelect
+                        label={`${t('cheque.otherBank')} ${i + 1}`}
+                        className={cell}
+                        value={r.bank}
+                        banks={banks}
+                        onChange={(name) => set(r.key, { bank: name })}
+                      />
+                    )}
                   </td>
                   {receivable && (
                     <td className="px-1 py-1">
@@ -688,10 +901,13 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           photo={cropping}
           labels={waiting.map(label)}
           onCut={(piece) => {
-            const row = rows.find((r) => !r.photo);
+            const row = waiting.find((r) => !r.photo);
             if (row) setPhoto(row.key, piece);
           }}
-          onClose={() => setCropping(null)}
+          onClose={() => {
+            setCropping(null);
+            setCropFor(null);
+          }}
         />
       )}
     </div>

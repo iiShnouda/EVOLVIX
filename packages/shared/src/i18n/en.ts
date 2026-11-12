@@ -2378,7 +2378,8 @@ export const en = {
   'cheque.addBank': 'Add a bank',
   'cheque.bankName': 'Bank name',
   'cheque.checkThis': 'Check this',
-  'cheque.checkRead': 'The highlighted fields were read from the photo with doubt. Check them, then save again.',
+  'cheque.checkRead':
+    'The highlighted fields were read from the photo with doubt. Check them, then save again.',
   'cheque.inWords': 'In words',
   'cheque.list': 'Cheques',
   'cheque.addOne': 'Another cheque',

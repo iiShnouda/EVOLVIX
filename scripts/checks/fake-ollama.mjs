@@ -71,6 +71,52 @@ http
               }),
             },
           });
+        // Handwritten Egyptian cheques (the photo carries the marker CHEQUE-AR): figures misread
+        // against the words, Arabic-Indic digits, day-first dates, a month written out, an
+        // impossible day and a date long past.
+        const photo = Buffer.from(b.messages[0].images?.[0] ?? '', 'base64').toString('latin1');
+        if (photo.includes('CHEQUE-AR'))
+          return send({
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                cheques: [
+                  {
+                    serial: '٠٠٠٤٥٦',
+                    amount: '٣٠٠٠٠',
+                    amountWords: 'فقط خمسة وثلاثون ألف جنيه مصري لا غير',
+                    date: '١٥/٣/٢٠٢٧',
+                    bank: 'البنك الأهلي المصري',
+                    drawer: 'النور',
+                  },
+                  {
+                    serial: '457',
+                    amount: '12,500',
+                    amountWords: 'Twelve thousand five hundred Egyptian pounds only',
+                    date: '5 مارس 2027',
+                    bank: 'CIB',
+                    drawer: 'Al-Nour',
+                  },
+                  {
+                    serial: null,
+                    amount: 4000,
+                    amountWords: 'أربعة آلاف وخمسمائة جنيه و خمسون قرشا',
+                    date: '3/15/2027',
+                    bank: null,
+                    drawer: null,
+                  },
+                  {
+                    serial: '459',
+                    amount: '٢٠٠٠',
+                    amountWords: null,
+                    date: '01/02/2019',
+                    bank: 'CIB',
+                    drawer: null,
+                  },
+                ],
+              }),
+            },
+          });
         return send({
           message: {
             role: 'assistant',

@@ -228,6 +228,41 @@ check(
   s2.status === 200 && c2.length === 2 && c2[0].amount === 5000 && c2[0].dueDate === '2026-11-01',
   c2,
 );
+// Handwritten Egyptian cheques (owner, 2026-11-12: "٣٥٠٠٠ was read as 30000, the date was wrong").
+const fdAr = new FormData();
+fdAr.append(
+  'file',
+  new Blob([Buffer.concat([TINY, Buffer.from('CHEQUE-AR')])], { type: 'image/png' }),
+  'ar.png',
+);
+const sAr = await readScan(
+  await fetch(`${BASE}/assistant/scan/cheques`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${o.token}` },
+    body: fdAr,
+  }),
+);
+const [ar1, ar2, ar3, ar4] = sAr.body ?? [];
+eq('four cheques read', sAr.body?.length, 4);
+eq('Arabic-Indic serial in Western digits', ar1?.serial, '000456');
+eq('the words win over misread figures (٣٠٠٠٠ vs خمسة وثلاثون ألف)', ar1?.amount, 35000);
+check('the amount is marked to check', ar1?.check?.includes('amount'), ar1);
+eq('the words are kept', ar1?.amountWords, 'فقط خمسة وثلاثون ألف جنيه مصري لا غير');
+eq('Arabic-Indic date read day first', ar1?.dueDate, '2027-03-15');
+check('a clear date is not marked', !ar1?.check?.includes('dueDate'), ar1);
+eq('English words agree with the figures', ar2?.amount, 12500);
+check('nothing to check when they agree', ar2?.check?.length === 0, ar2);
+eq('a month written out in Arabic', ar2?.dueDate, '2027-03-05');
+eq('pounds and piastres in words', ar3?.amount, 4500.5);
+eq('month-first date is not swapped', ar3?.dueDate ?? null, null);
+check(
+  'the date and the missing number are marked',
+  ar3?.check?.includes('dueDate') && ar3?.check?.includes('serial'),
+  ar3,
+);
+eq('figures only', ar4?.amount, 2000);
+eq('day first', ar4?.dueDate, '2019-02-01');
+check('a date long past is marked', ar4?.check?.includes('dueDate'), ar4);
 const fd3 = new FormData();
 fd3.append('file', new Blob([Buffer.from('not an image at all')], { type: 'image/png' }), 'x.png');
 const r3 = await fetch(`${BASE}/assistant/scan/cheques`, {
