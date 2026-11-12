@@ -689,7 +689,11 @@ function NewShipmentSheet({ onClose }: { onClose: () => void }) {
                     className="rounded-[var(--radius-app)] border border-line p-2"
                   >
                     <p className="mb-1 text-sm font-medium">
-                      <CodeName code={g[0]!.partyCode} name={g[0]!.partyName} />
+                      <PartyLink
+                        id={g[0]!.partyId}
+                        code={g[0]!.partyCode}
+                        name={g[0]!.partyName}
+                      />
                     </p>
                     {g.map((r) => {
                       const other = !!customer && customer !== r.partyId;

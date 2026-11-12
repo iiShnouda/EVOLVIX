@@ -381,7 +381,7 @@ public sealed class InventoryController : ControllerBase
                 l.Document.Party.Code, l.Warehouse!.Name, l.Document.Branch!.Name, l.Document.Staff!.FullName,
                 l.Quantity, l.UnitQuantity, l.Unit!.Name, l.UnitPrice, l.UnitFactor, l.Discount, l.DocDiscount,
                 l.LineTotal, l.UnitCost, l.LineProfit, l.IsBonus,
-                _db.InvoiceRevisions.Any(r => r.DocumentId == l.DocumentId && r.Kind == "EDIT")))
+                _db.InvoiceRevisions.Any(r => r.DocumentId == l.DocumentId && r.Kind == "EDIT"), l.Document.PartyId))
             .Take(MaxCardRows).ToListAsync();
 
         ItemLifeLineDto ToLine(LifeRow r)
@@ -396,7 +396,7 @@ public sealed class InventoryController : ControllerBase
                 r.Party, r.PartyCode, r.Warehouse, r.Branch, r.Staff, r.Quantity, r.UnitQuantity, r.Unit,
                 hidden ? null : (long)Math.Round((decimal)r.UnitPrice / factor), hidden ? null : r.Discount + r.DocDiscount,
                 hidden ? null : perUnit,
-                seeCosts ? r.UnitCost : null, seeProfit ? r.LineProfit : null, r.IsBonus, r.Edited);
+                seeCosts ? r.UnitCost : null, seeProfit ? r.LineProfit : null, r.IsBonus, r.Edited, r.PartyId.ToString());
         }
 
         var buys = rows.Where(r => r.Type == DocumentType.PURCHASE_INVOICE).ToList();
@@ -857,7 +857,7 @@ public sealed class InventoryController : ControllerBase
         // Whose each movement is (owner, 2026-11-10): the customer or supplier of its invoice or
         // return, for whoever may see that side's documents or the item card's part of them; the
         // other warehouse of a transfer.
-        var parties = new Dictionary<Guid, (int Code, string Name)>();
+        var parties = new Dictionary<Guid, (int Code, string Name, Guid Id)>();
         if (withParties)
         {
             bool Has(string p) => User.HasClaim("permission", p);
@@ -873,8 +873,8 @@ public sealed class InventoryController : ControllerBase
             if (shown.Count > 0)
                 foreach (var d in await _db.SalesDocuments.AsNoTracking()
                              .Where(d => docIds.Contains(d.Id) && shown.Contains(d.Type) && d.Party != null)
-                             .Select(d => new { d.Id, d.Party!.Code, d.Party.Name }).ToListAsync())
-                    parties[d.Id] = (d.Code, d.Name);
+                             .Select(d => new { d.Id, d.Party!.Code, d.Party.Name, d.PartyId }).ToListAsync())
+                    parties[d.Id] = (d.Code, d.Name, d.PartyId);
         }
         string? OtherPlace(StockMovement m) =>
             !withParties || m.DocumentId is not Guid d || !transfers.TryGetValue(d, out var t) ? null
@@ -895,7 +895,8 @@ public sealed class InventoryController : ControllerBase
                 m.UnitCost, m.AvgCostAfter, m.Note,
                 m.DocumentId is Guid p && parties.TryGetValue(p, out var party) ? party.Code : null,
                 m.DocumentId is Guid q && parties.TryGetValue(q, out var named) ? named.Name : null,
-                OtherPlace(m));
+                OtherPlace(m),
+                m.DocumentId is Guid w && parties.TryGetValue(w, out var whose) ? whose.Id.ToString() : null);
         }).ToArray();
     }
 
@@ -907,5 +908,5 @@ public sealed class InventoryController : ControllerBase
         Guid DocumentId, string Number, DocumentType Type, DateTime IssueDate, string Party, int PartyCode,
         string? Warehouse, string Branch, string Staff, int Quantity, int UnitQuantity, string? Unit, long UnitPrice,
         int UnitFactor, long Discount, long DocDiscount, long LineTotal, long UnitCost, long LineProfit, bool IsBonus,
-        bool Edited);
+        bool Edited, Guid PartyId);
 }

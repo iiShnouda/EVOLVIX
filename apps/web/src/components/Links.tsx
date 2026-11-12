@@ -1,60 +1,19 @@
 import type { MouseEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Permission } from '@skb/shared';
-import { CodeName } from './CodeName';
-import { mayOpenStatement, useCan } from '../lib/can';
+import { useCan } from '../lib/can';
 
 /**
  * Clickable names and numbers everywhere (owner, 2026-11-12: "tapping the customer brings their
  * statement, tapping the invoice number brings the invoice, tapping the item brings its card").
  * Each is plain text for someone who may not open what it leads to, and prints as plain text.
  */
-const LINK = 'nav-link max-w-full text-start hover:text-brand hover:underline';
-
 function stop(e: MouseEvent) {
   // A link inside a clickable row opens what it names, not the row.
   e.stopPropagation();
 }
 
-/**
- * A customer's, supplier's or shipping company's name; it opens their statement (كشف حساب) when the
- * person may open that kind of statement. Without the party's kinds, any party statement permission.
- */
-export function PartyLink({
-  id,
-  name,
-  code,
-  types,
-  truncate,
-  className,
-}: {
-  id?: string | null;
-  name: ReactNode;
-  code?: number | string | null;
-  types?: string[] | null;
-  truncate?: boolean;
-  className?: string;
-}) {
-  const can = useCan();
-  const navigate = useNavigate();
-  const label = code != null ? <CodeName code={code} name={name} truncate={truncate} /> : name;
-  const may = types
-    ? mayOpenStatement({ types }, can)
-    : can('statement:customers') || can('statement:suppliers') || can('statement:carriers');
-  if (!id || !may) return <span className={className}>{label}</span>;
-  return (
-    <button
-      type="button"
-      className={`${LINK} ${className ?? ''}`}
-      onClick={(e) => {
-        stop(e);
-        navigate(`/statement?party=${id}`);
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+export { PartyLink } from './PartyContact';
 
 /** Vouchers open on Cash & Banks. */
 const VOUCHERS = new Set([

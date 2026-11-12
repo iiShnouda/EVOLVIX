@@ -537,7 +537,9 @@ function InvoiceCard({
               return (
                 <li key={l.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{l.productName}</span>
+                    <span className="block truncate">
+                      <ItemLink id={l.productId} name={l.productName} truncate />
+                    </span>
                     <span className="text-xs text-muted tnum">
                       {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName} ×{' '}
                       {money(l.unitPrice)}

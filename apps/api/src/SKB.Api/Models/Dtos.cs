@@ -122,7 +122,7 @@ public record LockInvoicesRequest(Guid[]? Ids = null, bool Locked = true);
 /// <summary>One change to a posted invoice, for the "cancelled and changed invoices" report.</summary>
 public record InvoiceRevisionDto(
     string Id, string DocumentId, string Number, string PartyName, int? PartyCode, string Kind, string At,
-    string StaffName, string? Reason, long TotalBefore, long TotalAfter, string BranchName);
+    string StaffName, string? Reason, long TotalBefore, long TotalAfter, string BranchName, string? PartyId = null);
 
 /// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
 public record RejectOrderRequest(string? Reason);
@@ -334,7 +334,7 @@ public record StockMovementDto(
     string Id, string Date, string Type, string BranchName, string WarehouseId, string WarehouseName,
     string? Reference, string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
     long UnitCost, long AvgCostAfter, string? Note,
-    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null);
+    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null, string? PartyId = null);
 
 /// <summary>Stock of one item (or of everything) held in one warehouse.</summary>
 public record WarehouseStockDto(string WarehouseId, string Name, string BranchName, int Quantity, long Value);
@@ -359,7 +359,8 @@ public record LastCostDto(long UnitCost, string Date, string? Reference, string?
 public record ItemLifeLineDto(
     string DocumentId, string Number, string Type, string Date, string? PartyName, int? PartyCode,
     string? WarehouseName, string? BranchName, string? StaffName, int Quantity, int UnitQuantity, string? UnitName,
-    long? UnitPrice, long? Discount, long? Net, long? UnitCost, long? Profit, bool Bonus, bool Edited);
+    long? UnitPrice, long? Discount, long? Net, long? UnitCost, long? Profit, bool Bonus, bool Edited,
+    string? PartyId = null);
 
 /// <summary>An item's totals over its life: bought, sold and returned (base units), and what they came to.</summary>
 public record ItemLifeTotalsDto(
@@ -492,7 +493,7 @@ public record DashboardDto(
 public record DashDocDto(
     string Id, string Number, string Type, string Status, string BranchName, string[] WarehouseNames,
     string? DepartmentName, string PartyName, int? PartyCode, string StaffName, string? RepName,
-    string IssueDate, string CreatedAt, long GrandTotal, string Currency);
+    string IssueDate, string CreatedAt, long GrandTotal, string Currency, string? PartyId = null);
 
 /// <summary>
 /// The dashboard's other widgets (owner, 2026-10-01: the owner sees the whole business). A part is

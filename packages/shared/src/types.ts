@@ -1381,6 +1381,8 @@ export type PayState =
 
 /** One change to a posted sales invoice: edited (with the totals before and after) or cancelled. */
 export interface InvoiceRevision {
+  /** The customer / supplier, to open their statement. */
+  partyId?: string | null;
   id: string;
   documentId: string;
   number: string;
@@ -1552,6 +1554,8 @@ export interface InventoryList {
 
 /** One row of the item card: a physical stock change with the balance after it. */
 export interface StockMovement {
+  /** The customer / supplier, to open their statement. */
+  partyId?: string | null;
   id: string;
   date: string;
   type: StockMovementType;
@@ -1579,6 +1583,8 @@ export interface StockMovement {
 /** Item card (كارت الصنف) for one item over a period. */
 /** One invoice line on an item's card (owner, 2026-10-02: the item's whole story). Per base unit. */
 export interface ItemLifeLine {
+  /** The customer / supplier, to open their statement. */
+  partyId?: string | null;
   documentId: string;
   number: string;
   type: DocumentType;
@@ -2209,6 +2215,8 @@ export interface DashboardData {
 
 /** One of the dashboard's latest documents, with where it belongs (owner, 2026-11-11). */
 export interface DashDoc {
+  /** The customer / supplier, to open their statement. */
+  partyId?: string | null;
   id: string;
   number: string;
   type: string;

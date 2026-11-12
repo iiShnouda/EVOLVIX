@@ -214,6 +214,103 @@ eq(
   [7, 5600, null],
 );
 check('a sold item is not dead', !mv.deadStock.some((x) => x.productId === fast.id));
+console.log('== every statement line says what it is (owner, 2026-11-12)');
+const today = companyToday();
+const cs = ok(
+  'customer statement',
+  await owner.get(`/ledger/parties/${cust.id}/statement?from=${today}&to=${today}`),
+);
+const inv = cs.lines.find((l) => l.documentId === sale.id && l.debit > 0);
+eq(
+  'invoice line: number, kind, document',
+  [inv?.documentNumber, inv?.documentKind, inv?.sourceType],
+  [sale.number, 'SALES_INVOICE', 'SALES_INVOICE'],
+);
+check('invoice line: entry number', inv?.entrySerial > 0, inv?.entrySerial);
+check('invoice line: branch and warehouse', !!inv?.branchName && inv?.warehouseName === wh.name, [
+  inv?.branchName,
+  inv?.warehouseName,
+]);
+check('invoice line: from / to and who made it', !!inv?.counterpart && !!inv?.createdByName, [
+  inv?.counterpart,
+  inv?.createdByName,
+]);
+check(
+  'invoice line: rep and department fields are sent',
+  'repName' in (inv ?? {}) && 'departmentName' in (inv ?? {}),
+);
+eq('invoice line: the customer', [inv?.partyId, inv?.partyTypes], [cust.id, ['CUSTOMER']]);
+const paid = cs.lines.find((l) => l.documentId === sale.id && l.credit > 0);
+check(
+  'paid on the spot: from / to is the box',
+  (paid?.counterpart ?? '').includes(`SBox ${tag}`),
+  paid?.counterpart,
+);
+check(
+  'closing = opening + debit − credit',
+  cs.closing === cs.opening + cs.totalDebit - cs.totalCredit,
+);
+
+const custAccount = (await owner.get('/ledger/accounts')).data.find((a) => a.partyId === cust.id);
+const as = ok(
+  'the same account from the chart',
+  await owner.get(`/ledger/accounts/${custAccount.id}/statement?from=${today}&to=${today}`),
+);
+const asInv = as.lines.find((l) => l.documentId === sale.id && l.debit > 0);
+eq(
+  'chart statement line: document, kind, customer, warehouse',
+  [asInv?.documentNumber, asInv?.documentKind, asInv?.partyId, asInv?.warehouseName],
+  [sale.number, 'SALES_INVOICE', cust.id, wh.name],
+);
+
+const bx = ok('box statement', await owner.get(`/money-accounts/${box.id}/movements`));
+const got = bx.movements.find((m) => m.documentId === sale.id);
+eq(
+  'box line: document kind, customer, warehouse',
+  [got?.documentKind, got?.partyId, got?.partyTypes, got?.warehouseName],
+  ['SALES_INVOICE', cust.id, ['CUSTOMER'], wh.name],
+);
+check('box line: entry number', got?.entrySerial > 0, got?.entrySerial);
+const rent = bx.movements.find((m) => m.documentKind === 'EXPENSE');
+check(
+  'box expense line: entry number, no customer',
+  rent?.entrySerial > 0 && rent?.partyId == null,
+  [rent?.entrySerial, rent?.partyId],
+);
+
+const ws = ok(
+  'warehouse statement',
+  await owner.get(`/inventory/warehouses/${wh.id}/statement?from=${today}&to=${today}`),
+);
+const out = ws.lines.find((l) => l.documentId === sale.id);
+eq(
+  'warehouse line: document kind and customer',
+  [out?.documentKind, out?.partyId, out?.partyTypes],
+  ['SALES_INVOICE', cust.id, ['CUSTOMER']],
+);
+check('warehouse line: value for whoever sees costs', out?.value != null, out?.value);
+
+// What depends on a permission still does.
+eq(
+  'sales staff: no customer statement',
+  (await karim.get(`/ledger/parties/${cust.id}/statement`)).status,
+  403,
+);
+eq(
+  'store staff: no box statement',
+  (await sara.get(`/money-accounts/${box.id}/movements`)).status,
+  403,
+);
+const monaCs = await mona.get(`/ledger/parties/${cust.id}/statement?from=${today}&to=${today}`);
+if (monaCs.status === 200) {
+  const l = monaCs.data.lines.find((x) => x.documentId === sale.id && x.debit > 0);
+  check(
+    'accountant: the line carries no cost account',
+    !/تكلفة|Cost of goods/i.test(l?.counterpart ?? ''),
+    l?.counterpart,
+  );
+} else eq('accountant: customer statement by permission', monaCs.status, 403);
+
 eq('signed out', (await fetch(`${BASE}/analytics/monthly`)).status, 401);
 
 process.exit(summary('statements') ? 1 : 0);
