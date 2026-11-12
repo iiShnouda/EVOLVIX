@@ -12,10 +12,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Spinner } from './ui';
 import { ReportActions } from './ReportActions';
 import { ItemLink } from './ItemLink';
+import { DocLink, PartyLink } from './Links';
 import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useReportTools } from '../lib/report';
+import { useHiddenColumns } from '../lib/queries';
 import { TableColumns } from './TableColumns';
 
 const field =
@@ -60,7 +62,26 @@ interface WarehouseStatement {
     balance: number;
     note: string | null;
     counterpart: string | null;
+    documentKind?: string | null;
+    partyId?: string | null;
+    partyTypes?: string[] | null;
   }[];
+}
+
+type Cell = string | number | { money: number } | null;
+
+/**
+ * The columns a statement's table shows, in the person's order (TableColumns keeps both by the
+ * header's text): Excel carries the same (owner, 2026-11-12).
+ */
+function useShownColumns<C extends { label: string }>(id: string, cols: C[]): C[] {
+  const [hidden] = useHiddenColumns(id);
+  const [order] = useHiddenColumns(`order:${id}`);
+  const known = order.filter((h) => cols.some((c) => c.label === h));
+  return [
+    ...known.map((h) => cols.find((c) => c.label === h)!),
+    ...cols.filter((c) => !known.includes(c.label)),
+  ].filter((c) => !hidden.includes(c.label));
 }
 
 /** From–to days, the print button, and the body below; shared by the statements here. */
@@ -71,6 +92,7 @@ function Period({
   onFrom,
   onTo,
   canPrint,
+  onExcel,
   children,
 }: {
   title: string;
@@ -79,6 +101,8 @@ function Period({
   onFrom: (v: string) => void;
   onTo: (v: string) => void;
   canPrint: boolean;
+  /** Saves the statement as Excel (header, rows and the totals line). */
+  onExcel?: () => { header: string[]; rows: Cell[][]; total?: Cell[] } | null | undefined;
   children: ReactNode;
 }) {
   const { t, locale } = useT();
@@ -118,10 +142,95 @@ function Period({
                 `${formatDate(from, locale)} – ${formatDate(to, locale)}`,
               )
             }
+            onExcel={
+              onExcel &&
+              (() => {
+                const x = onExcel();
+                if (x)
+                  report.excel(
+                    title,
+                    `${formatDate(from, locale)} – ${formatDate(to, locale)}`,
+                    x.header,
+                    x.rows as never,
+                    x.total as never,
+                  );
+              })
+            }
           />
         </div>
       </div>
       <div ref={paper}>{children}</div>
+    </div>
+  );
+}
+
+interface Col<L> {
+  label: string;
+  cell: (l: L, i: number) => ReactNode;
+  text: (l: L, i: number) => Cell;
+  className?: string;
+  num?: boolean;
+}
+
+/** A statement's lines in columns that can be hidden and moved; Excel takes the shown ones. */
+function StatementTable<L>({
+  id,
+  cols,
+  lines,
+  minWidth,
+  total,
+}: {
+  id: string;
+  cols: Col<L>[];
+  lines: L[];
+  minWidth?: string;
+  /** The totals line, by column label. */
+  total?: Record<string, ReactNode>;
+}) {
+  const { t } = useT();
+  return (
+    <div className="overflow-x-auto">
+      <TableColumns id={id}>
+        <table className={`w-full text-sm ${minWidth ?? ''}`}>
+          <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+            <tr>
+              {cols.map((c) => (
+                <th
+                  key={c.label}
+                  className={`p-2 font-medium ${c.num ? 'text-end' : 'text-start'}`}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {lines.map((l, i) => (
+              <tr key={i} className="hover:bg-surface-2/60">
+                {cols.map((c) => (
+                  <td
+                    key={c.label}
+                    className={`p-2 align-top ${c.num ? 'whitespace-nowrap text-end tnum' : ''} ${c.className ?? ''}`}
+                  >
+                    {c.cell(l, i)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+          {total && (
+            <tfoot className="bg-surface-2 font-semibold">
+              <tr>
+                {cols.map((c, i) => (
+                  <td key={c.label} className={`p-2 ${c.num ? 'text-end tnum' : ''}`}>
+                    {i === 0 && !(c.label in total) ? t('ledger.total') : total[c.label]}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </TableColumns>
     </div>
   );
 }
@@ -138,8 +247,83 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
   });
   const d = q.data;
   const money = (v: number) => formatMoney(v, d?.currency ?? 'EGP', locale);
+  type Line = ExpenseStatement['lines'][number];
+  // Every expense in columns (owner, 2026-11-10): when, what, from which box, who.
+  const cols: Col<Line>[] = [
+    { label: t('ledger.entryNumber'), cell: (_l, i) => i + 1, text: (_l, i) => i + 1 },
+    {
+      label: t('common.date'),
+      cell: (l) => formatDate(l.date, locale),
+      text: (l) => formatDate(l.date, locale),
+      className: 'whitespace-nowrap tnum',
+    },
+    {
+      label: t('money.time'),
+      cell: (l) => formatTime(l.date, locale),
+      text: (l) => formatTime(l.date, locale),
+      className: 'whitespace-nowrap tnum',
+    },
+    {
+      label: t('money.document'),
+      cell: (l) => <DocLink id={l.id} kind="EXPENSE" number={l.number} />,
+      text: (l) => l.number,
+      className: 'whitespace-nowrap tnum',
+    },
+    { label: t('statement.expenses'), cell: (l) => l.category, text: (l) => l.category ?? '' },
+    {
+      label: t('money.counterpart'),
+      cell: (l) => l.accountName ?? '',
+      text: (l) => l.accountName ?? '',
+    },
+    {
+      label: t('ledger.branchCol'),
+      cell: (l) => l.branchName ?? '',
+      text: (l) => l.branchName ?? '',
+      className: 'text-muted',
+    },
+    {
+      label: t('ledger.noteCol'),
+      cell: (l) => <span className="line-clamp-2">{l.notes ?? ''}</span>,
+      text: (l) => l.notes ?? '',
+      className: 'text-muted',
+    },
+    {
+      label: t('money.createdBy'),
+      cell: (l) => l.createdByName ?? '',
+      text: (l) => l.createdByName ?? '',
+      className: 'text-muted',
+    },
+    {
+      label: t('common.amount'),
+      cell: (l) => money(l.amount),
+      text: (l) => ({ money: l.amount }),
+      num: true,
+      className: 'font-semibold text-destructive',
+    },
+  ];
+  const shown = useShownColumns('statement.expense', cols);
   return (
-    <Period title={title} from={from} to={to} onFrom={setFrom} onTo={setTo} canPrint={!!d}>
+    <Period
+      title={title}
+      from={from}
+      to={to}
+      onFrom={setFrom}
+      onTo={setTo}
+      canPrint={!!d}
+      onExcel={() =>
+        d && {
+          header: shown.map((c) => c.label),
+          rows: d.lines.map((l, i) => shown.map((c) => c.text(l, i))),
+          total: shown.map((c, i) =>
+            c.label === t('common.amount')
+              ? { money: d.total }
+              : i === 0
+                ? t('ledger.total')
+                : '',
+          ),
+        }
+      }
+    >
       {q.error ? (
         <p className="text-sm text-destructive">{errorText(t, q.error)}</p>
       ) : !d ? (
@@ -155,63 +339,13 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
           {d.lines.length === 0 ? (
             <p className="py-4 text-sm text-muted">{t('money.noMovements')}</p>
           ) : (
-            // Every expense in columns (owner, 2026-11-10): when, what, from which box, who.
-            <div className="overflow-x-auto">
-              <TableColumns id="statement.expense">
-                <table className="w-full min-w-[900px] text-sm">
-                  <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                    <tr>
-                      <th className="p-2 text-start font-medium">{t('ledger.entryNumber')}</th>
-                      <th className="p-2 text-start font-medium">{t('common.date')}</th>
-                      <th className="p-2 text-start font-medium">{t('money.time')}</th>
-                      <th className="p-2 text-start font-medium">{t('money.document')}</th>
-                      <th className="p-2 text-start font-medium">{t('statement.expenses')}</th>
-                      <th className="p-2 text-start font-medium">{t('money.counterpart')}</th>
-                      <th className="p-2 text-start font-medium">{t('ledger.branchCol')}</th>
-                      <th className="p-2 text-start font-medium">{t('ledger.noteCol')}</th>
-                      <th className="p-2 text-start font-medium">{t('money.createdBy')}</th>
-                      <th className="p-2 text-end font-medium">{t('common.amount')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--c-line)]">
-                    {d.lines.map((l, i) => (
-                      <tr key={l.id} className="hover:bg-surface-2/60">
-                        <td className="p-2 tnum">{i + 1}</td>
-                        <td className="whitespace-nowrap p-2 tnum">{formatDate(l.date, locale)}</td>
-                        <td className="whitespace-nowrap p-2 tnum">{formatTime(l.date, locale)}</td>
-                        <td className="whitespace-nowrap p-2 tnum">
-                          <bdi>{l.number}</bdi>
-                        </td>
-                        <td className="p-2">{l.category}</td>
-                        <td className="p-2">{l.accountName ?? ''}</td>
-                        <td className="p-2 text-muted">{l.branchName ?? ''}</td>
-                        <td className="p-2 text-muted">
-                          <span className="line-clamp-2">{l.notes ?? ''}</span>
-                        </td>
-                        <td className="p-2 text-muted">{l.createdByName ?? ''}</td>
-                        <td className="whitespace-nowrap p-2 text-end font-semibold tnum text-destructive">
-                          {money(l.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-surface-2 font-semibold">
-                    <tr>
-                      <td className="p-2">{t('ledger.total')}</td>
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2" />
-                      <td className="p-2 text-end tnum">{money(d.total)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </TableColumns>
-            </div>
+            <StatementTable
+              id="statement.expense"
+              cols={cols}
+              lines={d.lines}
+              minWidth="min-w-[900px]"
+              total={{ [t('common.amount')]: money(d.total) }}
+            />
           )}
         </>
       )}
@@ -222,6 +356,7 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
 /**
  * A warehouse's statement (owner, 2026-10-19): every movement in or out between two days with the
  * pieces it holds after each; values only for whoever may see costs (the server sends none else).
+ * The document opens, the customer or supplier opens their statement, the item its card.
  */
 export function WarehouseStatementBody({ id, title }: { id: string; title: string }) {
   const { t, locale } = useT();
@@ -235,8 +370,101 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
   const d = q.data;
   const money = (v: number) => formatMoney(v, d?.currency ?? 'EGP', locale);
   const n = (v: number) => formatNumber(v, locale);
+  type Line = WarehouseStatement['lines'][number];
+  const side = (l: Line) =>
+    l.counterpart ? `${t(l.quantity > 0 ? 'money.from' : 'money.to')} ${l.counterpart}` : '';
+  const cols: Col<Line>[] = [
+    {
+      label: t('common.date'),
+      cell: (l) => formatDateTime(l.date, locale),
+      text: (l) => formatDateTime(l.date, locale),
+      className: 'whitespace-nowrap text-xs text-muted',
+    },
+    {
+      label: t('statement.movement'),
+      cell: (l) => t(`movement.${l.type}` as TranslationKey),
+      text: (l) => t(`movement.${l.type}` as TranslationKey),
+      className: 'whitespace-nowrap text-xs',
+    },
+    {
+      label: t('ledger.docNumber'),
+      cell: (l) =>
+        l.reference ? <DocLink id={l.documentId} kind={l.documentKind} number={l.reference} /> : '',
+      text: (l) => l.reference ?? '',
+      className: 'whitespace-nowrap text-xs tnum',
+    },
+    {
+      label: t('statement.fromTo'),
+      cell: (l) =>
+        l.counterpart && l.partyId ? (
+          <>
+            {t(l.quantity > 0 ? 'money.from' : 'money.to')}{' '}
+            <PartyLink id={l.partyId} name={l.counterpart} types={l.partyTypes} />
+          </>
+        ) : (
+          side(l)
+        ),
+      text: side,
+      className: 'text-xs',
+    },
+    {
+      label: t('inventory.itemName'),
+      cell: (l) => <ItemLink id={l.productId} name={l.name} code={l.code} />,
+      text: (l) => `${l.code} ${l.name}`,
+    },
+    {
+      label: t('ledger.noteCol'),
+      cell: (l) => <span className="line-clamp-2">{l.note ?? ''}</span>,
+      text: (l) => l.note ?? '',
+      className: 'text-xs text-muted',
+    },
+    {
+      label: t('money.in'),
+      cell: (l) => (l.quantity > 0 ? n(l.quantity) : ''),
+      text: (l) => (l.quantity > 0 ? l.quantity : ''),
+      num: true,
+      className: 'text-positive',
+    },
+    {
+      label: t('money.out'),
+      cell: (l) => (l.quantity < 0 ? n(-l.quantity) : ''),
+      text: (l) => (l.quantity < 0 ? -l.quantity : ''),
+      num: true,
+      className: 'text-destructive',
+    },
+    ...(d?.closingValue != null
+      ? [
+          {
+            label: t('statement.value'),
+            cell: (l: Line) => money(Math.abs(l.value ?? 0)),
+            text: (l: Line) => ({ money: Math.abs(l.value ?? 0) }),
+            num: true,
+          },
+        ]
+      : []),
+    {
+      label: t('statement.itemBalance'),
+      cell: (l) => n(l.balance),
+      text: (l) => l.balance,
+      num: true,
+    },
+  ];
+  const shown = useShownColumns('statement.warehouse', cols);
   return (
-    <Period title={title} from={from} to={to} onFrom={setFrom} onTo={setTo} canPrint={!!d}>
+    <Period
+      title={title}
+      from={from}
+      to={to}
+      onFrom={setFrom}
+      onTo={setTo}
+      canPrint={!!d}
+      onExcel={() =>
+        d && {
+          header: shown.map((c) => c.label),
+          rows: d.lines.map((l, i) => shown.map((c) => c.text(l, i))),
+        }
+      }
+    >
       {q.error ? (
         <p className="text-sm text-destructive">{errorText(t, q.error)}</p>
       ) : !d ? (
@@ -264,61 +492,12 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
           {d.lines.length === 0 ? (
             <p className="py-4 text-sm text-muted">{t('money.noMovements')}</p>
           ) : (
-            <div className="overflow-x-auto">
-              <TableColumns id="statement.warehouse">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-line text-xs text-muted">
-                    <tr>
-                      <th className="p-2 text-start font-medium">{t('common.date')}</th>
-                      <th className="p-2 text-start font-medium">{t('statement.movement')}</th>
-                      <th className="p-2 text-start font-medium">{t('statement.fromTo')}</th>
-                      <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
-                      <th className="p-2 text-end font-medium">{t('money.in')}</th>
-                      <th className="p-2 text-end font-medium">{t('money.out')}</th>
-                      {d.closingValue != null && (
-                        <th className="p-2 text-end font-medium">{t('statement.value')}</th>
-                      )}
-                      <th className="p-2 text-end font-medium">{t('statement.itemBalance')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--c-line)]">
-                    {d.lines.map((l, i) => (
-                      <tr key={i}>
-                        <td className="whitespace-nowrap p-2 text-xs text-muted">
-                          {formatDateTime(l.date, locale)}
-                        </td>
-                        <td className="whitespace-nowrap p-2 text-xs">
-                          {t(`movement.${l.type}` as TranslationKey)}
-                          {l.reference && (
-                            <span className="block text-muted tnum" dir="ltr">
-                              {l.reference}
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2 text-xs">
-                          {l.counterpart
-                            ? `${t(l.quantity > 0 ? 'money.from' : 'money.to')} ${l.counterpart}`
-                            : (l.note ?? '')}
-                        </td>
-                        <td className="p-2">
-                          <ItemLink id={l.productId} name={l.name} code={l.code} />
-                        </td>
-                        <td className="p-2 text-end tnum text-positive">
-                          {l.quantity > 0 ? n(l.quantity) : ''}
-                        </td>
-                        <td className="p-2 text-end tnum text-destructive">
-                          {l.quantity < 0 ? n(-l.quantity) : ''}
-                        </td>
-                        {d.closingValue != null && (
-                          <td className="p-2 text-end tnum">{money(Math.abs(l.value ?? 0))}</td>
-                        )}
-                        <td className="p-2 text-end tnum">{n(l.balance)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableColumns>
-            </div>
+            <StatementTable
+              id="statement.warehouse"
+              cols={cols}
+              lines={d.lines}
+              minWidth="min-w-[900px]"
+            />
           )}
         </>
       )}

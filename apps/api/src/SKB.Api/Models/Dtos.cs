@@ -1398,6 +1398,7 @@ public record ExpenseStatementDto(string Name, string Currency, long Total, Expe
 
 /// <summary>One movement of a warehouse's statement; Value (minor units) only for people who may see costs.</summary>
 public record WarehouseStatementLineDto(string Date, string Type, string? Reference, string? DocumentId, string ProductId,
-    string Code, string Name, int Quantity, long? Value, int Balance, string? Note, string? Counterpart);
+    string Code, string Name, int Quantity, long? Value, int Balance, string? Note, string? Counterpart,
+    string? DocumentKind = null, string? PartyId = null, string[]? PartyTypes = null);
 public record WarehouseStatementDto(string Name, string Currency, int Opening, long? OpeningValue, int In, int Out,
     int Closing, long? ClosingValue, WarehouseStatementLineDto[] Lines);

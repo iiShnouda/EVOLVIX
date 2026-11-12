@@ -623,9 +623,11 @@ public sealed class InventoryController : ControllerBase
         // Where each movement came from or went to (owner, 2026-10-19): the customer or supplier on
         // its invoice or return, or the other warehouse on a transfer.
         var docIds = rows.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
-        var parties = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
-            .Select(d => new { d.Id, Name = d.Party != null ? d.Party.Name : null })
-            .ToDictionaryAsync(d => d.Id, d => d.Name);
+        var docs = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
+            .Select(d => new { d.Id, d.Type, d.PartyId, Name = d.Party != null ? d.Party.Name : null,
+                Types = d.Party != null ? d.Party.Types : null })
+            .ToDictionaryAsync(d => d.Id);
+        var parties = docs.ToDictionary(d => d.Key, d => d.Value.Name);
         var transfers = await _db.StockTransfers.AsNoTracking().Where(t => docIds.Contains(t.Id))
             .Include(t => t.FromWarehouse).Include(t => t.ToWarehouse).ToDictionaryAsync(t => t.Id);
         string? Counterpart(StockMovement m)
@@ -646,7 +648,13 @@ public sealed class InventoryController : ControllerBase
             return new WarehouseStatementLineDto(m.CreatedAt.ToString("O"), m.Type.ToString(), m.Reference,
                 m.DocumentId?.ToString(), m.ProductId.ToString(), m.Product?.Sku ?? "",
                 m.Product is null ? "" : Loc.Name(m.Product), m.Quantity,
-                seeCosts ? m.Quantity * m.UnitCost : null, balance, m.Note, Counterpart(m));
+                seeCosts ? m.Quantity * m.UnitCost : null, balance, m.Note, Counterpart(m),
+                // What the document is and whose (to open it and the party's statement).
+                m.DocumentId is not Guid id ? null
+                    : docs.TryGetValue(id, out var d) ? d.Type.ToString()
+                    : transfers.ContainsKey(id) ? "STOCK_TRANSFER" : null,
+                m.DocumentId is Guid pd && docs.TryGetValue(pd, out var pdoc) && pdoc.Name != null ? pdoc.PartyId.ToString() : null,
+                m.DocumentId is Guid td && docs.TryGetValue(td, out var tdoc) ? tdoc.Types?.ToArray() : null);
         }).ToArray();
         var name = Loc.Name(await _db.Warehouses.AsNoTracking().FirstAsync(w => w.Id == wid));
         return Ok(new WarehouseStatementDto(name, await CurrencyAsync(), opening, seeCosts ? openingValue : null,
