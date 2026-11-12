@@ -19,7 +19,7 @@ import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { useT, joinList } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
-import { CodeName, codeName } from '../components/CodeName';
+import { codeName } from '../components/CodeName';
 import { PartyLink } from '../components/PartyContact';
 import {
   useCreateSettlement,
@@ -689,7 +689,7 @@ function NewShipmentSheet({ onClose }: { onClose: () => void }) {
                     className="rounded-[var(--radius-app)] border border-line p-2"
                   >
                     <p className="mb-1 text-sm font-medium">
-                      <CodeName code={g[0]!.partyCode} name={g[0]!.partyName} />
+                      <PartyLink id={g[0]!.partyId} code={g[0]!.partyCode} name={g[0]!.partyName} />
                     </p>
                     {g.map((r) => {
                       const other = !!customer && customer !== r.partyId;

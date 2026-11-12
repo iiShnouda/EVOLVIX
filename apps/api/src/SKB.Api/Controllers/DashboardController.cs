@@ -110,7 +110,7 @@ public sealed class DashboardController : ControllerBase
                     .OrderBy(n => n).ToArray(),
                 d.Department is null ? null : Loc.Name(d.Department), d.Party?.Name ?? "", d.Party?.Code,
                 d.Staff?.FullName ?? "", d.Rep?.FullName, d.IssueDate.ToString("o"), d.CreatedAt.ToString("o"),
-                d.GrandTotal, d.Currency)).ToArray();
+                d.GrandTotal, d.Currency, d.Party is null ? null : d.PartyId.ToString())).ToArray();
         }
 
         // Each figure only for its own permission.

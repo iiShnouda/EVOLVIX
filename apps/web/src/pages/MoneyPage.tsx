@@ -37,6 +37,7 @@ import { TableColumns } from '../components/TableColumns';
 import { DocumentPreview } from '../components/DocumentPreview';
 import { useWorkBranch } from '../stores/workBranch';
 import { codeName } from '../components/CodeName';
+import { PartyLink } from '../components/Links';
 import {
   useAccountStatement,
   useCancelVoucher,
@@ -53,6 +54,7 @@ import {
   useUpdateMoneyAccount,
   useDeleteMoneyAccount,
   useDocument,
+  useHiddenColumns,
   useVouchers,
   useWarehouses,
   type VoucherKind,
@@ -125,6 +127,18 @@ export function MoneyPage() {
     Tab | undefined;
   const form = params.get('new') as NewForm | null;
   const presetParty = params.get('party') ?? '';
+  // `?voucher=<id>` (a receipt's or payment's number elsewhere) opens that voucher.
+  const linkedVoucher = params.get('voucher');
+  const voucher = useQuery({
+    queryKey: ['vouchers', 'detail', linkedVoucher],
+    queryFn: () => api.get<Voucher>(`/vouchers/${linkedVoucher}`),
+    enabled: !!linkedVoucher,
+  });
+  const closeVoucher = () => {
+    const p = new URLSearchParams(params);
+    p.delete('voucher');
+    setParams(p, { replace: true });
+  };
 
   const open = (next: NewForm | null) => {
     const p = new URLSearchParams(params);
@@ -205,6 +219,7 @@ export function MoneyPage() {
         <VoucherFormSheet kind={form} presetParty={presetParty} onClose={() => open(null)} />
       )}
       {form === 'transfer' && <TransferSheet onClose={() => open(null)} />}
+      {linkedVoucher && voucher.data && <VoucherSheet v={voucher.data} onClose={closeVoucher} />}
     </div>
   );
 }
@@ -786,10 +801,14 @@ type MoveCol =
   | 'seq'
   | 'date'
   | 'time'
+  | 'entry'
   | 'kind'
   | 'doc'
   | 'side'
   | 'branch'
+  | 'department'
+  | 'warehouse'
+  | 'rep'
   | 'method'
   | 'ref'
   | 'notes'
@@ -801,10 +820,14 @@ const MOVE_COLS: { key: MoveCol; label: TranslationKey; num?: boolean }[] = [
   { key: 'seq', label: 'ledger.entryNumber' },
   { key: 'date', label: 'common.date' },
   { key: 'time', label: 'money.time' },
-  { key: 'kind', label: 'money.docKind' },
+  { key: 'entry', label: 'ledger.entryCol' },
+  { key: 'kind', label: 'ledger.kindCol' },
   { key: 'doc', label: 'money.document' },
   { key: 'side', label: 'money.counterpart' },
   { key: 'branch', label: 'ledger.branchCol' },
+  { key: 'department', label: 'invoice.department' },
+  { key: 'warehouse', label: 'warehouse.label' },
+  { key: 'rep', label: 'invoice.rep' },
   { key: 'method', label: 'money.method' },
   { key: 'ref', label: 'money.methodRef' },
   { key: 'notes', label: 'ledger.noteCol' },
@@ -852,6 +875,8 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
     enabled: !!voucherId,
   });
   const earliest = data?.earliest ?? earliestOwn;
+  const [hiddenCols] = useHiddenColumns('statement.money');
+  const [savedOrder] = useHiddenColumns('order:statement.money');
   const heading = `${t('money.statement')} — ${a.name}`;
   const period = `${formatDate(data?.from ?? from, locale)} – ${formatDate(data?.to ?? to, locale)}`;
 
@@ -909,7 +934,19 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
       case 'doc':
         return docLink(m);
       case 'side':
-        return <bdi>{side(m)}</bdi>;
+        return m.partyId ? (
+          <PartyLink id={m.partyId} name={side(m)} types={m.partyTypes} />
+        ) : (
+          <bdi>{side(m)}</bdi>
+        );
+      case 'entry':
+        return m.entrySerial ?? '';
+      case 'department':
+        return m.departmentName ?? '';
+      case 'warehouse':
+        return m.warehouseName ?? '';
+      case 'rep':
+        return m.repName ?? '';
       case 'branch':
         return m.branchName ?? '';
       case 'method':
@@ -945,6 +982,14 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
           return m.reference ?? '';
         case 'side':
           return side(m);
+        case 'entry':
+          return m.entrySerial ?? '';
+        case 'department':
+          return m.departmentName ?? '';
+        case 'warehouse':
+          return m.warehouseName ?? '';
+        case 'rep':
+          return m.repName ?? '';
         case 'branch':
           return m.branchName ?? '';
         case 'method':
@@ -963,21 +1008,28 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
           return { money: m.balanceAfter };
       }
     };
+    // Excel carries the columns shown, in their order (owner, 2026-11-12).
+    const labelOf = (c: (typeof MOVE_COLS)[number]) => t(c.label);
+    const known = savedOrder.filter((h) => MOVE_COLS.some((c) => labelOf(c) === h));
+    const cols = [
+      ...known.map((h) => MOVE_COLS.find((c) => labelOf(c) === h)!),
+      ...MOVE_COLS.filter((c) => !known.includes(labelOf(c))),
+    ].filter((c) => !hiddenCols.includes(labelOf(c)));
     report.excel(
       heading,
       period,
-      MOVE_COLS.map((c) => t(c.label)),
+      cols.map((c) => t(c.label)),
       [
-        MOVE_COLS.map((c) =>
+        cols.map((c) =>
           c.key === 'kind'
             ? t('money.openingBal')
             : c.key === 'balance'
               ? { money: data.opening }
               : '',
         ),
-        ...data.movements.map((m, i) => MOVE_COLS.map((c) => text(c.key, m, i))),
+        ...data.movements.map((m, i) => cols.map((c) => text(c.key, m, i))),
       ] as never,
-      MOVE_COLS.map((c, i) =>
+      cols.map((c, i) =>
         i === 0
           ? t('ledger.total')
           : c.key === 'in'
@@ -1050,7 +1102,8 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
               </div>
             ))}
           </dl>
-          {deviceClass !== 'desktop' ? (
+          {/* Cards on a phone only; anything wider gets the columns (owner, 2026-11-12). */}
+          {deviceClass === 'phone' ? (
             <div className="mt-3 space-y-2">
               <div className="flex items-center justify-between rounded-[var(--radius-app)] bg-surface-2 px-3 py-2 text-sm">
                 <span>{t('money.openingBal')}</span>
@@ -1104,7 +1157,7 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
             <div className="mt-3 rounded-[var(--radius-app)] border border-line">
               <TableColumns id="statement.money" className="pt-2">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1100px] text-sm">
+                  <table className="w-full min-w-[1300px] text-sm">
                     <thead className="bg-surface-2 text-xs text-muted">
                       <tr>
                         {MOVE_COLS.map((c) => (
@@ -1141,7 +1194,16 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
                                   ? `whitespace-nowrap text-end tnum ${c.key === 'in' ? 'text-positive' : c.key === 'out' ? 'text-destructive' : ''}`
                                   : ['seq', 'date', 'time', 'doc'].includes(c.key)
                                     ? 'whitespace-nowrap tnum'
-                                    : ['branch', 'method', 'ref', 'notes', 'by'].includes(c.key)
+                                    : [
+                                          'branch',
+                                          'department',
+                                          'warehouse',
+                                          'rep',
+                                          'method',
+                                          'ref',
+                                          'notes',
+                                          'by',
+                                        ].includes(c.key)
                                       ? 'text-muted'
                                       : ''
                               }`}

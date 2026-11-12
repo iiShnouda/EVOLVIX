@@ -247,7 +247,7 @@ function AccountDocuments({ a, onOpen }: { a: CustomerAccount; onOpen: (id: stri
       <div className="rounded-[var(--radius-app)] border border-line">
         {a.documents.length === 0 ? (
           <p className="p-3 text-sm text-muted">{t('common.empty')}</p>
-        ) : deviceClass !== 'desktop' ? (
+        ) : deviceClass === 'phone' ? (
           <div className="space-y-2 p-2">
             {a.documents.map((d) => {
               const isReturn = d.type === 'SALES_RETURN';

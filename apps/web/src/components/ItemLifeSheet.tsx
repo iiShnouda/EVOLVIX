@@ -14,7 +14,7 @@ import { TableColumns } from './TableColumns';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { useItemLife } from '../lib/queries';
-import { CodeName } from './CodeName';
+import { DocLink, PartyLink } from './Links';
 
 type Tab = 'summary' | 'purchases' | 'sales' | 'returns' | 'prices';
 
@@ -221,7 +221,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
               <tr key={`${r.documentId}-${i}`} className="hover:bg-surface-2">
                 <td className="px-2 py-1.5 tnum">{formatDateTime(r.date, locale)}</td>
                 <td className="px-2 py-1.5 tnum">
-                  {r.number}
+                  <DocLink id={r.documentId} kind={r.type} number={r.number} />
                   {r.edited && (
                     <span className="ms-1 text-xs text-warning">({t('status.EDITED')})</span>
                   )}
@@ -232,7 +232,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
                   </td>
                 )}
                 <td className="px-2 py-1.5">
-                  <CodeName code={r.partyCode} name={r.partyName ?? ''} />
+                  <PartyLink id={r.partyId} code={r.partyCode} name={r.partyName ?? ''} />
                 </td>
                 <td className="px-2 py-1.5 text-end tnum">
                   {formatNumber(r.quantity, locale)}
@@ -302,9 +302,16 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
                       <span className="w-40 shrink-0 text-muted tnum">
                         {formatDateTime(r.date, locale)}
                       </span>
-                      <span className="w-32 shrink-0 tnum">{r.number}</span>
+                      <span className="w-32 shrink-0 tnum">
+                        <DocLink id={r.documentId} kind={r.type} number={r.number} />
+                      </span>
                       <span className="min-w-0 flex-1">
-                        <CodeName code={r.partyCode} name={r.partyName ?? ''} truncate />
+                        <PartyLink
+                          id={r.partyId}
+                          code={r.partyCode}
+                          name={r.partyName ?? ''}
+                          truncate
+                        />
                       </span>
                       <span className="font-semibold tnum">{money(r.net)}</span>
                       <span

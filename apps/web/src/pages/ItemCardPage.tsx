@@ -22,7 +22,7 @@ import { useDeviceInfo } from '../lib/device';
 import { ApiError } from '../lib/api';
 import { useItemCard, useStocktake } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
-import { CodeName } from '../components/CodeName';
+import { PartyLink } from '../components/PartyContact';
 import { errorText } from '../lib/errors';
 
 const field =
@@ -701,7 +701,7 @@ function Whose({ m }: { m: StockMovement }) {
   if (m.partyName)
     return (
       <span className="block text-xs text-muted">
-        <CodeName code={m.partyCode} name={m.partyName} />
+        <PartyLink id={m.partyId} code={m.partyCode} name={m.partyName} />
       </span>
     );
   if (m.otherPlace)

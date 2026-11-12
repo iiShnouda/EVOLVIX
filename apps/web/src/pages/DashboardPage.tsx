@@ -34,6 +34,7 @@ import { useDeviceInfo } from '../lib/device';
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
 import { CodeName } from '../components/CodeName';
+import { PartyLink } from '../components/PartyContact';
 import { TableColumns } from '../components/TableColumns';
 
 const KPI_ICON: Record<string, string> = {
@@ -922,7 +923,12 @@ function HistoryCard({
                       </span>
                     </td>
                     <td className="max-w-[12rem] px-3 py-2.5 font-medium">
-                      <CodeName code={doc.partyCode} name={doc.partyName} truncate />
+                      <PartyLink
+                        id={doc.partyId}
+                        code={doc.partyCode}
+                        name={doc.partyName}
+                        truncate
+                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5">{doc.branchName}</td>
                     <td className="max-w-[10rem] px-3 py-2.5">

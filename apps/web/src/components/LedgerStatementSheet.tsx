@@ -27,6 +27,7 @@ import { useReportTools } from '../lib/report';
 import { ReportActions } from './ReportActions';
 import { TableColumns } from './TableColumns';
 import { Pager } from './Pager';
+import { DocLink, PartyLink } from './Links';
 
 const small =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -136,130 +137,63 @@ export function StatementBody({
   const period = `${formatDate(from, locale)} – ${formatDate(to, locale)}`;
   const side = (v: number) => (v > 0 ? t('ledger.drSide') : v < 0 ? t('ledger.crSide') : '');
 
+  const columns = useStatementColumns(data, isParty);
+
+  // Excel carries the columns shown, in their order (owner, 2026-11-12).
   function excel() {
     if (!data) return;
-    if (isParty) {
-      const cols: [string, (l: LedgerLine, i: number) => unknown][] = [
-        [t('ledger.entryNumber'), (_l, i) => i + 1],
-        [t('ledger.date'), (l) => formatDate(l.date, locale)],
-        [t('ledger.kindCol'), (l) => [lineKind(t, l), l.memo].filter(Boolean).join(' — ')],
-        [t('ledger.docNumber'), (l) => l.documentNumber ?? l.number],
-        [t('ledger.branchCol'), (l) => l.branchName ?? ''],
-        [t('invoice.department'), (l) => l.departmentName ?? ''],
-        [t('warehouse.label'), (l) => l.warehouseName ?? ''],
-        [t('ledger.noteCol'), (l) => l.note ?? ''],
-        [t('ledger.debit'), (l) => (l.debit ? { money: l.debit } : null)],
-        [t('ledger.credit'), (l) => (l.credit ? { money: l.credit } : null)],
-        [t('ledger.balance'), (l) => ({ money: Math.abs(l.balance) })],
-        ['', (l) => side(l.balance)],
-      ];
-      const blank = cols.map(() => '' as unknown);
-      report.excel(
-        heading,
-        period,
-        cols.map((c) => c[0]),
-        [
-          blank.map((_, j) =>
-            j === 1
-              ? formatDate(from, locale)
-              : j === 2
-                ? t('ledger.previousBalance')
-                : j === 10
-                  ? { money: Math.abs(data.opening) }
-                  : j === 11
-                    ? side(data.opening)
-                    : '',
-          ),
-          ...data.lines.flatMap((l, i) => [
-            cols.map((c) => c[1](l, i)),
-            ...(l.items ?? []).map((it) =>
-              blank.map((_, j) =>
-                j === 2
-                  ? `   ${it.productName}`
-                  : j === 7
-                    ? `${it.quantity} ${it.unitName ?? ''}`
-                    : j === 8
-                      ? { money: it.unitPrice }
-                      : j === 9
-                        ? it.discount
-                          ? { money: it.discount }
-                          : null
-                        : j === 10
-                          ? { money: it.lineTotal }
-                          : '',
-              ),
-            ),
-          ]),
-        ] as never,
-        blank.map((_, j) =>
-          j === 0
-            ? t('ledger.total')
-            : j === 8
-              ? { money: data.totalDebit }
-              : j === 9
-                ? { money: data.totalCredit }
-                : j === 10
-                  ? { money: Math.abs(data.closing) }
-                  : j === 11
-                    ? side(data.closing)
-                    : '',
-        ) as never,
-      );
-      return;
-    }
+    const cols = columns.visible;
+    const at = (k: ColKey) => cols.indexOf(k);
+    const row = (fill: Partial<Record<ColKey, unknown>>) =>
+      cols.map((k) => (k in fill ? fill[k] : ''));
+    const cellOf = (k: ColKey, l: LedgerLine, i: number): unknown => {
+      if (k === 'debit') return l.debit ? { money: l.debit } : null;
+      if (k === 'credit') return l.credit ? { money: l.credit } : null;
+      if (k === 'balance') return { money: Math.abs(l.balance) };
+      return lineText(t, locale, k, l, i);
+    };
+    const sided = at('balance') >= 0;
     report.excel(
       heading,
       period,
-      [
-        t('ledger.date'),
-        t('ledger.number'),
-        t('ledger.sourceCol'),
-        t('ledger.description'),
-        t('ledger.account'),
-        t('ledger.memo'),
-        t('ledger.debit'),
-        t('ledger.credit'),
-        t('ledger.balance'),
-        '',
-      ],
+      [...cols.map((k) => t(COL_LABEL[k])), ...(sided ? [''] : [])],
       [
         [
-          formatDate(from, locale),
-          '',
-          '',
-          t('ledger.opening'),
-          '',
-          '',
-          null,
-          null,
-          { money: Math.abs(data.opening) },
-          side(data.opening),
+          ...row({
+            date: formatDate(from, locale),
+            kind: t('ledger.previousBalance'),
+            balance: { money: Math.abs(data.opening) },
+          }),
+          ...(sided ? [side(data.opening)] : []),
         ],
-        ...data.lines.map((l) => [
-          formatDate(l.date, locale),
-          l.number,
-          t(`ledger.source.${l.sourceType}` as TranslationKey),
-          entryTitle(t, l.sourceType, l.description),
-          l.accountCode ? `${l.accountCode} ${l.accountName}` : '',
-          l.memo ?? '',
-          l.debit ? { money: l.debit } : null,
-          l.credit ? { money: l.credit } : null,
-          { money: Math.abs(l.balance) },
-          side(l.balance),
+        ...data.lines.flatMap((l, i) => [
+          [...cols.map((k) => cellOf(k, l, i)), ...(sided ? [side(l.balance)] : [])],
+          ...(l.items ?? []).map((it) => [
+            ...row({
+              kind: `   ${it.productName}`,
+              note: `${it.quantity} ${it.unitName ?? ''} × ${formatMoney(it.unitPrice, data.currency, locale)}${
+                it.discount ? ` − ${formatMoney(it.discount, data.currency, locale)}` : ''
+              }`,
+              balance: { money: it.lineTotal },
+            }),
+            ...(sided ? [''] : []),
+          ]),
         ]),
-      ],
+      ] as never,
       [
-        t('ledger.total'),
-        '',
-        '',
-        '',
-        '',
-        '',
-        { money: data.totalDebit },
-        { money: data.totalCredit },
-        { money: Math.abs(data.closing) },
-        side(data.closing),
-      ],
+        ...cols.map((k, j) =>
+          j === 0
+            ? t('ledger.total')
+            : k === 'debit'
+              ? { money: data.totalDebit }
+              : k === 'credit'
+                ? { money: data.totalCredit }
+                : k === 'balance'
+                  ? { money: Math.abs(data.closing) }
+                  : '',
+        ),
+        ...(sided ? [side(data.closing)] : []),
+      ] as never,
     );
   }
 
@@ -400,7 +334,7 @@ export function StatementBody({
           </SectionHeading>
           {/* Every statement in columns (owner, 2026-11-10). */}
           {isParty || data.lines.length > 0 ? (
-            <PartyStatementTable data={data} from={from} />
+            <PartyStatementTable data={data} from={from} columns={columns} />
           ) : (
             <p className="mt-4 text-sm text-muted">{t('ledger.noLines')}</p>
           )}
@@ -437,15 +371,18 @@ type ColKey =
   | 'seq'
   | 'date'
   | 'time'
+  | 'entry'
   | 'kind'
   | 'doc'
+  | 'party'
   | 'side'
   | 'account'
-  | 'by'
   | 'branch'
   | 'department'
   | 'warehouse'
+  | 'rep'
   | 'note'
+  | 'by'
   | 'debit'
   | 'credit'
   | 'balance';
@@ -453,13 +390,16 @@ const DEFAULT_ORDER: ColKey[] = [
   'seq',
   'date',
   'time',
+  'entry',
   'kind',
   'doc',
+  'party',
   'side',
   'account',
   'branch',
   'department',
   'warehouse',
+  'rep',
   'note',
   'by',
   'debit',
@@ -470,51 +410,119 @@ const COL_LABEL: Record<ColKey, TranslationKey> = {
   seq: 'ledger.entryNumber',
   date: 'ledger.date',
   time: 'ledger.timeCol',
+  entry: 'ledger.entryCol',
   kind: 'ledger.kindCol',
   doc: 'ledger.docNumber',
-  side: 'ledger.counterpartCol',
+  party: 'ledger.partyCol',
+  side: 'money.counterpart',
   account: 'ledger.account',
   by: 'ledger.byCol',
   branch: 'ledger.branchCol',
   department: 'invoice.department',
   warehouse: 'warehouse.label',
+  rep: 'invoice.rep',
   note: 'ledger.noteCol',
   debit: 'ledger.debit',
   credit: 'ledger.credit',
   balance: 'ledger.balance',
 };
 const NUMERIC = new Set<ColKey>(['debit', 'credit', 'balance']);
-/** Documents that open from the statement (invoices and returns). */
-const OPENS = new Set(['SALES_INVOICE', 'SALES_RETURN', 'PURCHASE_INVOICE', 'PURCHASE_RETURN']);
+/** The table's id: the columns a person hides are kept under it (TableColumns). */
+const TABLE_ID = 'statement.v3';
+
+/** A line's notes: the document's own and the entry line's. */
+const noteOf = (l: LedgerLine) => [l.note, l.memo].filter(Boolean).join(' — ');
 
 /**
- * A party statement (كشف حساب), the owner's way (2026-10-02): a running entry number, the date, what
- * it is (البيان: sales invoice, return, receipt…), the document (opens it), the branch, sales
- * department and warehouse, the note, debit, credit and the running balance, from the previous
- * balance. The columns can be moved, widened and hidden; on a phone each line is a card.
+ * The statement's columns in the person's order (moved from the column menu) and the ones they
+ * hide; the same for the screen, the printout and Excel. Every column shows, empty or not (owner,
+ * 2026-11-12: "the columns aren't there"), except the account (a group's statement) and the
+ * customer / supplier (not on a party's own statement).
  */
-function PartyStatementTable({ data, from }: { data: LedgerStatement; from: string }) {
-  const { t, locale } = useT();
-  const { deviceClass } = useDeviceInfo();
-  const money = (v: number) => formatMoney(v, data.currency, locale);
-  const [saved, setSaved] = useHiddenColumns('statement.order');
-  // Branch, department, warehouse and notes show only when a line has one (a clear statement).
-  const OPTIONAL: Partial<Record<ColKey, (l: LedgerLine) => unknown>> = {
-    branch: (l) => l.branchName,
-    department: (l) => l.departmentName,
-    warehouse: (l) => l.warehouseName,
-    note: (l) => l.note,
-    side: (l) => l.counterpart,
-    by: (l) => l.createdByName,
-  };
+function useStatementColumns(data: LedgerStatement | undefined, isParty: boolean) {
+  const { t } = useT();
+  const [saved, setSaved] = useHiddenColumns('statement.order3');
+  const [hidden] = useHiddenColumns(TABLE_ID);
   // A group's statement covers several accounts: then each line says which.
-  const accounts = new Set(data.lines.map((l) => l.accountCode)).size;
-  const used = (k: ColKey) =>
-    k === 'account' ? accounts > 1 : !OPTIONAL[k] || data.lines.some((l) => !!OPTIONAL[k]!(l));
+  const accounts = new Set((data?.lines ?? []).map((l) => l.accountCode)).size;
+  const used = (k: ColKey) => (k === 'account' ? accounts > 1 : k === 'party' ? !isParty : true);
   const order: ColKey[] = [
     ...saved.filter((k): k is ColKey => (DEFAULT_ORDER as string[]).includes(k)),
     ...DEFAULT_ORDER.filter((k) => !saved.includes(k)),
   ].filter(used);
+  const visible = order.filter((k) => !hidden.includes(t(COL_LABEL[k])));
+  return { order, visible, setSaved };
+}
+
+/** A line's value as text (Excel, sorting). */
+function lineText(
+  t: (k: TranslationKey) => string,
+  locale: Parameters<typeof formatDate>[1],
+  k: ColKey,
+  l: LedgerLine,
+  i: number,
+): string | number {
+  switch (k) {
+    case 'seq':
+      return i + 1;
+    case 'date':
+      return formatDate(l.date, locale);
+    case 'time':
+      return formatTime(l.date, locale);
+    case 'entry':
+      return l.entrySerial || '';
+    case 'kind':
+      return lineKind(t, l);
+    case 'doc':
+      return l.documentNumber ?? (l.sourceType === 'OPENING' ? '' : l.number);
+    case 'party':
+      return l.partyName ?? '';
+    case 'side':
+      return l.counterpart ?? '';
+    case 'account':
+      return `${l.accountCode} ${l.accountName}`;
+    case 'by':
+      return l.createdByName ?? '';
+    case 'branch':
+      return l.branchName ?? '';
+    case 'department':
+      return l.departmentName ?? '';
+    case 'warehouse':
+      return l.warehouseName ?? '';
+    case 'rep':
+      return l.repName ?? '';
+    case 'note':
+      return noteOf(l);
+    case 'debit':
+      return l.debit;
+    case 'credit':
+      return l.credit;
+    case 'balance':
+      return l.balance;
+  }
+}
+
+/**
+ * A statement (كشف حساب) in columns, the owner's way (2026-10-02, 2026-11-12): a running number,
+ * the date and time, the journal entry (رقم القيد), what it is (البيان: sales invoice, return,
+ * receipt…), the document's number (it opens), the customer or supplier (opens their statement),
+ * from / to (the other side of the entry), the branch, sales department, warehouse and rep, the
+ * notes, who made it, debit, credit and the running balance, from the previous balance. The
+ * columns can be moved, widened and hidden; on a phone each line is a card.
+ */
+function PartyStatementTable({
+  data,
+  from,
+  columns,
+}: {
+  data: LedgerStatement;
+  from: string;
+  columns: ReturnType<typeof useStatementColumns>;
+}) {
+  const { t, locale } = useT();
+  const { deviceClass } = useDeviceInfo();
+  const money = (v: number) => formatMoney(v, data.currency, locale);
+  const { order, setSaved } = columns;
   const keyOf = (label: string) => order.find((k) => t(COL_LABEL[k]) === label);
   const move = (label: string, step: -1 | 1) => {
     const k = keyOf(label);
@@ -543,39 +551,8 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   const [size, setSize] = usePageSize('statement.lines', 50);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ key: ColKey; dir: 1 | -1 } | null>(null);
-  const sortValue = (k: ColKey, l: LedgerLine, i: number): string | number => {
-    switch (k) {
-      case 'seq':
-        return i;
-      case 'date':
-      case 'time':
-        return l.date;
-      case 'kind':
-        return lineKind(t, l);
-      case 'side':
-        return l.counterpart ?? '';
-      case 'account':
-        return l.accountCode;
-      case 'by':
-        return l.createdByName ?? '';
-      case 'doc':
-        return l.documentNumber ?? l.number ?? '';
-      case 'branch':
-        return l.branchName ?? '';
-      case 'department':
-        return l.departmentName ?? '';
-      case 'warehouse':
-        return l.warehouseName ?? '';
-      case 'note':
-        return l.note ?? '';
-      case 'debit':
-        return l.debit;
-      case 'credit':
-        return l.credit;
-      case 'balance':
-        return l.balance;
-    }
-  };
+  const sortValue = (k: ColKey, l: LedgerLine, i: number): string | number =>
+    k === 'seq' ? i : k === 'date' || k === 'time' ? l.date : lineText(t, locale, k, l, i);
   const rows = data.lines.map((l, i) => ({ l, i }));
   if (sort)
     rows.sort((a, b) => {
@@ -605,38 +582,22 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
     </div>
   );
 
-  const docLink = (l: LedgerLine) => {
-    // An opening balance has no document of its own.
-    const number = l.documentNumber ?? (l.sourceType === 'OPENING' ? '' : l.number);
-    if (!l.documentId || !l.documentKind || !OPENS.has(l.documentKind))
-      return <bdi className="whitespace-nowrap">{number}</bdi>;
-    return (
-      <button
-        type="button"
-        className="whitespace-nowrap text-brand hover:underline"
-        onClick={() =>
-          setOpen({
-            id: l.documentId!,
-            scope: l.documentKind!.startsWith('PURCHASE') ? 'purchases' : 'sales',
-          })
-        }
-      >
-        <bdi>{number}</bdi>
-      </button>
-    );
-  };
+  const docLink = (l: LedgerLine) => (
+    <DocLink
+      id={l.documentId}
+      kind={l.documentKind}
+      number={lineText(t, locale, 'doc', l, 0)}
+      onPreview={(id, scope) => setOpen({ id, scope })}
+    />
+  );
+  const partyLink = (l: LedgerLine) =>
+    l.partyName ? (
+      <PartyLink id={l.partyId} name={l.partyName} code={l.partyCode} types={l.partyTypes} />
+    ) : null;
   const value = (k: ColKey, l: LedgerLine, i: number): ReactNode => {
     switch (k) {
-      case 'seq':
-        return i + 1;
-      case 'date':
-        return formatDate(l.date, locale);
-      case 'time':
-        return formatTime(l.date, locale);
       case 'side':
         return <bdi className="line-clamp-2">{l.counterpart ?? ''}</bdi>;
-      case 'by':
-        return l.createdByName ?? '';
       case 'account':
         return (
           <span className="line-clamp-2">
@@ -644,28 +605,21 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
           </span>
         );
       case 'kind':
-        return (
-          <span className="line-clamp-2">
-            {lineKind(t, l)}
-            {l.memo && <span className="text-muted"> — {l.memo}</span>}
-          </span>
-        );
+        return <span className="line-clamp-2">{lineKind(t, l)}</span>;
       case 'doc':
         return docLink(l);
-      case 'branch':
-        return l.branchName ?? '';
-      case 'department':
-        return l.departmentName ?? '';
-      case 'warehouse':
-        return l.warehouseName ?? '';
+      case 'party':
+        return partyLink(l);
       case 'note':
-        return <span className="line-clamp-2">{l.note ?? ''}</span>;
+        return <span className="line-clamp-2">{noteOf(l)}</span>;
       case 'debit':
         return l.debit ? money(l.debit) : '';
       case 'credit':
         return l.credit ? money(l.credit) : '';
       case 'balance':
         return <SidedMoney value={l.balance} currency={data.currency} />;
+      default:
+        return lineText(t, locale, k, l, i);
     }
   };
   const preview = open && (
@@ -681,8 +635,9 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
     </Sheet>
   );
 
-  // A phone or tablet: one card per line, easy to read without scrolling sideways.
-  if (deviceClass !== 'desktop')
+  // A phone: one card per line, easy to read without scrolling sideways. Anything wider (a tablet,
+  // a laptop, a narrow window) gets the columns (owner, 2026-11-12).
+  if (deviceClass === 'phone')
     return (
       <div className="mt-3 space-y-2">
         {rows.length > 1 && (
@@ -727,11 +682,13 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
               <div className="min-w-0">
                 <p className="font-medium">
                   <span className="me-1 text-xs text-faint tnum">{i + 1}</span>
-                  {lineKind(t, l)}
+                  {lineKind(t, l)} {docLink(l)}
                 </p>
                 <p className="text-xs text-muted tnum">
-                  {formatDate(l.date, locale)} {formatTime(l.date, locale)} · {docLink(l)}
+                  {formatDate(l.date, locale)} {formatTime(l.date, locale)}
+                  {l.entrySerial ? ` · ${t('ledger.entryCol')} ${l.entrySerial}` : ''}
                 </p>
+                {l.partyName && <p className="text-xs">{partyLink(l)}</p>}
                 {(l.counterpart || l.createdByName) && (
                   <p className="text-xs text-muted">
                     {[l.counterpart, l.createdByName].filter(Boolean).join(' · ')}
@@ -753,9 +710,9 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                 </p>
               </div>
             </div>
-            {(l.branchName || l.departmentName || l.warehouseName || l.note) && (
+            {(l.branchName || l.departmentName || l.warehouseName || l.repName || noteOf(l)) && (
               <p className="mt-1 text-xs text-muted">
-                {[l.branchName, l.departmentName, l.warehouseName, l.note]
+                {[l.branchName, l.departmentName, l.warehouseName, l.repName, noteOf(l)]
                   .filter(Boolean)
                   .join(' · ')}
               </p>
@@ -785,7 +742,7 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
   return (
     <div className="rounded-[var(--radius-app)] border border-line">
       <TableColumns
-        id="statement.v2"
+        id={TABLE_ID}
         className="pt-2"
         onMove={move}
         onDrop={drop}
@@ -798,7 +755,7 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
         }}
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1250px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 {order.map((k) => (
@@ -832,10 +789,14 @@ function PartyStatementTable({ data, from }: { data: LedgerStatement; from: stri
                       <td
                         key={k}
                         className={`${cell} ${NUMERIC.has(k) ? 'whitespace-nowrap text-end tnum' : ''} ${
-                          k === 'date' || k === 'time' || k === 'seq' || k === 'doc'
+                          k === 'date' ||
+                          k === 'time' ||
+                          k === 'seq' ||
+                          k === 'doc' ||
+                          k === 'entry'
                             ? 'whitespace-nowrap tnum'
                             : ''
-                        } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'note' || k === 'by' ? 'text-muted' : ''}`}
+                        } ${k === 'branch' || k === 'department' || k === 'warehouse' || k === 'rep' || k === 'note' || k === 'by' ? 'text-muted' : ''}`}
                       >
                         {value(k, l, i)}
                       </td>

@@ -122,7 +122,7 @@ public record LockInvoicesRequest(Guid[]? Ids = null, bool Locked = true);
 /// <summary>One change to a posted invoice, for the "cancelled and changed invoices" report.</summary>
 public record InvoiceRevisionDto(
     string Id, string DocumentId, string Number, string PartyName, int? PartyCode, string Kind, string At,
-    string StaffName, string? Reason, long TotalBefore, long TotalAfter, string BranchName);
+    string StaffName, string? Reason, long TotalBefore, long TotalAfter, string BranchName, string? PartyId = null);
 
 /// <summary>Turning down a pending invoice: why (shown to its maker).</summary>
 public record RejectOrderRequest(string? Reason);
@@ -334,7 +334,7 @@ public record StockMovementDto(
     string Id, string Date, string Type, string BranchName, string WarehouseId, string WarehouseName,
     string? Reference, string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
     long UnitCost, long AvgCostAfter, string? Note,
-    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null);
+    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null, string? PartyId = null);
 
 /// <summary>Stock of one item (or of everything) held in one warehouse.</summary>
 public record WarehouseStockDto(string WarehouseId, string Name, string BranchName, int Quantity, long Value);
@@ -359,7 +359,8 @@ public record LastCostDto(long UnitCost, string Date, string? Reference, string?
 public record ItemLifeLineDto(
     string DocumentId, string Number, string Type, string Date, string? PartyName, int? PartyCode,
     string? WarehouseName, string? BranchName, string? StaffName, int Quantity, int UnitQuantity, string? UnitName,
-    long? UnitPrice, long? Discount, long? Net, long? UnitCost, long? Profit, bool Bonus, bool Edited);
+    long? UnitPrice, long? Discount, long? Net, long? UnitCost, long? Profit, bool Bonus, bool Edited,
+    string? PartyId = null);
 
 /// <summary>An item's totals over its life: bought, sold and returned (base units), and what they came to.</summary>
 public record ItemLifeTotalsDto(
@@ -492,7 +493,7 @@ public record DashboardDto(
 public record DashDocDto(
     string Id, string Number, string Type, string Status, string BranchName, string[] WarehouseNames,
     string? DepartmentName, string PartyName, int? PartyCode, string StaffName, string? RepName,
-    string IssueDate, string CreatedAt, long GrandTotal, string Currency);
+    string IssueDate, string CreatedAt, long GrandTotal, string Currency, string? PartyId = null);
 
 /// <summary>
 /// The dashboard's other widgets (owner, 2026-10-01: the owner sees the whole business). A part is
@@ -949,7 +950,9 @@ public record MoneyMovementDto(
     string Id, long Seq, string CreatedAt, string Kind, long Amount, long BalanceAfter, string? Method,
     string? Reference, string? MethodReference, string? PartyName, string? Notes, string CreatedByName,
     string? VoucherId, string? DocumentId = null, string? DocumentKind = null, string? CounterpartKind = null,
-    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null);
+    string? CounterpartName = null, int? CounterpartCode = null, string? BranchName = null,
+    int? EntrySerial = null, string? PartyId = null, string[]? PartyTypes = null, string? DepartmentName = null,
+    string? WarehouseName = null, string? RepName = null);
 
 /// <summary>An account's movements over a period (a day = the daily cash report, حركة اليوم).</summary>
 public record AccountStatementDto(
@@ -1016,12 +1019,16 @@ public record UpdateLedgerAccountRequest(string? Name = null, bool? IsActive = n
 /// cash box / bank of a receipt or payment, the bank of a cheque.</param>
 /// <param name="Note">The document's own notes (ملحوظة).</param>
 /// <param name="Items">With <c>items=true</c>, an invoice's or return's lines (كشف أصناف).</param>
+/// <param name="RepName">The sales rep (المندوب) of the document behind the line.</param>
+/// <param name="PartyId">The customer / supplier / carrier of the document behind the line (opens their statement).</param>
 public record LedgerLineDto(
     string EntryId, string Date, string Number, string Description, string SourceType, string? SourceId,
     string AccountCode, string AccountName, long Debit, long Credit, string? Memo, long Balance,
     string? DocumentNumber = null, string? Book = null, string? Note = null, string? BranchName = null,
     StatementItemDto[]? Items = null, int EntrySerial = 0, string? DepartmentName = null, string? WarehouseName = null,
-    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null);
+    string? DocumentId = null, string? DocumentKind = null, string? CreatedByName = null, string? Counterpart = null,
+    string? RepName = null, string? PartyId = null, string? PartyName = null, int? PartyCode = null,
+    string[]? PartyTypes = null);
 
 /// <summary>One item line of an invoice or return on a statement (no cost).</summary>
 public record StatementItemDto(
@@ -1399,6 +1406,7 @@ public record ExpenseStatementDto(string Name, string Currency, long Total, Expe
 
 /// <summary>One movement of a warehouse's statement; Value (minor units) only for people who may see costs.</summary>
 public record WarehouseStatementLineDto(string Date, string Type, string? Reference, string? DocumentId, string ProductId,
-    string Code, string Name, int Quantity, long? Value, int Balance, string? Note, string? Counterpart);
+    string Code, string Name, int Quantity, long? Value, int Balance, string? Note, string? Counterpart,
+    string? DocumentKind = null, string? PartyId = null, string[]? PartyTypes = null);
 public record WarehouseStatementDto(string Name, string Currency, int Opening, long? OpeningValue, int In, int Out,
     int Closing, long? ClosingValue, WarehouseStatementLineDto[] Lines);

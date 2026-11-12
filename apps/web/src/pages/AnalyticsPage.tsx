@@ -30,7 +30,9 @@ import {
   useTopParties,
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
-import { CodeName, codeName } from '../components/CodeName';
+import { ItemLink } from '../components/ItemLink';
+import { PartyLink } from '../components/PartyContact';
+import { codeName } from '../components/CodeName';
 
 type Tab =
   | 'pl'
@@ -712,7 +714,9 @@ function TopList({
           {data.map((p) => (
             <li key={p.partyId} className="text-sm">
               <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate">{p.name}</span>
+                <span className="min-w-0 truncate">
+                  <PartyLink id={p.partyId} name={p.name} truncate />
+                </span>
                 <span className="shrink-0 tnum">
                   {formatMoney(p.net, 'EGP', locale)}{' '}
                   <span className="text-xs text-muted">({formatNumber(p.share, locale)}%)</span>
@@ -777,7 +781,7 @@ function ItemsTab() {
                     {data.topMovers.map((x) => (
                       <tr key={x.productId}>
                         <td className="max-w-[12rem] truncate px-4 py-1.5">
-                          {x.name} <span className="text-xs text-faint">{x.sku}</span>
+                          <ItemLink id={x.productId} name={x.name} code={x.sku} truncate />
                         </td>
                         <td className="px-2 py-1.5 text-end tnum">
                           {formatNumber(x.quantityOut, locale)}
@@ -818,7 +822,7 @@ function ItemsTab() {
                     {data.deadStock.map((x) => (
                       <tr key={x.productId}>
                         <td className="max-w-[12rem] truncate px-4 py-1.5">
-                          {x.name} <span className="text-xs text-faint">{x.sku}</span>
+                          <ItemLink id={x.productId} name={x.name} code={x.sku} truncate />
                         </td>
                         <td className="px-2 py-1.5 text-end tnum">
                           {formatNumber(x.stock, locale)}
@@ -962,7 +966,7 @@ function ChangesTab() {
                         </Link>
                       </td>
                       <td className="px-3 py-1.5">
-                        <CodeName code={r.partyCode || null} name={r.partyName} />
+                        <PartyLink id={r.partyId} code={r.partyCode || null} name={r.partyName} />
                       </td>
                       <td className="px-3 py-1.5">{r.branchName}</td>
                       <td className="px-3 py-1.5">{r.staffName}</td>

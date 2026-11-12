@@ -18,36 +18,46 @@ const TYPE_LABEL: Record<PartyType, TranslationKey> = {
 };
 
 /**
- * A customer's, supplier's or shipping company's name with its code; tapping it opens its account
- * directory (دليل الحساب). Plain text for someone who may not see parties.
+ * A customer's, supplier's or shipping company's name with its code. Tapping it opens their
+ * statement (كشف حساب) for whoever may open that kind of statement (owner, 2026-11-12: "tapping the
+ * customer anywhere brings their statement"); otherwise their account directory (دليل الحساب) for
+ * whoever may see parties; plain text for anyone else, and on paper. Without the party's kinds,
+ * any party statement permission will do (the statement page and the server check the kind).
  */
 export function PartyLink({
   id,
   code,
   name,
+  types,
   truncate,
   className,
 }: {
   id?: string | null;
-  code?: number | null;
+  code?: number | string | null;
   name: ReactNode;
+  types?: string[] | null;
   truncate?: boolean;
   className?: string;
 }) {
   const can = useCan();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const label = <CodeName code={code} name={name} truncate={truncate} />;
-  if (!id || !(can('parties:view') || can('parties:contact'))) {
+  const statement = types
+    ? mayOpenStatement({ types }, can)
+    : can('statement:customers') || can('statement:suppliers') || can('statement:carriers');
+  if (!id || !(statement || can('parties:view') || can('parties:contact'))) {
     return <span className={className}>{label}</span>;
   }
   return (
     <>
       <button
         type="button"
-        className={`max-w-full text-start hover:text-brand hover:underline ${className ?? ''}`}
+        className={`nav-link max-w-full text-start hover:text-brand hover:underline ${className ?? ''}`}
         onClick={(e: MouseEvent) => {
           e.stopPropagation();
-          setOpen(true);
+          if (statement) navigate(`/statement?party=${id}`);
+          else setOpen(true);
         }}
       >
         {label}

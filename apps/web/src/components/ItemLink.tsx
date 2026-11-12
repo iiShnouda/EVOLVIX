@@ -27,7 +27,7 @@ export function ItemLink({
   return (
     <button
       type="button"
-      className={`max-w-full text-start hover:text-brand hover:underline ${className ?? ''}`}
+      className={`nav-link max-w-full text-start hover:text-brand hover:underline ${className ?? ''}`}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
         navigate(`/inventory/items/${id}`);

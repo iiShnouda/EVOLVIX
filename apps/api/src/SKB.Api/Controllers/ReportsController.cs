@@ -39,10 +39,11 @@ public sealed class ReportsController : ControllerBase
             {
                 r.Id, r.DocumentId, r.Document!.Number, PartyName = r.Document.Party!.Name, PartyCode = (int?)r.Document.Party.Code,
                 r.Kind, r.At, r.StaffName, r.Reason, r.TotalBefore, r.TotalAfter, BranchName = r.Document.Branch!.Name,
+                r.Document.PartyId,
             }).ToListAsync();
         return Ok(rows.Select(r => new InvoiceRevisionDto(r.Id.ToString(), r.DocumentId.ToString(), r.Number,
             r.PartyName, r.PartyCode, r.Kind, r.At.ToString("o"), r.StaffName, r.Reason, r.TotalBefore, r.TotalAfter,
-            r.BranchName)).ToArray());
+            r.BranchName, r.PartyId.ToString())).ToArray());
     }
 
     /// <summary>

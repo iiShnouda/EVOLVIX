@@ -252,7 +252,12 @@ public sealed class MoneyController : ControllerBase
             .Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
         var docIds = rows.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
         var docs = await _db.SalesDocuments.AsNoTracking().Include(d => d.Branch).Include(d => d.Party)
+            .Include(d => d.Department).Include(d => d.Rep)
             .Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+        // Where each document's goods went or came from (one or more warehouses).
+        var stores = (await _db.DocumentLines.AsNoTracking().Where(l => docIds.Contains(l.DocumentId) && l.WarehouseId != null)
+                .Select(l => new { l.DocumentId, Name = l.Warehouse!.Name }).Distinct().ToListAsync())
+            .GroupBy(x => x.DocumentId).ToDictionary(g => g.Key, g => string.Join("، ", g.Select(x => x.Name)));
         var settlementIds = rows.Where(m => m.SettlementId != null).Select(m => m.SettlementId!.Value).Distinct().ToList();
         var settlements = await _db.CarrierSettlements.AsNoTracking().Include(x => x.Carrier)
             .Where(x => settlementIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
@@ -262,6 +267,11 @@ public sealed class MoneyController : ControllerBase
             .Select(n => new { n.Ref, n.Id, Branch = n.Branch!.Name }).ToListAsync())
             .GroupBy(n => n.Ref).ToDictionary(g => g.Key, g => g.First());
         var branch = Loc.Name(account.Branch);
+        // The journal entry (رقم القيد) each document was posted by: its latest posting.
+        var sourceIds = voucherIds.Concat(docIds).Concat(notes.Values.Select(n => n.Id)).Distinct().ToList();
+        var entries = (await _db.JournalEntries.AsNoTracking().Where(e => e.SourceId != null && sourceIds.Contains(e.SourceId.Value))
+                .Select(e => new { e.SourceId, e.Serial }).ToListAsync())
+            .GroupBy(e => e.SourceId!.Value).ToDictionary(g => g.Key, g => g.Max(e => e.Serial));
 
         static string PartyKind(Party p) => p.Types.Contains(nameof(PartyType.CUSTOMER)) ? "CUSTOMER"
             : p.Types.Contains(nameof(PartyType.SUPPLIER)) ? "SUPPLIER" : "CARRIER";
@@ -270,11 +280,14 @@ public sealed class MoneyController : ControllerBase
         {
             running += m.Amount;
             string? docId = null, docKind = null, sideKind = null, sideName = null, branchName = branch;
+            string? partyId = null, department = null, warehouse = null, rep = null;
+            string[]? partyTypes = null;
             int? sideCode = null;
             void Side(Party? p)
             {
                 if (p is null) return;
                 (sideKind, sideName, sideCode) = (PartyKind(p), p.Name, p.Code);
+                (partyId, partyTypes) = (p.Id.ToString(), p.Types.ToArray());
             }
             Side(m.Party);
             if (m.VoucherId is Guid vid && vouchers.TryGetValue(vid, out var v))
@@ -295,6 +308,8 @@ public sealed class MoneyController : ControllerBase
             {
                 (docId, docKind, branchName) = (d.Id.ToString(), d.Type.ToString(), Loc.Name(d.Branch));
                 Side(d.Party);
+                (department, warehouse, rep) = (d.Department is null ? null : Loc.Name(d.Department),
+                    stores.GetValueOrDefault(d.Id), d.Rep?.FullName);
             }
             else if (m.SettlementId is Guid sid && settlements.TryGetValue(sid, out var st))
             {
@@ -310,7 +325,9 @@ public sealed class MoneyController : ControllerBase
             return new MoneyMovementDto(m.Id.ToString(), m.Seq, m.CreatedAt.ToString("o"), m.Kind.ToString(),
                 m.Amount, running, m.Method?.ToString(), m.Reference, m.MethodReference, m.Party?.Name,
                 sideKind == "EMPLOYEE" ? null : m.Notes, m.CreatedBy?.FullName ?? "", m.VoucherId?.ToString(),
-                docId, docKind, sideKind, sideName, sideCode, branchName);
+                docId, docKind, sideKind, sideName, sideCode, branchName,
+                docId is not null && Guid.TryParse(docId, out var g) && entries.TryGetValue(g, out var serial) ? serial : null,
+                partyId, partyTypes, department, warehouse, rep);
         }).ToArray();
     }
 
