@@ -153,6 +153,12 @@ eq(
   [2000, 3000, 'PAID'],
 );
 eq('…the 10.00 over is the customer’s credit', await mBal(), -1000);
+const otherCust = ok('another customer', await owner.post('/parties', { name: `Other ${tag}`, types: ['CUSTOMER'] }));
+eq(
+  '…its customer can’t be changed while money is on it',
+  (await accountant.put(`/sales/invoices/${byReceipt.id}`, mSale(2, { partyId: otherCust.id }))).data?.code,
+  'party_locked_by_payments',
+);
 eq('…no money moved', await box(), boxR);
 eq('…paid', await mStateOf(byReceipt), 'PAID');
 eq('…the statement closes at the balance', await closing(), await mBal());

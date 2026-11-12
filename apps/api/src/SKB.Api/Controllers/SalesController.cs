@@ -1587,6 +1587,14 @@ public sealed class SalesController : ControllerBase
         if (edited is not null)
         {
             // Same document, number, date and maker; everything else as asked now.
+            // Money or a cheque against it belongs to its customer: it can't move to another one.
+            if (partyId != edited.PartyId && (paidBefore is { Allocated: > 0 }
+                    || await _db.NoteAllocations.AnyAsync(a => a.DocumentId == edited.Id && a.Note!.Status != NoteStatus.CANCELLED)))
+                return BadRequest(new
+                {
+                    message = "Money or a cheque was received against this invoice: its customer can't be changed.",
+                    code = "party_locked_by_payments",
+                });
             doc.PartyId = partyId;
             doc.DueDate = dueDate;
             doc.Currency = settings.Currency;
@@ -1697,6 +1705,8 @@ public sealed class SalesController : ControllerBase
         await MoneyService.LockPartiesAsync(_db, party.Id);
         await _db.Entry(party).ReloadAsync();
         party.Balance += grand - doc.PaidDirect;
+        // Receipts and cheques stay allocated to it, even over a smaller new total (the rest is the
+        // customer's credit on their balance); a later change needs to know all that was received.
         doc.PaidAmount = doc.PaidDirect + (paidBefore?.Allocated ?? 0);
         doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
@@ -1730,6 +1740,8 @@ public sealed class SalesController : ControllerBase
                 ? ((await _money.LockAsync(new[] { was0In }))[was0In], (MoneyService.MoneyError?)null)
                 : await _money.ForDocumentAsync(req.PaidAccountId, branchId, User);
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
+            if (!MoneyService.CanUse(User, account!))
+                return NotFound(new { message = "Money account not found.", code = "account_not_found" });
             paidInto = account!;
             doc.PaidAccountId = account!.Id;
             var difference = doc.PaidDirect - (was0.Account is null ? 0 : was0.Counter);
@@ -1742,6 +1754,8 @@ public sealed class SalesController : ControllerBase
         {
             // A cash customer's invoice brought to nothing: the counter money goes back out.
             var account = (await _money.LockAsync(new[] { gone }))[gone];
+            if (!MoneyService.CanUse(User, account))
+                return NotFound(new { message = "Money account not found.", code = "account_not_found" });
             var moneyError = _money.Move(account, -paidBefore.Value.Counter, MoneyMovementKind.CANCELLATION, staffId,
                 doc.Number, documentId: doc.Id, partyId: party.Id);
             if (moneyError is not null) return BadRequest(new { message = moneyError.Message, code = moneyError.Code });
