@@ -43,6 +43,14 @@
         {
           "ar": "تنبيه لما حد يدخل على حسابك من جهاز جديد",
           "en": "An alert when your account is signed in to from a new device"
+        },
+        {
+          "ar": "دلوقتي تقدر تضيف بنوك وتختار البنك من قائمة، ولو الشيكات كلها من نفس البنك تختاره مرة واحدة، ولو شيك مختلف تختار له بنكه",
+          "en": "Banks are now a list you can add to; pick the bank once for all the cheques, or a different bank for one cheque."
+        },
+        {
+          "ar": "في استلام الشيك: «من أحضر الشيك» بقت اختيار (العميل نفسه أو شخص آخر باسمه)، واللي استلم الشيك هو صاحب الحساب المسجّل تلقائيًا",
+          "en": "Receiving a cheque: \"who brought it\" is now a choice (the customer himself, or someone else by name), and whoever is signed in is recorded as the receiver."
         }
       ],
       "fixes": [
@@ -57,6 +65,14 @@
         {
           "ar": "الاتصال المباشر (الإشعارات والمتصلين دلوقتي) مبقاش بيقع للمالك بعد ما الصلاحيات زادت",
           "en": "The live connection (notifications, who's online) no longer fails for the owner now that there are more permissions"
+        },
+        {
+          "ar": "قراءة الشيك من الصورة بقت تراجع المبلغ بالحروف مع الأرقام وتقرأ التاريخ يوم/شهر/سنة، والحقول المشكوك فيها بتتعلّم للمراجعة",
+          "en": "Reading a cheque from a photo now checks the figures against the amount in words and reads the date day/month/year; doubtful fields are highlighted for review."
+        },
+        {
+          "ar": "صورة الشيك اللي اتقرأت بقت تتحفظ مع الشيك",
+          "en": "The photo a cheque was read from is now kept with the cheque."
         }
       ]
     },
