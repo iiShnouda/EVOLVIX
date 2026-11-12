@@ -18,7 +18,7 @@ const NEEDS: [string, () => readonly Permission[] | undefined][] = [
   // Its maker may change it for half an hour with the right to sell alone.
   ['/sales/invoices/:id/edit', () => ['sales:edit', 'sales:create']],
   ['/sales/invoices/:id/return', () => ['sales:return']],
-  ['/sales/returns/new', () => ['sales:return', 'sales:return_free']],
+  ['/sales/returns/new', () => ['sales:return']],
   ['/sales/together', () => TOGETHER_PERMISSIONS],
   ['/sales/together/:partyId', () => TOGETHER_PERMISSIONS],
   ['/parties', () => menu('parties')],
@@ -52,7 +52,7 @@ const NEEDS: [string, () => readonly Permission[] | undefined][] = [
   ['/purchases', () => menu('purchases')],
   ['/purchases/new', () => ['purchases:create']],
   ['/purchases/invoices/:id/return', () => ['purchases:return']],
-  ['/purchases/returns/new', () => ['purchases:return', 'purchases:return_free']],
+  ['/purchases/returns/new', () => ['purchases:return']],
   ['/receipts', () => menu('receipts')],
   [
     '/receipts/move',

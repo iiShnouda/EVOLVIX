@@ -71,7 +71,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'returns',
-        permissions: ['sales:return', 'sales:return_free', 'sales:return_cancel'],
+        permissions: ['sales:return', 'sales:return_cancel'],
       },
       {
         key: 'prices_and_discounts',
@@ -130,7 +130,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'purchases:create',
           'purchases:photos',
           'purchases:return',
-          'purchases:return_free',
           'purchases:return_cancel',
         ],
       },

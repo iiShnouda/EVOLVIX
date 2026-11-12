@@ -71,12 +71,14 @@ eq('stock 48', await stock(), 48);
 eq('customer owes 10.00', await balance(), 1000);
 eq('10.00 in the box', (await box()) - box0, 1000);
 eq('a seller may not change it', (await karim.put(`/sales/invoices/${inv.id}`, sale(3))).status, 403);
-const changed = ok('changed to 3, nothing paid', await accountant.put(`/sales/invoices/${inv.id}`, sale(3)));
+// What was paid stays on the invoice (owner, 2026-11-10): the edit moves no money.
+const changed = ok('changed to 3', await accountant.put(`/sales/invoices/${inv.id}`, sale(3)));
 eq('same invoice and number', [changed.id, changed.number], [inv.id, inv.number]);
 eq('new total', changed.grandTotal, 3000);
 eq('stock 47', await stock(), 47);
-eq('customer owes 30.00', await balance(), 3000);
-eq('the 10.00 left the box again', (await box()) - box0, 0);
+eq('customer owes 20.00 (the 10.00 paid stays)', await balance(), 2000);
+eq('the 10.00 stays in the box', (await box()) - box0, 1000);
+eq('…still paid on it', [changed.paidAmount, changed.status], [1000, 'PARTIALLY_PAID']);
 const again = ok('changed again: 1, all paid', await accountant.put(`/sales/invoices/${inv.id}`, sale(1, { paidAmount: 1000, paidAccountId: cash.id })));
 eq('paid', again.status, 'PAID');
 eq('stock 49', await stock(), 49);
@@ -119,6 +121,170 @@ ok(
   }),
 );
 eq('payments taken: not cancelled', (await accountant.post(`/sales/invoices/${paidLater.id}/cancel`)).data?.code, 'invoice_has_payments');
+
+console.log('== changing an invoice with money or cheques on it (owner, 2026-11-10)');
+// What was received stays on the customer's account: more than the new total is their credit.
+const mCust = ok(
+  'a customer who pays',
+  await owner.post('/parties', { name: `PayCust ${tag}`, types: ['CUSTOMER'] }),
+);
+const mSale = (qty, extra = {}) => sale(qty, { partyId: mCust.id, ...extra });
+const mBal = () => balance(mCust.id);
+const mStateOf = async (doc) => (await accountant.get(`/sales/invoices/${doc.id}`)).data.state;
+const closing = async () =>
+  (await owner.get(`/ledger/parties/${mCust.id}/statement?from=2022-01-01`)).data.closing;
+const byReceipt = ok('sold 3 on account', await accountant.post('/sales/invoices', mSale(3)));
+const rcv = ok(
+  'paid 30.00 later by a receipt against it',
+  await accountant.post('/receipts', {
+    partyId: mCust.id,
+    lines: [{ method: 'CASH', accountId: cash.id, amount: 3000 }],
+    allocations: [{ documentId: byReceipt.id, amount: 3000 }],
+  }),
+);
+const boxR = await box();
+const less = ok(
+  'changed to 2 although it was paid',
+  await accountant.put(`/sales/invoices/${byReceipt.id}`, mSale(2)),
+);
+eq(
+  '…the receipt stays on it',
+  [less.grandTotal, less.paidAmount, less.status],
+  [2000, 3000, 'PAID'],
+);
+eq('…the 10.00 over is the customer’s credit', await mBal(), -1000);
+eq('…no money moved', await box(), boxR);
+eq('…paid', await mStateOf(byReceipt), 'PAID');
+eq('…the statement closes at the balance', await closing(), await mBal());
+eq(
+  '…the receipt is untouched',
+  (await accountant.get(`/vouchers/${rcv.id}`)).data?.status ?? 'POSTED',
+  'POSTED',
+);
+const more = ok('changed to 4', await accountant.put(`/sales/invoices/${byReceipt.id}`, mSale(4)));
+eq('…10.00 owed on it now', [more.grandTotal, more.paidAmount, await mBal()], [4000, 3000, 1000]);
+eq('…part paid', await mStateOf(byReceipt), 'PARTIAL');
+eq(
+  '…still not cancelled while the receipt is on it',
+  (await accountant.post(`/sales/invoices/${byReceipt.id}/cancel`)).data?.code,
+  'invoice_has_payments',
+);
+
+const partly = ok(
+  'sold 2, 5.00 paid at the counter',
+  await accountant.post('/sales/invoices', mSale(2, { paidAmount: 500, paidAccountId: cash.id })),
+);
+const [b1, box1] = [await mBal(), await box()];
+const partlyChanged = ok(
+  'changed to 1',
+  await accountant.put(
+    `/sales/invoices/${partly.id}`,
+    mSale(1, { paidAmount: 500, paidAccountId: cash.id }),
+  ),
+);
+eq('…the 5.00 paid stays', [partlyChanged.paidAmount, (await box()) - box1], [500, 0]);
+eq('…the customer owes 10.00 less', await mBal(), b1 - 1000);
+const all = ok(
+  'sold 1, all paid at the counter',
+  await accountant.post('/sales/invoices', mSale(1, { paidAmount: 1000, paidAccountId: cash.id })),
+);
+const [b2, box2b] = [await mBal(), await box()];
+ok(
+  'changed to nothing but a cheaper line',
+  await accountant.put(
+    `/sales/invoices/${all.id}`,
+    mSale(1, { lines: [{ productId: item.id, quantity: 1, unitPrice: 800 }] }),
+  ),
+);
+eq(
+  '…the 2.00 over is credit, not paid out of the box',
+  [await mBal(), (await box()) - box2b],
+  [b2 - 200, 0],
+);
+eq('…the statement still closes at the balance', await closing(), await mBal());
+
+const bank = ok(
+  'a bank',
+  await owner.post('/money-accounts', {
+    branchId: owner.user.branchId,
+    name: `InvBank ${tag}`,
+    kind: 'BANK',
+  }),
+);
+const supplier2 = ok(
+  'a supplier to endorse to',
+  await owner.post('/parties', { name: `InvSup2 ${tag}`, types: ['SUPPLIER'] }),
+);
+const cheque1 = async (doc, amount, n) =>
+  ok(
+    `a cheque of ${amount / 100} against ${n}`,
+    await owner.post('/notes/receive', {
+      partyId: mCust.id,
+      kind: 'CHEQUE',
+      serialNumber: `CQ${n}${tag}`,
+      amount,
+      dueDate: new Date().toISOString().slice(0, 10),
+      bankName: 'CIB',
+      allocations: [{ documentId: doc.id, amount }],
+    }),
+  );
+for (const step of ['in hand', 'deposited', 'endorsed']) {
+  const onCheque = ok(
+    `sold 2 (cheque ${step})`,
+    await accountant.post('/sales/invoices', mSale(2)),
+  );
+  const ch = await cheque1(onCheque, 2000, step.replace(' ', ''));
+  if (step === 'deposited')
+    ok('…deposited', await owner.post('/notes/deposit', { noteIds: [ch.id], accountId: bank.id }));
+  if (step === 'endorsed')
+    ok(
+      '…endorsed to a supplier',
+      await owner.post(`/notes/${ch.id}/endorse`, { partyId: supplier2.id }),
+    );
+  const b = await mBal();
+  const edited = ok(
+    `changed to 1 with the cheque ${step}`,
+    await accountant.put(`/sales/invoices/${onCheque.id}`, mSale(1)),
+  );
+  eq(`…the cheque stays on it (${step})`, [edited.grandTotal, edited.paidAmount], [1000, 2000]);
+  eq(`…10.00 credit (${step})`, await mBal(), b - 1000);
+  eq(
+    `…the cheque is as it was (${step})`,
+    (await owner.get(`/notes/${ch.id}`)).data.allocations?.[0]?.amount ?? 2000,
+    2000,
+  );
+}
+eq('the statement closes at the balance after all of it', await closing(), await mBal());
+
+const walkIn0 = (await owner.get('/parties?code=0')).data.items[0];
+const cashSale = ok(
+  'the cash customer buys 2',
+  await accountant.post(
+    '/sales/invoices',
+    sale(2, { partyId: walkIn0.id, paidAmount: 2000, paidAccountId: cash.id }),
+  ),
+);
+const box3 = await box();
+ok(
+  'changed to 1',
+  await accountant.put(
+    `/sales/invoices/${cashSale.id}`,
+    sale(1, { partyId: walkIn0.id, paidAmount: 1000, paidAccountId: cash.id }),
+  ),
+);
+eq(
+  '…the cash customer is paid back the difference',
+  [(await box()) - box3, await balance(walkIn0.id)],
+  [-1000, 0],
+);
+ok(
+  'changed to 3',
+  await accountant.put(
+    `/sales/invoices/${cashSale.id}`,
+    sale(3, { partyId: walkIn0.id, paidAmount: 3000, paidAccountId: cash.id }),
+  ),
+);
+eq('…and pays the difference', [(await box()) - box3, await balance(walkIn0.id)], [1000, 0]);
 
 console.log('== list states');
 const credit = ok('one on credit', await accountant.post('/sales/invoices', sale(1)));

@@ -262,8 +262,9 @@ public sealed class LedgerService
             .Credit(await SystemAsync(LedgerKeys.OtherIncome), doc.AdditionTotal)
             .Debit(await SystemAsync(LedgerKeys.Cogs), doc.CostTotal)
             .Credit(await SystemAsync(LedgerKeys.Inventory), doc.CostTotal);
-        if (doc.PaidAmount > 0 && paidInto is not null)
-            draft.Debit(await ForMoneyAsync(paidInto), doc.PaidAmount).Credit(customer, doc.PaidAmount);
+        // Only what was paid at the counter: receipts and cheques against it post on their own.
+        if (doc.PaidDirect > 0 && paidInto is not null)
+            draft.Debit(await ForMoneyAsync(paidInto), doc.PaidDirect).Credit(customer, doc.PaidDirect);
         Post(draft);
     }
 
@@ -282,8 +283,8 @@ public sealed class LedgerService
             .Debit(await SystemAsync(LedgerKeys.OtherIncome), doc.AdditionTotal)
             .Credit(await SystemAsync(LedgerKeys.Cogs), doc.CostTotal)
             .Debit(await SystemAsync(LedgerKeys.Inventory), doc.CostTotal);
-        if (doc.PaidAmount > 0 && paidInto is not null)
-            draft.Credit(await ForMoneyAsync(paidInto), doc.PaidAmount).Debit(customer, doc.PaidAmount);
+        if (doc.PaidDirect > 0 && paidInto is not null)
+            draft.Credit(await ForMoneyAsync(paidInto), doc.PaidDirect).Debit(customer, doc.PaidDirect);
         Post(draft);
     }
 

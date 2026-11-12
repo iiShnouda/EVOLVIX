@@ -72,7 +72,29 @@ eq('new, nothing paid: waiting for payment', (await state(b0.id))[0], 'DUE');
 ok('…called off', await owner.post(`/sales/invoices/${b0.id}/cancel`, { reason: 'test' }));
 ok('100 paid', await receive(1000));
 eq('A part paid', await state(a.id), ['PARTIAL', 9000]);
-const b = ok('invoice B (1,000)', await sell(1));
+// A return is at what was paid for what was bought (owner, 2026-11-10): B is ten pieces of 100.
+const cheap = ok(
+  'a cheaper item',
+  await owner.post('/products', {
+    name: `PayState100 ${tag}`,
+    categoryId: cat.id,
+    units: [{ unitId: piece.id, factor: 1 }],
+    prices: [{ unitId: piece.id, priceLevelId: level.id, price: 1000 }],
+  }),
+);
+ok(
+  'its stock',
+  await owner.post('/purchases/invoices', {
+    partyId: (await owner.post('/parties', { name: `PSup2 ${tag}`, types: ['SUPPLIER'] })).data.id,
+    warehouseId: wh.id,
+    taxPercent: 0,
+    lines: [{ productId: cheap.id, quantity: 20, unitCost: 500 }],
+  }),
+);
+const b = ok(
+  'invoice B (1,000)',
+  await sell(1, { lines: [{ productId: cheap.id, quantity: 10, unitPrice: 1000 }] }),
+);
 eq('B waits for payment', await state(b.id), ['DUE', 10000]);
 eq('A still part paid', (await state(a.id))[0], 'PARTIAL');
 ok(
@@ -80,7 +102,7 @@ ok(
   await owner.post('/sales/returns', {
     partyId: cust.id,
     warehouseId: wh.id,
-    lines: [{ productId: item.id, unitId: piece.id, quantity: 1, unitPrice: 1000 }],
+    lines: [{ productId: cheap.id, unitId: piece.id, quantity: 1 }],
   }),
 );
 ok('1,000 paid', await receive(10000));

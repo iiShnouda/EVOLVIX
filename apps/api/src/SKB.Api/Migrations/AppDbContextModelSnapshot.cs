@@ -760,6 +760,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("LineTotal")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("PricedApart")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
@@ -772,6 +775,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<Guid?>("SourceLineId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("Tax")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("UnitCost")
                         .HasColumnType("bigint");

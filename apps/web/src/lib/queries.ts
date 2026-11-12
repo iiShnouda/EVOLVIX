@@ -34,7 +34,7 @@ import type {
   CompanySettings,
   CustomerInvoices,
   CreatePurchaseInvoiceInput,
-  CreateReturnInput,
+  ReturnableItem,
   CreateFreeReturnInput,
   CreateSalesInvoiceInput,
   ApproveOrderInput,
@@ -956,39 +956,35 @@ export function useStocktake() {
   });
 }
 
-/** Post a sales return / purchase return against one invoice. */
+/** Post a sales / purchase return, the one way (owner, 2026-11-10). */
 export function useCreateReturn(scope: DocScope) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ invoiceId, input }: { invoiceId: string; input: CreateReturnInput }) =>
-      api.post<SalesDocument>(`/${scope}/invoices/${invoiceId}/returns`, input),
-    onSuccess: () => invalidateAfterPosting(qc, scope),
-  });
-}
-
-/** A return typed without an invoice. */
-export function useCreateFreeReturn(scope: DocScope) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateFreeReturnInput) =>
       api.post<SalesDocument>(`/${scope}/returns`, input),
-    onSuccess: () => invalidateAfterPosting(qc, scope),
+    onSuccess: () => {
+      invalidateAfterPosting(qc, scope);
+      void qc.invalidateQueries({ queryKey: ['returnable', scope] });
+    },
   });
 }
 
-/** What the party last paid for each item, per unit (minor units); keyed `productId:unitId`. */
-export function useLastPrices(scope: DocScope, partyId: string, productIds: string[]) {
-  const ids = [...new Set(productIds)].sort();
+/** What the party bought here and can still return, item by item, newest invoices first. */
+export function useReturnable(
+  scope: DocScope,
+  partyId: string,
+  branchId: string,
+  departmentId?: string,
+  invoiceId?: string,
+) {
   return useQuery({
-    queryKey: ['lastPrices', scope, partyId, ids],
-    enabled: !!partyId && ids.length > 0,
-    queryFn: async () => {
-      const q = new URLSearchParams({ partyId });
-      ids.forEach((id) => q.append('productIds', id));
-      const rows = await api.get<{ productId: string; unitId: string | null; price: number }[]>(
-        `/${scope}/returns/last-prices?${q}`,
-      );
-      return new Map(rows.map((r) => [`${r.productId}:${r.unitId ?? ''}`, r.price]));
+    queryKey: ['returnable', scope, partyId, branchId, departmentId ?? '', invoiceId ?? ''],
+    enabled: !!partyId && !!branchId,
+    queryFn: () => {
+      const q = new URLSearchParams({ partyId, branchId });
+      if (departmentId) q.set('departmentId', departmentId);
+      if (invoiceId) q.set('invoiceId', invoiceId);
+      return api.get<ReturnableItem[]>(`/${scope}/returns/returnable?${q}`);
     },
   });
 }
