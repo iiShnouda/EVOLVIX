@@ -67,6 +67,9 @@ public static partial class LogScrub
     [GeneratedRegex(@"^[A-Za-z0-9_.:,\-]{0,64}$")]
     private static partial Regex PlainValue();
 
+    [GeneratedRegex(@"(?<![\w.~-])(?:/(?:home|root|var|usr|opt|etc|tmp|srv|mnt|media|app|data|backups|updates|host|proc|sys|run|private|Users)|[A-Za-z]:\\|\\\\[\w.-]+\\)[^\s""'<>|:]*[/\\]([^/\\\s""'<>|:]*)")]
+    private static partial Regex FolderPath();
+
     [GeneratedRegex(@" in (?:[^\r\n]*[/\\])?([^/\\\r\n:]+):line (\d+)")]
     private static partial Regex SourcePath();
 
@@ -101,11 +104,14 @@ public static partial class LogScrub
     }
 
     /// <summary>A message as it is logged: one line, no secrets.</summary>
-    public static string Message(string? value, int max = 2000) => Secrets(Clean(value, max));
+    public static string Message(string? value, int max = 2000) => Folders(Secrets(Clean(value, max)).Trim());
+
+    /// <summary>The server's folders left out of a text: a path keeps only its last part ("…/wwwroot").</summary>
+    public static string Folders(string value) => value.Length == 0 ? value : FolderPath().Replace(value, "…/$1");
 
     /// <summary>An exception as it is logged: its lines kept, no secrets, source files without their folders.</summary>
     public static string Stack(string? value, int max = 12000) =>
-        SourcePath().Replace(Secrets(Clean(value, max, keepLines: true)), " in $1:line $2");
+        Folders(SourcePath().Replace(Secrets(Clean(value, max, keepLines: true)), " in $1:line $2"));
 
     /// <summary>
     /// A query string as it is logged: the names, and a value only when it is plainly an id, a number,
