@@ -5,7 +5,10 @@ import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { useT } from '../lib/i18n';
 import { usePrintPaper } from '../lib/queries';
-import { printClone, printNow, setPrintEditor, type PrintJob } from '../lib/print';
+import { useCan } from '../lib/can';
+import { api } from '../lib/api';
+import { errorText } from '../lib/errors';
+import { askOutput, printClone, printNow, setPrintEditor, type PrintJob } from '../lib/print';
 
 type Mode = 'text' | 'part' | 'column';
 const MODES: { mode: Mode; icon: string; label: TranslationKey }[] = [
@@ -25,12 +28,15 @@ export function PrintEditorHost() {
     return () => setPrintEditor(null);
   }, []);
   if (!job) return null;
+  const output = job.output;
   return (
     <PrintEditor
       source={job.node}
       fileTitle={job.fileTitle}
       onPrinted={job.onPrinted}
       onClose={() => setJob(null)}
+      pdf={output?.kind === 'pdf'}
+      beforePrint={output ? () => askOutput(output, job.fileTitle).then(() => true) : undefined}
     />
   );
 }
@@ -75,6 +81,7 @@ export function PrintEditor({
   live = false,
   zoomable = true,
   beforePrint,
+  pdf = false,
 }: {
   /** What prints (copied; the original is never touched). */
   source: HTMLElement | null;
@@ -87,10 +94,19 @@ export function PrintEditor({
   live?: boolean;
   /** Offer a type size here (a document has its own, kept per person, in `side`). */
   zoomable?: boolean;
-  /** Asked just before printing (the server's say on a document's print); false stops it. */
+  /** Asked just before printing (the server's say on a document's print); false or a refusal stops it. */
   beforePrint?: () => Promise<boolean>;
+  /** Saving as PDF: the button says so, with how to pick it in the print window. */
+  pdf?: boolean;
 }) {
   const { t } = useT();
+  const can = useCan();
+  // Changing the print options and the page is a permission (owner, 2026-11-12); without it the
+  // company's layout prints as it is.
+  const mayEdit = can('print:settings');
+  const mayDefault = can('print:default');
+  const [refused, setRefused] = useState<unknown>(null);
+  const [savedDefault, setSavedDefault] = useState(false);
   const [paper, setPaper] = usePrintPaper();
   const content = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('text');
@@ -159,7 +175,7 @@ export function PrintEditor({
   };
 
   const onPick = (e: MouseEvent<HTMLDivElement>) => {
-    if (mode === 'text') return;
+    if (mode === 'text' || !mayEdit) return;
     e.preventDefault();
     const box = content.current;
     let el = e.target as HTMLElement;
@@ -218,7 +234,13 @@ export function PrintEditor({
   const print = async () => {
     const box = content.current;
     if (!box) return;
-    if (beforePrint && !(await beforePrint())) return;
+    setRefused(null);
+    try {
+      if (beforePrint && !(await beforePrint())) return;
+    } catch (e) {
+      setRefused(e);
+      return;
+    }
     commitTyping();
     unpick();
     const node = document.createElement('div');
@@ -227,6 +249,16 @@ export function PrintEditor({
     printNow(node, fileTitle);
     onPrinted?.();
     onClose();
+  };
+
+  const saveDefault = async () => {
+    setRefused(null);
+    try {
+      await api.put('/preferences/print-default', {});
+      setSavedDefault(true);
+    } catch (e) {
+      setRefused(e);
+    }
   };
 
   useEffect(() => {
@@ -256,24 +288,31 @@ export function PrintEditor({
         <div className="space-y-3">
           {/* The choices stay beside the page and scroll on their own; Print is always in reach. */}
           <div className="space-y-1 rounded-[var(--radius-app)] border border-line p-1 lg:max-h-[calc(92vh-11rem)] lg:overflow-y-auto">
-            <p className="px-2 pt-1 text-xs font-semibold text-muted">{t('print.group.paper')}</p>
-            <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
-              <span>{t('print.paper')}</span>
-              <div className="flex overflow-hidden rounded-md border border-line">
-                {(['A4', 'A5'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setPaper(s)}
-                    aria-pressed={paper === s}
-                    className={choice(paper === s)}
-                  >
-                    {s}
-                  </button>
-                ))}
+            {!mayEdit && (
+              <p className="px-2 py-1.5 text-sm text-muted">{t('print.companyLayout')}</p>
+            )}
+            {mayEdit && (
+              <p className="px-2 pt-1 text-xs font-semibold text-muted">{t('print.group.paper')}</p>
+            )}
+            {mayEdit && (
+              <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
+                <span>{t('print.paper')}</span>
+                <div className="flex overflow-hidden rounded-md border border-line">
+                  {(['A4', 'A5'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setPaper(s)}
+                      aria-pressed={paper === s}
+                      className={choice(paper === s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-            {zoomable && (
+            )}
+            {mayEdit && zoomable && (
               <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
                 <span>{t('print.textSize')}</span>
                 <div className="flex overflow-hidden rounded-md border border-line">
@@ -292,10 +331,29 @@ export function PrintEditor({
               </div>
             )}
             {side}
+            {mayDefault && (
+              <div className="border-t border-line px-1 pt-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full"
+                  disabled={savedDefault}
+                  onClick={() => void saveDefault()}
+                >
+                  {t(savedDefault ? 'print.savedDefault' : 'print.saveDefault')}
+                </Button>
+              </div>
+            )}
           </div>
+          {refused != null && <p className="text-sm text-destructive">{errorText(t, refused)}</p>}
+          {pdf && <p className="text-xs text-muted">{t('print.pdfHint')}</p>}
           <div className="flex gap-2">
-            <Button icon="print" className="flex-1" onClick={() => void print()}>
-              {t('print.now')}
+            <Button
+              icon={pdf ? 'download' : 'print'}
+              className="flex-1"
+              onClick={() => void print()}
+            >
+              {t(pdf ? 'print.savePdf' : 'print.now')}
             </Button>
             <Button variant="ghost" onClick={onClose}>
               {t('common.cancel')}
@@ -304,39 +362,41 @@ export function PrintEditor({
         </div>
 
         <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              role="tablist"
-              aria-label={t('print.edit')}
-              className="flex flex-wrap gap-0.5 rounded-[var(--radius-app)] border border-line bg-surface p-0.5"
-            >
-              {MODES.map((m) => (
-                <button
-                  key={m.mode}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === m.mode}
-                  onClick={() => {
-                    commitTyping();
-                    unpick();
-                    setMode(m.mode);
-                  }}
-                  className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${
-                    mode === m.mode ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
-                  }`}
-                >
-                  <Icon name={m.icon} size={14} />
-                  {t(m.label)}
-                </button>
-              ))}
+          {mayEdit && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="tablist"
+                aria-label={t('print.edit')}
+                className="flex flex-wrap gap-0.5 rounded-[var(--radius-app)] border border-line bg-surface p-0.5"
+              >
+                {MODES.map((m) => (
+                  <button
+                    key={m.mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === m.mode}
+                    onClick={() => {
+                      commitTyping();
+                      unpick();
+                      setMode(m.mode);
+                    }}
+                    className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${
+                      mode === m.mode ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+                    }`}
+                  >
+                    <Icon name={m.icon} size={14} />
+                    {t(m.label)}
+                  </button>
+                ))}
+              </div>
+              <Button size="sm" variant="secondary" disabled={steps === 0} onClick={undo}>
+                {t('print.undo')}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={steps === 0} onClick={load}>
+                {t('print.restore')}
+              </Button>
             </div>
-            <Button size="sm" variant="secondary" disabled={steps === 0} onClick={undo}>
-              {t('print.undo')}
-            </Button>
-            <Button size="sm" variant="ghost" disabled={steps === 0} onClick={load}>
-              {t('print.restore')}
-            </Button>
-          </div>
+          )}
           {picked.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-app)] bg-destructive-soft px-2 py-1.5">
               <Button size="sm" variant="danger" icon="close" onClick={remove}>
@@ -371,7 +431,7 @@ export function PrintEditor({
             >
               <div
                 ref={content}
-                contentEditable={mode === 'text'}
+                contentEditable={mayEdit && mode === 'text'}
                 suppressContentEditableWarning
                 spellCheck={false}
                 style={{ zoom: ZOOMS[zoom] }}

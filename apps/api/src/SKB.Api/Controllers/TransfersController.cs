@@ -49,7 +49,7 @@ public sealed class TransfersController : ControllerBase
     /// and a sent-date range (company days, inclusive). With the pieces and value of all found.
     /// </summary>
     [HttpGet]
-    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer,
         Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
     public async Task<ActionResult<TransferListDto>> List(
         [FromQuery] string? status = null, [FromQuery] string? warehouseId = null,
@@ -100,7 +100,7 @@ public sealed class TransfersController : ControllerBase
     /// from / to filters offer (names only).
     /// </summary>
     [HttpGet("places")]
-    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer,
         Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
     public async Task<ActionResult<TransferPlaceDto[]>> Places()
     {
@@ -116,7 +116,7 @@ public sealed class TransfersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer,
         Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
     public async Task<ActionResult<StockTransferDto>> Get(Guid id)
     {

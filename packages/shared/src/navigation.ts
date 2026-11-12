@@ -142,6 +142,7 @@ export const NAV_SECTIONS: NavSection[] = [
           'inventory:print',
           'inventory:export',
           'transfers:print',
+          'transfers:pdf',
           'prices:bulk_edit',
         ]),
         primaryOnPhone: true,

@@ -377,6 +377,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
             </Button>
           )}
           <ReportActions
+            scope="stocktake"
             disabled={rows.length === 0}
             onPrint={() => report.print(sheet.current, t('stocktake.sheet'), subtitle)}
           />

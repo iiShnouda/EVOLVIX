@@ -33,7 +33,7 @@ public static class Lookups
             Permissions.VouchersDiscount, Permissions.PriceListsView, Permissions.PriceListsCustomers,
             Permissions.InventoryView, Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.ValuationSuppliers,
             Permissions.PricesBulkEdit,
-            Permissions.LabelsPrint, Permissions.AiScanPurchase, Permissions.AiScanCheques),
+            Permissions.LabelsPrint, Permissions.LabelsPdf, Permissions.AiScanPurchase, Permissions.AiScanCheques),
         [Products] = Of(new[] { "inventory:", "products:", "transfers:", "price_lists:", "quantity_breaks:", "labels:", "sales:", "purchases:" },
             Permissions.PricesEdit, Permissions.PricesBulkEdit, Permissions.ReportsItems, Permissions.ReportsProfit, Permissions.StatementWarehouses,
             Permissions.AiScanPurchase, Permissions.AiScanStocktake),

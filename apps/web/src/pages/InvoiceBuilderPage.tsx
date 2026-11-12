@@ -821,6 +821,7 @@ export function InvoiceBuilderPage({
   const [loadingEdit, setLoadingEdit] = useState(!!editId);
   const [editedNumber, setEditedNumber] = useState('');
   const [printing, setPrinting] = useState(false);
+  const [printPdf, setPrintPdf] = useState(false);
   useEffect(() => {
     if (!editId) return;
     let gone = false;
@@ -1477,7 +1478,20 @@ export function InvoiceBuilderPage({
           <div className="flex flex-wrap items-center gap-2">
             {readOnly && viewed && can('sales:print') && (
               <Button variant="secondary" size="sm" icon="print" onClick={() => setPrinting(true)}>
-                {t('common.printPdf')}
+                {t('common.print')}
+              </Button>
+            )}
+            {readOnly && viewed && can('sales:pdf') && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="download"
+                onClick={() => {
+                  setPrintPdf(true);
+                  setPrinting(true);
+                }}
+              >
+                {t('common.pdf')}
               </Button>
             )}
             {readOnly && viewed?.status !== 'CANCELLED' && can('sales:edit') && (
@@ -1492,7 +1506,15 @@ export function InvoiceBuilderPage({
         }
       />
       {printing && viewed && (
-        <PrintSetupSheet doc={viewed} record onClose={() => setPrinting(false)} />
+        <PrintSetupSheet
+          doc={viewed}
+          record
+          pdf={printPdf}
+          onClose={() => {
+            setPrinting(false);
+            setPrintPdf(false);
+          }}
+        />
       )}
 
       <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">

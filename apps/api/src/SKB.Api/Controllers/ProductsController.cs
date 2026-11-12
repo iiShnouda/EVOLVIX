@@ -254,7 +254,7 @@ public sealed class ProductsController : ControllerBase
     /// invoice with one label per piece bought.
     /// </summary>
     [HttpGet("labels")]
-    [Authorize(Policy = Permissions.LabelsPrint)]
+    [AnyPermission(Permissions.LabelsPrint, Permissions.LabelsPdf)]
     public async Task<ActionResult<LabelItemDto[]>> Labels([FromQuery] string? ids = null, [FromQuery] string? documentId = null)
     {
         var counts = new Dictionary<Guid, int>();

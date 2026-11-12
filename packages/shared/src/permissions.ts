@@ -54,7 +54,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'view',
-        permissions: ['sales:view', 'sales:returns_view', 'sales:together', 'sales:print', 'sales:pdf'],
+        permissions: [
+          'sales:view',
+          'sales:returns_view',
+          'sales:together',
+          'sales:print',
+          'sales:pdf',
+        ],
       },
       {
         key: 'invoices',
@@ -122,7 +128,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'purchases:returns_view',
           'purchases:price_sheet',
           'purchases:print',
-        'purchases:pdf',
+          'purchases:pdf',
         ],
       },
       {
@@ -277,7 +283,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'view',
-        permissions: ['parties:view', 'parties:contact', 'parties:id_cards_view', 'parties:print', 'parties:pdf'],
+        permissions: [
+          'parties:view',
+          'parties:contact',
+          'parties:id_cards_view',
+          'parties:print',
+          'parties:pdf',
+        ],
       },
       {
         key: 'adding_and_changing',
@@ -435,8 +447,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'payroll:advances',
           'payroll:setup',
           'payroll:print',
-        'payroll:pdf',
-        'payroll:export',
+          'payroll:pdf',
+          'payroll:export',
         ],
       },
       {
