@@ -20,6 +20,7 @@ import { TabsView, useTabActions } from './Tabs';
 import { QuickActions } from '../QuickActions';
 import { ChatBadge } from './ChatBadge';
 import { UpdateBadge } from './UpdateBadge';
+import { WindowControls } from './WindowControls';
 import { GlobalSearch, PhoneSearch } from './GlobalSearch';
 import { FROM_MENU } from '../../lib/tabs';
 
@@ -215,6 +216,7 @@ function PhoneShell() {
           <ConnectionBadge showLabel={false} />
           <NotificationBell />
           <AccountMenu />
+          <WindowControls className="ms-1" />
         </div>
       </header>
 
@@ -388,6 +390,7 @@ function TopBar({ expandable = true }: { expandable?: boolean }) {
         <NotificationBell />
         <PrefControls />
         <AccountMenu />
+        <WindowControls className="border-s border-line ps-2" />
       </div>
     </header>
   );

@@ -1955,6 +1955,8 @@ export const en = {
   'invoice.locked': 'Locked',
   'shell.collapse': 'Collapse menu',
   'shell.expand': 'Expand menu',
+  'shell.minimize': 'Minimize',
+  'shell.close': 'Close',
   'print.options': 'Print options',
   'print.company': 'Company details',
   'print.party': 'Customer details',

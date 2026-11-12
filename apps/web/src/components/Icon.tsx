@@ -37,6 +37,7 @@ const PATHS: Record<string, string> = {
   menu: 'M3 6h18M3 12h18M3 18h18',
   columns: 'M4 5h16v14H4zM9.5 5v14M14.5 5v14',
   close: 'M6 6l12 12M18 6L6 18',
+  minimize: 'M5 12h14',
   plus: 'M12 5v14M5 12h14',
   chevronRight: 'M9 6l6 6-6 6',
   chevronDown: 'M6 9l6 6 6-6',

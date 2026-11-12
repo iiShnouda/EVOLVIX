@@ -5,6 +5,7 @@ import { Button } from '../components/ui';
 import { Logo, Wordmark } from '../components/Logo';
 import { CompanyMark, CompanyName } from '../components/CompanyBadge';
 import { PrefControls } from '../components/shell/PrefControls';
+import { WindowControls } from '../components/shell/WindowControls';
 import { useT } from '../lib/i18n';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../stores/auth';
@@ -145,6 +146,7 @@ export function LoginPage() {
       <main className="relative flex flex-col items-center justify-center px-5 py-16 safe-top pb-safe">
         <div className="absolute end-4 top-4 flex items-center gap-2 safe-top">
           <PrefControls />
+          <WindowControls className="border-s border-line ps-2" />
         </div>
 
         <form

@@ -1,6 +1,7 @@
 import { Icon } from './Icon';
 import { Button } from './ui';
 import { PrefControls } from './shell/PrefControls';
+import { WindowControls } from './shell/WindowControls';
 import { useT } from '../lib/i18n';
 
 /**
@@ -11,8 +12,9 @@ export function OfflineGate({ onRetry }: { onRetry: () => void }) {
   const { t } = useT();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-canvas p-6 text-center safe-top pb-safe">
-      <div className="absolute end-4 top-4 safe-top">
+      <div className="absolute end-4 top-4 flex items-center gap-2 safe-top">
         <PrefControls />
+        <WindowControls className="border-s border-line ps-2" />
       </div>
       <div className="grid h-16 w-16 place-items-center rounded-2xl bg-destructive-soft text-destructive">
         <Icon name="wifiOff" size={30} />

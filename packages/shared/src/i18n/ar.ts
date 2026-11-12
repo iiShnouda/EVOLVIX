@@ -1949,6 +1949,8 @@ export const ar: TranslationDictionary = {
   'invoice.locked': 'مقفولة',
   'shell.collapse': 'تصغير القائمة',
   'shell.expand': 'توسيع القائمة',
+  'shell.minimize': 'تصغير',
+  'shell.close': 'إغلاق',
   'print.options': 'خيارات الطباعة',
   'print.company': 'بيانات المنشأة',
   'print.party': 'بيانات العميل',
