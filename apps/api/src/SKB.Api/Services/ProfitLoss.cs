@@ -27,13 +27,22 @@ public static class ProfitLoss
 {
     private sealed record Bucket(Guid? BranchId, bool General);
 
+    /// <param name="onlyWarehouse">Only this warehouse's figures (one the person may see).</param>
+    /// <param name="onlyDepartment">Only this department's (owner, 2026-11-11). A person given only some
+    /// departments sees theirs (and sales of no department): what their sales earned, from the sold
+    /// lines, since expenses and stocktakes aren't a department's.</param>
     public static async Task<ProfitLossDto> BuildAsync(AppDbContext db, ClaimsPrincipal user, DateOnly from, DateOnly to,
-        Guid? onlyBranch)
+        Guid? onlyBranch, Guid? onlyWarehouse = null, Guid? onlyDepartment = null)
     {
         var (start, end) = CompanyClock.Days(from, to);
-        var allBranches = Access.AllBranches(user);
         var mineBranches = Access.Branches(user);
         var mineWarehouses = Access.Warehouses(user);
+        if (onlyWarehouse is Guid ow) mineWarehouses = new[] { ow };
+        var departments = onlyDepartment is Guid od ? new[] { od } : Access.Departments(user);
+        var noDepartmentToo = onlyDepartment is null;
+        // By department: the sold lines alone, like a warehouse's figures without its box and stocktakes.
+        var byDepartment = departments is not null;
+        var allBranches = Access.AllBranches(user) && mineWarehouses is null && !byDepartment;
 
         // ---- ledger: every revenue and expense amount by entry, in its bucket
         var accounts = await db.LedgerAccounts.AsNoTracking()
@@ -85,10 +94,15 @@ public static class ProfitLoss
         bool BranchVisible(Guid id) => (mineBranches is null || mineBranches.Contains(id)) && (onlyBranch is null || onlyBranch == id);
 
         // ---- warehouses: goods sold, their cost, stocktake differences (documents and stock movements)
-        var docLines = await db.DocumentLines.AsNoTracking()
+        var soldLines = db.DocumentLines.AsNoTracking()
             .Where(l => l.WarehouseId != null && l.Document!.IssueDate >= start && l.Document.IssueDate < end
                         && l.Document.Status != DocumentStatus.CANCELLED
-                        && (l.Document.Type == DocumentType.SALES_INVOICE || l.Document.Type == DocumentType.SALES_RETURN))
+                        && (l.Document.Type == DocumentType.SALES_INVOICE || l.Document.Type == DocumentType.SALES_RETURN));
+        if (departments is { } ds)
+            soldLines = noDepartmentToo
+                ? soldLines.Where(l => l.Document!.DepartmentId == null || ds.Contains(l.Document.DepartmentId.Value))
+                : soldLines.Where(l => l.Document!.DepartmentId != null && ds.Contains(l.Document.DepartmentId.Value));
+        var docLines = await soldLines
             .GroupBy(l => new { Warehouse = l.WarehouseId!.Value, l.Document!.Type })
             .Select(g => new { g.Key.Warehouse, g.Key.Type, Net = g.Sum(x => x.LineTotal - x.DocDiscount), Cost = g.Sum(x => x.LineCost) })
             .ToListAsync();
@@ -112,6 +126,7 @@ public static class ProfitLoss
                 docLines.Where(d => d.Warehouse == id && d.Type == t).Sum(d => cost ? d.Cost : d.Net);
             var netSales = Sum(DocumentType.SALES_INVOICE, false) - Sum(DocumentType.SALES_RETURN, false);
             var cogs = Sum(DocumentType.SALES_INVOICE, true) - Sum(DocumentType.SALES_RETURN, true);
+            if (byDepartment) return Figures(netSales, cogs, 0, 0);
             var (gain, loss) = adjustments.GetValueOrDefault(id);
             return Figures(netSales, cogs, gain, loss + warehouseExpenses.GetValueOrDefault(id));
         }
@@ -125,7 +140,7 @@ public static class ProfitLoss
                 .Select(w => new PlUnitDto(w.Id.ToString(), Loc.Clean(w.Name) ?? w.Name, "WAREHOUSE", WarehouseFigures(w.Id), null, 0))
                 .ToList();
             PlFiguresDto figures;
-            if (mineWarehouses is not null)
+            if (mineWarehouses is not null || byDepartment)
                 figures = Sum(stores.Select(s => s.Figures)); // only their warehouses: no branch-wide figures
             else
             {
@@ -163,7 +178,7 @@ public static class ProfitLoss
 
         // ---- the detail lines (gains and losses) of everything the person sees
         var seen = perBucket.Where(kv => kv.Key.General ? general is not null
-                : kv.Key.BranchId is Guid id && BranchVisible(id) && mineWarehouses is null)
+                : kv.Key.BranchId is Guid id && BranchVisible(id) && mineWarehouses is null && !byDepartment)
             .SelectMany(kv => kv.Value)
             .GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Sum(x => x.Value));
         var detail = seen.Where(kv => kv.Value != 0).Select(kv =>
@@ -182,7 +197,7 @@ public static class ProfitLoss
 
         var currency = await db.CompanySettings.AsNoTracking().Select(s => s.Currency).FirstOrDefaultAsync() ?? "EGP";
         return new ProfitLossDto(from.ToString("yyyy-MM-dd"), to.ToString("yyyy-MM-dd"), currency,
-            mineWarehouses is null ? total : Sum(units.Select(u => u.Figures)),
+            mineWarehouses is null && !byDepartment ? total : Sum(units.Select(u => u.Figures)),
             units.ToArray(), general, detail);
     }
 

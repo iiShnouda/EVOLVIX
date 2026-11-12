@@ -19,8 +19,15 @@ namespace SKB.Api.Controllers;
 public sealed class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly WarehouseService _warehouses;
+    private readonly StockValuation _valuation;
 
-    public AnalyticsController(AppDbContext db) => _db = db;
+    public AnalyticsController(AppDbContext db, WarehouseService warehouses, StockValuation valuation)
+    {
+        _db = db;
+        _warehouses = warehouses;
+        _valuation = valuation;
+    }
 
     private static readonly DocumentType[] SalesTypes = { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN };
     private static readonly DocumentType[] PurchaseTypes = { DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN };
@@ -69,7 +76,7 @@ public sealed class AnalyticsController : ControllerBase
     [HttpGet("profit-loss")]
     [AnyPermission(Permissions.ReportsPl, Permissions.DashboardProfit)]
     public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] string? branchId = null)
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null)
     {
         // A report of profit and loss: its own permission is enough (owner, 2026-10-23).
         var today = CompanyClock.Today;
@@ -84,7 +91,23 @@ public sealed class AnalyticsController : ControllerBase
                 return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
             branch = b;
         }
-        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch));
+        // One warehouse or one department of the person's (owner, 2026-11-11: the dashboard's picks).
+        Guid? warehouse = null, department = null;
+        if (!string.IsNullOrEmpty(warehouseId))
+        {
+            if (!Guid.TryParse(warehouseId, out var w) || !await _warehouses.Visible(User)
+                    .AnyAsync(x => x.Id == w && x.Kind == WarehouseKind.STORE && (branch == null || x.BranchId == branch)))
+                return NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+            warehouse = w;
+        }
+        if (!string.IsNullOrEmpty(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var d) || !Access.CanUseDepartment(User, d)
+                || !await _db.Departments.AnyAsync(x => x.Id == d))
+                return NotFound(new { message = "Department not found.", code = "department_not_found" });
+            department = d;
+        }
+        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch, warehouse, department));
     }
 
     /// <summary>The customers (or suppliers) with the most net business in a period.</summary>

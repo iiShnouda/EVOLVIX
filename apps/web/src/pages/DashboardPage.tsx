@@ -1,9 +1,11 @@
 import { ProfitLossCard } from '../components/ProfitLossView';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
-  formatDate,
+  formatDateTime,
   formatMoney,
   formatNumber,
+  type DashDoc,
+  type DashFilter,
   type DashRank,
   type DashboardData,
   type DashboardMore,
@@ -15,11 +17,20 @@ import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from 
 import { Icon } from '../components/Icon';
 import { AreaTrend, Donut, Ring, SHARE_COLORS, Sparkline } from '../components/charts/DashCharts';
 import { CardPeriod, NowTag, PeriodPicker } from '../components/PeriodPicker';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { periodOf, type Period } from '../lib/period';
-import { useDashboard, useDashboardMore, useHiddenColumns } from '../lib/queries';
+import {
+  useBranches,
+  useDashboard as useDashboardFor,
+  useDashboardMore as useDashboardMoreFor,
+  useDepartments,
+  useHiddenColumns,
+  useWarehouses,
+} from '../lib/queries';
+import { useAuth } from '../stores/auth';
+import { useDeviceInfo } from '../lib/device';
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
 import { CodeName } from '../components/CodeName';
@@ -83,8 +94,15 @@ const WIDGETS = [
 ] as const satisfies readonly (readonly [string, TranslationKey, readonly Permission[]])[];
 type Widget = (typeof WIDGETS)[number][0];
 
-/** The main period and the company's currency, for every card. */
-const Main = createContext<{ period?: Period; currency: string }>({ currency: 'EGP' });
+/** The main period, the branch / warehouse / department picked and the company's currency, for every card. */
+const Main = createContext<{ period?: Period; currency: string; filter: DashFilter }>({
+  currency: 'EGP',
+  filter: {},
+});
+
+/** A card's figures: its period, narrowed to what is picked at the top (owner, 2026-11-11). */
+const useDashboard = (period?: Period) => useDashboardFor(period, useContext(Main).filter);
+const useDashboardMore = (period?: Period) => useDashboardMoreFor(period, useContext(Main).filter);
 
 /** A card's period, whether it is its own, and how to change it (null = back to the main one). */
 interface PeriodProps {
@@ -117,8 +135,31 @@ export function DashboardPage() {
         return next;
       }),
   });
-  const { data, isLoading, isError, refetch } = useDashboard(period);
-  const more = useDashboardMore(period).data;
+  const [params, setParams] = useSearchParams();
+  // The branch, warehouse and department every card follows (owner, 2026-11-11), kept in the address.
+  const filter: DashFilter = {
+    branchId: params.get('br') ?? undefined,
+    warehouseId: params.get('wh') ?? undefined,
+    departmentId: params.get('dept') ?? undefined,
+  };
+  const setFilter = (f: DashFilter) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [key, value] of [
+          ['br', f.branchId],
+          ['wh', f.warehouseId],
+          ['dept', f.departmentId],
+        ] as const) {
+          if (value) next.set(key, value);
+          else next.delete(key);
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  const { data, isLoading, isError, refetch } = useDashboardFor(period, filter);
+  const more = useDashboardMoreFor(period, filter).data;
   // Kept on the server for the person, like hidden columns.
   const [hidden, setHidden] = useHiddenColumns('dashboard.widgets');
   const allowed = WIDGETS.filter(([, , anyOf]) => anyOf.some(can));
@@ -150,7 +191,7 @@ export function DashboardPage() {
   }
 
   return (
-    <Main.Provider value={{ period, currency: data.currency }}>
+    <Main.Provider value={{ period, currency: data.currency, filter }}>
       <div className="min-w-0 space-y-5">
         <PageHeader
           title={t('nav.dashboard')}
@@ -190,6 +231,7 @@ export function DashboardPage() {
             {t('period.title')}
           </span>
           <PeriodPicker value={period} onChange={setPeriod} />
+          <PlacePicker value={filter} onChange={setFilter} />
         </div>
 
         {shows('kpis') && <KpiRow {...cardPeriod('kpis')} />}
@@ -198,6 +240,7 @@ export function DashboardPage() {
           <ProfitLossCard
             from={cardPeriod('profit').period.from}
             to={cardPeriod('profit').period.to}
+            filter={filter}
             head={<CardHead title={t('pnl.title')} p={cardPeriod('profit')} />}
           />
         )}
@@ -277,6 +320,84 @@ export function DashboardPage() {
         )}
       </div>
     </Main.Provider>
+  );
+}
+
+/**
+ * The branch, warehouse and department the whole dashboard shows (owner, 2026-11-11), among the
+ * person's own; "all" is all of theirs. A choice shows only when there is more than one.
+ */
+function PlacePicker({
+  value,
+  onChange,
+}: {
+  value: DashFilter;
+  onChange: (f: DashFilter) => void;
+}) {
+  const { t } = useT();
+  const mine = useAuth((s) => s.user?.departmentIds ?? null);
+  const branches = (useBranches().data ?? []).filter((b) => b.isActive || b.id === value.branchId);
+  const stores = (useWarehouses().data ?? []).filter(
+    (w) =>
+      w.kind === 'STORE' &&
+      (w.isActive || w.id === value.warehouseId) &&
+      (!value.branchId || w.branchId === value.branchId),
+  );
+  const departments = (useDepartments().data ?? []).filter(
+    (d) => (d.isActive || d.id === value.departmentId) && (!mine?.length || mine.includes(d.id)),
+  );
+  const select =
+    'h-9 max-w-[12rem] min-w-0 flex-1 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand sm:flex-none';
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      {branches.length > 1 && (
+        <select
+          aria-label={t('list.branch')}
+          className={select}
+          value={value.branchId ?? ''}
+          onChange={(e) =>
+            onChange({ ...value, branchId: e.target.value || undefined, warehouseId: undefined })
+          }
+        >
+          <option value="">{t('dash.allBranches')}</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {(stores.length > 1 || value.warehouseId) && (
+        <select
+          aria-label={t('list.warehouse')}
+          className={select}
+          value={value.warehouseId ?? ''}
+          onChange={(e) => onChange({ ...value, warehouseId: e.target.value || undefined })}
+        >
+          <option value="">{t('dash.allWarehouses')}</option>
+          {stores.map((w) => (
+            <option key={w.id} value={w.id}>
+              {value.branchId || branches.length < 2 ? w.name : `${w.branchName} / ${w.name}`}
+            </option>
+          ))}
+        </select>
+      )}
+      {departments.length > 1 && (
+        <select
+          aria-label={t('invoice.department')}
+          className={select}
+          value={value.departmentId ?? ''}
+          onChange={(e) => onChange({ ...value, departmentId: e.target.value || undefined })}
+        >
+          <option value="">{t('dash.allDepartments')}</option>
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   );
 }
 
@@ -686,7 +807,32 @@ function Shares({ rows, money }: { rows: DashRank[]; money: (v: number) => strin
   );
 }
 
-/** The latest documents of the period as a history table. */
+/** Where a document belongs: its branch, warehouses and department. */
+const placeOf = (doc: DashDoc) =>
+  [doc.branchName, doc.warehouseNames.join('، '), doc.departmentName].filter(Boolean).join(' · ');
+
+/** The document's kind, as an icon tile. */
+function DocIcon({ type }: { type: string }) {
+  return (
+    <span
+      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+        type.endsWith('RETURN')
+          ? 'bg-warning-soft text-warning'
+          : type.startsWith('PURCHASE')
+            ? 'bg-info-soft text-info'
+            : 'bg-brand-soft text-brand'
+      }`}
+    >
+      <Icon name={type.startsWith('PURCHASE') ? 'purchases' : 'sales'} size={16} />
+    </span>
+  );
+}
+
+/**
+ * The latest documents of the period with where each belongs (owner, 2026-11-11: "which
+ * department, branch or warehouse"): kind and number, customer or supplier, branch, warehouse,
+ * department, who made it and when, its state and amount. A list of cards on a phone.
+ */
 function HistoryCard({
   className,
   onOpen,
@@ -694,7 +840,13 @@ function HistoryCard({
 }: PeriodProps & { className?: string; onOpen: (doc: { id: string; type: string }) => void }) {
   const { t, locale } = useT();
   const { data } = useDashboard(p.period);
+  const phone = useDeviceInfo().deviceClass === 'phone';
   const docs = data?.recentDocuments ?? [];
+  const by = (doc: DashDoc) =>
+    doc.repName && doc.repName !== doc.staffName
+      ? `${doc.staffName} (${doc.repName})`
+      : doc.staffName;
+  const kind = (doc: DashDoc) => t(`statement.kind.${doc.type}` as TranslationKey);
   return (
     <Card padded={false} className={className}>
       <div className="p-4 pb-0 sm:p-5 sm:pb-0">
@@ -702,17 +854,56 @@ function HistoryCard({
       </div>
       {docs.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-muted">{t('dash.none')}</p>
+      ) : phone ? (
+        <ul className="divide-y divide-[var(--c-line)] border-t border-line">
+          {docs.map((doc) => (
+            <li key={doc.id}>
+              <button
+                type="button"
+                className="flex w-full items-start gap-3 px-4 py-3 text-start hover:bg-surface-2"
+                onClick={() => onOpen(doc)}
+              >
+                <DocIcon type={doc.type} />
+                <span className="min-w-0 flex-1 space-y-0.5">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 truncate text-sm font-medium">
+                      {kind(doc)} <bdi className="tnum">{doc.number}</bdi>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tnum">
+                      {formatMoney(doc.grandTotal, doc.currency, locale)}
+                    </span>
+                  </span>
+                  <span className="block truncate text-sm">
+                    <CodeName code={doc.partyCode} name={doc.partyName} truncate />
+                  </span>
+                  <span className="block truncate text-xs text-muted">{placeOf(doc)}</span>
+                  <span className="flex items-center justify-between gap-2 text-xs text-muted">
+                    <span className="min-w-0 truncate">
+                      {by(doc)} ·{' '}
+                      <span className="tnum">{formatDateTime(doc.createdAt, locale)}</span>
+                    </span>
+                    <Badge tone={STATUS_TONE[doc.status as keyof typeof STATUS_TONE]}>
+                      {t(`status.${doc.status}` as TranslationKey)}
+                    </Badge>
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : (
         <div className="overflow-x-auto">
-          <TableColumns id="dashboard.recent">
-            <table className="w-full text-sm">
+          <TableColumns id="dashboard.recent2">
+            <table className="w-full min-w-[56rem] text-sm">
               <thead>
                 <tr className="border-y border-line bg-surface-2 text-xs text-muted">
                   <th className="px-4 py-2 text-start font-medium sm:px-5">{t('dash.doc')}</th>
                   <th className="px-3 py-2 text-start font-medium">{t('dash.party')}</th>
-                  <th className="hidden px-3 py-2 text-start font-medium md:table-cell">
-                    {t('dash.date')}
-                  </th>
+                  <th className="px-3 py-2 text-start font-medium">{t('list.branch')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('list.warehouse')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('invoice.department')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('dash.by')}</th>
+                  <th className="px-3 py-2 text-start font-medium">{t('dash.when')}</th>
                   <th className="px-3 py-2 text-start font-medium">{t('common.status')}</th>
                   <th className="px-4 py-2 text-end font-medium sm:px-5">{t('common.amount')}</th>
                 </tr>
@@ -726,24 +917,9 @@ function HistoryCard({
                   >
                     <td className="px-4 py-2.5 sm:px-5">
                       <span className="flex items-center gap-2">
-                        <span
-                          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
-                            doc.type.endsWith('RETURN')
-                              ? 'bg-warning-soft text-warning'
-                              : doc.type.startsWith('PURCHASE')
-                                ? 'bg-info-soft text-info'
-                                : 'bg-brand-soft text-brand'
-                          }`}
-                        >
-                          <Icon
-                            name={doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}
-                            size={16}
-                          />
-                        </span>
+                        <DocIcon type={doc.type} />
                         <span className="min-w-0">
-                          <span className="block text-xs font-medium text-muted">
-                            {t(`statement.kind.${doc.type}` as TranslationKey)}
-                          </span>
+                          <span className="block text-xs font-medium text-muted">{kind(doc)}</span>
                           <span className="block tnum">
                             <bdi>{doc.number}</bdi>
                           </span>
@@ -753,11 +929,19 @@ function HistoryCard({
                     <td className="max-w-[12rem] px-3 py-2.5 font-medium">
                       <CodeName code={doc.partyCode} name={doc.partyName} truncate />
                     </td>
-                    <td className="hidden px-3 py-2.5 text-muted tnum md:table-cell">
-                      {formatDate(doc.issueDate, locale)}
+                    <td className="px-3 py-2.5">{doc.branchName}</td>
+                    <td className="max-w-[10rem] px-3 py-2.5">
+                      {doc.warehouseNames.join('، ') || '—'}
+                    </td>
+                    <td className="px-3 py-2.5">{doc.departmentName ?? '—'}</td>
+                    <td className="max-w-[10rem] truncate px-3 py-2.5">{by(doc)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted tnum">
+                      {formatDateTime(doc.createdAt, locale)}
                     </td>
                     <td className="px-3 py-2.5">
-                      <Badge tone={STATUS_TONE[doc.status]}>{t(`status.${doc.status}`)}</Badge>
+                      <Badge tone={STATUS_TONE[doc.status as keyof typeof STATUS_TONE]}>
+                        {t(`status.${doc.status}` as TranslationKey)}
+                      </Badge>
                     </td>
                     <td className="px-4 py-2.5 text-end font-semibold tnum sm:px-5">
                       {formatMoney(doc.grandTotal, doc.currency, locale)}
@@ -808,9 +992,11 @@ function AlertsCard() {
         {(more.overLimit ?? []).map((r) => (
           <li key={r.id} className="flex items-center justify-between gap-2 px-1">
             <span className="min-w-0 truncate">{r.name}</span>
-            <span className="text-xs text-destructive tnum">
-              {money(r.value)} / {money(r.extra ?? 0)}
-            </span>
+            {r.extra != null && (
+              <span className="text-xs text-destructive tnum">
+                {money(r.value)} / {money(r.extra)}
+              </span>
+            )}
           </li>
         ))}
       </ul>

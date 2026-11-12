@@ -53,6 +53,7 @@ import type {
   Warehouse,
   DashboardData,
   DashboardMore,
+  DashFilter,
   InventoryList,
   ItemCard,
   ItemLife,
@@ -155,20 +156,31 @@ import { setPrintPaper } from './print';
  * The dashboard for a period (owner, 2026-10-02: day, week, month, year or any dates): revenue,
  * purchases, the trend and the latest documents of that period; balances as they are now.
  */
-export function useDashboard(period?: Period) {
+export function useDashboard(period?: Period, filter: DashFilter = {}) {
   return useQuery({
-    queryKey: ['dashboard', period?.from ?? '', period?.to ?? ''],
-    queryFn: () => api.get<DashboardData>(`/dashboard${period ? `?${periodQuery(period)}` : ''}`),
+    queryKey: ['dashboard', period?.from ?? '', period?.to ?? '', dashFilterQuery(filter)],
+    queryFn: () =>
+      api.get<DashboardData>(
+        `/dashboard?${period ? periodQuery(period) : ''}${dashFilterQuery(filter)}`,
+      ),
     placeholderData: (prev) => prev,
   });
 }
 
+/** The dashboard's branch, warehouse and department (owner, 2026-11-11) as a query string. */
+export const dashFilterQuery = (f: DashFilter) =>
+  (f.branchId ? `&branchId=${f.branchId}` : '') +
+  (f.warehouseId ? `&warehouseId=${f.warehouseId}` : '') +
+  (f.departmentId ? `&departmentId=${f.departmentId}` : '');
+
 /** The dashboard's other widgets for a period (the period's sales, rankings, cheques due by its end). */
-export function useDashboardMore(period?: Period) {
+export function useDashboardMore(period?: Period, filter: DashFilter = {}) {
   return useQuery({
-    queryKey: ['dashboard', 'more', period?.from ?? '', period?.to ?? ''],
+    queryKey: ['dashboard', 'more', period?.from ?? '', period?.to ?? '', dashFilterQuery(filter)],
     queryFn: () =>
-      api.get<DashboardMore>(`/dashboard/more${period ? `?${periodQuery(period)}` : ''}`),
+      api.get<DashboardMore>(
+        `/dashboard/more?${period ? periodQuery(period) : ''}${dashFilterQuery(filter)}`,
+      ),
     placeholderData: (prev) => prev,
   });
 }
@@ -2587,10 +2599,11 @@ export async function scanPhoto<T>(
 
 // ---------------------------------------------------------------- profit and loss
 
-export function useProfitLoss(from: string, to: string, enabled = true) {
+export function useProfitLoss(from: string, to: string, enabled = true, filter: DashFilter = {}) {
   return useQuery({
-    queryKey: ['analytics', 'profit-loss', from, to],
-    queryFn: () => api.get<ProfitLoss>(`/analytics/profit-loss?from=${from}&to=${to}`),
+    queryKey: ['analytics', 'profit-loss', from, to, dashFilterQuery(filter)],
+    queryFn: () =>
+      api.get<ProfitLoss>(`/analytics/profit-loss?from=${from}&to=${to}${dashFilterQuery(filter)}`),
     enabled,
   });
 }

@@ -436,7 +436,17 @@ public record UpdateBranchRequest(string? Location = null, string? Name = null, 
 
 public record DashboardDto(
     KpiDto[] Kpis, TrendPointDto[] Trend, ProductDto[] LowStock,
-    SalesSummaryDto[] RecentDocuments, string Currency);
+    DashDocDto[] RecentDocuments, string Currency);
+
+/// <summary>
+/// One of the latest documents on the dashboard with where it belongs (owner, 2026-11-11: "which
+/// department, branch, warehouse or any detail"): its branch, the warehouses its goods went from or
+/// into, its department, who made it (and the sales rep) and when.
+/// </summary>
+public record DashDocDto(
+    string Id, string Number, string Type, string Status, string BranchName, string[] WarehouseNames,
+    string? DepartmentName, string PartyName, int? PartyCode, string StaffName, string? RepName,
+    string IssueDate, string CreatedAt, long GrandTotal, string Currency);
 
 /// <summary>
 /// The dashboard's other widgets (owner, 2026-10-01: the owner sees the whole business). A part is

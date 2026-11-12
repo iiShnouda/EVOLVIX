@@ -2020,8 +2020,34 @@ export interface DashboardData {
   kpis: KpiValue[];
   trend: TrendPoint[];
   lowStock: Product[];
-  recentDocuments: SalesDocumentSummary[];
+  recentDocuments: DashDoc[];
   currency: string;
+}
+
+/** One of the dashboard's latest documents, with where it belongs (owner, 2026-11-11). */
+export interface DashDoc {
+  id: string;
+  number: string;
+  type: string;
+  status: string;
+  branchName: string;
+  warehouseNames: string[];
+  departmentName: string | null;
+  partyName: string;
+  partyCode: number | null;
+  staffName: string;
+  repName: string | null;
+  issueDate: string;
+  createdAt: string;
+  grandTotal: number;
+  currency: string;
+}
+
+/** What the dashboard is narrowed to (owner, 2026-11-11); empty = everything the person may see. */
+export interface DashFilter {
+  branchId?: string;
+  warehouseId?: string;
+  departmentId?: string;
 }
 
 // ---------------------------------------------------------------------------
