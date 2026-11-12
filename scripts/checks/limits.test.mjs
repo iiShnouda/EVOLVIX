@@ -315,13 +315,17 @@ const last = ok(
   }),
 );
 eq('…at its own share of the line', last.grandTotal, 1000);
-ok(
-  'a fourth without the invoice still goes on the account',
-  await owner.post('/sales/returns', {
-    partyId: c6.id,
-    warehouseId: wh.id,
-    lines: [{ productId: item.id, quantity: 1, unitPrice: 1000 }],
-  }),
+// Only what the customer bought comes back (owner, 2026-11-10).
+eq(
+  'a fourth is refused: all of it came back',
+  (
+    await owner.post('/sales/returns', {
+      partyId: c6.id,
+      warehouseId: wh.id,
+      lines: [{ productId: item.id, quantity: 1 }],
+    })
+  ).data?.code,
+  'not_bought',
 );
 
 console.log('== the accountant’s discounts and the customer’s invoices together');

@@ -216,22 +216,35 @@ public record RepOptionDto(string Id, string Name, string BranchId, int Code = 0
 /// <summary>One invoice line being returned. Price and cost always come from the original line.</summary>
 public record CreateReturnLineRequest(string LineId, int Quantity);
 
-/// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
-/// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
 /// <summary>
-/// A return typed like an invoice, without picking one (owner decision 2026-10-01): the party, where
-/// the goods go back to, and the items with their price; a purchase line's discount (the supplier's,
-/// per line) goes back to the supplier with it.
+/// A return, typed like an invoice (owner, 2026-11-10: one way to return): the party, where it is
+/// made and where the goods go back to, and the items with how many. The server takes each from the
+/// party's own invoice lines, newest first, at what they paid.
 /// </summary>
+/// <param name="InvoiceId">Take the items only from this invoice of theirs.</param>
+/// <param name="RefundAccountId">Where a cash customer is paid back from (none = the branch's cash box).</param>
 public record CreateFreeReturnRequest(
     string PartyId, FreeReturnLineRequest[] Lines, string? WarehouseId = null, string? BranchId = null,
-    string? DepartmentId = null, string? Notes = null);
+    string? DepartmentId = null, string? Notes = null, string? InvoiceId = null, string? RefundAccountId = null);
 
-/// <param name="Discount">Off the whole line, minor units.</param>
-public record LastPriceDto(string ProductId, string? UnitId, long Price);
-public record FreeReturnLineRequest(string ProductId, int Quantity, long UnitPrice, long Discount = 0,
-    string? UnitId = null);
+/// <param name="Quantity">In <paramref name="UnitId"/> units (none = the item's base unit).</param>
+/// <param name="SourceLineId">Take the pieces only from this invoice line.</param>
+public record FreeReturnLineRequest(string ProductId, int Quantity, string? UnitId = null, string? SourceLineId = null);
 
+/// <summary>An item the party can still return, with its units and the invoice lines it can come from, newest first.</summary>
+public record ReturnableItemDto(string ProductId, string Name, string Sku, ReturnableUnitDto[] Units,
+    ReturnableLineDto[] Lines);
+
+public record ReturnableUnitDto(string UnitId, string Name, int Factor, string? Barcode);
+
+/// <param name="Quantity">Base units on the invoice line.</param>
+/// <param name="Net">What the whole line came to, after its discount and its share of the invoice discount (no tax).</param>
+/// <param name="From">When a sale's goods can come back, while its invoice is younger than the hours in Settings.</param>
+public record ReturnableLineDto(string LineId, string InvoiceId, string InvoiceNumber, string IssueDate, int Quantity,
+    int Returned, int Left, long Net, bool IsBonus, string? From);
+
+/// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
+/// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
 public record CreateReturnRequest(
     CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null,
     long ShippingCost = 0, string? ShippingAccountId = null);

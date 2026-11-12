@@ -179,7 +179,7 @@ public sealed class SalesController : ControllerBase
                 || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder)),
             DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.SalesReturnCancel,
                     Permissions.StatementCustomers)
-                || (mine && User.HasAny(Permissions.SalesReturn, Permissions.SalesReturnFree)),
+                || (mine && User.Has(Permissions.SalesReturn)),
             // Quotations are gone (owner, 2026-10-01); an old one is read with the sales list.
             DocumentType.QUOTATION => User.Has(Permissions.SalesView),
             DocumentType.SALES_ORDER => User.HasAny(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject,
@@ -302,8 +302,10 @@ public sealed class SalesController : ControllerBase
         var returnsTotal = back.Sum(d => d.GrandTotal);
         // A return against one of these invoices is already off what that invoice still owes.
         var postedIds = posted.Select(d => d.Id).ToHashSet();
-        var offBalance = back.Where(d => d.SourceDocumentId is not Guid src || !postedIds.Contains(src))
-            .Sum(d => d.GrandTotal - d.PaidAmount);
+        var backIds = back.Select(d => d.Id).ToHashSet();
+        var onPosted = (await MoneyService.ReturnCreditsAsync(_db, postedIds))
+            .Where(c => backIds.Contains(c.Return)).Sum(c => c.Amount);
+        var offBalance = back.Sum(d => d.GrandTotal - d.PaidAmount) - onPosted;
         var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? party.Currency;
         return Ok(new CustomerInvoicesDto(Mapper.ToParty(party, User), party.Balance, party.Balance - onThese + offBalance, onThese,
             currency, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), invoices.ToArray(),
@@ -1788,16 +1790,16 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// What <paramref name="partyId"/> last paid for each of <paramref name="productIds"/>, per unit: a
-    /// return typed without an invoice is priced at it (another price needs the change-price permission).
+    /// What a customer bought here and can still return (owner, 2026-11-10), item by item with the
+    /// invoice lines it can come from, newest first: the return screen offers only these.
     /// </summary>
-    [HttpGet("returns/last-prices")]
-    [AnyPermission(Permissions.SalesReturn, Permissions.SalesReturnFree)]
-    public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
+    [HttpGet("returns/returnable")]
+    [Authorize(Policy = Permissions.SalesReturn)]
+    public async Task<ActionResult<ReturnableItemDto[]>> Returnable([FromQuery] Guid partyId, [FromQuery] string? branchId,
+        [FromQuery] string? departmentId, [FromQuery] string? invoiceId)
     {
-        if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());
-        var last = await PriceBasis.LastPricesAsync(_db, partyId, productIds, DocumentType.SALES_INVOICE);
-        return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
+        var (items, error) = await _returns.ReturnableAsync(true, partyId, branchId, departmentId, invoiceId, User);
+        return error is not null ? BadRequest(new { message = error.Message, code = error.Code }) : Ok(items);
     }
 
     /// <summary>Cancel a sales return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
@@ -1818,24 +1820,25 @@ public sealed class SalesController : ControllerBase
     }
 
     /// <summary>
-    /// A return typed line by line, without picking an invoice (owner decision 2026-10-01). It goes
-    /// on the party's account; a cash customer is paid back from the branch cash box.
+    /// A sales return, the one way (owner, 2026-11-10): typed like an invoice, only what the customer
+    /// bought here, each item taken from their invoices newest first at what they paid. It goes on the
+    /// customer's account; a cash customer is paid back from the branch cash box.
     /// </summary>
     [HttpPost("returns")]
-    [Authorize(Policy = Permissions.SalesReturnFree)]
+    [Authorize(Policy = Permissions.SalesReturn)]
     public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        var (doc, error) = await _returns.CreateFreeAsync(true, req, User, staffId);
+        var (doc, error) = await _returns.CreateForPartyAsync(true, req, User, staffId);
         if (error is not null)
         {
-            var body = new { message = error.Message, code = error.Code };
+            var body = new { message = error.Message, code = error.Code, from = error.From };
             return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
         }
 
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
             doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+            Request.Headers.UserAgent.ToString(), doc.Id.ToString(), $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
         return Created($"/api/sales/returns/{doc.Id}", Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));

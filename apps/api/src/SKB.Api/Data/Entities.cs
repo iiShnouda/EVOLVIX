@@ -851,6 +851,16 @@ public class DocumentLine
     /// <summary>For a return line: the invoice line it reverses (caps the returnable quantity).</summary>
     public Guid? SourceLineId { get; set; }
 
+    /// <summary>For a return line: its share of the tax of the invoice it came from (minor units).</summary>
+    public long Tax { get; set; }
+
+    /// <summary>
+    /// A line of an old return typed without an invoice (before returns became one way, owner
+    /// 2026-11-10): its price was typed, so it took pieces of <see cref="SourceLineId"/> but none of
+    /// its amounts. Every newer return line takes its exact share of the invoice line.
+    /// </summary>
+    public bool PricedApart { get; set; }
+
     /// <summary>Warehouse the goods left from (sale) or arrived into (purchase). Returns reuse it.</summary>
     public Guid? WarehouseId { get; set; }
     public Warehouse? Warehouse { get; set; }

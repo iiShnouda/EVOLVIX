@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using SKB.Api.Data;
 using SKB.Api.Domain;
 using SKB.Api.Models;
@@ -7,19 +8,23 @@ using SKB.Api.Models;
 namespace SKB.Api.Services;
 
 /// <summary>
-/// Sales returns (مرتجع مبيعات) and purchase returns (مرتجع مشتريات). A return is always issued
-/// against one original invoice and reverses part or all of it:
+/// Sales returns (مرتجع مبيعات) and purchase returns (مرتجع مشتريات), made one way (owner,
+/// 2026-11-10: "one thing only, like a sales invoice but a return, and only what the customer
+/// bought"). A return is typed like an invoice — the party, branch, warehouse, department and items —
+/// and the server takes each item from the party's own invoice lines, newest invoice first (on each
+/// invoice its paid pieces, then its free ones), never more than they bought less what came back
+/// already. Each return line is linked to the invoice line it came from and takes its exact share
+/// of it:
 /// <list type="bullet">
-/// <item>Sales return: goods come back into stock at the cost they left at (the original line's
-/// UnitCost, so the weighted average is restored correctly), the revenue and profit are reversed,
-/// and the customer's receivable is credited.</item>
-/// <item>Purchase return: goods leave stock at the price we paid (the original line's UnitCost),
-/// that receipt is backed out of the weighted average, and what we owe the supplier drops.</item>
+/// <item>the price they paid, after the line's discount and its share of the invoice discount, and
+/// its share of that invoice's tax;</item>
+/// <item>the cost: a customer's goods come back into stock at the cost they left at (so the weighted
+/// average is restored), goods go back to a supplier at the price we paid (backed out of the
+/// average).</item>
 /// </list>
-/// Quantities are capped per invoice line (bought/sold − already returned), so an invoice can never
-/// be returned twice. Discount and tax come back in proportion; the return that completes a line
-/// (or the whole invoice) takes exactly what is left, so rounding never strands or over-returns a piastre.
-/// Money is integer minor units throughout. The controller writes the audit entry.
+/// The return that empties a line (or an invoice) takes exactly what is left of it, so rounding never
+/// strands or over-returns a piastre. Money is integer minor units throughout. The controller writes
+/// the audit entry.
 /// </summary>
 public sealed class ReturnsService
 {
@@ -39,65 +44,158 @@ public sealed class ReturnsService
         _ledger = ledger;
     }
 
-    public sealed record ReturnError(string Code, string Message);
+    /// <param name="From">For <c>return_too_soon</c>: when the goods can come back.</param>
+    public sealed record ReturnError(string Code, string Message, string? From = null);
 
     /// <summary>
     /// What has been returned of one invoice line: base units, and the gross amount, line discount,
-    /// share of the invoice discount and cost taken back.
+    /// share of the invoice discount, cost and tax taken back.
     /// </summary>
-    /// <param name="Free">Of <paramref name="Quantity"/>, base units taken back by returns typed without
-    /// the invoice that counted against this line (no amounts of the line went back with them).</param>
-    public sealed record Returned(int Quantity, long Gross, long Discount, long DocDiscount, long Cost, int Free = 0);
+    /// <param name="Free">Of <paramref name="Quantity"/>, base units taken back by old returns typed without
+    /// the invoice (no amounts of the line went back with them).</param>
+    public sealed record Returned(int Quantity, long Gross, long Discount, long DocDiscount, long Cost, long Tax = 0,
+        int Free = 0);
 
     private static readonly Returned Nothing = new(0, 0, 0, 0, 0);
 
-    /// <summary>What was already returned per invoice line (non-cancelled returns only).</summary>
-    public async Task<Dictionary<Guid, Returned>> ReturnedByLineAsync(Guid invoiceId)
+    /// <summary>What was already returned per invoice line of <paramref name="invoiceId"/> (non-cancelled returns only).</summary>
+    public Task<Dictionary<Guid, Returned>> ReturnedByLineAsync(Guid invoiceId) =>
+        ReturnedAsync(_db.DocumentLines.Where(l => l.DocumentId == invoiceId).Select(l => l.Id));
+
+    /// <summary>What was already returned of each of these invoice lines.</summary>
+    private async Task<Dictionary<Guid, Returned>> ReturnedAsync(IQueryable<Guid> lineIds)
     {
-        var rows = await _db.DocumentLines
-            .Where(l => l.SourceLineId != null && l.Document!.SourceDocumentId == invoiceId
+        var rows = await _db.DocumentLines.AsNoTracking()
+            .Where(l => l.SourceLineId != null && lineIds.Contains(l.SourceLineId.Value)
+                        && (l.Document!.Type == DocumentType.SALES_RETURN || l.Document.Type == DocumentType.PURCHASE_RETURN)
                         && l.Document.Status != DocumentStatus.CANCELLED)
-            .GroupBy(l => l.SourceLineId!.Value)
+            .GroupBy(l => new { Line = l.SourceLineId!.Value, l.PricedApart })
             .Select(g => new
             {
-                LineId = g.Key,
+                g.Key.Line, g.Key.PricedApart,
                 Quantity = g.Sum(l => l.Quantity),
                 Gross = g.Sum(l => l.LineTotal + l.Discount),
                 Discount = g.Sum(l => l.Discount),
                 DocDiscount = g.Sum(l => l.DocDiscount),
                 Cost = g.Sum(l => l.LineCost),
+                Tax = g.Sum(l => l.Tax),
             })
             .ToListAsync();
-        var result = rows.ToDictionary(r => r.LineId, r => new Returned(r.Quantity, r.Gross, r.Discount, r.DocDiscount, r.Cost));
-        // Returns typed without an invoice that were counted against this invoice's lines.
-        var free = await _db.DocumentLines
-            .Where(l => l.SourceLineId != null && l.Document!.SourceDocumentId == null
-                        && l.Document.Status != DocumentStatus.CANCELLED
-                        && _db.DocumentLines.Any(src => src.Id == l.SourceLineId && src.DocumentId == invoiceId))
-            .GroupBy(l => l.SourceLineId!.Value)
-            .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity) })
-            .ToListAsync();
-        foreach (var f in free)
-            result[f.LineId] = result.TryGetValue(f.LineId, out var r)
-                ? r with { Quantity = r.Quantity + f.Quantity, Free = f.Quantity }
-                : new Returned(f.Quantity, 0, 0, 0, 0, f.Quantity);
+        var result = new Dictionary<Guid, Returned>();
+        foreach (var r in rows)
+        {
+            var had = result.GetValueOrDefault(r.Line) ?? Nothing;
+            result[r.Line] = r.PricedApart
+                ? had with { Quantity = had.Quantity + r.Quantity, Free = had.Free + r.Quantity }
+                : had with
+                {
+                    Quantity = had.Quantity + r.Quantity, Gross = had.Gross + r.Gross, Discount = had.Discount + r.Discount,
+                    DocDiscount = had.DocDiscount + r.DocDiscount, Cost = had.Cost + r.Cost, Tax = had.Tax + r.Tax,
+                };
+        }
         return result;
     }
 
+    public static DocumentType ReturnTypeFor(DocumentType invoiceType) => invoiceType switch
+    {
+        DocumentType.SALES_INVOICE => DocumentType.SALES_RETURN,
+        DocumentType.PURCHASE_INVOICE => DocumentType.PURCHASE_RETURN,
+        _ => throw new ArgumentOutOfRangeException(nameof(invoiceType), "Only invoices can be returned."),
+    };
+
+    /// <summary>Hours after a sale before its goods can come back (Settings; 0 = at once).</summary>
+    private Task<int> ReturnAfterHoursAsync() => _db.CompanySettings.Select(x => x.ReturnAfterHours).FirstOrDefaultAsync();
+
+    // ------------------------------------------------------------------ what can come back
+
+    /// <summary>One invoice line the party can still return pieces of.</summary>
+    private sealed record Source(DocumentLine Line, SalesDocument Invoice, int Left, DateTime? From);
+
     /// <summary>
-    /// A return without an invoice (owner decision 2026-10-01), typed like one: goods come back from
-    /// a customer at their branch's current average cost, or go back to a supplier at the net price
-    /// typed (its discount returns to the supplier with it). It goes on the party's account; a cash
-    /// customer is paid back at once from the branch's cash box. All-or-nothing.
+    /// The party's invoice lines that can still come back, newest invoice first (on each, its paid
+    /// lines, then its free goods): of the branch, in the person's reach (branches, departments), of
+    /// <paramref name="departmentId"/> when one is given, of <paramref name="invoiceId"/> when one is
+    /// given. Lines with nothing left are left out; a sale's line younger than the hours in Settings
+    /// says from when it can come back.
     /// </summary>
-    public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateFreeAsync(
+    private async Task<List<Source>> SourcesAsync(bool isSale, Guid partyId, Guid branchId, Guid? departmentId,
+        Guid? invoiceId, IReadOnlyCollection<Guid>? productIds, ClaimsPrincipal user)
+    {
+        var invoiceType = isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
+        var invoices = _db.SalesDocuments.Where(d => d.PartyId == partyId && d.Type == invoiceType
+                                                     && d.Status != DocumentStatus.CANCELLED && d.BranchId == branchId)
+            .InBranches(user, d => d.BranchId);
+        if (isSale) invoices = invoices.InDepartments(user);
+        if (isSale && departmentId is Guid dept) invoices = invoices.Where(d => d.DepartmentId == dept);
+        if (invoiceId is Guid only) invoices = invoices.Where(d => d.Id == only);
+        var lines = _db.DocumentLines.Where(l => invoices.Any(d => d.Id == l.DocumentId) && l.Quantity > 0);
+        if (productIds is not null) lines = lines.Where(l => productIds.Contains(l.ProductId));
+        var found = await lines.Include(l => l.Document).Include(l => l.Unit).AsNoTracking()
+            .OrderByDescending(l => l.Document!.IssueDate).ThenByDescending(l => l.Document!.Number)
+            .ThenBy(l => l.IsBonus).ThenBy(l => l.LineNo)
+            .Take(2000).ToListAsync();
+        var returned = await ReturnedAsync(lines.Select(l => l.Id));
+        var hours = isSale ? await ReturnAfterHoursAsync() : 0;
+        var now = DateTime.UtcNow;
+        return found
+            .Select(l => new Source(l, l.Document!, l.Quantity - (returned.GetValueOrDefault(l.Id)?.Quantity ?? 0),
+                hours > 0 && now < l.Document!.CreatedAt.AddHours(hours) ? l.Document.CreatedAt.AddHours(hours) : null))
+            .Where(s => s.Left > 0).ToList();
+    }
+
+    /// <summary>
+    /// What <paramref name="partyId"/> bought (or we bought from them) and can still return, item by
+    /// item, for the return screen: each item's units and its invoice lines, newest first, with what is
+    /// left and what they paid for the line after its discounts.
+    /// </summary>
+    public async Task<(ReturnableItemDto[]? Items, ReturnError? Error)> ReturnableAsync(bool isSale, Guid partyId,
+        string? branchId, string? departmentId, string? invoiceId, ClaimsPrincipal user)
+    {
+        var branch = Access.Work(user);
+        if (Guid.TryParse(branchId, out var picked))
+        {
+            if (!Access.CanUseBranch(user, picked)) return (null, new("branch_not_found", "Branch not found."));
+            branch = picked;
+        }
+        Guid? dept = Guid.TryParse(departmentId, out var d) ? d : null;
+        Guid? only = Guid.TryParse(invoiceId, out var i) ? i : null;
+        var sources = await SourcesAsync(isSale, partyId, branch, dept, only, null, user);
+        var ids = sources.Select(s => s.Line.ProductId).Distinct().ToList();
+        var skus = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku }).ToDictionaryAsync(p => p.Id, p => p.Sku);
+        var units = await _db.ItemUnits.AsNoTracking().Include(u => u.Unit).Where(u => ids.Contains(u.ProductId))
+            .OrderBy(u => u.Factor).ToListAsync();
+        var items = sources.GroupBy(s => s.Line.ProductId).Select(g => new ReturnableItemDto(
+            g.Key.ToString(), g.First().Line.ProductName, skus.GetValueOrDefault(g.Key) ?? "",
+            units.Where(u => u.ProductId == g.Key)
+                .Select(u => new ReturnableUnitDto(u.UnitId.ToString(), u.Unit is null ? "" : Loc.Name(u.Unit), u.Factor, u.Barcode))
+                .ToArray(),
+            g.Select(s => new ReturnableLineDto(
+                s.Line.Id.ToString(), s.Invoice.Id.ToString(), s.Invoice.Number, s.Invoice.IssueDate.ToString("o"),
+                s.Line.Quantity, s.Line.Quantity - s.Left, s.Left, s.Line.LineTotal - s.Line.DocDiscount,
+                s.Line.IsBonus, s.From?.ToString("o"))).ToArray())).ToArray();
+        return (items, null);
+    }
+
+    // ------------------------------------------------------------------ the one way to return
+
+    /// <summary>One piece of a return: so many base units of one invoice line, back through a warehouse.</summary>
+    private sealed record Pick(DocumentLine Source, SalesDocument Invoice, int Quantity, Warehouse Warehouse);
+
+    /// <summary>
+    /// A return typed like an invoice (owner, 2026-11-10): the party, where it is made and where the
+    /// goods go back to, and the items with how many. Each item is taken from the party's invoice
+    /// lines newest first (or from the line or invoice named), at what they paid for it. A sales
+    /// return takes nothing from an invoice younger than the hours in Settings (unless the owner
+    /// confirms); a purchase return only goods we still hold. All-or-nothing.
+    /// </summary>
+    public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateForPartyAsync(
         bool isSale, CreateFreeReturnRequest req, ClaimsPrincipal user, Guid staffId)
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return (null, new("no_lines", "Add at least one item to return."));
         if (req.Lines.Length > InvoiceLines.MaxLines)
             return (null, new("too_many_lines", $"At most {InvoiceLines.MaxLines} lines."));
-        var returnType = isSale ? DocumentType.SALES_RETURN : DocumentType.PURCHASE_RETURN;
 
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return (null, new("no_party", isSale ? "Choose the customer." : "Choose the supplier."));
@@ -124,165 +222,348 @@ public sealed class ReturnsService
         if (warehouse is null) return (null, new("no_warehouse", "The branch has no active warehouse."));
 
         Guid? departmentId = null;
-        if (Guid.TryParse(req.DepartmentId, out var dept))
+        if (isSale && Guid.TryParse(req.DepartmentId, out var dept))
         {
             if (!await _db.Departments.AnyAsync(d => d.Id == dept && d.IsActive) || !Access.CanUseDepartment(user, dept))
                 return (null, new("department_not_found", "Department not found."));
             departmentId = dept;
         }
+        Guid? invoiceId = Guid.TryParse(req.InvoiceId, out var inv) ? inv : null;
 
-        // ---- Check every line before anything moves ----
+        // ---- Shape of each line: the item, its unit, how many ----
         var productIds = req.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).Distinct().ToList();
         if (productIds.Contains(Guid.Empty)) return (null, new("product_not_found", "An item was not found."));
-        var units = await _db.ItemUnits.AsNoTracking().Include(u => u.Unit)
-            .Where(u => productIds.Contains(u.ProductId)).ToListAsync();
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
-        var products = await _inventory.LockProductsAsync(productIds);
-        var lines = new List<(Product Product, ItemUnit Unit, FreeReturnLineRequest Req)>();
+        var units = await _db.ItemUnits.AsNoTracking().Where(u => productIds.Contains(u.ProductId)).ToListAsync();
+        var wanted = new List<(Guid ProductId, int BaseQty, Guid? SourceLineId)>();
         foreach (var l in req.Lines)
         {
             var pid = Guid.Parse(l.ProductId);
-            if (!products.TryGetValue(pid, out var product)) return (null, new("product_not_found", "An item was not found."));
             var unit = Guid.TryParse(l.UnitId, out var uid)
                 ? units.FirstOrDefault(u => u.ProductId == pid && u.UnitId == uid)
                 : units.Where(u => u.ProductId == pid).OrderBy(u => u.Factor).FirstOrDefault();
-            if (unit is null) return (null, new("unit_not_found", $"{Loc.Name(product)}: unknown unit."));
-            if (l.Quantity <= 0) return (null, new("bad_qty", $"{Loc.Name(product)}: enter a quantity."));
-            if (l.UnitPrice < 0 || l.Discount < 0 || l.Discount > (long)l.Quantity * l.UnitPrice)
-                return (null, new("bad_amount", $"{Loc.Name(product)}: check the price and discount."));
-            lines.Add((product, unit, l));
+            var factor = unit?.Factor ?? (string.IsNullOrWhiteSpace(l.UnitId) ? 1 : 0);
+            if (factor <= 0) return (null, new("unit_not_found", "An item's unit was not found."));
+            if (l.Quantity <= 0 || (long)l.Quantity * factor > 1_000_000_000)
+                return (null, new("bad_qty", "Enter a quantity for every item."));
+            wanted.Add((pid, l.Quantity * factor, Guid.TryParse(l.SourceLineId, out var sl) ? sl : null));
         }
-        // The price is the party's last invoice price (or less); another price is its own permission.
-        var canChangePrice = user.HasClaim("permission", isSale ? Permissions.SalesChangePrice : Permissions.PurchasesChangePrice);
-        if (!canChangePrice)
-        {
-            var last = await PriceBasis.LastPricesAsync(_db, party.Id, productIds,
-                isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE);
-            foreach (var (product, unit, l) in lines)
-                if (!last.TryGetValue((product.Id, unit.UnitId), out var lastPrice) || l.UnitPrice > lastPrice)
-                    return (null, new("price_not_allowed",
-                        $"{Loc.Name(product)}: the price can't be more than the last invoice price. Changing a price needs permission."));
-        }
-        // Goods go back to a supplier only while we still hold them.
-        if (!isSale)
-            foreach (var g in lines.GroupBy(x => x.Product.Id))
-            {
-                var qty = g.Sum(x => x.Req.Quantity * x.Unit.Factor);
-                var available = _inventory.Available(g.Key, warehouse.Id);
-                if (qty > available)
-                    return (null, new("insufficient_stock",
-                        $"Not enough {Loc.Name(g.First().Product)} in {Loc.Name(warehouse)} to return: {available} left, {qty} requested."));
-            }
 
-        // What comes back is counted against the party's own invoices of those items, newest first
-        // (owner, 2026-10-02): the same pieces can't then be returned again on the invoice. A line
-        // one invoice line can't take whole stays on its own.
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        // The party's invoices first (documents before items), so two returns can't take the same pieces.
         var invoiceType = isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
-        var candidates = await _db.DocumentLines.AsNoTracking()
-            .Where(l => productIds.Contains(l.ProductId) && !l.IsBonus && l.Document!.PartyId == party.Id
-                        && l.Document.Type == invoiceType && l.Document.Status != DocumentStatus.CANCELLED)
-            .OrderByDescending(l => l.Document!.IssueDate).ThenBy(l => l.LineNo)
-            .Select(l => new { l.Id, l.ProductId, l.Quantity })
-            .ToListAsync();
-        var candidateIds = candidates.Select(c => c.Id).ToList();
-        var taken = await _db.DocumentLines.AsNoTracking()
-            .Where(l => l.SourceLineId != null && candidateIds.Contains(l.SourceLineId.Value)
-                        && l.Document!.Status != DocumentStatus.CANCELLED)
-            .GroupBy(l => l.SourceLineId!.Value)
-            .Select(g => new { LineId = g.Key, Quantity = g.Sum(l => l.Quantity) })
-            .ToDictionaryAsync(x => x.LineId, x => x.Quantity);
-        Guid? SourceFor(Guid productId, int baseQty)
+        var lockIds = await _db.SalesDocuments
+            .Where(d => d.PartyId == party.Id && d.Type == invoiceType && d.Status != DocumentStatus.CANCELLED
+                        && d.BranchId == branchId && d.Lines.Any(l => productIds.Contains(l.ProductId)))
+            .Select(d => d.Id).OrderBy(x => x).ToArrayAsync();
+        if (lockIds.Length > 0)
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = ANY({lockIds}) ORDER BY \"Id\" FOR UPDATE");
+        var sources = await SourcesAsync(isSale, party.Id, branchId, departmentId, invoiceId, productIds, user);
+        var mayOverride = Access.OverridePasses(user);
+
+        // ---- Take each item from the newest invoice lines that still have it ----
+        var left = sources.ToDictionary(s => s.Line.Id, s => s.Left);
+        var picks = new List<(Source Source, int Quantity)>();
+        foreach (var (productId, baseQty, sourceLineId) in wanted)
         {
-            var hit = candidates.FirstOrDefault(c => c.ProductId == productId
-                                                     && c.Quantity - taken.GetValueOrDefault(c.Id) >= baseQty);
-            if (hit is null) return null;
-            taken[hit.Id] = taken.GetValueOrDefault(hit.Id) + baseQty;
-            return hit.Id;
+            var need = baseQty;
+            var mine = sources.Where(s => s.Line.ProductId == productId
+                                          && (sourceLineId is null || s.Line.Id == sourceLineId)).ToList();
+            foreach (var s in mine.Where(s => s.From is null || mayOverride))
+            {
+                if (need == 0) break;
+                var take = Math.Min(need, left[s.Line.Id]);
+                if (take <= 0) continue;
+                left[s.Line.Id] -= take;
+                need -= take;
+                picks.Add((s, take));
+            }
+            if (need == 0) continue;
+            var name = mine.FirstOrDefault()?.Line.ProductName
+                       ?? await _db.Products.Where(p => p.Id == productId).Select(p => p.Name).FirstOrDefaultAsync() ?? "";
+            if (mine.Count == 0)
+                return (null, new("not_bought", isSale
+                    ? $"{name}: the customer didn't buy this item here, or all of it came back."
+                    : $"{name}: this item wasn't bought from the supplier here, or all of it went back."));
+            var fresh = mine.Where(s => s.From is not null && !mayOverride).ToList();
+            if (fresh.Count > 0 && fresh.Sum(s => left[s.Line.Id]) >= need)
+            {
+                var from = fresh.Min(s => s.From!.Value);
+                return (null, new("return_too_soon",
+                    $"{name} can come back from {from:o}. Until then, change the invoice.", from.ToString("o")));
+            }
+            return (null, new("exceeds_returnable", $"{name}: only {baseQty - need} left to return, {baseQty} requested."));
         }
 
-        // ---- Post it ----
+        // The same invoice line asked for on two lines comes back once, with both quantities.
+        var merged = picks.GroupBy(p => p.Source.Line.Id)
+            .Select(g => new Pick(g.First().Source.Line, g.First().Source.Invoice, g.Sum(p => p.Quantity), warehouse))
+            .ToList();
+        var single = merged.Select(p => p.Invoice.Id).Distinct().Count() == 1 ? merged[0].Invoice : null;
+        // A sale's department, when none was chosen: the one its invoices share.
+        if (isSale && departmentId is null)
+        {
+            var depts = merged.Select(p => p.Invoice.DepartmentId).Distinct().ToList();
+            if (depts.Count == 1) departmentId = depts[0];
+        }
+        return await PostAsync(isSale, party, branchId, departmentId, merged, single, req.Notes,
+            0, req.RefundAccountId, 0, null, user, staffId, tx);
+    }
+
+    /// <summary>
+    /// A return against invoice <paramref name="invoiceId"/> by its lines (refused parcels, and older
+    /// callers). Each line goes back through the warehouse it left from (a closed one: the branch's
+    /// default). <paramref name="user"/> may return only invoices of their reach.
+    /// </summary>
+    public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateAsync(
+        Guid invoiceId, DocumentType invoiceType, CreateReturnRequest req, ClaimsPrincipal user, Guid staffId)
+    {
+        if (req.Lines is null || req.Lines.Length == 0)
+            return (null, new("no_lines", "Choose at least one item to return."));
+        var isSale = invoiceType == DocumentType.SALES_INVOICE;
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        // Lock the invoice row until commit, so two people returning the same invoice at the same
+        // moment can't both pass the "remaining quantity" check below.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {invoiceId} FOR UPDATE");
+        var q = _db.SalesDocuments.Where(d => d.Id == invoiceId && d.Type == invoiceType).InBranches(user, d => d.BranchId);
+        if (isSale) q = q.InDepartments(user);
+        var invoice = await q.Include(d => d.Lines).Include(d => d.Party).FirstOrDefaultAsync();
+        if (invoice is null) return (null, new("not_found", "Invoice not found."));
+        if (invoice.Status == DocumentStatus.CANCELLED)
+            return (null, new("invoice_cancelled", "A cancelled invoice cannot be returned."));
+
+        var returned = await ReturnedByLineAsync(invoice.Id);
+        var linesById = invoice.Lines.ToDictionary(l => l.Id);
+        var wanted = new List<(DocumentLine Source, int Quantity)>();
+        var seen = new HashSet<Guid>();
+        foreach (var rl in req.Lines)
+        {
+            if (!Guid.TryParse(rl.LineId, out var lineId) || !linesById.TryGetValue(lineId, out var src))
+                return (null, new("line_not_found", "An item on the return is not on the original invoice."));
+            if (!seen.Add(lineId))
+                return (null, new("duplicate_line", $"{src.ProductName} is listed twice."));
+            if (rl.Quantity < 0)
+                return (null, new("bad_qty", $"Quantity cannot be negative for {src.ProductName}."));
+            if (rl.Quantity == 0) continue;
+            var remaining = src.Quantity - (returned.GetValueOrDefault(lineId)?.Quantity ?? 0);
+            if (rl.Quantity > remaining)
+                return (null, new("exceeds_returnable",
+                    $"{src.ProductName}: only {remaining} left to return, {rl.Quantity} requested."));
+            wanted.Add((src, rl.Quantity));
+        }
+        if (wanted.Count == 0)
+            return (null, new("no_lines", "Choose at least one item to return."));
+
+        // Goods go back through the warehouse of the original line. A sales return into a warehouse
+        // that has since closed lands in the invoice branch's default warehouse instead.
+        var warehouseIds = wanted.Where(w => w.Source.WarehouseId != null)
+            .Select(w => w.Source.WarehouseId!.Value).Distinct().ToList();
+        var warehouses = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id);
+        var fallback = await _warehouses.DefaultForBranchAsync(invoice.BranchId);
+        var picks = new List<Pick>();
+        foreach (var (src, qty) in wanted)
+        {
+            var warehouse = src.WarehouseId is Guid id && warehouses.TryGetValue(id, out var w) && (w.IsActive || !isSale)
+                ? w
+                : fallback;
+            if (warehouse is null)
+                return (null, new("no_warehouse", "The invoice's branch has no active warehouse to return into."));
+            picks.Add(new Pick(src, invoice, qty, warehouse));
+        }
+        return await PostAsync(isSale, invoice.Party!, invoice.BranchId, invoice.DepartmentId, picks, invoice, req.Notes,
+            req.RefundAmount, req.RefundAccountId, req.ShippingCost, req.ShippingAccountId, user, staffId, tx);
+    }
+
+    /// <summary>
+    /// Post a return of <paramref name="picks"/> (each invoice line once) inside <paramref name="tx"/>:
+    /// the document and its lines at their exact shares, the stock, the party's account, a cash
+    /// customer's refund, the ledger, and the invoices it empties marked returned. Commits.
+    /// </summary>
+    private async Task<(SalesDocument? Doc, ReturnError? Error)> PostAsync(bool isSale, Party party, Guid branchId,
+        Guid? departmentId, IReadOnlyList<Pick> picks, SalesDocument? single, string? notes, long refund,
+        string? refundAccountId, long shippingCost, string? shippingAccountId, ClaimsPrincipal user, Guid staffId,
+        IDbContextTransaction tx)
+    {
+        var returnType = isSale ? DocumentType.SALES_RETURN : DocumentType.PURCHASE_RETURN;
+        if (isSale && shippingCost < 0) return (null, new("bad_amount", "Enter a shipping cost of zero or more."));
+
+        var products = await _inventory.LockProductsAsync(picks.Select(p => p.Source.ProductId));
+        foreach (var group in picks.GroupBy(p => (p.Source.ProductId, p.Warehouse.Id)))
+        {
+            var name = group.First().Source.ProductName;
+            if (!products.ContainsKey(group.Key.ProductId))
+                return (null, new("product_not_found", $"{name} no longer exists."));
+            // We can only send back to the supplier goods we still hold — not ones already sold on.
+            var qty = group.Sum(p => p.Quantity);
+            var available = _inventory.Available(group.Key.ProductId, group.Key.Id);
+            if (!isSale && qty > available)
+                return (null, new("insufficient_stock",
+                    $"Not enough {name} in {Loc.Name(group.First().Warehouse)} to return: {available} left, {qty} requested."));
+        }
+
+        // Every line of the invoices involved, with what came back of it before.
+        var invoiceIds = picks.Select(p => p.Invoice.Id).Distinct().ToList();
+        var allLines = await _db.DocumentLines.AsNoTracking().Where(l => invoiceIds.Contains(l.DocumentId)).ToListAsync();
+        var returned = await ReturnedAsync(_db.DocumentLines.Where(l => invoiceIds.Contains(l.DocumentId)).Select(l => l.Id));
+        var invoices = await _db.SalesDocuments.Where(d => invoiceIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id);
+
         var number = await DocumentNumbers.NextAsync(_db, returnType);
         var doc = new SalesDocument
         {
             Number = number, Type = returnType, BranchId = branchId, PartyId = party.Id, StaffId = staffId,
-            IssueDate = DateTime.UtcNow, Currency = await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP",
-            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim()[..Math.Min(1000, req.Notes.Trim().Length)],
-            DepartmentId = departmentId, RepId = isSale ? staffId : null,
+            IssueDate = DateTime.UtcNow,
+            Currency = single?.Currency ?? await _db.CompanySettings.Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP",
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()[..Math.Min(1000, notes.Trim().Length)],
+            SourceDocumentId = single?.Id, RepId = isSale ? single?.RepId ?? staffId : null,
+            PriceLevelId = single?.PriceLevelId, DepartmentId = departmentId,
         };
-        foreach (var (product, unit, l) in lines)
-        {
-            var baseQty = l.Quantity * unit.Factor;
-            var gross = (long)l.Quantity * l.UnitPrice;
-            var lineTotal = gross - l.Discount;
-            long lineCost;
-            if (isSale)
-            {
-                lineCost = (long)baseQty * _inventory.CostAt(product, warehouse);
-                _inventory.ReceiveValue(product, warehouse, baseQty, lineCost, StockMovementType.SALES_RETURN_IN, doc.Id, number);
-            }
-            else
-            {
-                // Back to the supplier at the net price: its discount goes back with it.
-                lineCost = lineTotal;
-                _inventory.ReturnToSupplierValue(product, warehouse, baseQty, lineCost,
-                    StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
-            }
-            doc.Lines.Add(new DocumentLine
-            {
-                LineNo = doc.Lines.Count + 1, ProductId = product.Id, ProductName = product.Name,
-                Quantity = baseQty, UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = l.Quantity,
-                UnitPrice = l.UnitPrice, Discount = l.Discount, LineTotal = lineTotal,
-                UnitCost = baseQty > 0 ? (long)decimal.Round((decimal)lineCost / baseQty, MidpointRounding.AwayFromZero) : 0,
-                LineCost = lineCost, LineProfit = isSale ? lineTotal - lineCost : 0,
-                WarehouseId = warehouse.Id, Warehouse = warehouse,
-                SourceLineId = SourceFor(product.Id, baseQty),
-            });
-        }
-        doc.Subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
-        doc.DiscountTotal = doc.Lines.Sum(l => l.Discount);
-        doc.GrandTotal = doc.Subtotal - doc.DiscountTotal;
-        doc.CostTotal = doc.Lines.Sum(l => l.LineCost);
-        doc.ProfitTotal = isSale ? doc.GrandTotal - doc.CostTotal : 0;
 
-        // On the account; a cash customer is paid back now (owner decision 2026-10-01).
-        MoneyAccount? refundAccount = null;
-        if (isSale && party.IsCashCustomer && doc.GrandTotal > 0)
+        // A part of a line returned in its own unit (whole cartons of a carton line) keeps that unit;
+        // any other part is returned in pieces of the item's base unit.
+        var productIds = picks.Select(p => p.Source.ProductId).Distinct().ToList();
+        var baseUnits = await _db.ItemUnits.AsNoTracking()
+            .Where(u => productIds.Contains(u.ProductId) && u.Factor == 1)
+            .ToDictionaryAsync(u => u.ProductId, u => u.UnitId);
+
+        var made = new List<(DocumentLine Line, Guid InvoiceId)>();
+        foreach (var (src, invoice, qty, warehouse) in picks)
         {
-            var (account, moneyError) = await _money.ForDocumentAsync(null, branchId, user);
-            moneyError ??= _money.Move(account!, -doc.GrandTotal, MoneyMovementKind.SALES_REFUND, staffId, number,
-                documentId: doc.Id, partyId: party.Id);
-            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
-            refundAccount = account;
-            doc.PaidAmount = doc.GrandTotal;
-            doc.PaidAccountId = account!.Id;
+            var product = products[src.ProductId];
+            var already = returned.GetValueOrDefault(src.Id) ?? Nothing;
+            // The return's share of the line's gross amount, discount and cost, in proportion to the
+            // base units coming back; the return that empties the line takes exactly what is left.
+            // (Not once an old return typed without the invoice took some of it: its amounts never
+            // came off the line.)
+            var completesLine = qty == src.Quantity - already.Quantity && already.Free == 0;
+            long Share(long total, long done) => completesLine
+                ? total - done
+                : (long)decimal.Round(total * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);
+            var gross = Share(src.LineTotal + src.Discount, already.Gross);
+            var discount = Share(src.Discount, already.Discount);
+            var docDiscount = Share(src.DocDiscount, already.DocDiscount);
+            var lineCost = Share(src.LineCost, already.Cost);
+            var lineTotal = gross - discount;
+
+            if (isSale)
+                _inventory.ReceiveValue(product, warehouse, qty, lineCost, StockMovementType.SALES_RETURN_IN, doc.Id, number);
+            else
+                _inventory.ReturnToSupplierValue(product, warehouse, qty, lineCost,
+                    StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
+
+            var factor = Math.Max(1, src.UnitFactor);
+            var inLineUnit = qty % factor == 0;
+            var line = new DocumentLine
+            {
+                LineNo = doc.Lines.Count + 1,
+                ProductId = product.Id, ProductName = src.ProductName, Quantity = qty,
+                UnitId = inLineUnit ? src.UnitId : baseUnits.TryGetValue(product.Id, out var b) ? b : src.UnitId,
+                UnitFactor = inLineUnit ? factor : 1,
+                UnitQuantity = inLineUnit ? qty / factor : qty,
+                UnitPrice = inLineUnit ? src.UnitPrice : (long)decimal.Round((decimal)gross / qty, MidpointRounding.AwayFromZero),
+                Discount = discount, LineTotal = lineTotal, IsBonus = src.IsBonus, DocDiscount = docDiscount,
+                UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - docDiscount - lineCost : 0,
+                SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
+            };
+            doc.Lines.Add(line);
+            made.Add((line, invoice.Id));
         }
-        doc.Status = doc.PaidAmount >= doc.GrandTotal && doc.GrandTotal > 0 ? DocumentStatus.PAID : DocumentStatus.CONFIRMED;
+
+        // Tax comes back in the share it was charged on each invoice; the return that completes an
+        // invoice takes whatever tax is still unreturned. Each line carries its part.
+        var completed = new List<SalesDocument>();
+        foreach (var group in made.GroupBy(m => m.InvoiceId))
+        {
+            var invoice = invoices[group.Key];
+            var lines = allLines.Where(l => l.DocumentId == invoice.Id).ToList();
+            var taking = picks.Where(p => p.Invoice.Id == invoice.Id).ToDictionary(p => p.Source.Id, p => p.Quantity);
+            var completes = lines.All(l =>
+                l.Quantity - (returned.GetValueOrDefault(l.Id)?.Quantity ?? 0) - taking.GetValueOrDefault(l.Id) == 0);
+            if (completes) completed.Add(invoice);
+            var priorTax = lines.Sum(l => returned.GetValueOrDefault(l.Id)?.Tax ?? 0);
+            var taxLeft = Math.Max(0, invoice.TaxTotal - priorTax);
+            var taxable = group.Sum(m => m.Line.LineTotal - m.Line.DocDiscount);
+            var invoiceTaxable = invoice.Subtotal - invoice.DiscountTotal;
+            var tax = completes ? taxLeft
+                : invoiceTaxable <= 0 ? 0
+                : Math.Min(taxLeft, (long)decimal.Round(invoice.TaxTotal * (decimal)taxable / invoiceTaxable,
+                    MidpointRounding.AwayFromZero));
+            // Over its lines by their amounts; the last takes what rounding leaves.
+            var shared = 0L;
+            var list = group.ToList();
+            for (var i = 0; i < list.Count; i++)
+            {
+                var part = i == list.Count - 1 ? tax - shared
+                    : taxable <= 0 ? 0
+                    : (long)decimal.Round(tax * (decimal)(list[i].Line.LineTotal - list[i].Line.DocDiscount) / taxable,
+                        MidpointRounding.AwayFromZero);
+                list[i].Line.Tax = part;
+                shared += part;
+            }
+        }
+
+        // The invoice's discounts come back in the same shares they were given; its additions (e.g. a
+        // delivery fee) are not refunded by a return.
+        var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
+        var discountTotal = doc.Lines.Sum(l => l.Discount + l.DocDiscount);
+        var net = subtotal - discountTotal;
+        var taxTotal = doc.Lines.Sum(l => l.Tax);
+        var grand = net + taxTotal;
+        doc.Subtotal = subtotal;
+        doc.DiscountTotal = discountTotal;
+        doc.TaxTotal = taxTotal;
+        doc.GrandTotal = grand;
+        doc.CostTotal = doc.Lines.Sum(l => l.LineCost);
+        doc.ProfitTotal = isSale ? net - doc.CostTotal : 0;
+        // PaidAmount on a return = cash settled now: handed back to the customer (sales) or received
+        // back from the supplier (purchases). A cash customer has no account to carry the credit, so
+        // they're paid back in full now (owner decision 2026-10-01); everyone else's goes on their account.
+        doc.PaidAmount = Math.Clamp(isSale && party.IsCashCustomer ? grand : refund, 0, grand);
+        doc.Status = doc.PaidAmount >= grand && grand > 0 ? DocumentStatus.PAID
+            : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
+            : DocumentStatus.CONFIRMED;
+
+        // Balance sign: > 0 they owe us (receivable), < 0 we owe them (payable).
         await MoneyService.LockPartiesAsync(_db, party.Id);
         await _db.Entry(party).ReloadAsync();
-        var onAccount = doc.GrandTotal - doc.PaidAmount;
+        var onAccount = grand - doc.PaidAmount;
         party.Balance += isSale ? -onAccount : onAccount;
+
+        MoneyAccount? refundAccount = null;
+        if (doc.PaidAmount > 0)
+        {
+            var (account, moneyError) = await _money.ForDocumentAsync(refundAccountId, branchId, user);
+            moneyError ??= _money.Move(account!, isSale ? -doc.PaidAmount : doc.PaidAmount,
+                isSale ? MoneyMovementKind.SALES_REFUND : MoneyMovementKind.PURCHASE_REFUND, staffId, number,
+                documentId: doc.Id, partyId: party.Id);
+            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
+            refundAccount = account!;
+            doc.PaidAccountId = account!.Id;
+        }
         if (isSale) await _ledger.PostSalesReturnAsync(doc, party, refundAccount, staffId);
         else await _ledger.PostPurchaseReturnAsync(doc, party, refundAccount, staffId);
 
+        // Shipping we paid to get a customer's goods back: our expense.
+        if (isSale && shippingCost > 0)
+        {
+            var (_, shipError) = await _money.ShippingExpenseAsync(shippingCost, shippingAccountId, branchId, number,
+                user, staffId, _ledger);
+            if (shipError is not null) return (null, new(shipError.Code, shipError.Message));
+        }
+
+        foreach (var invoice in completed) invoice.Status = DocumentStatus.RETURNED;
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (doc, null);
     }
 
-    public static DocumentType ReturnTypeFor(DocumentType invoiceType) => invoiceType switch
-    {
-        DocumentType.SALES_INVOICE => DocumentType.SALES_RETURN,
-        DocumentType.PURCHASE_INVOICE => DocumentType.PURCHASE_RETURN,
-        _ => throw new ArgumentOutOfRangeException(nameof(invoiceType), "Only invoices can be returned."),
-    };
-
     /// <summary>
     /// Cancel return <paramref name="returnId"/> entered by mistake (owner, 2026-10-24). Everything it
     /// moved goes back: a customer's goods leave stock again at the value they came in at (refused once
     /// they were sold on), a supplier's come back at the value they left at; the party's account and any
-    /// cash settled at the time go back; its ledger entry is reversed; and the invoice it was against is
+    /// cash settled at the time go back; its ledger entry is reversed; and the invoices it came from are
     /// no longer returned. It stays on the list, as cancelled. All-or-nothing.
     /// </summary>
     public async Task<(SalesDocument? Doc, ReturnError? Error)> CancelAsync(Guid returnId, bool isSale,
@@ -303,14 +584,16 @@ public sealed class ReturnsService
             && !Access.OverridePasses(user))
             return (null, new("period_locked", "This return is in a locked period."));
 
-        // The invoice it was against (documents before items), then the goods.
-        SalesDocument? invoice = null;
-        if (doc.SourceDocumentId is Guid source)
-        {
+        // The invoices it came from (documents before items), then the goods.
+        var sourceLineIds = doc.Lines.Where(l => l.SourceLineId != null).Select(l => l.SourceLineId!.Value).ToList();
+        var invoiceIds = await _db.DocumentLines.Where(l => sourceLineIds.Contains(l.Id)).Select(l => l.DocumentId)
+            .Distinct().ToListAsync();
+        if (doc.SourceDocumentId is Guid source && !invoiceIds.Contains(source)) invoiceIds.Add(source);
+        var ordered = invoiceIds.OrderBy(x => x).ToArray();
+        if (ordered.Length > 0)
             await _db.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {source} FOR UPDATE");
-            invoice = await _db.SalesDocuments.FirstOrDefaultAsync(d => d.Id == source);
-        }
+                $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = ANY({ordered}) ORDER BY \"Id\" FOR UPDATE");
+        var invoices = await _db.SalesDocuments.Where(d => ordered.Contains(d.Id)).ToListAsync();
         var lines = doc.Lines.Where(l => l.Quantity > 0 && l.Warehouse is not null).ToList();
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
         if (isSale)
@@ -351,235 +634,11 @@ public sealed class ReturnsService
             $"{(isSale ? "Sales" : "Purchase")} return {doc.Number} cancelled", staffId);
 
         doc.Status = DocumentStatus.CANCELLED;
-        if (invoice?.Status == DocumentStatus.RETURNED)
+        foreach (var invoice in invoices.Where(i => i.Status == DocumentStatus.RETURNED))
         {
             invoice.Status = DocumentStatus.CONFIRMED;
             MoneyService.RefreshPaidStatus(invoice);
         }
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
-        return (doc, null);
-    }
-
-    /// <summary>
-    /// Post a return against invoice <paramref name="invoiceId"/>. All-or-nothing: the return
-    /// document, its stock movements, the party balance and the invoice status commit together.
-    /// <paramref name="user"/> may return only invoices of their branches.
-    /// </summary>
-    public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateAsync(
-        Guid invoiceId, DocumentType invoiceType, CreateReturnRequest req, ClaimsPrincipal user, Guid staffId)
-    {
-        if (req.Lines is null || req.Lines.Length == 0)
-            return (null, new("no_lines", "Choose at least one item to return."));
-
-        var isSale = invoiceType == DocumentType.SALES_INVOICE;
-        var returnType = ReturnTypeFor(invoiceType);
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
-
-        // Lock the invoice row until commit, so two people returning the same invoice at the same
-        // moment can't both pass the "remaining quantity" check below.
-        await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM \"SalesDocuments\" WHERE \"Id\" = {invoiceId} FOR UPDATE");
-
-        var q = _db.SalesDocuments.Where(d => d.Id == invoiceId && d.Type == invoiceType).InBranches(user, d => d.BranchId);
-        if (isSale) q = q.InDepartments(user);
-        var invoice = await q.Include(d => d.Lines).Include(d => d.Party).FirstOrDefaultAsync();
-        if (invoice is null) return (null, new("not_found", "Invoice not found."));
-        if (invoice.Status == DocumentStatus.CANCELLED)
-            return (null, new("invoice_cancelled", "A cancelled invoice cannot be returned."));
-
-        var returned = await ReturnedByLineAsync(invoice.Id);
-        var linesById = invoice.Lines.ToDictionary(l => l.Id);
-        int ReturnedQty(Guid lineId) => returned.TryGetValue(lineId, out var r) ? r.Quantity : 0;
-
-        // ---- Pass 1: validate every requested line before touching stock ----
-        var wanted = new List<(DocumentLine Source, int Quantity)>();
-        var seen = new HashSet<Guid>();
-        foreach (var rl in req.Lines)
-        {
-            if (!Guid.TryParse(rl.LineId, out var lineId) || !linesById.TryGetValue(lineId, out var src))
-                return (null, new("line_not_found", "An item on the return is not on the original invoice."));
-            if (!seen.Add(lineId))
-                return (null, new("duplicate_line", $"{src.ProductName} is listed twice."));
-            if (rl.Quantity < 0)
-                return (null, new("bad_qty", $"Quantity cannot be negative for {src.ProductName}."));
-            if (rl.Quantity == 0) continue; // not returning this line
-
-            var remaining = src.Quantity - ReturnedQty(lineId);
-            if (rl.Quantity > remaining)
-                return (null, new("exceeds_returnable",
-                    $"{src.ProductName}: only {remaining} left to return, {rl.Quantity} requested."));
-            wanted.Add((src, rl.Quantity));
-        }
-        if (wanted.Count == 0)
-            return (null, new("no_lines", "Choose at least one item to return."));
-
-        // Goods go back through the warehouse of the original line. A sales return into a warehouse
-        // that has since closed lands in the invoice branch's default warehouse instead.
-        var warehouseIds = wanted.Where(w => w.Source.WarehouseId != null)
-            .Select(w => w.Source.WarehouseId!.Value).Distinct().ToList();
-        var warehouses = await _db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id);
-        var fallback = await _warehouses.DefaultForBranchAsync(invoice.BranchId);
-        Warehouse? WarehouseFor(DocumentLine src) =>
-            src.WarehouseId is Guid id && warehouses.TryGetValue(id, out var w) && (w.IsActive || !isSale)
-                ? w
-                : fallback;
-        var routed = new List<(DocumentLine Source, int Quantity, Warehouse Warehouse)>();
-        foreach (var (src, qty) in wanted)
-        {
-            var warehouse = WarehouseFor(src);
-            if (warehouse is null)
-                return (null, new("no_warehouse", "The invoice's branch has no active warehouse to return into."));
-            routed.Add((src, qty, warehouse));
-        }
-
-        var products = await _inventory.LockProductsAsync(wanted.Select(w => w.Source.ProductId));
-        foreach (var group in routed.GroupBy(w => (w.Source.ProductId, w.Warehouse.Id)))
-        {
-            var name = group.First().Source.ProductName;
-            if (!products.ContainsKey(group.Key.ProductId))
-                return (null, new("product_not_found", $"{name} no longer exists."));
-            // We can only send back to the supplier goods we still hold — not ones already sold on.
-            var qty = group.Sum(w => w.Quantity);
-            var available = _inventory.Available(group.Key.ProductId, group.Key.Id);
-            if (!isSale && qty > available)
-                return (null, new("insufficient_stock",
-                    $"Not enough {name} in {Loc.Name(group.First().Warehouse)} to return: {available} left, {qty} requested."));
-        }
-
-        // ---- Pass 2: post the return ----
-        var number = await DocumentNumbers.NextAsync(_db, returnType);
-        var doc = new SalesDocument
-        {
-            Number = number, Type = returnType, BranchId = invoice.BranchId, PartyId = invoice.PartyId,
-            StaffId = staffId, IssueDate = DateTime.UtcNow, Currency = invoice.Currency,
-            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
-            SourceDocumentId = invoice.Id, RepId = invoice.RepId, PriceLevelId = invoice.PriceLevelId,
-            DepartmentId = invoice.DepartmentId,
-        };
-
-        // A part of a line returned in its own unit (whole cartons of a carton line) keeps that unit;
-        // any other part is returned in pieces of the item's base unit.
-        var productIds = routed.Select(w => w.Source.ProductId).Distinct().ToList();
-        var baseUnits = await _db.ItemUnits.AsNoTracking()
-            .Where(u => productIds.Contains(u.ProductId) && u.Factor == 1)
-            .ToDictionaryAsync(u => u.ProductId, u => u.UnitId);
-
-        foreach (var (src, qty, warehouse) in routed)
-        {
-            var product = products[src.ProductId];
-            var already = returned.GetValueOrDefault(src.Id) ?? Nothing;
-
-            // The return's share of the line's gross amount, discount and cost, in proportion to the
-            // base units coming back; the return that empties the line takes exactly what is left,
-            // so rounding never strands or over-returns a piastre.
-            // (Not once a return without the invoice took some of it: its amounts never came off the line.)
-            var completesLine = qty == src.Quantity - already.Quantity && already.Free == 0;
-            long Share(long total, long done) => completesLine
-                ? total - done
-                : (long)decimal.Round(total * (decimal)qty / src.Quantity, MidpointRounding.AwayFromZero);
-            var gross = Share(src.LineTotal + src.Discount, already.Gross);
-            var discount = Share(src.Discount, already.Discount);
-            var docDiscount = Share(src.DocDiscount, already.DocDiscount);
-            var lineCost = Share(src.LineCost, already.Cost);
-            var lineTotal = gross - discount;
-
-            if (isSale)
-                _inventory.ReceiveValue(product, warehouse, qty, lineCost,
-                    StockMovementType.SALES_RETURN_IN, doc.Id, number);
-            else
-                _inventory.ReturnToSupplierValue(product, warehouse, qty, lineCost,
-                    StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
-
-            var factor = Math.Max(1, src.UnitFactor);
-            var inLineUnit = qty % factor == 0;
-            doc.Lines.Add(new DocumentLine
-            {
-                LineNo = doc.Lines.Count + 1,
-                ProductId = product.Id, ProductName = src.ProductName, Quantity = qty,
-                UnitId = inLineUnit ? src.UnitId : baseUnits.TryGetValue(product.Id, out var b) ? b : src.UnitId,
-                UnitFactor = inLineUnit ? factor : 1,
-                UnitQuantity = inLineUnit ? qty / factor : qty,
-                UnitPrice = inLineUnit
-                    ? src.UnitPrice
-                    : (long)decimal.Round((decimal)gross / qty, MidpointRounding.AwayFromZero),
-                Discount = discount, LineTotal = lineTotal, IsBonus = src.IsBonus, DocDiscount = docDiscount,
-                UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - docDiscount - lineCost : 0,
-                SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
-            });
-        }
-
-        // The invoice's discounts come back in the same shares they were given; its additions (e.g. a
-        // delivery fee) are not refunded by a return.
-        var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
-        var discountTotal = doc.Lines.Sum(l => l.Discount + l.DocDiscount);
-        var taxable = subtotal - discountTotal;
-
-        // Tax comes back in the same proportion it was charged; the return that completes the
-        // invoice takes whatever tax is still unreturned.
-        var priorTax = await _db.SalesDocuments
-            .Where(d => d.SourceDocumentId == invoice.Id && d.Status != DocumentStatus.CANCELLED)
-            .SumAsync(d => (long?)d.TaxTotal) ?? 0;
-        var taxLeft = Math.Max(0, invoice.TaxTotal - priorTax);
-        var completesInvoice = invoice.Lines.All(l =>
-            l.Quantity - ReturnedQty(l.Id) - wanted.Where(w => w.Source.Id == l.Id).Sum(w => w.Quantity) == 0);
-        var invoiceTaxable = invoice.Subtotal - invoice.DiscountTotal;
-        var tax = completesInvoice ? taxLeft
-            : invoiceTaxable <= 0 ? 0
-            : Math.Min(taxLeft, (long)decimal.Round(
-                invoice.TaxTotal * (decimal)taxable / invoiceTaxable, MidpointRounding.AwayFromZero));
-        var grand = taxable + tax;
-
-        doc.Subtotal = subtotal;
-        doc.DiscountTotal = discountTotal;
-        doc.TaxTotal = tax;
-        doc.GrandTotal = grand;
-        doc.CostTotal = doc.Lines.Sum(l => l.LineCost);
-        doc.ProfitTotal = isSale ? taxable - doc.CostTotal : 0;
-        // PaidAmount on a return = cash settled now: handed back to the customer (sales) or
-        // received back from the supplier (purchases). The rest is settled on account.
-        // A cash customer has no account to carry the credit, so they're paid back in full now
-        // (owner decision 2026-10-01); everyone else's return goes on their account.
-        var refund = isSale && invoice.Party!.IsCashCustomer ? grand : req.RefundAmount;
-        doc.PaidAmount = Math.Clamp(refund, 0, grand);
-        doc.Status = doc.PaidAmount >= grand ? DocumentStatus.PAID
-            : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
-            : DocumentStatus.CONFIRMED;
-
-        // Balance sign: > 0 they owe us (receivable), < 0 we owe them (payable).
-        // A sales return lowers what the customer owes; a purchase return lowers what we owe the supplier.
-        var onAccount = grand - doc.PaidAmount;
-        await MoneyService.LockPartiesAsync(_db, invoice.PartyId);
-        invoice.Party!.Balance += isSale ? -onAccount : onAccount;
-
-        // A refund moves money: out of a money account to the customer, or back in from the supplier.
-        MoneyAccount? refundAccount = null;
-        if (doc.PaidAmount > 0)
-        {
-            var (account, moneyError) = await _money.ForDocumentAsync(req.RefundAccountId, invoice.BranchId, user);
-            moneyError ??= _money.Move(account!, isSale ? -doc.PaidAmount : doc.PaidAmount,
-                isSale ? MoneyMovementKind.SALES_REFUND : MoneyMovementKind.PURCHASE_REFUND, staffId, number,
-                documentId: doc.Id, partyId: invoice.PartyId);
-            if (moneyError is not null) return (null, new(moneyError.Code, moneyError.Message));
-            refundAccount = account!;
-            doc.PaidAccountId = account!.Id;
-        }
-        if (isSale) await _ledger.PostSalesReturnAsync(doc, invoice.Party!, refundAccount, staffId);
-        else await _ledger.PostPurchaseReturnAsync(doc, invoice.Party!, refundAccount, staffId);
-
-        // Shipping we paid to get a customer's goods back: our expense.
-        if (isSale && req.ShippingCost != 0)
-        {
-            if (req.ShippingCost < 0) return (null, new("bad_amount", "Enter a shipping cost of zero or more."));
-            var (_, shipError) = await _money.ShippingExpenseAsync(req.ShippingCost, req.ShippingAccountId,
-                invoice.BranchId, number, user, staffId, _ledger);
-            if (shipError is not null) return (null, new(shipError.Code, shipError.Message));
-        }
-
-        if (completesInvoice) invoice.Status = DocumentStatus.RETURNED;
-
-        _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (doc, null);

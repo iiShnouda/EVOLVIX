@@ -85,8 +85,6 @@ public static class Permissions
     /// a return moves money back out, so it is not granted to the SALES role by default.
     /// </summary>
     public const string SalesReturn = "sales:return";
-    /// <summary>A sales return typed without picking an invoice.</summary>
-    public const string SalesReturnFree = "sales:return_free";
     /// <summary>Cancel a sales return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
     public const string SalesReturnCancel = "sales:return_cancel";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
@@ -152,8 +150,6 @@ public static class Permissions
     public const string PurchasesPhotos = "purchases:photos";
     /// <summary>Return goods to a supplier (stock out at the original cost + reduce the payable).</summary>
     public const string PurchasesReturn = "purchases:return";
-    /// <summary>A purchase return typed without picking an invoice.</summary>
-    public const string PurchasesReturnFree = "purchases:return_free";
     /// <summary>Cancel a purchase return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
     public const string PurchasesReturnCancel = "purchases:return_cancel";
     /// <summary>Buy at a cost other than the supplier price level's.</summary>
@@ -664,12 +660,12 @@ public static class Permissions
         DashboardTopCustomers, DashboardBranches, DashboardRecent, DashboardAccounts, DashboardNotesDue,
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
         SalesReturnsView, SalesTogether, SalesPrint, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
-        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnFree, SalesReturnCancel, SalesChangePrice,
+        SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, SalesReturn, SalesReturnCancel, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
-        PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnFree, PurchasesReturnCancel,
+        PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
         PurchasesChangePrice, PurchasesChoosePriceLevel, PurchasesDiscount, PurchasesBonus, PurchasesChangeTax,
         PurchasesAdditions, InventoryView, InventoryPrint, InventoryExport, ProductsCreate, ProductsEdit,
         ProductsClose, ProductsBarcodes, ProductsImages, PricesEdit, InventoryTotalItems,
@@ -739,7 +735,7 @@ public static class RolePermissions
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
             Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesCancel,
             Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesLock,
-            Permissions.SalesInvoiceAlerts, Permissions.SalesReturn, Permissions.SalesReturnFree,
+            Permissions.SalesInvoiceAlerts, Permissions.SalesReturn,
             Permissions.SalesChangePrice, Permissions.SalesRaisePrice, Permissions.SalesChoosePriceLevel,
             Permissions.SalesPriceBasis, Permissions.SalesOverrideFloor, Permissions.SalesDiscount,
             Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined, Permissions.SalesBonus,
@@ -749,7 +745,7 @@ public static class RolePermissions
             Permissions.ShipmentsReturn, Permissions.ShipmentsCancel, Permissions.DeliverySettle,
             Permissions.PurchasesView, Permissions.PurchasesReturnsView, Permissions.PurchasesPriceSheet,
             Permissions.PurchasesPrint, Permissions.PurchasesCreate, Permissions.PurchasesPhotos,
-            Permissions.PurchasesReturn, Permissions.PurchasesReturnFree, Permissions.PurchasesChangePrice,
+            Permissions.PurchasesReturn, Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
             Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
             Permissions.InventoryPrint, Permissions.InventoryExport, Permissions.ProductsCreate,
@@ -806,7 +802,7 @@ public static class RolePermissions
             Permissions.DashboardTopItems, Permissions.DashboardTopCustomers, Permissions.DashboardBranches,
             Permissions.DashboardRecent, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint,
-            Permissions.SalesCreate, Permissions.SalesReturn, Permissions.SalesReturnFree,
+            Permissions.SalesCreate, Permissions.SalesReturn,
             Permissions.SalesRaisePrice, Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.DeliveryStatus, Permissions.ShipmentsCreate,
             Permissions.ShipmentsProgress, Permissions.ShipmentsReturn, Permissions.ShipmentsCancel,
@@ -830,7 +826,7 @@ public static class RolePermissions
             Permissions.ShipmentsReturn, Permissions.ShipmentsCancel, Permissions.PurchasesView,
             Permissions.PurchasesReturnsView, Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint,
             Permissions.PurchasesCreate, Permissions.PurchasesPhotos, Permissions.PurchasesReturn,
-            Permissions.PurchasesReturnFree, Permissions.PurchasesChangePrice,
+            Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
             Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
             Permissions.InventoryPrint, Permissions.InventoryExport, Permissions.ProductsCreate,

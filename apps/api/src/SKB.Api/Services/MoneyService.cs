@@ -198,18 +198,58 @@ public sealed class MoneyService
     public static async Task<Dictionary<Guid, long>> OutstandingAsync(AppDbContext db, IReadOnlyCollection<SalesDocument> docs,
         bool credit = false)
     {
-        var ids = docs.Select(d => d.Id).ToList();
-        var credited = await db.SalesDocuments.AsNoTracking()
-            .Where(r => r.SourceDocumentId != null && ids.Contains(r.SourceDocumentId.Value)
-                        && (r.Type == DocumentType.SALES_RETURN || r.Type == DocumentType.PURCHASE_RETURN)
-                        && r.Status != DocumentStatus.CANCELLED)
-            .GroupBy(r => r.SourceDocumentId!.Value)
-            .Select(g => new { Id = g.Key, OnAccount = g.Sum(r => r.GrandTotal - r.PaidAmount) })
-            .ToDictionaryAsync(x => x.Id, x => x.OnAccount);
+        var credited = (await ReturnCreditsAsync(db, docs.Select(d => d.Id).ToList()))
+            .GroupBy(c => c.Invoice).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
         return docs.ToDictionary(d => d.Id,
             d => d.Status == DocumentStatus.CANCELLED ? 0
                 : credit ? d.GrandTotal - d.PaidAmount - credited.GetValueOrDefault(d.Id)
                 : Math.Max(0, d.GrandTotal - d.PaidAmount - credited.GetValueOrDefault(d.Id)));
+    }
+
+    /// <summary>
+    /// What each return put on the party's account for each of these invoices (owner, 2026-11-10: a
+    /// return may take items from several invoices): its lines' amounts with their tax, by the invoice
+    /// each came from, out of what it left on the account (less any cash paid back). Old returns typed
+    /// without an invoice credit none.
+    /// </summary>
+    public static async Task<List<(Guid Return, Guid Invoice, long Amount)>> ReturnCreditsAsync(AppDbContext db,
+        IReadOnlyCollection<Guid> invoiceIds)
+    {
+        if (invoiceIds.Count == 0) return new();
+        var ids = invoiceIds.ToList();
+        var returnIds = db.DocumentLines
+            .Where(l => l.SourceLineId != null && !l.PricedApart
+                        && (l.Document!.Type == DocumentType.SALES_RETURN || l.Document.Type == DocumentType.PURCHASE_RETURN)
+                        && l.Document.Status != DocumentStatus.CANCELLED
+                        && db.DocumentLines.Any(s => s.Id == l.SourceLineId && ids.Contains(s.DocumentId)))
+            .Select(l => l.DocumentId).Distinct();
+        var rows = await (from l in db.DocumentLines.AsNoTracking()
+                          where returnIds.Contains(l.DocumentId) && l.SourceLineId != null && !l.PricedApart
+                          join s in db.DocumentLines on l.SourceLineId equals (Guid?)s.Id
+                          select new
+                          {
+                              Return = l.DocumentId, Invoice = s.DocumentId,
+                              Value = l.LineTotal - l.DocDiscount + l.Tax,
+                              l.Document!.GrandTotal, l.Document.PaidAmount,
+                          }).ToListAsync();
+        var result = new List<(Guid, Guid, long)>();
+        foreach (var r in rows.GroupBy(x => x.Return))
+        {
+            var onAccount = r.First().GrandTotal - r.First().PaidAmount;
+            var parts = r.GroupBy(x => x.Invoice).Select(g => (Invoice: g.Key, Value: g.Sum(x => x.Value)))
+                .OrderBy(x => x.Invoice).ToList();
+            var total = parts.Sum(p => p.Value);
+            var given = 0L;
+            for (var i = 0; i < parts.Count; i++)
+            {
+                var amount = i == parts.Count - 1 ? onAccount - given
+                    : total == 0 ? 0
+                    : (long)decimal.Round((decimal)onAccount * parts[i].Value / total, MidpointRounding.AwayFromZero);
+                given += amount;
+                if (ids.Contains(parts[i].Invoice)) result.Add((r.Key, parts[i].Invoice, amount));
+            }
+        }
+        return result;
     }
 
     /// <summary>Paid / part paid / unpaid after its paid amount changed; returned and cancelled stay.</summary>

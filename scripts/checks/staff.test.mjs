@@ -399,15 +399,10 @@ ok('now the role can go', await owner.del(`/roles/custom/${cashier.id}`), [204])
 console.log('== finer permissions');
 const all = ok('permission list', await owner.get('/permissions')).map((p) => p.key);
 check(
-  'stocktake, transfers, closing and free returns are their own',
-  [
-    'inventory:stocktake',
-    'inventory:transfer',
-    'parties:close',
-    'products:close',
-    'sales:return_free',
-    'purchases:return_free',
-  ].every((p) => all.includes(p)),
+  'stocktake, transfers and closing are their own; returns are one (owner, 2026-11-10)',
+  ['inventory:stocktake', 'inventory:transfer', 'parties:close', 'products:close', 'sales:return', 'purchases:return'].every(
+    (p) => all.includes(p),
+  ) && !all.includes('sales:return_free'),
 );
 const salesRole = (await owner.get('/roles')).data.find((r) => r.role === 'SALES' && !r.id);
 check(

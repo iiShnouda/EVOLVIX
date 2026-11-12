@@ -71,7 +71,7 @@ public sealed class PurchasesController : ControllerBase
     [HttpGet("returns/{id:guid}")]
     [AnyPermission(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
         Permissions.PurchasesPriceSheet, Permissions.PurchasesReturnsView, Permissions.PurchasesCreate,
-        Permissions.PurchasesReturnFree, Permissions.PurchasesReturnCancel, Permissions.StatementSuppliers)]
+        Permissions.PurchasesReturnCancel, Permissions.StatementSuppliers)]
     public async Task<ActionResult<SalesDetailDto>> GetOne(Guid id)
     {
         var q = _db.SalesDocuments.Where(d => d.Id == id &&
@@ -93,7 +93,7 @@ public sealed class PurchasesController : ControllerBase
         if (doc.Type == DocumentType.PURCHASE_RETURN
                 ? !(User.HasAny(Permissions.PurchasesReturnsView, Permissions.PurchasesReturnCancel,
                         Permissions.StatementSuppliers)
-                    || (mine && User.HasAny(Permissions.PurchasesReturn, Permissions.PurchasesReturnFree)))
+                    || (mine && User.Has(Permissions.PurchasesReturn)))
                 : !(User.HasAny(Permissions.PurchasesView, Permissions.PurchasesReturn, Permissions.PurchasesPhotos,
                         Permissions.PurchasesPriceSheet, Permissions.StatementSuppliers)
                     || (mine && User.Has(Permissions.PurchasesCreate))))
@@ -412,16 +412,16 @@ public sealed class PurchasesController : ControllerBase
     }
 
     /// <summary>
-    /// What <paramref name="partyId"/> last paid for each of <paramref name="productIds"/>, per unit: a
-    /// return typed without an invoice is priced at it (another price needs the change-price permission).
+    /// What we bought from a supplier here and can still send back (owner, 2026-11-10), item by item
+    /// with the invoice lines it can come from, newest first.
     /// </summary>
-    [HttpGet("returns/last-prices")]
-    [AnyPermission(Permissions.PurchasesReturn, Permissions.PurchasesReturnFree)]
-    public async Task<ActionResult<IEnumerable<LastPriceDto>>> LastPrices([FromQuery] Guid partyId, [FromQuery] Guid[] productIds)
+    [HttpGet("returns/returnable")]
+    [Authorize(Policy = Permissions.PurchasesReturn)]
+    public async Task<ActionResult<ReturnableItemDto[]>> Returnable([FromQuery] Guid partyId, [FromQuery] string? branchId,
+        [FromQuery] string? invoiceId)
     {
-        if (productIds.Length == 0 || productIds.Length > InvoiceLines.MaxLines) return Ok(Array.Empty<LastPriceDto>());
-        var last = await PriceBasis.LastPricesAsync(_db, partyId, productIds, DocumentType.PURCHASE_INVOICE);
-        return Ok(last.Select(x => new LastPriceDto(x.Key.Product.ToString(), x.Key.Unit?.ToString(), x.Value)));
+        var (items, error) = await _returns.ReturnableAsync(false, partyId, branchId, null, invoiceId, User);
+        return error is not null ? BadRequest(new { message = error.Message, code = error.Code }) : Ok(items);
     }
 
     /// <summary>Cancel a purchase return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
@@ -444,15 +444,16 @@ public sealed class PurchasesController : ControllerBase
     }
 
     /// <summary>
-    /// A return typed line by line, without picking an invoice (owner decision 2026-10-01). It goes
-    /// on the party's account; a cash customer is paid back from the branch cash box.
+    /// A purchase return, the one way (owner, 2026-11-10): typed like an invoice, only what we bought
+    /// from the supplier here and still hold, each item taken from their invoices newest first at the
+    /// price we paid. It goes on the supplier's account.
     /// </summary>
     [HttpPost("returns")]
-    [Authorize(Policy = Permissions.PurchasesReturnFree)]
+    [Authorize(Policy = Permissions.PurchasesReturn)]
     public async Task<ActionResult<SalesDetailDto>> CreateFreeReturn([FromBody] CreateFreeReturnRequest req)
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        var (doc, error) = await _returns.CreateFreeAsync(false, req, User, staffId);
+        var (doc, error) = await _returns.CreateForPartyAsync(false, req, User, staffId);
         if (error is not null)
         {
             var body = new { message = error.Message, code = error.Code };
