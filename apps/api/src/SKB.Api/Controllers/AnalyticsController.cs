@@ -19,8 +19,15 @@ namespace SKB.Api.Controllers;
 public sealed class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly WarehouseService _warehouses;
+    private readonly StockValuation _valuation;
 
-    public AnalyticsController(AppDbContext db) => _db = db;
+    public AnalyticsController(AppDbContext db, WarehouseService warehouses, StockValuation valuation)
+    {
+        _db = db;
+        _warehouses = warehouses;
+        _valuation = valuation;
+    }
 
     private static readonly DocumentType[] SalesTypes = { DocumentType.SALES_INVOICE, DocumentType.SALES_RETURN };
     private static readonly DocumentType[] PurchaseTypes = { DocumentType.PURCHASE_INVOICE, DocumentType.PURCHASE_RETURN };
@@ -69,7 +76,7 @@ public sealed class AnalyticsController : ControllerBase
     [HttpGet("profit-loss")]
     [AnyPermission(Permissions.ReportsPl, Permissions.DashboardProfit)]
     public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] string? branchId = null)
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null)
     {
         // A report of profit and loss: its own permission is enough (owner, 2026-10-23).
         var today = CompanyClock.Today;
@@ -84,7 +91,23 @@ public sealed class AnalyticsController : ControllerBase
                 return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
             branch = b;
         }
-        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch));
+        // One warehouse or one department of the person's (owner, 2026-11-11: the dashboard's picks).
+        Guid? warehouse = null, department = null;
+        if (!string.IsNullOrEmpty(warehouseId))
+        {
+            if (!Guid.TryParse(warehouseId, out var w) || !await _warehouses.Visible(User)
+                    .AnyAsync(x => x.Id == w && x.Kind == WarehouseKind.STORE && (branch == null || x.BranchId == branch)))
+                return NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" });
+            warehouse = w;
+        }
+        if (!string.IsNullOrEmpty(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var d) || !Access.CanUseDepartment(User, d)
+                || !await _db.Departments.AnyAsync(x => x.Id == d))
+                return NotFound(new { message = "Department not found.", code = "department_not_found" });
+            department = d;
+        }
+        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch, warehouse, department));
     }
 
     /// <summary>The customers (or suppliers) with the most net business in a period.</summary>
@@ -228,6 +251,175 @@ public sealed class AnalyticsController : ControllerBase
             top.Where(m => byId.ContainsKey(m.ProductId)).Select(m => new ItemMoveDto(m.ProductId.ToString(),
                 byId[m.ProductId].Sku, Loc.Name(byId[m.ProductId]), m.Out, m.In, m.Value)).ToArray(),
             dead, currency));
+    }
+
+    /// <summary>
+    /// Items by supplier and by department (owner, 2026-11-11: "what each supplier supplies and to
+    /// which department; only the knitwear factories' goods, or only men's"): for each supplier, each
+    /// department or group of the tree (a level at a time: departments, then the groups of the one
+    /// opened), or each item — how many items, what sold and came back in the period, profit, what was
+    /// bought and what is in stock now. Filtered by suppliers, department, group and season. Only the
+    /// person's branches, warehouses and departments; profit, costs and purchase prices only for whoever
+    /// may see them.
+    /// </summary>
+    /// <param name="by">supplier, department or item.</param>
+    /// <param name="supplierIds">Comma-separated suppliers; "none" = items without one.</param>
+    [HttpGet("assortment")]
+    [Authorize(Policy = Permissions.ReportsAssortment)]
+    public async Task<ActionResult<AssortmentDto>> Assortment([FromQuery] string by = "supplier",
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? supplierIds = null,
+        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null, [FromQuery] string? seasonId = null)
+    {
+        var (fromDay, toDay, start, end) = Period(from, to);
+        by = by.ToLowerInvariant() is "department" or "item" ? by.ToLowerInvariant() : "supplier";
+        var tree = await _db.Categories.AsNoTracking().ToListAsync();
+        var departments = await _db.Departments.AsNoTracking().ToDictionaryAsync(d => d.Id, d => Loc.Name(d));
+
+        // ---- the items asked for, among the person's departments' (and items of none)
+        var items = _db.Products.AsNoTracking();
+        if (Access.Departments(User) is { } mine)
+            items = items.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
+        Guid? dept = null, group = null;
+        if (!string.IsNullOrWhiteSpace(departmentId))
+        {
+            if (!Guid.TryParse(departmentId, out var d) || !departments.ContainsKey(d) || !Access.CanUseDepartment(User, d))
+                return NotFound(new { message = "Department not found.", code = "department_not_found" });
+            dept = d;
+            items = items.Where(p => p.Category!.DepartmentId == d);
+        }
+        if (!string.IsNullOrWhiteSpace(groupId))
+        {
+            var g = Guid.TryParse(groupId, out var gid) ? tree.FirstOrDefault(c => c.Id == gid && !c.IsRoot && c.DepartmentId != null) : null;
+            if (g is null || (dept is Guid dd && g.DepartmentId != dd) || !Access.CanUseDepartment(User, g.DepartmentId!.Value))
+                return NotFound(new { message = "Group not found.", code = "group_not_found" });
+            dept ??= g.DepartmentId;
+            group = g.Id;
+            var under = Catalog.Subtree(g.Id, tree).ToList();
+            items = items.Where(p => under.Contains(p.CategoryId));
+        }
+        if (Guid.TryParse(seasonId, out var season)) items = items.Where(p => p.SeasonId == season);
+        var wanted = (supplierIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (wanted.Length > 0)
+        {
+            var ids = wanted.Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+            var none = wanted.Contains("none");
+            items = items.Where(p => (p.SupplierId != null && ids.Contains(p.SupplierId.Value)) || (none && p.SupplierId == null));
+        }
+        var products = await items.Select(p => new { p.Id, p.Sku, p.Name, p.SupplierId, p.CategoryId, p.IsActive }).ToListAsync();
+        var productIds = products.Select(p => p.Id).ToHashSet();
+        var active = products.Where(p => p.IsActive).Select(p => p.Id).ToHashSet();
+
+        // ---- what moved in the period: lines of the person's branches, departments and warehouses
+        var lines = _db.DocumentLines.AsNoTracking().Where(l => l.Document!.Status != DocumentStatus.CANCELLED
+            && l.Document.IssueDate >= start && l.Document.IssueDate < end
+            && (SalesTypes.Contains(l.Document.Type) || PurchaseTypes.Contains(l.Document.Type)));
+        lines = lines.InBranches(User, l => l.Document!.BranchId);
+        if (Access.Departments(User) is { } myDepartments)
+            lines = lines.Where(l => l.Document!.DepartmentId == null || myDepartments.Contains(l.Document.DepartmentId.Value));
+        var stores = await _warehouses.LimitAsync(User);
+        if (stores is not null)
+        {
+            var visible = stores.ToList();
+            lines = lines.Where(l => l.WarehouseId != null && visible.Contains(l.WarehouseId.Value));
+        }
+        var moved = (await lines.GroupBy(l => new { l.ProductId, l.Document!.Type })
+                .Select(g => new
+                {
+                    g.Key.ProductId, g.Key.Type, Qty = g.Sum(l => (long)l.Quantity),
+                    Net = g.Sum(l => l.LineTotal - l.DocDiscount), Profit = g.Sum(l => l.LineProfit),
+                }).ToListAsync())
+            .Where(m => productIds.Contains(m.ProductId)).ToLookup(m => m.ProductId);
+        var state = await _valuation.CurrentAsync();
+
+        bool seeProfit = Costs.CanSeeProfit(User), seeCosts = Costs.CanSee(User), seePurchases = Costs.CanSeePurchasePrices(User);
+        AssortmentRowDto Figures(string id, string name, string kind, IReadOnlyCollection<Guid> ofItems, string? code = null,
+            string? detail = null, string? supplier = null, bool children = false)
+        {
+            long soldQty = 0, retQty = 0, sales = 0, returns = 0, profit = 0, boughtQty = 0, bought = 0, stockQty = 0, stockValue = 0;
+            foreach (var pid in ofItems)
+            {
+                foreach (var m in moved[pid])
+                    switch (m.Type)
+                    {
+                        case DocumentType.SALES_INVOICE: soldQty += m.Qty; sales += m.Net; profit += m.Profit; break;
+                        case DocumentType.SALES_RETURN: retQty += m.Qty; returns += m.Net; profit -= m.Profit; break;
+                        case DocumentType.PURCHASE_INVOICE: boughtQty += m.Qty; bought += m.Net; break;
+                        case DocumentType.PURCHASE_RETURN: boughtQty -= m.Qty; bought -= m.Net; break;
+                    }
+                var (qty, value) = stores is null ? state.Of(pid) : state.Of(pid, stores);
+                stockQty += qty;
+                stockValue += value;
+            }
+            return new AssortmentRowDto(id, name, kind, code, detail, supplier, children,
+                ofItems.Count(active.Contains), soldQty, retQty, sales, returns, sales - returns,
+                seeProfit ? profit : 0, boughtQty, seePurchases ? bought : 0, stockQty, seeCosts ? stockValue : 0);
+        }
+
+        string? DepartmentOf(Guid categoryId) =>
+            tree.FirstOrDefault(c => c.Id == categoryId)?.DepartmentId is Guid d ? departments.GetValueOrDefault(d) : null;
+        string PathName(Guid categoryId) => string.Join(" › ", new[] { DepartmentOf(categoryId) }
+            .Concat(Catalog.PathOf(categoryId, tree).Select(c => Loc.Name(c))).Where(x => !string.IsNullOrEmpty(x)));
+        var supplierIdsUsed = products.Where(p => p.SupplierId != null).Select(p => p.SupplierId!.Value).Distinct().ToList();
+        var suppliers = await _db.Parties.AsNoTracking().Where(p => supplierIdsUsed.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => new { p.Name, p.Code });
+
+        List<AssortmentRowDto> rows;
+        if (by == "supplier")
+            rows = products.GroupBy(p => p.SupplierId).Select(g =>
+            {
+                var detail = string.Join("، ", g.Select(p => DepartmentOf(p.CategoryId)).Where(x => x != null).Distinct().OrderBy(x => x));
+                return g.Key is Guid sid && suppliers.TryGetValue(sid, out var sup)
+                    ? Figures(sid.ToString(), sup.Name, "SUPPLIER", g.Select(p => p.Id).ToList(), sup.Code.ToString(), detail)
+                    : Figures("none", "", "NO_SUPPLIER", g.Select(p => p.Id).ToList(), null, detail);
+            }).ToList();
+        else if (by == "department")
+        {
+            // The level under what is opened: departments; a department's groups; a group's groups.
+            Guid? Key(Guid categoryId)
+            {
+                var path = Catalog.PathOf(categoryId, tree);
+                if (dept is null) return tree.FirstOrDefault(c => c.Id == categoryId)?.DepartmentId;
+                var at = group is Guid gg ? path.FindIndex(c => c.Id == gg) + 1 : 0;
+                return at < path.Count ? path[at].Id : null;
+            }
+            rows = products.GroupBy(p => Key(p.CategoryId)).Select(g =>
+            {
+                var ids = g.Select(p => p.Id).ToList();
+                if (dept is null)
+                    return g.Key is Guid d
+                        ? Figures(d.ToString(), departments.GetValueOrDefault(d, ""), "DEPARTMENT", ids,
+                            children: tree.Any(c => c.DepartmentId == d && !c.IsRoot))
+                        : Figures("none", "", "NO_DEPARTMENT", ids);
+                if (g.Key is Guid k)
+                {
+                    var node = tree.First(c => c.Id == k);
+                    return Figures(k.ToString(), Loc.Name(node), "GROUP", ids, node.Prefix, children: tree.Any(c => c.ParentId == k));
+                }
+                return Figures((group ?? dept)!.Value.ToString(), "", "DIRECT", ids);
+            }).ToList();
+        }
+        else
+            rows = products.Where(p => p.IsActive || moved[p.Id].Any())
+                .Select(p => Figures(p.Id.ToString(), p.Name, "ITEM", new[] { p.Id }, p.Sku, PathName(p.CategoryId),
+                    p.SupplierId is Guid sid && suppliers.TryGetValue(sid, out var sup) ? sup.Name : null))
+                .OrderByDescending(r => r.NetSales).ThenByDescending(r => r.StockQty).ThenBy(r => r.Name)
+                .Take(1000).ToList();
+        if (by != "item")
+            rows = rows.OrderByDescending(r => r.NetSales).ThenByDescending(r => r.StockQty).ThenBy(r => r.Name).ToList();
+
+        var total = Figures("total", "", "TOTAL", products.Select(p => p.Id).ToList());
+        var steps = new List<AssortmentStepDto>();
+        if (dept is Guid open)
+        {
+            steps.Add(new AssortmentStepDto(open.ToString(), departments.GetValueOrDefault(open, ""), "DEPARTMENT"));
+            if (group is Guid og)
+                steps.AddRange(Catalog.PathOf(og, tree).Select(c => new AssortmentStepDto(c.Id.ToString(), Loc.Name(c), "GROUP")));
+        }
+        var hidden = new[] { seeProfit ? null : "profit", seeCosts ? null : "costs", seePurchases ? null : "purchases" }
+            .Where(x => x != null).Select(x => x!).ToArray();
+        var currency = await _db.CompanySettings.AsNoTracking().Select(x => x.Currency).FirstOrDefaultAsync() ?? "EGP";
+        return Ok(new AssortmentDto(by, fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), rows.ToArray(), total,
+            steps.ToArray(), hidden, currency));
     }
 
     /// <summary>

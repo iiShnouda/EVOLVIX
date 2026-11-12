@@ -4,6 +4,7 @@ import {
   companyToday,
   formatMoney,
   formatNumber,
+  type DashFilter,
   type PlFigures,
   type PlUnit,
   type ProfitLoss,
@@ -359,9 +360,20 @@ export function ProfitLossTab() {
 }
 
 /** The dashboard's profit-and-loss card for the period, with each branch's net result. */
-export function ProfitLossCard({ from, to, head }: { from: string; to: string; head: ReactNode }) {
+export function ProfitLossCard({
+  from,
+  to,
+  head,
+  filter,
+}: {
+  from: string;
+  to: string;
+  head: ReactNode;
+  /** The dashboard's branch, warehouse and department (owner, 2026-11-11). */
+  filter?: DashFilter;
+}) {
   const { t, locale } = useT();
-  const { data } = useProfitLoss(from, to);
+  const { data } = useProfitLoss(from, to, true, filter);
   if (!data) return null;
   const m = (v: number) => formatMoney(v, data.currency, locale);
   const rows = [

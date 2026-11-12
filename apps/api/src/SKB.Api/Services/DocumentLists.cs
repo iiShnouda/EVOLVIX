@@ -252,4 +252,8 @@ public static class DocumentLists
             .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed), State = StateOf(r), Edited = r.Edited }).ToArray();
         return new DocumentListDto(items, total, page, pageSize, sums);
     }
+
+    /// <summary>What is still owed on each of these invoices that owes anything (the account settled oldest-first).</summary>
+    public static async Task<Dictionary<Guid, long>> OwedAsync(AppDbContext db, IQueryable<SalesDocument> q) =>
+        await Rows(db, q).Where(r => r.IsInvoice && r.Owed > 0).ToDictionaryAsync(r => r.Id, r => r.Owed);
 }

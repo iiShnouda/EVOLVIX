@@ -277,6 +277,7 @@ export type Permission =
   | 'reports:aging'
   | 'reports:items'
   | 'reports:changes'
+  | 'reports:assortment'
   | 'reports:print'
   | 'reports:export'
   | 'audit:view'
@@ -2167,8 +2168,34 @@ export interface DashboardData {
   kpis: KpiValue[];
   trend: TrendPoint[];
   lowStock: Product[];
-  recentDocuments: SalesDocumentSummary[];
+  recentDocuments: DashDoc[];
   currency: string;
+}
+
+/** One of the dashboard's latest documents, with where it belongs (owner, 2026-11-11). */
+export interface DashDoc {
+  id: string;
+  number: string;
+  type: string;
+  status: string;
+  branchName: string;
+  warehouseNames: string[];
+  departmentName: string | null;
+  partyName: string;
+  partyCode: number | null;
+  staffName: string;
+  repName: string | null;
+  issueDate: string;
+  createdAt: string;
+  grandTotal: number;
+  currency: string;
+}
+
+/** What the dashboard is narrowed to (owner, 2026-11-11); empty = everything the person may see. */
+export interface DashFilter {
+  branchId?: string;
+  warehouseId?: string;
+  departmentId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -2553,6 +2580,59 @@ export interface ItemMovement {
     lastSale: string | null;
   }[];
   currency: string;
+}
+
+/** One row of the analysis by supplier and department (owner, 2026-11-11). */
+export interface AssortmentRow {
+  id: string;
+  name: string;
+  kind:
+    | 'SUPPLIER'
+    | 'NO_SUPPLIER'
+    | 'DEPARTMENT'
+    | 'NO_DEPARTMENT'
+    | 'GROUP'
+    | 'DIRECT'
+    | 'ITEM'
+    | 'TOTAL';
+  code: string | null;
+  detail: string | null;
+  supplier: string | null;
+  hasChildren: boolean;
+  items: number;
+  soldQty: number;
+  returnedQty: number;
+  sales: number;
+  returns: number;
+  netSales: number;
+  profit: number;
+  purchasedQty: number;
+  purchases: number;
+  stockQty: number;
+  stockValue: number;
+}
+
+export interface Assortment {
+  by: 'supplier' | 'department' | 'item';
+  from: string;
+  to: string;
+  rows: AssortmentRow[];
+  total: AssortmentRow;
+  path: { id: string; name: string; kind: 'DEPARTMENT' | 'GROUP' }[];
+  /** Left out for the person: 'profit', 'costs', 'purchases'. */
+  hidden: string[];
+  currency: string;
+}
+
+/** What the analysis by supplier and department is asked for. */
+export interface AssortmentQuery {
+  by: 'supplier' | 'department' | 'item';
+  from: string;
+  to: string;
+  supplierIds: string[];
+  departmentId?: string;
+  groupId?: string;
+  seasonId?: string;
 }
 
 /** One row of the activity log (سجل النشاط): who did what, when and from where. */
