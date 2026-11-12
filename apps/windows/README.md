@@ -15,12 +15,17 @@ Windows 10/11.
 ## What it does
 
 - Opens the server address: `http://192.168.100.63:8080` (the office Raspberry Pi) by default.
-- **Changing the server:** right-click the title bar → **Server address…**. This works for the
-  company's own server on the office network; plain http:// gets a warning.
+- **The window:** no title bar or border. It fills the screen's working area (the taskbar stays
+  showing) on the screen it was last on; the app's top bar has **Minimize** and **Close**
+  (close asks: exit, or exit and sign out). The taskbar button minimizes and restores it as usual.
+  **F11** switches to full screen (the taskbar hidden too) and back; the choice is remembered.
+- **Changing the server:** right-click the Minimize/Close buttons (or Alt+Space, or Shift+right-click
+  the taskbar button) → **Server address…**. This works for the company's own server on the office
+  network; plain http:// gets a warning.
 - **Links:** only pages of that server open inside the window. Other links open in the default
   browser.
 - **Server unreachable:** a page offers **Try again** / **Server address**.
-- **Stored on the PC:** settings (the server address and the window position) live in
+- **Stored on the PC:** settings (the server address, the screen it opens on and full screen) live in
   `HKCU\Software\SKB`, and the browser profile (the sign-in cookie) in `%LOCALAPPDATA%\SKB`.
   No business data is stored on the PC.
 - **Installing:** running `Evolvix.exe` from the downloaded folder offers to **install for this

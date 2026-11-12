@@ -59,10 +59,11 @@ internal static class AppSettings
             : null);
     }
 
-    public static bool Maximized
+    /// <summary>Full screen, the taskbar hidden too (F11), remembered on this computer.</summary>
+    public static bool FullScreen
     {
-        get => Read("Maximized") == "1";
-        set => Write("Maximized", value ? "1" : "0");
+        get => Read("FullScreen") == "1";
+        set => Write("FullScreen", value ? "1" : "0");
     }
 
     private static string? Read(string name)

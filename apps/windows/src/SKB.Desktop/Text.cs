@@ -34,6 +34,8 @@ internal static class Text
         : "Install Evolvix on this computer?\n\nIt will be added to the Start menu and the desktop, and can be removed from Windows Settings › Apps.";
     public static string UninstallDone => Arabic ? "تمت إزالة Evolvix." : "Evolvix was removed.";
     public static string Starting => Arabic ? "جارٍ التشغيل…" : "Starting…";
+    public static string Minimize => Arabic ? "تصغير" : "Minimize";
+    public static string Close => Arabic ? "إغلاق" : "Close";
     public static string ExitTitle => Arabic ? "إغلاق Evolvix" : "Close Evolvix";
     public static string ExitPrompt => Arabic ? "تحب تعمل إيه قبل الخروج؟" : "What would you like to do?";
     public static string ExitJustClose => Arabic ? "خروج" : "Exit";

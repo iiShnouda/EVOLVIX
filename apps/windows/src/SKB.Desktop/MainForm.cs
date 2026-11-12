@@ -16,15 +16,24 @@ namespace SKB.Desktop;
 /// Evolvix for Windows. The whole app — screens, rules, data — lives on the company server; this
 /// window is a secure view onto it (Edge WebView2), so it is always the latest version the moment
 /// the server is updated. Only pages of the configured server open inside; any other link opens in
-/// the default browser. "Server address…" is in the window menu (right-click the title bar) and on
-/// the page shown when the server can't be reached.
+/// the default browser. The window has no title bar (owner, 2026-11-10): it fills the screen's
+/// working area, the taskbar showing, and the page has its own minimize and close buttons
+/// (window.SKBDesktop). "Server address…" is in the window menu (right-click those buttons,
+/// Alt+Space, or Shift+right-click the taskbar button) and on the page shown when the server
+/// can't be reached.
 /// </summary>
 internal sealed class MainForm : Form
 {
     private const int WmSysCommand = 0x0112;
+    private const int WmGetMinMaxInfo = 0x0024;
+    private const int WmInitMenuPopup = 0x0117;
     private const int SettingsCommand = 0x1000;
+    private const int ScSize = 0xF000, ScMove = 0xF010, ScMaximize = 0xF030, ScKeyMenu = 0xF100, ScRestore = 0xF120;
     private const int MfString = 0x0;
     private const int MfSeparator = 0x800;
+    private const int MfGrayed = 0x1;
+    private const int WsMinimizeBox = 0x00020000, WsSysMenu = 0x00080000;
+    private const int TpmRightButton = 0x0002, TpmReturnCmd = 0x0100;
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     // A branded splash shown from the very first moment, while WebView2 starts up and the server
@@ -40,16 +49,16 @@ internal sealed class MainForm : Form
         Text = Installer.Name;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         StartPosition = FormStartPosition.Manual;
-        // The screen it was last on (owner, 2026-10-05: "full screen on the computer, never small"):
-        // it always opens in full screen there, no title bar or taskbar (owner, 2026-10-11: "open
-        // full screen by default"); F11 brings them back for the moment, F11 again hides them.
+        // The screen it was last on, filled (owner, 2026-10-05: "full screen on the computer, never
+        // small"), with no title bar or border (owner, 2026-11-10: "remove minimize and maximize";
+        // the page has its own minimize and close). The taskbar stays showing; F11 hides it too
+        // (owner, 2026-10-11: "open full screen by default"), remembered on this computer.
         var bounds = AppSettings.WindowBounds;
         var screen = bounds is Rectangle r && Array.Find(Screen.AllScreens, s => s.WorkingArea.IntersectsWith(r)) is Screen hit
             ? hit
             : Screen.PrimaryScreen;
-        // Never larger than the screen (a laptop at 125-150% scaling is smaller than 1024 x 700), or
-        // Windows can't make it fill the screen.
-        MinimumSize = new Size(Math.Min(1024, screen.WorkingArea.Width), Math.Min(700, screen.WorkingArea.Height));
+        FormBorderStyle = FormBorderStyle.None;
+        _wantFullScreen = AppSettings.FullScreen;
         Bounds = screen.WorkingArea;
         WindowState = FormWindowState.Maximized;
         KeyPreview = true;
@@ -60,6 +69,20 @@ internal sealed class MainForm : Form
         BuildSplash();
         Controls.Add(_splash);
         _splash.BringToFront();
+    }
+
+    /// <summary>
+    /// No title bar, yet still a window Windows minimizes and restores: its taskbar button
+    /// minimizes and restores it, and it keeps its window menu with "Server address…".
+    /// </summary>
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.Style |= WsMinimizeBox | WsSysMenu;
+            return cp;
+        }
     }
 
     /// <summary>The app's own name, shown big while the first page loads (owner, 2026-10-13).</summary>
@@ -103,11 +126,60 @@ internal sealed class MainForm : Form
         box.Controls.Add(bar, 0, 1);
         box.Controls.Add(sub, 0, 2);
         _splash.Controls.Add(box);
+        _splash.Controls.Add(CaptionButtons());
         void Centre() => box.Location =
             new Point((_splash.Width - box.Width) / 2, (_splash.Height - box.Height) / 2);
         _splash.Resize += (_, _) => Centre();
         box.SizeChanged += (_, _) => Centre();
         Centre();
+    }
+
+    /// <summary>Minimize and close while the first page loads (the page then shows its own).</summary>
+    private Control CaptionButtons()
+    {
+        var glyphs = new Font("Segoe MDL2 Assets", 10f);
+        var mdl2 = glyphs.Name == "Segoe MDL2 Assets";
+        var row = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            WrapContents = false,
+            // The end of the top edge: right in English, left in Arabic (as Windows mirrors it).
+            FlowDirection = Text_.Arabic ? FlowDirection.LeftToRight : FlowDirection.RightToLeft,
+            BackColor = _splash.BackColor,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        Button Make(string glyph, string plain, string name, Color hover, bool white, Action act)
+        {
+            var b = new Button
+            {
+                Text = mdl2 ? glyph : plain,
+                Font = mdl2 ? glyphs : new Font("Segoe UI", 11f),
+                AccessibleName = name,
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(46, 32),
+                Margin = Padding.Empty,
+                TabStop = false,
+                ForeColor = Color.FromArgb(0x1F, 0x29, 0x37),
+                BackColor = _splash.BackColor,
+                UseVisualStyleBackColor = false,
+            };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = hover;
+            b.FlatAppearance.MouseDownBackColor = hover;
+            if (white)
+            {
+                b.MouseEnter += (_, _) => b.ForeColor = Color.White;
+                b.MouseLeave += (_, _) => b.ForeColor = Color.FromArgb(0x1F, 0x29, 0x37);
+            }
+            b.Click += (_, _) => act();
+            return b;
+        }
+        row.Controls.Add(Make("\uE8BB", "\u2715", Text_.Close, Color.FromArgb(0xE8, 0x11, 0x23), true, Close));
+        row.Controls.Add(Make("\uE921", "\u2014", Text_.Minimize, Color.FromArgb(0xE5, 0xE7, 0xEB), false,
+            () => WindowState = FormWindowState.Minimized));
+        return row;
     }
 
     private void HideSplash()
@@ -126,7 +198,7 @@ internal sealed class MainForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        ToggleFullScreen(true);
+        if (_wantFullScreen) SetFullScreen(true);
     }
 
     private async Task InitAsync()
@@ -186,23 +258,39 @@ internal sealed class MainForm : Form
             else if (a.HttpStatusCode >= 500)
                 ShowOffline($"HTTP {a.HttpStatusCode}");
         };
-        // Buttons on the offline page, and F11 inside the page (the page has the keyboard, so the
-        // window never sees it). Harmless if a server page sends them.
+        // Buttons on the offline page and the app's own minimize / close / window menu, and F11
+        // inside the page (the page has the keyboard, so the window never sees it). Harmless if a
+        // server page sends them. Anything that opens a dialog or a menu runs after the handler
+        // returns: a nested loop inside a WebView2 event is not allowed.
         core.WebMessageReceived += (_, a) =>
         {
-            var message = a.TryGetWebMessageAsString();
-            if (message == "retry") OpenServer();
-            else if (message == "settings") ShowSettings();
-            else if (message == "fullscreen") ToggleFullScreen(!_fullScreen);
+            string? message;
+            try { message = a.TryGetWebMessageAsString(); } catch (ArgumentException) { return; }
+            switch (message)
+            {
+                case "retry": OpenServer(); break;
+                case "settings": Later(ShowSettings); break;
+                case "fullscreen": Later(ToggleUserFullScreen); break;
+                case "minimize": Later(() => WindowState = FormWindowState.Minimized); break;
+                case "close": Later(Close); break; // asks first (OnFormClosing)
+                case "menu": Later(ShowWindowMenu); break;
+            }
         };
+        // window.SKBDesktop tells the page it is in this app, which then shows its minimize and close
+        // buttons (apps/web/src/lib/desktop.ts).
         await core.AddScriptToExecuteOnDocumentCreatedAsync(
-            "addEventListener('keydown',function(e){if(e.key==='F11'){e.preventDefault();" +
-            "chrome.webview.postMessage('fullscreen')}},true);");
-        // A page asking for the whole screen (e.g. a video) gets the window's whole screen too.
-        core.ContainsFullScreenElementChanged += (_, _) => ToggleFullScreen(core.ContainsFullScreenElement);
+            "(function(){var w=window.chrome&&window.chrome.webview;if(!w)return;" +
+            "function send(m){return function(){w.postMessage(m)}}" +
+            "window.SKBDesktop=Object.freeze({minimize:send('minimize'),close:send('close'),menu:send('menu')});" +
+            "addEventListener('keydown',function(e){if(e.key==='F11'){e.preventDefault();w.postMessage('fullscreen')}},true);})();");
+        // A page asking for the whole screen (e.g. a video) gets the window's whole screen too, and
+        // gives it back as it was.
+        core.ContainsFullScreenElementChanged += (_, _) => SetFullScreen(core.ContainsFullScreenElement || _wantFullScreen);
 
         OpenServer();
     }
+
+    private void Later(Action action) => BeginInvoke(action);
 
     private void OpenServer() => _web.CoreWebView2?.Navigate(AppSettings.Server);
 
@@ -221,8 +309,12 @@ internal sealed class MainForm : Form
 main{{max-width:360px;padding:24px;text-align:center}}.logo{{font-size:28px;color:#4f46e5;
 font-weight:800;letter-spacing:-0.5px;margin:0 auto 16px}}h1{{font-size:18px;margin:0 0 8px}}p{{color:#6b7280;font-size:14px;
 margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:40px;border-radius:8px;border:0;font-size:14px;margin-top:10px;cursor:pointer}}
-.primary{{background:#4f46e5;color:#fff}}.secondary{{background:#e5e7eb;color:#111827}}</style></head>
-<body><main><div class='logo'>Evolvix</div><h1>{Enc(Text_.OfflineTitle)}</h1>
+.primary{{background:#4f46e5;color:#fff}}.secondary{{background:#e5e7eb;color:#111827}}
+.win{{position:fixed;top:0;inset-inline-end:0;display:flex}}.win button{{width:46px;height:32px;margin:0;border-radius:0;
+background:transparent;color:#1f2937;font:10px 'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif}}
+.win button:hover{{background:#e5e7eb}}.win .x:hover{{background:#e81123;color:#fff}}</style></head>
+<body><div class='win'><button title='{Enc(Text_.Minimize)}' onclick=""chrome.webview.postMessage('minimize')"">&#xE921;</button>
+<button class='x' title='{Enc(Text_.Close)}' onclick=""chrome.webview.postMessage('close')"">&#xE8BB;</button></div><main><div class='logo'>Evolvix</div><h1>{Enc(Text_.OfflineTitle)}</h1>
 <p>{Enc(Text_.OfflineBody)} {Enc(AppSettings.Server)}<br><small>{Enc(reason)}</small></p>
 <button class='primary' onclick=""chrome.webview.postMessage('retry')"">{Enc(Text_.Retry)}</button>
 <button class='secondary' onclick=""chrome.webview.postMessage('settings')"">{Enc(Text_.SettingsTitle)}</button>
@@ -239,10 +331,25 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
         try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); } catch { /* no handler */ }
     }
 
-    // ---- "Server address…" in the window (system) menu ----
+    // ---- The window menu ("Server address…") and filling the screen ----
 
     [DllImport("user32.dll")] private static extern IntPtr GetSystemMenu(IntPtr hWnd, bool revert);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr menu, int flags, int id, string? item);
+    [DllImport("user32.dll")] private static extern bool EnableMenuItem(IntPtr menu, int id, int flags);
+    [DllImport("user32.dll")] private static extern int TrackPopupMenu(IntPtr menu, int flags, int x, int y, int reserved, IntPtr hWnd, IntPtr rect);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, int flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("shell32.dll")] private static extern IntPtr SHAppBarMessage(int message, ref AppBarData data);
+
+    [StructLayout(LayoutKind.Sequential)] private struct Point32 { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct Rect32 { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo { public Point32 Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo { public int Size; public Rect32 Monitor, Work; public int Flags; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AppBarData { public int Size; public IntPtr Window; public int CallbackMessage, Edge; public Rect32 Rect; public IntPtr Param; }
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -254,30 +361,112 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmSysCommand && (int)m.WParam == SettingsCommand)
+        switch (m.Msg)
         {
-            ShowSettings();
-            return;
+            case WmSysCommand:
+                var command = (int)(m.WParam.ToInt64() & 0xFFF0);
+                if (command == SettingsCommand)
+                {
+                    ShowSettings();
+                    return;
+                }
+                // Alt (or F10) alone would put the hidden window menu in charge of the keyboard.
+                if (command == ScKeyMenu && m.LParam == IntPtr.Zero) return;
+                // Never a smaller window: only a minimized one is restored.
+                if (command == ScRestore && WindowState != FormWindowState.Minimized) return;
+                break;
+            case WmGetMinMaxInfo:
+                base.WndProc(ref m);
+                FitMaximized(m.HWnd, m.LParam);
+                return;
+            case WmInitMenuPopup when m.WParam == GetSystemMenu(Handle, false):
+                base.WndProc(ref m);
+                // It always fills the screen: never restored smaller, moved, sized or maximized again.
+                if (WindowState != FormWindowState.Minimized) EnableMenuItem(m.WParam, ScRestore, MfGrayed);
+                EnableMenuItem(m.WParam, ScMove, MfGrayed);
+                EnableMenuItem(m.WParam, ScSize, MfGrayed);
+                EnableMenuItem(m.WParam, ScMaximize, MfGrayed);
+                return;
         }
         base.WndProc(ref m);
     }
 
-    /// <summary>F11: the whole screen, no title bar or taskbar; F11 again brings them back.</summary>
-    private bool _fullScreen;
+    /// <summary>The window menu at the mouse, as a right-click on a title bar shows it.</summary>
+    private void ShowWindowMenu()
+    {
+        if (!IsHandleCreated) return;
+        var at = Cursor.Position;
+        var command = TrackPopupMenu(GetSystemMenu(Handle, false), TpmRightButton | TpmReturnCmd, at.X, at.Y, 0, Handle, IntPtr.Zero);
+        if (command != 0) SendMessage(Handle, WmSysCommand, (IntPtr)command, IntPtr.Zero);
+    }
 
-    private void ToggleFullScreen(bool on)
+    /// <summary>
+    /// Maximized is the working area of the window's screen, the taskbar left showing: a window
+    /// without a title bar would otherwise cover the whole screen. With a taskbar that hides
+    /// itself, a thin edge stays free so it still slides up.
+    /// </summary>
+    private static void FitMaximized(IntPtr window, IntPtr lParam)
+    {
+        var monitor = MonitorFromWindow(window, 2 /* MONITOR_DEFAULTTONEAREST */);
+        var info = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info)) return;
+        var area = info.Work;
+        if (area.Equals(info.Monitor))
+        {
+            var bar = new AppBarData { Size = Marshal.SizeOf(typeof(AppBarData)) };
+            if ((SHAppBarMessage(4 /* ABM_GETSTATE */, ref bar).ToInt64() & 1 /* ABS_AUTOHIDE */) != 0
+                && SHAppBarMessage(5 /* ABM_GETTASKBARPOS */, ref bar) != IntPtr.Zero)
+            {
+                switch (bar.Edge)
+                {
+                    case 0: area.Left += 2; break;
+                    case 1: area.Top += 2; break;
+                    case 2: area.Right -= 2; break;
+                    default: area.Bottom -= 2; break;
+                }
+            }
+        }
+        var mmi = (MinMaxInfo)Marshal.PtrToStructure(lParam, typeof(MinMaxInfo));
+        // Relative to the screen it is on (Windows moves it to the right one).
+        mmi.MaxPosition = new Point32 { X = area.Left - info.Monitor.Left, Y = area.Top - info.Monitor.Top };
+        mmi.MaxSize = new Point32 { X = area.Right - area.Left, Y = area.Bottom - area.Top };
+        Marshal.StructureToPtr(mmi, lParam, false);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        // Anything that restores it to a smaller window (Win+Down, …) fills the screen again.
+        if (IsHandleCreated && !_fullScreen && WindowState == FormWindowState.Normal)
+            BeginInvoke(new Action(() =>
+            {
+                if (!_fullScreen && WindowState == FormWindowState.Normal) WindowState = FormWindowState.Maximized;
+            }));
+    }
+
+    /// <summary>F11: the whole screen, the taskbar hidden too; F11 again shows the taskbar.</summary>
+    private bool _fullScreen;
+    /// <summary>The person's F11 choice, remembered on this computer.</summary>
+    private bool _wantFullScreen;
+
+    private void ToggleUserFullScreen()
+    {
+        _wantFullScreen = !_fullScreen;
+        AppSettings.FullScreen = _wantFullScreen;
+        SetFullScreen(_wantFullScreen);
+    }
+
+    private void SetFullScreen(bool on)
     {
         if (on == _fullScreen) return;
         _fullScreen = on;
         if (on)
         {
             WindowState = FormWindowState.Normal;
-            FormBorderStyle = FormBorderStyle.None;
             Bounds = Screen.FromControl(this).Bounds;
         }
         else
         {
-            FormBorderStyle = FormBorderStyle.Sizable;
             Bounds = Screen.FromControl(this).WorkingArea;
             WindowState = FormWindowState.Maximized;
         }
@@ -287,7 +476,7 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
     {
         if (keyData == Keys.F11)
         {
-            ToggleFullScreen(!_fullScreen);
+            ToggleUserFullScreen();
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -310,8 +499,8 @@ margin:0 0 20px;word-break:break-word}}button{{display:block;width:100%;height:4
             }
             _closing = true;
         }
-        AppSettings.Maximized = WindowState == FormWindowState.Maximized;
-        if (!_fullScreen) AppSettings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        // The screen it is on, to open there next time (a minimized window counts where it was).
+        AppSettings.WindowBounds = Screen.FromHandle(Handle).WorkingArea;
         base.OnFormClosing(e);
     }
 
