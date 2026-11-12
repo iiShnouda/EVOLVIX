@@ -1600,6 +1600,53 @@ export interface ItemCard {
   lastCost?: LastCost | null;
 }
 
+/** One item of a supplier for changing its prices at once (minor units; as permitted). */
+export interface BulkPriceItem {
+  id: string;
+  sku: string;
+  name: string;
+  supplierCode?: string | null;
+  departmentName?: string | null;
+  groupName?: string | null;
+  seasonName?: string | null;
+  unit?: string | null;
+  stockOnHand: number;
+  supplyPrice?: number | null;
+  salePrice?: number | null;
+  avgCost?: number | null;
+}
+
+export interface BulkPriceChange {
+  /** pct (+/−), amt (+/− in the currency, per base unit), or for the selling price margin (% over supply). */
+  mode: 'pct' | 'amt' | 'margin';
+  value: number;
+}
+
+export interface BulkPriceRequest {
+  productIds: string[];
+  supplierId?: string;
+  supply?: BulkPriceChange | null;
+  sale?: BulkPriceChange | null;
+  /** Round selling prices up to this many whole currency units (0 = none). */
+  round?: number;
+}
+
+export interface BulkPriceRow {
+  id: string;
+  sku: string;
+  name: string;
+  supplyBefore?: number | null;
+  supplyAfter?: number | null;
+  saleBefore?: number | null;
+  saleAfter?: number | null;
+  changed: boolean;
+}
+
+export interface BulkPriceResult {
+  changed: number;
+  rows: BulkPriceRow[];
+}
+
 export interface LastCost {
   unitCost: number;
   /** ISO instant. */

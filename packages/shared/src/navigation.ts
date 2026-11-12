@@ -146,6 +146,14 @@ export const NAV_SECTIONS: NavSection[] = [
         ]),
         primaryOnPhone: true,
       },
+      // A supplier's prices at once (owner, 2026-11-10).
+      {
+        key: 'supplierPrices',
+        labelKey: 'bulkPrices.title',
+        icon: 'purchases',
+        path: '/inventory/supplier-prices',
+        anyOf: ['prices:bulk_edit'],
+      },
       // The item setup (departments, sub-groups, units, sizes, colors, seasons) on its own page.
       {
         key: 'setup',

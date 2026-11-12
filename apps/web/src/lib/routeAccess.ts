@@ -41,7 +41,11 @@ const NEEDS: [string, () => readonly Permission[] | undefined][] = [
   ['/inventory/transfers/:id/edit', () => ['inventory:transfer_edit']],
   ['/inventory/setup', () => menu('setup')],
   ['/inventory/products/new', () => ['products:create', 'purchases:create']],
-  ['/inventory/products/:id/edit', () => ['products:edit', 'prices:edit']],
+  [
+    '/inventory/products/:id/edit',
+    () => ['products:edit', 'prices:edit', 'products:close', 'products:delete'],
+  ],
+  ['/inventory/supplier-prices', () => ['prices:bulk_edit']],
   ['/inventory/models', () => menu('inventory')],
   ['/inventory/models/new', () => ['products:create']],
   ['/inventory/models/:id', () => ['products:create', 'products:edit']],

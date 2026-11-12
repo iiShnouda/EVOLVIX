@@ -377,6 +377,19 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         </div>
       )}
 
+      {/* The factory's prices at once (owner, 2026-11-10). */}
+      {party.types.includes('SUPPLIER') && can('prices:bulk_edit') && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon="purchases"
+          className="mt-2"
+          onClick={() => navigate(`/inventory/supplier-prices?supplier=${party.id}`)}
+        >
+          {t('bulkPrices.title')}
+        </Button>
+      )}
+
       {(party.hasIdFront || party.hasIdBack) &&
         (can('parties:id_cards_view') || can('parties:id_cards_edit')) && (
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => setIdCard(true)}>
