@@ -76,6 +76,9 @@ export type Permission =
   | 'sales:reject'
   | 'sales:lock'
   | 'sales:invoice_alerts'
+  | 'notifications:cheques'
+  | 'notifications:stock'
+  | 'notifications:daily_summary'
   | 'sales:return'
   | 'sales:return_cancel'
   | 'sales:change_price'
@@ -1343,6 +1346,10 @@ export interface CompanySettings {
   idleMinutes?: number;
   /** The season it is now when set by hand; null = worked out from the date (owner, 2026-10-19). */
   currentSeasonId?: string | null;
+  /** Minutes into the company's day the daily summary goes out; null = never (-1 when saving). */
+  dailySummaryMinute?: number | null;
+  /** Cheques and notes are told of this many days before they fall due. */
+  noteAlertDays?: number;
 }
 
 /**
@@ -2999,27 +3006,72 @@ export interface CustomerAccount {
   creditLimit?: number | null;
 }
 
-/** One notification (the bell). The app words it from `kind`. */
+/** Every kind of notification (the bell); mirrors `NotificationService.Kinds` on the server. */
+export const NOTIFICATION_KINDS = [
+  'INVOICE_NEW',
+  'INVOICE_EDITED',
+  'ORDER_PENDING',
+  'LIMIT_WAIT',
+  'ORDER_APPROVED',
+  'ORDER_REJECTED',
+  'RETURN_MADE',
+  'CASH_SENT',
+  'CASH_RECEIVED',
+  'CASH_CANCELLED',
+  'TRANSFER_SENT',
+  'TRANSFER_RECEIVED',
+  'TRANSFER_CANCELLED',
+  'NOTE_DUE',
+  'NOTE_OVERDUE',
+  'NOTE_BOUNCED',
+  'STOCK_OUT',
+  'STOCK_LOW',
+  'PAYROLL_POSTED',
+  'PAYROLL_PAID',
+  'BACKUP_FAILED',
+  'UPDATE_AVAILABLE',
+  'NEW_SIGNIN',
+  'PERIOD_LOCK',
+  'YEAR_CLOSED',
+  'DAILY_SUMMARY',
+] as const;
+
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
+/** A count and a total (minor units) in the daily summary. */
+export interface SummaryFigure {
+  count: number;
+  total: number;
+}
+
+/** What the daily summary tells, each part only when the person may see it. */
+export interface DailySummaryData {
+  day: string;
+  sales?: SummaryFigure | null;
+  returns?: SummaryFigure | null;
+  collected?: SummaryFigure | null;
+  expenses?: SummaryFigure | null;
+  boxes?: { name: string; balance: number }[] | null;
+  cheques?: { receivable?: SummaryFigure | null; payable?: SummaryFigure | null } | null;
+  stock?: { out: number; low: number } | null;
+}
+
+/** One notification (the bell). The app words it from `kind` (and `data`), in the screen language. */
 export interface AppNotification {
   id: string;
-  kind:
-    | 'INVOICE_NEW'
-    | 'ORDER_PENDING'
-    | 'ORDER_APPROVED'
-    | 'ORDER_REJECTED'
-    | 'LIMIT_WAIT'
-    | 'INVOICE_EDITED'
-    | 'CASH_SENT'
-    | 'CASH_RECEIVED'
-    | 'CASH_CANCELLED';
+  kind: NotificationKind;
   documentId?: string | null;
+  /** The document's number (an item's code, a cheque's number, the summary's day). */
   documentNumber?: string | null;
+  /** The customer, the sending box / store, the item's name. */
   partyName?: string | null;
-  /** The invoice's department (قسم). */
+  /** The invoice's department (قسم), the receiving box / store, the bank. */
   departmentName?: string | null;
   amount: number;
   actorName?: string | null;
   message?: string | null;
+  /** What else the kind tells (a due day, a quantity, the summary). */
+  data?: Record<string, unknown> | null;
   createdAt: string;
   read: boolean;
 }
@@ -3027,6 +3079,21 @@ export interface AppNotification {
 export interface NotificationList {
   unread: number;
   items: AppNotification[];
+  /** There are older ones (ask with `before` = the last id). */
+  more?: boolean;
+}
+
+/** My notification choices (kept on the server). */
+export interface NotificationPrefs {
+  /** The kinds my permissions allow me to be sent. */
+  offered: NotificationKind[];
+  /** Those I switched off. */
+  off: NotificationKind[];
+  /** Those that can't be switched off. */
+  alwaysOn: NotificationKind[];
+  sound: boolean;
+  /** Show a system notification while the app is in the background. */
+  device: boolean;
 }
 
 /** One screen's work in progress, kept on the server while the app updates. */

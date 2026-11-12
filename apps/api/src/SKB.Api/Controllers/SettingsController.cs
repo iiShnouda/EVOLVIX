@@ -84,6 +84,8 @@ public sealed class SettingsController : ControllerBase
                 || Differs(req.RequireDepartment, s.RequireDepartment)
                 || Differs(req.ReturnAfterHours is int r ? (int?)Math.Clamp(r, 0, 720) : null, s.ReturnAfterHours)
                 || Differs(req.HideNewPlaces, s.HideNewPlaces)
+                || (req.DailySummaryMinute is int dm && (dm < 0 ? null : (int?)Math.Clamp(dm, 0, 24 * 60 - 1)) != s.DailySummaryMinute)
+                || Differs(req.NoteAlertDays is int nd ? (int?)Math.Clamp(nd, 0, 60) : null, s.NoteAlertDays)
                 || (req.CurrentSeasonId is { } cs && cs != (s.CurrentSeasonId?.ToString() ?? ""))),
             (Permissions.SettingsSecurity, Differs(req.IdleMinutes is int i ? (int?)Math.Clamp(i, 0, 24 * 60) : null, s.IdleMinutes)),
         };
@@ -108,6 +110,10 @@ public sealed class SettingsController : ControllerBase
         if (req.ReturnAfterHours is int returnAfter) s.ReturnAfterHours = Math.Clamp(returnAfter, 0, 720);
         if (req.HideNewPlaces is bool hideNew) s.HideNewPlaces = hideNew;
         if (req.IdleMinutes is int idle) s.IdleMinutes = Math.Clamp(idle, 0, 24 * 60);
+        // The daily summary's time (minutes into the company's day; below 0 = never) and how many
+        // days ahead a cheque is told of.
+        if (req.DailySummaryMinute is int summaryAt) s.DailySummaryMinute = summaryAt < 0 ? null : Math.Clamp(summaryAt, 0, 24 * 60 - 1);
+        if (req.NoteAlertDays is int alertDays) s.NoteAlertDays = Math.Clamp(alertDays, 0, 60);
         // "" = back to automatic; else a season that exists and is in use.
         if (req.CurrentSeasonId is { } seasonId)
         {

@@ -1776,12 +1776,15 @@ public sealed class SalesController : ControllerBase
         if (fromQuote is not null) fromQuote.Status = DocumentStatus.CONFIRMED;
         var departmentLabel = department is null ? null : Loc.Name(department);
         if (fromQuote?.Type == DocumentType.SALES_ORDER) await _notifications.OrderDecidedAsync(fromQuote, approved: true, User);
-        // Whoever takes the payment hears of it: the customer and the department.
-        else if (edited is null)
+        // Whoever takes the payment hears of it: the customer and the department (an approved
+        // pending invoice too: it is now an invoice to collect).
+        if (edited is null)
             await _notifications.InvoiceNewAsync(doc, party.Name, departmentLabel, User);
         else await _notifications.InvoiceEditedAsync(doc, party.Name, departmentLabel, User);
         // Over the customer's purchase limit (new or changed): whoever accepts it is told it waits.
         if (doc.OverLimit) await _notifications.LimitWaitAsync(doc, party.Name, departmentLabel, User);
+        // A store the sale emptied, or an item down to its reorder level.
+        await _notifications.StockAsync(_inventory, User);
 
         if (edited is null) _db.SalesDocuments.Add(doc);
         else
@@ -1857,6 +1860,7 @@ public sealed class SalesController : ControllerBase
             return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
         }
 
+        await _notifications.ReturnMadeAsync(doc!, User);
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
             doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString(), $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
@@ -1897,6 +1901,7 @@ public sealed class SalesController : ControllerBase
             return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
         }
 
+        await _notifications.ReturnMadeAsync(doc!, User);
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
             doc!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());

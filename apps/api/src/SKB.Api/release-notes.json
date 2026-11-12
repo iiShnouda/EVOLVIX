@@ -23,12 +23,36 @@
         {
           "ar": "لما يحصل خطأ في السيرفر البرنامج بيظهر رقم الطلب، دوّر بيه في سجل السيرفر وتلاقي اللي حصل",
           "en": "When something fails on the server the app shows a request number; search it in the server log to see what happened"
+        },
+        {
+          "ar": "الإشعارات بقت شغالة في البرنامج كله: تحويلات مستنية استلام، شيكات قرب ميعادها أو اتأخرت أو ارتدت، صنف خلص أو وصل حد الطلب، مرتجع على فاتورتك، ترحيل وصرف المرتبات، قفل الفترة والسنة، فشل النسخة الاحتياطية، وإصدار جديد",
+          "en": "Notifications now cover the whole program: transfers waiting to be received, cheques due soon, overdue or bounced, items out of stock or at reorder level, returns on your invoice, payroll posted and paid, period lock and year close, failed backups and new versions"
+        },
+        {
+          "ar": "ملخص يومي في الجرس بالمبيعات والمرتجعات والتحصيلات والمصروفات وأرصدة الخزن والشيكات المستحقة والأصناف الناقصة، في الميعاد اللي تحدده من الإعدادات",
+          "en": "A daily summary in the bell (sales, returns, collections, expenses, cash boxes, cheques due, items out) at the time you set in Settings"
+        },
+        {
+          "ar": "تقدر تختار أنواع الإشعارات اللي توصلك وتقفل الصوت، وتحذف الإشعارات وتشوف القديم",
+          "en": "Choose which notifications you get, turn the sound off, delete notifications and see older ones"
+        },
+        {
+          "ar": "إشعار على الجهاز لما البرنامج يكون في الخلفية (من غير مبالغ)، وعدد غير المقروء على التبويب وأيقونة البرنامج",
+          "en": "A device notification while the app is in the background (no amounts), and the unread count on the tab and the app icon"
+        },
+        {
+          "ar": "تنبيه لما حد يدخل على حسابك من جهاز جديد",
+          "en": "An alert when your account is signed in to from a new device"
         }
       ],
       "fixes": [
         {
           "ar": "الفاتورة اللي عليها فلوس أو شيكات مينفعش يتغير عميلها، وتعديل فاتورة العميل النقدي بقى بيتأكد إن اللي بيعدّل مسموح له بالخزنة",
           "en": "An invoice with money or cheques on it can't be moved to another customer, and editing a cash customer's invoice checks the editor may use its cash box"
+        },
+        {
+          "ar": "الفاتورة المعلقة لما تتعتمد بتوصل إشعار للي بيحصّلوا الفلوس",
+          "en": "An approved pending invoice now notifies whoever takes its payment"
         }
       ]
     },

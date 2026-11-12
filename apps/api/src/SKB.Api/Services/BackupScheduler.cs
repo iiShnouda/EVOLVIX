@@ -13,6 +13,7 @@ namespace SKB.Api.Services;
 public sealed partial class BackupScheduler : BackgroundService
 {
     private readonly IServiceScopeFactory _scopes;
+    private DateOnly? _failureTold;
     private readonly ILogger<BackupScheduler> _log;
     private readonly SemaphoreSlim _running = new(1, 1);
 
@@ -72,6 +73,17 @@ public sealed partial class BackupScheduler : BackgroundService
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 _log.LogError(e, "Automatic backup failed.");
+                // It is tried again each minute: whoever looks after backups is told once a day.
+                if (_failureTold != CompanyClock.Today)
+                {
+                    _failureTold = CompanyClock.Today;
+                    try
+                    {
+                        using var scope = _scopes.CreateScope();
+                        await scope.ServiceProvider.GetRequiredService<NotificationService>().BackupFailedAsync(e.Message);
+                    }
+                    catch (Exception n) { _log.LogWarning(n, "Could not tell of the failed backup"); }
+                }
             }
             try
             {

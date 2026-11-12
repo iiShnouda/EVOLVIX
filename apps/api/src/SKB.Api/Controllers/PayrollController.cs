@@ -25,9 +25,12 @@ public sealed class PayrollController : ControllerBase
     private readonly PayrollService _payroll;
     private readonly MoneyService _money;
     private readonly AuditService _audit;
+    private readonly NotificationService _notify;
 
-    public PayrollController(AppDbContext db, PayrollService payroll, MoneyService money, AuditService audit)
+    public PayrollController(AppDbContext db, PayrollService payroll, MoneyService money, AuditService audit,
+        NotificationService notify)
     {
+        _notify = notify;
         _db = db;
         _payroll = payroll;
         _money = money;
@@ -491,7 +494,12 @@ public sealed class PayrollController : ControllerBase
         var (when, code, message) = await Backdate.CheckAsync(_db, User, date);
         if (code is not null) return Bad(code, message!);
         using var dated = Backdate.To(when);
-        return await WithDraftAsync(id, "post", run => _payroll.PostAsync(run, Me(), () => Access.OverridePasses(User)));
+        return await WithDraftAsync(id, "post", async run =>
+        {
+            var error = await _payroll.PostAsync(run, Me(), () => Access.OverridePasses(User));
+            if (error is null) await _notify.PayrollAsync(run, paid: false, User);
+            return error;
+        });
     }
 
     [HttpPost("runs/{id:guid}/cancel")]
@@ -529,6 +537,7 @@ public sealed class PayrollController : ControllerBase
         if (moneyError is not null) return Bad(moneyError.Code, moneyError.Message);
         var error = await _payroll.PayAsync(run, account!, only, Me());
         if (error is not null) return Bad(error.Code, error.Message);
+        await _notify.PayrollAsync(run, paid: true, User);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         await AuditAsync("pay", "payroll_run", run.Id);

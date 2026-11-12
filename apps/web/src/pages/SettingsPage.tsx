@@ -153,6 +153,8 @@ export function SettingsPage() {
             requireDepartment: form.requireDepartment !== false,
             hideNewPlaces: form.hideNewPlaces !== false,
             currentSeasonId: form.currentSeasonId ?? '',
+            dailySummaryMinute: form.dailySummaryMinute ?? -1,
+            noteAlertDays: form.noteAlertDays ?? 3,
           }
         : {}),
       ...(edits.security ? { idleMinutes: form.idleMinutes ?? 30 } : {}),
@@ -428,6 +430,48 @@ export function SettingsPage() {
                 disabled={!edits.rules}
                 value={form.returnAfterHours ?? 12}
                 onChange={(e) => set({ returnAfterHours: clampInt(e.target.value, 0, 720) })}
+              />
+            </label>
+            {/* The bell's daily summary and cheque notices (owner, 2026-11-12). */}
+            <div className="block">
+              <span className="mb-0.5 block text-xs text-muted">
+                {t('settings.dailySummaryAt')}
+              </span>
+              <input
+                type="time"
+                className={`${field} tnum`}
+                disabled={!edits.rules || form.dailySummaryMinute == null}
+                value={
+                  form.dailySummaryMinute == null
+                    ? ''
+                    : `${String(Math.floor(form.dailySummaryMinute / 60)).padStart(2, '0')}:${String(form.dailySummaryMinute % 60).padStart(2, '0')}`
+                }
+                onChange={(e) => {
+                  const [h, m] = e.target.value.split(':').map(Number);
+                  if (Number.isFinite(h) && Number.isFinite(m))
+                    set({ dailySummaryMinute: (h ?? 0) * 60 + (m ?? 0) });
+                }}
+              />
+              <label className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  disabled={!edits.rules}
+                  checked={form.dailySummaryMinute == null}
+                  onChange={(e) => set({ dailySummaryMinute: e.target.checked ? null : 21 * 60 })}
+                />
+                {t('settings.dailySummaryOff')}
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">{t('settings.noteAlertDays')}</span>
+              <input
+                type="number"
+                min={0}
+                max={60}
+                className={`${field} tnum`}
+                disabled={!edits.rules}
+                value={form.noteAlertDays ?? 3}
+                onChange={(e) => set({ noteAlertDays: clampInt(e.target.value, 0, 60) })}
               />
             </label>
           </div>

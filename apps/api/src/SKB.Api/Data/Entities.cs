@@ -1206,6 +1206,15 @@ public class CompanySettings
     public int OvertimePercent { get; set; } = 150;
     /// <summary>Payroll: a past working day with no attendance counts as absent (else as present).</summary>
     public bool MissingAttendanceIsAbsent { get; set; }
+    /// <summary>
+    /// The daily summary goes out at this minute of the company's day (1260 = 21:00); null = never.
+    /// Before noon it tells of the day before, else of the day itself.
+    /// </summary>
+    public int? DailySummaryMinute { get; set; } = 21 * 60;
+    /// <summary>The company day the daily summary last went out on (a calendar day).</summary>
+    public DateTime? DailySummaryDay { get; set; }
+    /// <summary>A cheque or note is told of this many days before it falls due (0 = on the day).</summary>
+    public int NoteAlertDays { get; set; } = 3;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string CompanyName { get; set; } = "SKB Wholesale";
     /// <summary>ISO country code (e.g. "EG"). Drives suggested currency + VAT.</summary>
@@ -1379,6 +1388,8 @@ public class Note
     public string? BroughtBy { get; set; }
     /// <summary>A photo of the paper is kept (<see cref="NotePhoto"/>).</summary>
     public bool HasPhoto { get; set; }
+    /// <summary>How far the bell has told of its due day: 0 nothing, 1 due soon, 2 overdue (once each).</summary>
+    public int AlertStage { get; set; }
     public Guid CreatedById { get; set; }
     public Staff? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -1686,7 +1697,7 @@ public class Notification
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StaffId { get; set; }
     public Staff? Staff { get; set; }
-    /// <summary>INVOICE_NEW, ORDER_PENDING, ORDER_APPROVED, ORDER_REJECTED (the app words it in the screen language).</summary>
+    /// <summary>One of <c>NotificationService.Kinds</c> (the app words it in the screen language).</summary>
     public string Kind { get; set; } = "";
     public Guid? DocumentId { get; set; }
     public string? DocumentNumber { get; set; }
@@ -1696,6 +1707,11 @@ public class Notification
     public long Amount { get; set; }
     public string? ActorName { get; set; }
     public string? Message { get; set; }
+    /// <summary>
+    /// What else the kind tells, as JSON (a cheque's due day, an item's quantity, the day's summary):
+    /// the app words it in the screen language, so no sentence is stored.
+    /// </summary>
+    public string? Data { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReadAt { get; set; }
 }

@@ -13,6 +13,8 @@ namespace SKB.Api.Services;
 public sealed class Housekeeping : BackgroundService
 {
     public static readonly TimeSpan NotificationsFor = TimeSpan.FromDays(90);
+    /// <summary>Notifications already read go sooner.</summary>
+    public static readonly TimeSpan ReadNotificationsFor = TimeSpan.FromDays(30);
     public static readonly TimeSpan SessionsFor = TimeSpan.FromDays(30);
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
 
@@ -47,7 +49,8 @@ public sealed class Housekeeping : BackgroundService
         // A new year's seasons appear on their own.
         await Seasons.EnsureAsync(db);
         var now = DateTime.UtcNow;
-        var notes = await db.Notifications.Where(n => n.CreatedAt < now - NotificationsFor).ExecuteDeleteAsync(stop);
+        var notes = await db.Notifications.Where(n => n.CreatedAt < now - NotificationsFor
+                || (n.ReadAt != null && n.CreatedAt < now - ReadNotificationsFor)).ExecuteDeleteAsync(stop);
         var ended = now - SessionsFor;
         var sessions = await db.Sessions.Where(s => s.ExpiresAt < ended || (s.RevokedAt != null && s.RevokedAt < ended))
             .ExecuteDeleteAsync(stop);
