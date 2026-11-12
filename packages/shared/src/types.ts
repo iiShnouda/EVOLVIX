@@ -1452,9 +1452,11 @@ export interface InventoryItem {
   /** Every unit the item comes in (base first), for entering quantities in cartons etc. */
   units: UnitOption[];
   modelId?: string | null;
-  /** On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب). */
+  /** Some left, at or under the reorder level; none left is run out (stockOnHand ≤ 0), never low. */
   isLow: boolean;
   supplierName?: string | null;
+  /** The supplier's own number (كود المورد). */
+  supplierPartyCode?: number | null;
   /** Where it is: "branch / warehouse (quantity)" for each place holding some. */
   places?: string[] | null;
 }

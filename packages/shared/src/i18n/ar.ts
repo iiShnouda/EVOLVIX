@@ -241,6 +241,7 @@ export const ar: TranslationDictionary = {
   'inventory.valuation': 'تقييم المخزن',
   'inventory.stockValue': 'قيمة المخزون',
   'inventory.itemCount': 'عدد الأصناف',
+  'inventory.out': 'نفد',
   'inventory.lowStock': 'وصلت لحد الطلب',
   'inventory.lowOnly': 'الأصناف التي وصلت لحد الطلب فقط',
   'inventory.avgCost': 'متوسط التكلفة',

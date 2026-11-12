@@ -265,10 +265,10 @@ export function InventoryPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-3">
         <div
           role="tablist"
-          className="flex max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
+          className="flex w-fit max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
           {tabs.map((x) => (
             <button
@@ -297,70 +297,75 @@ export function InventoryPage() {
               </button>
             ))}
         </div>
-        {ownFilters && myBranches.length > 0 && (
-          <label className="block w-full shrink-0 sm:w-48">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-            <select
-              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-              aria-label={t('list.branch')}
-              value={branchId}
-              onChange={(e) => {
-                update({ br: e.target.value || null, wh: null });
-                if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
-              }}
-            >
-              <option value="">{t('common.all')}</option>
-              {myBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        {/* Branch, warehouse and department side by side (owner, 2026-11-10). */}
         {ownFilters && (
-          <WarehouseSelect
-            className="w-full sm:w-64"
-            value={warehouseId}
-            onChange={(id) => {
-              update({ wh: id || null });
-              if (id) setPlace({ warehouseId: id });
-            }}
-            allowAll
-            includeClosed
-          />
-        )}
-        {tab === 'items' && departments.length > 0 && (
-          <label className="block w-full shrink-0 sm:w-48">
-            <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-            <select
-              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-              aria-label={t('invoice.department')}
-              value={departmentId}
-              onChange={(e) => {
-                update({ dept: e.target.value || null, grp: null });
-                if (e.target.value) setPlace({ departmentId: e.target.value });
-              }}
-            >
-              <option value="">{t('common.all')}</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {tab === 'items' && departmentId && groups.length > 0 && (
-          <GroupPicker
-            departments={departments}
-            groups={groups}
-            departmentId={departmentId}
-            groupId={groupId}
-            showDepartment={false}
-            anyLabel={t('common.all')}
-            onChange={(_, g) => update({ grp: g || null })}
-          />
+          <div className="flex flex-wrap items-end gap-3">
+            {ownFilters && myBranches.length > 0 && (
+              <label className="block w-full shrink-0 sm:w-48">
+                <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+                <select
+                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+                  aria-label={t('list.branch')}
+                  value={branchId}
+                  onChange={(e) => {
+                    update({ br: e.target.value || null, wh: null });
+                    if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+                  }}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {myBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {ownFilters && (
+              <WarehouseSelect
+                className="w-full sm:w-64"
+                value={warehouseId}
+                onChange={(id) => {
+                  update({ wh: id || null });
+                  if (id) setPlace({ warehouseId: id });
+                }}
+                allowAll
+                includeClosed
+              />
+            )}
+            {departments.length > 0 && (
+              <label className="block w-full shrink-0 sm:w-48">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+                <select
+                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+                  aria-label={t('invoice.department')}
+                  value={departmentId}
+                  onChange={(e) => {
+                    update({ dept: e.target.value || null, grp: null });
+                    if (e.target.value) setPlace({ departmentId: e.target.value });
+                  }}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {departmentId && groups.length > 0 && (
+              <GroupPicker
+                departments={departments}
+                groups={groups}
+                departmentId={departmentId}
+                groupId={groupId}
+                showDepartment={false}
+                anyLabel={t('common.all')}
+                onChange={(_, g) => update({ grp: g || null })}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -388,7 +393,12 @@ export function InventoryPage() {
           }
         />
       ) : tab === 'valuation' ? (
-        <ValuationTab warehouseId={warehouseId} branchId={branchId} />
+        <ValuationTab
+          warehouseId={warehouseId}
+          branchId={branchId}
+          departmentId={departmentId}
+          groupId={groupId}
+        />
       ) : tab === 'stocktake' ? (
         <StocktakePage embedded />
       ) : tab === 'transfers' ? (
@@ -473,8 +483,25 @@ function ItemsTab({
     className?: string;
     cell: (p: InventoryItem) => ReactNode;
   }[] = [
+    // The supplier's code and name first, then the item's code and name (owner, 2026-11-10).
+    ...(can('parties:view') || can('purchases:view')
+      ? [
+          {
+            key: 'supplierCode',
+            label: t('list.supplierCode'),
+            className: 'text-muted tnum',
+            cell: (p: InventoryItem) => p.supplierPartyCode ?? '',
+          },
+          {
+            key: 'supplier',
+            label: t('inventory.supplier'),
+            className: 'text-muted',
+            cell: (p: InventoryItem) => p.supplierName ?? '',
+          },
+        ]
+      : []),
     { key: 'code', label: t('inventory.sku'), className: 'text-muted tnum', cell: (p) => p.sku },
-    { key: 'name', label: t('inventory.products'), className: 'font-medium', cell: (p) => p.name },
+    { key: 'name', label: t('inventory.itemName'), className: 'font-medium', cell: (p) => p.name },
     {
       key: 'department',
       label: t('inventory.category'),
@@ -492,16 +519,6 @@ function ItemsTab({
           </span>
         )),
     },
-    ...(can('parties:view') || can('purchases:view')
-      ? [
-          {
-            key: 'supplier',
-            label: t('inventory.supplier'),
-            className: 'text-muted',
-            cell: (p: InventoryItem) => p.supplierName ?? '',
-          },
-        ]
-      : []),
     {
       key: 'stock',
       label: t('inventory.stock'),
@@ -761,7 +778,17 @@ function MenuItem({ icon, label, onClick }: { icon: string; label: string; onCli
   );
 }
 
-function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId: string }) {
+function ValuationTab({
+  warehouseId,
+  branchId,
+  departmentId,
+  groupId,
+}: {
+  warehouseId: string;
+  branchId: string;
+  departmentId: string;
+  groupId: string;
+}) {
   const { t, locale } = useT();
   const can = useCan();
   const seeSuppliers = can('inventory:valuation_suppliers');
@@ -769,17 +796,16 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
   // What to look at (owner, 2026-10-19/21): the branch and warehouse above, a department, a
   // supplier, an item's name or code, items picked in the detailed search, and a stock status.
   // Everything starts at "all".
-  const [departmentId, setDepartmentId] = useState('');
   const [supplier, setSupplier] = useState<Party | null>(null);
   const [search, setSearch] = useState('');
   const settled = useDeferredValue(search.trim());
   const [picked, setPicked] = useState<string[]>([]);
   const [status, setStatus] = useState<string[]>([]);
   const [finding, setFinding] = useState(false);
-  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   const valuation = useValuation(asOf, warehouseId || undefined, {
     branchId: branchId || undefined,
     departmentId: departmentId || undefined,
+    groupId: (departmentId && groupId) || undefined,
     supplierId: supplier?.id,
     search: settled || undefined,
     productIds: picked,
@@ -831,21 +857,6 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
           </div>
         </div>
         <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('valuation.department')}</span>
-            <select
-              className={`${field} w-full`}
-              value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
-            >
-              <option value="">{t('common.all')}</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <MultiSelect
             label={t('valuation.status')}
             value={status}
@@ -1182,7 +1193,10 @@ function ValuationItems({
 
 function StockBadge({ item }: { item: InventoryItem }) {
   const { t } = useT();
-  return item.isLow ? (
+  // None left is run out, even at the reorder level (owner, 2026-11-10).
+  return item.stockOnHand <= 0 ? (
+    <Badge tone="destructive">{t('inventory.out')}</Badge>
+  ) : item.isLow ? (
     <Badge tone="warning">{t('inventory.lowStock')}</Badge>
   ) : (
     <Badge tone="positive">{t('inventory.ok')}</Badge>

@@ -32,4 +32,89 @@ console.log('== the warehouse statement adds up');
   eq('days given the wrong way round still work', swapped.closing, week.closing);
 }
 
+console.log('== an item of a group under a department, from a factory, none in stock');
+const units = ok('units', await owner.get('/units'));
+const piece = units.find((u) => ['قطعة', 'Piece'].includes(u.name)) ?? units[0];
+const levels = ok('price levels', await owner.get('/price-levels'));
+const saleLevel = levels.find((l) => l.side === 'SALE' && l.isDefault);
+let departments = ok('departments', await owner.get('/departments')).filter((d) => d.isActive);
+const dept =
+  departments[0] ?? ok('a department', await owner.post('/departments', { name: `Men ${tag}` }));
+const dept2 = ok('another department', await owner.post('/departments', { name: `Kids ${tag}` }));
+const polo = ok(
+  'a group',
+  await owner.post('/groups', { name: `Polo ${tag}`, departmentId: dept.id }),
+);
+const factory = ok(
+  'a factory',
+  await owner.post('/parties', { name: `Factory ${tag}`, types: ['SUPPLIER'] }),
+);
+const factory2 = ok(
+  'another factory',
+  await owner.post('/parties', { name: `Factory2 ${tag}`, types: ['SUPPLIER'] }),
+);
+const newItem = async (name, categoryId, supplierId, reorderLevel = 0) =>
+  ok(
+    `item ${name}`,
+    await owner.post('/products', {
+      name: `${name} ${tag}`,
+      categoryId,
+      supplierId,
+      reorderLevel,
+      units: [{ unitId: piece.id, factor: 1 }],
+      prices: [{ unitId: piece.id, priceLevelId: saleLevel.id, price: 1000 }],
+    }),
+  );
+const shirt = await newItem('Shirt', polo.id, factory.id, 5);
+const kidsRoot = (await owner.get('/categories')).data.find((c) => c.departmentId === dept2.id);
+const sock = await newItem('Sock', kidsRoot?.id ?? polo.id, factory2.id);
+const listed = async (q) => (await owner.get(`/inventory/items?pageSize=500&${q}`)).data.items;
+
+console.log('== run out is "out", not "at the reorder level"');
+{
+  const found = (await listed(`code=${encodeURIComponent(shirt.sku)}`)).find(
+    (i) => i.id === shirt.id,
+  );
+  eq('none left is not "low"', found?.isLow, false);
+  const lows = await listed('status=low');
+  check(
+    'the low list has none run out',
+    lows.every((i) => i.stockOnHand > 0),
+    lows.slice(0, 3),
+  );
+  check(
+    'the out list has it',
+    (await listed('status=out')).some((i) => i.id === shirt.id),
+  );
+  const finder = (await owner.get('/products?stock=low&limit=200')).data;
+  check(
+    'the item finder: low has none run out',
+    finder.every((p) => p.stockOnHand > 0),
+    finder.slice(0, 2),
+  );
+  check(
+    'the item finder: out has it',
+    (
+      await owner.get(`/products?stock=out&limit=200&search=${encodeURIComponent(shirt.name)}`)
+    ).data.some((p) => p.id === shirt.id),
+  );
+}
+
+console.log('== the department shown is the main one; the supplier with its code');
+{
+  const found = (await listed(`departmentId=${dept.id}&groupId=${polo.id}`)).find(
+    (i) => i.id === shirt.id,
+  );
+  eq('an item of a group shows its department', found?.categoryName, dept.name);
+  eq('the supplier', found?.supplierName, factory.name);
+  eq('with its code', found?.supplierPartyCode, factory.code);
+  const sorted = (await owner.get('/inventory/items?pageSize=50&sort=supplierCode')).data.items;
+  const codes = sorted.map((i) => i.supplierPartyCode ?? Infinity);
+  check(
+    'sorted by supplier code',
+    codes.every((c, i) => i === 0 || codes[i - 1] <= c),
+    codes.slice(0, 10),
+  );
+}
+
 process.exit(summary('stock') ? 1 : 0);

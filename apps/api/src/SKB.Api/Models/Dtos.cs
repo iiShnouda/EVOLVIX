@@ -288,12 +288,15 @@ public record ProfitReportDto(
 /// <param name="Unit">Name of the base unit; quantities are in it.</param>
 /// <param name="AvgCost">Current weighted-average cost of one base unit (minor units).</param>
 /// <param name="StockValue">StockOnHand × AvgCost (minor units).</param>
-/// <param name="IsLow">On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب).</param>
+/// <param name="IsLow">Some left, at or under the reorder level (الأصناف التي وصلت لحد الطلب); none left is
+/// run out (نفد), never low (owner, 2026-11-10).</param>
+/// <param name="SupplierPartyCode">The supplier's own number (كود المورد), beside its name.</param>
 /// <param name="Units">Every unit the item comes in (base first), for entering quantities in cartons etc.</param>
 public record InventoryItemDto(
     string Id, string Sku, string Name, string Unit, string CategoryName,
     int StockOnHand, int ReorderLevel, long AvgCost, long SalePrice, long StockValue, bool IsLow,
-    UnitOptionDto[] Units, string? ModelId, string? SupplierName = null, string[]? Places = null);
+    UnitOptionDto[] Units, string? ModelId, string? SupplierName = null, string[]? Places = null,
+    int? SupplierPartyCode = null);
 
 /// <summary>A unit an item comes in: its name and how many base units it holds.</summary>
 public record UnitOptionDto(string UnitId, string Name, int Factor);

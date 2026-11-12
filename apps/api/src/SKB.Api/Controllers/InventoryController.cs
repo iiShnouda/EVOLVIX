@@ -88,7 +88,9 @@ public sealed class InventoryController : ControllerBase
         if (Guid.TryParse(supplierId, out var sup))
             productQuery = productQuery.Where(p => p.SupplierId == sup);
         var products = await productQuery
-            .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit).Include(p => p.Supplier)
+            // The department shown is the main one, not the group under it (owner, 2026-11-10).
+            .Include(p => p.Category).ThenInclude(c => c!.Department)
+            .Include(p => p.Units).ThenInclude(u => u.Unit).Include(p => p.Supplier)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
         var mine = await _warehouses.LimitAsync(User);
@@ -159,6 +161,7 @@ public sealed class InventoryController : ControllerBase
             "code" => i => i.Sku,
             "department" => i => i.CategoryName,
             "supplier" => i => i.SupplierName ?? "",
+            "supplierCode" => i => i.SupplierPartyCode ?? int.MaxValue,
             "stock" => i => i.StockOnHand,
             "reorder" => i => i.ReorderLevel,
             "sale" => i => i.SalePrice,
@@ -407,7 +410,8 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null,
         [FromQuery] string? branchId = null, [FromQuery] string? departmentId = null,
         [FromQuery] string? supplierId = null, [FromQuery] string? search = null,
-        [FromQuery] string? productIds = null, [FromQuery] string? status = null)
+        [FromQuery] string? productIds = null, [FromQuery] string? status = null,
+        [FromQuery] string? groupId = null)
     {
         // Each part and column has its own permission (owner, 2026-10-19); values need costs:view.
         bool Has(string p) => User.HasClaim("permission", p);
@@ -449,8 +453,13 @@ public sealed class InventoryController : ControllerBase
         var picked = (productIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToHashSet();
         var text = search?.Trim();
+        // A group of the department's tree and everything under it, as on the item list.
+        HashSet<Guid>? under = null;
+        if (Guid.TryParse(groupId, out var gid))
+            under = Catalog.Subtree(gid, await _db.Categories.AsNoTracking().ToListAsync()).ToHashSet();
         bool Passes(Product p) =>
             (dept is null || p.Category?.DepartmentId == dept)
+            && (under is null || under.Contains(p.CategoryId))
             && (supplier is null || p.SupplierId == supplier)
             && (picked.Count == 0 || picked.Contains(p.Id))
             && (string.IsNullOrEmpty(text)

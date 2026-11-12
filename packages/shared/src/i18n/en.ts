@@ -240,6 +240,7 @@ export const en = {
   'inventory.valuation': 'Stock valuation',
   'inventory.stockValue': 'Stock value',
   'inventory.itemCount': 'Items',
+  'inventory.out': 'Out of stock',
   'inventory.lowStock': 'At reorder level',
   'inventory.lowOnly': 'Only items at reorder level',
   'inventory.avgCost': 'Avg cost',

@@ -738,6 +738,8 @@ export function useItemLife(id: string | null) {
 export interface ValuationFilter {
   branchId?: string;
   departmentId?: string;
+  /** A group of the department's tree and everything under it. */
+  groupId?: string;
   supplierId?: string;
   search?: string;
   productIds?: string[];
@@ -750,6 +752,7 @@ export function useValuation(asOf: string, warehouseId?: string, f: ValuationFil
   if (warehouseId) query.set('warehouseId', warehouseId);
   if (f.branchId) query.set('branchId', f.branchId);
   if (f.departmentId) query.set('departmentId', f.departmentId);
+  if (f.groupId) query.set('groupId', f.groupId);
   if (f.supplierId) query.set('supplierId', f.supplierId);
   if (f.search) query.set('search', f.search);
   if (f.productIds?.length) query.set('productIds', f.productIds.join(','));

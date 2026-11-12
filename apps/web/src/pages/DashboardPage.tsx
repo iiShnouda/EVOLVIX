@@ -903,8 +903,11 @@ function LowStockCard({ data }: { data: DashboardData }) {
                     <span className="block truncate font-medium">{p.name}</span>
                     <span className="text-xs text-muted">{p.sku}</span>
                   </span>
+                  {/* None left is run out, not "low" (owner, 2026-11-10). */}
                   <span className="shrink-0 text-xs text-destructive tnum">
-                    {formatNumber(p.stockOnHand, locale)} / {formatNumber(p.reorderLevel, locale)}
+                    {p.stockOnHand <= 0
+                      ? t('inventory.out')
+                      : `${formatNumber(p.stockOnHand, locale)} / ${formatNumber(p.reorderLevel, locale)}`}
                   </span>
                 </div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-destructive-soft">
