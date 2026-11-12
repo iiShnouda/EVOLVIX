@@ -325,6 +325,12 @@ export function InvoiceBuilderPage({
     categoryFilter,
   );
   const searchBox = useRef<HTMLInputElement>(null);
+  /**
+   * The prepared item whose quantity takes the cursor next (owner, 2026-11-12: item, then its
+   * quantity, then Enter puts it on the invoice and goes back to the search).
+   */
+  const qtyBoxes = useRef(new Map<string, HTMLInputElement>());
+  const [qtyNext, setQtyNext] = useState<{ productId: string; unitId: string } | null>(null);
 
   const [lines, setLines] = useState<Line[]>([]);
   // Once on the invoice a line is fixed; its pencil opens it to change (owner, 2026-10-02).
@@ -444,8 +450,16 @@ export function InvoiceBuilderPage({
   const autoDiscountOf = (l: Line, i: number) =>
     l.bonus || (priceEditable && l.touched) ? 0 : (priced?.[i]?.discount ?? 0);
 
-  /** `focus`: back to the search box for the next one (not after the detailed search). */
-  function addProduct(p: Product, unitId?: string | null, focus = true, quantity?: number) {
+  /**
+   * `focus`: where the cursor goes next — the prepared item's quantity, back to the search box (a
+   * scanned barcode, so the next scan lands there), or nowhere (the detailed search).
+   */
+  function addProduct(
+    p: Product,
+    unitId?: string | null,
+    focus: 'qty' | 'search' | false = 'qty',
+    quantity?: number,
+  ) {
     const unit = unitId ?? p.matchedUnitId ?? p.units[0]?.unitId ?? '';
     const qty = Math.max(1, Math.floor(quantity ?? (Number(addQty) || 1)));
     if (quantity === undefined) setAddQty('');
@@ -469,7 +483,8 @@ export function InvoiceBuilderPage({
     });
     setSearch('');
     setListOpen(false);
-    if (focus) searchBox.current?.focus();
+    if (focus === 'qty') setQtyNext({ productId: p.id, unitId: unit });
+    else if (focus === 'search') searchBox.current?.focus();
   }
 
   /** Enter in the search box: a scanned barcode (or a single match) is added at once. */
@@ -477,21 +492,29 @@ export function InvoiceBuilderPage({
     const term = search.trim();
     if (!term) return;
     try {
-      await lookUp(term);
+      await lookUp(term, true);
     } catch {
       /* the dropdown still shows the matches */
     }
   }
 
-  /** Find a barcode / code and add its item; says what was added (for the camera). */
-  async function lookUp(term: string): Promise<string | null> {
+  /**
+   * Find a barcode / code and add its item; says what was added (for the camera). Typed in the
+   * search box, the cursor then goes to its quantity, unless a barcode was scanned there.
+   */
+  async function lookUp(term: string, typed = false): Promise<string | null> {
     const q = new URLSearchParams({ search: term });
     if (supplierFilter) q.set('supplierId', supplierFilter);
     if (departmentId) q.set('departmentId', departmentId);
     const found = await api.get<Product[]>(`/products?${q}`);
-    const hit = found.find((p) => p.matchedUnitId) ?? (found.length === 1 ? found[0] : undefined);
+    const low = term.toLowerCase();
+    // A barcode, else the item whose code was typed in full, else the only match.
+    const hit =
+      found.find((p) => p.matchedUnitId) ??
+      found.find((p) => p.sku.toLowerCase() === low) ??
+      (found.length === 1 ? found[0] : undefined);
     if (!hit) return null;
-    addProduct(hit, hit.matchedUnitId);
+    addProduct(hit, hit.matchedUnitId, typed && !hit.matchedUnitId ? 'qty' : 'search');
     return `✓ ${hit.name}`;
   }
 
@@ -895,6 +918,19 @@ export function InvoiceBuilderPage({
     };
   }, [editId]);
 
+  // The cursor to the quantity of the item just prepared, once it is shown.
+  useEffect(() => {
+    if (!qtyNext) return;
+    const line = staged.find(
+      (l) => l.product.id === qtyNext.productId && l.unitId === qtyNext.unitId,
+    );
+    const box = line && qtyBoxes.current.get(line.key);
+    if (!box) return;
+    setQtyNext(null);
+    box.focus();
+    box.select();
+  }, [qtyNext, staged]);
+
   /** Put every prepared item on the invoice. */
   function addStaged() {
     if (staged.some(stagedTooMany)) return;
@@ -908,6 +944,7 @@ export function InvoiceBuilderPage({
     if (!one || stagedTooMany(one)) return;
     setLines((prev) => [...prev, one]);
     setStaged((prev) => prev.filter((l) => l.key !== key));
+    searchBox.current?.focus();
   }
   /** A prepared item asking for more than is left in the warehouse (a sale never goes over). */
   const stagedTooMany = (l: Line) =>
@@ -949,9 +986,10 @@ export function InvoiceBuilderPage({
                 key={l.key}
                 className="rounded-[var(--radius-app)] border border-line bg-surface p-2"
               >
-                {/* What it is, how many, and on which basis. */}
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="min-w-40 flex-1">
+                {/* In the order it is prepared (owner, 2026-11-12): the item, its unit, how many
+                    (the box that stands out), its price, then add; one line on a wide screen. */}
+                <div className="flex flex-wrap items-end gap-2 lg:flex-nowrap">
+                  <div className="min-w-0 basis-full lg:basis-0 lg:flex-1">
                     {seesLife ? (
                       <button
                         type="button"
@@ -969,50 +1007,125 @@ export function InvoiceBuilderPage({
                     <span className="text-xs text-faint tnum">{l.product.sku}</span>
                     {/* What is left in the warehouse after the lines already on the invoice. */}
                     <span
-                      className={`ms-2 text-xs tnum ${l.quantity * factor > left ? 'font-semibold text-destructive' : 'text-muted'}`}
+                      className={`ms-2 text-xs tnum ${tooMany ? 'font-semibold text-destructive' : 'text-muted'}`}
                     >
                       {t('invoice.balance')}:{' '}
                       {formatQuantity(Math.max(0, left), l.product.units, locale)}
                     </span>
                   </div>
-                  <label className="block">
-                    <span className={label}>{t('col.unit')}</span>
-                    <select
-                      className={`${cell} w-28`}
-                      value={l.unitId}
-                      disabled={l.product.units.length < 2}
-                      onChange={(e) =>
-                        updateStaged(l.key, { unitId: e.target.value, touched: false })
-                      }
-                    >
-                      {l.product.units.map((u) => (
-                        <option key={u.unitId} value={u.unitId}>
-                          {u.name}
-                          {u.factor > 1 ? ` (${u.factor})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className={label}>{t('col.qty')}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      className={`${cell} w-16 tnum`}
-                      value={l.quantity}
-                      onChange={(e) =>
-                        updateStaged(l.key, {
-                          quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
-                        })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addStaged();
+                  <div className="grid min-w-0 basis-full grid-cols-3 items-end gap-2 sm:flex sm:basis-auto">
+                    <label className="block min-w-0">
+                      <span className={label}>{t('col.unit')}</span>
+                      <select
+                        className={`${cell} h-10 w-full sm:w-28`}
+                        value={l.unitId}
+                        disabled={l.product.units.length < 2}
+                        onChange={(e) =>
+                          updateStaged(l.key, { unitId: e.target.value, touched: false })
                         }
-                      }}
-                    />
-                  </label>
+                      >
+                        {l.product.units.map((u) => (
+                          <option key={u.unitId} value={u.unitId}>
+                            {u.name}
+                            {u.factor > 1 ? ` (${u.factor})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-0.5 block text-xs font-semibold text-brand">
+                        {t('col.qty')}
+                      </span>
+                      <input
+                        ref={(el) => {
+                          if (el) qtyBoxes.current.set(l.key, el);
+                          else qtyBoxes.current.delete(l.key);
+                        }}
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        aria-invalid={tooMany}
+                        className={`h-10 w-full rounded-[var(--radius-app)] border-2 bg-surface px-2 text-center text-lg font-bold tnum outline-none focus:ring-4 sm:w-24 ${
+                          tooMany
+                            ? 'border-destructive focus:ring-destructive/25'
+                            : 'border-brand focus:ring-brand/25'
+                        }`}
+                        value={l.quantity}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) =>
+                          updateStaged(l.key, {
+                            quantity: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addOneStaged(l.key);
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="block min-w-0">
+                      <span className={label}>{t('col.price')}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        disabled={!priceEditable}
+                        className={`${cell} h-10 w-full tnum sm:w-28 ${changed ? 'border-warning' : ''}`}
+                        value={toMajor(price)}
+                        onChange={(e) =>
+                          updateStaged(l.key, {
+                            price: toMinor(Number(e.target.value) || 0),
+                            touched: true,
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addOneStaged(l.key);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <Button
+                    icon="plus"
+                    className="h-10 flex-1 sm:flex-none"
+                    disabled={tooMany}
+                    title={tooMany ? t('finder.overStock') : undefined}
+                    onClick={() => addOneStaged(l.key)}
+                  >
+                    {t('stage.addOne')}
+                  </Button>
+                  <button
+                    type="button"
+                    className="grid h-10 w-8 place-items-center rounded-md text-muted hover:text-destructive"
+                    aria-label={`${t('col.delete')} ${l.product.name}`}
+                    onClick={() => setStaged((prev) => prev.filter((x) => x.key !== l.key))}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+                {/* Its prices to compare, the basis it is priced on, its discount and what it comes to. */}
+                <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-line pt-2 text-sm">
+                  <span>
+                    <span className={label}>{t('col.listPrice')}</span>
+                    <span className="tnum">{money(list)}</span>
+                  </span>
+                  {seeCosts && (
+                    <span>
+                      <span className={label}>{t('col.cost')}</span>
+                      <span className="tnum">
+                        {money(info?.unitCost ?? costOf(l.product) * factor)}
+                      </span>
+                    </span>
+                  )}
+                  <span>
+                    <span className={label}>{t('col.lastPrice')}</span>
+                    <span className="tnum">{money(info?.lastPrice)}</span>
+                  </span>
                   {canPriceBasis && (
                     <label className="block">
                       <span className={label}>{t('invoice.priceBasis')}</span>
@@ -1037,60 +1150,6 @@ export function InvoiceBuilderPage({
                       </select>
                     </label>
                   )}
-                  <Button
-                    icon="plus"
-                    className="ms-auto"
-                    disabled={tooMany}
-                    title={tooMany ? t('finder.overStock') : undefined}
-                    onClick={() => addOneStaged(l.key)}
-                  >
-                    {t('stage.addOne')}
-                  </Button>
-                  <button
-                    type="button"
-                    className="grid h-8 w-8 place-items-center rounded-md text-muted hover:text-destructive"
-                    aria-label={`${t('col.delete')} ${l.product.name}`}
-                    onClick={() => setStaged((prev) => prev.filter((x) => x.key !== l.key))}
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                </div>
-                {/* Its prices to compare, the price it goes at, its discount and what it comes to. */}
-                <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-line pt-2 text-sm">
-                  <span>
-                    <span className={label}>{t('col.listPrice')}</span>
-                    <span className="tnum">{money(list)}</span>
-                  </span>
-                  {seeCosts && (
-                    <span>
-                      <span className={label}>{t('col.cost')}</span>
-                      <span className="tnum">
-                        {money(info?.unitCost ?? costOf(l.product) * factor)}
-                      </span>
-                    </span>
-                  )}
-                  <span>
-                    <span className={label}>{t('col.lastPrice')}</span>
-                    <span className="tnum">{money(info?.lastPrice)}</span>
-                  </span>
-                  <label className="block">
-                    <span className={label}>{t('col.price')}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      disabled={!priceEditable}
-                      className={`${cell} w-24 tnum ${changed ? 'border-warning' : ''}`}
-                      value={toMajor(price)}
-                      onChange={(e) =>
-                        updateStaged(l.key, {
-                          price: toMinor(Number(e.target.value) || 0),
-                          touched: true,
-                        })
-                      }
-                    />
-                  </label>
                   <span>
                     <span className={label}>{t('col.afterDiscount')}</span>
                     <span className="tnum">
@@ -1784,14 +1843,17 @@ export function InvoiceBuilderPage({
                         )}
                       </div>
                     </div>
-                    <label className="block w-20 shrink-0">
-                      <span className="mb-0.5 block text-xs text-muted">{t('col.qty')}</span>
+                    <label className="block w-24 shrink-0">
+                      <span className="mb-0.5 block text-xs font-semibold text-brand">
+                        {t('col.qty')}
+                      </span>
                       <input
                         type="number"
                         min={1}
                         step={1}
                         inputMode="numeric"
-                        className={`${field} text-center tnum`}
+                        placeholder="1"
+                        className="h-9 w-full rounded-[var(--radius-app)] border-2 border-brand bg-surface px-2 text-center text-base font-bold tnum outline-none focus:ring-4 focus:ring-brand/25"
                         value={addQty}
                         onChange={(e) => setAddQty(e.target.value)}
                         onFocus={(e) => e.target.select()}
