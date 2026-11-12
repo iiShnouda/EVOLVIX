@@ -301,12 +301,15 @@ public record ProfitReportDto(
 /// <param name="Unit">Name of the base unit; quantities are in it.</param>
 /// <param name="AvgCost">Current weighted-average cost of one base unit (minor units).</param>
 /// <param name="StockValue">StockOnHand × AvgCost (minor units).</param>
-/// <param name="IsLow">On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب).</param>
+/// <param name="IsLow">Some left, at or under the reorder level (الأصناف التي وصلت لحد الطلب); none left is
+/// run out (نفد), never low (owner, 2026-11-10).</param>
+/// <param name="SupplierPartyCode">The supplier's own number (كود المورد), beside its name.</param>
 /// <param name="Units">Every unit the item comes in (base first), for entering quantities in cartons etc.</param>
 public record InventoryItemDto(
     string Id, string Sku, string Name, string Unit, string CategoryName,
     int StockOnHand, int ReorderLevel, long AvgCost, long SalePrice, long StockValue, bool IsLow,
-    UnitOptionDto[] Units, string? ModelId, string? SupplierName = null, string[]? Places = null);
+    UnitOptionDto[] Units, string? ModelId, string? SupplierName = null, string[]? Places = null,
+    int? SupplierPartyCode = null);
 
 /// <summary>A unit an item comes in: its name and how many base units it holds.</summary>
 public record UnitOptionDto(string UnitId, string Name, int Factor);
@@ -370,26 +373,42 @@ public record ItemLifeDto(
     ItemLifeTotalsDto Totals, ItemLifeLineDto[]? Purchases, ItemLifeLineDto[]? Sales, ItemLifeLineDto[]? Returns,
     bool Prices, WarehouseStockDto[] Stock);
 
-/// <summary>A valuation row; <c>Value</c> only for whoever may see costs; <c>Count</c> = how many items.</summary>
-public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count);
+/// <summary>A valuation row; <c>Value</c> only for whoever may see costs; <c>Count</c> = how many items;
+/// <c>SaleValue</c> at sale prices for whoever may see them; <c>Group</c> = a warehouse's branch.</summary>
+public record ValuationRowDto(string Key, string Label, int Quantity, long? Value, int Count,
+    long? SaleValue = null, string? Group = null);
 
 /// <summary>One item of the valuation; each column only for whoever may see it (owner, 2026-10-19).</summary>
 public record ValuationItemDto(string Key, string ProductId, string Code, string Label, string? Supplier,
     string? Department, string? Branch, string? Warehouse,
-    int Quantity, long? Value, long? SupplyPrice, long? SalePrice, int ReorderLevel, bool Low, bool Empty);
+    int Quantity, long? Value, long? SupplyPrice, long? SalePrice, int ReorderLevel, bool Low, bool Empty,
+    int? SupplierPartyCode = null);
 
 /// <summary>Stock valuation (تقييم المخزن) at the end of <c>AsOf</c>: quantity × weighted-average cost.</summary>
 /// <remarks>By category, item, warehouse and model (size/color variants rolled up). <c>WarehouseId</c> is
 /// set when limited to one warehouse. Quantities are in base units.</remarks>
 public record ValuationDto(
     string AsOf, string Currency, string? WarehouseId, int Quantity, long? Value, int TotalItems, int ItemCount,
-    ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models);
+    ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models,
+    long? SaleValue = null);
 
-public record StocktakeLineRequest(string ProductId, int CountedQuantity);
+/// <param name="WarehouseId">Where it was counted; none = the request's warehouse.</param>
+public record StocktakeLineRequest(string ProductId, int CountedQuantity, string? WarehouseId = null);
 
 /// <summary>Stocktake (الجرد): the counted quantity per item; only lines that differ are posted.</summary>
-/// <remarks>Counts one warehouse; none given means the default warehouse of the user's branch.</remarks>
-public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null, string? WarehouseId = null);
+/// <remarks>Each line in its own warehouse, or the request's; none given means the default warehouse of
+/// the user's branch. <c>BranchId</c>, <c>DepartmentId</c> and <c>SupplierId</c> are the count's scope
+/// (owner, 2026-11-10): a line outside it is refused.</remarks>
+public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null, string? WarehouseId = null,
+    string? BranchId = null, string? DepartmentId = null, string? SupplierId = null);
+
+/// <summary>One item to count in one warehouse, with what the books say there; cost only with costs:view.</summary>
+public record StocktakeSheetRowDto(string ProductId, string WarehouseId, string Warehouse, string Branch,
+    string Code, string Name, string Unit, string? Department, int? SupplierCode, string? Supplier,
+    int Quantity, long? AvgCost);
+
+/// <summary>The count sheet (owner, 2026-11-10: by branch, warehouse, department and factory together).</summary>
+public record StocktakeSheetDto(StocktakeSheetRowDto[] Rows, string Currency, bool Truncated);
 
 /// <param name="ValueChange">Signed total value change (gains − shrinkage), minor units.</param>
 public record StocktakeResultDto(
@@ -412,7 +431,8 @@ public record WarehouseOptionDto(string Id, string Name, string BranchName);
 
 /// <param name="UnitCost">Average cost when sent, minor units.</param>
 public record StockTransferLineDto(
-    string Id, string ProductId, string ProductName, int Quantity, long UnitCost, long Value);
+    string Id, string ProductId, string ProductName, int Quantity, long UnitCost, long Value,
+    string? Code = null, string? Department = null);
 
 /// <param name="CanReceive">The caller may confirm receipt now.</param>
 /// <param name="CanCancel">The caller may cancel it now (goods go back to the source).</param>
@@ -423,7 +443,14 @@ public record StockTransferDto(
     string CreatedAt, string CreatedByName,
     string? ReceivedAt, string? ReceivedByName, string? CancelledAt, string? CancelledByName,
     string? Notes, int Quantity, long Value, StockTransferLineDto[] Lines,
-    bool CanReceive, bool CanCancel);
+    bool CanReceive, bool CanCancel,
+    string? FromBranchId = null, string? ToBranchId = null, string[]? Departments = null);
+
+/// <summary>Transfers found by the filters, a page of them, with the pieces and value of all found.</summary>
+public record TransferListDto(StockTransferDto[] Items, int Total, int Page, int PageSize, int Quantity, long? Value);
+
+/// <summary>A warehouse found on the transfers one may see (for the from / to filters).</summary>
+public record TransferPlaceDto(string WarehouseId, string WarehouseName, string BranchId, string BranchName);
 
 public record CreateTransferLineRequest(string ProductId, int Quantity);
 

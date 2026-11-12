@@ -81,9 +81,10 @@ public static class Mapper
         var units = p.Units.OrderBy(u => u.Factor).ToList();
         return new(
             p.Id.ToString(), p.Sku, Loc.Name(p), Loc.Name(units.FirstOrDefault()?.Unit), p.Category?.Department is { } dept ? Loc.Name(dept) : Loc.Name(p.Category),
-            qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty <= p.ReorderLevel,
+            // Run out is its own status, never "at the reorder level" (owner, 2026-11-10).
+            qty, p.ReorderLevel, cost, p.SalePrice, value ?? (long)qty * cost, qty > 0 && qty <= p.ReorderLevel,
             units.Select(u => new UnitOptionDto(u.UnitId.ToString(), Loc.Name(u.Unit), u.Factor)).ToArray(),
-            p.ModelId?.ToString(), p.Supplier?.Name);
+            p.ModelId?.ToString(), p.Supplier?.Name, SupplierPartyCode: p.Supplier?.Code);
     }
 
     public static CompanySettingsDto ToSettings(CompanySettings s) => new(

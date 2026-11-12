@@ -43,16 +43,21 @@ public sealed class TransfersController : ControllerBase
     }
 
     /// <summary>
-    /// Permits, newest first. Filters: status, a warehouse on either end, an item on any line,
-    /// and a sent-date range (ISO dates, inclusive).
+    /// Permits, newest first. Filters (owner, 2026-11-10: "every transfer over a period, from which
+    /// branch, warehouse and department to which"): status, a warehouse on either end, the sending and
+    /// the receiving branch and warehouse, a department (an item of it on a line), an item on any line,
+    /// and a sent-date range (company days, inclusive). With the pieces and value of all found.
     /// </summary>
     [HttpGet]
     [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
         Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
-    public async Task<ActionResult<PaginatedDto<StockTransferDto>>> List(
+    public async Task<ActionResult<TransferListDto>> List(
         [FromQuery] string? status = null, [FromQuery] string? warehouseId = null,
         [FromQuery] string? productId = null, [FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] string? fromBranchId = null, [FromQuery] string? fromWarehouseId = null,
+        [FromQuery] string? toBranchId = null, [FromQuery] string? toWarehouseId = null,
+        [FromQuery] string? departmentId = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -60,6 +65,12 @@ public sealed class TransfersController : ControllerBase
         var q = Scoped();
         if (Enum.TryParse<TransferStatus>(status, out var st)) q = q.Where(t => t.Status == st);
         if (Guid.TryParse(warehouseId, out var wid)) q = q.Where(t => t.FromWarehouseId == wid || t.ToWarehouseId == wid);
+        if (Guid.TryParse(fromBranchId, out var fb)) q = q.Where(t => t.FromWarehouse!.BranchId == fb);
+        if (Guid.TryParse(fromWarehouseId, out var fw)) q = q.Where(t => t.FromWarehouseId == fw);
+        if (Guid.TryParse(toBranchId, out var tb)) q = q.Where(t => t.ToWarehouse!.BranchId == tb);
+        if (Guid.TryParse(toWarehouseId, out var tw)) q = q.Where(t => t.ToWarehouseId == tw);
+        if (Guid.TryParse(departmentId, out var dep))
+            q = q.Where(t => t.Lines.Any(l => l.Product!.Category!.DepartmentId == dep));
         if (Guid.TryParse(productId, out var pid)) q = q.Where(t => t.Lines.Any(l => l.ProductId == pid));
         if (CompanyClock.ParseDay(from) is DateOnly f)
         {
@@ -73,10 +84,35 @@ public sealed class TransfersController : ControllerBase
         }
 
         var total = await q.CountAsync();
+        var lines = q.SelectMany(t => t.Lines);
+        var quantity = await lines.SumAsync(l => (int?)l.Quantity) ?? 0;
+        long? value = Costs.CanSee(User) ? await lines.SumAsync(l => (long?)l.Quantity * l.UnitCost) ?? 0 : null;
         var rows = await WithDetails(q).OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var access = await AccessAsync();
-        return Ok(new PaginatedDto<StockTransferDto>(rows.Select(t => ToDto(t, access)).ToArray(), total, page, pageSize));
+        var items = await ItemsAsync(rows);
+        return Ok(new TransferListDto(rows.Select(t => ToDto(t, access, items)).ToArray(), total, page, pageSize,
+            quantity, value));
+    }
+
+    /// <summary>
+    /// The warehouses found on the transfers one may see, and one's own, with their branches: what the
+    /// from / to filters offer (names only).
+    /// </summary>
+    [HttpGet("places")]
+    [AnyPermission(Permissions.TransfersView, Permissions.TransfersPrint, Permissions.InventoryTransfer,
+        Permissions.InventoryTransferEdit, Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel)]
+    public async Task<ActionResult<TransferPlaceDto[]>> Places()
+    {
+        var q = Scoped();
+        var ends = await q.Select(t => t.FromWarehouseId).Union(q.Select(t => t.ToWarehouseId)).ToListAsync();
+        var mine = await _warehouses.Visible(User).Where(w => w.Kind == WarehouseKind.STORE).Select(w => w.Id).ToListAsync();
+        var ids = ends.Concat(mine).ToHashSet();
+        var rows = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)
+            .Where(w => ids.Contains(w.Id) && w.Kind == WarehouseKind.STORE).ToListAsync();
+        return Ok(rows.OrderBy(w => Loc.Name(w.Branch)).ThenBy(w => Loc.Name(w))
+            .Select(w => new TransferPlaceDto(w.Id.ToString(), Loc.Name(w), w.BranchId.ToString(), Loc.Name(w.Branch)))
+            .ToArray());
     }
 
     [HttpGet("{id:guid}")]
@@ -86,7 +122,7 @@ public sealed class TransfersController : ControllerBase
     {
         var transfer = await WithDetails(Scoped()).FirstOrDefaultAsync(t => t.Id == id);
         if (transfer is null) return NotFound(new { message = "Transfer not found.", code = "not_found" });
-        return Ok(ToDto(transfer, await AccessAsync()));
+        return Ok(ToDto(transfer, await AccessAsync(), await ItemsAsync(new[] { transfer })));
     }
 
     /// <summary>Send goods: out of the source warehouse, into transit (or straight in, if receipt is off).</summary>
@@ -375,7 +411,17 @@ public sealed class TransfersController : ControllerBase
     {
         _db.ChangeTracker.Clear();
         var transfer = await WithDetails(_db.StockTransfers.AsNoTracking()).FirstAsync(t => t.Id == id);
-        return ToDto(transfer, await AccessAsync());
+        return ToDto(transfer, await AccessAsync(), await ItemsAsync(new[] { transfer }));
+    }
+
+    /// <summary>Each line's item code and main department (the department an item belongs to).</summary>
+    private async Task<Dictionary<Guid, (string Code, string? Department)>> ItemsAsync(IEnumerable<StockTransfer> transfers)
+    {
+        var ids = transfers.SelectMany(t => t.Lines).Select(l => l.ProductId).Distinct().ToList();
+        var products = await _db.Products.AsNoTracking().Include(p => p.Category).ThenInclude(c => c!.Department)
+            .Where(p => ids.Contains(p.Id)).ToListAsync();
+        return products.ToDictionary(p => p.Id, p => (p.Sku,
+            p.Category?.Department is { } d ? Loc.Name(d) : p.Category is null ? null : Loc.Name(p.Category)));
     }
 
     /// <summary>Warehouses the user may act on (null = every warehouse), for CanReceive/CanCancel.</summary>
@@ -387,13 +433,15 @@ public sealed class TransfersController : ControllerBase
     }
 
     /// <summary>A transfer; its cost value only for people who may see costs.</summary>
-    private StockTransferDto ToDto(StockTransfer t, HashSet<Guid>? access)
+    private StockTransferDto ToDto(StockTransfer t, HashSet<Guid>? access,
+        Dictionary<Guid, (string Code, string? Department)> items)
     {
         bool May(Guid warehouseId) => access is null || access.Contains(warehouseId);
         var inTransit = t.Status == TransferStatus.SENT;
         var lines = t.Lines.OrderBy(l => l.LineNo)
             .Select(l => new StockTransferLineDto(l.Id.ToString(), l.ProductId.ToString(), l.ProductName,
-                l.Quantity, l.UnitCost, (long)l.Quantity * l.UnitCost))
+                l.Quantity, l.UnitCost, (long)l.Quantity * l.UnitCost,
+                items.TryGetValue(l.ProductId, out var it) ? it.Code : null, it.Department))
             .ToArray();
         return Costs.Guard(User, new StockTransferDto(
             t.Id.ToString(), t.Number, t.Status.ToString(),
@@ -403,7 +451,9 @@ public sealed class TransfersController : ControllerBase
             t.ReceivedAt?.ToString("o"), t.ReceivedBy?.FullName, t.CancelledAt?.ToString("o"), t.CancelledBy?.FullName,
             t.Notes, lines.Sum(l => l.Quantity), lines.Sum(l => l.Value), lines,
             inTransit && User.Has(Permissions.InventoryTransferReceive) && May(t.ToWarehouseId),
-            inTransit && User.Has(Permissions.InventoryTransferCancel) && May(t.FromWarehouseId)));
+            inTransit && User.Has(Permissions.InventoryTransferCancel) && May(t.FromWarehouseId),
+            t.FromWarehouse?.BranchId.ToString(), t.ToWarehouse?.BranchId.ToString(),
+            lines.Select(l => l.Department).OfType<string>().Distinct().OrderBy(x => x).ToArray()));
     }
 
     private Task AuditAsync(string action, StockTransfer t, Guid branchId) =>

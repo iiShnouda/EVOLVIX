@@ -1477,9 +1477,11 @@ export interface InventoryItem {
   /** Every unit the item comes in (base first), for entering quantities in cartons etc. */
   units: UnitOption[];
   modelId?: string | null;
-  /** On hand has reached the reorder level (الأصناف التي وصلت لحد الطلب). */
+  /** Some left, at or under the reorder level; none left is run out (stockOnHand ≤ 0), never low. */
   isLow: boolean;
   supplierName?: string | null;
+  /** The supplier's own number (كود المورد). */
+  supplierPartyCode?: number | null;
   /** Where it is: "branch / warehouse (quantity)" for each place holding some. */
   places?: string[] | null;
 }
@@ -1696,6 +1698,10 @@ export interface ValuationRow {
   value: number | null;
   /** How many items. */
   count: number;
+  /** At sale prices, for whoever may see them. */
+  saleValue?: number | null;
+  /** A warehouse's branch. */
+  group?: string | null;
 }
 
 /** One item in one place (branch / warehouse) of the valuation; each column only for whoever may see it. */
@@ -1716,6 +1722,8 @@ export interface ValuationItem {
   reorderLevel: number;
   low: boolean;
   empty: boolean;
+  /** The supplier's own number (كود المورد). */
+  supplierPartyCode?: number | null;
 }
 
 /** Stock valuation (تقييم المخزن) at the end of `asOf`: quantity × weighted-average cost. */
@@ -1734,6 +1742,8 @@ export interface Valuation {
   warehouses: ValuationRow[];
   /** Size/color variants rolled up to their model. */
   models: ValuationRow[];
+  /** All of it at sale prices, for whoever may see them. */
+  saleValue?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1870,10 +1880,35 @@ export interface ModelDetail {
   supplierCode?: string | null;
 }
 
+/** One item to count in one warehouse, with what the books say there; cost only with costs:view. */
+export interface StocktakeSheetRow {
+  productId: string;
+  warehouseId: string;
+  warehouse: string;
+  branch: string;
+  code: string;
+  name: string;
+  unit: string;
+  department: string | null;
+  supplierCode: number | null;
+  supplier: string | null;
+  /** On the books in that warehouse. */
+  quantity: number;
+  avgCost: number | null;
+}
+
+/** The count sheet: by branch, warehouse, department and factory together. */
+export interface StocktakeSheet {
+  rows: StocktakeSheetRow[];
+  currency: string;
+  /** More rows than are sent: narrow the filters. */
+  truncated: boolean;
+}
+
 export interface StocktakeResult {
   /** ADJ- reference shared by every movement the stocktake posted. */
   reference: string;
-  /** The warehouse that was counted. */
+  /** The warehouse(s) that were counted. */
   warehouseName: string;
   itemsChanged: number;
   /** Signed value change (gains − shrinkage), minor units. */
@@ -1925,6 +1960,9 @@ export interface StockTransferLine {
   /** Average cost when sent, minor units. */
   unitCost: number;
   value: number;
+  code?: string | null;
+  /** The item's (main) department. */
+  department?: string | null;
 }
 
 export interface StockTransfer {
@@ -1952,6 +1990,25 @@ export interface StockTransfer {
   canReceive: boolean;
   /** The current user may cancel it now (goods go back to the source). */
   canCancel: boolean;
+  fromBranchId?: string | null;
+  toBranchId?: string | null;
+  /** The departments of the items it moved. */
+  departments?: string[] | null;
+}
+
+/** Transfers found by the filters (a page of them), with the pieces and value of all found. */
+export interface TransferList extends Paginated<StockTransfer> {
+  quantity: number;
+  /** Only for whoever may see costs. */
+  value: number | null;
+}
+
+/** A warehouse on the transfers one may see, for the from / to filters. */
+export interface TransferPlace {
+  warehouseId: string;
+  warehouseName: string;
+  branchId: string;
+  branchName: string;
 }
 
 export interface BranchWithWarehouses {

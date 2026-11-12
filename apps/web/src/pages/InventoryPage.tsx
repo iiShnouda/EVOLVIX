@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useDeferredValue, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -13,6 +13,7 @@ import {
   type TranslationKey,
   type Valuation,
   type ValuationItem,
+  type ValuationRow,
   companyToday,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
@@ -266,10 +267,10 @@ export function InventoryPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-3">
         <div
           role="tablist"
-          className="flex max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
+          className="flex w-fit max-w-full overflow-x-auto rounded-[var(--radius-app)] border border-line bg-surface p-1"
         >
           {tabs.map((x) => (
             <button
@@ -298,70 +299,75 @@ export function InventoryPage() {
               </button>
             ))}
         </div>
-        {ownFilters && myBranches.length > 0 && (
-          <label className="block w-full shrink-0 sm:w-48">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-            <select
-              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-              aria-label={t('list.branch')}
-              value={branchId}
-              onChange={(e) => {
-                update({ br: e.target.value || null, wh: null });
-                if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
-              }}
-            >
-              <option value="">{t('common.all')}</option>
-              {myBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        {/* Branch, warehouse and department side by side (owner, 2026-11-10). */}
         {ownFilters && (
-          <WarehouseSelect
-            className="w-full sm:w-64"
-            value={warehouseId}
-            onChange={(id) => {
-              update({ wh: id || null });
-              if (id) setPlace({ warehouseId: id });
-            }}
-            allowAll
-            includeClosed
-          />
-        )}
-        {tab === 'items' && departments.length > 0 && (
-          <label className="block w-full shrink-0 sm:w-48">
-            <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-            <select
-              className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-              aria-label={t('invoice.department')}
-              value={departmentId}
-              onChange={(e) => {
-                update({ dept: e.target.value || null, grp: null });
-                if (e.target.value) setPlace({ departmentId: e.target.value });
-              }}
-            >
-              <option value="">{t('common.all')}</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {tab === 'items' && departmentId && groups.length > 0 && (
-          <GroupPicker
-            departments={departments}
-            groups={groups}
-            departmentId={departmentId}
-            groupId={groupId}
-            showDepartment={false}
-            anyLabel={t('common.all')}
-            onChange={(_, g) => update({ grp: g || null })}
-          />
+          <div className="flex flex-wrap items-end gap-3">
+            {ownFilters && myBranches.length > 0 && (
+              <label className="block w-full shrink-0 sm:w-48">
+                <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+                <select
+                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+                  aria-label={t('list.branch')}
+                  value={branchId}
+                  onChange={(e) => {
+                    update({ br: e.target.value || null, wh: null });
+                    if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+                  }}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {myBranches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {ownFilters && (
+              <WarehouseSelect
+                className="w-full sm:w-64"
+                value={warehouseId}
+                onChange={(id) => {
+                  update({ wh: id || null });
+                  if (id) setPlace({ warehouseId: id });
+                }}
+                allowAll
+                includeClosed
+              />
+            )}
+            {departments.length > 0 && (
+              <label className="block w-full shrink-0 sm:w-48">
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+                <select
+                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
+                  aria-label={t('invoice.department')}
+                  value={departmentId}
+                  onChange={(e) => {
+                    update({ dept: e.target.value || null, grp: null });
+                    if (e.target.value) setPlace({ departmentId: e.target.value });
+                  }}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {departmentId && groups.length > 0 && (
+              <GroupPicker
+                departments={departments}
+                groups={groups}
+                departmentId={departmentId}
+                groupId={groupId}
+                showDepartment={false}
+                anyLabel={t('common.all')}
+                onChange={(_, g) => update({ grp: g || null })}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -389,7 +395,12 @@ export function InventoryPage() {
           }
         />
       ) : tab === 'valuation' ? (
-        <ValuationTab warehouseId={warehouseId} branchId={branchId} />
+        <ValuationTab
+          warehouseId={warehouseId}
+          branchId={branchId}
+          departmentId={departmentId}
+          groupId={groupId}
+        />
       ) : tab === 'stocktake' ? (
         <StocktakePage embedded />
       ) : tab === 'transfers' ? (
@@ -474,8 +485,25 @@ function ItemsTab({
     className?: string;
     cell: (p: InventoryItem) => ReactNode;
   }[] = [
+    // The supplier's code and name first, then the item's code and name (owner, 2026-11-10).
+    ...(can('parties:view') || can('purchases:view')
+      ? [
+          {
+            key: 'supplierCode',
+            label: t('list.supplierCode'),
+            className: 'text-muted tnum',
+            cell: (p: InventoryItem) => p.supplierPartyCode ?? '',
+          },
+          {
+            key: 'supplier',
+            label: t('inventory.supplier'),
+            className: 'text-muted',
+            cell: (p: InventoryItem) => p.supplierName ?? '',
+          },
+        ]
+      : []),
     { key: 'code', label: t('inventory.sku'), className: 'text-muted tnum', cell: (p) => p.sku },
-    { key: 'name', label: t('inventory.products'), className: 'font-medium', cell: (p) => p.name },
+    { key: 'name', label: t('inventory.itemName'), className: 'font-medium', cell: (p) => p.name },
     {
       key: 'department',
       label: t('inventory.category'),
@@ -493,16 +521,6 @@ function ItemsTab({
           </span>
         )),
     },
-    ...(can('parties:view') || can('purchases:view')
-      ? [
-          {
-            key: 'supplier',
-            label: t('inventory.supplier'),
-            className: 'text-muted',
-            cell: (p: InventoryItem) => p.supplierName ?? '',
-          },
-        ]
-      : []),
     {
       key: 'stock',
       label: t('inventory.stock'),
@@ -762,25 +780,34 @@ function MenuItem({ icon, label, onClick }: { icon: string; label: string; onCli
   );
 }
 
-function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId: string }) {
+function ValuationTab({
+  warehouseId,
+  branchId,
+  departmentId,
+  groupId,
+}: {
+  warehouseId: string;
+  branchId: string;
+  departmentId: string;
+  groupId: string;
+}) {
   const { t, locale } = useT();
   const can = useCan();
   const seeSuppliers = can('inventory:valuation_suppliers');
   const [asOf, setAsOf] = useState(today());
-  // What to look at (owner, 2026-10-19/21): the branch and warehouse above, a department, a
-  // supplier, an item's name or code, items picked in the detailed search, and a stock status.
-  // Everything starts at "all".
-  const [departmentId, setDepartmentId] = useState('');
+  // What to look at (owner, 2026-10-19/21): the branch, warehouse, department and group above (as
+  // on the item list), a supplier, an item's name or code, items picked in the detailed search,
+  // and a stock status. Everything starts at "all".
   const [supplier, setSupplier] = useState<Party | null>(null);
   const [search, setSearch] = useState('');
   const settled = useDeferredValue(search.trim());
   const [picked, setPicked] = useState<string[]>([]);
   const [status, setStatus] = useState<string[]>([]);
   const [finding, setFinding] = useState(false);
-  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
   const valuation = useValuation(asOf, warehouseId || undefined, {
     branchId: branchId || undefined,
     departmentId: departmentId || undefined,
+    groupId: (departmentId && groupId) || undefined,
     supplierId: supplier?.id,
     search: settled || undefined,
     productIds: picked,
@@ -790,62 +817,42 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
   const currency = data?.currency ?? 'EGP';
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
-  const money = (v: number | null) => (v == null ? '' : formatMoney(v, currency, locale));
-  const seeValue = data?.value != null;
+  const money = (v: number | null | undefined) =>
+    v == null ? '' : formatMoney(v, currency, locale);
 
   return (
     <div ref={paper} className="space-y-4">
       <Card className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('inventory.asOf')}</span>
             <input
               type="date"
-              className={field}
+              className={`${field} w-full`}
               value={asOf}
               max={today()}
               onChange={(e) => setAsOf(e.target.value || today())}
             />
           </label>
-          <ReportActions
-            scope="inventory"
-            disabled={!data}
-            onPrint={() =>
-              report.print(paper.current, t('inventory.valuation'), formatDate(asOf, locale))
-            }
-          />
-          <div className="text-end">
-            {seeValue && (
-              <>
-                <p className="text-xs text-muted">{t('inventory.stockValue')}</p>
-                <p className="text-lg font-semibold tnum">{money(data?.value ?? 0)}</p>
-              </>
-            )}
-            <p className="text-xs text-muted tnum">
-              {formatNumber(data?.quantity ?? 0, locale)} {t('inventory.qty')}
-            </p>
-            <p className="text-sm font-medium tnum">
-              {t('valuation.counter')
-                .replace('{n}', formatNumber(data?.itemCount ?? 0, locale))
-                .replace('{total}', formatNumber(data?.totalItems ?? 0, locale))}
-            </p>
-          </div>
-        </div>
-        <div data-noprint className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {seeSuppliers && (
+            <div className="sm:col-span-2">
+              <PartyPicker
+                type="SUPPLIER"
+                withCode
+                value={supplier}
+                onChange={setSupplier}
+                label={t('inventory.supplier')}
+                placeholder={t('common.all')}
+              />
+            </div>
+          )}
           <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('valuation.department')}</span>
-            <select
+            <span className="mb-0.5 block text-xs text-muted">{t('valuation.search')}</span>
+            <input
               className={`${field} w-full`}
-              value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
-            >
-              <option value="">{t('common.all')}</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </label>
           <MultiSelect
             label={t('valuation.status')}
@@ -857,44 +864,42 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
               { value: 'low', label: t('valuation.status.low') },
             ]}
           />
-          {seeSuppliers && (
-            <PartyPicker
-              type="SUPPLIER"
-              withCode
-              value={supplier}
-              onChange={setSupplier}
-              label={t('inventory.supplier')}
-              placeholder={t('common.all')}
-            />
-          )}
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('valuation.search')}</span>
-            <input
-              className={`${field} w-full`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
           <div className="flex items-end">
             <Button variant="secondary" icon="search" onClick={() => setFinding(true)}>
               {t('finder.button')}
             </Button>
           </div>
         </div>
-        {picked.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div data-noprint className="flex items-center gap-2 text-sm">
-            <Badge tone="brand">
-              {t('valuation.picked').replace('{n}', formatNumber(picked.length, locale))}
-            </Badge>
-            <button
-              type="button"
-              className="text-xs font-medium text-brand hover:underline"
-              onClick={() => setPicked([])}
-            >
-              {t('valuation.clearPicked')}
-            </button>
+            {supplier && (
+              <Button size="sm" variant="ghost" icon="close" onClick={() => setSupplier(null)}>
+                {t('common.clear')}
+              </Button>
+            )}
+            {picked.length > 0 && (
+              <>
+                <Badge tone="brand">
+                  {t('valuation.picked').replace('{n}', formatNumber(picked.length, locale))}
+                </Badge>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-brand hover:underline"
+                  onClick={() => setPicked([])}
+                >
+                  {t('valuation.clearPicked')}
+                </button>
+              </>
+            )}
           </div>
-        )}
+          <ReportActions
+            scope="inventory"
+            disabled={!data}
+            onPrint={() =>
+              report.print(paper.current, t('inventory.valuation'), formatDate(asOf, locale))
+            }
+          />
+        </div>
       </Card>
       {finding && (
         <ItemFinderSheet
@@ -910,6 +915,25 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
         />
       )}
 
+      {/* The totals first (owner, 2026-11-10: the page reorganised). */}
+      {data && data.totalItems > 0 && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi
+            label={t('valuation.items')}
+            value={t('valuation.counter')
+              .replace('{n}', formatNumber(data.itemCount, locale))
+              .replace('{total}', formatNumber(data.totalItems, locale))}
+          />
+          <Kpi label={t('inventory.qty')} value={formatNumber(data.quantity, locale)} />
+          {data.value != null && (
+            <Kpi label={t('inventory.stockValue')} value={money(data.value)} />
+          )}
+          {data.saleValue != null && (
+            <Kpi label={t('valuation.saleValue')} value={money(data.saleValue)} />
+          )}
+        </div>
+      )}
+
       {valuation.isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
           <Spinner size={26} />
@@ -919,9 +943,12 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
           <EmptyState title={t('common.empty')} icon="inventory" />
         </Card>
       ) : (
-        can('inventory:valuation_items') && (
-          <ValuationItems data={data} money={money} seeSuppliers={seeSuppliers} />
-        )
+        <>
+          <ValuationSummary data={data} money={money} />
+          {can('inventory:valuation_items') && (
+            <ValuationItems data={data} money={money} seeSuppliers={seeSuppliers} />
+          )}
+        </>
       )}
 
       <PurchasesOfDay
@@ -933,22 +960,168 @@ function ValuationTab({ warehouseId, branchId }: { warehouseId: string; branchId
   );
 }
 
+/**
+ * Where the stock is (owner, 2026-11-10): by branch and warehouse (each branch with its total) or
+ * by department, with pieces, value, value at sale price and each one's share — each for whoever may
+ * see that part.
+ */
+function ValuationSummary({
+  data,
+  money,
+}: {
+  data: Valuation;
+  money: (v: number | null | undefined) => string;
+}) {
+  const { t, locale } = useT();
+  const parts = (
+    [
+      ['warehouses', 'valuation.byWarehouse', data.warehouses],
+      ['departments', 'valuation.byDepartment', data.categories],
+    ] as const
+  ).filter(([, , rows]) => rows.length > 0);
+  const [asked, setAsked] = useState<'warehouses' | 'departments'>('warehouses');
+  const part = parts.find(([k]) => k === asked) ?? parts[0];
+  if (!part) return null;
+  const [key, , rows] = part;
+  const seeValue = rows.some((r) => r.value != null);
+  const seeSale = rows.some((r) => r.saleValue != null);
+  const whole = rows.reduce((sum, r) => sum + (seeValue ? (r.value ?? 0) : r.quantity), 0);
+  const share = (r: { value?: number | null; quantity: number }) =>
+    whole > 0
+      ? `${formatNumber(Math.round(((seeValue ? (r.value ?? 0) : r.quantity) * 1000) / whole) / 10, locale)}%`
+      : '';
+  const sum = (list: readonly ValuationRow[]) => ({
+    count: list.reduce((s, r) => s + r.count, 0),
+    quantity: list.reduce((s, r) => s + r.quantity, 0),
+    value: list.reduce((s, r) => s + (r.value ?? 0), 0),
+    saleValue: list.reduce((s, r) => s + (r.saleValue ?? 0), 0),
+  });
+  // Warehouses under their branch, each branch with its own total.
+  const groups =
+    key === 'warehouses'
+      ? [...new Set(rows.map((r) => r.group ?? ''))]
+          .sort((a, b) => a.localeCompare(b, locale))
+          .map((g) => ({
+            name: g,
+            rows: rows
+              .filter((r) => (r.group ?? '') === g)
+              .sort((a, b) => (b.value ?? b.quantity) - (a.value ?? a.quantity)),
+          }))
+      : [{ name: '', rows: [...rows] }];
+  const cells = (r: ReturnType<typeof sum> | ValuationRow) => (
+    <>
+      <td className="p-2 text-end tnum">{formatNumber(r.count, locale)}</td>
+      <td className="p-2 text-end tnum">{formatNumber(r.quantity, locale)}</td>
+      {seeValue && <td className="p-2 text-end tnum">{money(r.value)}</td>}
+      {seeSale && <td className="p-2 text-end tnum">{money(r.saleValue)}</td>}
+      <td className="p-2 text-end text-muted tnum">{share(r)}</td>
+    </>
+  );
+  const total = sum(rows);
+  return (
+    <Card padded={false} className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          {t('valuation.summary')}
+        </h2>
+        {parts.length > 1 && (
+          <div
+            data-noprint
+            role="tablist"
+            className="flex rounded-[var(--radius-app)] border border-line bg-surface p-0.5"
+          >
+            {parts.map(([k, label]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={k === key}
+                onClick={() => setAsked(k)}
+                className={`h-7 rounded-md px-2.5 text-xs font-medium ${
+                  k === key ? 'bg-brand-soft text-brand' : 'text-muted hover:text-fg'
+                }`}
+              >
+                {t(label)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full whitespace-nowrap text-sm">
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th className="p-2 text-start font-medium">
+                {t(key === 'warehouses' ? 'list.warehouse' : 'valuation.department')}
+              </th>
+              <th className="p-2 text-end font-medium">{t('valuation.items')}</th>
+              <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
+              {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
+              {seeSale && <th className="p-2 text-end font-medium">{t('valuation.saleValue')}</th>}
+              <th className="p-2 text-end font-medium">{t('valuation.share')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--c-line)]">
+            {groups.map((g) => (
+              <Fragment key={g.name || '-'}>
+                {g.name && (
+                  <tr className="bg-surface-2/60">
+                    <td
+                      className="p-2 font-semibold"
+                      colSpan={2 + 2 + (seeValue ? 1 : 0) + (seeSale ? 1 : 0)}
+                    >
+                      {g.name}
+                    </td>
+                  </tr>
+                )}
+                {g.rows.map((r) => (
+                  <tr key={r.key}>
+                    <td className={`p-2 ${g.name ? 'ps-5' : ''}`}>{r.label}</td>
+                    {cells(r)}
+                  </tr>
+                ))}
+                {g.name && g.rows.length > 1 && (
+                  <tr className="font-medium">
+                    <td className="p-2 ps-5 text-muted">
+                      {t('valuation.totalOf').replace('{name}', g.name)}
+                    </td>
+                    {cells(sum(g.rows))}
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+            <tr className="bg-surface-2 font-semibold">
+              <td className="p-2">{t('common.total')}</td>
+              {cells(total)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 type ItemSort =
   | 'quantity'
   | 'value'
   | 'salePrice'
+  | 'saleValue'
   | 'supplyPrice'
   | 'label'
   | 'code'
+  | 'supplierPartyCode'
   | 'supplier'
   | 'branch'
   | 'department'
   | 'warehouse'
   | 'reorderLevel';
 
+type GroupBy = '' | 'branch' | 'warehouse' | 'department' | 'supplier';
+
 /**
- * Item balances (أرصدة الأصناف): each item where it is — branch, department and warehouse — with
- * its quantity and, for whoever may see them, its prices and value (owner, 2026-10-21).
+ * Item balances (أرصدة الأصناف): each item where it is — branch, warehouse and department — with
+ * its quantity and, for whoever may see them, its prices and value (owner, 2026-10-21); grouped by
+ * branch, warehouse, department or supplier with each group's total, and the total of all at the
+ * end (owner, 2026-11-10).
  */
 function ValuationItems({
   data,
@@ -956,168 +1129,259 @@ function ValuationItems({
   seeSuppliers,
 }: {
   data: Valuation;
-  money: (v: number | null) => string;
+  money: (v: number | null | undefined) => string;
   seeSuppliers: boolean;
 }) {
   const { t, locale } = useT();
   const isPhone = useDeviceInfo().deviceClass === 'phone';
-  const seeValue = data.value != null;
+  const seeValue = data.value != null || data.items.some((i) => i.value != null);
   const seePrice = data.items.some((i) => i.salePrice != null);
   const qtyTone = (r: ValuationItem) =>
     r.empty ? 'text-destructive' : r.low ? 'text-warning' : '';
   const place = (r: ValuationItem) =>
-    [r.branch, r.department, r.warehouse].filter(Boolean).join(' · ');
+    [r.branch, r.warehouse, r.department].filter(Boolean).join(' · ');
+  const saleValue = (r: ValuationItem) => (r.salePrice == null ? null : r.salePrice * r.quantity);
   const [sort, setSort] = useState<{ key: ItemSort; dir: 1 | -1 } | null>(null);
-  const items = sort
-    ? [...data.items].sort((a, b) => {
-        const x = a[sort.key] ?? 0;
-        const y = b[sort.key] ?? 0;
-        const c =
-          typeof x === 'number' && typeof y === 'number'
-            ? x - y
-            : String(x).localeCompare(String(y), locale);
-        return c * sort.dir;
-      })
-    : data.items;
+  const [groupBy, setGroupBy] = useState<GroupBy>('');
+  const groupOf = (r: ValuationItem) => (groupBy ? (r[groupBy] ?? '') : '');
+  const valueOf = (r: ValuationItem, k: ItemSort) => (k === 'saleValue' ? saleValue(r) : r[k]);
+  const items = [...data.items].sort((a, b) => {
+    const g = groupOf(a).localeCompare(groupOf(b), locale);
+    if (g || !sort) return g;
+    const x = valueOf(a, sort.key) ?? 0;
+    const y = valueOf(b, sort.key) ?? 0;
+    const c =
+      typeof x === 'number' && typeof y === 'number'
+        ? x - y
+        : String(x).localeCompare(String(y), locale);
+    return c * sort.dir;
+  });
   // Rows per page (owner, 2026-10-21); the other pages' rows are only hidden, so all print.
   const [size, setSize] = usePageSize('valuation.items', 50);
   const [page, setPage] = useState(1);
   const pages = Math.max(1, Math.ceil(items.length / size));
   const at = Math.min(page, pages);
-  const off = (n: number) => (n < (at - 1) * size || n >= at * size ? 'screen-hidden' : '');
+  const onPage = (n: number) => n >= (at - 1) * size && n < at * size;
+  const off = (n: number) => (onPage(n) ? '' : 'screen-hidden');
+  const totals = (list: ValuationItem[]) => ({
+    quantity: list.reduce((s, r) => s + r.quantity, 0),
+    value: list.reduce((s, r) => s + (r.value ?? 0), 0),
+    saleValue: list.reduce((s, r) => s + (saleValue(r) ?? 0), 0),
+  });
   const pager = items.length > 10 && (
-    <div data-noprint className="flex justify-end border-b border-line px-3 py-2">
-      <Pager
-        page={at}
-        size={size}
-        pages={pages}
-        onPage={setPage}
-        onSize={(n) => {
-          setSize(n);
-          setPage(1);
-        }}
-      />
-    </div>
+    <Pager
+      page={at}
+      size={size}
+      pages={pages}
+      onPage={setPage}
+      onSize={(n) => {
+        setSize(n);
+        setPage(1);
+      }}
+    />
   );
   // The column titles, to sort by the one clicked (here, so the pages split after sorting).
-  const sortLabel: Record<ItemSort, string> = {
+  const sortLabel: Partial<Record<ItemSort, string>> = {
+    ...(seeSuppliers
+      ? { supplierPartyCode: t('list.supplierCode'), supplier: t('inventory.supplier') }
+      : {}),
     code: t('inventory.sku'),
     label: t('inventory.itemName'),
-    supplier: t('inventory.supplier'),
     branch: t('list.branch'),
-    department: t('valuation.department'),
     warehouse: t('list.warehouse'),
+    department: t('valuation.department'),
     quantity: t('inventory.qty'),
     reorderLevel: t('valuation.reorder'),
-    salePrice: t('item.salePrice'),
-    supplyPrice: t('finder.costPrice'),
-    value: t('inventory.value'),
+    ...(seePrice ? { salePrice: t('item.salePrice'), saleValue: t('valuation.saleValue') } : {}),
+    ...(seeValue ? { supplyPrice: t('finder.costPrice'), value: t('inventory.value') } : {}),
   };
+  const columns = Object.keys(sortLabel) as ItemSort[];
+  const numeric = new Set<ItemSort>([
+    'quantity',
+    'reorderLevel',
+    'salePrice',
+    'saleValue',
+    'supplyPrice',
+    'value',
+  ]);
+  const cell = (r: ValuationItem, k: ItemSort): ReactNode => {
+    switch (k) {
+      case 'label':
+        return <ItemLink id={r.productId} name={r.label} />;
+      case 'quantity':
+        return formatNumber(r.quantity, locale);
+      case 'reorderLevel':
+        return r.reorderLevel > 0 ? formatNumber(r.reorderLevel, locale) : '';
+      case 'salePrice':
+      case 'supplyPrice':
+      case 'value':
+        return money(r[k]);
+      case 'saleValue':
+        return money(saleValue(r));
+      default:
+        return r[k] ?? '';
+    }
+  };
+  const sumCell = (k: ItemSort, s: ReturnType<typeof totals>) =>
+    k === 'quantity'
+      ? formatNumber(s.quantity, locale)
+      : k === 'value'
+        ? money(s.value)
+        : k === 'saleValue'
+          ? money(s.saleValue)
+          : '';
+  const toolbar = (
+    <div
+      data-noprint
+      className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2"
+    >
+      <label className="flex items-center gap-1.5 text-xs text-muted">
+        {t('valuation.groupBy')}
+        <select
+          className="h-8 rounded-lg border border-line bg-surface px-1.5 text-xs outline-none focus:border-brand"
+          value={groupBy}
+          onChange={(e) => {
+            setGroupBy(e.target.value as GroupBy);
+            setPage(1);
+          }}
+        >
+          <option value="">{t('valuation.noGroup')}</option>
+          <option value="branch">{t('list.branch')}</option>
+          <option value="warehouse">{t('list.warehouse')}</option>
+          <option value="department">{t('valuation.department')}</option>
+          {seeSuppliers && <option value="supplier">{t('inventory.supplier')}</option>}
+        </select>
+      </label>
+      {isPhone && (
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          {t('list.sortBy')}
+          <select
+            className="h-8 rounded-lg border border-line bg-surface px-1.5 text-xs outline-none focus:border-brand"
+            value={sort ? `${sort.key}:${sort.dir}` : ''}
+            onChange={(e) => {
+              const [k, d] = e.target.value.split(':');
+              setSort(k ? { key: k as ItemSort, dir: Number(d) as 1 | -1 } : null);
+            }}
+          >
+            <option value="">{t('common.all')}</option>
+            {columns.flatMap((k) =>
+              ([-1, 1] as const).map((d) => (
+                <option key={`${k}:${d}`} value={`${k}:${d}`}>
+                  {sortLabel[k]} {d === -1 ? '↓' : '↑'}
+                </option>
+              )),
+            )}
+          </select>
+        </label>
+      )}
+      {pager}
+    </div>
+  );
+  // Where each group starts and ends, to put its name above and its total below.
+  const first = (n: number) =>
+    !!groupBy && (n === 0 || groupOf(items[n - 1]!) !== groupOf(items[n]!));
+  const last = (n: number) =>
+    !!groupBy && (n === items.length - 1 || groupOf(items[n + 1]!) !== groupOf(items[n]!));
+  const groupRows = (n: number) => items.filter((r) => groupOf(r) === groupOf(items[n]!));
   const heading = (
     <h2 className="border-b border-line p-3 text-sm font-semibold uppercase tracking-wide text-muted">
       {t('valuation.itemsTitle')}
     </h2>
   );
-  // A phone (owner, 2026-10-21: the table was squeezed): one card per item, nothing cut off,
-  // ordered from a list instead of the column titles.
+  const all = totals(items);
+  // A phone (owner, 2026-10-21: the table was squeezed): one card per item, nothing cut off.
   if (isPhone)
     return (
       <Card padded={false} className="overflow-hidden">
         {heading}
-        {pager}
-        <div data-noprint className="flex justify-end border-b border-line px-3 py-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted">
-            {t('list.sortBy')}
-            <select
-              className="h-8 rounded-lg border border-line bg-surface px-1.5 text-xs outline-none focus:border-brand"
-              value={sort ? `${sort.key}:${sort.dir}` : ''}
-              onChange={(e) => {
-                const [k, d] = e.target.value.split(':');
-                setSort(k ? { key: k as ItemSort, dir: Number(d) as 1 | -1 } : null);
-              }}
-            >
-              <option value="">{t('common.all')}</option>
-              {(
-                [
-                  ['quantity', 'inventory.qty'],
-                  ['label', 'inventory.itemName'],
-                  ...(seePrice ? [['salePrice', 'item.salePrice']] : []),
-                  ...(seeValue
-                    ? [
-                        ['supplyPrice', 'finder.costPrice'],
-                        ['value', 'inventory.value'],
-                      ]
-                    : []),
-                ] as [ItemSort, TranslationKey][]
-              ).flatMap(([k, label]) =>
-                ([-1, 1] as const).map((d) => (
-                  <option key={`${k}:${d}`} value={`${k}:${d}`}>
-                    {t(label)} {d === -1 ? '↓' : '↑'}
-                  </option>
-                )),
-              )}
-            </select>
-          </label>
-        </div>
+        {toolbar}
         <ul className="divide-y divide-[var(--c-line)]">
           {items.map((r, n) => (
-            <li key={r.key} className={`space-y-1 p-3 text-sm ${off(n)}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <ItemLink id={r.productId} name={r.label} className="font-medium" />
-                  <p className="text-xs text-muted tnum" dir="ltr">
-                    {r.code}
-                  </p>
-                  {place(r) && <p className="text-xs text-muted">{place(r)}</p>}
-                  {seeSuppliers && r.supplier && <p className="text-xs text-muted">{r.supplier}</p>}
-                </div>
-                <div className="shrink-0 text-end">
-                  <p className={`font-semibold tnum ${qtyTone(r)}`}>
-                    {formatNumber(r.quantity, locale)}
-                  </p>
-                  {r.reorderLevel > 0 && (
-                    <p className="text-xs text-muted tnum">
-                      {t('valuation.reorder')} {formatNumber(r.reorderLevel, locale)}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {(seePrice || seeValue) && (
-                <dl className="grid grid-cols-3 gap-2 rounded-[var(--radius-app)] bg-surface-2 px-2 py-1.5 text-xs">
-                  {seePrice && (
-                    <div>
-                      <dt className="text-muted">{t('item.salePrice')}</dt>
-                      <dd className="tnum">{money(r.salePrice)}</dd>
-                    </div>
-                  )}
-                  {seeValue && (
-                    <div>
-                      <dt className="text-muted">{t('finder.costPrice')}</dt>
-                      <dd className="tnum">{money(r.supplyPrice)}</dd>
-                    </div>
-                  )}
-                  {seeValue && (
-                    <div>
-                      <dt className="text-muted">{t('inventory.value')}</dt>
-                      <dd className="font-medium tnum">{money(r.value)}</dd>
-                    </div>
-                  )}
-                </dl>
+            <Fragment key={r.key}>
+              {first(n) && (
+                <li className={`bg-surface-2 px-3 py-2 text-sm font-semibold ${off(n)}`}>
+                  {groupOf(r) || '—'}
+                </li>
               )}
-            </li>
+              <li className={`space-y-1 p-3 text-sm ${off(n)}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <ItemLink id={r.productId} name={r.label} className="font-medium" />
+                    <p className="text-xs text-muted tnum" dir="ltr">
+                      {r.code}
+                    </p>
+                    {place(r) && <p className="text-xs text-muted">{place(r)}</p>}
+                    {seeSuppliers && r.supplier && (
+                      <p className="text-xs text-muted">
+                        {r.supplierPartyCode != null ? `${r.supplierPartyCode} · ` : ''}
+                        {r.supplier}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-end">
+                    <p className={`font-semibold tnum ${qtyTone(r)}`}>
+                      {formatNumber(r.quantity, locale)}
+                    </p>
+                    {r.reorderLevel > 0 && (
+                      <p className="text-xs text-muted tnum">
+                        {t('valuation.reorder')} {formatNumber(r.reorderLevel, locale)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {(seePrice || seeValue) && (
+                  <dl className="grid grid-cols-3 gap-2 rounded-[var(--radius-app)] bg-surface-2 px-2 py-1.5 text-xs">
+                    {seePrice && (
+                      <div>
+                        <dt className="text-muted">{t('item.salePrice')}</dt>
+                        <dd className="tnum">{money(r.salePrice)}</dd>
+                      </div>
+                    )}
+                    {seeValue && (
+                      <div>
+                        <dt className="text-muted">{t('finder.costPrice')}</dt>
+                        <dd className="tnum">{money(r.supplyPrice)}</dd>
+                      </div>
+                    )}
+                    {seeValue && (
+                      <div>
+                        <dt className="text-muted">{t('inventory.value')}</dt>
+                        <dd className="font-medium tnum">{money(r.value)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </li>
+              {last(n) && (
+                <li className={`flex justify-between px-3 py-2 text-sm font-medium ${off(n)}`}>
+                  <span>{t('valuation.totalOf').replace('{name}', groupOf(r) || '—')}</span>
+                  <span className="tnum">
+                    {formatNumber(totals(groupRows(n)).quantity, locale)}
+                    {seeValue && ` · ${money(totals(groupRows(n)).value)}`}
+                  </span>
+                </li>
+              )}
+            </Fragment>
           ))}
+          <li className="flex justify-between bg-surface-2 px-3 py-2 text-sm font-semibold">
+            <span>{t('common.total')}</span>
+            <span className="tnum">
+              {formatNumber(all.quantity, locale)}
+              {seeValue && ` · ${money(all.value)}`}
+            </span>
+          </li>
         </ul>
       </Card>
     );
   return (
     <Card padded={false} className="overflow-hidden">
       {heading}
-      {pager}
+      {toolbar}
       <TableColumns
         id="inventory.valuation.balances"
-        sorted={sort ? { label: sortLabel[sort.key], dir: sort.dir } : null}
+        sorted={sort && sortLabel[sort.key] ? { label: sortLabel[sort.key]!, dir: sort.dir } : null}
         onSort={(label, dir) => {
-          const key = (Object.keys(sortLabel) as ItemSort[]).find((k) => sortLabel[k] === label);
+          const key = columns.find((k) => sortLabel[k] === label);
           setSort(key ? { key, dir } : null);
           setPage(1);
         }}
@@ -1126,53 +1390,71 @@ function ValuationItems({
           <table className="w-full min-w-[960px] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
-                <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
-                <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
-                {seeSuppliers && (
-                  <th className="p-2 text-start font-medium">{t('inventory.supplier')}</th>
-                )}
-                <th className="p-2 text-start font-medium">{t('list.branch')}</th>
-                <th className="p-2 text-start font-medium">{t('valuation.department')}</th>
-                <th className="p-2 text-start font-medium">{t('list.warehouse')}</th>
-                <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
-                <th className="p-2 text-end font-medium">{t('valuation.reorder')}</th>
-                {seePrice && <th className="p-2 text-end font-medium">{t('item.salePrice')}</th>}
-                {seeValue && <th className="p-2 text-end font-medium">{t('finder.costPrice')}</th>}
-                {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
+                {columns.map((k) => (
+                  <th
+                    key={k}
+                    className={`p-2 font-medium ${numeric.has(k) ? 'text-end' : 'text-start'}`}
+                  >
+                    {sortLabel[k]}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-line)]">
               {items.map((r, n) => (
-                <tr key={r.key} className={off(n)}>
-                  <td className="whitespace-nowrap p-2 text-muted tnum" dir="ltr">
-                    {r.code}
-                  </td>
-                  <td className="p-2">
-                    <ItemLink id={r.productId} name={r.label} />
-                  </td>
-                  {seeSuppliers && <td className="p-2 text-muted">{r.supplier ?? ''}</td>}
-                  <td className="p-2 text-muted">{r.branch ?? ''}</td>
-                  <td className="p-2 text-muted">{r.department ?? ''}</td>
-                  <td className="p-2 text-muted">{r.warehouse ?? ''}</td>
-                  <td className={`whitespace-nowrap p-2 text-end tnum ${qtyTone(r)}`}>
-                    {formatNumber(r.quantity, locale)}
-                  </td>
-                  <td className="whitespace-nowrap p-2 text-end text-muted tnum">
-                    {r.reorderLevel > 0 ? formatNumber(r.reorderLevel, locale) : ''}
-                  </td>
-                  {seePrice && (
-                    <td className="whitespace-nowrap p-2 text-end tnum">{money(r.salePrice)}</td>
+                <Fragment key={r.key}>
+                  {first(n) && (
+                    <tr data-span className={`bg-surface-2/60 ${off(n)}`}>
+                      <td className="p-2 font-semibold" colSpan={columns.length}>
+                        {groupOf(r) || '—'}
+                      </td>
+                    </tr>
                   )}
-                  {seeValue && (
-                    <td className="whitespace-nowrap p-2 text-end tnum">{money(r.supplyPrice)}</td>
+                  <tr className={off(n)}>
+                    {columns.map((k) => (
+                      <td
+                        key={k}
+                        className={`p-2 ${
+                          numeric.has(k)
+                            ? `whitespace-nowrap text-end tnum ${k === 'quantity' ? qtyTone(r) : ''} ${k === 'value' ? 'font-medium' : ''}`
+                            : k === 'label'
+                              ? 'min-w-48'
+                              : k === 'code' || k === 'supplierPartyCode'
+                                ? 'whitespace-nowrap text-muted tnum'
+                                : 'whitespace-nowrap text-muted'
+                        }`}
+                        dir={k === 'code' ? 'ltr' : undefined}
+                      >
+                        {cell(r, k)}
+                      </td>
+                    ))}
+                  </tr>
+                  {last(n) && (
+                    <tr className={`font-medium ${off(n)}`}>
+                      {columns.map((k, i) => (
+                        <td
+                          key={k}
+                          className={`whitespace-nowrap p-2 ${numeric.has(k) ? 'text-end tnum' : ''}`}
+                        >
+                          {i === 0
+                            ? t('valuation.totalOf').replace('{name}', groupOf(r) || '—')
+                            : sumCell(k, totals(groupRows(n)))}
+                        </td>
+                      ))}
+                    </tr>
                   )}
-                  {seeValue && (
-                    <td className="whitespace-nowrap p-2 text-end font-medium tnum">
-                      {money(r.value)}
-                    </td>
-                  )}
-                </tr>
+                </Fragment>
               ))}
+              <tr className="bg-surface-2 font-semibold">
+                {columns.map((k, i) => (
+                  <td
+                    key={k}
+                    className={`whitespace-nowrap p-2 ${numeric.has(k) ? 'text-end tnum' : ''}`}
+                  >
+                    {i === 0 ? t('common.total') : sumCell(k, all)}
+                  </td>
+                ))}
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1183,7 +1465,10 @@ function ValuationItems({
 
 function StockBadge({ item }: { item: InventoryItem }) {
   const { t } = useT();
-  return item.isLow ? (
+  // None left is run out, even at the reorder level (owner, 2026-11-10).
+  return item.stockOnHand <= 0 ? (
+    <Badge tone="destructive">{t('inventory.out')}</Badge>
+  ) : item.isLow ? (
     <Badge tone="warning">{t('inventory.lowStock')}</Badge>
   ) : (
     <Badge tone="positive">{t('inventory.ok')}</Badge>

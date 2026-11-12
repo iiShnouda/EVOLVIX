@@ -21,7 +21,8 @@ namespace SKB.Api.Controllers;
 [Authorize]
 public sealed class InventoryController : ControllerBase
 {
-    private const int MaxStocktakeLines = 1000;
+    private const int MaxStocktakeLines = 5000;
+    private const int MaxSheetRows = 10000;
     private const int MaxCardRows = 2000;
     private const int MaxListRows = 500;
 
@@ -88,7 +89,9 @@ public sealed class InventoryController : ControllerBase
         if (Guid.TryParse(supplierId, out var sup))
             productQuery = productQuery.Where(p => p.SupplierId == sup);
         var products = await productQuery
-            .Include(p => p.Category).Include(p => p.Units).ThenInclude(u => u.Unit).Include(p => p.Supplier)
+            // The department shown is the main one, not the group under it (owner, 2026-11-10).
+            .Include(p => p.Category).ThenInclude(c => c!.Department)
+            .Include(p => p.Units).ThenInclude(u => u.Unit).Include(p => p.Supplier)
             .OrderBy(p => p.Name).AsSplitQuery().ToListAsync();
         var state = await _valuation.CurrentAsync();
         var mine = await _warehouses.LimitAsync(User);
@@ -159,6 +162,7 @@ public sealed class InventoryController : ControllerBase
             "code" => i => i.Sku,
             "department" => i => i.CategoryName,
             "supplier" => i => i.SupplierName ?? "",
+            "supplierCode" => i => i.SupplierPartyCode ?? int.MaxValue,
             "stock" => i => i.StockOnHand,
             "reorder" => i => i.ReorderLevel,
             "sale" => i => i.SalePrice,
@@ -440,7 +444,8 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? asOf = null, [FromQuery] string? warehouseId = null,
         [FromQuery] string? branchId = null, [FromQuery] string? departmentId = null,
         [FromQuery] string? supplierId = null, [FromQuery] string? search = null,
-        [FromQuery] string? productIds = null, [FromQuery] string? status = null)
+        [FromQuery] string? productIds = null, [FromQuery] string? status = null,
+        [FromQuery] string? groupId = null)
     {
         // Each part and column has its own permission (owner, 2026-10-19); values need costs:view.
         bool Has(string p) => User.HasClaim("permission", p);
@@ -482,8 +487,13 @@ public sealed class InventoryController : ControllerBase
         var picked = (productIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToHashSet();
         var text = search?.Trim();
+        // A group of the department's tree and everything under it, as on the item list.
+        HashSet<Guid>? under = null;
+        if (Guid.TryParse(groupId, out var gid))
+            under = Catalog.Subtree(gid, await _db.Categories.AsNoTracking().ToListAsync()).ToHashSet();
         bool Passes(Product p) =>
             (dept is null || p.Category?.DepartmentId == dept)
+            && (under is null || under.Contains(p.CategoryId))
             && (supplier is null || p.SupplierId == supplier)
             && (picked.Count == 0 || picked.Contains(p.Id))
             && (string.IsNullOrEmpty(text)
@@ -533,7 +543,8 @@ public sealed class InventoryController : ControllerBase
                 seeSuppliers ? p.Supplier?.Name : null, DepartmentOf(id),
                 w?.Branch is null ? null : Loc.Name(w.Branch), w is null ? null : Loc.Name(w),
                 q, Money(v), seeCosts ? supply.TryGetValue(id, out var sc) ? sc : q != 0 ? v / q : p.CostPrice : null,
-                seePrices ? p.SalePrice : null, p.ReorderLevel, IsLow(p, qtyOf.GetValueOrDefault(id)), qtyOf.GetValueOrDefault(id) <= 0);
+                seePrices ? p.SalePrice : null, p.ReorderLevel, IsLow(p, qtyOf.GetValueOrDefault(id)), qtyOf.GetValueOrDefault(id) <= 0,
+                seeSuppliers ? p.Supplier?.Code : null);
         }
         // Item by item and place by place (owner, 2026-10-21: the branch, department and warehouse of
         // each, in one list instead of the department and warehouse tables).
@@ -543,17 +554,22 @@ public sealed class InventoryController : ControllerBase
                 .Concat(keep.Where(id => !placed.Contains(id)).Select(id => Item(id, null, 0, 0)))
                 .OrderByDescending(r => r.Value ?? 0).ThenByDescending(r => r.Quantity).ThenBy(r => r.Label).ToArray()
             : Array.Empty<ValuationItemDto>();
+        // At sale prices too, for whoever may see them (owner, 2026-11-10: the page reorganised).
+        long? SaleOf(IEnumerable<(Guid Product, int Qty)> ls) =>
+            seePrices ? ls.Sum(l => (long)l.Qty * products[l.Product].SalePrice) : null;
         var categoryRows = Has(Permissions.ValuationDepartments)
             ? keep.GroupBy(DepartmentOf)
                 .Select(g => new ValuationRowDto(g.Key, g.Key,
                     lines.Where(l => g.Contains(l.Product)).Sum(l => l.Qty),
-                    Money(lines.Where(l => g.Contains(l.Product)).Sum(l => l.Value)), g.Count()))
+                    Money(lines.Where(l => g.Contains(l.Product)).Sum(l => l.Value)), g.Count(),
+                    SaleOf(lines.Where(l => g.Contains(l.Product)).Select(l => (l.Product, l.Qty)))))
                 .OrderByDescending(r => r.Value ?? 0).ThenByDescending(r => r.Count).ToArray()
             : Array.Empty<ValuationRowDto>();
         var warehouseRows = Has(Permissions.ValuationWarehouses)
             ? lines.GroupBy(l => l.Warehouse)
                 .Select(g => new ValuationRowDto(g.Key.ToString(), Loc.Name(warehouses[g.Key]),
-                    g.Sum(l => l.Qty), Money(g.Sum(l => l.Value)), g.Where(l => l.Qty != 0).Select(l => l.Product).Distinct().Count()))
+                    g.Sum(l => l.Qty), Money(g.Sum(l => l.Value)), g.Where(l => l.Qty != 0).Select(l => l.Product).Distinct().Count(),
+                    SaleOf(g.Select(l => (l.Product, l.Qty))), Loc.Name(warehouses[g.Key].Branch)))
                 .OrderByDescending(r => r.Value ?? 0).ToArray()
             : Array.Empty<ValuationRowDto>();
         var modelRows = Has(Permissions.ValuationItems)
@@ -571,7 +587,8 @@ public sealed class InventoryController : ControllerBase
             date.ToString("yyyy-MM-dd"), await CurrencyAsync(), wid?.ToString(),
             totalsToo ? lines.Sum(l => l.Qty) : 0, totalsToo ? Money(lines.Sum(l => l.Value)) : null,
             totalsToo ? totalItems : 0, totalsToo ? keep.Count : 0,
-            categoryRows, itemRows, warehouseRows, modelRows));
+            categoryRows, itemRows, warehouseRows, modelRows,
+            totalsToo ? SaleOf(lines.Select(l => (l.Product, l.Qty))) : null));
     }
 
     /// <summary>
@@ -587,13 +604,21 @@ public sealed class InventoryController : ControllerBase
         var (wid, notFound) = await VisibleWarehouseAsync(id.ToString());
         if (notFound is not null) return notFound;
         var seeCosts = Costs.CanSee(User);
-        var start = CompanyClock.StartOf(CompanyClock.ParseDay(from) ?? CompanyClock.Today);
-        var end = CompanyClock.StartOf((CompanyClock.ParseDay(to) ?? CompanyClock.Today).AddDays(1));
+        var fromDay = CompanyClock.ParseDay(from) ?? CompanyClock.Today;
+        var toDay = CompanyClock.ParseDay(to) ?? CompanyClock.Today;
+        if (toDay < fromDay) (fromDay, toDay) = (toDay, fromDay);
+        var (start, end) = CompanyClock.Days(fromDay, toDay);
         var all = _db.StockMovements.AsNoTracking().Where(m => m.WarehouseId == wid);
-        var opening = await all.Where(m => m.CreatedAt < start).SumAsync(m => (int?)m.Quantity) ?? 0;
-        var openingValue = seeCosts
-            ? await all.Where(m => m.CreatedAt < start).SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
-        var rows = await all.Where(m => m.CreatedAt >= start && m.CreatedAt < end)
+        // Opening = everything before the first day (= the day before's closing); in, out and the
+        // closing are sums over the whole period, never only over the lines listed.
+        var before = all.Where(m => m.CreatedAt < start);
+        var during = all.Where(m => m.CreatedAt >= start && m.CreatedAt < end);
+        var opening = await before.SumAsync(m => (int?)m.Quantity) ?? 0;
+        var openingValue = seeCosts ? await before.SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
+        var inQty = await during.Where(m => m.Quantity > 0).SumAsync(m => (int?)m.Quantity) ?? 0;
+        var outQty = -(await during.Where(m => m.Quantity < 0).SumAsync(m => (int?)m.Quantity) ?? 0);
+        var periodValue = seeCosts ? await during.SumAsync(m => (long?)m.Quantity * m.UnitCost) ?? 0 : 0;
+        var rows = await during
             .Include(m => m.Product).OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(5000).ToListAsync();
         // Where each movement came from or went to (owner, 2026-10-19): the customer or supplier on
         // its invoice or return, or the other warehouse on a transfer.
@@ -608,7 +633,8 @@ public sealed class InventoryController : ControllerBase
             if (m.DocumentId is not Guid d) return null;
             if (transfers.TryGetValue(d, out var t))
             {
-                var other = m.Type == StockMovementType.TRANSFER_OUT ? t.ToWarehouse : t.FromWarehouse;
+                // The permit's other end (a cancelled or changed one coming back included).
+                var other = m.WarehouseId == t.FromWarehouseId ? t.ToWarehouse : t.FromWarehouse;
                 return other is null ? null : Loc.Name(other);
             }
             return parties.GetValueOrDefault(d);
@@ -624,16 +650,90 @@ public sealed class InventoryController : ControllerBase
         }).ToArray();
         var name = Loc.Name(await _db.Warehouses.AsNoTracking().FirstAsync(w => w.Id == wid));
         return Ok(new WarehouseStatementDto(name, await CurrencyAsync(), opening, seeCosts ? openingValue : null,
-            rows.Where(m => m.Quantity > 0).Sum(m => m.Quantity), -rows.Where(m => m.Quantity < 0).Sum(m => m.Quantity),
-            balance, seeCosts ? openingValue + rows.Sum(m => (long)m.Quantity * m.UnitCost) : null, lines));
+            inQty, outQty, opening + inQty - outQty, seeCosts ? openingValue + periodValue : null, lines));
     }
 
     /// <summary>
-    /// Stocktake (الجرد) of one warehouse: post the counted quantity for each item. Only items whose
-    /// count differs from that warehouse's books move; gains and shrinkage are valued at the current
-    /// weighted-average cost. All lines share one ADJ- reference and commit together. The items are
-    /// locked while posting so a sale can't slip in between reading the book quantity and writing
-    /// the difference.
+    /// The count sheet (owner, 2026-11-10: "a branch, a warehouse, a department and a factory, any of
+    /// them together"): each item to count in each open warehouse in scope, with what the books say
+    /// there. One warehouse lists every active item (a piece found can be typed against any); several
+    /// list in each the items it holds or has held. People limited to departments count only theirs.
+    /// </summary>
+    [HttpGet("stocktake/sheet")]
+    [AnyPermission(Permissions.InventoryStocktake, Permissions.InventoryStocktakeView)]
+    public async Task<ActionResult<StocktakeSheetDto>> StocktakeSheet(
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null,
+        [FromQuery] string? departmentId = null, [FromQuery] string? supplierId = null,
+        [FromQuery] string? search = null)
+    {
+        var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
+        if (notFound is not null) return notFound;
+        Guid? branch = null;
+        if (Guid.TryParse(branchId, out var bid))
+        {
+            if (!Access.CanUseBranch(User, bid))
+                return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
+            branch = bid;
+        }
+        var stores = await _warehouses.Visible(User).AsNoTracking().Include(w => w.Branch)
+            .Where(w => w.Kind == WarehouseKind.STORE && w.IsActive
+                        && (wid == null || w.Id == wid) && (branch == null || w.BranchId == branch))
+            .ToListAsync();
+        var storeIds = stores.Select(w => w.Id).ToList();
+
+        var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
+        if (Guid.TryParse(departmentId, out var dept)) q = q.Where(p => p.Category!.DepartmentId == dept);
+        if (Access.Departments(User) is { } mineDepts)
+            q = q.Where(p => p.Category!.DepartmentId == null || mineDepts.Contains(p.Category.DepartmentId.Value));
+        if (Guid.TryParse(supplierId, out var sup)) q = q.Where(p => p.SupplierId == sup);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
+                             || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(s))
+                             || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
+        }
+        var products = await q.Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Supplier)
+            .Include(p => p.Units).ThenInclude(u => u.Unit).AsSplitQuery().ToDictionaryAsync(p => p.Id);
+        var ids = products.Keys.ToList();
+        var balances = storeIds.Count == 0 ? new()
+            : await _db.StockBalances.AsNoTracking()
+                .Where(b => storeIds.Contains(b.WarehouseId) && ids.Contains(b.ProductId))
+                .Select(b => new { b.ProductId, b.WarehouseId, b.Quantity }).ToListAsync();
+        var held = balances.ToDictionary(b => (b.ProductId, b.WarehouseId), b => b.Quantity);
+        var pairs = stores.Count == 1
+            ? products.Keys.Select(p => (Product: p, Warehouse: stores[0].Id))
+            : balances.Select(b => (Product: b.ProductId, Warehouse: b.WarehouseId));
+
+        var seeCosts = Costs.CanSee(User);
+        var pools = stores.Select(w => w.BranchId).Distinct().ToList();
+        var costs = seeCosts
+            ? await _db.StockCosts.AsNoTracking().Where(c => pools.Contains(c.PoolId) && ids.Contains(c.ProductId))
+                .ToDictionaryAsync(c => (c.ProductId, c.PoolId), c => c.AvgCost)
+            : new Dictionary<(Guid, Guid), long>();
+        var byId = stores.ToDictionary(w => w.Id);
+        var rows = pairs.Select(x =>
+            {
+                var p = products[x.Product];
+                var w = byId[x.Warehouse];
+                return new StocktakeSheetRowDto(p.Id.ToString(), w.Id.ToString(), Loc.Name(w), Loc.Name(w.Branch),
+                    p.Sku, Loc.Name(p), Loc.Name(p.Units.OrderBy(u => u.Factor).FirstOrDefault()?.Unit),
+                    p.Category?.Department is { } d ? Loc.Name(d) : Loc.Name(p.Category),
+                    p.Supplier?.Code, p.Supplier?.Name, held.GetValueOrDefault((p.Id, w.Id)),
+                    seeCosts ? costs.TryGetValue((p.Id, w.BranchId), out var c) ? c : p.CostPrice : null);
+            })
+            .OrderBy(r => r.Branch).ThenBy(r => r.Warehouse).ThenBy(r => r.Department).ThenBy(r => r.Code)
+            .ToList();
+        return Ok(new StocktakeSheetDto(rows.Take(MaxSheetRows).ToArray(), await CurrencyAsync(), rows.Count > MaxSheetRows));
+    }
+
+    /// <summary>
+    /// Stocktake (الجرد): post the counted quantity of each item in its warehouse — one warehouse, or
+    /// several at once (a whole branch, owner 2026-11-10). Only counts that differ from the books move;
+    /// gains and shrinkage are valued at the current weighted-average cost. All lines share one ADJ-
+    /// reference and commit together, with one journal entry per branch. A count made for a branch,
+    /// department or factory adjusts nothing outside it. The items are locked while posting so a sale
+    /// can't slip in between reading the book quantity and writing the difference.
     /// </summary>
     [HttpPost("stocktake")]
     [Authorize(Policy = Permissions.InventoryStocktake)]
@@ -644,55 +744,78 @@ public sealed class InventoryController : ControllerBase
         if (req.Lines.Length > MaxStocktakeLines)
             return BadRequest(new { message = $"At most {MaxStocktakeLines} items per stocktake.", code = "too_many_lines" });
 
-        var counted = new Dictionary<Guid, int>();
+        var places = new Dictionary<string, Warehouse>();
+        var counted = new Dictionary<(Guid Product, Guid Warehouse), int>();
+        var byId = new Dictionary<Guid, Warehouse>();
         foreach (var line in req.Lines)
         {
             if (!Guid.TryParse(line.ProductId, out var pid))
                 return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
             if (line.CountedQuantity < 0)
                 return BadRequest(new { message = "A counted quantity cannot be negative.", code = "bad_qty" });
-            if (!counted.TryAdd(pid, line.CountedQuantity))
+            var (warehouse, whError) = await _warehouses.ResolveAsync(User,
+                string.IsNullOrWhiteSpace(line.WarehouseId) ? req.WarehouseId : line.WarehouseId, places);
+            if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+            byId[warehouse!.Id] = warehouse;
+            if (!counted.TryAdd((pid, warehouse.Id), line.CountedQuantity))
                 return BadRequest(new { message = "An item is listed twice.", code = "duplicate_line" });
         }
 
-        var (warehouse, whError) = await _warehouses.ResolveAsync(User, req.WarehouseId);
-        if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+        // The count's scope: its branch, department and factory, and the person's own departments.
+        var productIds = counted.Keys.Select(k => k.Product).Distinct().ToList();
+        var facts = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.SupplierId, Department = p.Category!.DepartmentId }).ToListAsync();
+        if (facts.Count != productIds.Count)
+            return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
+        var outside = (Guid.TryParse(req.BranchId, out var scopeBranch) && byId.Values.Any(w => w.BranchId != scopeBranch))
+            || (Guid.TryParse(req.DepartmentId, out var scopeDept) && facts.Any(f => f.Department != scopeDept))
+            || (Guid.TryParse(req.SupplierId, out var scopeSupplier) && facts.Any(f => f.SupplierId != scopeSupplier))
+            || (Access.Departments(User) is { } mineDepts
+                && facts.Any(f => f.Department is Guid d && !mineDepts.Contains(d)));
+        if (outside)
+            return BadRequest(new { message = "An item counted is outside this stocktake.", code = "outside_stocktake" });
 
         var reason = req.Reason?.Trim();
         var note = string.IsNullOrEmpty(reason) ? null : reason[..Math.Min(500, reason.Length)];
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        var products = await _inventory.LockProductsAsync(counted.Keys);
-        if (products.Count != counted.Count)
+        var products = await _inventory.LockProductsAsync(productIds);
+        if (products.Count != productIds.Count)
             return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
 
         var reference = await DocumentNumbers.NextAdjustmentAsync(_db);
-        long valueChange = 0, gains = 0, losses = 0;
+        long valueChange = 0;
+        var perBranch = new Dictionary<Guid, (long Gains, long Losses)>();
         var changed = 0;
-        foreach (var (pid, qty) in counted)
+        foreach (var ((pid, whId), qty) in counted)
         {
-            var delta = qty - _inventory.Available(pid, warehouse!.Id);
+            var warehouse = byId[whId];
+            var delta = qty - _inventory.Available(pid, whId);
             if (delta == 0) continue;
             var value = _inventory.Adjust(products[pid], warehouse, delta, reference, note);
             valueChange += value;
-            if (value > 0) gains += value; else losses -= value;
+            var (g, l) = perBranch.GetValueOrDefault(warehouse.BranchId);
+            perBranch[warehouse.BranchId] = value > 0 ? (g + value, l) : (g, l - value);
             changed++;
         }
         if (changed == 0)
             return BadRequest(new { message = "Counted quantities match the books — nothing to post.", code = "no_change" });
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        await _ledger.PostStocktakeAsync(reference, warehouse!.BranchId, gains, losses, staffId);
+        foreach (var (branchId, (gains, losses)) in perBranch)
+            await _ledger.PostStocktakeAsync(reference, branchId, gains, losses, staffId);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "stocktake", "stock_adjustment",
-            warehouse!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), reference);
+        var names = string.Join(", ", byId.Values.Select(w => Loc.Name(w)).Distinct().OrderBy(n => n));
+        foreach (var branchId in perBranch.Keys)
+            await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "stocktake", "stock_adjustment",
+                branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(), reference, $"{reference} · {names}");
 
         var posted = await _db.StockMovements.AsNoTracking()
             .Where(m => m.Reference == reference).OrderBy(m => m.CreatedAt).ToListAsync();
-        return Ok(new StocktakeResultDto(reference, Loc.Name(warehouse), changed,
+        return Ok(new StocktakeResultDto(reference, names, changed,
             Costs.CanSee(User) ? valueChange : 0,
             (await ToMovementDtosAsync(posted, perWarehouse: true)).Select(m => Costs.Guard(User, m)).ToArray()));
     }

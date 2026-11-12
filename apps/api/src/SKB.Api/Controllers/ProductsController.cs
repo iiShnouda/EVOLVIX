@@ -82,7 +82,9 @@ public sealed class ProductsController : ControllerBase
             if (inStockOnly || stock == "in") q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) > 0);
             else if (stock == "out") q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= 0);
             else if (stock == "low")
-                q = q.Where(p => p.ReorderLevel > 0 && held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= p.ReorderLevel);
+                // Some left at or under the reorder level; none left is "out" (owner, 2026-11-10).
+                q = q.Where(p => p.ReorderLevel > 0 && held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) > 0
+                                 && held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= p.ReorderLevel);
             if (stockMin is int wMin) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) >= wMin);
             if (stockMax is int wMax) q = q.Where(p => held.Where(b => b.ProductId == p.Id).Sum(b => b.Quantity) <= wMax);
         }
@@ -90,7 +92,7 @@ public sealed class ProductsController : ControllerBase
         {
             if (inStockOnly || stock == "in") q = q.Where(p => p.StockOnHand > 0);
             else if (stock == "out") q = q.Where(p => p.StockOnHand <= 0);
-            else if (stock == "low") q = q.Where(p => p.ReorderLevel > 0 && p.StockOnHand <= p.ReorderLevel);
+            else if (stock == "low") q = q.Where(p => p.StockOnHand > 0 && p.StockOnHand <= p.ReorderLevel);
             if (stockMin is int sMin) q = q.Where(p => p.StockOnHand >= sMin);
             if (stockMax is int sMax) q = q.Where(p => p.StockOnHand <= sMax);
         }

@@ -60,6 +60,9 @@ import type {
   BulkPriceResult,
   ItemLife,
   StocktakeInput,
+  StocktakeSheet,
+  TransferList,
+  TransferPlace,
   StocktakeResult,
   Valuation,
   Paginated,
@@ -776,6 +779,8 @@ export function useItemLife(id: string | null) {
 export interface ValuationFilter {
   branchId?: string;
   departmentId?: string;
+  /** A group of the department's tree and everything under it. */
+  groupId?: string;
   supplierId?: string;
   search?: string;
   productIds?: string[];
@@ -788,6 +793,7 @@ export function useValuation(asOf: string, warehouseId?: string, f: ValuationFil
   if (warehouseId) query.set('warehouseId', warehouseId);
   if (f.branchId) query.set('branchId', f.branchId);
   if (f.departmentId) query.set('departmentId', f.departmentId);
+  if (f.groupId) query.set('groupId', f.groupId);
   if (f.supplierId) query.set('supplierId', f.supplierId);
   if (f.search) query.set('search', f.search);
   if (f.productIds?.length) query.set('productIds', f.productIds.join(','));
@@ -822,15 +828,38 @@ export function useBranches() {
 // Transfer permits (إذن تحويل)
 // ---------------------------------------------------------------------------
 
-export function useTransfers(params: { page: number; pageSize?: number; status?: TransferStatus }) {
+export interface TransferFilter {
+  /** Sent between these company days (inclusive). */
+  from?: string;
+  to?: string;
+  fromBranchId?: string;
+  fromWarehouseId?: string;
+  toBranchId?: string;
+  toWarehouseId?: string;
+  departmentId?: string;
+}
+
+export function useTransfers(
+  params: { page: number; pageSize?: number; status?: TransferStatus } & TransferFilter,
+) {
   const query = new URLSearchParams({
     page: String(params.page),
     pageSize: String(params.pageSize ?? 30),
   });
-  if (params.status) query.set('status', params.status);
+  for (const [k, v] of Object.entries(params))
+    if (v && !['page', 'pageSize'].includes(k)) query.set(k, String(v));
   return useQuery({
     queryKey: ['inventory', 'transfers', params],
-    queryFn: () => api.get<Paginated<StockTransfer>>(`/transfers?${query}`),
+    queryFn: () => api.get<TransferList>(`/transfers?${query}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The warehouses (and branches) the transfer filters offer. */
+export function useTransferPlaces() {
+  return useQuery({
+    queryKey: ['inventory', 'transfers', 'places'],
+    queryFn: () => api.get<TransferPlace[]>('/transfers/places'),
   });
 }
 
@@ -941,6 +970,23 @@ export function useDeleteBranch() {
       void qc.invalidateQueries({ queryKey: ['inventory'] });
       void qc.invalidateQueries({ queryKey: ['branches'] });
     },
+  });
+}
+
+/** The count sheet (الجرد) for a branch, a warehouse, a department and a factory, any together. */
+export function useStocktakeSheet(f: {
+  branchId?: string;
+  warehouseId?: string;
+  departmentId?: string;
+  supplierId?: string;
+  search?: string;
+}) {
+  const query = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v) query.set(k, v);
+  return useQuery({
+    queryKey: ['inventory', 'stocktake-sheet', f],
+    queryFn: () => api.get<StocktakeSheet>(`/inventory/stocktake/sheet?${query}`),
+    placeholderData: keepPreviousData,
   });
 }
 
