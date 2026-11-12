@@ -1207,6 +1207,15 @@ export function useSetProductPrices() {
   });
 }
 
+/** Delete an item nothing has used (products:delete). */
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/products/${id}`),
+    onSuccess: () => invalidateCatalog(qc),
+  });
+}
+
 export function useModels(search: string) {
   const query = new URLSearchParams();
   if (search) query.set('search', search);

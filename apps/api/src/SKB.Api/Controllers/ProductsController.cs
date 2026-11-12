@@ -432,6 +432,23 @@ public sealed class ProductsController : ControllerBase
                 product.SeasonId = season.Id;
             }
         }
+        // Its size and color, as on a new item (owner, 2026-11-10: editing is the same form); "" = none.
+        foreach (var (raw, kind) in new[] { (req.SizeId, VariantKind.SIZE), (req.ColorId, VariantKind.COLOR) })
+        {
+            if (raw is null) continue;
+            var now = kind == VariantKind.SIZE ? product.SizeId : product.ColorId;
+            Guid? next = null;
+            if (raw.Length > 0)
+            {
+                var option = Guid.TryParse(raw, out var oid)
+                    ? await _db.VariantOptions.FirstOrDefaultAsync(o => o.Id == oid && o.Kind == kind) : null;
+                if (option is null) return BadRequest(new { message = "Size or color not found.", code = "variant_option_not_found" });
+                next = option.Id;
+            }
+            if (next == now) continue;
+            if (isVariant) return variantRule;
+            if (kind == VariantKind.SIZE) product.SizeId = next; else product.ColorId = next;
+        }
         if (req.CategoryId is not null)
         {
             if (isVariant) return variantRule;

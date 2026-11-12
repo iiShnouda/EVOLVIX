@@ -410,6 +410,9 @@ export const updateProductSchema = z.object({
   /** Main supplier (a party id), or "" for none. */
   supplierId: z.union([z.literal(''), z.string().uuid()]).optional(),
   supplierCode: z.string().trim().max(64).optional(),
+  /** Its size and color ("" = none). */
+  sizeId: z.union([z.literal(''), z.string().uuid()]).optional(),
+  colorId: z.union([z.literal(''), z.string().uuid()]).optional(),
 });
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 

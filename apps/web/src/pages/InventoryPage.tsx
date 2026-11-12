@@ -732,7 +732,7 @@ function ItemsTab({
               }}
             />
           )}
-          {can('products:edit') && (
+          {(can('products:edit') || can('prices:edit') || can('products:delete')) && (
             <MenuItem
               icon="edit"
               label={t('catalog.editItem')}

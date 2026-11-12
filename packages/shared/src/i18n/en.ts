@@ -542,6 +542,8 @@ export const en = {
   'setup.makeDefault': 'Make default',
   'setup.readonly': 'You can see this list; changing it needs permission.',
   'item.new': 'New item',
+  'item.delete': 'Delete item',
+  'item.deleteConfirm': 'Delete {x}? Its code, barcode, prices and photo go with it.',
   'item.edit': 'Edit item',
   'item.details': 'Item',
   'item.photo': 'Item photo',

@@ -71,7 +71,7 @@ function factoryName(name: string): string {
  * A discount or margin, as a percent or an amount (owner, 2026-10-19: each is a button that asks
  * which, and a second one can be added). Percents add up, amounts add up.
  */
-interface Adj {
+export interface Adj {
   kind: 'pct' | 'amt';
   value: string;
 }
@@ -162,9 +162,9 @@ const blank = (unitId = ''): NewLine => ({
 /** Minor units of a typed amount ('' = 0). */
 const minor = (v: string) => Math.max(0, toMinor(Number(v) || 0));
 /** The percents of a discount or margin added up, and its amounts (minor units). */
-const pctOf = (a: Adj[]) =>
+export const pctOf = (a: Adj[]) =>
   a.filter((x) => x.kind === 'pct').reduce((sum, x) => sum + Math.max(0, Number(x.value) || 0), 0);
-const amtOf = (a: Adj[]) =>
+export const amtOf = (a: Adj[]) =>
   a.filter((x) => x.kind === 'amt').reduce((sum, x) => sum + minor(x.value), 0);
 
 /**
@@ -1450,7 +1450,7 @@ function PhotoPick({
  * A discount or margin as buttons (owner, 2026-10-19): pressing one adds a box with % or the
  * currency to pick; a second can be added the same way; × takes one away.
  */
-function AdjButtons({
+export function AdjButtons({
   label,
   items,
   onChange,

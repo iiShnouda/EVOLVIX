@@ -164,4 +164,18 @@ eq(
   null,
 );
 
+const size = (await owner.get('/variant-options?kind=SIZE')).data.find((o) => o.isActive);
+if (size) {
+  const sized = ok(
+    'a size given on editing, as on a new item',
+    await owner.put(`/products/${remade.id}`, { sizeId: size.id }),
+  );
+  eq('…kept', sized.sizeId, size.id);
+  eq(
+    '…and taken off',
+    (await owner.put(`/products/${remade.id}`, { sizeId: '' })).data.sizeId ?? null,
+    null,
+  );
+}
+
 process.exit(summary('bulkprices') ? 1 : 0);

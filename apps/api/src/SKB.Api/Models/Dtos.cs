@@ -712,7 +712,7 @@ public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
     string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
     string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
-    string? GroupId = null);
+    string? GroupId = null, string? SizeId = null, string? ColorId = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 

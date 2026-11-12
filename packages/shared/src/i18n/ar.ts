@@ -544,6 +544,8 @@ export const ar: TranslationDictionary = {
   'setup.makeDefault': 'اجعله الافتراضي',
   'setup.readonly': 'يمكنك عرض هذه القائمة فقط، والتعديل يحتاج صلاحية.',
   'item.new': 'صنف جديد',
+  'item.delete': 'حذف الصنف',
+  'item.deleteConfirm': 'حذف {x}؟ سيُحذف معه كوده وباركوده وأسعاره وصورته.',
   'item.edit': 'تعديل الصنف',
   'item.details': 'الصنف',
   'item.photo': 'صورة الصنف',

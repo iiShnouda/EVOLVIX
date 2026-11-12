@@ -53,7 +53,8 @@ export function ItemCardPage() {
   const can = useCan();
   const permissions = useAuth((st) => st.user?.permissions ?? NO_PERMISSIONS);
   const canEdit = can('inventory:stocktake');
-  const canEditItem = can('products:edit') || can('prices:edit');
+  const canEditItem =
+    can('products:edit') || can('prices:edit') || can('products:close') || can('products:delete');
   // Costs and stock values are the owner's unless given (costs:view); the server sends 0 otherwise.
   const seeCosts = can('costs:view');
 
