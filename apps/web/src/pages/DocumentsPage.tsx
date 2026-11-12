@@ -185,8 +185,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [partyCode, setPartyCode] = useState(kept.partyCode ?? '');
   const [departmentId, setDepartmentId] = useState(kept.departmentId ?? '');
   const [status, setStatus] = useState(kept.status ?? '');
-  // One season (owner, 2026-11-10).
-  const [season, setSeason] = useState(kept.season ?? '');
   const [from, setFrom] = useState(() => kept.from ?? companyToday());
   const [to, setTo] = useState(() => kept.to ?? companyToday());
   // Invoices: one payment state (owner, 2026-10-01) instead of status + payment.
@@ -226,7 +224,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     state: kind === 'invoices' && state ? state : undefined,
     branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
-    season: isSales && season ? season : undefined,
     enabled: listed,
   });
   // Another filter starts again at the first page (not when the list is opened as it was left).
@@ -235,7 +232,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     deferredSearch,
     status,
     departmentId,
-    season,
     from,
     to,
     state,
@@ -255,7 +251,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       partyName,
       partyCode,
       departmentId,
-      season,
       status,
       from,
       to,
@@ -270,7 +265,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     partyName,
     partyCode,
     departmentId,
-    season,
     status,
     from,
     to,
@@ -614,23 +608,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                 </select>
               </label>
             )}
-            {isSales && (departments.data ?? []).some((d) => d.hasSeasons) && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.season')}</span>
-                <select
-                  className={filterField}
-                  value={season}
-                  onChange={(e) => setSeason(e.target.value)}
-                >
-                  <option value="">{t('list.all')}</option>
-                  {(['SUMMER', 'WINTER', 'NONE'] as const).map((k) => (
-                    <option key={k} value={k}>
-                      {t(`seasonKind.${k}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             {statuses[kind].length > 0 && (
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
@@ -713,7 +690,6 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                           {doc.number} · {formatDate(doc.issueDate, locale)}
                           {doc.sourceNumber && <> · {doc.sourceNumber}</>}
                           {doc.departmentName && <> · {doc.departmentName}</>}
-                          {doc.seasonKind && <> · {t(`seasonKind.${doc.seasonKind}`)}</>}
                           {doc.repName && <> · {codeName(doc.repCode, doc.repName)}</>}
                         </span>
                         {(doc.edited || (doc.overLimit && doc.type === 'SALES_INVOICE')) &&

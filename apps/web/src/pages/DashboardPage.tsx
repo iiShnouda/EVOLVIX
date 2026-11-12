@@ -323,7 +323,8 @@ export function DashboardPage() {
 
 /**
  * The branch, warehouse and department the whole dashboard shows (owner, 2026-11-11), among the
- * person's own; "all" is all of theirs. A choice shows only when there is more than one.
+ * person's own; "all" is all of theirs. Always shown, even with one of each (owner, 2026-11-12), next
+ * to the period: in a row on a wide screen, three equal boxes across on a phone.
  */
 function PlacePicker({
   value,
@@ -345,56 +346,50 @@ function PlacePicker({
     (d) => (d.isActive || d.id === value.departmentId) && (!mine?.length || mine.includes(d.id)),
   );
   const select =
-    'h-9 max-w-[12rem] min-w-0 flex-1 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand sm:flex-none';
+    'h-9 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand sm:w-40';
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-      {branches.length > 1 && (
-        <select
-          aria-label={t('list.branch')}
-          className={select}
-          value={value.branchId ?? ''}
-          onChange={(e) =>
-            onChange({ ...value, branchId: e.target.value || undefined, warehouseId: undefined })
-          }
-        >
-          <option value="">{t('dash.allBranches')}</option>
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      )}
-      {(stores.length > 1 || value.warehouseId) && (
-        <select
-          aria-label={t('list.warehouse')}
-          className={select}
-          value={value.warehouseId ?? ''}
-          onChange={(e) => onChange({ ...value, warehouseId: e.target.value || undefined })}
-        >
-          <option value="">{t('dash.allWarehouses')}</option>
-          {stores.map((w) => (
-            <option key={w.id} value={w.id}>
-              {value.branchId || branches.length < 2 ? w.name : `${w.branchName} / ${w.name}`}
-            </option>
-          ))}
-        </select>
-      )}
-      {departments.length > 1 && (
-        <select
-          aria-label={t('invoice.department')}
-          className={select}
-          value={value.departmentId ?? ''}
-          onChange={(e) => onChange({ ...value, departmentId: e.target.value || undefined })}
-        >
-          <option value="">{t('dash.allDepartments')}</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-      )}
+    <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+      <select
+        aria-label={t('list.branch')}
+        className={select}
+        value={value.branchId ?? ''}
+        onChange={(e) =>
+          onChange({ ...value, branchId: e.target.value || undefined, warehouseId: undefined })
+        }
+      >
+        <option value="">{t('dash.allBranches')}</option>
+        {branches.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={t('list.warehouse')}
+        className={select}
+        value={value.warehouseId ?? ''}
+        onChange={(e) => onChange({ ...value, warehouseId: e.target.value || undefined })}
+      >
+        <option value="">{t('dash.allWarehouses')}</option>
+        {stores.map((w) => (
+          <option key={w.id} value={w.id}>
+            {value.branchId || branches.length < 2 ? w.name : `${w.branchName} / ${w.name}`}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label={t('invoice.department')}
+        className={select}
+        value={value.departmentId ?? ''}
+        onChange={(e) => onChange({ ...value, departmentId: e.target.value || undefined })}
+      >
+        <option value="">{t('dash.allDepartments')}</option>
+        {departments.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

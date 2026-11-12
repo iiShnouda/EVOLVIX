@@ -12,8 +12,7 @@ public static class Mapper
         d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"), d.GrandTotal, d.PaidAmount, d.Currency,
         d.SourceDocument?.Number, d.DepartmentId?.ToString(), d.Department is null ? null : Loc.Name(d.Department),
         d.Party?.Code, d.Rep?.FullName, d.Subtotal, d.DiscountTotal, 0, d.Notes,
-        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote, PartyId: d.PartyId.ToString(), RepCode: d.Rep?.Code,
-        SeasonKind: d.SeasonKind);
+        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote, PartyId: d.PartyId.ToString(), RepCode: d.Rep?.Code);
 
     /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
     /// <param name="baseUnits">Base unit name per product (<see cref="InvoiceLines.BaseUnitNamesAsync"/>).</param>
@@ -45,8 +44,7 @@ public static class Mapper
         StaffId: d.StaffId.ToString(), PartyId: d.PartyId.ToString(), BranchId: d.BranchId.ToString(),
         RejectReason: d.RejectReason, PartyCode: d.Party?.Code, RepCode: d.Rep?.Code,
         CancelReason: d.CancelReason, OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote,
-        EnteredAt: d.EnteredAt?.ToString("o"), Locked: d.EditLocked, CreatedAt: d.CreatedAt.ToString("o"),
-        SeasonKind: d.SeasonKind);
+        EnteredAt: d.EnteredAt?.ToString("o"), Locked: d.EditLocked, CreatedAt: d.CreatedAt.ToString("o"));
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)

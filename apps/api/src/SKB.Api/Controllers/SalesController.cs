@@ -85,9 +85,6 @@ public sealed class SalesController : ControllerBase
         // No two documents share a number (owner, 2026-11-10): one searched by its number is found
         // whatever the period says.
         if (DocumentLists.ByNumber(Request.Query["number"])) from = to = null;
-        // One season (owner, 2026-11-10): SUMMER, WINTER or NONE.
-        string? season = Request.Query["season"];
-        if (Seasons.IsInvoiceKind(season, sale: true)) q = q.Where(d => d.SeasonKind == season);
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
@@ -910,7 +907,7 @@ public sealed class SalesController : ControllerBase
             RepId: repId?.ToString(),
             DeliveryMethod: order.DeliveryMethod.ToString(), DeliveryAddress: order.DeliveryAddress,
             DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
-            PaidAccountId: req.PaidAccountId, DepartmentId: order.DepartmentId?.ToString(), SeasonKind: order.SeasonKind);
+            PaidAccountId: req.PaidAccountId, DepartmentId: order.DepartmentId?.ToString());
         return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId,
             discounts: DiscountMode.Give, baseline: order, approved: true,
             approvalNote: order.OverLimit ? $"BY:{CurrentUser.Name(User)}" : null);
@@ -1033,7 +1030,7 @@ public sealed class SalesController : ControllerBase
                 RepId: repId?.ToString(),
                 DeliveryMethod: order.DeliveryMethod.ToString(), DeliveryAddress: order.DeliveryAddress,
                 DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
-                DepartmentId: order.DepartmentId?.ToString(), SeasonKind: order.SeasonKind);
+                DepartmentId: order.DepartmentId?.ToString());
             var result = await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: orderId, branch: order.BranchId,
                 discounts: DiscountMode.Trusted, approved: true, approvalNote: note, systemApproval: true);
             if (result.Result is ObjectResult { StatusCode: >= 400 }) continue;
@@ -1252,21 +1249,6 @@ public sealed class SalesController : ControllerBase
             var has = _db.WarehouseDepartments.Where(l => l.WarehouseId == invoiceWarehouse);
             if (await has.AnyAsync() && !await has.AnyAsync(l => l.DepartmentId == department.Id))
                 return BadRequest(new { message = "That department isn't in this warehouse.", code = "department_not_in_warehouse" });
-        }
-
-        // ---- Its season, after the department (owner, 2026-11-10): summer, winter or none, in a
-        // department with seasons; a change keeps the one it had unless another is chosen ----
-        if (!string.IsNullOrWhiteSpace(req.SeasonKind) && !Seasons.IsInvoiceKind(req.SeasonKind, sale: true))
-            return BadRequest(new { message = "Choose the season.", code = "bad_season" });
-        string? seasonKind = null;
-        if (department?.HasSeasons == true)
-        {
-            seasonKind = string.IsNullOrWhiteSpace(req.SeasonKind) ? null : req.SeasonKind;
-            if (seasonKind is null && (editId ?? replaceId) is Guid had)
-                seasonKind = await _db.SalesDocuments.Where(d => d.Id == had).Select(d => d.SeasonKind).FirstOrDefaultAsync();
-            // What the system or the accountant posts from a pending invoice keeps what it had.
-            if (seasonKind is null && fromId is null && !systemApproval)
-                return BadRequest(new { message = "Choose the season.", code = "season_required" });
         }
 
         // Every sale has a rep (المندوب): the one chosen, else whoever makes it. A quotation gets one
@@ -1583,7 +1565,7 @@ public sealed class SalesController : ControllerBase
                 : type == DocumentType.SALES_ORDER && settings.PendingHoldDays > 0
                     ? CompanyClock.TodayDate.AddDays(settings.PendingHoldDays) : null),
             Currency = settings.Currency, Notes = Clean(req.Notes, 500), SourceDocumentId = fromId,
-            PriceLevelId = level?.Id, RepId = repId, DepartmentId = department?.Id, SeasonKind = seasonKind,
+            PriceLevelId = level?.Id, RepId = repId, DepartmentId = department?.Id,
             DeliveryMethod = method, DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING,
             DeliveryAddress = deliveryAddress, DriverId = driverId, CarrierId = carrierId,
         };
@@ -1605,7 +1587,6 @@ public sealed class SalesController : ControllerBase
             doc.PriceLevelId = level?.Id;
             doc.RepId = repId;
             doc.DepartmentId = department?.Id;
-            doc.SeasonKind = seasonKind;
             doc.DeliveryMethod = method;
             doc.DeliveryStatus = method == DeliveryMethod.PICKUP ? null : DeliveryStatus.PENDING;
             doc.DeliveryAddress = deliveryAddress;

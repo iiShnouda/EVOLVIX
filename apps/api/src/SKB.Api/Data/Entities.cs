@@ -424,11 +424,6 @@ public class Department : INamed
     public string Name { get; set; } = "";
     /// <summary>Short prefix for item codes, e.g. "MEN" (owner decision 2026-10-01).</summary>
     public string? Prefix { get; set; }
-    /// <summary>
-    /// Its goods come by season (owner, 2026-11-10): a new invoice in it names its season after the
-    /// department — summer, winter or none on a sale, summer or winter on a purchase.
-    /// </summary>
-    public bool HasSeasons { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -782,12 +777,6 @@ public class SalesDocument
     /// <summary>The sales department (قسم) a sale, quotation or return belongs to; null = none.</summary>
     public Guid? DepartmentId { get; set; }
     public Department? Department { get; set; }
-
-    /// <summary>
-    /// The season of an invoice in a department with seasons (owner, 2026-11-10): SUMMER, WINTER or
-    /// NONE (a sale of no season); only the kind — the year belongs to the items. Null = not asked.
-    /// </summary>
-    public string? SeasonKind { get; set; }
 
     /// <summary>The sales rep (مندوب) credited with a sale. No commission (owner, 2026-09-29).</summary>
     public Guid? RepId { get; set; }

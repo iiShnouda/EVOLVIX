@@ -232,8 +232,6 @@ export function useDocumentList(
     state?: string;
     branchId?: string;
     warehouseId?: string;
-    /** Sales: one season (SUMMER, WINTER or NONE). */
-    season?: string;
     pageSize?: number;
     /** Off: not asked for (e.g. no permission to see that list). */
     enabled?: boolean;
@@ -256,7 +254,6 @@ export function useDocumentList(
   if (params.state) query.set('state', params.state);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
-  if (params.season) query.set('season', params.season);
   return useQuery({
     queryKey: [scope, kind, key],
     queryFn: () => api.get<DocumentList>(`/${scope}/${kind}?${query}`),
@@ -1200,19 +1197,6 @@ export function useSeasons(enabled = true) {
     queryKey: ['catalog', 'seasons'],
     queryFn: () => api.get<Season[]>('/seasons'),
     enabled,
-    staleTime: 10 * 60_000,
-  });
-}
-
-/**
- * The season (with its year) a purchase of this kind, dated `day`, gives its new items (owner,
- * 2026-11-10: the invoice names summer or winter, the year is the items').
- */
-export function useSeasonOf(kind: 'SUMMER' | 'WINTER' | '', day: string) {
-  return useQuery({
-    queryKey: ['catalog', 'seasons', 'of', kind, day],
-    queryFn: () => api.get<Season>(`/seasons/of?kind=${kind}&date=${encodeURIComponent(day)}`),
-    enabled: !!kind,
     staleTime: 10 * 60_000,
   });
 }

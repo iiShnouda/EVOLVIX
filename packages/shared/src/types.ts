@@ -543,12 +543,7 @@ export interface Department {
   warehouseIds?: string[];
   /** Active items in it. */
   itemCount?: number;
-  /** Its invoices name their season after it (owner, 2026-11-10). */
-  hasSeasons?: boolean;
 }
-
-/** The season an invoice names: only the kind, the year is the items' (owner, 2026-11-10). */
-export type SeasonKind = 'SUMMER' | 'WINTER' | 'NONE';
 
 /** A season goods are bought for (owner decision 2026-10-01). */
 export interface Season {
@@ -891,8 +886,6 @@ export interface SalesDocument {
   /** The sales department it belongs to. */
   departmentId?: string | null;
   departmentName?: string | null;
-  /** Its season, in a department with seasons (owner, 2026-11-10). */
-  seasonKind?: SeasonKind | null;
   /** The price level the invoice was priced at. */
   priceLevelId?: string | null;
   priceLevelName?: string | null;
@@ -1446,8 +1439,6 @@ export interface SalesDocumentSummary {
   approvalNote?: string | null;
   /** When it was really typed, if it is dated on an earlier day (ISO instant). */
   enteredAt?: string | null;
-  /** Its season, in a department with seasons (owner, 2026-11-10). */
-  seasonKind?: SeasonKind | null;
 }
 
 /** A customer's invoices of a period together, for the accountant (owner, 2026-10-02). */

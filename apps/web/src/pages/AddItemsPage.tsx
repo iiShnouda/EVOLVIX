@@ -42,7 +42,7 @@ import {
   useGroups,
   useNextCode,
   usePriceLevels,
-  useSeasonOf,
+  useSeasons,
   useUnits,
   useUpdateProduct,
   useVariantOptions,
@@ -138,7 +138,6 @@ interface AddItemsDraft {
   warehouse: string;
   department: string;
   season: string;
-  seasonKind?: string;
   lines: NewLine[];
   entry: NewLine;
   invDiscounts: Adj[];
@@ -188,6 +187,7 @@ export function AddItemsPage() {
   const units = useUnits();
   const options = useVariantOptions();
   const levels = usePriceLevels();
+  const seasons = useSeasons();
   const sizes = (options.data ?? []).filter((o) => o.kind === 'SIZE' && o.isActive);
   const colors = (options.data ?? []).filter((o) => o.kind === 'COLOR' && o.isActive);
   const activeUnits = (units.data ?? []).filter((u) => u.isActive);
@@ -202,9 +202,7 @@ export function AddItemsPage() {
   const [branch, setBranch] = useState(myBranches.length === 1 ? (myBranches[0]?.id ?? '') : '');
   const [warehouse, setWarehouse] = useState('');
   const [department, setDepartment] = useState('');
-  // Summer or winter, chosen after the department when it comes by season (owner, 2026-11-10);
-  // the invoice's date gives the year its new items carry.
-  const [seasonKind, setSeasonKind] = useState<'SUMMER' | 'WINTER' | ''>('');
+  const [season, setSeason] = useState('');
   // A supplier's invoice entered late carries its own day (owner, 2026-10-02).
   const [docDate, setDocDate] = useState(companyToday);
   const allWarehouses = useWarehouses(true);
@@ -226,11 +224,12 @@ export function AddItemsPage() {
       : onlyChoice(departments);
   const allGroups = useGroups().data ?? [];
   const groups = allGroups.filter((g) => departments.some((d) => d.id === g.departmentId));
-  const seasonAsked = !!departments.find((d) => d.id === departmentId)?.hasSeasons;
-  const seasonOf = useSeasonOf(seasonAsked ? seasonKind : '', docDate);
-  /** The season with its year new items get ('' = none). */
-  const season = seasonAsked && seasonKind ? (seasonOf.data?.id ?? '') : '';
-  const seasonName = season ? (seasonOf.data?.name ?? '') : '';
+  const activeSeasons = (seasons.data ?? []).filter((s) => s.isActive);
+  const currentSeason = activeSeasons.find((s) => s.isCurrent)?.id ?? '';
+  const seasonName = activeSeasons.find((s) => s.id === season)?.name ?? '';
+  useEffect(() => {
+    if (!season && currentSeason) setSeason(currentSeason);
+  }, [season, currentSeason]);
 
   const [lines, setLines] = useState<NewLine[]>([]);
   const [entry, setEntry] = useState<NewLine>(blank());
@@ -264,8 +263,7 @@ export function AddItemsPage() {
             branch,
             warehouse,
             department,
-            season: '',
-            seasonKind,
+            season,
             lines,
             entry,
             invDiscounts,
@@ -276,7 +274,7 @@ export function AddItemsPage() {
       if (typeof d.branch === 'string') setBranch(d.branch);
       if (typeof d.warehouse === 'string') setWarehouse(d.warehouse);
       if (typeof d.department === 'string') setDepartment(d.department);
-      if (d.seasonKind === 'SUMMER' || d.seasonKind === 'WINTER') setSeasonKind(d.seasonKind);
+      if (typeof d.season === 'string') setSeason(d.season);
       if (Array.isArray(d.lines)) setLines(d.lines.filter((l) => l && typeof l.name === 'string'));
       if (d.entry && typeof d.entry.name === 'string') setEntry({ ...blank(), ...d.entry });
       if (Array.isArray(d.invDiscounts)) setInvDiscounts(d.invDiscounts);
@@ -368,7 +366,7 @@ export function AddItemsPage() {
   const asked = params.get('item');
   const took = useRef(false);
   useEffect(() => {
-    if (!asked || took.current) return;
+    if (!asked || took.current || seasons.isLoading || (currentSeason && !season)) return;
     took.current = true;
     void (async () => {
       const detail = await api.get<{ sku: string }>(`/products/${asked}`).catch(() => null);
@@ -380,7 +378,7 @@ export function AddItemsPage() {
       if (p) setEntry(existingLine(p, p.units[0]?.unitId ?? '', 1, ''));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asked]);
+  }, [asked, seasons.isLoading, season]);
 
   /**
    * A supplier invoice read from a photo (owner, 2026-10-06): the supplier when found, each line as
@@ -495,9 +493,9 @@ export function AddItemsPage() {
     !!supplier &&
     !!warehouseId &&
     rows.length > 0 &&
-    (!seasonAsked || !!season) &&
     (!hasNew ||
       (rows.every((r) => r.l.existing || !!(r.l.departmentId || departmentId)) &&
+        !!season &&
         !!pieceUnit &&
         !!saleLevel &&
         !!purchaseLevel));
@@ -521,7 +519,7 @@ export function AddItemsPage() {
           name: r.l.name.trim(),
           departmentId: r.l.departmentId || departmentId,
           groupId: r.l.departmentId ? r.l.groupId || undefined : undefined,
-          seasonId: season || undefined,
+          seasonId: season,
           sizeId: (r.l.withVariant && r.l.sizeId) || undefined,
           colorId: (r.l.withVariant && r.l.colorId) || undefined,
           warehouseId,
@@ -561,7 +559,6 @@ export function AddItemsPage() {
         warehouseId,
         paidAmount: 0,
         documentDate: dayToSend(docDate),
-        seasonKind: seasonAsked && seasonKind ? seasonKind : undefined,
         lines: rows.map((r, i) => {
           const big = r.l.existing || !pieceUnit || (r.perUnit > 1 && r.l.unitId !== pieceUnit.id);
           return {
@@ -785,10 +782,7 @@ export function AddItemsPage() {
             className={`${field} ${pickClass(!!departmentId, !!warehouseId)}`}
             value={departmentId}
             disabled={!warehouseId || someSaved}
-            onChange={(e) => {
-              setDepartment(e.target.value);
-              setSeasonKind('');
-            }}
+            onChange={(e) => setDepartment(e.target.value)}
           >
             <option value="" disabled>
               {t('invoice.chooseDepartment')}
@@ -800,25 +794,24 @@ export function AddItemsPage() {
             ))}
           </select>,
         )}
-        {seasonAsked &&
-          label(
-            t('invoice.season'),
-            <select
-              className={`${field} ${!seasonKind ? 'border-warning' : ''}`}
-              value={seasonKind}
-              disabled={someSaved}
-              onChange={(e) => setSeasonKind(e.target.value as 'SUMMER' | 'WINTER')}
-            >
-              <option value="" disabled>
-                {t('invoice.chooseSeason')}
+        {label(
+          t('item.season'),
+          <select
+            className={`${field} ${!season ? 'border-warning' : ''}`}
+            value={season}
+            disabled={someSaved}
+            onChange={(e) => setSeason(e.target.value)}
+          >
+            <option value="" disabled>
+              {t('item.season')}
+            </option>
+            {activeSeasons.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
-              {(['SUMMER', 'WINTER'] as const).map((k) => (
-                <option key={k} value={k}>
-                  {t(`seasonKind.${k}`)}
-                </option>
-              ))}
-            </select>,
-          )}
+            ))}
+          </select>,
+        )}
       </Card>
 
       {/* Items already in the catalog, bought again, or read from the invoice's photo. */}
