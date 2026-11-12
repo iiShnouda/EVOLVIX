@@ -1,6 +1,30 @@
 {
   "releases": [
     {
+      "version": "1.14.0",
+      "date": "2026-11-12",
+      "features": [
+        {
+          "ar": "لكل صفحة صلاحية لوحدها للطباعة وللـPDF وللإكسل، والزرار بيختفي من غير الصلاحية والسيرفر بيسجّل كل طباعة أو ملف",
+          "en": "Every page has its own permission for printing, PDF and Excel; buttons are hidden without it, and the server checks and logs every printout or file"
+        },
+        {
+          "ar": "إعدادات الطباعة بقت صلاحية لوحدها؛ اللي ماعندوش الصلاحية بيطبع بإعدادات الشركة، وصاحب الصلاحية يقدر يحفظ إعداداته كإعدادات الشركة",
+          "en": "Changing print settings is now its own permission; others print with the company layout, which permitted users can set from their own"
+        },
+        {
+          "ar": "زرار PDF لوحده للفواتير والتقارير والباركود",
+          "en": "A separate PDF button on invoices, reports and barcode labels"
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "الفاتورة اللي عليها فلوس أو شيكات مينفعش يتغير عميلها، وتعديل فاتورة العميل النقدي بقى بيتأكد إن اللي بيعدّل مسموح له بالخزنة",
+          "en": "An invoice with money or cheques on it can't be moved to another customer, and editing a cash customer's invoice checks the editor may use its cash box"
+        }
+      ]
+    },
+    {
       "version": "1.13.0",
       "date": "2026-11-12",
       "features": [

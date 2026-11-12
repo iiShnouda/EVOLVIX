@@ -63,6 +63,7 @@ live company server.
 | `stock.test.mjs` | Stock pages: out vs low, the main department, the supplier code, the stocktake sheet by branch/warehouse/department/supplier and its scope (`outside_stocktake`), transfer filters and places, valuation totals, the warehouse statement's totals. |
 | `dashscope.test.mjs` | The dashboard by each person's branches, warehouses, departments and money accounts, and the branch/warehouse/department picks (refused outside one's access), profit and loss included. |
 | `assortment.test.mjs` | Analytics by supplier, department tree and item (`reports:assortment`): sales, returns, profit, purchases and stock, scoped, hidden figures without permission. |
+| `outputs.test.mjs` | Print, PDF and Excel per page (`<page>:print|pdf|export`, `POST /outputs` checked and logged, `?kind=pdf` on invoice prints) and print settings as their own permission (`print:settings`; `print:default` sets the company layout others print with). |
 
 ## Running
 
