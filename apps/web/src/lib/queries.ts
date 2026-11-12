@@ -55,6 +55,9 @@ import type {
   DashboardMore,
   InventoryList,
   ItemCard,
+  BulkPriceItem,
+  BulkPriceRequest,
+  BulkPriceResult,
   ItemLife,
   StocktakeInput,
   StocktakeResult,
@@ -722,6 +725,41 @@ export function useItemCard(id: string, from: string, to: string, warehouseId?: 
     queryKey: ['inventory', 'card', id, from, to, warehouseId ?? ''],
     queryFn: () => api.get<ItemCard>(`/inventory/items/${id}/card?${query}`),
     enabled: !!id,
+    // Another period keeps the card on screen while it loads (the dates stay where they are typed).
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** A supplier's open items with their prices, for changing them at once (prices:bulk_edit). */
+export function useBulkPriceItems(f: {
+  supplierId: string;
+  departmentId?: string;
+  groupId?: string;
+  seasonId?: string;
+  search?: string;
+}) {
+  const query = new URLSearchParams({ supplierId: f.supplierId });
+  if (f.departmentId) query.set('departmentId', f.departmentId);
+  if (f.departmentId && f.groupId) query.set('groupId', f.groupId);
+  if (f.seasonId) query.set('seasonId', f.seasonId);
+  if (f.search) query.set('search', f.search);
+  return useQuery({
+    queryKey: ['products', 'bulk', f],
+    queryFn: () => api.get<BulkPriceItem[]>(`/prices/bulk/items?${query}`),
+    enabled: !!f.supplierId,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Old → new prices of the chosen items (`apply` false), or the change made (`apply` true). */
+export function useBulkPrices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ input, apply }: { input: BulkPriceRequest; apply: boolean }) =>
+      api.post<BulkPriceResult>(`/prices/bulk/${apply ? 'apply' : 'preview'}`, input),
+    onSuccess: (_, v) => {
+      if (v.apply) invalidateCatalog(qc);
+    },
   });
 }
 
@@ -1165,6 +1203,15 @@ export function useSetProductPrices() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdatePricesInput }) =>
       api.put<ProductDetail>(`/products/${id}/prices`, input),
+    onSuccess: () => invalidateCatalog(qc),
+  });
+}
+
+/** Delete an item nothing has used (products:delete). */
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/products/${id}`),
     onSuccess: () => invalidateCatalog(qc),
   });
 }

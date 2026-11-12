@@ -63,6 +63,7 @@ const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
       'inventory:stocktake',
       'products:edit',
       'products:close',
+      'products:delete',
       'products:barcodes',
       'products:images',
       'prices:edit',
@@ -731,7 +732,7 @@ function ItemsTab({
               }}
             />
           )}
-          {can('products:edit') && (
+          {(can('products:edit') || can('prices:edit') || can('products:delete')) && (
             <MenuItem
               icon="edit"
               label={t('catalog.editItem')}

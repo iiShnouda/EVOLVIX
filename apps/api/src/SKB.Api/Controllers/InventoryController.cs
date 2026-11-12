@@ -51,7 +51,7 @@ public sealed class InventoryController : ControllerBase
     [HttpGet("items")]
     [AnyPermission(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
         Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
-        Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
+        Permissions.ProductsDelete, Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
         Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
         Permissions.InventoryTotalItems, Permissions.InventoryTotalQuantity, Permissions.InventoryTotalSaleValue,
         Permissions.InventoryTotalSupplyValue, Permissions.InventoryTotalSold)]
@@ -208,7 +208,7 @@ public sealed class InventoryController : ControllerBase
         // The rows for whoever sees the list or works on its items; the totals alone otherwise.
         var seesRows = User.HasAny(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
-            Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
+            Permissions.ProductsDelete, Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
             Permissions.ProductsCardReturns, Permissions.ProductsCardPrices);
         return Ok(new InventoryListDto(
             seesRows ? pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))
@@ -250,13 +250,27 @@ public sealed class InventoryController : ControllerBase
         var mine = wid is Guid one ? new HashSet<Guid> { one } : limit;
         var ofItem = _db.StockMovements.AsNoTracking().Where(m => m.ProductId == id);
         var inScope = mine is not null ? ofItem.Where(m => mine.Contains(m.WarehouseId)) : ofItem;
-        var moves = await inScope.Where(m => m.CreatedAt >= fromDate && m.CreatedAt < toExclusive)
-            .OrderBy(m => m.CreatedAt)
-            .Take(MaxCardRows)
-            .ToListAsync();
+        var inPeriod = inScope.Where(m => m.CreatedAt >= fromDate && m.CreatedAt < toExclusive);
+        var moves = await inPeriod.OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Take(MaxCardRows).ToListAsync();
 
-        var opening = mine is null ? (await _valuation.AtAsync(fromDate, id)).Of(id) : (await _valuation.AtAsync(fromDate, id)).Of(id, mine);
-        var closing = mine is null ? (await _valuation.AtAsync(toExclusive, id)).Of(id) : (await _valuation.AtAsync(toExclusive, id)).Of(id, mine);
+        // The opening balance (owner, 2026-11-10: always shown): what came in and went out before the
+        // period, by the day each movement is dated (a document dated back counts on its day), so
+        // the opening is the day before's closing and opening + in − out = closing.
+        var earlier = await inScope.Where(m => m.CreatedAt < fromDate)
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(m => m.Quantity > 0 ? m.Quantity : 0), Out = g.Sum(m => m.Quantity < 0 ? -m.Quantity : 0) })
+            .FirstOrDefaultAsync();
+        var during = await inPeriod
+            .GroupBy(_ => 1)
+            .Select(g => new { In = g.Sum(m => m.Quantity > 0 ? m.Quantity : 0), Out = g.Sum(m => m.Quantity < 0 ? -m.Quantity : 0) })
+            .FirstOrDefaultAsync();
+        int inBefore = earlier?.In ?? 0, outBefore = earlier?.Out ?? 0, totalIn = during?.In ?? 0, totalOut = during?.Out ?? 0;
+        var openingQty = inBefore - outBefore;
+        var closingQty = openingQty + totalIn - totalOut;
+        var atStart = await _valuation.AtAsync(fromDate, id);
+        var atEnd = await _valuation.AtAsync(toExclusive, id);
+        var opening = mine is null ? atStart.Of(id) : atStart.Of(id, mine);
+        var closing = mine is null ? atEnd.Of(id) : atEnd.Of(id, mine);
         var now = await _valuation.CurrentAsync(id);
         var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch).ToDictionaryAsync(x => x.Id);
         var stock = now.Quantity
@@ -301,14 +315,33 @@ public sealed class InventoryController : ControllerBase
                 }
             }
         }
+        // The last cost (owner, 2026-11-10: prices rise): what a piece cost on its latest purchase in the
+        // warehouses the person sees, costs:view's like every cost.
+        LastCostDto? lastCost = null;
+        if (seeCosts)
+        {
+            var bought = _db.StockMovements.AsNoTracking()
+                .Where(m => m.ProductId == id && m.Type == StockMovementType.PURCHASE_IN);
+            if (limit is not null) bought = bought.Where(m => limit.Contains(m.WarehouseId));
+            var last = await bought.OrderByDescending(m => m.CreatedAt)
+                .Select(m => new { m.UnitCost, m.CreatedAt, m.Reference, m.DocumentId }).FirstOrDefaultAsync();
+            if (last is not null)
+                lastCost = new LastCostDto(last.UnitCost, DateTime.SpecifyKind(last.CreatedAt, DateTimeKind.Utc).ToString("o"),
+                    last.Reference, last.DocumentId?.ToString());
+        }
+
+        // The running balance from the opening, in date order (the one kept on a movement is the one
+        // when it was typed, and the whole company's).
+        var running = openingQty;
+        var rows = (await ToMovementDtosAsync(moves, perWarehouse: wid is not null, withParties: true))
+            .Select(m => Costs.Guard(User, m with { Balance = running += m.QuantityIn - m.QuantityOut }))
+            .ToArray();
         return Ok(new ItemCardDto(
             Costs.Guard(User, item), fromDay.ToString("yyyy-MM-dd"), toDay.ToString("yyyy-MM-dd"), wid?.ToString(),
-            opening.Quantity, seeCosts ? opening.Value : 0,
-            moves.Where(m => m.Quantity > 0).Sum(m => m.Quantity),
-            moves.Where(m => m.Quantity < 0).Sum(m => -m.Quantity),
-            closing.Quantity, seeCosts ? closing.Value : 0,
-            (await ToMovementDtosAsync(moves, perWarehouse: wid is not null)).Select(m => Costs.Guard(User, m)).ToArray(),
-            stock.Select(w => Costs.Guard(User, w)).ToArray(), await CurrencyAsync(), discountPct, marginPct));
+            openingQty, seeCosts ? opening.Value : 0, totalIn, totalOut,
+            closingQty, seeCosts ? closing.Value : 0,
+            rows, stock.Select(w => Costs.Guard(User, w)).ToArray(), await CurrencyAsync(), discountPct, marginPct,
+            inBefore, outBefore, lastCost));
     }
 
     /// <summary>
@@ -676,7 +709,8 @@ public sealed class InventoryController : ControllerBase
         return (null, NotFound(new { message = "Warehouse not found.", code = "warehouse_not_found" }));
     }
 
-    private async Task<StockMovementDto[]> ToMovementDtosAsync(List<StockMovement> moves, bool perWarehouse)
+    private async Task<StockMovementDto[]> ToMovementDtosAsync(List<StockMovement> moves, bool perWarehouse,
+        bool withParties = false)
     {
         var warehouseIds = moves.Select(m => m.WarehouseId).Distinct().ToList();
         var warehouses = await _db.Warehouses.AsNoTracking().Include(w => w.Branch)
@@ -685,9 +719,37 @@ public sealed class InventoryController : ControllerBase
         var docIds = moves.Where(m => m.DocumentId != null).Select(m => m.DocumentId!.Value).Distinct().ToList();
         var docTypes = await _db.SalesDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id))
             .ToDictionaryAsync(d => d.Id, d => d.Type.ToString());
-        foreach (var transferId in await _db.StockTransfers.AsNoTracking().Where(t => docIds.Contains(t.Id))
-                     .Select(t => t.Id).ToListAsync())
-            docTypes[transferId] = "STOCK_TRANSFER";
+        var transfers = await _db.StockTransfers.AsNoTracking().Where(t => docIds.Contains(t.Id))
+            .Include(t => t.FromWarehouse).Include(t => t.ToWarehouse).ToDictionaryAsync(t => t.Id);
+        foreach (var transferId in transfers.Keys) docTypes[transferId] = "STOCK_TRANSFER";
+
+        // Whose each movement is (owner, 2026-11-10): the customer or supplier of its invoice or
+        // return, for whoever may see that side's documents or the item card's part of them; the
+        // other warehouse of a transfer.
+        var parties = new Dictionary<Guid, (int Code, string Name)>();
+        if (withParties)
+        {
+            bool Has(string p) => User.HasClaim("permission", p);
+            var sales = Has(Permissions.SalesView) || Has(Permissions.ProductsCardSales);
+            var buys = Has(Permissions.PurchasesView) || Has(Permissions.ProductsCardPurchases);
+            var salesBack = Has(Permissions.SalesReturnsView) || Has(Permissions.ProductsCardReturns);
+            var buysBack = Has(Permissions.PurchasesReturnsView) || Has(Permissions.ProductsCardReturns);
+            var shown = new List<DocumentType>();
+            if (sales) shown.Add(DocumentType.SALES_INVOICE);
+            if (buys) shown.Add(DocumentType.PURCHASE_INVOICE);
+            if (salesBack) shown.Add(DocumentType.SALES_RETURN);
+            if (buysBack) shown.Add(DocumentType.PURCHASE_RETURN);
+            if (shown.Count > 0)
+                foreach (var d in await _db.SalesDocuments.AsNoTracking()
+                             .Where(d => docIds.Contains(d.Id) && shown.Contains(d.Type) && d.Party != null)
+                             .Select(d => new { d.Id, d.Party!.Code, d.Party.Name }).ToListAsync())
+                    parties[d.Id] = (d.Code, d.Name);
+        }
+        string? OtherPlace(StockMovement m) =>
+            !withParties || m.DocumentId is not Guid d || !transfers.TryGetValue(d, out var t) ? null
+            : m.Type == StockMovementType.TRANSFER_OUT ? (t.ToWarehouse is null ? null : Loc.Name(t.ToWarehouse))
+            : m.Type == StockMovementType.TRANSFER_IN ? (t.FromWarehouse is null ? null : Loc.Name(t.FromWarehouse))
+            : null;
 
         return moves.Select(m =>
         {
@@ -699,7 +761,10 @@ public sealed class InventoryController : ControllerBase
                 m.DocumentId is Guid d && docTypes.TryGetValue(d, out var t) ? t : null,
                 Math.Max(0, m.Quantity), Math.Max(0, -m.Quantity),
                 perWarehouse ? m.WarehouseBalanceAfter : m.BalanceAfter,
-                m.UnitCost, m.AvgCostAfter, m.Note);
+                m.UnitCost, m.AvgCostAfter, m.Note,
+                m.DocumentId is Guid p && parties.TryGetValue(p, out var party) ? party.Code : null,
+                m.DocumentId is Guid q && parties.TryGetValue(q, out var named) ? named.Name : null,
+                OtherPlace(m));
         }).ToArray();
     }
 

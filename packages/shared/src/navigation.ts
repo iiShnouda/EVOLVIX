@@ -138,8 +138,21 @@ export const NAV_SECTIONS: NavSection[] = [
         labelKey: 'nav.inventory',
         icon: 'inventory',
         path: '/inventory',
-        anyOf: opens('inventory', ['inventory:print', 'inventory:export', 'transfers:print']),
+        anyOf: opens('inventory', [
+          'inventory:print',
+          'inventory:export',
+          'transfers:print',
+          'prices:bulk_edit',
+        ]),
         primaryOnPhone: true,
+      },
+      // A supplier's prices at once (owner, 2026-11-10).
+      {
+        key: 'supplierPrices',
+        labelKey: 'bulkPrices.title',
+        icon: 'purchases',
+        path: '/inventory/supplier-prices',
+        anyOf: ['prices:bulk_edit'],
       },
       // The item setup (departments, sub-groups, units, sizes, colors, seasons) on its own page.
       {

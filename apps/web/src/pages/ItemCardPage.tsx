@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -22,6 +22,7 @@ import { useDeviceInfo } from '../lib/device';
 import { ApiError } from '../lib/api';
 import { useItemCard, useStocktake } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { CodeName } from '../components/CodeName';
 import { errorText } from '../lib/errors';
 
 const field =
@@ -52,14 +53,29 @@ export function ItemCardPage() {
   const can = useCan();
   const permissions = useAuth((st) => st.user?.permissions ?? NO_PERMISSIONS);
   const canEdit = can('inventory:stocktake');
-  const canEditItem = can('products:edit') || can('prices:edit');
+  const canEditItem =
+    can('products:edit') || can('prices:edit') || can('products:close') || can('products:delete');
   // Costs and stock values are the owner's unless given (costs:view); the server sends 0 otherwise.
   const seeCosts = can('costs:view');
 
   const [params, setParams] = useSearchParams();
   const warehouseId = params.get('wh') ?? '';
-  const [from, setFrom] = useState(companyToday);
-  const [to, setTo] = useState(companyToday);
+  // The period sits in the address (owner, 2026-11-10): opening a movement's invoice and coming
+  // back keeps it.
+  const from = params.get('from') || companyToday();
+  const to = params.get('to') || companyToday();
+  const setFilter = (patch: Record<string, string>) =>
+    setParams(
+      (cur) => {
+        const next = new URLSearchParams(cur);
+        for (const [k, v] of Object.entries(patch)) {
+          if (v) next.set(k, v);
+          else next.delete(k);
+        }
+        return next;
+      },
+      { replace: true },
+    );
   const card = useItemCard(id, from, to, warehouseId || undefined);
   const data = card.data;
   const currency = data?.currency ?? 'EGP';
@@ -130,30 +146,15 @@ export function ItemCardPage() {
         <div className="space-y-4">
           <Card>
             <div className="flex flex-wrap items-end gap-3">
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('report.from')}</span>
-                <input
-                  type="date"
-                  className={field}
-                  value={from}
-                  max={to}
-                  onChange={(e) => setFrom(e.target.value || from)}
-                />
-              </label>
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('report.to')}</span>
-                <input
-                  type="date"
-                  className={field}
-                  value={to}
-                  min={from}
-                  onChange={(e) => setTo(e.target.value || to)}
-                />
-              </label>
+              <PeriodInputs
+                from={from}
+                to={to}
+                onChange={(f, tt) => setFilter({ from: f, to: tt })}
+              />
               <WarehouseSelect
                 className="min-w-48 flex-1"
                 value={warehouseId}
-                onChange={(wh) => setParams(wh ? { wh } : {}, { replace: true })}
+                onChange={(wh) => setFilter({ wh })}
                 allowAll
                 includeClosed
               />
@@ -178,6 +179,40 @@ export function ItemCardPage() {
               currency={currency}
             />
           </div>
+          {/* Before the period, now and the last cost, always (owner, 2026-11-10). */}
+          <Card>
+            <dl className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
+              <Stat
+                label={t('itemCard.inBefore')}
+                value={`${formatNumber(data.inBefore, locale)} ${item.unit}`}
+                tone="text-positive"
+              />
+              <Stat
+                label={t('itemCard.outBefore')}
+                value={`${formatNumber(data.outBefore, locale)} ${item.unit}`}
+                tone="text-warning"
+              />
+              <Stat
+                label={t('itemCard.availableNow')}
+                value={`${formatNumber(item.stockOnHand, locale)} ${item.unit}`}
+              />
+              {seeCosts && (
+                <Stat
+                  label={t('itemCard.lastCost')}
+                  value={
+                    data.lastCost ? formatMoney(data.lastCost.unitCost, currency, locale) : '—'
+                  }
+                  sub={
+                    data.lastCost
+                      ? [formatDate(data.lastCost.date, locale), data.lastCost.reference]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : undefined
+                  }
+                />
+              )}
+            </dl>
+          </Card>
           {/* The supplier's discount and the margin, from the last purchase (owner, 2026-10-18). */}
           {(data.supplierDiscountPercent != null ||
             (data.marginPercent != null && can('profit:view'))) && (
@@ -204,14 +239,27 @@ export function ItemCardPage() {
           )}
 
           <Card padded={false} className="overflow-hidden">
-            {data.movements.length === 0 ? (
-              <EmptyState title={t('itemCard.noMovements')} icon="inventory" />
-            ) : isPhone ? (
+            {isPhone ? (
               <ul className="divide-y divide-[var(--c-line)]">
+                <li className="flex items-center gap-3 bg-surface-2 p-4 text-sm">
+                  <span className="min-w-0 flex-1 text-muted">
+                    {t('itemCard.opening')}
+                    <span className="block text-xs tnum">{formatDate(data.from, locale)}</span>
+                  </span>
+                  <span className="font-semibold tnum">
+                    {formatNumber(data.openingBalance, locale)}
+                  </span>
+                </li>
+                {data.movements.length === 0 && (
+                  <li className="p-4 text-center text-sm text-muted">
+                    {t('itemCard.noMovements')}
+                  </li>
+                )}
                 {data.movements.map((m) => (
                   <li key={m.id} className="flex items-center gap-3 p-4">
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{t(`movement.${m.type}`)}</span>
+                      <Whose m={m} />
                       <span className="text-xs text-muted tnum">
                         {formatDate(m.date, locale)} · <Reference m={m} permissions={permissions} />
                         {!warehouseId && <> · {m.warehouseName}</>}
@@ -231,6 +279,12 @@ export function ItemCardPage() {
                     </span>
                   </li>
                 ))}
+                <li className="flex items-center gap-3 bg-surface-2 p-4 text-sm">
+                  <span className="min-w-0 flex-1 text-muted">{t('itemCard.closing')}</span>
+                  <span className="font-semibold tnum">
+                    {formatNumber(data.closingBalance, locale)}
+                  </span>
+                </li>
               </ul>
             ) : (
               <TableColumns id="itemCard.movements">
@@ -267,13 +321,14 @@ export function ItemCardPage() {
                       <td className="p-3 text-end font-semibold tnum text-fg">
                         {formatNumber(data.openingBalance, locale)}
                       </td>
-                      <td className="hidden p-3 md:table-cell" />
+                      {seeCosts && <td className="hidden p-3 md:table-cell" />}
                     </tr>
                     {data.movements.map((m) => (
                       <tr key={m.id}>
                         <td className="p-3 text-muted tnum">{formatDate(m.date, locale)}</td>
                         <td className="p-3">
                           {t(`movement.${m.type}`)}
+                          <Whose m={m} />
                           {m.note && <span className="block text-xs text-muted">{m.note}</span>}
                         </td>
                         <td className="p-3 tnum">
@@ -298,6 +353,30 @@ export function ItemCardPage() {
                         )}
                       </tr>
                     ))}
+                    {data.movements.length === 0 && (
+                      <tr data-span>
+                        <td className="p-4 text-center text-muted" colSpan={8}>
+                          {t('itemCard.noMovements')}
+                        </td>
+                      </tr>
+                    )}
+                    <tr data-span className="bg-surface-2 text-muted">
+                      <td className="p-3 tnum">{formatDate(data.to, locale)}</td>
+                      <td className="p-3" colSpan={2}>
+                        {t('itemCard.closing')}
+                      </td>
+                      {!warehouseId && <td className="hidden p-3 lg:table-cell" />}
+                      <td className="p-3 text-end tnum text-positive">
+                        {formatNumber(data.totalIn, locale)}
+                      </td>
+                      <td className="p-3 text-end tnum text-warning">
+                        {formatNumber(data.totalOut, locale)}
+                      </td>
+                      <td className="p-3 text-end font-semibold tnum text-fg">
+                        {formatNumber(data.closingBalance, locale)}
+                      </td>
+                      {seeCosts && <td className="hidden p-3 md:table-cell" />}
+                    </tr>
                   </tbody>
                 </table>
               </TableColumns>
@@ -551,6 +630,108 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     <div className="flex items-center justify-between">
       <dt className="text-muted">{label}</dt>
       <dd className={`tnum ${strong ? 'font-semibold' : ''}`}>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The from/to days of the card (owner, 2026-11-10: stepping a date with the arrow keys reloaded at
+ * every step): typed freely, applied once the typing settles, on leaving the box or on Enter.
+ */
+function PeriodInputs({
+  from,
+  to,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  const { t } = useT();
+  const [draft, setDraft] = useState({ from, to });
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A period changed from outside (back to this page, another link) shows in the boxes.
+  useEffect(() => setDraft({ from, to }), [from, to]);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  const valid = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= '2000-01-01';
+  function apply(next = draft) {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (!valid(next.from) || !valid(next.to)) return;
+    const [a, b] = next.from <= next.to ? [next.from, next.to] : [next.to, next.from];
+    if (a !== from || b !== to) onChange(a, b);
+  }
+  function type(patch: Partial<typeof draft>) {
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => apply(next), 800);
+  }
+  const box = (key: 'from' | 'to', label: string) => (
+    <label className="block">
+      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+      <input
+        type="date"
+        className={field}
+        value={draft[key]}
+        onChange={(e) => type({ [key]: e.target.value })}
+        onBlur={() => apply()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') apply();
+        }}
+      />
+    </label>
+  );
+  return (
+    <>
+      {box('from', t('report.from'))}
+      {box('to', t('report.to'))}
+    </>
+  );
+}
+
+/** Whose a movement is: the customer or supplier (code and name), or a transfer's other warehouse. */
+function Whose({ m }: { m: StockMovement }) {
+  const { t } = useT();
+  if (m.partyName)
+    return (
+      <span className="block text-xs text-muted">
+        <CodeName code={m.partyCode} name={m.partyName} />
+      </span>
+    );
+  if (m.otherPlace)
+    return (
+      <span className="block text-xs text-muted">
+        {t(m.type === 'TRANSFER_OUT' ? 'itemCard.toPlace' : 'itemCard.fromPlace').replace(
+          '{w}',
+          m.otherPlace,
+        )}
+      </span>
+    );
+  return null;
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  tone = '',
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className={`mt-0.5 font-semibold tnum ${tone}`}>{value}</dd>
+      {sub && <dd className="truncate text-xs text-muted tnum">{sub}</dd>}
     </div>
   );
 }

@@ -159,9 +159,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'products:create',
           'products:edit',
           'products:close',
+          'products:delete',
           'products:barcodes',
           'products:images',
           'prices:edit',
+          'prices:bulk_edit',
         ],
       },
       {

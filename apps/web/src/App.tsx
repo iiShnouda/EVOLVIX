@@ -47,6 +47,7 @@ import { CatalogSetupPage } from './pages/CatalogSetupPage';
 import { ChatPage } from './pages/ChatPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
+import { BulkPricesPage } from './pages/BulkPricesPage';
 import { AddItemsPage } from './pages/AddItemsPage';
 import { useCan } from './lib/can';
 import { ModelsPage } from './pages/ModelsPage';
@@ -335,6 +336,7 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/price-lists" element={<InventoryTabRoute tab="pricelists" />} />
       <Route path="/inventory/products/new" element={<NewItemsRoute />} />
       <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
+      <Route path="/inventory/supplier-prices" element={<BulkPricesPage />} />
       <Route path="/inventory/models" element={<ModelsPage />} />
       <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
       <Route path="/inventory/models/:id" element={<ModelEditorPage />} />

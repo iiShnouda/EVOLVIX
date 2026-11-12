@@ -120,9 +120,11 @@ export type Permission =
   | 'products:create'
   | 'products:edit'
   | 'products:close'
+  | 'products:delete'
   | 'products:barcodes'
   | 'products:images'
   | 'prices:edit'
+  | 'prices:bulk_edit'
   | 'inventory:total_items'
   | 'inventory:total_quantity'
   | 'inventory:total_sale_value'
@@ -1506,6 +1508,11 @@ export interface StockMovement {
   unitCost: number;
   avgCostAfter: number;
   note?: string | null;
+  /** Whose it is (item card): the customer or supplier of its invoice or return. */
+  partyCode?: number | null;
+  partyName?: string | null;
+  /** A transfer's other warehouse: where it went to, or came from. */
+  otherPlace?: string | null;
 }
 
 /** Item card (كارت الصنف) for one item over a period. */
@@ -1586,6 +1593,66 @@ export interface ItemCard {
   /** From its last purchase: the supplier's discount (costs:view) and the margin (profit:view), %. */
   supplierDiscountPercent?: number | null;
   marginPercent?: number | null;
+  /** What came in and went out before the period (opening = in − out). */
+  inBefore: number;
+  outBefore: number;
+  /** What a piece cost on its latest purchase (costs:view). */
+  lastCost?: LastCost | null;
+}
+
+/** One item of a supplier for changing its prices at once (minor units; as permitted). */
+export interface BulkPriceItem {
+  id: string;
+  sku: string;
+  name: string;
+  supplierCode?: string | null;
+  departmentName?: string | null;
+  groupName?: string | null;
+  seasonName?: string | null;
+  unit?: string | null;
+  stockOnHand: number;
+  supplyPrice?: number | null;
+  salePrice?: number | null;
+  avgCost?: number | null;
+}
+
+export interface BulkPriceChange {
+  /** pct (+/−), amt (+/− in the currency, per base unit), or for the selling price margin (% over supply). */
+  mode: 'pct' | 'amt' | 'margin';
+  value: number;
+}
+
+export interface BulkPriceRequest {
+  productIds: string[];
+  supplierId?: string;
+  supply?: BulkPriceChange | null;
+  sale?: BulkPriceChange | null;
+  /** Round selling prices up to this many whole currency units (0 = none). */
+  round?: number;
+}
+
+export interface BulkPriceRow {
+  id: string;
+  sku: string;
+  name: string;
+  supplyBefore?: number | null;
+  supplyAfter?: number | null;
+  saleBefore?: number | null;
+  saleAfter?: number | null;
+  changed: boolean;
+}
+
+export interface BulkPriceResult {
+  changed: number;
+  rows: BulkPriceRow[];
+}
+
+export interface LastCost {
+  unitCost: number;
+  /** ISO instant. */
+  date: string;
+  reference?: string | null;
+  documentId?: string | null;
 }
 
 /** Stock of one item held in one warehouse. */

@@ -38,6 +38,7 @@ export const LOOKUPS = {
       'products:create',
       'products:edit',
       'inventory:valuation_suppliers',
+      'prices:bulk_edit',
       'labels:print',
       'ai:scan_purchase',
       'ai:scan_cheques',
@@ -57,6 +58,7 @@ export const LOOKUPS = {
     ],
     [
       'prices:edit',
+      'prices:bulk_edit',
       'reports:items',
       'reports:profit',
       'statement:warehouses',

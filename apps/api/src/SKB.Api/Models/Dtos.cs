@@ -316,7 +316,8 @@ public record InventoryTotalsDto(int? Items, long? Quantity, long? SaleValue, lo
 public record StockMovementDto(
     string Id, string Date, string Type, string BranchName, string WarehouseId, string WarehouseName,
     string? Reference, string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
-    long UnitCost, long AvgCostAfter, string? Note);
+    long UnitCost, long AvgCostAfter, string? Note,
+    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null);
 
 /// <summary>Stock of one item (or of everything) held in one warehouse.</summary>
 public record WarehouseStockDto(string WarehouseId, string Name, string BranchName, int Quantity, long Value);
@@ -328,7 +329,11 @@ public record ItemCardDto(
     InventoryItemDto Item, string From, string To, string? WarehouseId,
     int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
     StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency,
-    decimal? SupplierDiscountPercent = null, decimal? MarginPercent = null);
+    decimal? SupplierDiscountPercent = null, decimal? MarginPercent = null,
+    int InBefore = 0, int OutBefore = 0, LastCostDto? LastCost = null);
+
+/// <summary>What a piece cost on the item's latest purchase (per base unit), when and on which invoice.</summary>
+public record LastCostDto(long UnitCost, string Date, string? Reference, string? DocumentId);
 
 /// <summary>
 /// One invoice line of an item, on its card (owner, 2026-10-02: the item's whole story). Quantities
@@ -707,9 +712,28 @@ public record UpdateProductRequest(
     string? Name = null, string? Sku = null,
     string? CategoryId = null, int? ReorderLevel = null, bool? IsActive = null, ItemUnitRequest[]? Units = null,
     string? SupplierId = null, string? SupplierCode = null, string? DepartmentId = null, string? SeasonId = null,
-    string? GroupId = null);
+    string? GroupId = null, string? SizeId = null, string? ColorId = null);
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
+
+/// <summary>One item of a supplier for changing its prices at once; supply price and average cost as permitted.</summary>
+public record BulkPriceItemDto(string Id, string Sku, string Name, string? SupplierCode, string? DepartmentName,
+    string? GroupName, string? SeasonName, string? Unit, int StockOnHand, long? SupplyPrice, long? SalePrice,
+    long? AvgCost);
+
+/// <param name="Mode">pct (a percent, + or −), amt (an amount in the currency, + or −, per base unit) or,
+/// for the selling price, margin (a percent over the new supply price).</param>
+public record BulkPriceChange(string Mode, decimal Value);
+
+/// <param name="Round">Round selling prices up to this many whole currency units (0 = as worked out).</param>
+public record BulkPriceRequest(string[]? ProductIds, string? SupplierId = null, BulkPriceChange? Supply = null,
+    BulkPriceChange? Sale = null, int Round = 0);
+
+/// <summary>An item's base-unit prices before and after (minor units).</summary>
+public record BulkPriceRowDto(string Id, string Sku, string Name, long? SupplyBefore, long? SupplyAfter,
+    long? SaleBefore, long? SaleAfter, bool Changed);
+
+public record BulkPriceResultDto(int Changed, BulkPriceRowDto[] Rows);
 
 /// <param name="Own">The item's (or model's) own price; null when it inherits.</param>
 /// <param name="Effective">What it charges at that level, however it was worked out (null = unpriced).</param>

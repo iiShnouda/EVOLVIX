@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { formatNumber, type ProductDetail } from '@skb/shared';
+import { formatMoney, formatNumber, toMinor, type ProductDetail } from '@skb/shared';
 import { Badge, Button, Card, PageHeader, Spinner } from '../components/ui';
 import { NameFields, changedNames, namesFrom, type NameValues } from '../components/NameFields';
 import {
@@ -31,6 +31,7 @@ import {
   useVariantOptions,
   useCompanySettings,
   useCreateProduct,
+  useDeleteProduct,
   usePriceLevels,
   useProductDetail,
   useSetProductPrices,
@@ -39,6 +40,8 @@ import {
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
 import { GroupPicker } from '../components/GroupTree';
+import { AdjButtons, amtOf, pctOf, type Adj } from './AddItemsPage';
+import { confirm } from '../lib/confirm';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
@@ -110,8 +113,11 @@ export function ProductEditorPage() {
   const [prices, setPricesInput] = useState<PriceInputs>({});
   const [loadedId, setLoadedId] = useState<string | null>(null);
   const [withVariant, setWithVariant] = useState(false);
-  const [marginPct, setMarginPct] = useState('');
-  const [marginAmt, setMarginAmt] = useState('');
+  // The supplier's discount and the margin, as on the new-item form (owner, 2026-11-10: editing is
+  // the same form): they work out the sale price; the item keeps the prices.
+  const [discounts, setDiscounts] = useState<Adj[]>([]);
+  const [margins, setMargins] = useState<Adj[]>([]);
+  const remove = useDeleteProduct();
 
   // Fill the form once the item has loaded (and again after a save returns fresh data).
   const d = detail.data;
@@ -125,6 +131,9 @@ export function ProductEditorPage() {
     setReorder(String(d.reorderLevel));
     setSupplierId(d.supplierId ?? '');
     setSupplierCode(d.supplierCode ?? '');
+    setSizeId(d.sizeId ?? '');
+    setColorId(d.colorId ?? '');
+    setWithVariant(!!(d.sizeId || d.colorId));
     setRows(rowsFrom(d));
     setPricesInput(inputsFrom(d.prices));
     setLoadedId(loadKey(d));
@@ -172,25 +181,39 @@ export function ProductEditorPage() {
       ? { cost: cellKey(baseUnit, purchaseLevel.id), sale: cellKey(baseUnit, saleLevel.id) }
       : null;
   const seePurchase = can('costs:view') || can('purchases:view');
-  const quickPrices = (patch: { cost?: string; pct?: string; amt?: string }) => {
+  // The cost after the supplier's discount, and the sale price from the margin worked out on the
+  // price before the discount and added to the cost after it, rounded up to a whole pound — as on
+  // the new-item form.
+  const before = quick ? Math.max(0, toMinor(Number(prices[quick.cost]) || 0)) : 0;
+  const discount = Math.min(
+    before,
+    Math.round((before * pctOf(discounts)) / 100) + amtOf(discounts),
+  );
+  const after = before - discount;
+  const quickPrices = (patch: { cost?: string; discounts?: Adj[]; margins?: Adj[] }) => {
     if (!quick) return;
-    const pctValue = patch.pct ?? marginPct;
-    const amtValue = patch.amt ?? marginAmt;
-    if (patch.pct !== undefined) setMarginPct(patch.pct);
-    if (patch.amt !== undefined) setMarginAmt(patch.amt);
+    const d2 = patch.discounts ?? discounts;
+    const m2 = patch.margins ?? margins;
+    if (patch.discounts) setDiscounts(patch.discounts);
+    if (patch.margins) setMargins(patch.margins);
     setPricesInput((p) => {
       const cost = patch.cost ?? p[quick.cost] ?? '';
       const next = { ...p, [quick.cost]: cost };
-      if ((pctValue || amtValue) && Number(cost) > 0) {
-        const sale = Number(cost) * (1 + (Number(pctValue) || 0) / 100) + (Number(amtValue) || 0);
-        next[quick.sale] = String(Math.ceil(Math.round(sale * 100) / 100)); // whole pounds, rounded up
+      const b = Math.max(0, toMinor(Number(cost) || 0));
+      if (m2.length && b > 0) {
+        const a = b - Math.min(b, Math.round((b * pctOf(d2)) / 100) + amtOf(d2));
+        const sale = Math.ceil((a + Math.round((b * pctOf(m2)) / 100) + amtOf(m2)) / 100);
+        next[quick.sale] = String(sale);
       }
       return next;
     });
   };
 
   const isVariant = !!d?.modelId;
-  const error = (create.error ?? update.error ?? setPrices.error) as ApiError | null;
+  const error = (create.error ??
+    update.error ??
+    setPrices.error ??
+    remove.error) as ApiError | null;
   const pending = create.isPending || update.isPending || setPrices.isPending;
   const typedNames = changedNames(names, isNew ? null : d?.name);
   const unitsInput = unitRowsToInput(rows);
@@ -218,6 +241,8 @@ export function ProductEditorPage() {
         nextReorder !== d.reorderLevel ||
         supplierId !== (d.supplierId ?? '') ||
         supplierCode.trim() !== (d.supplierCode ?? '') ||
+        sizeId !== (d.sizeId ?? '') ||
+        colorId !== (d.colorId ?? '') ||
         JSON.stringify(unitRowsToInput(rows)) !== JSON.stringify(unitRowsToInput(rowsFrom(d))) ||
         priceList.length > 0);
 
@@ -294,6 +319,8 @@ export function ProductEditorPage() {
         if (!isVariant && supplierId !== (d.supplierId ?? '')) input.supplierId = supplierId;
         if (!isVariant && supplierCode.trim() !== (d.supplierCode ?? ''))
           input.supplierCode = supplierCode.trim();
+        if (!isVariant && sizeId !== (d.sizeId ?? '')) input.sizeId = sizeId;
+        if (!isVariant && colorId !== (d.colorId ?? '')) input.colorId = colorId;
         const before = JSON.stringify(
           unitRowsToInput(rowsFrom(d)).sort((a, b) => a.factor - b.factor),
         );
@@ -305,6 +332,23 @@ export function ProductEditorPage() {
         await setPrices.mutateAsync({ id: d.id, input: { prices: priceList } });
       work.finished();
       navigate(`/inventory/items/${d.id}`);
+    } catch {
+      /* shown below */
+    }
+  }
+
+  /** Delete an item made by mistake that nothing has used (owner, 2026-11-10). */
+  async function deleteItem() {
+    if (!d) return;
+    const yes = await confirm({
+      message: t('item.deleteConfirm').replace('{x}', d.name),
+      danger: true,
+    });
+    if (!yes) return;
+    try {
+      await remove.mutateAsync(d.id);
+      work.finished();
+      navigate('/inventory');
     } catch {
       /* shown below */
     }
@@ -346,10 +390,14 @@ export function ProductEditorPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,340px)]">
         <div className="min-w-0 space-y-4">
-          {/* Laid out like the item on the add-items screen (owner, 2026-10-17): the place in the
-              tree, then name, code and reorder level, the season, the prices with the margin,
-              size and color behind a button, the supplier and the photo. */}
+          {/* The same form as a new item on the purchase screen (owner, 2026-10-17 and
+              2026-11-10): the place in the tree, then name, code and unit, size and color behind a
+              button, the supplier's price, discount and margin making the sale price, the reorder
+              level; then the season, supplier and its code for the item. */}
           <Card className="space-y-3">
+            <p className="text-sm font-semibold">
+              {isNew ? t('additems.newItem') : t('item.edit')}
+            </p>
             {isVariant && d ? (
               <div className="rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
                 <p className="text-xs text-muted">{t('item.variantOf')}</p>
@@ -393,8 +441,8 @@ export function ProductEditorPage() {
                 />
               </div>
             )}
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
-              {!isVariant && (
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_10rem]">
+              {!isVariant ? (
                 <NameFields
                   values={names}
                   onChange={setNames}
@@ -402,6 +450,8 @@ export function ProductEditorPage() {
                   placeholder={isNew ? t('item.namePlaceholder') : undefined}
                   autoFocus={isNew}
                 />
+              ) : (
+                <span />
               )}
               <label className="block">
                 <span className="mb-0.5 block text-xs text-muted">{t('additems.code')}</span>
@@ -415,34 +465,93 @@ export function ProductEditorPage() {
                 />
               </label>
               <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('item.reorder')}</span>
-                <input
-                  type="number"
-                  min={0}
-                  className={`${field} tnum`}
-                  value={reorder}
-                  disabled={!canFields}
-                  onChange={(e) => setReorder(e.target.value)}
-                />
-              </label>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
+                <span className="mb-0.5 block text-xs text-muted">{t('invoice.unit')}</span>
                 <select
                   className={field}
-                  value={seasonId}
-                  disabled={!canFields}
-                  onChange={(e) => setSeasonId(e.target.value)}
+                  value={rows[0]?.unitId ?? ''}
+                  disabled={!canFields || isVariant || !!d?.hasMovements}
+                  onChange={(e) =>
+                    setRows((r) =>
+                      r.length
+                        ? [{ ...r[0]!, unitId: e.target.value }, ...r.slice(1)]
+                        : [{ unitId: e.target.value, factor: 1, barcode: '' }],
+                    )
+                  }
                 >
-                  <option value="">—</option>
-                  {(seasons.data ?? []).map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.name}
-                    </option>
-                  ))}
+                  {(units.data ?? [])
+                    .filter((u) => u.isActive || u.id === rows[0]?.unitId)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
                 </select>
               </label>
+            </div>
+            {!isVariant &&
+              (withVariant ? (
+                <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('setup.sizeName')}</span>
+                    <select
+                      className={field}
+                      value={sizeId}
+                      disabled={!canFields}
+                      onChange={(e) => setSizeId(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(options.data ?? [])
+                        .filter((o) => o.kind === 'SIZE' && (o.isActive || o.id === sizeId))
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-0.5 block text-xs text-muted">{t('setup.colorName')}</span>
+                    <select
+                      className={field}
+                      value={colorId}
+                      disabled={!canFields}
+                      onChange={(e) => setColorId(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {(options.data ?? [])
+                        .filter((o) => o.kind === 'COLOR' && (o.isActive || o.id === colorId))
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!canFields}
+                    onClick={() => {
+                      setWithVariant(false);
+                      setSizeId('');
+                      setColorId('');
+                    }}
+                  >
+                    {t('additems.hideVariant')}
+                  </Button>
+                </div>
+              ) : (
+                canFields && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                    onClick={() => setWithVariant(true)}
+                  >
+                    {t('additems.addVariant')}
+                  </button>
+                )
+              ))}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {quick && seePurchase && (
                 <label className="block">
                   <span className="mb-0.5 block text-xs text-muted">
@@ -459,31 +568,27 @@ export function ProductEditorPage() {
                   />
                 </label>
               )}
-              {quick && seePurchase && (
-                <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('additems.marginPct')}</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={marginPct}
-                    disabled={!canPrices}
-                    onChange={(e) => quickPrices({ pct: e.target.value })}
-                  />
-                </label>
+              {quick && seePurchase && canPrices && (
+                <AdjButtons
+                  label={t('additems.supplierDiscount')}
+                  items={discounts}
+                  onChange={(next) => quickPrices({ discounts: next })}
+                />
               )}
               {quick && seePurchase && (
                 <label className="block">
-                  <span className="mb-0.5 block text-xs text-muted">{t('additems.marginAmt')}</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className={`${field} tnum`}
-                    value={marginAmt}
-                    disabled={!canPrices}
-                    onChange={(e) => quickPrices({ amt: e.target.value })}
-                  />
+                  <span className="mb-0.5 block text-xs text-muted">{t('additems.costAfter')}</span>
+                  <div className={`${field} grid items-center bg-surface-2 tnum`}>
+                    {formatMoney(after, currency, locale)}
+                  </div>
                 </label>
+              )}
+              {quick && seePurchase && canPrices && (
+                <AdjButtons
+                  label={t('additems.margin')}
+                  items={margins}
+                  onChange={(next) => quickPrices({ margins: next })}
+                />
               )}
               {quick && (
                 <label className="block">
@@ -495,68 +600,61 @@ export function ProductEditorPage() {
                     className={`${field} tnum`}
                     value={prices[quick.sale] ?? ''}
                     disabled={!canPrices}
-                    onChange={(e) =>
-                      setPricesInput((p) => ({ ...p, [quick.sale]: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setMargins([]);
+                      setPricesInput((p) => ({ ...p, [quick.sale]: e.target.value }));
+                    }}
                   />
                 </label>
               )}
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('item.reorder')}</span>
+                <input
+                  type="number"
+                  min={0}
+                  className={`${field} tnum`}
+                  value={reorder}
+                  disabled={!canFields}
+                  onChange={(e) => setReorder(e.target.value)}
+                />
+              </label>
             </div>
-            {isNew &&
-              (withVariant ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('setup.sizeName')}</span>
-                    <select
-                      className={field}
-                      value={sizeId}
-                      onChange={(e) => setSizeId(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {(options.data ?? [])
-                        .filter((o) => o.kind === 'SIZE' && o.isActive)
-                        .map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-0.5 block text-xs text-muted">{t('setup.colorName')}</span>
-                    <select
-                      className={field}
-                      value={colorId}
-                      onChange={(e) => setColorId(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {(options.data ?? [])
-                        .filter((o) => o.kind === 'COLOR' && o.isActive)
-                        .map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-                  onClick={() => setWithVariant(true)}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('item.season')}</span>
+                <select
+                  className={field}
+                  value={seasonId}
+                  disabled={!canFields}
+                  onChange={(e) => setSeasonId(e.target.value)}
                 >
-                  {t('additems.addVariant')}
-                </button>
-              ))}
-            <SupplierFields
-              supplierId={supplierId}
-              currentName={d?.supplierName}
-              onSupplier={setSupplierId}
-              disabled={!canFields || isVariant}
-            />
+                  <option value="">—</option>
+                  {(seasons.data ?? []).map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <SupplierFields
+                supplierId={supplierId}
+                currentName={d?.supplierName}
+                onSupplier={setSupplierId}
+                disabled={!canFields || isVariant}
+              />
+              {/* The factory's own code (model number) for the item: typed, changed or cleared. */}
+              <label className="block">
+                <span className="mb-0.5 block text-xs text-muted">{t('catalog.supplierCode')}</span>
+                <input
+                  className={field}
+                  dir="auto"
+                  value={supplierCode}
+                  disabled={!canFields || isVariant}
+                  onChange={(e) => setSupplierCode(e.target.value)}
+                />
+              </label>
+            </div>
           </Card>
-
           <Card className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               {t('item.units')}
@@ -629,6 +727,17 @@ export function ProductEditorPage() {
             >
               {pending ? t('item.saving') : t('item.save')}
             </Button>
+            {d && can('products:delete') && !d.hasMovements && !isVariant && (
+              <Button
+                className="w-full"
+                variant="dangerGhost"
+                icon="trash"
+                disabled={pending || remove.isPending}
+                onClick={deleteItem}
+              >
+                {t('item.delete')}
+              </Button>
+            )}
             {d && can('products:close') && (
               <>
                 <Button

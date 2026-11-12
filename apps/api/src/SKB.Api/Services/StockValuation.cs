@@ -78,7 +78,8 @@ public sealed class StockValuation
 
     /// <summary>
     /// State just before <paramref name="end"/>, replayed from the movement ledger: each warehouse's
-    /// running balance after its last movement, and each pool's average after its last movement.
+    /// quantity (its movements dated before then, added up), and each pool's average after its last
+    /// movement.
     /// </summary>
     public async Task<State> AtAsync(DateTime end, Guid? productId = null)
     {
@@ -86,12 +87,14 @@ public sealed class StockValuation
         var all = productId is null;
         var pid = productId ?? Guid.Empty;
 
+        // What each warehouse held: its movements dated before the moment, added up. The balance kept
+        // on a movement is the one when it was typed, which a document dated on an earlier day
+        // (Backdate) doesn't fit, so it isn't used here.
         var places = await _db.Database.SqlQuery<PlaceRow>($"""
-            SELECT DISTINCT ON (m."ProductId", m."WarehouseId")
-                   m."ProductId", m."WarehouseId", m."WarehouseBalanceAfter" AS "Quantity"
+            SELECT m."ProductId", m."WarehouseId", CAST(SUM(m."Quantity") AS integer) AS "Quantity"
             FROM "StockMovements" m
             WHERE m."CreatedAt" < {end} AND ({all} OR m."ProductId" = {pid})
-            ORDER BY m."ProductId", m."WarehouseId", m."CreatedAt" DESC
+            GROUP BY m."ProductId", m."WarehouseId"
             """).ToListAsync();
         foreach (var r in places.Where(r => r.Quantity != 0)) state.Quantity[(r.ProductId, r.WarehouseId)] = r.Quantity;
 
