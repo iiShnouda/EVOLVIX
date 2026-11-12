@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatDateTime, type ChatConversation, type ChatPerson } from '@skb/shared';
+import {
+  companyDay,
+  companyToday,
+  formatClock,
+  formatDateTime,
+  formatDayMonth,
+  type ChatConversation,
+  type ChatPerson,
+} from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
@@ -510,9 +518,7 @@ function MutesSheet({ me, onClose }: { me: string; onClose: () => void }) {
 
 /** In the list, short: the time for today's, else the day and month (the full time is its tooltip). */
 function listTime(iso: string, locale: 'ar' | 'en'): string {
-  const at = new Date(iso);
-  const intl = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
-  return at.toDateString() === new Date().toDateString()
-    ? at.toLocaleTimeString(intl, { hour: 'numeric', minute: '2-digit' })
-    : at.toLocaleDateString(intl, { day: 'numeric', month: 'short' });
+  return companyDay(iso) === companyToday()
+    ? formatClock(iso, locale)
+    : formatDayMonth(iso, locale);
 }

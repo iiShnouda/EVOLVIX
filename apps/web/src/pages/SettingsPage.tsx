@@ -5,8 +5,10 @@ import {
   TIME_ZONES,
   companyToday,
   findCountry,
+  formatClock,
   formatDateTime,
   type CompanySettings,
+  type Locale,
   type Permission,
 } from '@skb/shared';
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
@@ -45,16 +47,8 @@ function offsetOf(zone: string): string {
 }
 
 /** The time of day now in a zone. */
-function clockIn(zone: string, locale: string): string {
-  try {
-    return new Date().toLocaleTimeString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: zone,
-    });
-  } catch {
-    return '';
-  }
+function clockIn(zone: string, locale: Locale): string {
+  return formatClock(new Date().toISOString(), locale, zone);
 }
 
 export function SettingsPage() {

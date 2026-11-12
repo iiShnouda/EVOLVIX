@@ -68,76 +68,80 @@ export function addMonths(day: string, n: number): string {
 const PLAIN_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Format a date per locale (date only). A plain yyyy-MM-dd is shown as that day; an instant is
- * shown on the company's day.
+ * Every date is shown in numbers only, day/month/year, in both languages (owner, 2026-11-10:
+ * "التوريخ في كل مكان ... ارقام فقط"): 24/10/2026, Latin digits like every other number. Times are
+ * on the 24-hour clock, to the second at most (no milliseconds).
  */
-export function formatDate(iso: string, locale: Locale, numeric = false): string {
-  const intlLocale = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
-  const plain = PLAIN_DAY.test(iso);
-  try {
-    return new Intl.DateTimeFormat(intlLocale, {
-      year: 'numeric',
-      // `numeric`: 30/09/2026, for dense tables.
-      month: numeric ? '2-digit' : 'short',
-      day: numeric ? '2-digit' : 'numeric',
-      timeZone: plain ? 'UTC' : companyZone,
-    }).format(new Date(plain ? `${iso}T00:00:00Z` : iso));
-  } catch {
-    return iso;
-  }
+function numericLocale(locale: Locale): string {
+  return locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB';
 }
 
-/** The time of an instant on the company's clock, to the millisecond (e.g. 14:05:09.123). */
-export function formatTime(iso: string, locale: Locale): string {
+function format(
+  when: string,
+  locale: Locale,
+  parts: Intl.DateTimeFormatOptions,
+  zone?: string,
+): string {
+  const plain = PLAIN_DAY.test(when);
   try {
-    return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3,
-      hour12: false,
-      timeZone: companyZone,
-    }).format(new Date(iso));
+    return new Intl.DateTimeFormat(numericLocale(locale), {
+      ...parts,
+      ...(parts.hour ? { hourCycle: 'h23' as const } : {}),
+      timeZone: zone ?? (plain ? 'UTC' : companyZone),
+    }).format(new Date(plain ? `${when}T00:00:00Z` : when));
   } catch {
-    return iso;
-  }
-}
-
-/** An instant's day and time to the minute, on the company's clock (printed documents). */
-export function formatDateHM(iso: string, locale: Locale): string {
-  try {
-    return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: companyZone,
-    }).format(new Date(iso));
-  } catch {
-    return iso;
+    return when;
   }
 }
 
 /**
- * Format an instant per locale (date + time), on the company's clock: to the second and the
- * millisecond (owner, 2026-10-01: everything done is recorded that exactly).
+ * A date, day/month/year (24/10/2026). A plain yyyy-MM-dd is shown as that day; an instant is
+ * shown on the company's day. The third argument is no longer used: every date is numeric.
  */
+export function formatDate(iso: string, locale: Locale, _numeric?: boolean): string {
+  return format(iso, locale, { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+/** A month (yyyy-MM, or any day of it) as month/year: 10/2026. */
+export function formatMonth(month: string, locale: Locale): string {
+  const day = /^\d{4}-\d{2}$/.test(month) ? `${month}-01` : month.slice(0, 10);
+  return format(day, locale, { year: 'numeric', month: '2-digit' });
+}
+
+/** A day without its year, day/month (24/10): chart labels and short lists. */
+export function formatDayMonth(iso: string, locale: Locale): string {
+  return format(iso, locale, { month: '2-digit', day: '2-digit' });
+}
+
+/** The time of an instant on the company's clock, to the second (e.g. 14:05:09). */
+export function formatTime(iso: string, locale: Locale): string {
+  return format(iso, locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+/** The hour and minute of an instant (14:05), on the company's clock or the zone given. */
+export function formatClock(iso: string, locale: Locale, zone?: string): string {
+  return format(iso, locale, { hour: '2-digit', minute: '2-digit' }, zone);
+}
+
+/** An instant's day and time to the minute, on the company's clock (printed documents). */
+export function formatDateHM(iso: string, locale: Locale): string {
+  return format(iso, locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** An instant's day and time to the second, on the company's clock (24/10/2026, 14:05:09). */
 export function formatDateTime(iso: string, locale: Locale): string {
-  const intlLocale = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
-  try {
-    return new Intl.DateTimeFormat(intlLocale, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3,
-      timeZone: companyZone,
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
+  return format(iso, locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }

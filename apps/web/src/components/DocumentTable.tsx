@@ -81,7 +81,7 @@ export function DocumentTable({
       cell: (d) => <span className="font-medium">{d.number}</span>,
     },
     { key: 'date', label: 'common.date', cell: (d) => formatDate(d.issueDate, locale, true) },
-    // When it was made, to the millisecond (owner, 2026-10-01).
+    // When it was made, to the second (owner, 2026-11-10: no milliseconds anywhere).
     { key: 'time', label: 'common.time', cell: (d) => formatTime(d.issueDate, locale) },
     { key: 'code', label: 'common.code', cell: (d) => d.partyCode ?? '' },
     {

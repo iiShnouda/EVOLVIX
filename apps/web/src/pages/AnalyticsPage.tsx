@@ -4,6 +4,7 @@ import {
   formatDate,
   formatDateTime,
   formatMoney,
+  formatMonth,
   formatNumber,
   type Permission,
   type TranslationKey,
@@ -147,24 +148,12 @@ function MonthlyTab() {
   const m = (v: number) => formatMoney(v, currency, locale);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
-  const intl = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US';
-  // A period's name: "October 2026" for a month, "2026" for a year.
+  // A period's name in numbers (owner, 2026-11-10): "10/2026" for a month, "2026" for a year.
   const monthName = (period: string) =>
     period.length === 4
       ? formatNumber(Number(period), locale).replace(/[,٬]/g, '')
-      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, {
-          month: 'long',
-          year: 'numeric',
-          timeZone: 'UTC',
-        });
-  const shortName = (period: string) =>
-    period.length === 4
-      ? monthName(period)
-      : new Date(`${period}-15T12:00:00Z`).toLocaleDateString(intl, {
-          month: 'short',
-          year: '2-digit',
-          timeZone: 'UTC',
-        });
+      : formatMonth(period, locale);
+  const shortName = monthName;
   const subtitle = yearly
     ? `${t('analytics.years')}: ${formatNumber(years, locale)}`
     : `${t('analytics.months')}: ${formatNumber(months, locale)}`;

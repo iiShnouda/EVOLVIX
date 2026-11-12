@@ -98,8 +98,8 @@ function settleColumns(src: HTMLTableElement, dst: HTMLTableElement, reordered: 
   const hidden = new Set<number>();
   let col = 0;
   for (const cell of Array.from(head.cells)) {
-    // Hidden on the screen, or shown but left off paper by the person (TableColumns).
-    if (getComputedStyle(cell).display === 'none' || cell.hasAttribute('data-print-off'))
+    // Hidden on the screen (TableColumns): the paper carries the columns as they are shown.
+    if (getComputedStyle(cell).display === 'none')
       for (let k = 0; k < cell.colSpan; k++) hidden.add(col + k);
     col += cell.colSpan;
   }
