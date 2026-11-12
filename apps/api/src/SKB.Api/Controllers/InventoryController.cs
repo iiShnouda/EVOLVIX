@@ -21,7 +21,8 @@ namespace SKB.Api.Controllers;
 [Authorize]
 public sealed class InventoryController : ControllerBase
 {
-    private const int MaxStocktakeLines = 1000;
+    private const int MaxStocktakeLines = 5000;
+    private const int MaxSheetRows = 10000;
     private const int MaxCardRows = 2000;
     private const int MaxListRows = 500;
 
@@ -613,11 +614,86 @@ public sealed class InventoryController : ControllerBase
     }
 
     /// <summary>
-    /// Stocktake (الجرد) of one warehouse: post the counted quantity for each item. Only items whose
-    /// count differs from that warehouse's books move; gains and shrinkage are valued at the current
-    /// weighted-average cost. All lines share one ADJ- reference and commit together. The items are
-    /// locked while posting so a sale can't slip in between reading the book quantity and writing
-    /// the difference.
+    /// The count sheet (owner, 2026-11-10: "a branch, a warehouse, a department and a factory, any of
+    /// them together"): each item to count in each open warehouse in scope, with what the books say
+    /// there. One warehouse lists every active item (a piece found can be typed against any); several
+    /// list in each the items it holds or has held. People limited to departments count only theirs.
+    /// </summary>
+    [HttpGet("stocktake/sheet")]
+    [AnyPermission(Permissions.InventoryStocktake, Permissions.InventoryStocktakeView)]
+    public async Task<ActionResult<StocktakeSheetDto>> StocktakeSheet(
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null,
+        [FromQuery] string? departmentId = null, [FromQuery] string? supplierId = null,
+        [FromQuery] string? search = null)
+    {
+        var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
+        if (notFound is not null) return notFound;
+        Guid? branch = null;
+        if (Guid.TryParse(branchId, out var bid))
+        {
+            if (!Access.CanUseBranch(User, bid))
+                return NotFound(new { message = "Branch not found.", code = "branch_not_found" });
+            branch = bid;
+        }
+        var stores = await _warehouses.Visible(User).AsNoTracking().Include(w => w.Branch)
+            .Where(w => w.Kind == WarehouseKind.STORE && w.IsActive
+                        && (wid == null || w.Id == wid) && (branch == null || w.BranchId == branch))
+            .ToListAsync();
+        var storeIds = stores.Select(w => w.Id).ToList();
+
+        var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
+        if (Guid.TryParse(departmentId, out var dept)) q = q.Where(p => p.Category!.DepartmentId == dept);
+        if (Access.Departments(User) is { } mineDepts)
+            q = q.Where(p => p.Category!.DepartmentId == null || mineDepts.Contains(p.Category.DepartmentId.Value));
+        if (Guid.TryParse(supplierId, out var sup)) q = q.Where(p => p.SupplierId == sup);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            q = q.Where(p => p.Name.ToLower().Contains(s) || p.Sku.ToLower().Contains(s)
+                             || (p.SupplierCode != null && p.SupplierCode.ToLower().Contains(s))
+                             || p.Units.Any(u => u.Barcode != null && u.Barcode.ToLower().Contains(s)));
+        }
+        var products = await q.Include(p => p.Category).ThenInclude(c => c!.Department).Include(p => p.Supplier)
+            .Include(p => p.Units).ThenInclude(u => u.Unit).AsSplitQuery().ToDictionaryAsync(p => p.Id);
+        var ids = products.Keys.ToList();
+        var balances = storeIds.Count == 0 ? new()
+            : await _db.StockBalances.AsNoTracking()
+                .Where(b => storeIds.Contains(b.WarehouseId) && ids.Contains(b.ProductId))
+                .Select(b => new { b.ProductId, b.WarehouseId, b.Quantity }).ToListAsync();
+        var held = balances.ToDictionary(b => (b.ProductId, b.WarehouseId), b => b.Quantity);
+        var pairs = stores.Count == 1
+            ? products.Keys.Select(p => (Product: p, Warehouse: stores[0].Id))
+            : balances.Select(b => (Product: b.ProductId, Warehouse: b.WarehouseId));
+
+        var seeCosts = Costs.CanSee(User);
+        var pools = stores.Select(w => w.BranchId).Distinct().ToList();
+        var costs = seeCosts
+            ? await _db.StockCosts.AsNoTracking().Where(c => pools.Contains(c.PoolId) && ids.Contains(c.ProductId))
+                .ToDictionaryAsync(c => (c.ProductId, c.PoolId), c => c.AvgCost)
+            : new Dictionary<(Guid, Guid), long>();
+        var byId = stores.ToDictionary(w => w.Id);
+        var rows = pairs.Select(x =>
+            {
+                var p = products[x.Product];
+                var w = byId[x.Warehouse];
+                return new StocktakeSheetRowDto(p.Id.ToString(), w.Id.ToString(), Loc.Name(w), Loc.Name(w.Branch),
+                    p.Sku, Loc.Name(p), Loc.Name(p.Units.OrderBy(u => u.Factor).FirstOrDefault()?.Unit),
+                    p.Category?.Department is { } d ? Loc.Name(d) : Loc.Name(p.Category),
+                    p.Supplier?.Code, p.Supplier?.Name, held.GetValueOrDefault((p.Id, w.Id)),
+                    seeCosts ? costs.TryGetValue((p.Id, w.BranchId), out var c) ? c : p.CostPrice : null);
+            })
+            .OrderBy(r => r.Branch).ThenBy(r => r.Warehouse).ThenBy(r => r.Department).ThenBy(r => r.Code)
+            .ToList();
+        return Ok(new StocktakeSheetDto(rows.Take(MaxSheetRows).ToArray(), await CurrencyAsync(), rows.Count > MaxSheetRows));
+    }
+
+    /// <summary>
+    /// Stocktake (الجرد): post the counted quantity of each item in its warehouse — one warehouse, or
+    /// several at once (a whole branch, owner 2026-11-10). Only counts that differ from the books move;
+    /// gains and shrinkage are valued at the current weighted-average cost. All lines share one ADJ-
+    /// reference and commit together, with one journal entry per branch. A count made for a branch,
+    /// department or factory adjusts nothing outside it. The items are locked while posting so a sale
+    /// can't slip in between reading the book quantity and writing the difference.
     /// </summary>
     [HttpPost("stocktake")]
     [Authorize(Policy = Permissions.InventoryStocktake)]
@@ -628,55 +704,78 @@ public sealed class InventoryController : ControllerBase
         if (req.Lines.Length > MaxStocktakeLines)
             return BadRequest(new { message = $"At most {MaxStocktakeLines} items per stocktake.", code = "too_many_lines" });
 
-        var counted = new Dictionary<Guid, int>();
+        var places = new Dictionary<string, Warehouse>();
+        var counted = new Dictionary<(Guid Product, Guid Warehouse), int>();
+        var byId = new Dictionary<Guid, Warehouse>();
         foreach (var line in req.Lines)
         {
             if (!Guid.TryParse(line.ProductId, out var pid))
                 return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
             if (line.CountedQuantity < 0)
                 return BadRequest(new { message = "A counted quantity cannot be negative.", code = "bad_qty" });
-            if (!counted.TryAdd(pid, line.CountedQuantity))
+            var (warehouse, whError) = await _warehouses.ResolveAsync(User,
+                string.IsNullOrWhiteSpace(line.WarehouseId) ? req.WarehouseId : line.WarehouseId, places);
+            if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+            byId[warehouse!.Id] = warehouse;
+            if (!counted.TryAdd((pid, warehouse.Id), line.CountedQuantity))
                 return BadRequest(new { message = "An item is listed twice.", code = "duplicate_line" });
         }
 
-        var (warehouse, whError) = await _warehouses.ResolveAsync(User, req.WarehouseId);
-        if (whError is not null) return BadRequest(new { message = whError.Message, code = whError.Code });
+        // The count's scope: its branch, department and factory, and the person's own departments.
+        var productIds = counted.Keys.Select(k => k.Product).Distinct().ToList();
+        var facts = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.SupplierId, Department = p.Category!.DepartmentId }).ToListAsync();
+        if (facts.Count != productIds.Count)
+            return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
+        var outside = (Guid.TryParse(req.BranchId, out var scopeBranch) && byId.Values.Any(w => w.BranchId != scopeBranch))
+            || (Guid.TryParse(req.DepartmentId, out var scopeDept) && facts.Any(f => f.Department != scopeDept))
+            || (Guid.TryParse(req.SupplierId, out var scopeSupplier) && facts.Any(f => f.SupplierId != scopeSupplier))
+            || (Access.Departments(User) is { } mineDepts
+                && facts.Any(f => f.Department is Guid d && !mineDepts.Contains(d)));
+        if (outside)
+            return BadRequest(new { message = "An item counted is outside this stocktake.", code = "outside_stocktake" });
 
         var reason = req.Reason?.Trim();
         var note = string.IsNullOrEmpty(reason) ? null : reason[..Math.Min(500, reason.Length)];
 
         await using var tx = await _db.Database.BeginTransactionAsync();
-        var products = await _inventory.LockProductsAsync(counted.Keys);
-        if (products.Count != counted.Count)
+        var products = await _inventory.LockProductsAsync(productIds);
+        if (products.Count != productIds.Count)
             return BadRequest(new { message = "An item on the stocktake was not found.", code = "product_not_found" });
 
         var reference = await DocumentNumbers.NextAdjustmentAsync(_db);
-        long valueChange = 0, gains = 0, losses = 0;
+        long valueChange = 0;
+        var perBranch = new Dictionary<Guid, (long Gains, long Losses)>();
         var changed = 0;
-        foreach (var (pid, qty) in counted)
+        foreach (var ((pid, whId), qty) in counted)
         {
-            var delta = qty - _inventory.Available(pid, warehouse!.Id);
+            var warehouse = byId[whId];
+            var delta = qty - _inventory.Available(pid, whId);
             if (delta == 0) continue;
             var value = _inventory.Adjust(products[pid], warehouse, delta, reference, note);
             valueChange += value;
-            if (value > 0) gains += value; else losses -= value;
+            var (g, l) = perBranch.GetValueOrDefault(warehouse.BranchId);
+            perBranch[warehouse.BranchId] = value > 0 ? (g + value, l) : (g, l - value);
             changed++;
         }
         if (changed == 0)
             return BadRequest(new { message = "Counted quantities match the books — nothing to post.", code = "no_change" });
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
-        await _ledger.PostStocktakeAsync(reference, warehouse!.BranchId, gains, losses, staffId);
+        foreach (var (branchId, (gains, losses)) in perBranch)
+            await _ledger.PostStocktakeAsync(reference, branchId, gains, losses, staffId);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "stocktake", "stock_adjustment",
-            warehouse!.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
-            Request.Headers.UserAgent.ToString(), reference);
+        var names = string.Join(", ", byId.Values.Select(w => Loc.Name(w)).Distinct().OrderBy(n => n));
+        foreach (var branchId in perBranch.Keys)
+            await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "stocktake", "stock_adjustment",
+                branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(), reference, $"{reference} · {names}");
 
         var posted = await _db.StockMovements.AsNoTracking()
             .Where(m => m.Reference == reference).OrderBy(m => m.CreatedAt).ToListAsync();
-        return Ok(new StocktakeResultDto(reference, Loc.Name(warehouse), changed,
+        return Ok(new StocktakeResultDto(reference, names, changed,
             Costs.CanSee(User) ? valueChange : 0,
             (await ToMovementDtosAsync(posted, perWarehouse: true)).Select(m => Costs.Guard(User, m)).ToArray()));
     }

@@ -1782,10 +1782,35 @@ export interface ModelDetail {
   supplierCode?: string | null;
 }
 
+/** One item to count in one warehouse, with what the books say there; cost only with costs:view. */
+export interface StocktakeSheetRow {
+  productId: string;
+  warehouseId: string;
+  warehouse: string;
+  branch: string;
+  code: string;
+  name: string;
+  unit: string;
+  department: string | null;
+  supplierCode: number | null;
+  supplier: string | null;
+  /** On the books in that warehouse. */
+  quantity: number;
+  avgCost: number | null;
+}
+
+/** The count sheet: by branch, warehouse, department and factory together. */
+export interface StocktakeSheet {
+  rows: StocktakeSheetRow[];
+  currency: string;
+  /** More rows than are sent: narrow the filters. */
+  truncated: boolean;
+}
+
 export interface StocktakeResult {
   /** ADJ- reference shared by every movement the stocktake posted. */
   reference: string;
-  /** The warehouse that was counted. */
+  /** The warehouse(s) that were counted. */
   warehouseName: string;
   itemsChanged: number;
   /** Signed value change (gains − shrinkage), minor units. */

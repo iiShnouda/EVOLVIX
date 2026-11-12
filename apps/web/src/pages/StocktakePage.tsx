@@ -1,16 +1,18 @@
-import { useRef, useState } from 'react';
+import { useDeferredValue, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   companyToday,
   formatDate,
   formatMoney,
   formatNumber,
-  type InventoryItem,
+  type Party,
   type StocktakeResult,
+  type StocktakeSheetRow,
 } from '@skb/shared';
 import { Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Pager } from '../components/Pager';
+import { PartyPicker } from '../components/PartyPicker';
 import { ReportActions } from '../components/ReportActions';
 import { WarehouseSelect, useDefaultWarehouseId } from '../components/WarehouseSelect';
 import { useT, joinList } from '../lib/i18n';
@@ -18,13 +20,14 @@ import { useCan } from '../lib/can';
 import { ApiError } from '../lib/api';
 import { useWorkDraft } from '../lib/workDraft';
 import { useAuth } from '../stores/auth';
+import { useDeviceInfo } from '../lib/device';
 import { useReportTools } from '../lib/report';
 import {
   scanPhoto,
   useDepartments,
-  useInventory,
   usePageSize,
   useStocktake,
+  useStocktakeSheet,
   useWarehouses,
 } from '../lib/queries';
 import { errorText } from '../lib/errors';
@@ -34,11 +37,14 @@ const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 interface Line {
-  item: InventoryItem;
+  row: StocktakeSheetRow;
   qty: number;
   diff: number;
   value: number;
 }
+
+/** A row's own key: the item in its warehouse. */
+const keyOf = (r: StocktakeSheetRow) => `${r.productId}:${r.warehouseId}`;
 
 /** Shortage and surplus of one supplier (a factory), or of all of them. */
 interface SupplierTotals {
@@ -54,7 +60,7 @@ function bySupplier(lines: Line[], none: string): SupplierTotals[] {
   const map = new Map<string, SupplierTotals>();
   const total: SupplierTotals = { name: '', shortQty: 0, shortValue: 0, overQty: 0, overValue: 0 };
   for (const l of lines) {
-    const name = l.item.supplierName || none;
+    const name = l.row.supplier || none;
     const row = map.get(name) ?? { name, shortQty: 0, shortValue: 0, overQty: 0, overValue: 0 };
     for (const r of [row, total]) {
       if (l.diff < 0) {
@@ -77,12 +83,24 @@ const norm = (s: string) =>
     .replace(/\s+/g, '')
     .toLowerCase();
 
+/** What is kept of a count in progress. */
+interface CountDraft {
+  branchId: string;
+  warehouseId: string | null;
+  departmentId: string;
+  supplier: Party | null;
+  counted: Record<string, string>;
+  reason: string;
+}
+
 /**
- * Stocktake (الجرد والتسويات) of one warehouse, by branch and department (owner, 2026-10-21): print
- * a count sheet, count by hand, then type the counts or upload a photo of the sheet for the server to
- * read. Each item's shortage or surplus shows with its value, and by supplier (factory) with the
- * total of all; nothing changes until whoever reviews it saves. Each difference is then posted as an
- * adjustment at the current average cost, under one ADJ- reference. Items left blank are not touched.
+ * Stocktake (الجرد والتسويات) by branch, warehouse, department and factory, any of them together
+ * (owner, 2026-11-10): print a count sheet, count by hand, then type the counts or upload a photo
+ * of the sheet for the server to read. One warehouse, or every warehouse of a branch (or of all the
+ * person's branches) at once. Each item's shortage or surplus shows with its value, and by supplier
+ * (factory) with the total of all; nothing changes until whoever reviews it saves. Each difference
+ * is then posted in its own warehouse as an adjustment at the current average cost, under one ADJ-
+ * reference. Items left blank are not touched; only what the sheet shows is posted.
  */
 export function StocktakePage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t, locale } = useT();
@@ -91,21 +109,30 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
   const seeCosts = can('costs:view');
   const canScan = can('ai:scan_stocktake');
   const navigate = useNavigate();
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   const myBranches = useAuth((s) => s.user?.branches ?? []);
   const warehouses = useWarehouses(true);
   const [branchId, setBranchId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
+  const [supplier, setSupplier] = useState<Party | null>(null);
   const [search, setSearch] = useState('');
+  const settled = useDeferredValue(search.trim());
   const defaultWarehouse = useDefaultWarehouseId();
-  const [picked, setPicked] = useState('');
+  // null = not chosen yet (the working branch's default); '' = every warehouse in the branch.
+  const [picked, setPicked] = useState<string | null>(null);
   const inBranch = (id: string) =>
     !branchId || (warehouses.data ?? []).some((w) => w.id === id && w.branchId === branchId);
-  const warehouseId = picked || (inBranch(defaultWarehouse) ? defaultWarehouse : '');
+  const warehouseId = picked ?? (inBranch(defaultWarehouse) ? defaultWarehouse : '');
   const warehouseName = (warehouses.data ?? []).find((w) => w.id === warehouseId)?.name ?? '';
+  const branchName = myBranches.find((b) => b.id === branchId)?.name ?? '';
   const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
-  const list = useInventory({
+  const departmentName = departments.find((d) => d.id === departmentId)?.name ?? '';
+  const sheetQuery = useStocktakeSheet({
+    branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
     departmentId: departmentId || undefined,
+    supplierId: supplier?.id,
+    search: settled || undefined,
   });
   const stocktake = useStocktake();
   const error = stocktake.error as ApiError | null;
@@ -124,75 +151,79 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
   const report = useReportTools();
 
   // A count in progress is kept on the server, brought back after a crash or on another device.
-  useWorkDraft<{ warehouseId: string; counted: Record<string, string>; reason: string }>(
-    1,
+  useWorkDraft<CountDraft>(
+    2,
     () =>
       Object.values(counted).every((v) => v === '') && !reason.trim()
         ? null
-        : { warehouseId: picked, counted, reason },
+        : { branchId, warehouseId: picked, departmentId, supplier, counted, reason },
     (d) => {
-      if (typeof d.warehouseId === 'string') setPicked(d.warehouseId);
+      if (typeof d.branchId === 'string') setBranchId(d.branchId);
+      if (typeof d.warehouseId === 'string' || d.warehouseId === null) setPicked(d.warehouseId);
+      if (typeof d.departmentId === 'string') setDepartmentId(d.departmentId);
+      if (d.supplier && typeof d.supplier === 'object') setSupplier(d.supplier);
       if (d.counted && typeof d.counted === 'object') setCounted(d.counted);
       if (typeof d.reason === 'string') setReason(d.reason);
     },
   );
 
-  const currency = list.data?.currency ?? 'EGP';
-  const all = list.data?.items ?? [];
-  const s = search.trim().toLowerCase();
-  const visible = s
-    ? all.filter((p) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s))
-    : all;
-  const pages = Math.max(1, Math.ceil(visible.length / size));
+  const currency = sheetQuery.data?.currency ?? 'EGP';
+  const rows = sheetQuery.data?.rows ?? [];
+  // Several warehouses on one sheet: each row says where (owner, 2026-11-10).
+  const several = new Set(rows.map((r) => r.warehouseId)).size > 1 || !warehouseId;
+  const pages = Math.max(1, Math.ceil(rows.length / size));
   const at = Math.min(page, pages);
-  const shown = visible.slice((at - 1) * size, at * size);
+  const shown = rows.slice((at - 1) * size, at * size);
 
-  const lines: Line[] = all
-    .filter((p) => (counted[p.id] ?? '') !== '')
-    .map((p) => {
-      const qty = Math.max(0, Math.floor(Number(counted[p.id]) || 0));
-      const diff = qty - p.stockOnHand;
-      return { item: p, qty, diff, value: diff * p.avgCost };
+  const lines: Line[] = rows
+    .filter((r) => (counted[keyOf(r)] ?? '') !== '')
+    .map((r) => {
+      const qty = Math.max(0, Math.floor(Number(counted[keyOf(r)]) || 0));
+      const diff = qty - r.quantity;
+      return { row: r, qty, diff, value: diff * (r.avgCost ?? 0) };
     });
+  const byKey = new Map(lines.map((l) => [keyOf(l.row), l]));
   const changed = lines.filter((l) => l.diff !== 0);
   const totals = bySupplier(changed, t('stocktake.noSupplier'));
   const grand = totals[totals.length - 1]!;
   const money = (v: number) => formatMoney(v, currency, locale);
+  const n = (v: number) => formatNumber(v, locale);
 
-  function newCount() {
-    setCounted({});
-    setResult(null);
-    setReadNote(null);
+  /** A filter changed: back to the first page (counts already typed stay with their rows). */
+  const refilter = () => {
     setPage(1);
-  }
+    setResult(null);
+  };
 
   async function readSheet(file: File) {
     setReadNote(null);
     setReading(0);
     try {
-      const rows = await scanPhoto<{ code: string; counted: number }[]>(
+      const read = await scanPhoto<{ code: string; counted: number }[]>(
         'stocktake',
         file,
         setReading,
       );
-      const byCode = new Map(all.map((p) => [norm(p.sku), p]));
+      // A code on several rows (the item in several warehouses) can't be told apart: left out.
+      const byCode = new Map<string, StocktakeSheetRow | null>();
+      for (const r of rows) byCode.set(norm(r.code), byCode.has(norm(r.code)) ? null : r);
       const next = { ...counted };
       const unknown: string[] = [];
       let matched = 0;
-      for (const r of rows) {
-        const item = byCode.get(norm(r.code));
-        if (!item) {
+      for (const r of read) {
+        const row = byCode.get(norm(r.code));
+        if (!row) {
           unknown.push(r.code);
           continue;
         }
-        next[item.id] = String(Math.max(0, Math.round(r.counted)));
+        next[keyOf(row)] = String(Math.max(0, Math.round(r.counted)));
         matched++;
       }
       setCounted(next);
       setReadNote({
         ok: matched > 0,
         text:
-          t('stocktake.readDone').replace('{n}', formatNumber(matched, locale)) +
+          t('stocktake.readDone').replace('{n}', n(matched)) +
           (unknown.length ? ` · ${t('stocktake.readUnknown')}: ${joinList(unknown)}` : ''),
       });
     } catch (e) {
@@ -206,9 +237,16 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
   async function post() {
     try {
       const res = await stocktake.mutateAsync({
-        lines: changed.map((l) => ({ productId: l.item.id, countedQuantity: l.qty })),
+        lines: changed.map((l) => ({
+          productId: l.row.productId,
+          countedQuantity: l.qty,
+          warehouseId: l.row.warehouseId,
+        })),
         reason: reason.trim() || undefined,
-        warehouseId: warehouseId || undefined,
+        // The count's scope: the server adjusts nothing outside it.
+        branchId: branchId || undefined,
+        departmentId: departmentId || undefined,
+        supplierId: supplier?.id,
       });
       // What happened, by supplier, stays on the screen after the count is cleared.
       setResult({ res, totals });
@@ -219,6 +257,16 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
       /* surfaced via error */
     }
   }
+
+  const subtitle = [
+    branchName,
+    warehouseName,
+    departmentName,
+    supplier?.name,
+    formatDate(companyToday(), locale),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-5">
@@ -240,7 +288,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
             {result.res.warehouseName}
           </p>
           <p className="text-sm text-muted tnum">
-            {t('stocktake.changedItems')}: {formatNumber(result.res.itemsChanged, locale)}
+            {t('stocktake.changedItems')}: {n(result.res.itemsChanged)}
             {seeCosts && ` · ${t('stocktake.valueImpact')} ${money(result.res.valueChange)}`}
           </p>
           <SupplierTable totals={result.totals} money={money} seeCosts={seeCosts} />
@@ -248,7 +296,8 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
       )}
 
       <Card className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Branch, warehouse, department and factory, side by side (owner, 2026-11-10). */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {myBranches.length > 1 && (
             <label className="block">
               <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
@@ -257,8 +306,8 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
                 value={branchId}
                 onChange={(e) => {
                   setBranchId(e.target.value);
-                  setPicked('');
-                  newCount();
+                  setPicked(null);
+                  refilter();
                 }}
               >
                 <option value="">{t('common.all')}</option>
@@ -274,10 +323,10 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
             label={t('warehouse.counting')}
             branchId={branchId || undefined}
             value={warehouseId}
+            allowAll
             onChange={(id) => {
-              // Counts belong to one warehouse: switching starts a fresh count.
               setPicked(id);
-              newCount();
+              refilter();
             }}
           />
           <label className="block">
@@ -287,7 +336,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
               value={departmentId}
               onChange={(e) => {
                 setDepartmentId(e.target.value);
-                setPage(1);
+                refilter();
               }}
             >
               <option value="">{t('common.all')}</option>
@@ -298,6 +347,17 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
               ))}
             </select>
           </label>
+          <PartyPicker
+            type="SUPPLIER"
+            withCode
+            value={supplier}
+            onChange={(p) => {
+              setSupplier(p);
+              refilter();
+            }}
+            label={t('inventory.supplier')}
+            placeholder={t('common.all')}
+          />
           <label className="block">
             <span className="mb-0.5 block text-xs text-muted">{t('valuation.search')}</span>
             <input
@@ -311,15 +371,14 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {supplier && (
+            <Button size="sm" variant="ghost" icon="close" onClick={() => setSupplier(null)}>
+              {t('common.clear')}
+            </Button>
+          )}
           <ReportActions
-            disabled={!warehouseId || visible.length === 0}
-            onPrint={() =>
-              report.print(
-                sheet.current,
-                t('stocktake.sheet'),
-                [warehouseName, formatDate(companyToday(), locale)].filter(Boolean).join(' · '),
-              )
-            }
+            disabled={rows.length === 0}
+            onPrint={() => report.print(sheet.current, t('stocktake.sheet'), subtitle)}
           />
           {canScan && (
             <>
@@ -336,7 +395,7 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
               <Button
                 variant="secondary"
                 icon="upload"
-                disabled={!warehouseId || reading !== null}
+                disabled={rows.length === 0 || reading !== null}
                 loading={reading !== null}
                 onClick={() => photo.current?.click()}
               >
@@ -354,17 +413,20 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
             {readNote.text}
           </p>
         )}
+        {sheetQuery.data?.truncated && (
+          <p className="rounded-[var(--radius-app)] bg-warning-soft p-2 text-sm text-warning">
+            {t('stocktake.truncated')}
+          </p>
+        )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
         <Card padded={false} className="min-w-0 overflow-hidden">
-          {!warehouseId ? (
-            <EmptyState title={t('stocktake.pickWarehouse')} icon="inventory" />
-          ) : list.isLoading ? (
+          {sheetQuery.isLoading ? (
             <div className="grid place-items-center py-16 text-muted">
               <Spinner size={26} />
             </div>
-          ) : visible.length === 0 ? (
+          ) : rows.length === 0 ? (
             <EmptyState title={t('common.empty')} icon="inventory" />
           ) : (
             <>
@@ -374,77 +436,135 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
                   size={size}
                   pages={pages}
                   onPage={setPage}
-                  onSize={(n) => {
-                    setSize(n);
+                  onSize={(x) => {
+                    setSize(x);
                     setPage(1);
                   }}
                 />
               </div>
-              <ul className="divide-y divide-[var(--c-line)]">
-                {shown.map((p) => {
-                  const line = lines.find((l) => l.item.id === p.id);
-                  return (
-                    <li key={p.id} className="flex flex-wrap items-center gap-3 p-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{p.name}</p>
-                        <p className="text-xs text-muted tnum">
-                          {p.sku} · {t('stocktake.system')}: {formatNumber(p.stockOnHand, locale)}{' '}
-                          {p.unit}
-                          {p.supplierName ? ` · ${p.supplierName}` : ''}
-                        </p>
-                        {line && line.diff !== 0 && (
-                          <p
-                            className={`text-xs tnum ${line.diff > 0 ? 'text-positive' : 'text-destructive'}`}
-                          >
-                            {t(line.diff > 0 ? 'stocktake.over' : 'stocktake.short')}:{' '}
-                            {formatNumber(Math.abs(line.diff), locale)}
-                            {seeCosts && ` · ${money(Math.abs(line.value))}`}
-                          </p>
+              {/* The item's code and its name each in a column of its own (owner, 2026-11-10). */}
+              <TableColumns id={isPhone ? 'stocktake.count.phone' : 'stocktake.count'}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-surface-2 text-xs text-muted">
+                      <tr>
+                        <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
+                        <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                        {!isPhone && (
+                          <>
+                            <th className="p-2 text-start font-medium">
+                              {t('inventory.supplier')}
+                            </th>
+                            <th className="p-2 text-start font-medium">
+                              {t('valuation.department')}
+                            </th>
+                            {several && (
+                              <th className="p-2 text-start font-medium">
+                                {t('inventory.places')}
+                              </th>
+                            )}
+                            <th className="p-2 text-start font-medium">{t('stocktake.unit')}</th>
+                          </>
                         )}
-                      </div>
-                      <label className="block w-28">
-                        <span className="mb-0.5 block text-xs text-muted">
-                          {t('stocktake.counted')}
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          className={`${field} tnum`}
-                          value={counted[p.id] ?? ''}
-                          onChange={(e) =>
-                            setCounted((prev) => ({ ...prev, [p.id]: e.target.value }))
-                          }
-                        />
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+                        <th className="p-2 text-end font-medium">{t('stocktake.system')}</th>
+                        <th className="p-2 text-start font-medium">{t('stocktake.counted')}</th>
+                        {!isPhone && (
+                          <th className="p-2 text-end font-medium">{t('stocktake.difference')}</th>
+                        )}
+                        {!isPhone && seeCosts && (
+                          <th className="p-2 text-end font-medium">{t('inventory.value')}</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--c-line)]">
+                      {shown.map((r) => {
+                        const k = keyOf(r);
+                        const line = byKey.get(k);
+                        const tone = !line?.diff
+                          ? 'text-muted'
+                          : line.diff > 0
+                            ? 'text-positive'
+                            : 'text-destructive';
+                        return (
+                          <tr key={k}>
+                            <td className="whitespace-nowrap p-2 text-muted tnum" dir="ltr">
+                              {r.code}
+                            </td>
+                            <td className="p-2 font-medium">
+                              {r.name}
+                              {isPhone && several && (
+                                <span className="block text-xs font-normal text-muted">
+                                  {r.branch} / {r.warehouse}
+                                </span>
+                              )}
+                            </td>
+                            {!isPhone && (
+                              <>
+                                <td className="p-2 text-muted">{r.supplier ?? ''}</td>
+                                <td className="p-2 text-muted">{r.department ?? ''}</td>
+                                {several && (
+                                  <td className="whitespace-nowrap p-2 text-xs text-muted">
+                                    {r.branch} / {r.warehouse}
+                                  </td>
+                                )}
+                                <td className="p-2 text-muted">{r.unit}</td>
+                              </>
+                            )}
+                            <td className="whitespace-nowrap p-2 text-end tnum">{n(r.quantity)}</td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                min={0}
+                                inputMode="numeric"
+                                aria-label={`${t('stocktake.counted')} ${r.name}`}
+                                className={`${field} !w-20 tnum`}
+                                value={counted[k] ?? ''}
+                                onChange={(e) =>
+                                  setCounted((prev) => ({ ...prev, [k]: e.target.value }))
+                                }
+                              />
+                              {isPhone && line && line.diff !== 0 && (
+                                <span className={`block text-xs tnum ${tone}`}>
+                                  {line.diff > 0 ? '+' : '−'}
+                                  {n(Math.abs(line.diff))}
+                                </span>
+                              )}
+                            </td>
+                            {!isPhone && (
+                              <td className={`whitespace-nowrap p-2 text-end tnum ${tone}`}>
+                                {line && line.diff !== 0
+                                  ? `${line.diff > 0 ? '+' : '−'}${n(Math.abs(line.diff))}`
+                                  : ''}
+                              </td>
+                            )}
+                            {!isPhone && seeCosts && (
+                              <td className={`whitespace-nowrap p-2 text-end tnum ${tone}`}>
+                                {line && line.diff !== 0 ? money(line.value) : ''}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </TableColumns>
             </>
           )}
         </Card>
 
-        <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+        <div className="space-y-4 xl:sticky xl:top-20 xl:h-fit">
           <Card>
             <dl className="space-y-1.5 text-sm">
-              <Row
-                label={t('stocktake.changedItems')}
-                value={formatNumber(changed.length, locale)}
-              />
+              <Row label={t('stocktake.changedItems')} value={n(changed.length)} />
               <Row
                 label={t('stocktake.short')}
-                value={
-                  formatNumber(grand.shortQty, locale) +
-                  (seeCosts ? ` · ${money(grand.shortValue)}` : '')
-                }
+                value={n(grand.shortQty) + (seeCosts ? ` · ${money(grand.shortValue)}` : '')}
                 tone="warning"
               />
               <Row
                 label={t('stocktake.over')}
-                value={
-                  formatNumber(grand.overQty, locale) +
-                  (seeCosts ? ` · ${money(grand.overValue)}` : '')
-                }
+                value={n(grand.overQty) + (seeCosts ? ` · ${money(grand.overValue)}` : '')}
                 tone="positive"
               />
               {seeCosts && (
@@ -500,20 +620,28 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
               </h3>
               <ul className="max-h-96 divide-y divide-[var(--c-line)] overflow-y-auto text-sm">
                 {changed.map((l) => (
-                  <li key={l.item.id} className="flex items-center gap-2 px-3 py-2">
-                    <span className="min-w-0 flex-1 truncate">{l.item.name}</span>
+                  <li key={keyOf(l.row)} className="flex items-center gap-2 px-3 py-2">
+                    <span className="shrink-0 text-xs text-muted tnum" dir="ltr">
+                      {l.row.code}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {l.row.name}
+                      {several && (
+                        <span className="block truncate text-xs text-muted">{l.row.warehouse}</span>
+                      )}
+                    </span>
                     <span
                       className={`shrink-0 tnum ${l.diff > 0 ? 'text-positive' : 'text-destructive'}`}
                     >
                       {l.diff > 0 ? '+' : '−'}
-                      {formatNumber(Math.abs(l.diff), locale)}
+                      {n(Math.abs(l.diff))}
                     </span>
                     <button
                       type="button"
                       className="shrink-0 text-faint hover:text-destructive"
                       aria-label={t('invoice.remove')}
                       title={t('invoice.remove')}
-                      onClick={() => setCounted((prev) => ({ ...prev, [l.item.id]: '' }))}
+                      onClick={() => setCounted((prev) => ({ ...prev, [keyOf(l.row)]: '' }))}
                     >
                       <Icon name="close" size={15} />
                     </button>
@@ -534,20 +662,28 @@ export function StocktakePage({ embedded = false }: { embedded?: boolean } = {})
                 <th className="p-2 text-start">#</th>
                 <th className="p-2 text-start">{t('inventory.sku')}</th>
                 <th className="p-2 text-start">{t('inventory.itemName')}</th>
+                <th className="p-2 text-start">{t('inventory.supplier')}</th>
+                {several && <th className="p-2 text-start">{t('inventory.places')}</th>}
                 <th className="p-2 text-start">{t('stocktake.unit')}</th>
                 <th className="w-32 p-2 text-start">{t('stocktake.counted')}</th>
                 <th className="w-40 p-2 text-start">{t('stocktake.note')}</th>
               </tr>
             </thead>
             <tbody>
-              {visible.map((p, i) => (
-                <tr key={p.id}>
+              {rows.map((r, i) => (
+                <tr key={keyOf(r)}>
                   <td className="p-2 tnum">{i + 1}</td>
                   <td className="p-2 font-semibold tnum" dir="ltr">
-                    {p.sku}
+                    {r.code}
                   </td>
-                  <td className="p-2">{p.name}</td>
-                  <td className="p-2">{p.unit}</td>
+                  <td className="p-2">{r.name}</td>
+                  <td className="p-2">{r.supplier ?? ''}</td>
+                  {several && (
+                    <td className="p-2">
+                      {r.branch} / {r.warehouse}
+                    </td>
+                  )}
+                  <td className="p-2">{r.unit}</td>
                   <td className="p-2" />
                   <td className="p-2" />
                 </tr>

@@ -66,8 +66,11 @@ const newItem = async (name, categoryId, supplierId, reorderLevel = 0) =>
     }),
   );
 const shirt = await newItem('Shirt', polo.id, factory.id, 5);
-const kidsRoot = (await owner.get('/categories')).data.find((c) => c.departmentId === dept2.id);
-const sock = await newItem('Sock', kidsRoot?.id ?? polo.id, factory2.id);
+const socks = ok(
+  'a group of the other',
+  await owner.post('/groups', { name: `Socks ${tag}`, departmentId: dept2.id }),
+);
+const sock = await newItem('Sock', socks.id, factory2.id);
 const listed = async (q) => (await owner.get(`/inventory/items?pageSize=500&${q}`)).data.items;
 
 console.log('== run out is "out", not "at the reorder level"');
@@ -115,6 +118,110 @@ console.log('== the department shown is the main one; the supplier with its code
     codes.every((c, i) => i === 0 || codes[i - 1] <= c),
     codes.slice(0, 10),
   );
+}
+
+console.log('== the stocktake by branch, warehouse, department and factory');
+const wh2 =
+  stores.find((w) => w.id !== wh.id && w.branchId !== wh.branchId) ??
+  stores.find((w) => w.id !== wh.id);
+check('two warehouses to count', !!wh2, stores.length);
+{
+  const sheet = async (q) => ok(`sheet ${q}`, await owner.get(`/inventory/stocktake/sheet?${q}`));
+  const one = await sheet(`warehouseId=${wh.id}&supplierId=${factory.id}`);
+  check(
+    'one warehouse: every item of the factory, none in stock too',
+    one.rows.some((r) => r.productId === shirt.id && r.quantity === 0),
+    one.rows.length,
+  );
+  check(
+    'only that factory',
+    one.rows.every((r) => r.supplier === factory.name),
+  );
+  const row = one.rows.find((r) => r.productId === shirt.id);
+  eq('the code and the name each on its own', [row?.code, row?.name], [shirt.sku, shirt.name]);
+  // The first count, in two warehouses at once.
+  const first = ok(
+    'count two warehouses at once',
+    await owner.post('/inventory/stocktake', {
+      lines: [
+        { productId: shirt.id, countedQuantity: 7, warehouseId: wh.id },
+        { productId: sock.id, countedQuantity: 4, warehouseId: wh2.id },
+        { productId: shirt.id, countedQuantity: 3, warehouseId: wh2.id },
+      ],
+    }),
+  );
+  eq('three lines changed', first.itemsChanged, 3);
+  check(
+    'one reference for both',
+    first.reference.startsWith('ADJ-') && first.movements.length === 3,
+  );
+  const all = await sheet(`supplierId=${factory.id}`);
+  const shirts = all.rows.filter((r) => r.productId === shirt.id);
+  eq('several warehouses: the item in each it is in', shirts.map((r) => r.quantity).sort(), [3, 7]);
+  const branch = await sheet(`branchId=${wh2.branchId}&departmentId=${dept2.id}`);
+  check(
+    'a branch and a department',
+    branch.rows.length > 0 &&
+      branch.rows.every((r) => r.department === dept2.name && r.branch === wh2.branchName),
+    branch.rows.slice(0, 2),
+  );
+  check(
+    'the sock there',
+    branch.rows.some((r) => r.productId === sock.id && r.quantity === 4),
+  );
+  const searched = await sheet(`search=${encodeURIComponent(shirt.sku)}`);
+  check(
+    'by code',
+    searched.rows.length >= 1 && searched.rows.every((r) => r.productId === shirt.id),
+  );
+  eq(
+    'a count for one factory adjusts no other',
+    (
+      await owner.post('/inventory/stocktake', {
+        supplierId: factory.id,
+        lines: [{ productId: sock.id, countedQuantity: 1, warehouseId: wh2.id }],
+      })
+    ).data?.code,
+    'outside_stocktake',
+  );
+  eq(
+    'nor one for a department another',
+    (
+      await owner.post('/inventory/stocktake', {
+        departmentId: dept2.id,
+        lines: [{ productId: shirt.id, countedQuantity: 1, warehouseId: wh.id }],
+      })
+    ).data?.code,
+    'outside_stocktake',
+  );
+  if (wh2.branchId !== wh.branchId)
+    eq(
+      'nor one for a branch another',
+      (
+        await owner.post('/inventory/stocktake', {
+          branchId: wh2.branchId,
+          lines: [{ productId: shirt.id, countedQuantity: 1, warehouseId: wh.id }],
+        })
+      ).data?.code,
+      'outside_stocktake',
+    );
+  ok(
+    'within its scope',
+    await owner.post('/inventory/stocktake', {
+      supplierId: factory.id,
+      departmentId: dept.id,
+      lines: [{ productId: shirt.id, countedQuantity: 6, warehouseId: wh.id }],
+    }),
+  );
+  const after = (await listed(`code=${encodeURIComponent(shirt.sku)}&warehouseId=${wh.id}`)).find(
+    (i) => i.id === shirt.id,
+  );
+  eq('the books follow the count', after?.stockOnHand, 6);
+  const sara = await login('sara@skb.local');
+  const hers = await sara.get(`/inventory/stocktake/sheet?warehouseId=${wh.id}`);
+  check('store staff open the sheet', [200, 404].includes(hers.status), hers.status);
+  const karim = await login('karim@skb.local');
+  eq('a sales person does not', (await karim.get('/inventory/stocktake/sheet')).status, 403);
 }
 
 process.exit(summary('stock') ? 1 : 0);

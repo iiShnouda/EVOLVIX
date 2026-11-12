@@ -207,14 +207,20 @@ export type CreateFreeReturnInput = z.infer<typeof createFreeReturnSchema>;
 export const stocktakeLineSchema = z.object({
   productId: z.string().uuid(),
   countedQuantity: z.number().int().min(0),
+  /** Where it was counted; none = the stocktake's warehouse. */
+  warehouseId: z.string().uuid().optional(),
 });
 export type StocktakeLineInput = z.infer<typeof stocktakeLineSchema>;
 
 export const stocktakeSchema = z.object({
-  lines: z.array(stocktakeLineSchema).min(1, 'Enter at least one counted quantity').max(1000),
+  lines: z.array(stocktakeLineSchema).min(1, 'Enter at least one counted quantity').max(5000),
   reason: z.string().max(500).optional(),
   /** The warehouse being counted; none = the user's branch default. */
   warehouseId: z.string().uuid().optional(),
+  /** The count's scope (owner, 2026-11-10): nothing outside it is adjusted. */
+  branchId: z.string().uuid().optional(),
+  departmentId: z.string().uuid().optional(),
+  supplierId: z.string().uuid().optional(),
 });
 export type StocktakeInput = z.infer<typeof stocktakeSchema>;
 

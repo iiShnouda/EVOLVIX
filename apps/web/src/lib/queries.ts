@@ -57,6 +57,7 @@ import type {
   ItemCard,
   ItemLife,
   StocktakeInput,
+  StocktakeSheet,
   StocktakeResult,
   Valuation,
   Paginated,
@@ -906,6 +907,23 @@ export function useDeleteBranch() {
       void qc.invalidateQueries({ queryKey: ['inventory'] });
       void qc.invalidateQueries({ queryKey: ['branches'] });
     },
+  });
+}
+
+/** The count sheet (الجرد) for a branch, a warehouse, a department and a factory, any together. */
+export function useStocktakeSheet(f: {
+  branchId?: string;
+  warehouseId?: string;
+  departmentId?: string;
+  supplierId?: string;
+  search?: string;
+}) {
+  const query = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v) query.set(k, v);
+  return useQuery({
+    queryKey: ['inventory', 'stocktake-sheet', f],
+    queryFn: () => api.get<StocktakeSheet>(`/inventory/stocktake/sheet?${query}`),
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -370,11 +370,23 @@ public record ValuationDto(
     string AsOf, string Currency, string? WarehouseId, int Quantity, long? Value, int TotalItems, int ItemCount,
     ValuationRowDto[] Categories, ValuationItemDto[] Items, ValuationRowDto[] Warehouses, ValuationRowDto[] Models);
 
-public record StocktakeLineRequest(string ProductId, int CountedQuantity);
+/// <param name="WarehouseId">Where it was counted; none = the request's warehouse.</param>
+public record StocktakeLineRequest(string ProductId, int CountedQuantity, string? WarehouseId = null);
 
 /// <summary>Stocktake (الجرد): the counted quantity per item; only lines that differ are posted.</summary>
-/// <remarks>Counts one warehouse; none given means the default warehouse of the user's branch.</remarks>
-public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null, string? WarehouseId = null);
+/// <remarks>Each line in its own warehouse, or the request's; none given means the default warehouse of
+/// the user's branch. <c>BranchId</c>, <c>DepartmentId</c> and <c>SupplierId</c> are the count's scope
+/// (owner, 2026-11-10): a line outside it is refused.</remarks>
+public record StocktakeRequest(StocktakeLineRequest[] Lines, string? Reason = null, string? WarehouseId = null,
+    string? BranchId = null, string? DepartmentId = null, string? SupplierId = null);
+
+/// <summary>One item to count in one warehouse, with what the books say there; cost only with costs:view.</summary>
+public record StocktakeSheetRowDto(string ProductId, string WarehouseId, string Warehouse, string Branch,
+    string Code, string Name, string Unit, string? Department, int? SupplierCode, string? Supplier,
+    int Quantity, long? AvgCost);
+
+/// <summary>The count sheet (owner, 2026-11-10: by branch, warehouse, department and factory together).</summary>
+public record StocktakeSheetDto(StocktakeSheetRowDto[] Rows, string Currency, bool Truncated);
 
 /// <param name="ValueChange">Signed total value change (gains − shrinkage), minor units.</param>
 public record StocktakeResultDto(
