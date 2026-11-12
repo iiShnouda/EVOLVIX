@@ -567,6 +567,57 @@ public sealed class ProductsController : ControllerBase
         return Ok(await DetailAsync(id));
     }
 
+    /// <summary>
+    /// Delete an item made by mistake (owner, 2026-11-10: "a code I made can't be deleted"), while
+    /// nothing has used it: no stock movement, no line on any document (cancelled ones too), no
+    /// transfer, no price list or quantity discount. Its units and barcodes, prices and photo go with
+    /// it. A size/color of a model is removed on the model. One with history is stopped instead.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Permissions.ProductsDelete)]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+        if (product is null) return NotFound(new { message = "Item not found.", code = "not_found" });
+        if (product.ModelId is not null)
+            return BadRequest(new
+            {
+                message = "This item is a size/color of a model: remove it on the model.",
+                code = "variant_managed_by_model",
+            });
+        if (await HasMovementsAsync(new[] { id })
+            || await _db.StockTransferLines.AnyAsync(l => l.ProductId == id)
+            || await _db.StockBalances.AnyAsync(b => b.ProductId == id && b.Quantity != 0)
+            || await _db.PriceListItems.AnyAsync(i => i.ProductId == id)
+            || await _db.QuantityBreaks.AnyAsync(q => q.ProductId == id))
+            return Conflict(new { message = "The item has been used; stop it instead.", code = "item_in_use" });
+
+        var label = $"{product.Sku} · {Loc.Name(product)}";
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            _db.ItemPrices.RemoveRange(await _db.ItemPrices.Where(p => p.ProductId == id).ToListAsync());
+            _db.ItemUnits.RemoveRange(await _db.ItemUnits.Where(u => u.ProductId == id).ToListAsync());
+            _db.StockBalances.RemoveRange(await _db.StockBalances.Where(b => b.ProductId == id).ToListAsync());
+            _db.StockCosts.RemoveRange(await _db.StockCosts.Where(c => c.ProductId == id).ToListAsync());
+            _db.ProductImages.RemoveRange(await _db.ProductImages.Where(i => i.ProductId == id).ToListAsync());
+            _db.Products.Remove(product);
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateException e) when (e.InnerException is Npgsql.PostgresException { SqlState: "23503" })
+        {
+            await tx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return Conflict(new { message = "The item has been used; stop it instead.", code = "item_in_use" });
+        }
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "delete", "product",
+            CurrentUser.BranchId(User), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), id.ToString(), label);
+        _storefront.MarkDirty();
+        return NoContent();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private async Task<ProductDetailDto?> DetailAsync(Guid id)

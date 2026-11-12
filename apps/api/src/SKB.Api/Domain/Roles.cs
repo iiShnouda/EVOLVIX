@@ -182,12 +182,16 @@ public static class Permissions
     public const string ProductsEdit = "products:edit";
     /// <summary>Stop an item (or reopen it).</summary>
     public const string ProductsClose = "products:close";
+    /// <summary>Delete an item made by mistake that nothing has used yet (owner, 2026-11-10).</summary>
+    public const string ProductsDelete = "products:delete";
     /// <summary>Stock · Items: Make barcodes.</summary>
     public const string ProductsBarcodes = "products:barcodes";
     /// <summary>Stock · Items: Item photos.</summary>
     public const string ProductsImages = "products:images";
     /// <summary>Set item and model prices at each price level.</summary>
     public const string PricesEdit = "prices:edit";
+    /// <summary>Change the prices of many items of a supplier at once (owner, 2026-11-10).</summary>
+    public const string PricesBulkEdit = "prices:bulk_edit";
     /// <summary>The inventory's totals, each its own (owner, 2026-10-21): items in stock, pieces, value at
     /// sale price, value at cost (also needs costs:view) and pieces sold.</summary>
     public const string InventoryTotalItems = "inventory:total_items";
@@ -672,7 +676,7 @@ public static class Permissions
         PurchasesPrint, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnFree, PurchasesReturnCancel,
         PurchasesChangePrice, PurchasesChoosePriceLevel, PurchasesDiscount, PurchasesBonus, PurchasesChangeTax,
         PurchasesAdditions, InventoryView, InventoryPrint, InventoryExport, ProductsCreate, ProductsEdit,
-        ProductsClose, ProductsBarcodes, ProductsImages, PricesEdit, InventoryTotalItems,
+        ProductsClose, ProductsDelete, ProductsBarcodes, ProductsImages, PricesEdit, PricesBulkEdit, InventoryTotalItems,
         InventoryTotalQuantity, InventoryTotalSaleValue, InventoryTotalSupplyValue, InventoryTotalSold,
         InventoryCard, ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices,
         InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices,

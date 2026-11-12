@@ -51,7 +51,7 @@ public sealed class InventoryController : ControllerBase
     [HttpGet("items")]
     [AnyPermission(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
         Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
-        Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
+        Permissions.ProductsDelete, Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
         Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
         Permissions.InventoryTotalItems, Permissions.InventoryTotalQuantity, Permissions.InventoryTotalSaleValue,
         Permissions.InventoryTotalSupplyValue, Permissions.InventoryTotalSold)]
@@ -208,7 +208,7 @@ public sealed class InventoryController : ControllerBase
         // The rows for whoever sees the list or works on its items; the totals alone otherwise.
         var seesRows = User.HasAny(Permissions.InventoryView, Permissions.InventoryStocktakeView, Permissions.InventoryStocktake,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes, Permissions.ProductsImages,
-            Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
+            Permissions.ProductsDelete, Permissions.PricesEdit, Permissions.InventoryCard, Permissions.ProductsCardPurchases, Permissions.ProductsCardSales,
             Permissions.ProductsCardReturns, Permissions.ProductsCardPrices);
         return Ok(new InventoryListDto(
             seesRows ? pageRows.Select(i => Costs.Guard(User, i with { Places = places.GetValueOrDefault(i.Id) ?? Array.Empty<string>() }))

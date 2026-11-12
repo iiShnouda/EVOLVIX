@@ -138,7 +138,12 @@ export const NAV_SECTIONS: NavSection[] = [
         labelKey: 'nav.inventory',
         icon: 'inventory',
         path: '/inventory',
-        anyOf: opens('inventory', ['inventory:print', 'inventory:export', 'transfers:print']),
+        anyOf: opens('inventory', [
+          'inventory:print',
+          'inventory:export',
+          'transfers:print',
+          'prices:bulk_edit',
+        ]),
         primaryOnPhone: true,
       },
       // The item setup (departments, sub-groups, units, sizes, colors, seasons) on its own page.

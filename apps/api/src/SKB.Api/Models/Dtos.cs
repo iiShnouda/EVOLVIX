@@ -716,6 +716,25 @@ public record UpdateProductRequest(
 
 public record UpdatePricesRequest(PriceRequest[]? Prices);
 
+/// <summary>One item of a supplier for changing its prices at once; supply price and average cost as permitted.</summary>
+public record BulkPriceItemDto(string Id, string Sku, string Name, string? SupplierCode, string? DepartmentName,
+    string? GroupName, string? SeasonName, string? Unit, int StockOnHand, long? SupplyPrice, long? SalePrice,
+    long? AvgCost);
+
+/// <param name="Mode">pct (a percent, + or −), amt (an amount in the currency, + or −, per base unit) or,
+/// for the selling price, margin (a percent over the new supply price).</param>
+public record BulkPriceChange(string Mode, decimal Value);
+
+/// <param name="Round">Round selling prices up to this many whole currency units (0 = as worked out).</param>
+public record BulkPriceRequest(string[]? ProductIds, string? SupplierId = null, BulkPriceChange? Supply = null,
+    BulkPriceChange? Sale = null, int Round = 0);
+
+/// <summary>An item's base-unit prices before and after (minor units).</summary>
+public record BulkPriceRowDto(string Id, string Sku, string Name, long? SupplyBefore, long? SupplyAfter,
+    long? SaleBefore, long? SaleAfter, bool Changed);
+
+public record BulkPriceResultDto(int Changed, BulkPriceRowDto[] Rows);
+
 /// <param name="Own">The item's (or model's) own price; null when it inherits.</param>
 /// <param name="Effective">What it charges at that level, however it was worked out (null = unpriced).</param>
 public record PriceCellDto(string UnitId, string PriceLevelId, long? Own, long? Effective, string? Source);

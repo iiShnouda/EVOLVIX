@@ -63,6 +63,7 @@ const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
       'inventory:stocktake',
       'products:edit',
       'products:close',
+      'products:delete',
       'products:barcodes',
       'products:images',
       'prices:edit',
