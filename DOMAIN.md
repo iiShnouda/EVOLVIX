@@ -323,6 +323,16 @@ One shape for every document type:
   everyone else (sales documents, item cost, stock values, profit reports, ledger statements that
   reveal them).
 
+**Owner decisions 2026-11-10.**
+- A return is one way, like an invoice: it holds only what the party bought in that branch (and
+  department), each line linked to the invoice line(s) it comes from, newest invoice first unless
+  one is chosen, at the price paid after discounts with its share of tax, back at the original cost.
+- An invoice with receipts or cheques against it may be edited: the money stays, the balance moves
+  by the difference, anything paid over the new total is the customer's credit.
+- A department may work by season: its invoices name the season kind (summer / winter / none); the
+  item keeps the season with its year, given on purchase from the kind and the invoice's date.
+- Stock out = none left; low = some left at or under the reorder level.
+
 ### 2.6 Money — الخزينة والبنوك
 - **Money accounts** (حسابات النقدية): every place money can sit. Each one is linked to its
   ledger account:

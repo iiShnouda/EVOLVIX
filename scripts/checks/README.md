@@ -6,7 +6,7 @@ live company server.
 
 | Script | What it checks |
 |---|---|
-| `returns.test.mjs` | Returns typed without an invoice (line by line, on the party's account, at the party's last invoice price unless the person may change prices; purchase returns at the net price), a cash customer paid back at once, and cancelling a return entered by mistake (`sales:return_cancel` / `purchases:return_cancel`): stock, balance, cash and entries back. |
+| `returns.test.mjs` | Returns one way (owner, 2026-11-10): the party's items only, up to what they bought minus what came back, each line linked to its invoice line(s) newest first (or one invoice chosen) at the price paid after discounts with its share of tax and the original cost; `GET …/returns/returnable`; a cash customer paid back at once; the return-hours rule; cancelling a return (`sales:return_cancel` / `purchases:return_cancel`): stock, balance, cash and entries back on every invoice it touched. |
 | `additems.test.mjs` | Adding items is a purchase invoice: codes from the department, groups and supplier, the supplier's discount per line so the goods and the supplier's account are at the net cost. |
 | `dashboard.test.mjs` | The dashboard's widgets, each only for those who may see it; any period (a day, a month, a year, any dates); branch, warehouse and department in the searches. |
 | `places.test.mjs` | Deleting branches and warehouses: an empty one goes with its store and cash boxes; one with documents or stock, the default warehouse, the last warehouse and a branch people belong to stay; own permissions; the server monitor can't be given.; departments added in the warehouses chosen (the others go on as they were), moved, and deleted with their groups when nothing is recorded (one with items stays). |
@@ -52,6 +52,17 @@ live company server.
 | `system.test.mjs` | Who's online over the real SignalR hub (sign-in required, several windows, screen names cleaned, only permitted people told) and backups: permissions, the encrypted download, automatic backups in the server folder (with `Backup__Folder`, `Backup__Keep=2`), audit. |
 | `restore-check.mjs` | After `SKB.Api backup` + `SKB.Api restore` into a new database: every table's rows match the original (`PGURL` vs `PGURL_RESTORED`). |
 | `invariants.mjs` | Database invariants: stock = Σ balances = Σ movements, one base unit per item, line quantities and totals, returns never exceeding their line. Needs `npm i pg`. |
+| `salesscreen.test.mjs` | The sales screen (owner, 2026-11-10): a number search ignores the dates (sales and purchases, still scoped), an edit counts the goods the invoice already holds, cost on `pricing/sale` only with costs and profit. |
+| `seasons.test.mjs` | Departments by season: `hasSeasons`, `season_required` after such a department on invoices and pending invoices, the season kept on edits and approval, the `?season=` filter, purchases' Summer/Winter and `GET seasons/of` (the item's season-with-year from the invoice date). |
+| `previous.test.mjs` | The previous balance on an invoice: the customer's account before the invoice's own date, without what the invoice posted, cancelled documents counting nothing, edits not moving it, only for who may see the balance; the customer's invoices together before the period. |
+| `words.test.mjs` | Amounts in words, Arabic and English (pounds and piastres, other currencies). No server; build `@skb/shared` first. |
+| `openings.test.mjs` | Opening balances (owner, 2026-11-10): over many periods opening = the day before's closing, opening + movements = closing, closing today = the balance, for customers, suppliers, a branch filter, boxes and ledger accounts; back-dated documents and edited invoices on their own day; who, when and the counterpart on each line. |
+| `moneyaccess.test.mjs` | A person with no money accounts, and a money history limit (last month / N days) on box statements, vouchers, handovers, cheques and portfolios; nobody gives more history than they have. |
+| `itemcard.test.mjs` | The item card: in/out before, opening, period totals, closing, running balance in date order (back-dated documents, limited warehouses), the last cost (`costs:view`), the party or other warehouse on each movement. |
+| `bulkprices.test.mjs` | A supplier's prices at once (`prices:bulk_edit`): items, preview vs apply, percent / amount / margin, rounding, larger units and variants, average cost untouched, permissions and audit; deleting an unused item (`products:delete`, `item_in_use`). |
+| `stock.test.mjs` | Stock pages: out vs low, the main department, the supplier code, the stocktake sheet by branch/warehouse/department/supplier and its scope (`outside_stocktake`), transfer filters and places, valuation totals, the warehouse statement's totals. |
+| `dashscope.test.mjs` | The dashboard by each person's branches, warehouses, departments and money accounts, and the branch/warehouse/department picks (refused outside one's access), profit and loss included. |
+| `assortment.test.mjs` | Analytics by supplier, department tree and item (`reports:assortment`): sales, returns, profit, purchases and stock, scoped, hidden figures without permission. |
 
 ## Running
 

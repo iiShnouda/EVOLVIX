@@ -1,6 +1,130 @@
 {
   "releases": [
     {
+      "version": "1.13.0",
+      "date": "2026-11-12",
+      "features": [
+        {
+          "ar": "التواريخ في كل البرنامج بقت أرقام بس (يوم/شهر/سنة) بالعربي والإنجليزي، حتى في خانات التاريخ، والأوقات من غير أجزاء الثانية",
+          "en": "Every date across the app is in numbers only (day/month/year) in Arabic and English, date boxes included, and times have no milliseconds"
+        },
+        {
+          "ar": "زرار الأعمدة بقى واضح وأسهم الترتيب بتبين الاتجاه، واختيار طباعة كل عمود اتشال: الطباعة بتطلع الأعمدة زي ما هي على الشاشة",
+          "en": "The columns button is clear, sort arrows show the direction, and the per-column print choice is gone: prints show the columns as on screen"
+        },
+        {
+          "ar": "«متوسط التكلفة» بقى اسمه «سعر التوريد»",
+          "en": "\"Average cost\" is now called \"Supply price\""
+        },
+        {
+          "ar": "المبيعات: البحث برقم المستند بيلاقيه مهما كان التاريخ، الصفحة بتفتكر التاريخ والفلاتر لما ترجعلها وبتفتح على «الكل»",
+          "en": "Sales: searching by document number finds it whatever the dates; the list keeps its dates and filters when you come back and opens on all"
+        },
+        {
+          "ar": "فاتورة البيع الجديدة ليها تاريخ واحد بس، خانة الكمية بتبدأ فاضية، وإجمالي التكلفة بيظهر بس للي معاه صلاحية الربح",
+          "en": "A new sales invoice has only its own date, the quantity box starts empty, and cost figures show only to people allowed to see profit"
+        },
+        {
+          "ar": "اللي معاه صلاحية الخصم يقدر يغيّر أو يشيل الخصم وهو بيعدّل الفاتورة في حدود حده",
+          "en": "Whoever gives discounts can change or remove them while editing an invoice, within their limit"
+        },
+        {
+          "ar": "تقدر تعدّل الفاتورة حتى لو العميل دفع عليها فلوس أو شيكات؛ الفلوس والشيكات بتفضل على حسابه، والزيادة بتبقى رصيد له",
+          "en": "An invoice can be edited even when money or cheques came in against it; they stay on the customer's account and anything over the new total is their credit"
+        },
+        {
+          "ar": "القسم اللي ليه مواسم: الفاتورة بتسأل الموسم بعد القسم (صيفي/شتوي/بدون موسم)، والمشتريات صيفي أو شتوي وسنة الصنف من تاريخ الفاتورة؛ وفلتر الموسم في المبيعات",
+          "en": "Departments by season: invoices ask the season after the department (summer/winter/none), purchases summer or winter with the item's year from the invoice date; season filter in sales"
+        },
+        {
+          "ar": "المرتجع بقى طريقة واحدة زي فاتورة البيع: تختار العميل أو المورد وتكتب الأصناف، وبيظهر بس اللي اشتراه، بالسعر اللي دفعه فعلًا بعد الخصومات، من أحدث فاتورة الأول أو من فاتورة تختارها",
+          "en": "Returns are one way, like a sales invoice: pick the customer or supplier and type the items; only what they bought is offered, at what they actually paid, newest invoice first or from one you choose"
+        },
+        {
+          "ar": "الفاتورة المطبوعة: كود، اسم الصنف، سعر الوحدة، الكمية، الإجمالي، وعمود الخصم بس لو في خصم؛ وتحتها الرصيد السابق وإجمالي الكمية والمبلغ بالحروف",
+          "en": "The printed invoice: Code, Item name, Unit price, Quantity, Total, with a discount column only when there is one; under it the previous balance, total quantity and the amount in words"
+        },
+        {
+          "ar": "إعدادات الطباعة متقسمة ومرتبة، والمندوب والقسم والتوصيل كل واحد ليه اختيار، والتوصيل في خانة لوحده جنب العميل؛ وترس الإعدادات وتاريخ الاستحقاق اتشالوا من الفاتورة",
+          "en": "Print setup is grouped; rep, department and delivery each have their own checkbox and delivery sits in its own box; the settings gear and the due date are gone from the invoice"
+        },
+        {
+          "ar": "كشف حساب الخزينة والبنوك بيفتح صفحة الكشف الجديدة، وكل حركة في أعمدة: التاريخ والساعة، المستند، من مين ولمين، الفرع، ومين عملها؛ وكشوف العملاء والحسابات فيها الوقت ومين عمل الحركة",
+          "en": "The Cash & Banks statement opens the new statement page with every movement in columns (date and time, document, from/to whom, branch, who made it); party and account statements show the time and who made each line"
+        },
+        {
+          "ar": "تسليم النقدية والأوراق المالية بقوا جداول بكل التفاصيل في أعمدة، مع فلاتر",
+          "en": "Cash handovers and cheques & notes are tables with every detail in columns, with filters"
+        },
+        {
+          "ar": "في صلاحيات الموظف: ممكن من غير أي خزنة، أو تحدد يشوف سجل النقدية لآخر شهر أو آخر كام يوم",
+          "en": "Staff access: no cash boxes at all, or money history limited to the last month or N days"
+        },
+        {
+          "ar": "كارت الصنف بيحتفظ بالفترة، والتاريخ بالأسهم مبقاش بيعمل تحديث كل ضغطة، ورصيد أول المدة بيظهر دايمًا مع الوارد والمنصرف قبلها والمتاح وآخر تكلفة، وكل حركة مكتوب عليها العميل أو المورد",
+          "en": "The item card keeps its dates, arrow keys no longer reload it, the opening balance always shows with what came in and out before, what's available and the last cost, and each movement names its customer or supplier"
+        },
+        {
+          "ar": "تعديل الصنف بقى بنفس شكل إضافة صنف جديد، وتقدر تحذف صنف اتعمل بالغلط ولسه ما اتستخدمش",
+          "en": "Editing an item uses the same form as adding one, and an item made by mistake that was never used can be deleted"
+        },
+        {
+          "ar": "تعديل أسعار أصناف مصنع كلها أو بعضها مرة واحدة: سعر التوريد وسعر البيع بنسبة أو مبلغ أو هامش ربح، مع تقريب ومعاينة قبل التطبيق",
+          "en": "Change the prices of all or some of a factory's items at once: supply and sale price by percent, amount or margin, with rounding and a preview"
+        },
+        {
+          "ar": "الجرد بالفرع والمخزن والقسم والمصنع مع بعض، وكود الصنف واسمه كل واحد في خانة",
+          "en": "Stocktake by branch, warehouse, department and factory together, with item code and name in their own columns"
+        },
+        {
+          "ar": "المخزن: كود واسم المورد الأول، الفلاتر جنب بعض، والقسم الرئيسي بس؛ والتحويلات بالفترة ومن مكان لمكان وبالقسم بإجمالي القطع والقيمة؛ وتقييم المخزن اتنظم بإجماليات وتجميع بالفرع والمخزن والقسم",
+          "en": "Inventory: supplier code and name first, filters side by side, main department only; transfers by period, from/to place and department with totals; stock valuation reorganised with totals and grouping"
+        },
+        {
+          "ar": "لوحة التحكم بتعرض لكل واحد فروعه ومخازنه وأقسامه وخزنه بس، وفيها فلاتر للفرع والمخزن والقسم، وأحدث المستندات بتوضح الفرع والمخزن والقسم ومين عملها وإمتى",
+          "en": "The dashboard shows each person only their branches, warehouses, departments and boxes, has branch/warehouse/department filters, and latest documents show where, who and when"
+        },
+        {
+          "ar": "تحليل جديد للموردين والأقسام: كل مورد بيورد إيه ولأنهي قسم، ومبيعات وأرباح ومخزون كل قسم ومجموعة",
+          "en": "New analysis by supplier and department: what each supplier supplies and to which department, with sales, profit and stock per department and group"
+        },
+        {
+          "ar": "تطبيق ويندوز ملوش شريط عنوان: بيملا الشاشة وشريط المهام باين، وفيه زرار تصغير وإغلاق جوه البرنامج؛ F11 بيخفي شريط المهام وبيفتكر اختيارك، وعنوان الخادم بكليك يمين على الزرارين",
+          "en": "The Windows app has no title bar: it fills the screen with the taskbar showing and has its own Minimize and Close buttons; F11 hides the taskbar and remembers it; the server address is a right-click on those buttons"
+        }
+      ],
+      "fixes": [
+        {
+          "ar": "رصيد أول المدة بقى مظبوط في كل الكشوف وكارت الصنف: الحركة المسجلة بتاريخ قديم بتظهر في يومها، والفاتورة المعدّلة بتفضل في يومها",
+          "en": "Opening balances are right on every statement and the item card: back-dated movements stand on their day and an edited invoice stays on its own day"
+        },
+        {
+          "ar": "الفاتورة اللي قفلتها مبقتش ترجع تفتح لما ترجع للمبيعات، والضغط بسرعة مبقاش يفتح ويقفل ورا بعض",
+          "en": "A closed invoice no longer reopens when you go back to Sales, and quick clicks no longer open and close it repeatedly"
+        },
+        {
+          "ar": "فواتير العميل مجمعة: الرصيد السابق والمدفوع بقوا صح، والفاتورة المجمعة بتبين الضريبة والإضافات، والقفل بعد الطباعة فعلًا بس",
+          "en": "Customer's invoices together: right previous balance and paid amount, tax and additions on the combined paper, invoices locked only once actually printed"
+        },
+        {
+          "ar": "في تعديل الفاتورة أصنافها مبقتش تطلع «مفيش كمية»، وتعديل فاتورة مدفوعة في الخزنة مبقاش بيسحب الفلوس ويرجعها",
+          "en": "Editing an invoice no longer flags its own items as out of stock, nor takes counter cash out of the box and back"
+        },
+        {
+          "ar": "الصنف اللي خلص بيتكتب عليه «نفد» حتى لو وصل لحد الطلب",
+          "en": "An item with none left shows \"Out of stock\", even at its reorder level"
+        },
+        {
+          "ar": "كشف حساب المخازن بيظهر المخازن ومش بيحمّل العملاء، والوارد والمنصرف والرصيد صح على الفترة كلها",
+          "en": "The warehouse statement lists warehouses (not customers), with in, out and closing right over the whole period"
+        }
+      ],
+      "apps": {
+        "windows": "1.8.0",
+        "android": "1.4.0"
+      }
+    },
+    {
       "version": "1.12.0",
       "date": "2026-10-24",
       "features": [

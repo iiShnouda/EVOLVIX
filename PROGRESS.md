@@ -1004,6 +1004,28 @@ own permission, and roles bundle them
   with its own prefix and start (Settings → numbering). Side menu collapses; print options choose
   what prints; no number-box arrows. Check: `invoices`.
 
+### Owner's list of 2026-11-10 (release 1.13.0)
+
+Done in nine parts, each with its own checks: numeric dates everywhere and no milliseconds; a clear
+columns menu without the print choice and clear sort arrows; "supply price" for average cost; sales
+list (number search over any dates, kept filters, opens on all), one date on a new invoice, empty
+quantity box, cost only with profit, edits counting their own stock and changing discounts;
+departments by season; one way to return (only what the party bought, at the price paid) and edits
+of invoices with money or cheques; the printed invoice (columns, previous balance, total quantity,
+amount in words, grouped print options, delivery box) and the customer's invoices together fixed;
+statements with who/when/counterpart and correct opening balances; handovers and cheques in columns;
+no money box or a money history limit per person; item card (opening, last cost, parties), the
+editor like a new item, a supplier's prices at once, deleting an unused item; stocktake by
+branch/warehouse/department/factory, inventory and transfers filters, out-of-stock status, the
+valuation reorganised, the warehouse statement; the dashboard by each person's access with filters
+and detailed latest documents; analytics by supplier and department; Windows app 1.8.0 without a
+title bar. Checks: `salesscreen`, `seasons`, `previous`, `words`, `openings`, `moneyaccess`,
+`itemcard`, `bulkprices`, `stock`, `dashscope`, `assortment`.
+
+Open questions for the owner: what "a code I issue and can't delete" means (item code, label
+barcode, factory code, or a party code); department-to-department moves inside one warehouse would
+need departments on stock balances (not built); the Windows app now opens with the taskbar showing.
+
 ## 5. Key business-logic decisions (verified, see ROADMAP §3)
 - **Money = integer minor units** (piastres), never floats. `MINOR_UNITS = 100` (2 decimals).
 - **Inventory costing = moving weighted average.** Receipt recomputes avg cost; sale issues at
