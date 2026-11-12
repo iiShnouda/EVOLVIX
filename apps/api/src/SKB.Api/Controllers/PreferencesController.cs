@@ -75,6 +75,20 @@ public sealed class PreferencesController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Back to the app's own layout for everyone without the print-settings permission.</summary>
+    [HttpDelete("print-default")]
+    [Authorize(Policy = Permissions.PrintDefault)]
+    public async Task<IActionResult> ClearPrintDefault()
+    {
+        var settings = await _db.CompanySettings.FirstOrDefaultAsync();
+        if (settings is null) return NotFound();
+        settings.PrintLayout = null;
+        await _db.SaveChangesAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "reset", "print_layout",
+            null, Request.HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
+        return NoContent();
+    }
+
     private static bool IsPrint(string key) => key.StartsWith(PrintPrefix, StringComparison.Ordinal);
     private bool MayPrintSettings() => User.HasClaim("permission", Permissions.PrintSettings);
 

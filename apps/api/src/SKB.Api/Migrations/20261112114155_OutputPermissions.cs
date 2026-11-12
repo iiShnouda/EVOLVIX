@@ -19,6 +19,16 @@ namespace SKB.Api.Migrations
                 type: "text",
                 nullable: true);
 
+            // Changing the print options becomes a permission (owner, 2026-11-12): the others print
+            // with the company's layout, which starts as the owner's own print options.
+            migrationBuilder.Sql(@"
+UPDATE ""CompanySettings"" SET ""PrintLayout"" = (
+    SELECT json_object_agg(p.""Key"", p.""Value"")::text FROM ""StaffPreferences"" p
+    WHERE p.""Key"" LIKE 'columns:print.%' AND p.""StaffId"" = (
+        SELECT s.""Id"" FROM ""Staff"" s WHERE s.""Role"" = 'OWNER' ORDER BY s.""CreatedAt"" LIMIT 1))
+WHERE ""PrintLayout"" IS NULL;
+");
+
             // Saving as PDF, and printing and Excel where a page had no permission for them, are
             // permissions of their own (owner, 2026-11-12). Whoever could do it before still can:
             // PDF came with printing, the payroll Excel with opening a run, the count sheet with
