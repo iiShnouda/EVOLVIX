@@ -88,5 +88,7 @@ export const LOOKUPS = {
     ],
   ),
   /** Price lists and quantity discounts. */
+  /** The banks cheques are drawn on. */
+  banks: of(['notes:'], ['ai:scan_cheques']),
   priceLists: of(['price_lists:', 'quantity_breaks:'], ['parties:set_price_level']),
 } satisfies Record<string, Permission[]>;

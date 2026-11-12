@@ -22,6 +22,8 @@ public static class Lookups
     /// goes to the branch's own box for whoever can't list them; handovers list their own boxes.
     /// </summary>
     public const string MoneyAccounts = "lookup:money-accounts";
+    /// <summary>The banks cheques are drawn on: whoever works with cheques or reads them from a photo.</summary>
+    public const string Banks = "lookup:banks";
     /// <summary>Price lists and quantity discounts.</summary>
     public const string PriceLists = "lookup:price-lists";
 
@@ -42,6 +44,7 @@ public static class Lookups
             Permissions.SalesApprove, Permissions.DeliverySettle,
             Permissions.NotesDeposit, Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce,
             Permissions.PayrollPay, Permissions.PayrollAdvance, Permissions.StatementMoney, Permissions.StaffAccess),
+        [Banks] = Of(new[] { "notes:" }, Permissions.AiScanCheques),
         [PriceLists] = Of(new[] { "price_lists:", "quantity_breaks:" }, Permissions.PartiesSetPriceLevel),
     };
 

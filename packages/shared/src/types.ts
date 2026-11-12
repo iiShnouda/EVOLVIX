@@ -247,6 +247,7 @@ export type Permission =
   | 'notes:endorse'
   | 'notes:cancel'
   | 'notes:lost'
+  | 'notes:add_bank'
   | 'ledger:accounts'
   | 'ledger:journal'
   | 'ledger:trial_balance'
@@ -2502,6 +2503,10 @@ export interface Note {
   /** A photo of the paper is kept (GET /notes/{id}/photo). */
   hasPhoto?: boolean;
   partyCode?: number | null;
+  /** The bank from the company's list, when one was picked. */
+  bankId?: string | null;
+  /** The customer (or supplier) brought or took it themselves (`broughtBy` is their name). */
+  broughtByParty?: boolean;
 }
 
 /** A batch of notes lodged at a bank (حافظة). */
@@ -3199,6 +3204,12 @@ export interface ChequeScan {
   dueDate: string | null;
   bank: string | null;
   drawer: string | null;
+  /** The amount as written in words on the cheque, as read. */
+  amountWords?: string | null;
+  /** The date as written on the cheque, as read. */
+  dateText?: string | null;
+  /** Fields the reading is unsure of, to be checked by the person: amount, dueDate, serial. */
+  check?: ('amount' | 'dueDate' | 'serial')[];
 }
 
 // ---------------------------------------------------------------- profit and loss (owner, 2026-10-06)

@@ -402,6 +402,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'notes:endorse',
           'notes:cancel',
           'notes:lost',
+          'notes:add_bank',
         ],
       },
     ],

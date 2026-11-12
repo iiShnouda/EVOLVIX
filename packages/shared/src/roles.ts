@@ -196,6 +196,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'notes:endorse',
     'notes:cancel',
     'notes:lost',
+    'notes:add_bank',
     'ledger:accounts',
     'ledger:journal',
     'ledger:print',

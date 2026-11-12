@@ -1359,7 +1359,11 @@ public class Note
     public NoteStatus Status { get; set; }
     /// <summary>The number printed on the cheque / note.</summary>
     public string SerialNumber { get; set; } = "";
+    /// <summary>The bank's name as it was when the paper came (kept for history and search).</summary>
     public string? BankName { get; set; }
+    /// <summary>The bank picked from the company's list (owner, 2026-11-12), when one was.</summary>
+    public Guid? BankId { get; set; }
+    public Bank? Bank { get; set; }
     /// <summary>Minor units.</summary>
     public long Amount { get; set; }
     /// <summary>Due date (تاريخ الاستحقاق), a day.</summary>
@@ -1386,6 +1390,8 @@ public class Note
     public DateTime? ReceivedOn { get; set; }
     /// <summary>Who brought it (receivable) or took it (payable).</summary>
     public string? BroughtBy { get; set; }
+    /// <summary>The customer (or supplier) brought or took it themselves (owner, 2026-11-12); <see cref="BroughtBy"/> then holds their name.</summary>
+    public bool BroughtByParty { get; set; }
     /// <summary>A photo of the paper is kept (<see cref="NotePhoto"/>).</summary>
     public bool HasPhoto { get; set; }
     /// <summary>How far the bell has told of its due day: 0 nothing, 1 due soon, 2 overdue (once each).</summary>
@@ -1395,6 +1401,16 @@ public class Note
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<NoteAllocation> Allocations { get; set; } = new();
     public List<NoteEvent> Events { get; set; } = new();
+}
+
+/// <summary>
+/// A bank cheques are drawn on (owner, 2026-11-12: picked from a list people add to). One name, as typed.
+/// </summary>
+public class Bank : INamed
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>The photo of a cheque or note, kept in the database (never on disk), one per paper.</summary>

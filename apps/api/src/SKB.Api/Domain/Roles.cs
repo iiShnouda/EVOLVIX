@@ -450,6 +450,8 @@ public static class Permissions
     public const string NotesCancel = "notes:cancel";
     /// <summary>Record a note as lost or stolen (owner, 2026-10-02): the party owes again.</summary>
     public const string NotesLost = "notes:lost";
+    /// <summary>Add a bank to the list cheques pick from (owner, 2026-11-12).</summary>
+    public const string NotesAddBank = "notes:add_bank";
 
     // ──── Ledger ────
     /// <summary>Ledger · View: Chart of accounts.</summary>
@@ -748,7 +750,7 @@ public static class Permissions
         MoneyAccountsDelete, MoneyAccountsMain, ExpenseCategoriesCreate, ExpenseCategoriesEdit,
         ExpenseCategoriesClose, ExpenseCategoriesDelete, CashHandoverSend, CashHandoverReceive,
         NotesViewReceivable, NotesViewPayable, NotesPortfolios, NotesPhotos, NotesReceive, NotesIssue,
-        NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse, NotesCancel, NotesLost, LedgerAccounts,
+        NotesDeposit, NotesCollect, NotesPay, NotesBounce, NotesEndorse, NotesCancel, NotesLost, NotesAddBank, LedgerAccounts,
         LedgerJournal, LedgerTrialBalance, LedgerIncomeStatement, LedgerBalanceSheet, LedgerPrint, LedgerPdf, LedgerExport,
         LedgerAccountsCreate, LedgerAccountsEdit, LedgerPost, LedgerReverse, LedgerLock, LedgerCloseYear,
         PayrollRuns, PayrollAttendance, PayrollEmployees, PayrollAdvances, PayrollSetup, PayrollPrint, PayrollPdf, PayrollExport,
@@ -839,7 +841,7 @@ public static class RolePermissions
             Permissions.NotesViewReceivable, Permissions.NotesViewPayable, Permissions.NotesPortfolios,
             Permissions.NotesPhotos, Permissions.NotesReceive, Permissions.NotesIssue, Permissions.NotesDeposit,
             Permissions.NotesCollect, Permissions.NotesPay, Permissions.NotesBounce, Permissions.NotesEndorse,
-            Permissions.NotesCancel, Permissions.NotesLost, Permissions.LedgerAccounts, Permissions.LedgerJournal,
+            Permissions.NotesCancel, Permissions.NotesLost, Permissions.NotesAddBank, Permissions.LedgerAccounts, Permissions.LedgerJournal,
             Permissions.LedgerPrint, Permissions.LedgerPdf, Permissions.LedgerExport, Permissions.LedgerAccountsCreate,
             Permissions.LedgerAccountsEdit, Permissions.LedgerPost, Permissions.LedgerReverse,
             Permissions.PayrollRuns, Permissions.PayrollAttendance, Permissions.PayrollEmployees,

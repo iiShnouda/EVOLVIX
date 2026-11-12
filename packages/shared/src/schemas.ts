@@ -662,6 +662,16 @@ export interface CreateNoteInput {
   /** yyyy-mm-dd; today if not given. */
   receivedOn?: string;
   broughtBy?: string;
+  /** The customer (or supplier) brought or took it themselves: their name is kept. */
+  broughtByParty?: boolean;
+  /** A bank from the company's list (GET /banks); its name is kept on the paper. */
+  bankId?: string;
+}
+
+/** A bank cheques are drawn on (owner, 2026-11-12): one name, as typed. */
+export interface Bank {
+  id: string;
+  name: string;
 }
 
 export interface NoteStepInput {

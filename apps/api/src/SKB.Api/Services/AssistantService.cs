@@ -353,7 +353,11 @@ public sealed class AssistantService
     public sealed record PurchaseLine(string Name, string? Model, decimal Quantity, decimal UnitPrice, decimal Discount);
     /// <summary>The invoice; <c>Discount</c> is one amount off the whole invoice (the "خصم" under the total).</summary>
     public sealed record PurchaseScan(string? SupplierName, string? Number, string? Date, decimal Discount, List<PurchaseLine> Lines);
-    public sealed record ChequeScan(string? Serial, decimal Amount, string? DueDate, string? Bank, string? Drawer);
+    /// <param name="AmountWords">The amount written in words, as read.</param>
+    /// <param name="DateText">The date as written on the cheque, as read.</param>
+    /// <param name="Check">The fields read with doubt, for the person to check: amount, dueDate, serial.</param>
+    public sealed record ChequeScan(string? Serial, decimal Amount, string? DueDate, string? Bank, string? Drawer,
+        string? AmountWords = null, string? DateText = null, string[]? Check = null);
 
     // The owner's suppliers write invoices by hand (owner, 2026-10-19): the factory's name at the
     // top, a table of model number (رقم الموديل), item (often blank), price (السعر), count (عدد) and
@@ -371,10 +375,22 @@ public sealed class AssistantService
         "(٠١٢٣٤٥٦٧٨٩) as numbers. Do not make lines from the total, discount or due rows under the table. " +
         "discount: the amount written next to خصم under the table, else 0. Use 0 for anything unreadable.";
 
+    // Egyptian cheques (owner, 2026-11-12: "٣٥٠٠٠ was read as 30000, and the date was wrong"): the
+    // amount is written twice, in figures and in words (the words are the legal amount), often by
+    // hand in Arabic-Indic digits; the date is written day / month / year. Each is asked for exactly
+    // as written and made sense of here (ChequeReading), not by the model.
     private const string ChequePrompt =
-        "Read the cheque(s) in this photo. Reply with JSON only: {\"cheques\": [{\"serial\": string|null, " +
-        "\"amount\": number, \"dueDate\": \"YYYY-MM-DD\"|null, \"bank\": string|null, \"drawer\": string|null}]}. " +
-        "One entry per cheque; amount as a number; the due date as printed on the cheque.";
+        "Read the bank cheque(s) in this photo; they are Egyptian cheques, often filled in by hand in Arabic. " +
+        "Reply with JSON only: {\"cheques\": [{\"serial\": string|null, \"amount\": string, " +
+        "\"amountWords\": string|null, \"date\": string|null, \"bank\": string|null, \"drawer\": string|null}]}. " +
+        "One entry per cheque. serial: the cheque number. " +
+        "amount: the figures in the amount box, copied digit by digit exactly as written, without rounding; " +
+        "Arabic-Indic digits are ٠=0 ١=1 ٢=2 ٣=3 ٤=4 ٥=5 ٦=6 ٧=7 ٨=8 ٩=9, so ٣٥٠٠٠ is 35000 and ٣٠٠٠٠ is 30000: " +
+        "look at every digit, a ٥ is a small circle and a ٠ a dot. " +
+        "amountWords: the amount written in words on the cheque (after مبلغ or فقط, or \"the sum of\"), copied exactly. " +
+        "date: the date written on the cheque, copied exactly as written (day/month/year as it appears, e.g. ١٥/٣/٢٠٢٧ " +
+        "or 15 مارس 2027); do not reorder or convert it. bank: the bank's printed name. " +
+        "drawer: the account holder's name printed on the cheque.";
 
     /// <summary>A counted line of a stocktake sheet: the item's code as printed and the count written beside it.</summary>
     public sealed record CountScan(string Code, decimal Counted);
@@ -456,11 +472,34 @@ public sealed class AssistantService
     public async Task<List<ChequeScan>> ReadChequesAsync(byte[] image, CancellationToken ct = default)
     {
         var json = await VisionAsync(ChequePrompt, image, ct);
-        return (json["cheques"] as JsonArray ?? new JsonArray())
-            .OfType<JsonObject>()
-            .Select(c => new ChequeScan(Str(c?["serial"]), Math.Max(0, Num(c?["amount"])), Day(Str(c?["dueDate"])),
-                Str(c?["bank"]), Str(c?["drawer"])))
+        var rows = Field(json, "cheques", "items") as JsonArray ?? new JsonArray();
+        return rows.OfType<JsonObject>().Select(c => Cheque(c, CompanyClock.Today))
             .Where(c => c.Amount > 0 || c.Serial is not null).Take(100).ToList();
+    }
+
+    /// <summary>
+    /// One cheque as read: the amount from its figures, checked against its words (the words win
+    /// when they differ), and its date day first. What is doubtful is listed in <c>Check</c>.
+    /// </summary>
+    public static ChequeScan Cheque(JsonObject c, DateOnly today)
+    {
+        var check = new List<string>();
+        var serial = Str(Field(c, "serial", "number", "chequeNumber")) is { } sr ? Digits(sr) : null;
+        if (serial is null) check.Add("serial");
+        var figures = Math.Max(0, Num(Field(c, "amount", "amountFigures")));
+        var words = Str(Field(c, "amountWords", "amountInWords", "words"));
+        var amount = figures;
+        if (ChequeReading.Words(words) is { } spelled)
+        {
+            if (spelled != figures) check.Add("amount");
+            amount = spelled;
+        }
+        else if (figures <= 0) check.Add("amount");
+        var dateText = Str(Field(c, "date", "dueDate", "dateWritten"));
+        var (date, sure) = ChequeReading.Date(dateText, today);
+        if (!sure || (date is null && dateText is null)) check.Add("dueDate");
+        return new ChequeScan(serial, amount, date?.ToString("yyyy-MM-dd"), Str(Field(c, "bank", "bankName")),
+            Str(Field(c, "drawer", "accountHolder", "name")), words, dateText, check.ToArray());
     }
 
     private async Task<JsonObject> VisionAsync(string prompt, byte[] image, CancellationToken ct)

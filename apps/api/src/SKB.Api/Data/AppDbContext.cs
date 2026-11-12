@@ -118,6 +118,7 @@ public class AppDbContext : DbContext
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
     public DbSet<Note> Notes => Set<Note>();
+    public DbSet<Bank> Banks => Set<Bank>();
     public DbSet<NoteAllocation> NoteAllocations => Set<NoteAllocation>();
     public DbSet<NoteEvent> NoteEvents => Set<NoteEvent>();
     public DbSet<Portfolio> Portfolios => Set<Portfolio>();
@@ -277,6 +278,10 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.VoucherId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<VoucherAllocation>().HasOne(x => x.Document).WithMany()
             .HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Bank>().HasIndex(x => x.Name).IsUnique();
+        b.Entity<Bank>().Property(x => x.Name).HasMaxLength(100);
+        b.Entity<Note>().HasOne(n => n.Bank).WithMany()
+            .HasForeignKey(n => n.BankId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<ExpenseCategory>().HasOne(c => c.Parent).WithMany()
             .HasForeignKey(c => c.ParentId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<SalesDocument>().HasOne(d => d.PaidAccount).WithMany()

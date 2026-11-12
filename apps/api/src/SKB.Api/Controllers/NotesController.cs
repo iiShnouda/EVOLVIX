@@ -152,6 +152,36 @@ public sealed class NotesController : ControllerBase
             p.Notes.OrderBy(n => n.Ref).Select(n => n.Ref).ToArray(), currency)).ToArray());
     }
 
+    // ------------------------------------------------------------------ banks
+
+    /// <summary>The banks cheques are drawn on (owner, 2026-11-12), for whoever works with cheques.</summary>
+    [HttpGet("banks")]
+    [Authorize(Policy = Lookups.Banks)]
+    public async Task<ActionResult<BankDto[]>> Banks()
+    {
+        var rows = await _db.Banks.AsNoTracking().OrderBy(b => b.Name).Take(1000).ToListAsync();
+        return Ok(rows.Select(b => new BankDto(b.Id.ToString(), b.Name)).ToArray());
+    }
+
+    /// <summary>Add a bank to the list (one name, as typed); the same name twice is the one already there.</summary>
+    [HttpPost("banks")]
+    [Authorize(Policy = Permissions.NotesAddBank)]
+    public async Task<ActionResult<BankDto>> AddBank([FromBody] CreateBankRequest req)
+    {
+        var name = Loc.Clean(req.Name);
+        if (name is null || name.Length > 100) return Bad("bad_name", "Enter the bank's name (up to 100 letters).");
+        var low = name.ToLower();
+        var bank = await _db.Banks.FirstOrDefaultAsync(b => b.Name.ToLower() == low);
+        if (bank is not null) return Ok(new BankDto(bank.Id.ToString(), bank.Name));
+        bank = new Bank { Name = name };
+        _db.Banks.Add(bank);
+        await _db.SaveChangesAsync();
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "bank", null,
+            Request.HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString(),
+            bank.Id.ToString(), name);
+        return Created($"/api/banks/{bank.Id}", new BankDto(bank.Id.ToString(), bank.Name));
+    }
+
     // ------------------------------------------------------------------ receive / issue
 
     /// <summary>Take a cheque / promissory note from a party: their account drops; it may settle their sales invoices.</summary>
@@ -259,17 +289,33 @@ public sealed class NotesController : ControllerBase
         }
         await MoneyService.LockPartiesAsync(_db, partyId);
 
+        // The bank: picked from the list (its name kept on the paper), or typed (matched to the list when it is there).
+        Bank? bank = null;
+        if (Text(req.BankId, 60) is { } rawBank)
+        {
+            bank = Guid.TryParse(rawBank, out var bankId) ? await _db.Banks.FirstOrDefaultAsync(x => x.Id == bankId) : null;
+            if (bank is null) return (null, Bad("bank_not_found", "Choose the bank from the list."));
+        }
+        else if (Loc.Clean(req.BankName) is { } typed)
+        {
+            var low = typed.ToLower();
+            bank = await _db.Banks.FirstOrDefaultAsync(x => x.Name.ToLower() == low);
+        }
+
         var note = new Note
         {
             Ref = await DocumentNumbers.NextNoteAsync(_db, direction), Kind = kind, Direction = direction,
             Status = direction == NoteDirection.RECEIVABLE ? NoteStatus.IN_HAND : NoteStatus.ISSUED,
-            SerialNumber = serial, BankName = Text(req.BankName, 100), Amount = req.Amount,
+            SerialNumber = serial, BankName = bank?.Name ?? Text(Loc.Clean(req.BankName), 100), BankId = bank?.Id,
+            Amount = req.Amount,
             DueDate = due.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), Drawer = Text(req.Drawer, 100),
             Guarantor = Text(req.Guarantor, 100), PartyId = partyId, BranchId = Access.Work(User),
             Remark = Text(req.Remark, 500), CreatedById = Me(),
             ReceivedOn = (DateOnly.TryParse(req.ReceivedOn, out var came) ? came : CompanyClock.Today)
                 .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-            BroughtBy = Text(req.BroughtBy, 100),
+            // The customer himself (owner, 2026-11-12): his name is kept, so lists show who it was.
+            BroughtByParty = req.BroughtByParty,
+            BroughtBy = req.BroughtByParty ? party.Name[..Math.Min(100, party.Name.Length)] : Text(req.BroughtBy, 100),
         };
         note.Events.Add(new NoteEvent { ToStatus = note.Status, PartyId = partyId, Remark = note.Remark, StaffId = Me() });
         foreach (var (docId, amount) in allocations)
@@ -614,7 +660,8 @@ public sealed class NotesController : ControllerBase
                 e.AccountId == n.AccountId && n.Account is not null ? Loc.Name(n.Account) : null,
                 e.PartyId == n.EndorsedToId ? n.EndorsedTo?.Name : e.PartyId == n.PartyId ? n.Party?.Name : null,
                 e.Remark, e.Staff?.FullName ?? "", e.CreatedAt.ToString("o"))).ToArray(),
-            currency, n.ReceivedOn?.ToString("yyyy-MM-dd"), n.BroughtBy, n.HasPhoto, n.Party?.Code);
+            currency, n.ReceivedOn?.ToString("yyyy-MM-dd"), n.BroughtBy, n.HasPhoto, n.Party?.Code, n.BankId?.ToString(),
+            n.BroughtByParty);
     }
 
     private async Task<string> CurrencyAsync() =>

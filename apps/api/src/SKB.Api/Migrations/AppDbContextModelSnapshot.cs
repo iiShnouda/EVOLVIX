@@ -188,6 +188,28 @@ namespace SKB.Api.Migrations
                     b.ToTable("AuditEntries");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.Bank", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Banks");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.Branch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1490,6 +1512,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("BankId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("BankName")
                         .HasColumnType("text");
 
@@ -1498,6 +1523,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<string>("BroughtBy")
                         .HasColumnType("text");
+
+                    b.Property<bool>("BroughtByParty")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1555,6 +1583,8 @@ namespace SKB.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("BankId");
 
                     b.HasIndex("BranchId");
 
@@ -3902,6 +3932,11 @@ namespace SKB.Api.Migrations
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SKB.Api.Data.Bank", "Bank")
+                        .WithMany()
+                        .HasForeignKey("BankId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SKB.Api.Data.Branch", "Branch")
                         .WithMany()
                         .HasForeignKey("BranchId")
@@ -3931,6 +3966,8 @@ namespace SKB.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Account");
+
+                    b.Navigation("Bank");
 
                     b.Navigation("Branch");
 
