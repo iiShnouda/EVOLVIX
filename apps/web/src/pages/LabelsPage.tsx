@@ -9,7 +9,7 @@ import { useCan } from '../lib/can';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { barsFor } from '../lib/barcode';
-import { printNow } from '../lib/print';
+import { askOutput, printNow } from '../lib/print';
 import { useBranding, useHiddenColumns } from '../lib/queries';
 
 /** One item's label as the server gives it, with how many to print. */
@@ -383,10 +383,12 @@ export function LabelsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const preview = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
 
-  async function print() {
+  async function print(kind: 'print' | 'pdf') {
     setPrinting(true);
     setError(null);
     try {
+      // Printing and saving as PDF are each a permission (owner, 2026-11-12): the server says first.
+      await askOutput({ page: 'labels', kind }, t('labels.title'));
       // Items without a barcode get the company's own before their labels print.
       if (noBarcode.length && can('products:edit')) {
         const given = await api.post<Record<string, string>>(
@@ -539,14 +541,27 @@ export function LabelsPage({ embedded = false }: { embedded?: boolean } = {}) {
             {t('labels.items')} <span className="text-muted tnum">({total})</span>
           </span>
           <div className="flex flex-wrap gap-2">
-            <Button
-              icon="print"
-              loading={printing}
-              disabled={total === 0 || printing}
-              onClick={print}
-            >
-              {t('labels.print')}
-            </Button>
+            {can('labels:print') && (
+              <Button
+                icon="print"
+                loading={printing}
+                disabled={total === 0 || printing}
+                onClick={() => void print('print')}
+              >
+                {t('labels.print')}
+              </Button>
+            )}
+            {can('labels:pdf') && (
+              <Button
+                variant="secondary"
+                icon="download"
+                disabled={total === 0 || printing}
+                onClick={() => void print('pdf')}
+                title={t('print.pdfHint')}
+              >
+                {t('common.pdf')}
+              </Button>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-app)] bg-surface-2 p-2">

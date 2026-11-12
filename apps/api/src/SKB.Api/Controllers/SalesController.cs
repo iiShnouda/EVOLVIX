@@ -145,20 +145,23 @@ public sealed class SalesController : ControllerBase
 
     /// <summary>
     /// A sales document is about to be printed (owner, 2026-10-24): printing is its own permission,
-    /// checked here before the web app prints, and written in the activity log.
+    /// checked here before the web app prints, and written in the activity log. Saving it as PDF
+    /// (<c>?kind=pdf</c>) is a permission of its own (owner, 2026-11-12).
     /// </summary>
     [HttpPost("invoices/{id:guid}/print")]
     [HttpPost("returns/{id:guid}/print")]
     [HttpPost("orders/{id:guid}/print")]
-    [Authorize(Policy = Permissions.SalesPrint)]
-    public async Task<ActionResult> Printed(Guid id)
+    public async Task<ActionResult> Printed(Guid id, [FromQuery] string? kind = null)
     {
+        var pdf = kind == "pdf";
+        if (!User.HasClaim("permission", pdf ? Permissions.SalesPdf : Permissions.SalesPrint))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
         var doc = await _db.SalesDocuments.AsNoTracking()
             .Where(d => d.Id == id && (d.Type == DocumentType.SALES_INVOICE || d.Type == DocumentType.SALES_RETURN
                                        || d.Type == DocumentType.SALES_ORDER || d.Type == DocumentType.QUOTATION))
             .InBranches(User, d => d.BranchId).InDepartments(User).FirstOrDefaultAsync();
         if (doc is null || !MaySee(doc)) return NotFound(new { message = "Document not found", code = "not_found" });
-        await AuditAsync("print", doc.Type switch
+        await AuditAsync(pdf ? "pdf" : "print", doc.Type switch
         {
             DocumentType.SALES_RETURN => "sales_return",
             DocumentType.SALES_ORDER => "sales_order",

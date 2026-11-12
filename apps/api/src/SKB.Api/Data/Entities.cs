@@ -1195,6 +1195,11 @@ public class StockMovement
 /// </summary>
 public class CompanySettings
 {
+    /// <summary>
+    /// The company's print layout (owner, 2026-11-12): the print options (JSON, preference key →
+    /// value) everyone without the print-settings permission prints with. Null = the app's own.
+    /// </summary>
+    public string? PrintLayout { get; set; }
     /// <summary>Payroll: a day's pay is the monthly salary ÷ this (30 by default).</summary>
     public int PayrollDayBasis { get; set; } = 30;
     /// <summary>Payroll: overtime pays this percent of the normal minute rate (150 = time and a half).</summary>

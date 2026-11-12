@@ -147,11 +147,12 @@ export function DocumentPreview({
   const paper = useRef<HTMLDivElement>(null);
   const [options] = usePaperOptions();
   const ready = !loading && !!doc;
-  const canPrint = !!doc && mayPrint(can, doc);
-  // Printing opens the setup first (the paper and what shows), then prints from there.
-  const [setup, setSetup] = useState(false);
+  const canPrint = !!doc && mayPrint(can, doc, 'print');
+  const canPdf = !!doc && mayPrint(can, doc, 'pdf');
+  // Printing opens the setup first (the paper and what shows), then prints (or saves the PDF) from there.
+  const [setup, setSetup] = useState<'print' | 'pdf' | null>(null);
   useEffect(() => {
-    if (autoPrint && ready && canPrint) setSetup(true);
+    if (autoPrint && ready && canPrint) setSetup('print');
   }, [autoPrint, ready, canPrint]);
 
   if (loading) {
@@ -213,7 +214,7 @@ export function DocumentPreview({
                 onClick={() => navigate(`/sales/invoices/${doc.id}`)}
               />
             )}
-            {doc.type === 'PURCHASE_INVOICE' && can('labels:print') && (
+            {doc.type === 'PURCHASE_INVOICE' && (can('labels:print') || can('labels:pdf')) && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -228,10 +229,22 @@ export function DocumentPreview({
                 size="sm"
                 variant="ghost"
                 icon="print"
-                aria-label={t('common.printPdf')}
-                title={t('common.printPdf')}
-                onClick={() => setSetup(true)}
+                aria-label={t('common.print')}
+                title={t('common.print')}
+                onClick={() => setSetup('print')}
               />
+            )}
+            {canPdf && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="download"
+                aria-label={t('common.pdfHint')}
+                title={t('common.pdfHint')}
+                onClick={() => setSetup('pdf')}
+              >
+                {t('common.pdf')}
+              </Button>
             )}
             {onClose && (
               <button
@@ -257,8 +270,9 @@ export function DocumentPreview({
         <PrintSetupSheet
           doc={doc}
           record
+          pdf={setup === 'pdf'}
           onClose={() => {
-            setSetup(false);
+            setSetup(null);
             if (autoPrint) onPrinted?.();
           }}
         />
@@ -710,14 +724,18 @@ export function PrintSetupSheet({
   onClose,
   onPrinted,
   record,
+  pdf = false,
 }: {
   doc: SalesDocument;
   onClose: () => void;
   onPrinted?: () => void;
   /** Printing it is its own permission: the server is asked (and notes it) first. */
   record?: boolean;
+  /** Save it as PDF (its own permission) rather than print it. */
+  pdf?: boolean;
 }) {
   const { t } = useT();
+  const can = useCan();
   const [options, setOptions] = usePaperOptions();
   const [paper, setPaper] = useState<HTMLDivElement | null>(null);
   const [refused, setRefused] = useState<unknown>(null);
@@ -725,7 +743,7 @@ export function PrintSetupSheet({
     const path = printPath(doc);
     if (!record || !path) return true;
     try {
-      await api.post(path, {});
+      await api.post(pdf ? `${path}?kind=pdf` : path, {});
       return true;
     } catch (e) {
       setRefused(e);
@@ -746,12 +764,16 @@ export function PrintSetupSheet({
         onClose={onClose}
         onPrinted={onPrinted}
         beforePrint={beforePrint}
+        pdf={pdf}
         side={
           <>
             {refused != null && (
               <p className="mb-2 text-sm text-destructive">{errorText(t, refused)}</p>
             )}
-            <PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />
+            {/* The options are a permission of their own (owner, 2026-11-12). */}
+            {can('print:settings') && (
+              <PrintOptionsPanel options={options} onChange={setOptions} withPaper={false} />
+            )}
           </>
         }
       />
@@ -777,9 +799,13 @@ function printPath(doc: SalesDocument): string | null {
   }
 }
 
-/** Whether this person may print this kind of document. */
-export function mayPrint(can: (p: Permission) => boolean, doc: SalesDocument): boolean {
-  return can(doc.type.startsWith('PURCHASE') ? 'purchases:print' : 'sales:print');
+/** Whether this person may print (or save as PDF) this kind of document. */
+export function mayPrint(
+  can: (p: Permission) => boolean,
+  doc: SalesDocument,
+  kind: 'print' | 'pdf' = 'print',
+): boolean {
+  return can(`${doc.type.startsWith('PURCHASE') ? 'purchases' : 'sales'}:${kind}`);
 }
 
 /**

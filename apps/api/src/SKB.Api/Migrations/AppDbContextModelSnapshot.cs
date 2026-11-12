@@ -583,6 +583,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
+                    b.Property<string>("PrintLayout")
+                        .HasColumnType("text");
+
                     b.Property<bool>("RequireDepartment")
                         .HasColumnType("boolean");
 

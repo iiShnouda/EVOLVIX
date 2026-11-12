@@ -54,7 +54,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'view',
-        permissions: ['sales:view', 'sales:returns_view', 'sales:together', 'sales:print'],
+        permissions: [
+          'sales:view',
+          'sales:returns_view',
+          'sales:together',
+          'sales:print',
+          'sales:pdf',
+        ],
       },
       {
         key: 'invoices',
@@ -122,6 +128,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'purchases:returns_view',
           'purchases:price_sheet',
           'purchases:print',
+          'purchases:pdf',
         ],
       },
       {
@@ -154,6 +161,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         permissions: [
           'inventory:view',
           'inventory:print',
+          'inventory:pdf',
           'inventory:export',
           'products:create',
           'products:edit',
@@ -198,13 +206,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'stocktake',
-        permissions: ['inventory:stocktake_view', 'inventory:stocktake'],
+        permissions: [
+          'inventory:stocktake_view',
+          'stocktake:print',
+          'stocktake:pdf',
+          'inventory:stocktake',
+        ],
       },
       {
         key: 'transfers',
         permissions: [
           'transfers:view',
           'transfers:print',
+          'transfers:pdf',
           'inventory:transfer',
           'inventory:transfer_edit',
           'inventory:transfer_receive',
@@ -213,7 +227,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'labels',
-        permissions: ['labels:print'],
+        permissions: ['labels:print', 'labels:pdf'],
       },
       {
         key: 'price_lists_and_quantity_discounts',
@@ -269,7 +283,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'view',
-        permissions: ['parties:view', 'parties:contact', 'parties:id_cards_view', 'parties:print'],
+        permissions: [
+          'parties:view',
+          'parties:contact',
+          'parties:id_cards_view',
+          'parties:print',
+          'parties:pdf',
+        ],
       },
       {
         key: 'adding_and_changing',
@@ -305,7 +325,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'printing',
-        permissions: ['statement:print', 'statement:export'],
+        permissions: ['statement:print', 'statement:pdf', 'statement:export'],
       },
     ],
   },
@@ -319,6 +339,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'vouchers:view',
           'expense_categories:view',
           'money:print',
+          'money:pdf',
           'money:export',
         ],
       },
@@ -397,6 +418,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'ledger:income_statement',
           'ledger:balance_sheet',
           'ledger:print',
+          'ledger:pdf',
           'ledger:export',
         ],
       },
@@ -425,6 +447,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'payroll:advances',
           'payroll:setup',
           'payroll:print',
+          'payroll:pdf',
+          'payroll:export',
         ],
       },
       {
@@ -476,7 +500,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'printing',
-        permissions: ['reports:print', 'reports:export'],
+        permissions: ['reports:print', 'reports:pdf', 'reports:export'],
       },
     ],
   },
@@ -485,7 +509,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'log',
-        permissions: ['audit:view', 'audit:export', 'presence:view'],
+        permissions: ['audit:view', 'audit:print', 'audit:pdf', 'audit:export', 'presence:view'],
       },
     ],
   },
@@ -572,6 +596,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       {
         key: 'general',
         permissions: ['costs:view', 'profit:view', 'documents:backdate', 'rules:override'],
+      },
+      {
+        key: 'printing',
+        permissions: ['print:settings', 'print:default'],
       },
     ],
   },

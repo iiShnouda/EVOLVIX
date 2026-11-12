@@ -100,13 +100,14 @@ const TABS: { key: Tab; label: TranslationKey; anyOf: Permission[] }[] = [
     anyOf: [
       'transfers:view',
       'transfers:print',
+      'transfers:pdf',
       'inventory:transfer',
       'inventory:transfer_edit',
       'inventory:transfer_receive',
       'inventory:transfer_cancel',
     ],
   },
-  { key: 'labels', label: 'labels.title', anyOf: ['labels:print'] },
+  { key: 'labels', label: 'labels.title', anyOf: ['labels:print', 'labels:pdf'] },
   {
     key: 'pricelists',
     label: 'pl.short',

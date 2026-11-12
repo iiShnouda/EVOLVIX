@@ -40,6 +40,7 @@ export const LOOKUPS = {
       'inventory:valuation_suppliers',
       'prices:bulk_edit',
       'labels:print',
+      'labels:pdf',
       'ai:scan_purchase',
       'ai:scan_cheques',
     ],

@@ -1,5 +1,6 @@
 import type { PaperSize } from '@skb/shared';
 import { buildXlsx, type Sheet } from './xlsx';
+import { api } from './api';
 
 /**
  * Printing and saving files. A printout ("Save as PDF" in the same dialog) is a copy of one part
@@ -58,6 +59,49 @@ export interface PrintJob {
   fileTitle: string;
   /** Called once it is really printed (not when the editor is closed without printing). */
   onPrinted?: () => void;
+  /** The page and kind it is asked for as (printing and PDF are each a permission). */
+  output?: Output;
+}
+
+/** Every page that can print or save a file, as the server's /outputs knows it. */
+export type OutputPage =
+  | 'sales'
+  | 'purchases'
+  | 'inventory'
+  | 'stocktake'
+  | 'transfers'
+  | 'labels'
+  | 'parties'
+  | 'statement'
+  | 'money'
+  | 'ledger'
+  | 'payroll'
+  | 'reports'
+  | 'audit';
+export type OutputKind = 'print' | 'pdf' | 'excel';
+export interface Output {
+  page: OutputPage;
+  kind: OutputKind;
+}
+
+/**
+ * Printing, saving as PDF and Excel are each a permission on every page (owner, 2026-11-12). The
+ * file is made here, so the server is asked first; it checks the permission and notes it in the
+ * activity log. Throws its refusal: then nothing comes out.
+ */
+export async function askOutput(output: Output, title: string): Promise<void> {
+  await api.post('/outputs', { ...output, title: title.slice(0, 200) });
+}
+
+/** The output the next printout is for (set by a print or PDF button, taken by printElement). */
+let nextOutput: Output | undefined;
+export function asOutput(output: Output | undefined, run: () => void) {
+  nextOutput = output;
+  try {
+    run();
+  } finally {
+    nextOutput = undefined;
+  }
 }
 
 /** Opens the print editor (components/PrintEditor.tsx registers it); none = print at once. */
@@ -149,7 +193,8 @@ export function printElement(
   onPrinted?: () => void,
 ) {
   const node = printCopy(el, frame);
-  if (openEditor) openEditor({ node, fileTitle, onPrinted });
+  const output = nextOutput;
+  if (openEditor) openEditor({ node, fileTitle, onPrinted, output });
   else {
     printNow(node, fileTitle);
     onPrinted?.();

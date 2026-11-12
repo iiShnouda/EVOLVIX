@@ -29,7 +29,7 @@ import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
 import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { errorText } from '../lib/errors';
-import { printElement, safeName } from '../lib/print';
+import { asOutput, printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
 import { STATE_TONE, statusOf } from '../lib/status';
 import {
@@ -107,6 +107,7 @@ export function CustomerInvoicesPage() {
   const [all, setAll] = useState<DiscountDraft>({ mode: 'percent', value: '' });
   // One invoice printed: the print setup first (paper and what shows).
   const [printing, setPrinting] = useState<SalesDocument | null>(null);
+  const canPrint = can('sales:print');
   const posted = invoices.filter((d) => d.type === 'SALES_INVOICE');
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);
@@ -229,7 +230,7 @@ export function CustomerInvoicesPage() {
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
-                onPrint={() => setPrinting(doc)}
+                onPrint={canPrint ? () => setPrinting(doc) : undefined}
                 canLock={canLock && doc.type === 'SALES_INVOICE'}
                 locked={!!doc.locked}
                 onToggleLock={() => lock.mutate({ ids: [doc.id], locked: !doc.locked })}
@@ -240,7 +241,9 @@ export function CustomerInvoicesPage() {
                 {errorText(t, setDiscount.error ?? setLineDiscounts.error)}
               </p>
             )}
-            {printing && <PrintSetupSheet doc={printing} onClose={() => setPrinting(null)} />}
+            {printing && (
+              <PrintSetupSheet doc={printing} record onClose={() => setPrinting(null)} />
+            )}
             {/* The customer's returns: printed with the invoices and taken off the total. */}
             {returns.length > 0 && (
               <h2 className="pt-2 text-sm font-semibold text-destructive">
@@ -261,7 +264,7 @@ export function CustomerInvoicesPage() {
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
-                onPrint={() => setPrinting(doc)}
+                onPrint={canPrint ? () => setPrinting(doc) : undefined}
               />
             ))}
           </div>
@@ -313,39 +316,45 @@ export function CustomerInvoicesPage() {
                   )}
                 </div>
               )}
-              <div className="mt-4 grid gap-2">
-                <Button
-                  icon="print"
-                  onClick={() => {
-                    if (!combined.current) return;
-                    // Locked once it is really printed (owner, 2026-11-10: opening the print
-                    // setup and cancelling locked them all).
-                    printElement(
-                      combined.current,
-                      printName(t('together.title')),
-                      undefined,
-                      lockPostedForPrint,
-                    );
-                  }}
-                >
-                  {t('together.printCombined')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  icon="print"
-                  onClick={() => {
-                    if (!everything.current) return;
-                    printElement(
-                      everything.current,
-                      printName(t('together.title')),
-                      undefined,
-                      lockPostedForPrint,
-                    );
-                  }}
-                >
-                  {t('together.printAll')}
-                </Button>
-              </div>
+              {canPrint && (
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    icon="print"
+                    onClick={() => {
+                      if (!combined.current) return;
+                      // Locked once it is really printed (owner, 2026-11-10: opening the print
+                      // setup and cancelling locked them all).
+                      asOutput({ page: 'sales', kind: 'print' }, () =>
+                        printElement(
+                          combined.current!,
+                          printName(t('together.title')),
+                          undefined,
+                          lockPostedForPrint,
+                        ),
+                      );
+                    }}
+                  >
+                    {t('together.printCombined')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon="print"
+                    onClick={() => {
+                      if (!everything.current) return;
+                      asOutput({ page: 'sales', kind: 'print' }, () =>
+                        printElement(
+                          everything.current!,
+                          printName(t('together.title')),
+                          undefined,
+                          lockPostedForPrint,
+                        ),
+                      );
+                    }}
+                  >
+                    {t('together.printAll')}
+                  </Button>
+                </div>
+              )}
             </Card>
             <Card padded={false} className="overflow-hidden">
               <p className="border-b border-line p-3 text-xs font-semibold text-muted">
@@ -427,7 +436,7 @@ function InvoiceCard({
   busy: boolean;
   onDiscount: (d: DiscountDraft) => void;
   onLineDiscounts: (lines: { lineId: string; discount: number }[]) => void;
-  onPrint: () => void;
+  onPrint?: () => void;
   paperRef: (el: HTMLDivElement | null) => void;
   canLock?: boolean;
   locked?: boolean;
@@ -512,9 +521,11 @@ function InvoiceCard({
             {t(locked ? 'invoice.unlock' : 'invoice.lock')}
           </Button>
         )}
-        <Button size="sm" variant="secondary" icon="print" className="ms-auto" onClick={onPrint}>
-          {t('common.print')}
-        </Button>
+        {onPrint && (
+          <Button size="sm" variant="secondary" icon="print" className="ms-auto" onClick={onPrint}>
+            {t('common.print')}
+          </Button>
+        )}
       </div>
       {discounting && canLineDiscount && items.length > 0 && (
         <div className="border-t border-line p-3">
