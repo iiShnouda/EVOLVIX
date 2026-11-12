@@ -64,6 +64,7 @@ live company server.
 | `dashscope.test.mjs` | The dashboard by each person's branches, warehouses, departments and money accounts, and the branch/warehouse/department picks (refused outside one's access), profit and loss included. |
 | `assortment.test.mjs` | Analytics by supplier, department tree and item (`reports:assortment`): sales, returns, profit, purchases and stock, scoped, hidden figures without permission. |
 | `outputs.test.mjs` | Print, PDF and Excel per page (`<page>:print|pdf|export`, `POST /outputs` checked and logged, `?kind=pdf` on invoice prints) and print settings as their own permission (`print:settings`; `print:default` sets the company layout others print with). |
+| `logs.test.mjs` | The server log (`system:logs`, owner only): a line per request with its request id, a forced error's stack trace and `server_error` + `requestId`, client errors (`POST /client-errors`, rate-limited), secrets and search terms scrubbed, only a day (no paths), downloading audited. |
 
 ## Running
 

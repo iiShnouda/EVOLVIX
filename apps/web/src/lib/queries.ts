@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { periodQuery, type Period } from './period';
 import { toMinor } from '@skb/shared';
 import type {
@@ -28,6 +34,7 @@ import type {
   SystemMonitor,
   ImportResult,
   SystemUpdates,
+  LogPage,
   AssistantStatus,
   AssistantTurn,
   ProfitLoss,
@@ -2736,6 +2743,35 @@ export function useSystemMonitor() {
     queryKey: ['system', 'monitor'],
     queryFn: () => api.get<SystemMonitor>('/system/monitor'),
     refetchInterval: 5_000,
+  });
+}
+
+/** What the log page asks for (owner, 2026-11-12). */
+export interface LogQuery {
+  day: string;
+  level: string;
+  source: string;
+  q: string;
+  requestId: string;
+}
+
+/**
+ * A day of the server's log, newest first, a page at a time (older pages on demand). Read again
+ * every few seconds while "follow live" is on; kept in memory only.
+ */
+export function useServerLog(query: LogQuery, live: boolean) {
+  return useInfiniteQuery({
+    queryKey: ['system', 'logs', query],
+    queryFn: ({ pageParam }) => {
+      const p = new URLSearchParams({ limit: '100' });
+      for (const [k, v] of Object.entries(query)) if (v) p.set(k, v);
+      if (pageParam != null) p.set('before', String(pageParam));
+      return api.get<LogPage>(`/system/logs?${p.toString()}`);
+    },
+    initialPageParam: null as number | null,
+    getNextPageParam: (last) => last.older,
+    refetchInterval: live ? 5_000 : false,
+    placeholderData: (previous) => previous,
   });
 }
 

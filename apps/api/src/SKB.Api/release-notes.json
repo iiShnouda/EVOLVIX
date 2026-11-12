@@ -15,6 +15,14 @@
         {
           "ar": "زرار PDF لوحده للفواتير والتقارير والباركود",
           "en": "A separate PDF button on invoices, reports and barcode labels"
+        },
+        {
+          "ar": "سجل للسيرفر تقدر تشوفه من البرنامج (للمالك بس): كل طلب وكل تحذير وكل خطأ بتفاصيله، وأخطاء التطبيق على أجهزة الموظفين، بحث وفلترة وتنزيل سجل اليوم",
+          "en": "A server log you can read in the app (owner only): every request, warning and error with its details, and errors the app hit on staff devices; search, filter and download a day"
+        },
+        {
+          "ar": "لما يحصل خطأ في السيرفر البرنامج بيظهر رقم الطلب، دوّر بيه في سجل السيرفر وتلاقي اللي حصل",
+          "en": "When something fails on the server the app shows a request number; search it in the server log to see what happened"
         }
       ],
       "fixes": [

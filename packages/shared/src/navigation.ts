@@ -7,6 +7,7 @@ export type IconName =
   | 'dashboard'
   | 'server'
   | 'update'
+  | 'logs'
   | 'upload'
   | 'key'
   | 'sales'
@@ -333,6 +334,14 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: 'update',
         path: '/updates',
         anyOf: ['system:update'],
+      },
+      // The owner's server log: what the server did, warnings and errors (owner, 2026-11-12).
+      {
+        key: 'logs',
+        labelKey: 'nav.logs',
+        icon: 'logs',
+        path: '/logs',
+        anyOf: ['system:logs'],
       },
       // The owner's bulk import from an Excel file (owner, 2026-10-14).
       {

@@ -74,6 +74,7 @@ const NEEDS: [string, () => readonly Permission[] | undefined][] = [
   ['/presence', () => menu('presence')],
   ['/system', () => menu('system')],
   ['/updates', () => menu('updates')],
+  ['/logs', () => menu('logs')],
   ['/import', () => menu('import')],
   ['/license', () => menu('license')],
   ['/payroll', () => menu('payroll')],

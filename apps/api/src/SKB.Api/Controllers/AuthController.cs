@@ -72,6 +72,10 @@ public sealed class AuthController : ControllerBase
         var result = await _auth.LoginAsync(req, Context());
         if (result?.Refused == "license_expired")
             return StatusCode(403, new { message = "The subscription has ended. Ask the owner to renew it.", code = "LICENSE_EXPIRED" });
+        if (result is null || result.Refused == "locked")
+            HttpContext.RequestServices.GetRequiredService<ILogger<AuthController>>().LogWarning(
+                "Failed sign-in for {Email} from {Ip}{Locked}", LogScrub.Email(req.Email),
+                HttpContext.Connection.RemoteIpAddress, result is null ? "" : " (locked after too many wrong passwords)");
         if (result?.Refused == "locked")
             return StatusCode(429, new { message = "Too many wrong passwords. Try again in 15 minutes.", code = "TOO_MANY_ATTEMPTS" });
         if (result is null)

@@ -490,9 +490,11 @@ public sealed class AssistantService
                 ? ParseObject(text[start..(end + 1)])
                 : null)
             ?? Salvage(text);
-        // What the model answered, for the server log when a photo reads badly (no figures shown on screen).
-        _log.LogInformation("Photo read in {Seconds:0}s ({Bytes} bytes): {Answer}", started.Elapsed.TotalSeconds,
-            image.Length, text.Length > 2000 ? text[..2000] + "…" : text);
+        // How long it took; what the model answered (the document's contents) only when the server is
+        // set to keep details (Logs:Level=Debug), for a photo that reads badly (owner, 2026-11-12:
+        // no business data in the log).
+        _log.LogInformation("Photo read in {Seconds:0}s ({Bytes} bytes)", started.Elapsed.TotalSeconds, image.Length);
+        _log.LogDebug("Photo answer: {Answer}", text.Length > 2000 ? text[..2000] + "…" : text);
         return json;
     }
 

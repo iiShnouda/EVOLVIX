@@ -22,6 +22,16 @@ var cloudPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(cloudPort))
     builder.WebHost.UseUrls($"http://0.0.0.0:{cloudPort}");
 
+// --- The server's log (owner, 2026-11-12): everything logged also goes to a file per day in
+// Logs:Folder, scrubbed of secrets, for the owner's Logs page. The framework's own chatter (each
+// request's full address, each query) stays out: the request line below says what is safe to say.
+var logStore = new LogStore(builder.Configuration);
+builder.Services.AddSingleton(logStore);
+builder.Logging.AddProvider(new FileLoggerProvider(logStore));
+builder.Logging.AddFilter<FileLoggerProvider>(null, logStore.MinLevel);
+builder.Logging.AddFilter<FileLoggerProvider>("Microsoft", logStore.MinLevel > LogLevel.Warning ? logStore.MinLevel : LogLevel.Warning);
+builder.Logging.AddFilter<FileLoggerProvider>("System", logStore.MinLevel > LogLevel.Warning ? logStore.MinLevel : LogLevel.Warning);
+
 // --- Database (PostgreSQL) with EF Core context pooling + Npgsql connection pooling ------
 var connString = builder.Configuration.GetConnectionString("Default")
                  ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
@@ -201,7 +211,7 @@ var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
               ?? new[] { "http://localhost:5173", "http://localhost:4173" };
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
-        .WithExposedHeaders(Access.CanOverrideHeader)));
+        .WithExposedHeaders(Access.CanOverrideHeader, "X-Request-Id")));
 
 // --- Rate limiting ----------------------------------------------------------------------
 // Signed-in requests are limited per user, so a whole office sharing one internet address
@@ -210,6 +220,7 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 var userPerMinute = builder.Configuration.GetValue("RateLimit:UserPerMinute", 600);
 var ipPerMinute = builder.Configuration.GetValue("RateLimit:IpPerMinute", 120);
 var loginPerMinute = builder.Configuration.GetValue("RateLimit:LoginPerMinute", 20);
+var clientErrorsPerMinute = Math.Max(1, builder.Configuration.GetValue("Logs:ClientErrorsPerMinute", 20));
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -218,6 +229,10 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
         "login:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "anon"),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = loginPerMinute, Window = TimeSpan.FromMinutes(1) }));
+    // Errors the app reports from a person's device: a few a minute each (Logs:ClientErrorsPerMinute).
+    options.AddPolicy(SKB.Api.Controllers.ClientErrorsController.RateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        "client-errors:" + (ctx.User.FindFirst("sub")?.Value ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "anon"),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = clientErrorsPerMinute, Window = TimeSpan.FromMinutes(1) }));
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
     {
         var userId = ctx.User.FindFirst("sub")?.Value;
@@ -238,6 +253,13 @@ var app = builder.Build();
 if (weakJwtSecret)
     app.Logger.LogCritical("Jwt:AccessSecret is a default or too short. A random one is used for this run; " +
                            "set JWT_ACCESS_SECRET in .env (install-server.sh does it) so it is permanent.");
+
+// Each request's line in the log, and a short answer with the request's id when one fails unhandled.
+var requestLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Request");
+app.Use((ctx, next) => RequestLog.Middleware(ctx, next, logStore, requestLogger));
+app.Lifetime.ApplicationStarted.Register(() =>
+    app.Logger.LogInformation("Server started, version {Version}", Releases.Current.Version));
+app.Lifetime.ApplicationStopping.Register(() => app.Logger.LogInformation("Server stopping"));
 
 // Safety headers: no MIME sniffing, the app can't be framed by another site, no full URLs leaked,
 // and the page runs only the app's own script files (nothing inline or from elsewhere), talks only

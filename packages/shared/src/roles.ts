@@ -18,6 +18,7 @@ export const OWNER_ONLY: Permission[] = [
   'system:update',
   'data:import',
   'license:manage',
+  'system:logs',
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {

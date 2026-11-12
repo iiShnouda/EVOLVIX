@@ -9,6 +9,9 @@ import { ApiError } from './api';
 export function errorText(t: Translate, error: unknown): string | null {
   if (!error) return null;
   if (error instanceof ApiError) {
+    // Failed on the server: its request number too, so the owner can find it in the server's log.
+    if (error.status >= 500 && error.requestId)
+      return `${t('error.server_error')} ${t('error.requestId').replace('{id}', error.requestId)}`;
     const key = `error.${error.code}`;
     if (error.code && key in en) return t(key as TranslationKey);
     if (error.status === 403) return t('error.forbidden');

@@ -4,12 +4,17 @@ import { Button } from './ui';
 import { Logo } from './Logo';
 import { useT } from '../lib/i18n';
 import { hideBootSplash } from '../lib/bootSplash';
+import { reportClientError } from '../lib/clientErrors';
 
 /** Shown instead of a page that failed while drawing: start again, or go to the dashboard. */
 export function CrashScreen() {
   const { t } = useT();
   const error = useRouteError();
-  useEffect(() => console.error(error), [error]);
+  useEffect(() => {
+    console.error(error);
+    // The server's log gets it too, for the owner (owner, 2026-11-12).
+    reportClientError('render', error);
+  }, [error]);
   useEffect(hideBootSplash, []);
   return (
     <div className="grid min-h-screen place-items-center bg-canvas p-4 text-center">
