@@ -53,6 +53,10 @@
         {
           "ar": "الفاتورة المعلقة لما تتعتمد بتوصل إشعار للي بيحصّلوا الفلوس",
           "en": "An approved pending invoice now notifies whoever takes its payment"
+        },
+        {
+          "ar": "الاتصال المباشر (الإشعارات والمتصلين دلوقتي) مبقاش بيقع للمالك بعد ما الصلاحيات زادت",
+          "en": "The live connection (notifications, who's online) no longer fails for the owner now that there are more permissions"
         }
       ]
     },

@@ -12,6 +12,9 @@ using SKB.Api.Hubs;
 using SKB.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+// The live connection (SignalR) carries the sign-in token in its address, and a token holds every
+// permission the person has: the owner's grows past Kestrel's default 8 KB request line.
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestLineSize = 64 * 1024);
 
 // Allow running as a Windows Service (no-op when launched normally or on Linux/systemd).
 builder.Host.UseWindowsService();
