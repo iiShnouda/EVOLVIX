@@ -2,5 +2,4 @@ node_modules
 dist
 build
 pnpm-lock.yaml
-apps/server/prisma/migrations
 apps/web/dev-dist

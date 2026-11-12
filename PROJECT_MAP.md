@@ -402,6 +402,5 @@ Rebuild after changes: `pnpm --filter @skb/shared build`.
 - `apps/voice` (the assistant's voice: Piper in its own container, `server.py`: `GET /health`, `POST /speak`;
   only the app reaches it).
 - `apps/android` (WebView shell APK; its bridge `SKBApp` prints, saves files and records for the assistant), `apps/windows/src/SKB.Desktop` (WebView2 shell); built
-  files go in `apps/web/public/downloads/` (`Evolvix-Android.apk`, `Evolvix-Windows.zip`). `SKB.App` /
-  `SKB.Core` = old WPF client, don't extend.
+  files go in `apps/web/public/downloads/` (`Evolvix-Android.apk`, `Evolvix-Windows.zip`).
 - Live: Render (`render.yaml`, deploys `main`), DB on Neon.

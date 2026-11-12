@@ -1,95 +1,62 @@
-# Evolvix — Wholesale Accounting Platform
+# Evolvix — wholesale accounting
 
-(Code name SKB: folders, packages and namespaces keep it.)
+(Code name **SKB**: folders, packages and namespaces keep it, so installed copies update in place.)
 
-An adaptive, bilingual (Arabic / English) wholesale accounting application delivered across
-**every device with the best‑fit technology for each**, all talking to **your own database
-on your company server**.
+A bilingual (Arabic / English) wholesale accounting system: sales, purchases, returns, stock in
+several branches and warehouses, customers and suppliers, cash boxes and banks, cheques, a full
+ledger, payroll, reports and analytics. One server holds everything; every device opens the same
+app.
 
-> **Status:** Foundation + first vertical slice (auth · security · dashboard · sales).
-> Built to grow module‑by‑module without re‑architecting.
+## How it is built
 
----
+| Part                                                  | Technology                                                  | Where                          |
+| ----------------------------------------------------- | ----------------------------------------------------------- | ------------------------------ |
+| **Server** (data, rules, security)                    | C# · ASP.NET Core 10 · EF Core · PostgreSQL · SignalR       | `apps/api`                     |
+| **The app** (every screen)                            | React 19 · TypeScript · Vite · Tailwind v4 · TanStack Query | `apps/web`                     |
+| **Shared contract** (types, AR/EN texts, permissions) | TypeScript                                                  | `packages/shared`              |
+| **Windows app**                                       | WinForms + WebView2 shell (.NET Framework 4.8)              | `apps/windows/src/SKB.Desktop` |
+| **Android app**                                       | Java WebView shell (APK)                                    | `apps/android`                 |
+| **iPhone / iPad**                                     | the website added to the home screen                        | —                              |
+| **Offline assistant's voice**                         | Python service beside the server                            | `apps/voice`                   |
+| **Public catalogue page**                             | static page published outward                               | `storefront`                   |
 
-## One server, best‑fit client per device
+The Windows and Android apps are thin shells that open the company server's web app, so **updating
+the server updates every device**. A shell is rebuilt only when the shell itself changes; its files
+live in `apps/web/public/downloads/`.
 
-All clients share **one server** (the "brain") — data, security rules, roles, and business
-logic live there once. Each client is a fast, native‑feeling view on top.
+## Security, in short
 
-| Surface | Technology | Distribution | Status |
-| --- | --- | --- | --- |
-| **Server (brain)** | **C# · ASP.NET Core 10 · PostgreSQL** (`apps/api`) | Windows Service (→ Linux later) | ✅ Built & tested |
-| **Website + iPhone/iPad** | React **PWA** (TypeScript) | Browser · Safari “Add to Home Screen” (no App Store) | ✅ Built & tested |
-| **Windows** | **C# / .NET 10 · WPF** (`apps/windows`) | Native `.exe` / installer | ✅ Foundation built |
-| **Android** | **Kotlin · Jetpack Compose** | Private APK (no Play Store) | ⏭️ Planned |
+- **The server decides everything.** Each action has its own permission, checked on the server;
+  each person sees only their branches, departments, warehouses and cash boxes.
+- **No business data is kept on devices.** Without the server the app shows a "connect" screen.
+- Passwords are hashed (PBKDF2); sign-ins are short-lived tokens plus refresh tokens stored hashed,
+  one phone and one computer per account, revocable; changing someone's access applies at once.
+- Every change is written to the activity log. Backups are encrypted with your passphrase.
+- Secrets (`.env`, production settings, the Android signing key, the licence private key, backups)
+  are never committed: see `.gitignore`. The values in `.env.example` and
+  `appsettings.Development.json` are placeholders for development only.
 
-> The C# server (`apps/api`) is the single backend. See `apps/api/README.md` for Windows
-> Service hosting, static IP/DNS, local TLS, connection pooling, and the Linux upgrade path.
-
-The iPhone/iPad target stays a PWA on purpose: it installs **privately, free, with no App
-Store**, which a native iOS app cannot do.
-
-## Security model (the top priority)
-
-- **Server‑authoritative. Zero business data at rest on devices.** If a device is not
-  connected to the company server, it shows a "connect to server" screen and displays
-  **nothing** — no cached records, no ledgers. Only the app *code* is cached (so it launches
-  fast); business data never is.
-- **Encrypted sessions**: passwords hashed with **PBKDF2** (ASP.NET Core `PasswordHasher`);
-  short‑lived signed access tokens (JWT) + opaque **refresh tokens stored hashed** in the DB;
-  refresh material encrypted at rest (**AES‑256‑GCM**). Every session is server‑side and
-  **revocable**.
-- **Access control**: role‑based (RBAC) + **branch scoping** enforced on the server for
-  every request (deny‑by‑default) — never trusted from the client.
-- **Full audit trail**: who did what, when, from which device/IP — recorded server‑side.
-- **Live presence**: a real‑time channel (SignalR) tracks who is online right now — the
-  foundation for the future **owner/CEO view** (who's connected and what they're doing).
-- Transport hardening: strict CORS allow‑list, rate limiting, HTTPS‑ready (local TLS cert).
-
-## Tech stack
-
-| Layer | Choice | Why |
-| --- | --- | --- |
-| **Server** | **C# · ASP.NET Core 10 · EF Core · PostgreSQL** | Standard, robust, secure; same language as the Windows client; Windows Service now, Linux later |
-| Website + iPhone/iPad | **React 19 · Vite · Tailwind v4** (PWA) | Installs privately on iOS with no App Store; one codebase for web + phones |
-| Client data (web) | **TanStack Query** + **Zustand** | In‑memory server cache + UI state; no business data persisted offline |
-| Windows | **C# · .NET 10 · WPF** (MVVM) | Native desktop client, best fit for the back‑office |
-| Android | **Kotlin · Jetpack Compose** (planned) | Native phone client, private APK |
-| Realtime | **SignalR** | Presence + future live activity feed |
-
-## Repository layout
-
-```
-skb/
-├─ apps/
-│  ├─ api/            # C# / ASP.NET Core 10 server — canonical backend (EF Core + PostgreSQL)
-│  ├─ web/            # React PWA: design system, adaptive shell, screens (web + iPhone/iPad)
-│  └─ windows/        # C# / WPF native desktop client (SKB.Core + SKB.App)
-├─ packages/
-│  └─ shared/         # TS domain types, AR/EN dictionary, zod schemas, roles — used by the web app
-├─ docker-compose.yml # PostgreSQL for local development
-└─ .env.example       # Postgres + web config; copy to .env
-```
-
-## Quick start (development)
+## Run it for development
 
 ```bash
-# Prereqs: .NET 10 SDK, Node 22+, pnpm 10+, PostgreSQL (or `pnpm db:up` for Docker)
+# needs: .NET 10 SDK, Node 22+, pnpm 10+, PostgreSQL 16 (or `pnpm db:up` with Docker)
 cp .env.example .env
-
-# 1) Server (migrates + seeds on first run)
-cd apps/api/src/SKB.Api && dotnet run          # listens on http://localhost:5080
-
-# 2) Web (in another terminal)
-pnpm install && pnpm dev                        # http://localhost:5173
+cd apps/api/src/SKB.Api && dotnet run        # server on http://localhost:5080 (migrates + seeds)
+pnpm install && pnpm dev                     # app on http://localhost:5173
 ```
 
-Open http://localhost:5173 and sign in with the seeded owner account
-(`owner@skb.local` / `ChangeMe!Owner123`).
+Sign in with the seeded owner (`owner@skb.local` / `ChangeMe!Owner123` — development only).
+Checks: `pnpm typecheck`, `pnpm lint`, and the end-to-end suites in `scripts/checks/`.
 
-## Deploying to the company server
+## Where to read more
 
-The server runs as a **Windows Service** (and later Linux `systemd`), behind a **static IP +
-internal DNS name** with a **local TLS certificate** and **connection pooling**. Full,
-step‑by‑step instructions are in **`apps/api/README.md`**. The Windows desktop client build
-lives in **`apps/windows/README.md`**. See `CLAUDE.md` for architecture notes.
+| File                         | What it holds                                                        |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `PROJECT_MAP.md`             | Every page, file, endpoint and test suite — start here               |
+| `CLAUDE.md`                  | The rules that must hold (security, money, permissions, days, names) |
+| `DOMAIN.md`                  | The business model and what each document posts                      |
+| `COMPANY-SERVER.md`          | Installing and updating the company's own server                     |
+| `HOST-FREE.md`               | Running it on a cloud host                                           |
+| `CLOUDFLARE-STOREFRONT.md`   | Publishing the public catalogue                                      |
+| `PROGRESS.md` / `ROADMAP.md` | What was built and why; the old system's feature list                |
+| `apps/*/README.md`           | Each app's own notes                                                 |

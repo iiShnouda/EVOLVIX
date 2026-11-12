@@ -9,9 +9,6 @@ Windows 10/11.
 - It targets .NET Framework 4.8, which is also built into Windows. The whole app is about
   300 KB zipped and needs nothing else installed.
 
-> `src/SKB.App` + `src/SKB.Core` are the earlier WPF client. It has been superseded by
-> `SKB.Desktop` (owner decision 2026-09-29, CLAUDE.md rule 7) and is kept only for reference.
-
 ## What it does
 
 - Opens the server address: `http://192.168.100.63:8080` (the office Raspberry Pi) by default.

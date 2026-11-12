@@ -26,7 +26,7 @@ Security-first, server-authoritative (no business data readable offline).
 ## 3. Layout
 - `apps/api` — **C# ASP.NET Core 10 + EF Core + Npgsql (PostgreSQL)**. The source of truth.
 - `apps/web` — **React 19 + Vite 6 + Tailwind v4** PWA (web + iPhone/Android surface).
-- `apps/windows` — **C# WPF** native desktop client (`SKB.Core` + `SKB.App`).
+- `apps/windows` — the Windows app: a WebView2 shell (`SKB.Desktop`). The old WPF client was removed (2026-11-12).
 - `packages/shared` (`@skb/shared`) — TS types, AR/EN dictionary, zod schemas, roles/permissions,
   nav model, money/locale helpers, country/currency reference data.
 
@@ -1143,7 +1143,7 @@ and warehouses shipped):
 
 **Decisions (2026-09-28):**
 - **Average cost is per branch** (owner, 2026-09-29), with the transit warehouse as its own cost pool (DOMAIN.md §2.4).
-- One web/PWA client for every device; the WPF client is paused (CLAUDE.md rule 7).
+- One web/PWA client for every device, in thin shells on Windows and Android (CLAUDE.md rule 7).
 - Delivery covers pickup, own delivery, prepaid shipping, and cash on delivery with a waybill.
   Payment methods: cash, bank transfer, InstaPay, Vodafone/Orange Cash, Egypt Post, cheques and
   promissory notes (DOMAIN.md §2.5–2.6).

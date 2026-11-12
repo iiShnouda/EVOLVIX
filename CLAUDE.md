@@ -44,7 +44,6 @@ first‑class concern.
      server), so **a server deploy updates every device**.
    - Rebuild a shell only when the shell changes, and put its files in
      `apps/web/public/downloads/`.
-   - The older WPF client (`SKB.App`/`SKB.Core`) is superseded: don't extend it.
 8. **Names are one field, kept as typed (owner decision 2026-09-29).** Anything people name
    (branches, warehouses, categories, units, price levels, sizes/colors, models, items, and new
    entities like them) has a single `Name` (`INamed`), typed in Arabic or English and shown the
@@ -82,7 +81,7 @@ first‑class concern.
 - `apps/web` — React **PWA** (also the iPhone/iPad + website surface). `src/design/` tokens,
   `src/shell/` adaptive navigation, `src/pages/` screens, `src/lib/` api client + query
   hooks, `src/i18n/` runtime.
-- `apps/windows/src/SKB.Desktop` — the Windows app (WebView2 shell; see its README). `SKB.App`/`SKB.Core` are the superseded WPF client.
+- `apps/windows/src/SKB.Desktop` — the Windows app (WebView2 shell; see its README).
 - `apps/android` — the Android app (WebView shell; see its README; the signing key never goes in git).
 - `packages/shared` (`@skb/shared`) — TypeScript types, AR/EN dictionary, zod schemas,
   roles/permissions, nav model, money/locale helpers — consumed by the web app.
@@ -120,4 +119,4 @@ app versions in `apps` when a shell changes. The server updates itself through
   `dotnet ef migrations add <Name>`.
 - Web: root `package.json` scripts — `pnpm dev`, `pnpm build`, `pnpm typecheck`,
   `pnpm db:up|down` (PostgreSQL via Docker), `pnpm format`.
-- Windows: open `apps/windows/SKB.sln` in Visual Studio.
+- Windows: `cd apps/windows/src/SKB.Desktop && dotnet build -c Release` (see `apps/windows/README.md`).

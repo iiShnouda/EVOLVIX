@@ -18,9 +18,6 @@ backups/
 *.skbak
 skb-*.zip
 
-# Prisma
-apps/server/prisma/*.db
-
 # Logs
 *.log
 logs/
@@ -32,9 +29,6 @@ pnpm-debug.log*
 .idea/
 .vscode/*
 !.vscode/extensions.json
-
-# Tauri (desktop build)
-apps/desktop/src-tauri/target/
 
 # .NET (Windows app + API)
 [Bb]in/
