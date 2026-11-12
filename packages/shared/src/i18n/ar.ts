@@ -264,6 +264,12 @@ export const ar: TranslationDictionary = {
   'itemCard.movement': 'الحركة',
   'itemCard.noMovements': 'لا توجد حركات في هذه الفترة',
   'itemCard.unitCost': 'تكلفة الوحدة',
+  'itemCard.inBefore': 'الوارد قبل الفترة',
+  'itemCard.outBefore': 'المنصرف قبل الفترة',
+  'itemCard.availableNow': 'المتاح الآن',
+  'itemCard.lastCost': 'آخر تكلفة',
+  'itemCard.toPlace': 'إلى {w}',
+  'itemCard.fromPlace': 'من {w}',
   'itemCard.back': 'العودة للمخزون',
 
   // Stock movement types

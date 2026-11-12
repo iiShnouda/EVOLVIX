@@ -316,7 +316,8 @@ public record InventoryTotalsDto(int? Items, long? Quantity, long? SaleValue, lo
 public record StockMovementDto(
     string Id, string Date, string Type, string BranchName, string WarehouseId, string WarehouseName,
     string? Reference, string? DocumentId, string? DocumentType, int QuantityIn, int QuantityOut, int Balance,
-    long UnitCost, long AvgCostAfter, string? Note);
+    long UnitCost, long AvgCostAfter, string? Note,
+    int? PartyCode = null, string? PartyName = null, string? OtherPlace = null);
 
 /// <summary>Stock of one item (or of everything) held in one warehouse.</summary>
 public record WarehouseStockDto(string WarehouseId, string Name, string BranchName, int Quantity, long Value);
@@ -328,7 +329,11 @@ public record ItemCardDto(
     InventoryItemDto Item, string From, string To, string? WarehouseId,
     int OpeningBalance, long OpeningValue, int TotalIn, int TotalOut, int ClosingBalance, long ClosingValue,
     StockMovementDto[] Movements, WarehouseStockDto[] Stock, string Currency,
-    decimal? SupplierDiscountPercent = null, decimal? MarginPercent = null);
+    decimal? SupplierDiscountPercent = null, decimal? MarginPercent = null,
+    int InBefore = 0, int OutBefore = 0, LastCostDto? LastCost = null);
+
+/// <summary>What a piece cost on the item's latest purchase (per base unit), when and on which invoice.</summary>
+public record LastCostDto(long UnitCost, string Date, string? Reference, string? DocumentId);
 
 /// <summary>
 /// One invoice line of an item, on its card (owner, 2026-10-02: the item's whole story). Quantities

@@ -1506,6 +1506,11 @@ export interface StockMovement {
   unitCost: number;
   avgCostAfter: number;
   note?: string | null;
+  /** Whose it is (item card): the customer or supplier of its invoice or return. */
+  partyCode?: number | null;
+  partyName?: string | null;
+  /** A transfer's other warehouse: where it went to, or came from. */
+  otherPlace?: string | null;
 }
 
 /** Item card (كارت الصنف) for one item over a period. */
@@ -1586,6 +1591,19 @@ export interface ItemCard {
   /** From its last purchase: the supplier's discount (costs:view) and the margin (profit:view), %. */
   supplierDiscountPercent?: number | null;
   marginPercent?: number | null;
+  /** What came in and went out before the period (opening = in − out). */
+  inBefore: number;
+  outBefore: number;
+  /** What a piece cost on its latest purchase (costs:view). */
+  lastCost?: LastCost | null;
+}
+
+export interface LastCost {
+  unitCost: number;
+  /** ISO instant. */
+  date: string;
+  reference?: string | null;
+  documentId?: string | null;
 }
 
 /** Stock of one item held in one warehouse. */

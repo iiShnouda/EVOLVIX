@@ -263,6 +263,12 @@ export const en = {
   'itemCard.movement': 'Movement',
   'itemCard.noMovements': 'No movements in this period',
   'itemCard.unitCost': 'Unit cost',
+  'itemCard.inBefore': 'In before the period',
+  'itemCard.outBefore': 'Out before the period',
+  'itemCard.availableNow': 'Available now',
+  'itemCard.lastCost': 'Last cost',
+  'itemCard.toPlace': 'To {w}',
+  'itemCard.fromPlace': 'From {w}',
   'itemCard.back': 'Back to inventory',
 
   // Stock movement types

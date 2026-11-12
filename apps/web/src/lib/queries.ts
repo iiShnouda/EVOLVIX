@@ -722,6 +722,8 @@ export function useItemCard(id: string, from: string, to: string, warehouseId?: 
     queryKey: ['inventory', 'card', id, from, to, warehouseId ?? ''],
     queryFn: () => api.get<ItemCard>(`/inventory/items/${id}/card?${query}`),
     enabled: !!id,
+    // Another period keeps the card on screen while it loads (the dates stay where they are typed).
+    placeholderData: keepPreviousData,
   });
 }
 
