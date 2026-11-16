@@ -338,7 +338,7 @@ public sealed class AssistantController : ControllerBase
         return Accepted(new { jobId = id });
     }
 
-    /// <summary>The uploaded photo (a JPEG, PNG or WebP image up to 10 MB), read into memory only.</summary>
+    /// <summary>The uploaded photo (a JPEG, PNG or WebP image, or a scanned PDF, up to 10 MB), read into memory only.</summary>
     private static async Task<(byte[]? Image, ActionResult? Error)> ImageAsync(IFormFile? file, CancellationToken ct)
     {
         if (file is null || file.Length == 0 || file.Length > MaxImage)
@@ -346,6 +346,13 @@ public sealed class AssistantController : ControllerBase
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
+        // A PDF from a scanner (owner, 2026-11-16): its scanned page is read like a photo.
+        if (PdfImages.IsPdf(bytes))
+        {
+            bytes = PdfImages.LargestImage(bytes)!;
+            if (bytes is null)
+                return (null, new BadRequestObjectResult(new { message = "No scanned page in this PDF.", code = "pdf_no_image" }));
+        }
         var jpeg = bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8;
         var png = bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
         var webp = bytes.Length > 12 && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';

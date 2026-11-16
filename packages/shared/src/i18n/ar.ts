@@ -2997,7 +2997,8 @@ export const ar: TranslationDictionary = {
   'restore.totalRows': 'إجمالي الصفوف',
   'restore.table': 'الجدول',
   'restore.rowsCol': 'الصفوف',
-  'restore.warning': 'ستحل هذه النسخة محل جميع البيانات الحالية. تُؤخذ نسخة أمان أولًا، ويُسجَّل خروج الجميع.',
+  'restore.warning':
+    'ستحل هذه النسخة محل جميع البيانات الحالية. تُؤخذ نسخة أمان أولًا، ويُسجَّل خروج الجميع.',
   'restore.confirm': 'اكتب اسم الشركة أو RESTORE للتأكيد',
   'restore.run': 'استرجاع هذه النسخة',
   'restore.other': 'اختيار ملف آخر',
@@ -3017,7 +3018,8 @@ export const ar: TranslationDictionary = {
   'error.backup_newer': 'هذه النسخة من إصدار أحدث. حدّث السيرفر أولًا.',
   'error.restore_confirm': 'اكتب اسم الشركة أو RESTORE للتأكيد.',
   'error.restore_running': 'يوجد استرجاع قيد التنفيذ.',
-  'error.restore_no_rights': 'حساب قاعدة البيانات في هذا السيرفر لا يسمح بالاسترجاع من هنا؛ استخدم أمر الاسترجاع على السيرفر.',
+  'error.restore_no_rights':
+    'حساب قاعدة البيانات في هذا السيرفر لا يسمح بالاسترجاع من هنا؛ استخدم أمر الاسترجاع على السيرفر.',
   'error.restore_failed': 'لم يكتمل الاسترجاع، ولم تتغير البيانات الحالية.',
   'error.restoring': 'يجري استرجاع نسخة احتياطية. حاول مرة أخرى بعد دقائق.',
   'error.import_has_errors': 'في بعض الصفوف مشكلات؛ لم يُستورد شيء.',
