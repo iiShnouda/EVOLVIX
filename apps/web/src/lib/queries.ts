@@ -2310,6 +2310,9 @@ export interface AuditFilter {
   to?: string;
   /** One record's own history (an invoice's activity log). */
   resourceId?: string;
+  /** Words in what was done, and a branch (the detailed search). */
+  search?: string;
+  branchId?: string;
   page: number;
   pageSize?: number;
 }
