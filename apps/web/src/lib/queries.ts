@@ -1638,8 +1638,20 @@ function invalidateAfterDelivery(qc: ReturnType<typeof useQueryClient>) {
   invalidateAfterPosting(qc, 'sales');
 }
 
-export function useDeliveries(params: { status?: string; method?: string }) {
+export function useDeliveries(params: {
+  status?: string;
+  method?: string;
+  /** The detailed search: invoice number, customer name / code, shipping company, company days. */
+  number?: string;
+  party?: string;
+  partyCode?: string;
+  carrierId?: string;
+  from?: string;
+  to?: string;
+}) {
   const query = new URLSearchParams({ pageSize: '100' });
+  for (const k of ['number', 'party', 'partyCode', 'carrierId', 'from', 'to'] as const)
+    if (params[k]) query.set(k, params[k]!);
   if (params.status) query.set('status', params.status);
   if (params.method) query.set('method', params.method);
   return useQuery({

@@ -1,4 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import {
+  Filter,
+  FilterPanel,
+  filterField,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 import { useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -249,15 +256,38 @@ const DELIVERY_STATUSES: DeliveryStatus[] = [
 ];
 const METHODS: DeliveryMethod[] = ['OWN_DELIVERY', 'SHIPPING_COMPANY'];
 
+/** What the deliveries list remembers while the app is open. */
+const DELIVERY_FILTERS = {
+  method: '',
+  number: '',
+  party: '',
+  partyCode: '',
+  carrierId: '',
+  from: '',
+  to: '',
+};
+
 function DeliveriesTab() {
   const { t } = useT();
   const can = useCan();
   const [status, setStatus] = useState<DeliveryStatus | ''>('');
-  const [method, setMethod] = useState<DeliveryMethod | ''>('');
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [f, keep, clear] = useKeptFilters('skb.list.deliveries', DELIVERY_FILTERS);
+  const method = f.method as DeliveryMethod | '';
+  const typed = useSettled(`${f.number.trim()}\u0001${f.party.trim()}\u0001${f.partyCode.trim()}`);
+  const [number = '', party = '', partyCode = ''] = typed.split('\u0001');
+  const carriers = useCarriers();
   const { data, isLoading } = useDeliveries({
     status: status || undefined,
     method: method || undefined,
+    number: number || undefined,
+    party: party || undefined,
+    partyCode: partyCode || undefined,
+    carrierId: f.carrierId || undefined,
+    from: f.from || undefined,
+    to: f.to || undefined,
   });
+  const detailed = [f.method, f.carrierId, f.from || f.to].filter(Boolean).length;
   const step = useSetDelivery();
   const [returning, setReturning] = useState<DeliveryRow | null>(null);
   const [outcome, setOutcome] = useState<{ returns: string[]; problems: string[] } | null>(null);
@@ -282,29 +312,97 @@ function DeliveriesTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          className="h-8 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-xs outline-none focus:border-brand"
-          value={method}
-          aria-label={t('delivery.method')}
-          onChange={(e) => setMethod(e.target.value as DeliveryMethod | '')}
-        >
-          <option value="">
-            {t('delivery.method')}: {t('delivery.all')}
-          </option>
-          {METHODS.map((m) => (
-            <option key={m} value={m}>
-              {t(`delivery.${m}`)}
-            </option>
-          ))}
-        </select>
-        <Chips
-          value={status}
-          options={DELIVERY_STATUSES}
-          onChange={setStatus}
-          label={(s) => t(`delivery.status.${s}`)}
-        />
-      </div>
+      <Chips
+        value={status}
+        options={DELIVERY_STATUSES}
+        onChange={setStatus}
+        label={(s) => t(`delivery.status.${s}`)}
+      />
+      <FilterPanel
+        id="deliveries"
+        active={detailed}
+        onClear={clear}
+        quick={
+          <>
+            <label className="block w-36">
+              <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+              <input
+                type="search"
+                className={`${filterField} tnum`}
+                value={f.number}
+                onChange={(e) => keep({ number: e.target.value })}
+              />
+            </label>
+            <label className="block w-24">
+              <span className="mb-0.5 block text-xs text-muted">{t('list.customerCode')}</span>
+              <input
+                inputMode="numeric"
+                className={`${filterField} tnum`}
+                value={f.partyCode}
+                onChange={(e) => keep({ partyCode: e.target.value.replace(/[^\d]/g, '') })}
+              />
+            </label>
+            <label className="block min-w-40 flex-1">
+              <span className="mb-0.5 block text-xs text-muted">{t('list.customerName')}</span>
+              <input
+                type="search"
+                className={filterField}
+                value={f.party}
+                onChange={(e) => keep({ party: e.target.value })}
+              />
+            </label>
+          </>
+        }
+      >
+        <Filter label={t('delivery.method')}>
+          <select
+            className={filterField}
+            value={method}
+            onChange={(e) => keep({ method: e.target.value })}
+          >
+            <option value="">{t('delivery.all')}</option>
+            {METHODS.map((m) => (
+              <option key={m} value={m}>
+                {t(`delivery.${m}`)}
+              </option>
+            ))}
+          </select>
+        </Filter>
+        {(carriers.data?.items ?? []).length > 0 && (
+          <Filter label={t('delivery.carrier')}>
+            <select
+              className={filterField}
+              value={f.carrierId}
+              onChange={(e) => keep({ carrierId: e.target.value })}
+            >
+              <option value="">{t('delivery.all')}</option>
+              {(carriers.data?.items ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Filter>
+        )}
+        <Filter label={t('sales.filterFrom')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.from}
+            max={f.to || undefined}
+            onChange={(e) => keep({ from: e.target.value })}
+          />
+        </Filter>
+        <Filter label={t('sales.filterTo')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.to}
+            min={f.from || undefined}
+            onChange={(e) => keep({ to: e.target.value })}
+          />
+        </Filter>
+      </FilterPanel>
       {outcome && <Outcome {...outcome} />}
       {step.error && !returning && (
         <p className="text-sm text-destructive">{errorText(t, step.error)}</p>

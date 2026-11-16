@@ -64,6 +64,11 @@ public sealed class DeliveryController : ControllerBase
         var q = ScopedDocs().Where(d => d.Type == DocumentType.SALES_INVOICE && d.DeliveryMethod != DeliveryMethod.PICKUP);
         if (Enum.TryParse<DeliveryStatus>(status, true, out var st)) q = q.Where(d => d.DeliveryStatus == st);
         if (Enum.TryParse<DeliveryMethod>(method, true, out var m)) q = q.Where(d => d.DeliveryMethod == m);
+        // The detailed search (owner, 2026-11-16): the invoice number, the customer's name or code,
+        // the shipping company and the invoice's company days.
+        q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
+        q = DocumentLists.Filter(q, null, null, Request.Query["from"], Request.Query["to"]);
+        if (Guid.TryParse(Request.Query["carrierId"], out var carrier)) q = q.Where(d => d.CarrierId == carrier);
 
         var total = await q.CountAsync();
         var docs = await q.Include(d => d.Party).Include(d => d.Branch).Include(d => d.Driver).Include(d => d.Carrier)
