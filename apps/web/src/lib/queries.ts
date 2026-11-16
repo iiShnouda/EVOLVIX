@@ -908,6 +908,8 @@ export interface TransferFilter {
   toBranchId?: string;
   toWarehouseId?: string;
   departmentId?: string;
+  /** Its number, or part of it. */
+  number?: string;
 }
 
 export function useTransfers(

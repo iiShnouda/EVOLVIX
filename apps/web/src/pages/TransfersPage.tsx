@@ -1,6 +1,14 @@
 import { confirm } from '../lib/confirm';
 import { ItemLink } from '../components/ItemLink';
 import { useEffect, useRef, useState } from 'react';
+import {
+  Filter,
+  FilterPanel,
+  countActive,
+  filterField,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { DocumentActivity } from '../components/DocumentActivity';
 import {
@@ -63,16 +71,21 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
   const [page, setPage] = useState(1);
   // Every transfer over a period, from which branch, warehouse and department to which (owner,
   // 2026-11-10).
-  const [filter, setFilterState] = useState<TransferFilter>({});
-  const setFilter = (patch: TransferFilter) => {
-    setFilterState((f) => ({ ...f, ...patch }));
+  // Kept while the app is open (owner, 2026-11-16: the detailed search).
+  const [kept, keep, clear] = useKeptFilters('skb.list.transfers', TRANSFER_FILTERS);
+  const setFilter = (patch: TransferFilter & { status?: string }) => {
+    keep(Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v ?? ''])));
     setPage(1);
   };
+  const number = useSettled(kept.number.trim());
+  const filter: TransferFilter = Object.fromEntries(
+    Object.entries({ ...kept, number, status: '' }).filter(([, v]) => v),
+  );
   const list = useTransfers({
     page,
     pageSize: size,
-    status: tab === 'open' ? 'SENT' : undefined,
     ...filter,
+    status: tab === 'open' ? 'SENT' : (kept.status as TransferStatus) || undefined,
   });
   const isPhone = useDeviceInfo().deviceClass === 'phone';
   const seeCosts = useCan()('costs:view');
@@ -140,7 +153,15 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
         </div>
       )}
 
-      <TransferFilters filter={filter} onChange={setFilter} />
+      <TransferFilters
+        filter={kept}
+        onChange={setFilter}
+        onClear={() => {
+          clear();
+          setPage(1);
+        }}
+        withStatus={tab !== 'open'}
+      />
 
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -241,16 +262,33 @@ export function TransfersPage({ embedded = false }: { embedded?: boolean } = {})
   );
 }
 
-const field =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+/** What the transfers list remembers while the app is open. */
+const TRANSFER_FILTERS = {
+  number: '',
+  status: '',
+  from: '',
+  to: '',
+  fromBranchId: '',
+  fromWarehouseId: '',
+  toBranchId: '',
+  toWarehouseId: '',
+  departmentId: '',
+};
 
-/** The period, the sending and the receiving branch and warehouse, and a department. */
+/**
+ * The number, then the detailed search (owner, 2026-11-16): the period, the sending and the
+ * receiving branch and warehouse, a department and the state.
+ */
 function TransferFilters({
   filter,
   onChange,
+  onClear,
+  withStatus,
 }: {
-  filter: TransferFilter;
-  onChange: (patch: TransferFilter) => void;
+  filter: typeof TRANSFER_FILTERS;
+  onChange: (patch: TransferFilter & { status?: string }) => void;
+  onClear: () => void;
+  withStatus: boolean;
 }) {
   const { t } = useT();
   const places = useTransferPlaces().data ?? [];
@@ -263,10 +301,9 @@ function TransferFilters({
     options: [string, string][],
     set: (v: string | undefined) => void,
   ) => (
-    <label className="block">
-      <span className="mb-0.5 block text-xs text-muted">{label}</span>
+    <Filter label={label}>
       <select
-        className={field}
+        className={filterField}
         value={value ?? ''}
         onChange={(e) => set(e.target.value || undefined)}
       >
@@ -277,37 +314,60 @@ function TransferFilters({
           </option>
         ))}
       </select>
-    </label>
+    </Filter>
   );
+  const active = countActive(filter, TRANSFER_FILTERS, [
+    'from',
+    'to',
+    'fromBranchId',
+    'fromWarehouseId',
+    'toBranchId',
+    'toWarehouseId',
+    'departmentId',
+    ...(withStatus ? (['status'] as const) : []),
+  ]);
   return (
-    <Card className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-      <label className="block">
-        <span className="mb-0.5 block text-xs text-muted">{t('money.from')}</span>
+    <FilterPanel
+      id="transfers"
+      active={active}
+      onClear={onClear}
+      quick={
+        <label className="block w-40">
+          <span className="mb-0.5 block text-xs text-muted">{t('transfer.number')}</span>
+          <input
+            type="search"
+            className={`${filterField} tnum`}
+            value={filter.number}
+            onChange={(e) => onChange({ number: e.target.value })}
+          />
+        </label>
+      }
+    >
+      <Filter label={t('money.from')}>
         <input
           type="date"
-          className={field}
-          value={filter.from ?? ''}
-          max={filter.to}
+          className={`${filterField} tnum`}
+          value={filter.from}
+          max={filter.to || undefined}
           onChange={(e) => onChange({ from: e.target.value || undefined })}
         />
-      </label>
-      <label className="block">
-        <span className="mb-0.5 block text-xs text-muted">{t('money.to')}</span>
+      </Filter>
+      <Filter label={t('money.to')}>
         <input
           type="date"
-          className={field}
-          value={filter.to ?? ''}
-          min={filter.from}
+          className={`${filterField} tnum`}
+          value={filter.to}
+          min={filter.from || undefined}
           onChange={(e) => onChange({ to: e.target.value || undefined })}
         />
-      </label>
+      </Filter>
       {select(t('transfer.fromBranch'), filter.fromBranchId, branches, (v) =>
         onChange({ fromBranchId: v, fromWarehouseId: undefined }),
       )}
       {select(
         t('transfer.fromWarehouse'),
         filter.fromWarehouseId,
-        stores(filter.fromBranchId).map((p) => [p.warehouseId, p.warehouseName]),
+        stores(filter.fromBranchId || undefined).map((p) => [p.warehouseId, p.warehouseName]),
         (v) => onChange({ fromWarehouseId: v }),
       )}
       {select(t('transfer.toBranch'), filter.toBranchId, branches, (v) =>
@@ -316,7 +376,7 @@ function TransferFilters({
       {select(
         t('transfer.toWarehouse'),
         filter.toWarehouseId,
-        stores(filter.toBranchId).map((p) => [p.warehouseId, p.warehouseName]),
+        stores(filter.toBranchId || undefined).map((p) => [p.warehouseId, p.warehouseName]),
         (v) => onChange({ toWarehouseId: v }),
       )}
       {select(
@@ -325,7 +385,14 @@ function TransferFilters({
         departments.map((d) => [d.id, d.name]),
         (v) => onChange({ departmentId: v }),
       )}
-    </Card>
+      {withStatus &&
+        select(
+          t('common.status'),
+          filter.status,
+          (['SENT', 'RECEIVED', 'CANCELLED'] as const).map((s) => [s, t(`transfer.status.${s}`)]),
+          (v) => onChange({ status: v }),
+        )}
+    </FilterPanel>
   );
 }
 
