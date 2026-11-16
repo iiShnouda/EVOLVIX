@@ -26,6 +26,7 @@ import { errorText } from '../lib/errors';
 import { useAddBank, useBanks, useCreateNotes, useOpenInvoices } from '../lib/queries';
 import { useCan } from '../lib/can';
 import { useAuth } from '../stores/auth';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -664,170 +665,172 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
           </div>
         )}
 
-        <div className="relative overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="text-xs text-muted">
-              <tr>
-                <th className="w-8 px-1 py-1.5 text-start font-medium">#</th>
-                <th className="px-1 py-1.5 text-start font-medium">{t('notes.serial')}</th>
-                <th className="px-1 py-1.5 text-start font-medium">{t('notes.amount')}</th>
-                <th className="px-1 py-1.5 text-start font-medium">{t('notes.due')}</th>
-                <th className="px-1 py-1.5 text-start font-medium">{t('notes.bank')}</th>
-                {receivable && (
-                  <th className="px-1 py-1.5 text-start font-medium">{t('notes.drawer')}</th>
-                )}
-                <th className="px-1 py-1.5 text-start font-medium">{t('cheque.photo')}</th>
-                <th className="w-8" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={r.key} className="align-top">
-                  <td className="px-1 py-1 text-muted tnum">{i + 1}</td>
-                  <td className="px-1 py-1">
-                    <input
-                      aria-label={`${t('notes.serial')} ${i + 1}`}
-                      title={r.check.includes('serial') ? t('cheque.checkThis') : undefined}
-                      className={`${cell} tnum${r.check.includes('serial') ? doubt : ''}`}
-                      dir="ltr"
-                      maxLength={40}
-                      value={r.serial}
-                      onChange={(e) => set(r.key, { serial: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <input
-                      aria-label={`${t('notes.amount')} ${i + 1}`}
-                      title={r.check.includes('amount') ? t('cheque.checkThis') : undefined}
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      className={`${cell} w-28 tnum${r.check.includes('amount') ? doubt : ''}`}
-                      value={r.amount}
-                      onChange={(e) => set(r.key, { amount: e.target.value })}
-                    />
-                    {r.words && (
-                      <span className="mt-0.5 block max-w-40 text-xs text-muted">
-                        {t('cheque.inWords')}: {r.words}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-1 py-1">
-                    <input
-                      aria-label={`${t('notes.due')} ${i + 1}`}
-                      type="date"
-                      title={r.check.includes('dueDate') ? t('cheque.checkThis') : undefined}
-                      className={`${cell} tnum${r.check.includes('dueDate') ? doubt : ''}`}
-                      value={r.due}
-                      onChange={(e) => set(r.key, { due: e.target.value })}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <select
-                      aria-label={`${t('notes.bank')} ${i + 1}`}
-                      className={`${cell} mb-1`}
-                      value={r.ownBank ? 'own' : 'same'}
-                      onChange={(e) =>
-                        set(r.key, {
-                          ownBank: e.target.value === 'own',
-                          bank: r.bank || bank,
-                        })
-                      }
-                    >
-                      <option value="same">
-                        {t('cheque.sameBank')}
-                        {bank ? ` (${bank})` : ''}
-                      </option>
-                      <option value="own">{t('cheque.otherBank')}</option>
-                    </select>
-                    {r.ownBank && (
-                      <BankSelect
-                        label={`${t('cheque.otherBank')} ${i + 1}`}
-                        className={cell}
-                        value={r.bank}
-                        banks={banks}
-                        onChange={(name) => set(r.key, { bank: name })}
-                      />
-                    )}
-                  </td>
+        <TableColumns id="notes.form.rows">
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="text-xs text-muted">
+                <tr>
+                  <th className="w-8 px-1 py-1.5 text-start font-medium">#</th>
+                  <th className="px-1 py-1.5 text-start font-medium">{t('notes.serial')}</th>
+                  <th className="px-1 py-1.5 text-start font-medium">{t('notes.amount')}</th>
+                  <th className="px-1 py-1.5 text-start font-medium">{t('notes.due')}</th>
+                  <th className="px-1 py-1.5 text-start font-medium">{t('notes.bank')}</th>
                   {receivable && (
+                    <th className="px-1 py-1.5 text-start font-medium">{t('notes.drawer')}</th>
+                  )}
+                  <th className="px-1 py-1.5 text-start font-medium">{t('cheque.photo')}</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.key} className="align-top">
+                    <td className="px-1 py-1 text-muted tnum">{i + 1}</td>
                     <td className="px-1 py-1">
                       <input
-                        aria-label={`${t('notes.drawer')} ${i + 1}`}
-                        className={cell}
-                        maxLength={100}
-                        value={r.drawer}
-                        onChange={(e) => set(r.key, { drawer: e.target.value })}
+                        aria-label={`${t('notes.serial')} ${i + 1}`}
+                        title={r.check.includes('serial') ? t('cheque.checkThis') : undefined}
+                        className={`${cell} tnum${r.check.includes('serial') ? doubt : ''}`}
+                        dir="ltr"
+                        maxLength={40}
+                        value={r.serial}
+                        onChange={(e) => set(r.key, { serial: e.target.value })}
                       />
                     </td>
-                  )}
-                  <td className="px-1 py-1">
-                    <span className="flex items-center gap-1">
-                      {r.photoUrl ? (
-                        <>
-                          <img
-                            src={r.photoUrl}
-                            alt=""
-                            className="h-8 w-14 rounded border border-line object-cover"
-                          />
-                          <button
-                            type="button"
-                            className="text-faint hover:text-destructive"
-                            aria-label={t('common.delete')}
-                            onClick={() => setPhoto(r.key, null)}
-                          >
-                            <Icon name="close" size={14} />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted hover:text-brand"
-                            title={t('cheque.camera')}
-                            aria-label={t('cheque.camera')}
-                            onClick={() => setCamera(r.key)}
-                          >
-                            <Icon name="camera" size={15} />
-                          </button>
-                          <label
-                            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-line text-muted hover:text-brand"
-                            title={t('cheque.fromFile')}
-                          >
-                            <Icon name="plus" size={15} />
-                            <input
-                              aria-label={t('cheque.fromFile')}
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              className="sr-only"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                e.target.value = '';
-                                if (f) void shrinkPhoto(f).then((b) => setPhoto(r.key, b));
-                              }}
-                            />
-                          </label>
-                        </>
+                    <td className="px-1 py-1">
+                      <input
+                        aria-label={`${t('notes.amount')} ${i + 1}`}
+                        title={r.check.includes('amount') ? t('cheque.checkThis') : undefined}
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className={`${cell} w-28 tnum${r.check.includes('amount') ? doubt : ''}`}
+                        value={r.amount}
+                        onChange={(e) => set(r.key, { amount: e.target.value })}
+                      />
+                      {r.words && (
+                        <span className="mt-0.5 block max-w-40 text-xs text-muted">
+                          {t('cheque.inWords')}: {r.words}
+                        </span>
                       )}
-                    </span>
-                  </td>
-                  <td className="px-1 py-1">
-                    {rows.length > 1 && (
-                      <button
-                        type="button"
-                        className="grid h-8 w-8 place-items-center text-faint hover:text-destructive"
-                        aria-label={t('common.delete')}
-                        onClick={() => setRows((cur) => cur.filter((x) => x.key !== r.key))}
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        aria-label={`${t('notes.due')} ${i + 1}`}
+                        type="date"
+                        title={r.check.includes('dueDate') ? t('cheque.checkThis') : undefined}
+                        className={`${cell} tnum${r.check.includes('dueDate') ? doubt : ''}`}
+                        value={r.due}
+                        onChange={(e) => set(r.key, { due: e.target.value })}
+                      />
+                    </td>
+                    <td className="px-1 py-1">
+                      <select
+                        aria-label={`${t('notes.bank')} ${i + 1}`}
+                        className={`${cell} mb-1`}
+                        value={r.ownBank ? 'own' : 'same'}
+                        onChange={(e) =>
+                          set(r.key, {
+                            ownBank: e.target.value === 'own',
+                            bank: r.bank || bank,
+                          })
+                        }
                       >
-                        <Icon name="close" size={14} />
-                      </button>
+                        <option value="same">
+                          {t('cheque.sameBank')}
+                          {bank ? ` (${bank})` : ''}
+                        </option>
+                        <option value="own">{t('cheque.otherBank')}</option>
+                      </select>
+                      {r.ownBank && (
+                        <BankSelect
+                          label={`${t('cheque.otherBank')} ${i + 1}`}
+                          className={cell}
+                          value={r.bank}
+                          banks={banks}
+                          onChange={(name) => set(r.key, { bank: name })}
+                        />
+                      )}
+                    </td>
+                    {receivable && (
+                      <td className="px-1 py-1">
+                        <input
+                          aria-label={`${t('notes.drawer')} ${i + 1}`}
+                          className={cell}
+                          maxLength={100}
+                          value={r.drawer}
+                          onChange={(e) => set(r.key, { drawer: e.target.value })}
+                        />
+                      </td>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <td className="px-1 py-1">
+                      <span className="flex items-center gap-1">
+                        {r.photoUrl ? (
+                          <>
+                            <img
+                              src={r.photoUrl}
+                              alt=""
+                              className="h-8 w-14 rounded border border-line object-cover"
+                            />
+                            <button
+                              type="button"
+                              className="text-faint hover:text-destructive"
+                              aria-label={t('common.delete')}
+                              onClick={() => setPhoto(r.key, null)}
+                            >
+                              <Icon name="close" size={14} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="grid h-8 w-8 place-items-center rounded-md border border-line text-muted hover:text-brand"
+                              title={t('cheque.camera')}
+                              aria-label={t('cheque.camera')}
+                              onClick={() => setCamera(r.key)}
+                            >
+                              <Icon name="camera" size={15} />
+                            </button>
+                            <label
+                              className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-line text-muted hover:text-brand"
+                              title={t('cheque.fromFile')}
+                            >
+                              <Icon name="plus" size={15} />
+                              <input
+                                aria-label={t('cheque.fromFile')}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="sr-only"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (f) void shrinkPhoto(f).then((b) => setPhoto(r.key, b));
+                                }}
+                              />
+                            </label>
+                          </>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-1 py-1">
+                      {rows.length > 1 && (
+                        <button
+                          type="button"
+                          className="grid h-8 w-8 place-items-center text-faint hover:text-destructive"
+                          aria-label={t('common.delete')}
+                          onClick={() => setRows((cur) => cur.filter((x) => x.key !== r.key))}
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </TableColumns>
         <p className="flex justify-between border-t border-line pt-2 text-sm">
           <span className="text-muted">{t('cheque.totalAll')}</span>
           <b className="tnum">{formatMoney(total, 'EGP', locale)}</b>

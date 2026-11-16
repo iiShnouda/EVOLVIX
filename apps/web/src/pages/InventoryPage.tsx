@@ -1047,56 +1047,60 @@ function ValuationSummary({
           </div>
         )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full whitespace-nowrap text-sm">
-          <thead className="bg-surface-2 text-xs text-muted">
-            <tr>
-              <th className="p-2 text-start font-medium">
-                {t(key === 'warehouses' ? 'list.warehouse' : 'valuation.department')}
-              </th>
-              <th className="p-2 text-end font-medium">{t('valuation.items')}</th>
-              <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
-              {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
-              {seeSale && <th className="p-2 text-end font-medium">{t('valuation.saleValue')}</th>}
-              <th className="p-2 text-end font-medium">{t('valuation.share')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {groups.map((g) => (
-              <Fragment key={g.name || '-'}>
-                {g.name && (
-                  <tr className="bg-surface-2/60">
-                    <td
-                      className="p-2 font-semibold"
-                      colSpan={2 + 2 + (seeValue ? 1 : 0) + (seeSale ? 1 : 0)}
-                    >
-                      {g.name}
-                    </td>
-                  </tr>
+      <TableColumns id="valuation.breakdown">
+        <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className="p-2 text-start font-medium">
+                  {t(key === 'warehouses' ? 'list.warehouse' : 'valuation.department')}
+                </th>
+                <th className="p-2 text-end font-medium">{t('valuation.items')}</th>
+                <th className="p-2 text-end font-medium">{t('inventory.qty')}</th>
+                {seeValue && <th className="p-2 text-end font-medium">{t('inventory.value')}</th>}
+                {seeSale && (
+                  <th className="p-2 text-end font-medium">{t('valuation.saleValue')}</th>
                 )}
-                {g.rows.map((r) => (
-                  <tr key={r.key}>
-                    <td className={`p-2 ${g.name ? 'ps-5' : ''}`}>{r.label}</td>
-                    {cells(r)}
-                  </tr>
-                ))}
-                {g.name && g.rows.length > 1 && (
-                  <tr className="font-medium">
-                    <td className="p-2 ps-5 text-muted">
-                      {t('valuation.totalOf').replace('{name}', g.name)}
-                    </td>
-                    {cells(sum(g.rows))}
-                  </tr>
-                )}
-              </Fragment>
-            ))}
-            <tr className="bg-surface-2 font-semibold">
-              <td className="p-2">{t('common.total')}</td>
-              {cells(total)}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                <th className="p-2 text-end font-medium">{t('valuation.share')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {groups.map((g) => (
+                <Fragment key={g.name || '-'}>
+                  {g.name && (
+                    <tr data-span className="bg-surface-2/60">
+                      <td
+                        className="p-2 font-semibold"
+                        colSpan={2 + 2 + (seeValue ? 1 : 0) + (seeSale ? 1 : 0)}
+                      >
+                        {g.name}
+                      </td>
+                    </tr>
+                  )}
+                  {g.rows.map((r) => (
+                    <tr key={r.key}>
+                      <td className={`p-2 ${g.name ? 'ps-5' : ''}`}>{r.label}</td>
+                      {cells(r)}
+                    </tr>
+                  ))}
+                  {g.name && g.rows.length > 1 && (
+                    <tr className="font-medium">
+                      <td className="p-2 ps-5 text-muted">
+                        {t('valuation.totalOf').replace('{name}', g.name)}
+                      </td>
+                      {cells(sum(g.rows))}
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+              <tr className="bg-surface-2 font-semibold">
+                <td className="p-2">{t('common.total')}</td>
+                {cells(total)}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </TableColumns>
     </Card>
   );
 }

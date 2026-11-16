@@ -21,6 +21,7 @@ import {
 } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { TableColumns } from '../components/TableColumns';
 import { PartyPicker } from '../components/PartyPicker';
 import { PartySheet } from './PartiesPage';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
@@ -1158,134 +1159,136 @@ export function AddItemsPage() {
             {t('additems.empty')}
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-            <table className="w-full whitespace-nowrap text-[13px]">
-              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="px-2 py-2 text-start font-medium">#</th>
-                  <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
-                  <th className="px-2 py-2 text-end font-medium">{t('invoice.qty')}</th>
-                  <th className="px-2 py-2 text-end font-medium">{t('additems.costBefore')}</th>
-                  {canDiscount && (
-                    <th className="px-2 py-2 text-end font-medium">
-                      {t('additems.supplierDiscount')}
-                    </th>
-                  )}
-                  <th className="px-2 py-2 text-end font-medium">{t('additems.costAfter')}</th>
-                  <th className="px-2 py-2 text-end font-medium">{t('item.salePrice')}</th>
-                  <th className="px-2 py-2 text-end font-medium">{t('invoice.lineTotal')}</th>
-                  <th className="w-16" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {rows.map((r, i) => {
-                  const size = r.l.withVariant
-                    ? sizes.find((o) => o.id === r.l.sizeId)?.name
-                    : undefined;
-                  const color = r.l.withVariant
-                    ? colors.find((o) => o.id === r.l.colorId)
-                    : undefined;
-                  const unit = activeUnits.find((u) => u.id === r.l.unitId);
-                  return (
-                    <tr key={r.l.key} className={editing === r.l.key ? 'bg-brand-soft/40' : ''}>
-                      <td className="px-2 py-2 text-muted tnum">{i + 1}</td>
-                      <td className="px-2 py-2">
-                        <span className="flex items-center gap-1.5 font-medium">
-                          {color?.hex && (
-                            <span
-                              className="h-3 w-3 rounded-full border border-line"
-                              style={{ background: color.hex }}
-                            />
-                          )}
-                          {r.l.name}
-                          {photos[r.l.key] && (
-                            <Icon name="camera" size={13} className="text-muted" />
-                          )}
-                          {r.l.productId && !r.l.existing && (
-                            <Icon name="check" size={14} className="text-positive" />
-                          )}
-                        </span>
-                        {r.l.existing && (
-                          <span className="block text-xs text-muted">
-                            {t('additems.existingTag')}
-                            {r.l.detail ? ` · ${r.l.detail}` : ''}
-                            {r.l.moveSeason &&
-                              ` · ${t('additems.moveSeason').replace('{s}', seasonName)}`}
+          <TableColumns id="purchase.lines">
+            <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
+              <table className="w-full whitespace-nowrap text-[13px]">
+                <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="px-2 py-2 text-start font-medium">#</th>
+                    <th className="px-2 py-2 text-start font-medium">{t('invoice.item')}</th>
+                    <th className="px-2 py-2 text-end font-medium">{t('invoice.qty')}</th>
+                    <th className="px-2 py-2 text-end font-medium">{t('additems.costBefore')}</th>
+                    {canDiscount && (
+                      <th className="px-2 py-2 text-end font-medium">
+                        {t('additems.supplierDiscount')}
+                      </th>
+                    )}
+                    <th className="px-2 py-2 text-end font-medium">{t('additems.costAfter')}</th>
+                    <th className="px-2 py-2 text-end font-medium">{t('item.salePrice')}</th>
+                    <th className="px-2 py-2 text-end font-medium">{t('invoice.lineTotal')}</th>
+                    <th className="w-16" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((r, i) => {
+                    const size = r.l.withVariant
+                      ? sizes.find((o) => o.id === r.l.sizeId)?.name
+                      : undefined;
+                    const color = r.l.withVariant
+                      ? colors.find((o) => o.id === r.l.colorId)
+                      : undefined;
+                    const unit = activeUnits.find((u) => u.id === r.l.unitId);
+                    return (
+                      <tr key={r.l.key} className={editing === r.l.key ? 'bg-brand-soft/40' : ''}>
+                        <td className="px-2 py-2 text-muted tnum">{i + 1}</td>
+                        <td className="px-2 py-2">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            {color?.hex && (
+                              <span
+                                className="h-3 w-3 rounded-full border border-line"
+                                style={{ background: color.hex }}
+                              />
+                            )}
+                            {r.l.name}
+                            {photos[r.l.key] && (
+                              <Icon name="camera" size={13} className="text-muted" />
+                            )}
+                            {r.l.productId && !r.l.existing && (
+                              <Icon name="check" size={14} className="text-positive" />
+                            )}
                           </span>
-                        )}
-                        {(size || color || r.l.groupId) && (
-                          <span className="block text-xs text-muted">
-                            {[
-                              r.l.departmentId &&
-                                [
-                                  departments.find((d) => d.id === r.l.departmentId)?.name,
-                                  groupLabel(groups, r.l.groupId),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' / '),
-                              size,
-                              color?.name,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-end tnum">
-                        {r.qty} {r.l.existing ? '' : unit?.name}
-                        {r.perUnit > 1 && (
-                          <span className="block text-xs text-muted">
-                            {r.pieces} {t('additems.pieces')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-end tnum">{money(r.before)}</td>
-                      {canDiscount && (
-                        <td className="px-2 py-2 text-end text-muted tnum">
-                          {r.discount ? money(r.discount) : ''}
+                          {r.l.existing && (
+                            <span className="block text-xs text-muted">
+                              {t('additems.existingTag')}
+                              {r.l.detail ? ` · ${r.l.detail}` : ''}
+                              {r.l.moveSeason &&
+                                ` · ${t('additems.moveSeason').replace('{s}', seasonName)}`}
+                            </span>
+                          )}
+                          {(size || color || r.l.groupId) && (
+                            <span className="block text-xs text-muted">
+                              {[
+                                r.l.departmentId &&
+                                  [
+                                    departments.find((d) => d.id === r.l.departmentId)?.name,
+                                    groupLabel(groups, r.l.groupId),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' / '),
+                                size,
+                                color?.name,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </span>
+                          )}
                         </td>
-                      )}
-                      <td className="px-2 py-2 text-end tnum">{money(r.after)}</td>
-                      <td className="px-2 py-2 text-end font-medium tnum">{money(r.sale)}</td>
-                      <td className="px-2 py-2 text-end font-semibold tnum">
-                        {money(r.pieces * r.after)}
-                      </td>
-                      <td className="px-1 py-1">
-                        {(!r.l.productId || r.l.existing) && (
-                          <span className="flex justify-end gap-0.5">
-                            <button
-                              type="button"
-                              className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
-                              aria-label={t('common.edit')}
-                              title={t('common.edit')}
-                              onClick={() => {
-                                setEditing(r.l.key);
-                                setEntryPhoto(null);
-                                setEntry({ ...blank(), ...r.l });
-                              }}
-                            >
-                              <Icon name="notes" size={15} />
-                            </button>
-                            <button
-                              type="button"
-                              className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-destructive-soft hover:text-destructive"
-                              aria-label={t('invoice.remove')}
-                              title={t('invoice.remove')}
-                              onClick={() =>
-                                setLines((prev) => prev.filter((x) => x.key !== r.l.key))
-                              }
-                            >
-                              <Icon name="close" size={15} />
-                            </button>
-                          </span>
+                        <td className="px-2 py-2 text-end tnum">
+                          {r.qty} {r.l.existing ? '' : unit?.name}
+                          {r.perUnit > 1 && (
+                            <span className="block text-xs text-muted">
+                              {r.pieces} {t('additems.pieces')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-end tnum">{money(r.before)}</td>
+                        {canDiscount && (
+                          <td className="px-2 py-2 text-end text-muted tnum">
+                            {r.discount ? money(r.discount) : ''}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <td className="px-2 py-2 text-end tnum">{money(r.after)}</td>
+                        <td className="px-2 py-2 text-end font-medium tnum">{money(r.sale)}</td>
+                        <td className="px-2 py-2 text-end font-semibold tnum">
+                          {money(r.pieces * r.after)}
+                        </td>
+                        <td className="px-1 py-1">
+                          {(!r.l.productId || r.l.existing) && (
+                            <span className="flex justify-end gap-0.5">
+                              <button
+                                type="button"
+                                className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
+                                aria-label={t('common.edit')}
+                                title={t('common.edit')}
+                                onClick={() => {
+                                  setEditing(r.l.key);
+                                  setEntryPhoto(null);
+                                  setEntry({ ...blank(), ...r.l });
+                                }}
+                              >
+                                <Icon name="notes" size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-destructive-soft hover:text-destructive"
+                                aria-label={t('invoice.remove')}
+                                title={t('invoice.remove')}
+                                onClick={() =>
+                                  setLines((prev) => prev.filter((x) => x.key !== r.l.key))
+                                }
+                              >
+                                <Icon name="close" size={15} />
+                              </button>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
         )}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="grid w-full gap-3 sm:grid-cols-2">

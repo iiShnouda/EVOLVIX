@@ -25,6 +25,7 @@ import {
   useParty,
   useSeasons,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -245,66 +246,70 @@ export function BulkPricesPage() {
           ) : rows.length === 0 ? (
             <EmptyState title={t('bulkPrices.empty')} icon="inventory" />
           ) : (
-            <div className="max-h-[50vh] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 border-b border-line bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className="w-10 p-2" />
-                    <th className="p-2 text-start font-medium">{t('bulkPrices.items')}</th>
-                    <th className="hidden p-2 text-start font-medium md:table-cell">
-                      {t('invoice.department')}
-                    </th>
-                    <th className="p-2 text-end font-medium">{t('inventory.stock')}</th>
-                    {seeSupply && (
-                      <th className="p-2 text-end font-medium">{t('bulkPrices.supply')}</th>
-                    )}
-                    {seeCost && (
-                      <th className="hidden p-2 text-end font-medium lg:table-cell">
-                        {t('bulkPrices.avgCost')}
+            <TableColumns id="bulkPrices.items">
+              <div className="max-h-[50vh] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 border-b border-line bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className="w-10 p-2" />
+                      <th className="p-2 text-start font-medium">{t('bulkPrices.items')}</th>
+                      <th className="hidden p-2 text-start font-medium md:table-cell">
+                        {t('invoice.department')}
                       </th>
-                    )}
-                    <th className="p-2 text-end font-medium">{t('bulkPrices.sale')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-line)]">
-                  {rows.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="cursor-pointer hover:bg-surface-2"
-                      onClick={() =>
-                        setPicked((cur) => {
-                          const next = new Set(cur);
-                          if (next.has(r.id)) next.delete(r.id);
-                          else next.add(r.id);
-                          return next;
-                        })
-                      }
-                    >
-                      <td className="p-2 text-center">
-                        <input type="checkbox" readOnly checked={picked.has(r.id)} />
-                      </td>
-                      <td className="p-2">
-                        <span className="block font-medium">{r.name}</span>
-                        <span className="block text-xs text-muted" dir="auto">
-                          <CodeName code={r.sku} name={r.supplierCode ?? ''} />
-                        </span>
-                      </td>
-                      <td className="hidden p-2 text-muted md:table-cell">
-                        {[r.departmentName, r.groupName, r.seasonName].filter(Boolean).join(' · ')}
-                      </td>
-                      <td className="p-2 text-end tnum">{formatNumber(r.stockOnHand, locale)}</td>
-                      {seeSupply && <td className="p-2 text-end tnum">{money(r.supplyPrice)}</td>}
-                      {seeCost && (
-                        <td className="hidden p-2 text-end text-muted tnum lg:table-cell">
-                          {money(r.avgCost)}
-                        </td>
+                      <th className="p-2 text-end font-medium">{t('inventory.stock')}</th>
+                      {seeSupply && (
+                        <th className="p-2 text-end font-medium">{t('bulkPrices.supply')}</th>
                       )}
-                      <td className="p-2 text-end font-medium tnum">{money(r.salePrice)}</td>
+                      {seeCost && (
+                        <th className="hidden p-2 text-end font-medium lg:table-cell">
+                          {t('bulkPrices.avgCost')}
+                        </th>
+                      )}
+                      <th className="p-2 text-end font-medium">{t('bulkPrices.sale')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {rows.map((r) => (
+                      <tr
+                        key={r.id}
+                        className="cursor-pointer hover:bg-surface-2"
+                        onClick={() =>
+                          setPicked((cur) => {
+                            const next = new Set(cur);
+                            if (next.has(r.id)) next.delete(r.id);
+                            else next.add(r.id);
+                            return next;
+                          })
+                        }
+                      >
+                        <td className="p-2 text-center">
+                          <input type="checkbox" readOnly checked={picked.has(r.id)} />
+                        </td>
+                        <td className="p-2">
+                          <span className="block font-medium">{r.name}</span>
+                          <span className="block text-xs text-muted" dir="auto">
+                            <CodeName code={r.sku} name={r.supplierCode ?? ''} />
+                          </span>
+                        </td>
+                        <td className="hidden p-2 text-muted md:table-cell">
+                          {[r.departmentName, r.groupName, r.seasonName]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </td>
+                        <td className="p-2 text-end tnum">{formatNumber(r.stockOnHand, locale)}</td>
+                        {seeSupply && <td className="p-2 text-end tnum">{money(r.supplyPrice)}</td>}
+                        {seeCost && (
+                          <td className="hidden p-2 text-end text-muted tnum lg:table-cell">
+                            {money(r.avgCost)}
+                          </td>
+                        )}
+                        <td className="p-2 text-end font-medium tnum">{money(r.salePrice)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </TableColumns>
           )}
         </Card>
       )}
