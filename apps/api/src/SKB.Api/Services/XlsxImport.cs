@@ -54,6 +54,71 @@ public static class XlsxImport
         }
     }
 
+    /// <summary>
+    /// A one-sheet workbook of text cells (an import's template, owner 2026-11-16): the first row in
+    /// bold, right-to-left for Arabic. Written with the framework's zip and XML only.
+    /// </summary>
+    public static byte[] Write(string sheetName, IReadOnlyList<IReadOnlyList<string>> rows, bool rightToLeft)
+    {
+        var ms = new MemoryStream();
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            void Put(string path, XDocument doc)
+            {
+                using var w = zip.CreateEntry(path, CompressionLevel.Optimal).Open();
+                doc.Save(w, SaveOptions.DisableFormatting);
+            }
+            XNamespace ct = "http://schemas.openxmlformats.org/package/2006/content-types";
+            Put("[Content_Types].xml", new XDocument(new XElement(ct + "Types",
+                new XElement(ct + "Default", new XAttribute("Extension", "rels"), new XAttribute("ContentType", "application/vnd.openxmlformats-package.relationships+xml")),
+                new XElement(ct + "Default", new XAttribute("Extension", "xml"), new XAttribute("ContentType", "application/xml")),
+                new XElement(ct + "Override", new XAttribute("PartName", "/xl/workbook.xml"), new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml")),
+                new XElement(ct + "Override", new XAttribute("PartName", "/xl/worksheets/sheet1.xml"), new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")),
+                new XElement(ct + "Override", new XAttribute("PartName", "/xl/styles.xml"), new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml")))));
+            Put("_rels/.rels", new XDocument(new XElement(Pkg + "Relationships",
+                new XElement(Pkg + "Relationship", new XAttribute("Id", "rId1"), new XAttribute("Target", "xl/workbook.xml"),
+                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument")))));
+            Put("xl/_rels/workbook.xml.rels", new XDocument(new XElement(Pkg + "Relationships",
+                new XElement(Pkg + "Relationship", new XAttribute("Id", "rId1"), new XAttribute("Target", "worksheets/sheet1.xml"),
+                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet")),
+                new XElement(Pkg + "Relationship", new XAttribute("Id", "rId2"), new XAttribute("Target", "styles.xml"),
+                    new XAttribute("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles")))));
+            var name = new string(sheetName.Where(c => !"[]:*?/\\".Contains(c)).ToArray());
+            Put("xl/workbook.xml", new XDocument(new XElement(Main + "workbook", new XAttribute(XNamespace.Xmlns + "r", Rel),
+                new XElement(Main + "sheets", new XElement(Main + "sheet", new XAttribute("name", name.Length is 0 or > 31 ? "Sheet1" : name),
+                    new XAttribute("sheetId", 1), new XAttribute(Rel + "id", "rId1"))))));
+            Put("xl/styles.xml", new XDocument(new XElement(Main + "styleSheet",
+                new XElement(Main + "fonts", new XAttribute("count", 2),
+                    new XElement(Main + "font", new XElement(Main + "sz", new XAttribute("val", 11))),
+                    new XElement(Main + "font", new XElement(Main + "b"), new XElement(Main + "sz", new XAttribute("val", 11)))),
+                new XElement(Main + "fills", new XAttribute("count", 1), new XElement(Main + "fill", new XElement(Main + "patternFill", new XAttribute("patternType", "none")))),
+                new XElement(Main + "borders", new XAttribute("count", 1), new XElement(Main + "border")),
+                new XElement(Main + "cellStyleXfs", new XAttribute("count", 1), new XElement(Main + "xf")),
+                new XElement(Main + "cellXfs", new XAttribute("count", 2),
+                    new XElement(Main + "xf", new XAttribute("fontId", 0)),
+                    new XElement(Main + "xf", new XAttribute("fontId", 1), new XAttribute("applyFont", 1))))));
+            var width = rows.Count == 0 ? 1 : rows.Max(r => r.Count);
+            Put("xl/worksheets/sheet1.xml", new XDocument(new XElement(Main + "worksheet",
+                new XElement(Main + "sheetViews", new XElement(Main + "sheetView", new XAttribute("workbookViewId", 0),
+                    rightToLeft ? new XAttribute("rightToLeft", 1) : null)),
+                new XElement(Main + "cols", new XElement(Main + "col", new XAttribute("min", 1), new XAttribute("max", Math.Max(1, width)),
+                    new XAttribute("width", 20), new XAttribute("customWidth", 1))),
+                new XElement(Main + "sheetData", rows.Select((row, i) => new XElement(Main + "row", new XAttribute("r", i + 1),
+                    row.Select((text, j) => new XElement(Main + "c", new XAttribute("r", ColumnName(j) + (i + 1)),
+                        new XAttribute("t", "inlineStr"), i == 0 ? new XAttribute("s", 1) : null,
+                        new XElement(Main + "is", new XElement(Main + "t", new XAttribute(XNamespace.Xml + "space", "preserve"), text))))))))));
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>A 0-based column as its letters: 0 → A, 26 → AA.</summary>
+    private static string ColumnName(int index)
+    {
+        var s = "";
+        for (var n = index + 1; n > 0; n = (n - 1) / 26) s = (char)('A' + (n - 1) % 26) + s;
+        return s;
+    }
+
     private static XDocument? Entry(ZipArchive zip, string path)
     {
         var entry = zip.GetEntry(path);

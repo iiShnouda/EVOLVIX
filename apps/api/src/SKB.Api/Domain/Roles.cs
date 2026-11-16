@@ -654,6 +654,11 @@ public static class Permissions
     public const string SettingsStorefront = "settings:storefront";
     /// <summary>Download a backup of everything (the owner's alone by default).</summary>
     public const string BackupCreate = "backup:create";
+    /// <summary>
+    /// Put a backup back in place of everything in the app (owner, 2026-11-16: "data recovery from the
+    /// program's own backup"). The owner's alone (see OwnerOnly): a safety backup is taken first.
+    /// </summary>
+    public const string BackupRestore = "backup:restore";
 
     // ──── General ────
     /// <summary>
@@ -687,11 +692,22 @@ public static class Permissions
     /// 2026-10-11). The owner's alone, like the monitor.
     /// </summary>
     public const string SystemUpdate = "system:update";
-    /// <summary>
-    /// Load items, customers and suppliers in bulk from an Excel file the owner uploads (owner,
-    /// 2026-10-14). The owner's alone, like the monitor and updates (see OwnerOnly).
-    /// </summary>
-    public const string DataImport = "data:import";
+    // Bringing data in from Excel (owner, 2026-10-14 and 2026-11-16): a permission for each kind,
+    // the owner's alone like the monitor and updates (see OwnerOnly).
+    /// <summary>Import items (code, name, department, group, unit, prices, supplier, barcode) from Excel.</summary>
+    public const string ImportItems = "import:items";
+    /// <summary>Import customers from Excel.</summary>
+    public const string ImportCustomers = "import:customers";
+    /// <summary>Import suppliers from Excel.</summary>
+    public const string ImportSuppliers = "import:suppliers";
+    /// <summary>Import customers' opening balances from Excel.</summary>
+    public const string ImportOpeningCustomers = "import:opening_customers";
+    /// <summary>Import suppliers' opening balances from Excel.</summary>
+    public const string ImportOpeningSuppliers = "import:opening_suppliers";
+    /// <summary>Import the money already in cash boxes and banks from Excel.</summary>
+    public const string ImportOpeningMoney = "import:opening_money";
+    /// <summary>Import opening stock (quantity per warehouse at a cost) from Excel.</summary>
+    public const string ImportOpeningStock = "import:opening_stock";
     /// <summary>
     /// See and enter this company's licence (users bought, end date); on the vendor's own server,
     /// also issue licences to customers (owner, 2026-10-15). The owner's alone.
@@ -763,14 +779,27 @@ public static class Permissions
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
         RolesDelete, BranchesView, BranchesCreate, BranchesEdit, BranchesDelete, WarehousesCreate, WarehousesEdit,
         WarehousesDelete, SettingsCompany, SettingsLogo, SettingsPricing, SettingsRules,
-        SettingsSecurity, SettingsNumbering, SettingsStorefront, BackupCreate, CostsView, ProfitView,
-        DocumentsBackdate, RulesOverride, SystemMonitor, SystemUpdate, DataImport, LicenseManage,
+        SettingsSecurity, SettingsNumbering, SettingsStorefront, BackupCreate, BackupRestore, CostsView, ProfitView,
+        DocumentsBackdate, RulesOverride, SystemMonitor, SystemUpdate, ImportItems, ImportCustomers, ImportSuppliers,
+        ImportOpeningCustomers, ImportOpeningSuppliers, ImportOpeningMoney, ImportOpeningStock, LicenseManage,
         PrintSettings, PrintDefault,
         SystemLogs,
     };
 
     /// <summary>Held by the owner alone: never by the admin, a role or a grant.</summary>
-    public static readonly string[] OwnerOnly = { SystemMonitor, SystemUpdate, DataImport, LicenseManage, SystemLogs };
+    public static readonly string[] OwnerOnly =
+    {
+        SystemMonitor, SystemUpdate, BackupRestore, ImportItems, ImportCustomers, ImportSuppliers, ImportOpeningCustomers,
+        ImportOpeningSuppliers, ImportOpeningMoney, ImportOpeningStock, LicenseManage, SystemLogs,
+    };
+
+    /// <summary>Each Excel import kind and its permission.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Imports = new Dictionary<string, string>
+    {
+        ["items"] = ImportItems, ["customers"] = ImportCustomers, ["suppliers"] = ImportSuppliers,
+        ["opening_customers"] = ImportOpeningCustomers, ["opening_suppliers"] = ImportOpeningSuppliers,
+        ["opening_money"] = ImportOpeningMoney, ["opening_stock"] = ImportOpeningStock,
+    };
 }
 
 public static class RolePermissions

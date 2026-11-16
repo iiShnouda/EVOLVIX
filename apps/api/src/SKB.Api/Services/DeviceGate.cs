@@ -15,6 +15,9 @@ public static class DeviceGate
     private static readonly TimeSpan Fresh = TimeSpan.FromSeconds(15);
     private static readonly ConcurrentDictionary<Guid, (Guid? Mobile, Guid? Desktop, DateTime At)> Known = new();
 
+    /// <summary>Forget everyone's (the data was restored from a backup).</summary>
+    public static void ForgetAll() => Known.Clear();
+
     public static void Set(Guid staffId, Guid? mobile, Guid? desktop) =>
         Known[staffId] = (mobile, desktop, DateTime.UtcNow);
 

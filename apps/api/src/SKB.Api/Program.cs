@@ -76,6 +76,7 @@ builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<PayrollService>();
 builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
+builder.Services.AddSingleton<RestoreService>();
 builder.Services.AddHostedService<Housekeeping>();
 builder.Services.AddHostedService<NotificationJobs>();
 
@@ -355,6 +356,18 @@ app.UseRequestLocalization(new RequestLocalizationOptions
     SupportedUICultures = new[] { new CultureInfo("en"), new CultureInfo("ar") },
 });
 
+// While a backup is being restored, changes are refused: they would be lost with the data replaced.
+app.Use(async (ctx, next) =>
+{
+    if (RestoreService.Running && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method)
+        && ctx.Request.Path.StartsWithSegments("/api") && !ctx.Request.Path.StartsWithSegments("/api/backups/restore"))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await ctx.Response.WriteAsJsonAsync(new { message = "A backup is being restored; try again in a few minutes.", code = "restoring" });
+        return;
+    }
+    await next();
+});
 app.UseCors();
 app.UseAuthentication();   // before the limiter, so it can key on the signed-in user
 app.Use(Access.PickWorkingBranch);   // the branch picked in the app, when the person may use it

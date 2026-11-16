@@ -38,6 +38,9 @@ public static class AccessGate
         foreach (var id in ids) Known.TryRemove(id, out _);
     }
 
+    /// <summary>Forget everyone's (the data was restored from a backup).</summary>
+    public static void ForgetAll() => Known.Clear();
+
     /// <summary>Forget what is remembered of this person (they were removed).</summary>
     public static void Forget(Guid staffId) => Known.TryRemove(staffId, out _);
 }

@@ -343,13 +343,22 @@ export const NAV_SECTIONS: NavSection[] = [
         path: '/logs',
         anyOf: ['system:logs'],
       },
-      // The owner's bulk import from an Excel file (owner, 2026-10-14).
+      // Bringing data in (owner, 2026-10-14 and 2026-11-16): Excel imports, restoring a backup, a PDF invoice.
       {
         key: 'import',
         labelKey: 'nav.import',
         icon: 'upload',
         path: '/import',
-        anyOf: ['data:import'],
+        anyOf: [
+          'backup:restore',
+          'import:items',
+          'import:customers',
+          'import:suppliers',
+          'import:opening_customers',
+          'import:opening_suppliers',
+          'import:opening_money',
+          'import:opening_stock',
+        ],
       },
       // The owner's licence: users bought, end date, entering a code (owner, 2026-10-15).
       {
