@@ -66,6 +66,7 @@ live company server.
 | `outputs.test.mjs` | Print, PDF and Excel per page (`<page>:print|pdf|export`, `POST /outputs` checked and logged, `?kind=pdf` on invoice prints) and print settings as their own permission (`print:settings`; `print:default` sets the company layout others print with). |
 | `logs.test.mjs` | The server log (`system:logs`, owner only): a line per request with its request id, a forced error's stack trace and `server_error` + `requestId`, client errors (`POST /client-errors`, rate-limited), secrets and search terms scrubbed, only a day (no paths), downloading audited. |
 | `notify.test.mjs` | Notifications everywhere: each kind to the people with its permission and place (never the actor), cheques due/overdue/bounced once each, stock out/low once until restocked, transfers, returns, payroll, lock and year close, a new device's sign-in, per-person choices, delete and pages, the daily summary scoped to each person (`POST /notifications/run-daily`, Development only). |
+| `deptseasons.test.mjs` | A department's season read from its name (صيفي / شتوي / summer / winter, spelling variants; none or both = both seasons), server and web alike; `season=` on the dashboard, profit and loss, assortment, stock items and valuation; scoping kept. |
 
 ## Running
 

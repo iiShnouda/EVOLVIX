@@ -71,6 +71,10 @@
         {
           "ar": "كشف المصروفات وكشف المخزن بقى فيهم زر إكسل",
           "en": "Expense and warehouse statements have an Excel button"
+        },
+        {
+          "ar": "في لوحة التحكم والتحليلات والمخزون بقى فيه اختيار موسم الأقسام (كل المواسم / صيفي / شتوي) جنب القسم، بيعرف الموسم من اسم القسم، والأقسام اللي من غير موسم زي \"داخلي\" بتظهر مع الصيفي والشتوي",
+          "en": "Dashboard, analytics and stock now have a departments' season choice (all / summer / winter) beside the department, read from each department's name; departments with no season word, such as underwear, show with both"
         }
       ],
       "fixes": [
