@@ -27,7 +27,7 @@ public sealed class PartiesController : ControllerBase
     public async Task<ActionResult<PaginatedDto<PartyDto>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? type = null, [FromQuery] string? search = null, [FromQuery] bool? active = null,
-        [FromQuery] int? code = null, [FromQuery] string? status = null)
+        [FromQuery] int? code = null, [FromQuery] string? status = null, [FromQuery] string? phone = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -60,6 +60,10 @@ public sealed class PartiesController : ControllerBase
         }
         // Exactly this code (كود), e.g. typed in an invoice's code box.
         if (code is int wantedCode) q = q.Where(p => p.Code == wantedCode);
+        // A phone number or part of it (owner, 2026-11-16: the detailed search), on any of its numbers.
+        var digits = new string((phone ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length > 0)
+            q = q.Where(p => (p.Phone != null && p.Phone.Contains(digits)) || p.OtherPhones.Any(x => x.Contains(digits)));
         if (!string.IsNullOrWhiteSpace(search))
         {
             // By code, name, owner / contact name, or any of its phone numbers.

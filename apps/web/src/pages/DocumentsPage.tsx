@@ -19,6 +19,14 @@ import { useAuth } from '../stores/auth';
 import { TOGETHER_PERMISSIONS, useMayOverride } from '../lib/can';
 import { useWorkPlace } from '../lib/workPlace';
 import { keepListFilters, readListFilters } from '../lib/listFilters';
+import {
+  Filter,
+  FilterPanel,
+  RangeFilter,
+  filterField,
+  minorOf,
+  useSettled,
+} from '../components/FilterPanel';
 import { useTab } from '../lib/tabs';
 import {
   useApproveLimit,
@@ -29,6 +37,7 @@ import {
   useCancelReturn,
   useDepartments,
   usePageSize,
+  useReps,
   useWarehouses,
   useRejectOrder,
   useDocument,
@@ -46,9 +55,6 @@ import { Sheet } from '../components/Sheet';
 import { CodeName, codeName } from '../components/CodeName';
 
 /** Documents per page of the list. */
-
-const filterField =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
 /** Who sees each list: its view permission and every action done on its documents. */
 const LIST_PERMISSIONS: Record<DocScope, Record<'invoices' | 'returns', Permission[]>> = {
@@ -195,6 +201,12 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     kept.branchId && myBranches.some((b) => b.id === kept.branchId) ? kept.branchId : '',
   );
   const [warehouseId, setWarehouseId] = useState(kept.warehouseId ?? '');
+  // The detailed search (owner, 2026-11-16): the rep and the total between two amounts.
+  const [repId, setRepId] = useState(kept.repId ?? '');
+  const [minAmount, setMinAmount] = useState(kept.minAmount ?? '');
+  const [maxAmount, setMaxAmount] = useState(kept.maxAmount ?? '');
+  const amounts = useSettled(`${minorOf(minAmount)}\u0001${minorOf(maxAmount)}`);
+  const [dMin = '', dMax = ''] = amounts.split('\u0001');
   // The list opens on every branch, warehouse and department (owner, 2026-11-10: the place the
   // person works in must not narrow it); picking one here still makes it their working place.
   const [, setPlace] = useWorkPlace();
@@ -224,6 +236,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     state: kind === 'invoices' && state ? state : undefined,
     branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
+    repId: isSales && kind === 'invoices' ? repId || undefined : undefined,
+    min: dMin || undefined,
+    max: dMax || undefined,
     enabled: listed,
   });
   // Another filter starts again at the first page (not when the list is opened as it was left).
@@ -237,6 +252,8 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     state,
     branchId,
     warehouseId,
+    repId,
+    amounts,
     pageSize,
   ].join('\u0001');
   const lastFilter = useRef(filterKey);
@@ -257,6 +274,9 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
       state,
       branchId,
       warehouseId,
+      repId,
+      minAmount,
+      maxAmount,
       page: String(page),
     });
   }, [
@@ -271,8 +291,31 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     state,
     branchId,
     warehouseId,
+    repId,
+    minAmount,
+    maxAmount,
     page,
   ]);
+  const reps = useReps(isSales && kind === 'invoices' && listed);
+  const detailed = [
+    branchId,
+    warehouseId,
+    departmentId,
+    status,
+    kind === 'invoices' && isSales ? state : '',
+    kind === 'invoices' && isSales ? repId : '',
+    minAmount || maxAmount,
+  ].filter(Boolean).length;
+  function clearDetailed() {
+    setBranchId('');
+    setWarehouseId('');
+    setDepartmentId('');
+    setStatus('');
+    if (tab !== 'orders') setState('');
+    setRepId('');
+    setMinAmount('');
+    setMaxAmount('');
+  }
   const pages = Math.max(1, Math.ceil((list.data?.total ?? 0) / pageSize));
   // Escape closes an open document (unless a sheet over it is open: it closes that first).
   useEffect(() => {
@@ -511,42 +554,69 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
 
       {listed && (
         <>
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="block w-40">
-              <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
-              <input
-                type="search"
-                className={`${filterField} tnum`}
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
-              />
-            </label>
-            {/* The code before the name, as everywhere (owner, 2026-10-06). */}
-            <label className="block w-28">
-              <span className="mb-0.5 block text-xs text-muted">
-                {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
-              </span>
-              <input
-                inputMode="numeric"
-                className={`${filterField} tnum`}
-                value={partyCode}
-                onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
-              />
-            </label>
-            <label className="block min-w-48 flex-1">
-              <span className="mb-0.5 block text-xs text-muted">
-                {t(isSales ? 'list.customerName' : 'list.supplierName')}
-              </span>
-              <input
-                type="search"
-                className={filterField}
-                value={partyName}
-                onChange={(e) => setPartyName(e.target.value)}
-              />
-            </label>
+          <FilterPanel
+            id={`${scope}.${kind}`}
+            active={detailed}
+            onClear={clearDetailed}
+            quick={
+              <>
+                <label className="block w-36">
+                  <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+                  <input
+                    type="search"
+                    className={`${filterField} tnum`}
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value)}
+                  />
+                </label>
+                {/* The code before the name, as everywhere (owner, 2026-10-06). */}
+                <label className="block w-24">
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {t(isSales ? 'list.customerCode' : 'list.supplierCode')}
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    className={`${filterField} tnum`}
+                    value={partyCode}
+                    onChange={(e) => setPartyCode(e.target.value.replace(/[^\d]/g, ''))}
+                  />
+                </label>
+                <label className="block min-w-40 flex-1">
+                  <span className="mb-0.5 block text-xs text-muted">
+                    {t(isSales ? 'list.customerName' : 'list.supplierName')}
+                  </span>
+                  <input
+                    type="search"
+                    className={filterField}
+                    value={partyName}
+                    onChange={(e) => setPartyName(e.target.value)}
+                  />
+                </label>
+                <label className={`block w-36 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
+                  <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
+                  <input
+                    type="date"
+                    className={`${filterField} tnum`}
+                    value={from}
+                    max={to || undefined}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                </label>
+                <label className={`block w-36 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
+                  <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
+                  <input
+                    type="date"
+                    className={`${filterField} tnum`}
+                    value={to}
+                    min={from || undefined}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                </label>
+              </>
+            }
+          >
             {myBranches.length > 0 && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+              <Filter label={t('list.branch')}>
                 <select
                   className={filterField}
                   value={branchId}
@@ -563,12 +633,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </Filter>
             )}
             {/* Always there (owner, 2026-10-06: picking a branch must not take the warehouse away). */}
             {(warehouses.data ?? []).length > 0 && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('list.warehouse')}</span>
+              <Filter label={t('list.warehouse')}>
                 <select
                   className={filterField}
                   value={warehouseId}
@@ -584,11 +653,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </Filter>
             )}
             {(isSales || kind === 'invoices') && (departments.data ?? []).length > 0 && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+              <Filter label={t('invoice.department')}>
                 <select
                   className={filterField}
                   value={departmentId}
@@ -606,11 +674,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   ))}
                   {isSales && <option value="none">{t('invoice.noDepartment')}</option>}
                 </select>
-              </label>
+              </Filter>
             )}
             {statuses[kind].length > 0 && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
+              <Filter label={t('common.status')}>
                 <select
                   className={filterField}
                   value={status}
@@ -623,31 +690,10 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </Filter>
             )}
-            <label className={`block w-40 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
-              <span className="mb-0.5 block text-xs text-muted">{t('sales.filterFrom')}</span>
-              <input
-                type="date"
-                className={`${filterField} tnum`}
-                value={from}
-                max={to || undefined}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label className={`block w-40 min-w-0 ${number.trim() ? 'opacity-50' : ''}`}>
-              <span className="mb-0.5 block text-xs text-muted">{t('sales.filterTo')}</span>
-              <input
-                type="date"
-                className={`${filterField} tnum`}
-                value={to}
-                min={from || undefined}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
             {kind === 'invoices' && isSales && (
-              <label className="block">
-                <span className="mb-0.5 block text-xs text-muted">{t('list.state')}</span>
+              <Filter label={t('list.state')}>
                 <select
                   className={filterField}
                   value={state}
@@ -662,9 +708,32 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                     ),
                   )}
                 </select>
-              </label>
+              </Filter>
             )}
-          </div>
+            {kind === 'invoices' && isSales && (reps.data ?? []).length > 0 && (
+              <Filter label={t('filters.rep')}>
+                <select
+                  className={filterField}
+                  value={repId}
+                  onChange={(e) => setRepId(e.target.value)}
+                >
+                  <option value="">{t('list.all')}</option>
+                  {(reps.data ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.code ? `${r.code} · ${r.name}` : r.name}
+                    </option>
+                  ))}
+                </select>
+              </Filter>
+            )}
+            <RangeFilter
+              label={t('filters.amount')}
+              from={minAmount}
+              to={maxAmount}
+              onFrom={setMinAmount}
+              onTo={setMaxAmount}
+            />
+          </FilterPanel>
 
           {/* The list, full width; a document opens over it. */}
           <Card padded={false} className="overflow-hidden">

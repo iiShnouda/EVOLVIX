@@ -161,6 +161,18 @@ public static class DocumentLists
         return q;
     }
 
+    /// <summary>
+    /// The detailed search (owner, 2026-11-16): the rep (sales) and the total between two amounts,
+    /// in minor units. Narrows a list already limited to what the person may see.
+    /// </summary>
+    public static IQueryable<SalesDocument> More(IQueryable<SalesDocument> q, IQueryCollection query)
+    {
+        if (Guid.TryParse(query["repId"], out var rep)) q = q.Where(d => d.RepId == rep);
+        if (long.TryParse(query["min"], out var min)) q = q.Where(d => d.GrandTotal >= min);
+        if (long.TryParse(query["max"], out var max)) q = q.Where(d => d.GrandTotal <= max);
+        return q;
+    }
+
     /// <summary>Whether the list is searched by document number: the period then doesn't count (owner, 2026-11-10).</summary>
     public static bool ByNumber(string? number) => !string.IsNullOrWhiteSpace(number);
 

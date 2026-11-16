@@ -232,6 +232,10 @@ export function useDocumentList(
     state?: string;
     branchId?: string;
     warehouseId?: string;
+    /** Sales: the rep; and the total between two amounts (minor units). */
+    repId?: string;
+    min?: string;
+    max?: string;
     pageSize?: number;
     /** Off: not asked for (e.g. no permission to see that list). */
     enabled?: boolean;
@@ -254,6 +258,9 @@ export function useDocumentList(
   if (params.state) query.set('state', params.state);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
+  if (params.repId) query.set('repId', params.repId);
+  if (params.min) query.set('min', params.min);
+  if (params.max) query.set('max', params.max);
   return useQuery({
     queryKey: [scope, kind, key],
     queryFn: () => api.get<DocumentList>(`/${scope}/${kind}?${query}`),
@@ -280,6 +287,8 @@ export function useParties(params: {
   active?: boolean;
   /** How the account stands: OVER_LIMIT, NEAR_LIMIT, OWES, CREDIT, SETTLED or CLOSED. */
   status?: string;
+  /** A phone number or part of it (digits). */
+  phone?: string;
   pageSize?: number;
   enabled?: boolean;
 }) {
@@ -288,6 +297,7 @@ export function useParties(params: {
     pageSize: String(params.pageSize ?? 20),
   });
   if (params.type) query.set('type', params.type);
+  if (params.phone) query.set('phone', params.phone);
   if (params.status) query.set('status', params.status);
   if (params.search) query.set('search', params.search);
   if (params.code) query.set('code', params.code);
