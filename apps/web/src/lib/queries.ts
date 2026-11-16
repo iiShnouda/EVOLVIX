@@ -1898,16 +1898,24 @@ export function useDeleteMoneyAccount() {
 export function useCashHandovers(
   side: '' | 'in' | 'out',
   status: string,
-  period: { from?: string; to?: string } = {},
+  period: {
+    from?: string;
+    to?: string;
+    /** The detailed search: its number, a box on either side, the amount (minor units). */
+    number?: string;
+    accountId?: string;
+    min?: string;
+    max?: string;
+  } = {},
 ) {
   return useQuery({
-    queryKey: ['money', 'handovers', side, status, period.from ?? '', period.to ?? ''],
+    queryKey: ['money', 'handovers', side, status, period],
     queryFn: () => {
       const q = new URLSearchParams();
       if (side) q.set('side', side);
       if (status) q.set('status', status);
-      if (period.from) q.set('from', period.from);
-      if (period.to) q.set('to', period.to);
+      for (const k of ['from', 'to', 'number', 'accountId', 'min', 'max'] as const)
+        if (period[k]) q.set(k, period[k]!);
       return api.get<CashHandover[]>(`/cash-handovers?${q}`);
     },
   });
