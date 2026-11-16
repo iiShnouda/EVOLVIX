@@ -2073,9 +2073,16 @@ export function useNotes(params: {
   /** Due between two days (yyyy-mm-dd). */
   dueFrom?: string;
   dueTo?: string;
+  /** The bank, and the amount between two (minor units). */
+  bankId?: string;
+  min?: string;
+  max?: string;
   page?: number;
 }) {
   const query = new URLSearchParams({ pageSize: '100' });
+  if (params.bankId) query.set('bankId', params.bankId);
+  if (params.min) query.set('min', params.min);
+  if (params.max) query.set('max', params.max);
   if (params.kind) query.set('kind', params.kind);
   if (params.partyId) query.set('partyId', params.partyId);
   if (params.dueFrom) query.set('dueFrom', params.dueFrom);

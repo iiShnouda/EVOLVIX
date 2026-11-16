@@ -61,9 +61,11 @@ public sealed class PartiesController : ControllerBase
         // Exactly this code (كود), e.g. typed in an invoice's code box.
         if (code is int wantedCode) q = q.Where(p => p.Code == wantedCode);
         // A phone number or part of it (owner, 2026-11-16: the detailed search), on any of its numbers.
-        var digits = new string((phone ?? "").Where(char.IsDigit).ToArray());
+        // Spaces and dashes don't count, on either side.
+        var digits = new string((phone ?? "").Where(c => char.IsDigit(c) || c == '+').ToArray());
         if (digits.Length > 0)
-            q = q.Where(p => (p.Phone != null && p.Phone.Contains(digits)) || p.OtherPhones.Any(x => x.Contains(digits)));
+            q = q.Where(p => (p.Phone != null && p.Phone.Replace(" ", "").Replace("-", "").Contains(digits))
+                || p.OtherPhones.Any(x => x.Replace(" ", "").Replace("-", "").Contains(digits)));
         if (!string.IsNullOrWhiteSpace(search))
         {
             // By code, name, owner / contact name, or any of its phone numbers.

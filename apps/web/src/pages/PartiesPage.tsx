@@ -148,7 +148,7 @@ export function PartiesPage() {
   const [size, setSize] = usePageSize('parties', 50);
   const query = useDeferredValue(search.trim());
   const codeQuery = useDeferredValue(/^\d+$/.test(code.trim()) ? code.trim() : '');
-  const phoneQuery = useSettled(kept.phone.replace(/\D/g, ''));
+  const phoneQuery = useSettled(kept.phone.replace(/[^\d+]/g, ''));
   useEffect(() => setPage(1), [query, codeQuery, phoneQuery, type, status, showClosed]);
   const { deviceClass } = useDeviceInfo();
   const [opened, setOpened] = useState<Party | null>(null);
