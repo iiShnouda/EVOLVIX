@@ -2231,6 +2231,8 @@ export interface DashFilter {
   branchId?: string;
   warehouseId?: string;
   departmentId?: string;
+  /** SUMMER or WINTER: only that season's departments, by their names (owner, 2026-11-16). */
+  season?: 'SUMMER' | 'WINTER';
 }
 
 // ---------------------------------------------------------------------------
@@ -2679,6 +2681,8 @@ export interface AssortmentQuery {
   departmentId?: string;
   groupId?: string;
   seasonId?: string;
+  /** SUMMER or WINTER: only that season's departments, by their names (owner, 2026-11-16). */
+  season?: 'SUMMER' | 'WINTER';
 }
 
 /** One row of the activity log (سجل النشاط): who did what, when and from where. */

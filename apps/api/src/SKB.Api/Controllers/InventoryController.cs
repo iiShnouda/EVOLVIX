@@ -62,7 +62,8 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null,
         [FromQuery] string? code = null, [FromQuery] string? supplierId = null,
         [FromQuery] int page = 1, [FromQuery] int? pageSize = null, [FromQuery] string? sort = null,
-        [FromQuery] string? dir = null, [FromQuery] bool inStock = false, [FromQuery] string? status = null)
+        [FromQuery] string? dir = null, [FromQuery] bool inStock = false, [FromQuery] string? status = null,
+        [FromQuery] string? season = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -73,6 +74,9 @@ public sealed class InventoryController : ControllerBase
         var tree = await _db.Categories.AsNoTracking().ToListAsync();
         if (Guid.TryParse(departmentId, out var dept))
             productQuery = productQuery.Where(p => p.Category!.DepartmentId == dept);
+        // A season's departments (owner, 2026-11-16, from their names) and items of none.
+        if (await DepartmentSeasons.IdsAsync(_db, season) is { } ofSeason)
+            productQuery = productQuery.Where(p => p.Category!.DepartmentId == null || ofSeason.Contains(p.Category.DepartmentId.Value));
         if (Guid.TryParse(groupId, out var gid))
         {
             var under = Catalog.Subtree(gid, tree).ToList();
@@ -445,7 +449,7 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? branchId = null, [FromQuery] string? departmentId = null,
         [FromQuery] string? supplierId = null, [FromQuery] string? search = null,
         [FromQuery] string? productIds = null, [FromQuery] string? status = null,
-        [FromQuery] string? groupId = null)
+        [FromQuery] string? groupId = null, [FromQuery] string? season = null)
     {
         // Each part and column has its own permission (owner, 2026-10-19); values need costs:view.
         bool Has(string p) => User.HasClaim("permission", p);
@@ -491,8 +495,11 @@ public sealed class InventoryController : ControllerBase
         HashSet<Guid>? under = null;
         if (Guid.TryParse(groupId, out var gid))
             under = Catalog.Subtree(gid, await _db.Categories.AsNoTracking().ToListAsync()).ToHashSet();
+        // A season's departments (owner, 2026-11-16, from their names) and items of none.
+        var ofSeason = (await DepartmentSeasons.IdsAsync(_db, season))?.ToHashSet();
         bool Passes(Product p) =>
             (dept is null || p.Category?.DepartmentId == dept)
+            && (ofSeason is null || p.Category?.DepartmentId is not Guid pd || ofSeason.Contains(pd))
             && (under is null || under.Contains(p.CategoryId))
             && (supplier is null || p.SupplierId == supplier)
             && (picked.Count == 0 || picked.Contains(p.Id))

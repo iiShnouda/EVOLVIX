@@ -76,7 +76,8 @@ public sealed class AnalyticsController : ControllerBase
     [HttpGet("profit-loss")]
     [AnyPermission(Permissions.ReportsPl, Permissions.DashboardProfit)]
     public async Task<ActionResult<ProfitLossDto>> ProfitAndLoss([FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null)
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null,
+        [FromQuery] string? season = null)
     {
         // A report of profit and loss: its own permission is enough (owner, 2026-10-23).
         var today = CompanyClock.Today;
@@ -107,7 +108,9 @@ public sealed class AnalyticsController : ControllerBase
                 return NotFound(new { message = "Department not found.", code = "department_not_found" });
             department = d;
         }
-        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch, warehouse, department));
+        // A season's departments (owner, 2026-11-16), and sales of no department.
+        var seasonDepartments = await DepartmentSeasons.IdsAsync(_db, season);
+        return Ok(await ProfitLoss.BuildAsync(_db, User, fromDay, toDay, branch, warehouse, department, seasonDepartments));
     }
 
     /// <summary>The customers (or suppliers) with the most net business in a period.</summary>
@@ -268,7 +271,8 @@ public sealed class AnalyticsController : ControllerBase
     [Authorize(Policy = Permissions.ReportsAssortment)]
     public async Task<ActionResult<AssortmentDto>> Assortment([FromQuery] string by = "supplier",
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? supplierIds = null,
-        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null, [FromQuery] string? seasonId = null)
+        [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null, [FromQuery] string? seasonId = null,
+        [FromQuery] string? season = null)
     {
         var (fromDay, toDay, start, end) = Period(from, to);
         by = by.ToLowerInvariant() is "department" or "item" ? by.ToLowerInvariant() : "supplier";
@@ -276,8 +280,10 @@ public sealed class AnalyticsController : ControllerBase
         var departments = await _db.Departments.AsNoTracking().ToDictionaryAsync(d => d.Id, d => Loc.Name(d));
 
         // ---- the items asked for, among the person's departments' (and items of none)
+        // ... and of the departments of the season asked (owner, 2026-11-16: from their names).
+        var ofDepartments = DepartmentSeasons.Within(Access.Departments(User), await DepartmentSeasons.IdsAsync(_db, season));
         var items = _db.Products.AsNoTracking();
-        if (Access.Departments(User) is { } mine)
+        if (ofDepartments is { } mine)
             items = items.Where(p => p.Category!.DepartmentId == null || mine.Contains(p.Category.DepartmentId.Value));
         Guid? dept = null, group = null;
         if (!string.IsNullOrWhiteSpace(departmentId))
@@ -297,7 +303,7 @@ public sealed class AnalyticsController : ControllerBase
             var under = Catalog.Subtree(g.Id, tree).ToList();
             items = items.Where(p => under.Contains(p.CategoryId));
         }
-        if (Guid.TryParse(seasonId, out var season)) items = items.Where(p => p.SeasonId == season);
+        if (Guid.TryParse(seasonId, out var itemSeason)) items = items.Where(p => p.SeasonId == itemSeason);
         var wanted = (supplierIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (wanted.Length > 0)
         {
@@ -314,7 +320,7 @@ public sealed class AnalyticsController : ControllerBase
             && l.Document.IssueDate >= start && l.Document.IssueDate < end
             && (SalesTypes.Contains(l.Document.Type) || PurchaseTypes.Contains(l.Document.Type)));
         lines = lines.InBranches(User, l => l.Document!.BranchId);
-        if (Access.Departments(User) is { } myDepartments)
+        if (ofDepartments is { } myDepartments)
             lines = lines.Where(l => l.Document!.DepartmentId == null || myDepartments.Contains(l.Document.DepartmentId.Value));
         var stores = await _warehouses.LimitAsync(User);
         if (stores is not null)

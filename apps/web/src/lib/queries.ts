@@ -62,6 +62,7 @@ import type {
   DashboardData,
   DashboardMore,
   DashFilter,
+  DepartmentSeason,
   Assortment,
   AssortmentQuery,
   InventoryList,
@@ -188,7 +189,8 @@ export function useDashboard(period?: Period, filter: DashFilter = {}) {
 export const dashFilterQuery = (f: DashFilter) =>
   (f.branchId ? `&branchId=${f.branchId}` : '') +
   (f.warehouseId ? `&warehouseId=${f.warehouseId}` : '') +
-  (f.departmentId ? `&departmentId=${f.departmentId}` : '');
+  (f.departmentId ? `&departmentId=${f.departmentId}` : '') +
+  (f.season ? `&season=${f.season}` : '');
 
 /** The dashboard's other widgets for a period (the period's sales, rankings, cheques due by its end). */
 export function useDashboardMore(period?: Period, filter: DashFilter = {}) {
@@ -743,6 +745,8 @@ export function useInventory(params: {
   branchId?: string;
   departmentId?: string;
   groupId?: string;
+  /** SUMMER or WINTER: only that season's departments (owner, 2026-11-16). */
+  season?: DepartmentSeason;
   code?: string;
   supplierId?: string;
   /** One page, sorted by a column (the inventory list); none = every item (stock look-ups). */
@@ -770,6 +774,7 @@ export function useInventory(params: {
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.departmentId && params.groupId) query.set('groupId', params.groupId);
+  if (params.season) query.set('season', params.season);
   if (params.lowOnly) query.set('lowOnly', 'true');
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   if (params.modelId) query.set('modelId', params.modelId);
@@ -842,6 +847,8 @@ export interface ValuationFilter {
   departmentId?: string;
   /** A group of the department's tree and everything under it. */
   groupId?: string;
+  /** SUMMER or WINTER: only that season's departments (owner, 2026-11-16). */
+  season?: DepartmentSeason;
   supplierId?: string;
   search?: string;
   productIds?: string[];
@@ -855,6 +862,7 @@ export function useValuation(asOf: string, warehouseId?: string, f: ValuationFil
   if (f.branchId) query.set('branchId', f.branchId);
   if (f.departmentId) query.set('departmentId', f.departmentId);
   if (f.groupId) query.set('groupId', f.groupId);
+  if (f.season) query.set('season', f.season);
   if (f.supplierId) query.set('supplierId', f.supplierId);
   if (f.search) query.set('search', f.search);
   if (f.productIds?.length) query.set('productIds', f.productIds.join(','));
@@ -2209,6 +2217,7 @@ export function useAssortment(q: AssortmentQuery) {
   if (q.departmentId) query.set('departmentId', q.departmentId);
   if (q.groupId) query.set('groupId', q.groupId);
   if (q.seasonId) query.set('seasonId', q.seasonId);
+  if (q.season) query.set('season', q.season);
   return useQuery({
     queryKey: ['analytics', 'assortment', query.toString()],
     queryFn: () => api.get<Assortment>(`/analytics/assortment?${query}`),

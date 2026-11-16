@@ -31,14 +31,17 @@ public static class ProfitLoss
     /// <param name="onlyDepartment">Only this department's (owner, 2026-11-11). A person given only some
     /// departments sees theirs (and sales of no department): what their sales earned, from the sold
     /// lines, since expenses and stocktakes aren't a department's.</param>
+    /// <param name="seasonDepartments">Only these departments, a season's (owner, 2026-11-16), and sales
+    /// of no department; figured like a department's.</param>
     public static async Task<ProfitLossDto> BuildAsync(AppDbContext db, ClaimsPrincipal user, DateOnly from, DateOnly to,
-        Guid? onlyBranch, Guid? onlyWarehouse = null, Guid? onlyDepartment = null)
+        Guid? onlyBranch, Guid? onlyWarehouse = null, Guid? onlyDepartment = null, Guid[]? seasonDepartments = null)
     {
         var (start, end) = CompanyClock.Days(from, to);
         var mineBranches = Access.Branches(user);
         var mineWarehouses = Access.Warehouses(user);
         if (onlyWarehouse is Guid ow) mineWarehouses = new[] { ow };
-        var departments = onlyDepartment is Guid od ? new[] { od } : Access.Departments(user);
+        var departments = DepartmentSeasons.Within(onlyDepartment is Guid od ? new[] { od } : Access.Departments(user),
+            seasonDepartments);
         var noDepartmentToo = onlyDepartment is null;
         // By department: the sold lines alone, like a warehouse's figures without its box and stocktakes.
         var byDepartment = departments is not null;

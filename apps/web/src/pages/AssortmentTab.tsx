@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   companyToday,
+  departmentFitsSeason,
   formatDate,
   formatMoney,
   formatNumber,
+  parseDepartmentSeason,
   type AssortmentQuery,
   type AssortmentRow,
 } from '@skb/shared';
@@ -12,6 +15,7 @@ import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { ReportActions } from '../components/ReportActions';
 import { TableColumns } from '../components/TableColumns';
+import { DeptSeasonSelect } from '../components/DeptSeasonSelect';
 import { useT } from '../lib/i18n';
 import { useReportTools } from '../lib/report';
 import { useAssortment, useDepartments, useGroups, useSeasons } from '../lib/queries';
@@ -35,12 +39,35 @@ export function AssortmentTab() {
     supplierIds: [],
   }));
   const set = (patch: Partial<AssortmentQuery>) => setQ((x) => ({ ...x, ...patch }));
-  const { data, isLoading } = useAssortment(q);
+  // The departments' season (owner, 2026-11-16), kept in the address like the analytics tab.
+  const [params, setParams] = useSearchParams();
+  const season = parseDepartmentSeason(params.get('season'));
+  const allDepartments = useDepartments().data ?? [];
+  const setSeason = (v?: string) => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v) next.set('season', v);
+        else next.delete('season');
+        return next;
+      },
+      { replace: true },
+    );
+    // A department of the other season is let go.
+    const picked = allDepartments.find((d) => d.id === q.departmentId);
+    if (picked && !departmentFitsSeason(picked.name, parseDepartmentSeason(v)))
+      set({ departmentId: undefined, groupId: undefined });
+  };
+  const { data, isLoading } = useAssortment({ ...q, season });
   // The suppliers to choose from: those with items in what is asked, apart from the suppliers chosen.
-  const choices = useAssortment({ ...q, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
+  const choices =
+    useAssortment({ ...q, season, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
   const mine = useAuth((s) => s.user?.departmentIds ?? null);
-  const departments = (useDepartments().data ?? []).filter(
-    (d) => d.isActive && (!mine?.length || mine.includes(d.id)),
+  const departments = allDepartments.filter(
+    (d) =>
+      d.isActive &&
+      (!mine?.length || mine.includes(d.id)) &&
+      departmentFitsSeason(d.name, season),
   );
   const groupList = useGroups().data;
   const seasons = (useSeasons().data ?? []).filter((s) => s.isActive);
@@ -242,6 +269,11 @@ export function AssortmentTab() {
             </option>
           ))}
         </select>
+        <DeptSeasonSelect
+          className={`${small} max-w-[10rem] flex-1 sm:flex-none`}
+          value={season}
+          onChange={setSeason}
+        />
         {q.departmentId && groupOptions.length > 0 && (
           <select
             aria-label={t('assort.group')}

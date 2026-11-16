@@ -14,3 +14,4 @@ export * from './schemas';
 export * from './i18n';
 export * from './textKey';
 export * from './nameReader';
+export * from './departmentSeasons';

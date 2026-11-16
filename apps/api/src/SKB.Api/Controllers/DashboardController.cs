@@ -48,12 +48,12 @@ public sealed class DashboardController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<DashboardDto>> Get([FromQuery] int days = TrendDays,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? branchId = null,
-        [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null)
+        [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null, [FromQuery] string? season = null)
     {
         bool Can(string p) => User.Has(p);
         var period = Period(from, to);
         if (period is { Error: true }) return BadRequest(new { message = "Choose up to ten years, the start before the end.", code = "bad_range" });
-        var (scope, refused) = await ScopeAsync(branchId, warehouseId, departmentId);
+        var (scope, refused) = await ScopeAsync(branchId, warehouseId, departmentId, season);
         if (refused is not null) return refused;
         var s = scope!;
         var (pStart, pEnd) = period is { } pr ? CompanyClock.Days(pr.From, pr.To) : (DateTime.MinValue, DateTime.MaxValue);
@@ -73,7 +73,7 @@ public sealed class DashboardController : ControllerBase
 
         // Cash position: what the person's money accounts hold (cash boxes, custody, banks, wallets).
         // Money isn't kept by department: with one picked, it isn't shown.
-        long? cash = Can(Permissions.DashboardKpiCash) && s.Department is null
+        long? cash = Can(Permissions.DashboardKpiCash) && !s.ByDepartment
             ? await Accounts(s).Where(a => a.IsActive).SumAsync(a => (long?)a.Balance) ?? 0
             : null;
 
@@ -149,12 +149,13 @@ public sealed class DashboardController : ControllerBase
     /// it and the cheques are those due by its end. Money, approvals and limits are as they are now.</param>
     [HttpGet("more")]
     public async Task<ActionResult<DashboardMoreDto>> More([FromQuery] string? from = null, [FromQuery] string? to = null,
-        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null)
+        [FromQuery] string? branchId = null, [FromQuery] string? warehouseId = null, [FromQuery] string? departmentId = null,
+        [FromQuery] string? season = null)
     {
         bool Can(string p) => User.HasClaim("permission", p);
         var period = Period(from, to);
         if (period is { Error: true }) return BadRequest(new { message = "Choose up to ten years, the start before the end.", code = "bad_range" });
-        var (scope, refused) = await ScopeAsync(branchId, warehouseId, departmentId);
+        var (scope, refused) = await ScopeAsync(branchId, warehouseId, departmentId, season);
         if (refused is not null) return refused;
         var s = scope!;
         var today = CompanyClock.Today;
@@ -248,7 +249,7 @@ public sealed class DashboardController : ControllerBase
 
         // Money isn't kept by department: with one picked, the money cards aren't shown.
         DashAccountDto[]? accounts = null;
-        if (Can(Permissions.DashboardAccounts) && s.Department is null)
+        if (Can(Permissions.DashboardAccounts) && !s.ByDepartment)
         {
             var rows = await Accounts(s).Where(a => a.IsActive).OrderByDescending(a => a.Balance).Take(8).ToListAsync();
             accounts = rows.Select(a => new DashAccountDto(a.Id.ToString(), Loc.Name(a), a.Kind.ToString(), a.Balance)).ToArray();
@@ -256,7 +257,7 @@ public sealed class DashboardController : ControllerBase
 
         // Cheques belong to a branch, not to a warehouse or a department.
         DashNotesDueDto? notes = null;
-        if (Can(Permissions.DashboardNotesDue) && s.Department is null && s.Warehouse is null)
+        if (Can(Permissions.DashboardNotesDue) && !s.ByDepartment && s.Warehouse is null)
         {
             var weekEnd = CompanyClock.StartOf(notesUntil.AddDays(1));
             var q = _db.Notes.AsQueryable();
@@ -320,6 +321,10 @@ public sealed class DashboardController : ControllerBase
         /// <summary>Documents and items of no department count too (a person's own departments, not one picked).</summary>
         public bool NoDepartmentToo = true;
         public Guid? Branch, Warehouse, Department;
+        /// <summary>SUMMER or WINTER: only that season's departments (owner, 2026-11-16).</summary>
+        public string? Season;
+        /// <summary>One department or one season's: cash, accounts, notes and expenses aren't theirs.</summary>
+        public bool ByDepartment => Department is not null || Season is not null;
         /// <summary>The sales lines counted (null = all): those in the stores.</summary>
         public Expression<Func<DocumentLine, bool>>? SalesLines;
         /// <summary>The purchase lines counted (null = all): in the stores, of the departments' items.</summary>
@@ -328,7 +333,8 @@ public sealed class DashboardController : ControllerBase
         public bool Whole => Branches is null && Stores is null && Departments is null;
     }
 
-    private async Task<(Scope? Scope, ActionResult? Refused)> ScopeAsync(string? branchId, string? warehouseId, string? departmentId)
+    private async Task<(Scope? Scope, ActionResult? Refused)> ScopeAsync(string? branchId, string? warehouseId, string? departmentId,
+        string? season = null)
     {
         var s = new Scope { Branches = Access.Branches(User), Departments = Access.Departments(User) };
         if (!string.IsNullOrWhiteSpace(branchId))
@@ -366,6 +372,10 @@ public sealed class DashboardController : ControllerBase
             s.Departments = new[] { d };
             s.NoDepartmentToo = false;
         }
+        // A season's departments (owner, 2026-11-16, from their names) and those of none; a department
+        // picked outside the season leaves nothing.
+        s.Season = DepartmentSeasons.Parse(season);
+        s.Departments = DepartmentSeasons.Within(s.Departments, await DepartmentSeasons.IdsAsync(_db, season));
 
         if (s.Stores is { } stores)
             s.SalesLines = l => l.WarehouseId != null && stores.Contains(l.WarehouseId.Value);
@@ -462,11 +472,11 @@ public sealed class DashboardController : ControllerBase
     /// <summary>
     /// Expenses paid in the period from the scope's money accounts — from its warehouses' own boxes
     /// when it has only some warehouses — and within the days of money the person may look back on.
-    /// None with a department picked: expenses aren't a department's.
+    /// None with a department or season picked: expenses aren't a department's.
     /// </summary>
     private async Task<long?> ExpensesAsync(Scope s, DateTime start, DateTime end)
     {
-        if (s.Department is not null) return null;
+        if (s.ByDepartment) return null;
         if (Access.MoneySince(User) is DateTime since && since > start) start = since;
         var accounts = Accounts(s);
         if (s.Stores is { } stores) accounts = accounts.Where(a => a.WarehouseId != null && stores.Contains(a.WarehouseId.Value));

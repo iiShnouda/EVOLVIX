@@ -1,9 +1,10 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   companyToday,
   formatMoney,
   formatNumber,
+  parseDepartmentSeason,
   type DashFilter,
   type PlFigures,
   type PlUnit,
@@ -17,6 +18,7 @@ import { useReportTools } from '../lib/report';
 import { useProfitLoss } from '../lib/queries';
 import type { Cell } from '../lib/xlsx';
 import { TableColumns } from './TableColumns';
+import { DeptSeasonSelect } from './DeptSeasonSelect';
 
 const small =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -98,7 +100,20 @@ export function ProfitLossTab() {
   const [to, setTo] = useState(today);
   const [share, setShare] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const { data, isLoading } = useProfitLoss(from, to);
+  // The departments' season (owner, 2026-11-16), kept in the address.
+  const [params, setParams] = useSearchParams();
+  const season = parseDepartmentSeason(params.get('season'));
+  const setSeason = (v?: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v) next.set('season', v);
+        else next.delete('season');
+        return next;
+      },
+      { replace: true },
+    );
+  const { data, isLoading } = useProfitLoss(from, to, true, { season });
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const subtitle = `${t('report.from')} ${from} ${t('report.to')} ${to}`;
@@ -205,6 +220,7 @@ export function ProfitLossTab() {
               onChange={(e) => setTo(e.target.value)}
             />
           </label>
+          <DeptSeasonSelect className={small} value={season} onChange={setSeason} />
           {data?.general && (
             <label className="flex h-9 items-center gap-2 text-sm">
               <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />

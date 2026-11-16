@@ -2,11 +2,14 @@ import { Fragment, useDeferredValue, useEffect, useRef, useState, type ReactNode
 import { useWorkPlace } from '../lib/workPlace';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  departmentFitsSeason,
   formatDate,
   formatMoney,
   formatNumber,
   formatQuantity,
   groupPermissions,
+  parseDepartmentSeason,
+  type DepartmentSeason,
   type InventoryItem,
   type Party,
   type Permission,
@@ -18,6 +21,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { DeptSeasonSelect } from '../components/DeptSeasonSelect';
 import { WarehouseSelect } from '../components/WarehouseSelect';
 import { PartyPicker } from '../components/PartyPicker';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
@@ -159,7 +163,12 @@ export function InventoryPage() {
     (g) => g.isActive && g.departmentId === departmentId,
   );
   const myBranches = useAuth((s) => s.user?.branches ?? []);
-  const departments = (useDepartments().data ?? []).filter((d) => d.isActive);
+  // The departments' season (owner, 2026-11-16): only its departments, and those of none.
+  const season = parseDepartmentSeason(params.get('season'));
+  const allDepartments = useDepartments().data ?? [];
+  const departments = allDepartments.filter(
+    (d) => d.isActive && departmentFitsSeason(d.name, season),
+  );
   // The filters start at everything (owner, 2026-10-18: it opened on one department and store);
   // a place chosen here is still remembered for the other screens.
   const [, setPlace] = useWorkPlace();
@@ -185,6 +194,7 @@ export function InventoryPage() {
     branchId: (!warehouseId && branchId) || undefined,
     departmentId: departmentId || undefined,
     groupId: groupId || undefined,
+    season,
     enabled: tab === 'items',
   });
 
@@ -198,6 +208,7 @@ export function InventoryPage() {
     branchId,
     departmentId,
     groupId,
+    season,
   ].join('|');
   useEffect(() => setPage(1), [filterKey]);
   const pages = Math.max(1, Math.ceil((list.data?.matched ?? 0) / pageSize));
@@ -357,6 +368,21 @@ export function InventoryPage() {
                 </select>
               </label>
             )}
+            {departments.length > 0 && (
+              <label className="block w-full shrink-0 sm:w-40">
+                <span className="mb-0.5 block text-xs text-muted">{t('dash.deptSeason')}</span>
+                <DeptSeasonSelect
+                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-40"
+                  value={season}
+                  onChange={(v) => {
+                    // A department of the other season is let go.
+                    const picked = allDepartments.find((d) => d.id === departmentId);
+                    const off = picked && !departmentFitsSeason(picked.name, v);
+                    update({ season: v ?? null, ...(off ? { dept: null, grp: null } : {}) });
+                  }}
+                />
+              </label>
+            )}
             {departmentId && groups.length > 0 && (
               <GroupPicker
                 departments={departments}
@@ -401,6 +427,7 @@ export function InventoryPage() {
           branchId={branchId}
           departmentId={departmentId}
           groupId={groupId}
+          season={season}
         />
       ) : tab === 'stocktake' ? (
         <StocktakePage embedded />
@@ -786,11 +813,13 @@ function ValuationTab({
   branchId,
   departmentId,
   groupId,
+  season,
 }: {
   warehouseId: string;
   branchId: string;
   departmentId: string;
   groupId: string;
+  season?: DepartmentSeason;
 }) {
   const { t, locale } = useT();
   const can = useCan();
@@ -809,6 +838,7 @@ function ValuationTab({
     branchId: branchId || undefined,
     departmentId: departmentId || undefined,
     groupId: (departmentId && groupId) || undefined,
+    season,
     supplierId: supplier?.id,
     search: settled || undefined,
     productIds: picked,

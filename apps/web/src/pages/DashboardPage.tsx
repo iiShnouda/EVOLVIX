@@ -1,9 +1,11 @@
 import { ProfitLossCard } from '../components/ProfitLossView';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
+  departmentFitsSeason,
   formatDateTime,
   formatMoney,
   formatNumber,
+  parseDepartmentSeason,
   type DashDoc,
   type DashFilter,
   type DashRank,
@@ -34,6 +36,7 @@ import { useDeviceInfo } from '../lib/device';
 import { Sheet } from '../components/Sheet';
 import { KPI_TONE_MAP, STATUS_TONE } from '../lib/status';
 import { CodeName } from '../components/CodeName';
+import { DeptSeasonSelect } from '../components/DeptSeasonSelect';
 import { PartyLink } from '../components/PartyContact';
 import { TableColumns } from '../components/TableColumns';
 
@@ -142,6 +145,7 @@ export function DashboardPage() {
     branchId: params.get('br') ?? undefined,
     warehouseId: params.get('wh') ?? undefined,
     departmentId: params.get('dept') ?? undefined,
+    season: parseDepartmentSeason(params.get('season')),
   };
   const setFilter = (f: DashFilter) =>
     setParams(
@@ -151,6 +155,7 @@ export function DashboardPage() {
           ['br', f.branchId],
           ['wh', f.warehouseId],
           ['dept', f.departmentId],
+          ['season', f.season],
         ] as const) {
           if (value) next.set(key, value);
           else next.delete(key);
@@ -325,7 +330,8 @@ export function DashboardPage() {
 /**
  * The branch, warehouse and department the whole dashboard shows (owner, 2026-11-11), among the
  * person's own; "all" is all of theirs. Always shown, even with one of each (owner, 2026-11-12), next
- * to the period: in a row on a wide screen, three equal boxes across on a phone.
+ * to the period: in a row on a wide screen, two equal boxes across on a phone. Then the departments'
+ * season (owner, 2026-11-16), which also narrows the departments offered.
  */
 function PlacePicker({
   value,
@@ -343,13 +349,18 @@ function PlacePicker({
       (w.isActive || w.id === value.warehouseId) &&
       (!value.branchId || w.branchId === value.branchId),
   );
-  const departments = (useDepartments().data ?? []).filter(
-    (d) => (d.isActive || d.id === value.departmentId) && (!mine?.length || mine.includes(d.id)),
+  const all = useDepartments().data ?? [];
+  // Only the season's departments (and those of no season) are offered (owner, 2026-11-16).
+  const departments = all.filter(
+    (d) =>
+      (d.isActive || d.id === value.departmentId) &&
+      (!mine?.length || mine.includes(d.id)) &&
+      departmentFitsSeason(d.name, value.season),
   );
   const select =
     'h-9 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand sm:w-40';
   return (
-    <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
       <select
         aria-label={t('list.branch')}
         className={select}
@@ -391,6 +402,20 @@ function PlacePicker({
           </option>
         ))}
       </select>
+      <DeptSeasonSelect
+        className={select}
+        value={value.season}
+        onChange={(season) => {
+          // A department of the other season is let go.
+          const picked = all.find((d) => d.id === value.departmentId);
+          onChange({
+            ...value,
+            season,
+            departmentId:
+              picked && !departmentFitsSeason(picked.name, season) ? undefined : value.departmentId,
+          });
+        }}
+      />
     </div>
   );
 }
