@@ -1092,6 +1092,7 @@ export const en = {
   'money.account': 'Account',
   'money.pickAccount': 'Choose an account',
   'money.defaultAccount': "Branch's cash box",
+  'money.voucherKind': 'Kind',
   'money.amount': 'Amount',
   'money.reference': 'Transfer / transaction no.',
   'money.addLine': 'Add another way',

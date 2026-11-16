@@ -12,6 +12,7 @@ import {
   toMinor,
   type MoneyAccount,
   type MoneyAccountKind,
+  type Party,
   type PaymentMethod,
   type Permission,
   type TranslationKey,
@@ -38,6 +39,17 @@ import { DocumentPreview } from '../components/DocumentPreview';
 import { useWorkBranch } from '../stores/workBranch';
 import { codeName } from '../components/CodeName';
 import { PartyLink } from '../components/Links';
+import { PartyPicker } from '../components/PartyPicker';
+import { Pager } from '../components/Pager';
+import {
+  Filter,
+  FilterPanel,
+  RangeFilter,
+  filterField,
+  minorOf,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 import {
   useAccountStatement,
   useCancelVoucher,
@@ -47,6 +59,7 @@ import {
   useExpenseCategories,
   useMoneyAccounts,
   useOpenInvoices,
+  usePageSize,
   useParties,
   useReps,
   useSaveExpenseCategory,
@@ -1262,44 +1275,67 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
 
 /* -------------------------------------------------------------- vouchers */
 
+/** What the vouchers list remembers while the app is open. */
+const VOUCHER_FILTERS = {
+  type: '',
+  branchId: '',
+  number: '',
+  status: '',
+  accountId: '',
+  from: '',
+  to: '',
+  min: '',
+  max: '',
+};
+
 function VouchersTab() {
   const { t, locale, rtl } = useT();
-  const [type, setType] = useState<VoucherType | ''>('');
-  const [branchId, setBranchId] = useState('');
+  const myId = useAuth((s) => s.user?.id);
+  const [f, keep, clear] = useKeptFilters(`skb.list.${myId ?? ''}.vouchers`, VOUCHER_FILTERS);
+  const type = f.type as VoucherType | '';
+  const [party, setParty] = useState<Party | null>(null);
   const myBranches = useAuth((s) => s.user?.branches ?? []);
+  const accounts = useMoneyAccounts();
+  const number = useSettled(f.number.trim());
+  const amounts = useSettled(`${minorOf(f.min)}\u0001${minorOf(f.max)}`);
+  const [min = '', max = ''] = amounts.split('\u0001');
+  const [page, setPage] = useState(1);
+  const [size, setSize] = usePageSize('vouchers', 50);
+  const filterKey = [JSON.stringify({ ...f, number, min, max }), party?.id, size].join('|');
+  const [lastKey, setLastKey] = useState(filterKey);
+  if (lastKey !== filterKey) {
+    setLastKey(filterKey);
+    setPage(1);
+  }
   const { data, isLoading } = useVouchers({
     type: type || undefined,
-    branchId: branchId || undefined,
+    branchId: f.branchId || undefined,
+    status: f.status || undefined,
+    partyId: party?.id,
+    accountId: f.accountId || undefined,
+    number: number || undefined,
+    from: f.from || undefined,
+    to: f.to || undefined,
+    min: min || undefined,
+    max: max || undefined,
+    page,
+    pageSize: size,
   });
   const [open, setOpen] = useState<Voucher | null>(null);
+  const { deviceClass } = useDeviceInfo();
+  const detailed =
+    [f.branchId, f.status, f.accountId, f.from || f.to, f.min || f.max].filter(Boolean).length +
+    (party ? 1 : 0);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        {myBranches.length > 1 && (
-          <label className="block shrink-0">
-            <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-            <select
-              className="h-8 rounded-full border border-line bg-surface px-3 text-xs"
-              aria-label={t('list.branch')}
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-            >
-              <option value="">{t('common.all')}</option>
-              {myBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         {(['', ...VOUCHER_TYPES] as (VoucherType | '')[]).map((x) => (
           <button
             key={x || 'all'}
             type="button"
             aria-pressed={type === x}
-            onClick={() => setType(x)}
+            onClick={() => keep({ type: x })}
             className={`h-8 rounded-full border px-3 text-xs font-medium transition-colors ${
               type === x
                 ? 'border-brand bg-brand-soft text-brand'
@@ -1310,13 +1346,115 @@ function VouchersTab() {
           </button>
         ))}
       </div>
+      <FilterPanel
+        id="vouchers"
+        active={detailed}
+        onClear={() => {
+          clear();
+          keep({ type });
+          setParty(null);
+        }}
+        quick={
+          <label className="block w-40">
+            <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+            <input
+              type="search"
+              className={`${filterField} tnum`}
+              value={f.number}
+              onChange={(e) => keep({ number: e.target.value })}
+            />
+          </label>
+        }
+      >
+        <div className="min-w-0 sm:col-span-2">
+          <PartyPicker
+            type=""
+            withCode
+            value={party}
+            onChange={setParty}
+            label={t('money.party')}
+            placeholder={t('common.all')}
+          />
+        </div>
+        {myBranches.length > 1 && (
+          <Filter label={t('list.branch')}>
+            <select
+              className={filterField}
+              value={f.branchId}
+              onChange={(e) => keep({ branchId: e.target.value })}
+            >
+              <option value="">{t('common.all')}</option>
+              {myBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </Filter>
+        )}
+        {(accounts.data ?? []).length > 0 && (
+          <Filter label={t('money.account')}>
+            <select
+              className={filterField}
+              value={f.accountId}
+              onChange={(e) => keep({ accountId: e.target.value })}
+            >
+              <option value="">{t('common.all')}</option>
+              {(accounts.data ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </Filter>
+        )}
+        <Filter label={t('common.status')}>
+          <select
+            className={filterField}
+            value={f.status}
+            onChange={(e) => keep({ status: e.target.value })}
+          >
+            <option value="">{t('common.all')}</option>
+            {(['POSTED', 'CANCELLED'] as const).map((x) => (
+              <option key={x} value={x}>
+                {t(`money.status.${x}`)}
+              </option>
+            ))}
+          </select>
+        </Filter>
+        <Filter label={t('sales.filterFrom')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.from}
+            max={f.to || undefined}
+            onChange={(e) => keep({ from: e.target.value })}
+          />
+        </Filter>
+        <Filter label={t('sales.filterTo')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.to}
+            min={f.from || undefined}
+            onChange={(e) => keep({ to: e.target.value })}
+          />
+        </Filter>
+        <RangeFilter
+          label={t('money.amount')}
+          from={f.min}
+          to={f.max}
+          onFrom={(v) => keep({ min: v })}
+          onTo={(v) => keep({ max: v })}
+        />
+      </FilterPanel>
       {isLoading ? (
         <Loading />
       ) : !data || data.items.length === 0 ? (
         <Card>
           <EmptyState title={t('money.noVouchers')} icon="receipts" />
         </Card>
-      ) : (
+      ) : deviceClass === 'phone' ? (
         <Card padded={false} className="overflow-hidden">
           <ul className="divide-y divide-line">
             {data.items.map((v) => (
@@ -1349,6 +1487,71 @@ function VouchersTab() {
             ))}
           </ul>
         </Card>
+      ) : (
+        <Card padded={false} className="overflow-hidden">
+          {/* Every list with its columns (owner, 2026-11-16). */}
+          <TableColumns id="vouchers" className="pt-2">
+            <div className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('ledger.docNumber')}</th>
+                    <th className="p-2 text-start font-medium">{t('common.date')}</th>
+                    <th className="p-2 text-start font-medium">{t('money.voucherKind')}</th>
+                    <th className="p-2 text-start font-medium">{t('money.party')}</th>
+                    <th className="p-2 text-start font-medium">{t('money.account')}</th>
+                    <th className="p-2 text-end font-medium">{t('money.amount')}</th>
+                    <th className="p-2 text-start font-medium">{t('list.branch')}</th>
+                    <th className="p-2 text-start font-medium">{t('money.createdBy')}</th>
+                    <th className="p-2 text-start font-medium">{t('common.status')}</th>
+                    <th className="p-2 text-start font-medium">{t('list.notes')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {data.items.map((v) => (
+                    <tr
+                      key={v.id}
+                      onClick={() => setOpen(v)}
+                      className={`cursor-pointer hover:bg-surface-2 ${v.status === 'CANCELLED' ? 'text-faint' : ''}`}
+                    >
+                      <td className="p-2 tnum">{v.number}</td>
+                      <td className="p-2 tnum">{formatDate(v.createdAt, locale)}</td>
+                      <td className="p-2">
+                        <Badge tone={TYPE_TONE[v.type]}>{t(`money.voucher.${v.type}`)}</Badge>
+                      </td>
+                      <td className="max-w-64 truncate p-2">
+                        {v.partyName ? codeName(v.partyCode, v.partyName) : (v.categoryName ?? '')}
+                      </td>
+                      <td className="max-w-56 truncate p-2 text-muted">
+                        {[v.fromAccountName, v.toAccountName].filter(Boolean).join(' → ')}
+                      </td>
+                      <td
+                        className={`p-2 text-end font-semibold tnum ${v.status === 'CANCELLED' ? 'line-through' : ''}`}
+                      >
+                        {formatMoney(v.amount, v.currency, locale)}
+                      </td>
+                      <td className="p-2 text-muted">{v.branchName}</td>
+                      <td className="p-2 text-muted">{v.createdByName}</td>
+                      <td className="p-2 text-xs">{t(`money.status.${v.status}`)}</td>
+                      <td className="max-w-64 truncate p-2 text-xs text-muted">{v.notes ?? ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
+        </Card>
+      )}
+      {data && data.total > 10 && (
+        <div className="flex justify-center">
+          <Pager
+            page={page}
+            size={size}
+            pages={Math.max(1, Math.ceil(data.total / size))}
+            onPage={setPage}
+            onSize={setSize}
+          />
+        </div>
       )}
       {open && <VoucherSheet v={open} onClose={() => setOpen(null)} />}
     </div>

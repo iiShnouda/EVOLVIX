@@ -1091,6 +1091,7 @@ export const ar: TranslationDictionary = {
   'money.account': 'الحساب',
   'money.pickAccount': 'اختر الحساب',
   'money.defaultAccount': 'خزينة الفرع',
+  'money.voucherKind': 'النوع',
   'money.amount': 'المبلغ',
   'money.reference': 'رقم التحويل / العملية',
   'money.addLine': 'إضافة طريقة أخرى',

@@ -1782,8 +1782,20 @@ export function useVouchers(params: {
   status?: string;
   partyId?: string;
   branchId?: string;
+  /** The detailed search: an account, its number, company days and the amount (minor units). */
+  accountId?: string;
+  number?: string;
+  from?: string;
+  to?: string;
+  min?: string;
+  max?: string;
+  page?: number;
+  pageSize?: number;
 }) {
-  const query = new URLSearchParams({ pageSize: '100' });
+  const query = new URLSearchParams({ pageSize: String(params.pageSize ?? 100) });
+  if (params.page && params.page > 1) query.set('page', String(params.page));
+  for (const k of ['accountId', 'number', 'from', 'to', 'min', 'max'] as const)
+    if (params[k]) query.set(k, params[k]!);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.type) query.set('type', params.type);
   if (params.status) query.set('status', params.status);
