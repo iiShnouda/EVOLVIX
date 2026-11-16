@@ -40,7 +40,9 @@ export function seasonOfDepartment(name: string | null | undefined): DepartmentS
 }
 
 /** SUMMER or WINTER from the address (any case); anything else is no season. */
-export function parseDepartmentSeason(value: string | null | undefined): DepartmentSeason | undefined {
+export function parseDepartmentSeason(
+  value: string | null | undefined,
+): DepartmentSeason | undefined {
   const v = value?.trim().toUpperCase();
   return v === 'SUMMER' || v === 'WINTER' ? v : undefined;
 }

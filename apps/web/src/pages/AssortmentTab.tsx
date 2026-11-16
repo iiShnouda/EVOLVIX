@@ -60,14 +60,11 @@ export function AssortmentTab() {
   };
   const { data, isLoading } = useAssortment({ ...q, season });
   // The suppliers to choose from: those with items in what is asked, apart from the suppliers chosen.
-  const choices =
-    useAssortment({ ...q, season, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
+  const choices = useAssortment({ ...q, season, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
   const mine = useAuth((s) => s.user?.departmentIds ?? null);
   const departments = allDepartments.filter(
     (d) =>
-      d.isActive &&
-      (!mine?.length || mine.includes(d.id)) &&
-      departmentFitsSeason(d.name, season),
+      d.isActive && (!mine?.length || mine.includes(d.id)) && departmentFitsSeason(d.name, season),
   );
   const groupList = useGroups().data;
   const seasons = (useSeasons().data ?? []).filter((s) => s.isActive);
