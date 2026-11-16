@@ -62,7 +62,8 @@ public sealed class InventoryController : ControllerBase
         [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null,
         [FromQuery] string? code = null, [FromQuery] string? supplierId = null,
         [FromQuery] int page = 1, [FromQuery] int? pageSize = null, [FromQuery] string? sort = null,
-        [FromQuery] string? dir = null, [FromQuery] bool inStock = false, [FromQuery] string? status = null)
+        [FromQuery] string? dir = null, [FromQuery] bool inStock = false, [FromQuery] string? status = null,
+        [FromQuery] long? priceMin = null, [FromQuery] long? priceMax = null)
     {
         var (wid, notFound) = await VisibleWarehouseAsync(warehouseId);
         if (notFound is not null) return notFound;
@@ -152,6 +153,10 @@ public sealed class InventoryController : ControllerBase
                 .Select(p => p.Id.ToString()).ToHashSet();
             rows = rows.Where(i => hits.Contains(i.Id));
         }
+
+        // The detailed search (owner, 2026-11-16): the sale price between two amounts (minor units).
+        if (priceMin is long lowPrice) rows = rows.Where(i => i.SalePrice >= lowPrice);
+        if (priceMax is long highPrice) rows = rows.Where(i => i.SalePrice <= highPrice);
 
         var seeCosts = Costs.CanSee(User);
         // Sorted by any column and sent a page at a time (owner, 2026-10-18: "don't load all the

@@ -44,6 +44,13 @@ import { api } from '../lib/api';
 import { Pager } from '../components/Pager';
 import { GroupPicker } from '../components/GroupTree';
 import { TableColumns } from '../components/TableColumns';
+import {
+  FilterPanel,
+  RangeFilter,
+  filterField,
+  minorOf,
+  useSettled,
+} from '../components/FilterPanel';
 import { ReportActions } from '../components/ReportActions';
 import { useReportTools } from '../lib/report';
 
@@ -144,7 +151,6 @@ export function InventoryPage() {
   }));
   const asked = params.get('tab');
   const tab = (tabs.find((x) => x.key === asked)?.key ?? tabs[0]?.key) as Tab | undefined;
-  const ownFilters = tab === 'items' || tab === 'valuation';
   // Any of the stock statuses (owner, 2026-10-21: instead of the reorder tick); `?low=1` still opens
   // those at the reorder level.
   const statuses = (params.get('st') ?? (params.get('low') === '1' ? 'low' : ''))
@@ -168,6 +174,11 @@ export function InventoryPage() {
   // The item's code, its name and the supplier each in a box of their own (owner, 2026-10-17).
   const [code, setCode] = useState('');
   const [supplier, setSupplier] = useState<Party | null>(null);
+  // The sale price between two amounts (owner, 2026-11-16: the detailed search).
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const prices = useSettled(`${minorOf(priceMin)}\u0001${minorOf(priceMax)}`);
+  const [dMin = '', dMax = ''] = prices.split('\u0001');
   // One page at a time, sorted by the column clicked (owner, 2026-10-18).
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = usePageSize('inventory', 50);
@@ -181,6 +192,8 @@ export function InventoryPage() {
     code: code.trim() || undefined,
     supplierId: supplier?.id,
     status: statuses,
+    priceMin: dMin || undefined,
+    priceMax: dMax || undefined,
     warehouseId: warehouseId || undefined,
     branchId: (!warehouseId && branchId) || undefined,
     departmentId: departmentId || undefined,
@@ -198,6 +211,7 @@ export function InventoryPage() {
     branchId,
     departmentId,
     groupId,
+    prices,
   ].join('|');
   useEffect(() => setPage(1), [filterKey]);
   const pages = Math.max(1, Math.ceil((list.data?.matched ?? 0) / pageSize));
@@ -220,6 +234,79 @@ export function InventoryPage() {
   };
   const setStatuses = (next: string[]) => update({ st: next.join(',') || null, low: null });
   const totals = list.data?.totals;
+  // Branch, warehouse, department and group (owner, 2026-11-10), in the detailed search of the
+  // items and above the valuation.
+  const placeFilters = (
+    <>
+      {myBranches.length > 0 && (
+        <label className="block min-w-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
+          <select
+            className={filterField}
+            aria-label={t('list.branch')}
+            value={branchId}
+            onChange={(e) => {
+              update({ br: e.target.value || null, wh: null });
+              if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
+            }}
+          >
+            <option value="">{t('common.all')}</option>
+            {myBranches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {
+        <WarehouseSelect
+          className="w-full min-w-0"
+          value={warehouseId}
+          onChange={(id) => {
+            update({ wh: id || null });
+            if (id) setPlace({ warehouseId: id });
+          }}
+          allowAll
+          includeClosed
+        />
+      }
+      {departments.length > 0 && (
+        <label className="block min-w-0">
+          <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
+          <select
+            className={filterField}
+            aria-label={t('invoice.department')}
+            value={departmentId}
+            onChange={(e) => {
+              update({ dept: e.target.value || null, grp: null });
+              if (e.target.value) setPlace({ departmentId: e.target.value });
+            }}
+          >
+            <option value="">{t('common.all')}</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {departmentId && groups.length > 0 && (
+        <GroupPicker
+          departments={departments}
+          groups={groups}
+          departmentId={departmentId}
+          groupId={groupId}
+          showDepartment={false}
+          anyLabel={t('common.all')}
+          onChange={(_, g) => update({ grp: g || null })}
+        />
+      )}
+    </>
+  );
+  const placesActive = [branchId, warehouseId, departmentId, groupId].filter(Boolean).length;
+  const clearPlaces = () => update({ br: null, wh: null, dept: null, grp: null });
 
   return (
     <div className="space-y-5">
@@ -300,78 +387,7 @@ export function InventoryPage() {
               </button>
             ))}
         </div>
-        {/* Branch, warehouse and department side by side (owner, 2026-11-10). */}
-        {ownFilters && (
-          <div className="flex flex-wrap items-end gap-3">
-            {ownFilters && myBranches.length > 0 && (
-              <label className="block w-full shrink-0 sm:w-48">
-                <span className="mb-0.5 block text-xs text-muted">{t('list.branch')}</span>
-                <select
-                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-                  aria-label={t('list.branch')}
-                  value={branchId}
-                  onChange={(e) => {
-                    update({ br: e.target.value || null, wh: null });
-                    if (e.target.value) setPlace({ branchId: e.target.value, warehouseId: '' });
-                  }}
-                >
-                  <option value="">{t('common.all')}</option>
-                  {myBranches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {ownFilters && (
-              <WarehouseSelect
-                className="w-full sm:w-64"
-                value={warehouseId}
-                onChange={(id) => {
-                  update({ wh: id || null });
-                  if (id) setPlace({ warehouseId: id });
-                }}
-                allowAll
-                includeClosed
-              />
-            )}
-            {departments.length > 0 && (
-              <label className="block w-full shrink-0 sm:w-48">
-                <span className="mb-0.5 block text-xs text-muted">{t('invoice.department')}</span>
-                <select
-                  className="h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm sm:w-48"
-                  aria-label={t('invoice.department')}
-                  value={departmentId}
-                  onChange={(e) => {
-                    update({ dept: e.target.value || null, grp: null });
-                    if (e.target.value) setPlace({ departmentId: e.target.value });
-                  }}
-                >
-                  <option value="">{t('common.all')}</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {departmentId && groups.length > 0 && (
-              <GroupPicker
-                departments={departments}
-                groups={groups}
-                departmentId={departmentId}
-                groupId={groupId}
-                showDepartment={false}
-                anyLabel={t('common.all')}
-                onChange={(_, g) => update({ grp: g || null })}
-              />
-            )}
-          </div>
-        )}
       </div>
-
       {tab === 'items' ? (
         <ItemsTab
           items={list.data?.items ?? []}
@@ -391,17 +407,36 @@ export function InventoryPage() {
           }}
           statuses={statuses}
           onStatuses={setStatuses}
+          priceMin={priceMin}
+          priceMax={priceMax}
+          onPrice={(lo, hi) => {
+            setPriceMin(lo);
+            setPriceMax(hi);
+          }}
+          places={placeFilters}
+          placesActive={placesActive}
+          onClear={() => {
+            setSupplier(null);
+            setPriceMin('');
+            setPriceMax('');
+            update({ br: null, wh: null, dept: null, grp: null, st: null, low: null });
+          }}
           onOpen={(id) =>
             navigate(`/inventory/items/${id}${warehouseId ? `?wh=${warehouseId}` : ''}`)
           }
         />
       ) : tab === 'valuation' ? (
-        <ValuationTab
-          warehouseId={warehouseId}
-          branchId={branchId}
-          departmentId={departmentId}
-          groupId={groupId}
-        />
+        <>
+          <FilterPanel id="valuation.places" active={placesActive} onClear={clearPlaces}>
+            {placeFilters}
+          </FilterPanel>
+          <ValuationTab
+            warehouseId={warehouseId}
+            branchId={branchId}
+            departmentId={departmentId}
+            groupId={groupId}
+          />
+        </>
       ) : tab === 'stocktake' ? (
         <StocktakePage embedded />
       ) : tab === 'transfers' ? (
@@ -437,6 +472,12 @@ function ItemsTab({
   onSort,
   statuses,
   onStatuses,
+  priceMin,
+  priceMax,
+  onPrice,
+  places,
+  placesActive,
+  onClear,
   onOpen,
 }: {
   items: InventoryItem[];
@@ -453,6 +494,12 @@ function ItemsTab({
   onSort: (key: string, dir: 'asc' | 'desc') => void;
   statuses: string[];
   onStatuses: (v: string[]) => void;
+  priceMin: string;
+  priceMax: string;
+  onPrice: (min: string, max: string) => void;
+  places: ReactNode;
+  placesActive: number;
+  onClear: () => void;
   onOpen: (id: string) => void;
 }) {
   const { t, locale } = useT();
@@ -572,58 +619,78 @@ function ItemsTab({
 
   return (
     <Card padded={false} className="overflow-hidden">
-      <div className="flex flex-wrap items-end gap-3 border-b border-line p-3">
-        <label className="block w-full sm:w-36">
-          <span className="mb-0.5 block text-xs text-muted">{t('inventory.sku')}</span>
-          <input
-            className={`${field} w-full tnum`}
-            dir="ltr"
-            value={code}
-            onChange={(e) => onCode(e.target.value)}
+      <div className="border-b border-line p-3">
+        <FilterPanel
+          id="inventory.items"
+          active={
+            placesActive +
+            (supplier ? 1 : 0) +
+            (statuses.length > 0 ? 1 : 0) +
+            (priceMin || priceMax ? 1 : 0)
+          }
+          onClear={onClear}
+          quick={
+            <>
+              <label className="block w-28 sm:w-36">
+                <span className="mb-0.5 block text-xs text-muted">{t('inventory.sku')}</span>
+                <input
+                  className={`${filterField} tnum`}
+                  dir="ltr"
+                  value={code}
+                  onChange={(e) => onCode(e.target.value)}
+                />
+              </label>
+              <label className="relative block min-w-0 flex-1 basis-48">
+                <span className="mb-0.5 block text-xs text-muted">{t('inventory.itemName')}</span>
+                <span className="pointer-events-none absolute bottom-0 start-2.5 grid h-9 place-items-center text-faint">
+                  <Icon name="search" size={16} />
+                </span>
+                <input
+                  className={`${filterField} ps-8`}
+                  value={search}
+                  onChange={(e) => onSearch(e.target.value)}
+                />
+              </label>
+            </>
+          }
+          actions={
+            <ReportActions
+              scope="inventory"
+              disabled={loading || items.length === 0}
+              onPrint={() => report.print(paper.current, t('nav.inventory'))}
+            />
+          }
+        >
+          {places}
+          <div className="min-w-0 sm:col-span-2">
+            <PartyPicker
+              type="SUPPLIER"
+              withCode
+              value={supplier}
+              onChange={onSupplier}
+              label={t('inventory.supplier')}
+              placeholder={t('common.all')}
+            />
+          </div>
+          <MultiSelect
+            className="w-full min-w-0"
+            label={t('valuation.status')}
+            value={statuses}
+            onChange={onStatuses}
+            options={[
+              { value: 'in', label: t('valuation.status.in') },
+              { value: 'out', label: t('valuation.status.out') },
+              { value: 'low', label: t('valuation.status.low') },
+            ]}
           />
-        </label>
-        <label className="relative block min-w-0 flex-1 basis-48">
-          <span className="mb-0.5 block text-xs text-muted">{t('inventory.itemName')}</span>
-          <span className="pointer-events-none absolute bottom-0 start-2.5 grid h-9 place-items-center text-faint">
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            className={`${field} w-full ps-8`}
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
+          <RangeFilter
+            label={t('item.salePrice')}
+            from={priceMin}
+            to={priceMax}
+            onFrom={(v) => onPrice(v, priceMax)}
+            onTo={(v) => onPrice(priceMin, v)}
           />
-        </label>
-        <div className="min-w-0 flex-1 basis-64">
-          <PartyPicker
-            type="SUPPLIER"
-            withCode
-            value={supplier}
-            onChange={onSupplier}
-            label={t('inventory.supplier')}
-            placeholder={t('common.all')}
-          />
-        </div>
-        {supplier && (
-          <Button size="sm" variant="ghost" icon="close" onClick={() => onSupplier(null)}>
-            {t('common.clear')}
-          </Button>
-        )}
-        <MultiSelect
-          className="w-full sm:w-56"
-          label={t('valuation.status')}
-          value={statuses}
-          onChange={onStatuses}
-          options={[
-            { value: 'in', label: t('valuation.status.in') },
-            { value: 'out', label: t('valuation.status.out') },
-            { value: 'low', label: t('valuation.status.low') },
-          ]}
-        />
-        <ReportActions
-          scope="inventory"
-          disabled={loading || items.length === 0}
-          onPrint={() => report.print(paper.current, t('nav.inventory'))}
-        />
+        </FilterPanel>
       </div>
 
       <div ref={paper}>

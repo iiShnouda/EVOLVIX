@@ -755,6 +755,9 @@ export function useInventory(params: {
   groupId?: string;
   code?: string;
   supplierId?: string;
+  /** The sale price between two amounts (minor units). */
+  priceMin?: string;
+  priceMax?: string;
   /** One page, sorted by a column (the inventory list); none = every item (stock look-ups). */
   page?: number;
   pageSize?: number;
@@ -777,6 +780,8 @@ export function useInventory(params: {
   if (params.search) query.set('search', params.search);
   if (params.code) query.set('code', params.code);
   if (params.supplierId) query.set('supplierId', params.supplierId);
+  if (params.priceMin) query.set('priceMin', params.priceMin);
+  if (params.priceMax) query.set('priceMax', params.priceMax);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.departmentId && params.groupId) query.set('groupId', params.groupId);
