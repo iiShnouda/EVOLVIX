@@ -36,6 +36,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { InvoiceBuilderPage } from './pages/InvoiceBuilderPage';
 import { ReturnBuilderPage } from './pages/ReturnBuilderPage';
+import { DamagedPage } from './pages/DamagedPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { InventoryPage } from './pages/InventoryPage';
@@ -318,6 +319,14 @@ const routes = createRoutesFromElements(
       <Route path="/sales/invoices/:id/edit" element={<EditSalesInvoiceRoute />} />
       <Route path="/sales/invoices/:id/return" element={<ReturnBuilderPage scope="sales" />} />
       <Route path="/sales/returns/new" element={<ReturnBuilderPage key="new" scope="sales" />} />
+      <Route
+        path="/sales/invoices/:id/exchange"
+        element={<ReturnBuilderPage scope="sales" exchange />}
+      />
+      <Route
+        path="/sales/exchange/new"
+        element={<ReturnBuilderPage key="exchange" scope="sales" exchange />}
+      />
       <Route path="/sales/together" element={<CustomerInvoicesPage />} />
       <Route path="/sales/together/:partyId" element={<CustomerInvoicesPage />} />
       <Route path="/parties" element={<PartiesPage />} />
@@ -339,6 +348,7 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/products/new" element={<NewItemsRoute />} />
       <Route path="/inventory/products/:id/edit" element={<ProductEditorPage />} />
       <Route path="/inventory/supplier-prices" element={<BulkPricesPage />} />
+      <Route path="/inventory/damaged" element={<DamagedPage />} />
       <Route path="/inventory/models" element={<ModelsPage />} />
       <Route path="/inventory/models/new" element={<ModelEditorPage key="new" />} />
       <Route path="/inventory/models/:id" element={<ModelEditorPage />} />

@@ -73,7 +73,7 @@ public sealed class ProductsController : ControllerBase
         if (Guid.TryParse(warehouseId, out var wh))
             stores = _warehouses.Visible(User).Where(w => w.Id == wh).Select(w => w.Id);
         else if (Guid.TryParse(branchId, out var br))
-            stores = _warehouses.Visible(User).Where(w => w.BranchId == br && w.Kind != WarehouseKind.TRANSIT)
+            stores = _warehouses.Visible(User).Where(w => w.BranchId == br && w.Kind == WarehouseKind.STORE)
                 .Select(w => w.Id);
         if (stores is not null)
         {

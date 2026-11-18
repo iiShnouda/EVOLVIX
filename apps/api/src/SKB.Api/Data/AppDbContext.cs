@@ -463,6 +463,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(d => d.SourceDocumentId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<SalesDocument>().HasIndex(d => d.SourceDocumentId);
         b.Entity<DocumentLine>().HasIndex(l => l.SourceLineId);
+        b.Entity<DocumentLine>().Property(l => l.ReturnReason).HasMaxLength(20);
+        b.Entity<DocumentLine>().Property(l => l.ReasonNote).HasMaxLength(200);
+        b.Entity<DocumentLine>().Property(l => l.Damaged).HasMaxLength(10);
+        b.Entity<SalesDocument>().Property(d => d.ExchangeNumber).HasMaxLength(40);
+        b.Entity<CompanySettings>().Property(x => x.DamagedReturns).HasMaxLength(10);
 
         // Stock movements: indexed for the item card (per product, over time) and per store.
         b.Entity<StockMovement>().HasIndex(m => new { m.ProductId, m.CreatedAt });

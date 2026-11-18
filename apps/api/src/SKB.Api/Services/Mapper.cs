@@ -12,7 +12,8 @@ public static class Mapper
         d.IssueDate.ToString("o"), d.DueDate?.ToString("yyyy-MM-dd"), d.GrandTotal, d.PaidAmount, d.Currency,
         d.SourceDocument?.Number, d.DepartmentId?.ToString(), d.Department is null ? null : Loc.Name(d.Department),
         d.Party?.Code, d.Rep?.FullName, d.Subtotal, d.DiscountTotal, 0, d.Notes,
-        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote, PartyId: d.PartyId.ToString(), RepCode: d.Rep?.Code);
+        OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote, PartyId: d.PartyId.ToString(), RepCode: d.Rep?.Code,
+        ExchangeNumber: d.ExchangeNumber);
 
     /// <param name="returned">For an invoice: quantity already returned per line (from ReturnsService).</param>
     /// <param name="baseUnits">Base unit name per product (<see cref="InvoiceLines.BaseUnitNamesAsync"/>).</param>
@@ -30,7 +31,7 @@ public static class Mapper
             l.WarehouseId?.ToString(), l.Warehouse is null ? null : Loc.Name(l.Warehouse),
             l.UnitId?.ToString(), Loc.Name(l.Unit), l.UnitFactor, l.UnitQuantity, l.LineCost,
             baseUnits?.GetValueOrDefault(l.ProductId) ?? (l.UnitFactor == 1 ? Loc.Name(l.Unit) : ""),
-            l.IsBonus, l.DocDiscount)).ToArray(),
+            l.IsBonus, l.DocDiscount, Reason: l.ReturnReason, ReasonNote: l.ReasonNote, Damaged: l.Damaged)).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
         d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number,
@@ -44,7 +45,8 @@ public static class Mapper
         StaffId: d.StaffId.ToString(), PartyId: d.PartyId.ToString(), BranchId: d.BranchId.ToString(),
         RejectReason: d.RejectReason, PartyCode: d.Party?.Code, RepCode: d.Rep?.Code,
         CancelReason: d.CancelReason, OverLimit: d.OverLimit, ApprovalNote: d.ApprovalNote,
-        EnteredAt: d.EnteredAt?.ToString("o"), Locked: d.EditLocked, CreatedAt: d.CreatedAt.ToString("o"));
+        EnteredAt: d.EnteredAt?.ToString("o"), Locked: d.EditLocked, CreatedAt: d.CreatedAt.ToString("o"),
+        ExchangeId: d.ExchangeId?.ToString(), ExchangeNumber: d.ExchangeNumber);
 
     /// <summary>An item with its units and their prices at every active level (from <paramref name="book"/>).</summary>
     public static ProductDto ToProduct(Product p, PriceBook book, Guid? matchedUnitId = null)
@@ -90,7 +92,7 @@ public static class Mapper
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
         s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent,
         s.PendingHoldDays, s.LogoVersion, s.RequireDepartment, s.ReturnAfterHours, s.HideNewPlaces, s.IdleMinutes,
-        s.CurrentSeasonId?.ToString(), s.DailySummaryMinute, s.NoteAlertDays);
+        s.CurrentSeasonId?.ToString(), s.DailySummaryMinute, s.NoteAlertDays, s.DamagedReturns);
 
     /// <summary>
     /// A party as this person may see it: its contact details (phones, email, addresses, owner or

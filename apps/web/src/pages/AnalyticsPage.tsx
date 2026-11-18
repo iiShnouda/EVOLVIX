@@ -16,6 +16,7 @@ import { ProfitabilityPage } from './ProfitabilityPage';
 import { AssortmentTab } from './AssortmentTab';
 import { SeasonCompareTab } from './SeasonCompareTab';
 import { PurchaseSuggestionsTab } from './PurchaseSuggestionsTab';
+import { ReturnsReportTab } from './ReturnsReportTab';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
@@ -47,6 +48,7 @@ type Tab =
   | 'assortment'
   | 'seasons'
   | 'buy'
+  | 'returns'
   | 'changes';
 /** Each report is a permission of its own (owner, 2026-10-23). */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
@@ -64,6 +66,7 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
     label: 'analytics.tabPurchaseSuggestions',
     permission: 'reports:purchase_suggestions',
   },
+  { key: 'returns', label: 'analytics.tabReturns', permission: 'reports:returns' },
   { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
@@ -112,6 +115,7 @@ export function AnalyticsPage() {
       {tab === 'assortment' && <AssortmentTab />}
       {tab === 'seasons' && <SeasonCompareTab />}
       {tab === 'buy' && <PurchaseSuggestionsTab />}
+      {tab === 'returns' && <ReturnsReportTab />}
       {tab === 'changes' && <ChangesTab />}
     </div>
   );

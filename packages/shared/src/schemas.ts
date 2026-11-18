@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+/** Why goods come back (owner, 2026-11-18): a fixed list, OTHER with its own words. */
+export const RETURN_REASONS = [
+  'WRONG_SIZE',
+  'WRONG_COLOR',
+  'DAMAGED',
+  'CHANGED_MIND',
+  'LATE_DELIVERY',
+  'OTHER',
+] as const;
+export type ReturnReason = (typeof RETURN_REASONS)[number];
+
 /**
  * Zod schemas shared by the client (form validation) and server (request validation).
  * The server treats these as the authoritative contract.
@@ -182,6 +193,11 @@ export const freeReturnLineSchema = z.object({
   quantity: z.number().int().min(1),
   /** Take the pieces only from this invoice line. */
   sourceLineId: z.string().uuid().optional(),
+  /** Why it came back (else the return's reason); `reasonNote` the words for OTHER. */
+  reason: z.enum(RETURN_REASONS).optional(),
+  reasonNote: z.string().max(200).optional(),
+  /** A DAMAGED line of a sales return: kept in the damaged warehouse or written off (else Settings). */
+  damaged: z.enum(['WAREHOUSE', 'WRITE_OFF']).optional(),
 });
 export type FreeReturnLineInput = z.infer<typeof freeReturnLineSchema>;
 
@@ -194,8 +210,22 @@ export const createFreeReturnSchema = z.object({
   invoiceId: z.string().uuid().optional(),
   lines: z.array(freeReturnLineSchema).min(1, 'Add at least one item to return'),
   notes: z.string().max(1000).optional(),
+  /** The reason of every line that names none (owner, 2026-11-18). */
+  reason: z.enum(RETURN_REASONS).optional(),
+  reasonNote: z.string().max(200).optional(),
 });
 export type CreateFreeReturnInput = z.infer<typeof createFreeReturnSchema>;
+
+/**
+ * An exchange (استبدال, owner 2026-11-18): what comes back and what is taken, saved together; only
+ * the difference is paid. `refund`: of what comes back over the new invoice, paid back now.
+ */
+export interface CreateExchangeInput {
+  return: CreateFreeReturnInput;
+  invoice: CreateSalesInvoiceInput;
+  refund?: number;
+  refundAccountId?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Stocktake (الجرد): counted quantity per item; only differences are posted.
@@ -308,6 +338,8 @@ export const updateSettingsSchema = z.object({
   idleMinutes: z.number().int().min(0).max(1440).optional(),
   /** The season it is now; "" = worked out from the date. */
   currentSeasonId: z.string().max(64).optional(),
+  /** Where a damaged line of a sales return goes unless chosen on it. */
+  damagedReturns: z.enum(['WAREHOUSE', 'WRITE_OFF']).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 

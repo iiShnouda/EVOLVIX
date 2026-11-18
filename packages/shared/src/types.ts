@@ -81,6 +81,7 @@ export type Permission =
   | 'notifications:daily_summary'
   | 'sales:return'
   | 'sales:return_cancel'
+  | 'returns:write_off'
   | 'sales:change_price'
   | 'sales:raise_price'
   | 'sales:choose_price_level'
@@ -156,6 +157,8 @@ export type Permission =
   | 'inventory:transfer_edit'
   | 'inventory:transfer_receive'
   | 'inventory:transfer_cancel'
+  | 'damaged:view'
+  | 'damaged:repair'
   | 'labels:print'
   | 'labels:pdf'
   | 'price_lists:view'
@@ -300,6 +303,7 @@ export type Permission =
   | 'reports:season_compare'
   | 'reports:purchase_suggestions'
   | 'reports:commission'
+  | 'reports:returns'
   | 'reports:print'
   | 'reports:pdf'
   | 'reports:export'
@@ -847,6 +851,11 @@ export interface DocumentLine {
   /** Warehouse the goods left from (sale) or arrived into (purchase). */
   warehouseId?: string | null;
   warehouseName?: string | null;
+  /** On a return line (owner, 2026-11-18): why it came back, and the words for OTHER. */
+  reason?: string | null;
+  reasonNote?: string | null;
+  /** A damaged line of a sales return: kept in the damaged warehouse or written off. */
+  damaged?: 'WAREHOUSE' | 'WRITE_OFF' | null;
 }
 
 /** An item the party can still return (owner, 2026-11-10), with its units and the invoice lines it can come from, newest first. */
@@ -972,6 +981,9 @@ export interface SalesDocument {
    * only for whoever may see the customer's balance (owner, 2026-11-10).
    */
   previousBalance?: number | null;
+  /** An exchange (owner, 2026-11-18): the return or invoice made with this one. */
+  exchangeId?: string | null;
+  exchangeNumber?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1378,6 +1390,57 @@ export interface CompanySettings {
   dailySummaryMinute?: number | null;
   /** Cheques and notes are told of this many days before they fall due. */
   noteAlertDays?: number;
+  /** Where a damaged line of a sales return goes unless chosen on it (owner, 2026-11-18). */
+  damagedReturns?: 'WAREHOUSE' | 'WRITE_OFF';
+}
+
+/** An exchange, saved (owner, 2026-11-18): both parts, and invoice less return. */
+export interface Exchange {
+  return: SalesDocument;
+  invoice: SalesDocument;
+  difference: number;
+}
+
+/** Damaged goods in a branch's damaged warehouse, with the item's supplier (owner, 2026-11-18). */
+export interface DamagedRow {
+  warehouseId: string;
+  warehouseName: string;
+  branchId: string;
+  branchName: string;
+  productId: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplierCode?: number | null;
+  /** Only for who may see costs. */
+  unitCost?: number | null;
+  value?: number | null;
+}
+
+/** The returns report (owner, 2026-11-18): `rate` in basis points. */
+export interface ReturnsReportRow {
+  key: string;
+  label: string;
+  code?: string | null;
+  returns: number;
+  quantity: number;
+  value: number;
+  sold?: number | null;
+  rate?: number | null;
+}
+export interface ReturnsReport {
+  by: 'reason' | 'item' | 'customer' | 'rep';
+  from: string;
+  to: string;
+  currency: string;
+  rows: ReturnsReportRow[];
+  returns: number;
+  quantity: number;
+  value: number;
+  sold?: number | null;
+  rate?: number | null;
 }
 
 /**
@@ -1475,6 +1538,10 @@ export interface SalesDocumentSummary {
   approvalNote?: string | null;
   /** When it was really typed, if it is dated on an earlier day (ISO instant). */
   enteredAt?: string | null;
+  /** A return's reasons (owner, 2026-11-18). */
+  reasons?: string[] | null;
+  /** An exchange: the return or invoice made with it. */
+  exchangeNumber?: string | null;
 }
 
 /** A customer's invoices of a period together, for the accountant (owner, 2026-10-02). */
@@ -1987,7 +2054,7 @@ export interface Warehouse {
   branchId: string;
   branchName: string;
   /** `TRANSIT` is the system warehouse holding goods between sending and receiving a transfer. */
-  kind: 'STORE' | 'TRANSIT';
+  kind: 'STORE' | 'TRANSIT' | 'DAMAGED';
   isDefault: boolean;
   isActive: boolean;
   /** Items with stock in this warehouse. */

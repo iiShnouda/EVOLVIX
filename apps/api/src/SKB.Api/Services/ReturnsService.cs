@@ -180,7 +180,21 @@ public sealed class ReturnsService
     // ------------------------------------------------------------------ the one way to return
 
     /// <summary>One piece of a return: so many base units of one invoice line, back through a warehouse.</summary>
-    private sealed record Pick(DocumentLine Source, SalesDocument Invoice, int Quantity, Warehouse Warehouse);
+    /// <param name="Reason">Why it came back (<see cref="ReturnReasons"/>); <paramref name="Note"/> the words for OTHER.</param>
+    /// <param name="Damaged">A damaged line of a sales return: WAREHOUSE or WRITE_OFF.</param>
+    private sealed record Pick(DocumentLine Source, SalesDocument Invoice, int Quantity, Warehouse Warehouse,
+        string? Reason = null, string? Note = null, string? Damaged = null);
+
+    /// <summary>One line's reason, checked: one of the list, OTHER with its words.</summary>
+    private static (string? Reason, string? Note, ReturnError? Error) ReasonOf(string? reason, string? note)
+    {
+        var r = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim().ToUpperInvariant();
+        if (r is null) return (null, null, null);
+        if (!ReturnReasons.All.Contains(r)) return (null, null, new("bad_reason", "Choose a reason from the list."));
+        var n = string.IsNullOrWhiteSpace(note) ? null : note.Trim()[..Math.Min(200, note.Trim().Length)];
+        if (r == ReturnReasons.Other && n is null) return (null, null, new("reason_note_required", "Write the reason."));
+        return (r, r == ReturnReasons.Other ? n : null, null);
+    }
 
     /// <summary>
     /// A return typed like an invoice (owner, 2026-11-10): the party, where it is made and where the
@@ -189,8 +203,10 @@ public sealed class ReturnsService
     /// return takes nothing from an invoice younger than the hours in Settings (unless the owner
     /// confirms); a purchase return only goods we still hold. All-or-nothing.
     /// </summary>
+    /// <param name="exchange">Part of an exchange: nothing is paid back and its entry waits for
+    /// <see cref="SettleExchangeAsync"/>; the caller's transaction commits.</param>
     public async Task<(SalesDocument? Doc, ReturnError? Error)> CreateForPartyAsync(
-        bool isSale, CreateFreeReturnRequest req, ClaimsPrincipal user, Guid staffId)
+        bool isSale, CreateFreeReturnRequest req, ClaimsPrincipal user, Guid staffId, bool exchange = false)
     {
         if (req.Lines is null || req.Lines.Length == 0)
             return (null, new("no_lines", "Add at least one item to return."));
@@ -213,8 +229,10 @@ public sealed class ReturnsService
         Warehouse? warehouse;
         if (Guid.TryParse(req.WarehouseId, out var wid))
         {
+            // Goods go back to a supplier from a store or from the branch's damaged goods (owner, 2026-11-18).
             warehouse = await _warehouses.Visible(user)
-                .FirstOrDefaultAsync(w => w.Id == wid && w.IsActive && w.Kind == WarehouseKind.STORE);
+                .FirstOrDefaultAsync(w => w.Id == wid && w.IsActive
+                                          && (w.Kind == WarehouseKind.STORE || (!isSale && w.Kind == WarehouseKind.DAMAGED)));
             if (warehouse is null || warehouse.BranchId != branchId)
                 return (null, new("warehouse_not_found", "Warehouse not found."));
         }
@@ -234,7 +252,12 @@ public sealed class ReturnsService
         var productIds = req.Lines.Select(l => Guid.TryParse(l.ProductId, out var g) ? g : Guid.Empty).Distinct().ToList();
         if (productIds.Contains(Guid.Empty)) return (null, new("product_not_found", "An item was not found."));
         var units = await _db.ItemUnits.AsNoTracking().Where(u => productIds.Contains(u.ProductId)).ToListAsync();
-        var wanted = new List<(Guid ProductId, int BaseQty, Guid? SourceLineId)>();
+        var wanted = new List<(Guid ProductId, int BaseQty, Guid? SourceLineId, string? Reason, string? Note, string? Damaged)>();
+        // A damaged line goes where Settings says unless chosen; writing off is a permission of its own.
+        var mayWriteOff = user.HasClaim("permission", Permissions.ReturnsWriteOff);
+        var settled = isSale
+            ? await _db.CompanySettings.Select(x => x.DamagedReturns).FirstOrDefaultAsync() ?? ReturnReasons.ToWarehouse
+            : null;
         foreach (var l in req.Lines)
         {
             var pid = Guid.Parse(l.ProductId);
@@ -245,10 +268,23 @@ public sealed class ReturnsService
             if (factor <= 0) return (null, new("unit_not_found", "An item's unit was not found."));
             if (l.Quantity <= 0 || (long)l.Quantity * factor > 1_000_000_000)
                 return (null, new("bad_qty", "Enter a quantity for every item."));
-            wanted.Add((pid, l.Quantity * factor, Guid.TryParse(l.SourceLineId, out var sl) ? sl : null));
+            var (reason, note, reasonError) = ReasonOf(l.Reason ?? req.Reason, l.Reason is null ? req.ReasonNote : l.ReasonNote);
+            if (reasonError is not null) return (null, reasonError);
+            string? damaged = null;
+            if (isSale && reason == ReturnReasons.Damaged)
+            {
+                var asked = string.IsNullOrWhiteSpace(l.Damaged) ? null : l.Damaged.Trim().ToUpperInvariant();
+                if (asked is not null and not (ReturnReasons.ToWarehouse or ReturnReasons.WriteOff))
+                    return (null, new("bad_damaged", "Choose where the damaged goods go."));
+                if (asked == ReturnReasons.WriteOff && !mayWriteOff)
+                    return (null, new("write_off_not_allowed", "Writing off damaged goods needs permission."));
+                damaged = asked ?? (settled == ReturnReasons.WriteOff && mayWriteOff ? ReturnReasons.WriteOff : ReturnReasons.ToWarehouse);
+            }
+            wanted.Add((pid, l.Quantity * factor, Guid.TryParse(l.SourceLineId, out var sl) ? sl : null, reason, note, damaged));
         }
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        // Inside an exchange's transaction, that one commits.
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         // The party's invoices first (documents before items), so two returns can't take the same pieces.
         var invoiceType = isSale ? DocumentType.SALES_INVOICE : DocumentType.PURCHASE_INVOICE;
         var lockIds = await _db.SalesDocuments
@@ -263,8 +299,8 @@ public sealed class ReturnsService
 
         // ---- Take each item from the newest invoice lines that still have it ----
         var left = sources.ToDictionary(s => s.Line.Id, s => s.Left);
-        var picks = new List<(Source Source, int Quantity)>();
-        foreach (var (productId, baseQty, sourceLineId) in wanted)
+        var picks = new List<(Source Source, int Quantity, string? Reason, string? Note, string? Damaged)>();
+        foreach (var (productId, baseQty, sourceLineId, reason, note, damaged) in wanted)
         {
             var need = baseQty;
             var mine = sources.Where(s => s.Line.ProductId == productId
@@ -276,7 +312,7 @@ public sealed class ReturnsService
                 if (take <= 0) continue;
                 left[s.Line.Id] -= take;
                 need -= take;
-                picks.Add((s, take));
+                picks.Add((s, take, reason, note, damaged));
             }
             if (need == 0) continue;
             var name = mine.FirstOrDefault()?.Line.ProductName
@@ -295,9 +331,10 @@ public sealed class ReturnsService
             return (null, new("exceeds_returnable", $"{name}: only {baseQty - need} left to return, {baseQty} requested."));
         }
 
-        // The same invoice line asked for on two lines comes back once, with both quantities.
-        var merged = picks.GroupBy(p => p.Source.Line.Id)
-            .Select(g => new Pick(g.First().Source.Line, g.First().Source.Invoice, g.Sum(p => p.Quantity), warehouse))
+        // The same invoice line asked for on two lines comes back once, with both quantities (once per reason).
+        var merged = picks.GroupBy(p => (p.Source.Line.Id, p.Reason, p.Note, p.Damaged))
+            .Select(g => new Pick(g.First().Source.Line, g.First().Source.Invoice, g.Sum(p => p.Quantity), warehouse,
+                g.Key.Reason, g.Key.Note, g.Key.Damaged))
             .ToList();
         var single = merged.Select(p => p.Invoice.Id).Distinct().Count() == 1 ? merged[0].Invoice : null;
         // A sale's department, when none was chosen: the one its invoices share.
@@ -307,7 +344,7 @@ public sealed class ReturnsService
             if (depts.Count == 1) departmentId = depts[0];
         }
         return await PostAsync(isSale, party, branchId, departmentId, merged, single, req.Notes,
-            0, req.RefundAccountId, 0, null, user, staffId, tx);
+            0, req.RefundAccountId, 0, null, user, staffId, tx, exchange);
     }
 
     /// <summary>
@@ -384,7 +421,7 @@ public sealed class ReturnsService
     private async Task<(SalesDocument? Doc, ReturnError? Error)> PostAsync(bool isSale, Party party, Guid branchId,
         Guid? departmentId, IReadOnlyList<Pick> picks, SalesDocument? single, string? notes, long refund,
         string? refundAccountId, long shippingCost, string? shippingAccountId, ClaimsPrincipal user, Guid staffId,
-        IDbContextTransaction tx)
+        IDbContextTransaction? tx, bool exchange = false)
     {
         var returnType = isSale ? DocumentType.SALES_RETURN : DocumentType.PURCHASE_RETURN;
         if (isSale && shippingCost < 0) return (null, new("bad_amount", "Enter a shipping cost of zero or more."));
@@ -428,10 +465,16 @@ public sealed class ReturnsService
             .ToDictionaryAsync(u => u.ProductId, u => u.UnitId);
 
         var made = new List<(DocumentLine Line, Guid InvoiceId)>();
-        foreach (var (src, invoice, qty, warehouse) in picks)
+        // What came back of each line so far, this return's earlier lines included (one line may come
+        // back on two lines of it, for two reasons).
+        var running = new Dictionary<Guid, Returned>(returned);
+        var writtenOff = 0L;
+        foreach (var (src, invoice, qty, picked, reason, note, damagedTo) in picks)
         {
             var product = products[src.ProductId];
-            var already = returned.GetValueOrDefault(src.Id) ?? Nothing;
+            var already = running.GetValueOrDefault(src.Id) ?? Nothing;
+            // A customer's damaged goods go to the branch's damaged warehouse (owner, 2026-11-18).
+            var warehouse = isSale && damagedTo is not null ? await _warehouses.DamagedForBranchAsync(branchId) : picked;
             // The return's share of the line's gross amount, discount and cost, in proportion to the
             // base units coming back; the return that empties the line takes exactly what is left.
             // (Not once an old return typed without the invoice took some of it: its amounts never
@@ -445,9 +488,22 @@ public sealed class ReturnsService
             var docDiscount = Share(src.DocDiscount, already.DocDiscount);
             var lineCost = Share(src.LineCost, already.Cost);
             var lineTotal = gross - discount;
+            running[src.Id] = already with
+            {
+                Quantity = already.Quantity + qty, Gross = already.Gross + gross, Discount = already.Discount + discount,
+                DocDiscount = already.DocDiscount + docDiscount, Cost = already.Cost + lineCost,
+            };
 
             if (isSale)
+            {
                 _inventory.ReceiveValue(product, warehouse, qty, lineCost, StockMovementType.SALES_RETURN_IN, doc.Id, number);
+                // Written off at once: out of the damaged warehouse at the cost it came back at.
+                if (damagedTo == ReturnReasons.WriteOff)
+                {
+                    _inventory.IssueValue(product, warehouse, qty, lineCost, StockMovementType.DAMAGED_WRITE_OFF, doc.Id, number);
+                    writtenOff += lineCost;
+                }
+            }
             else
                 _inventory.ReturnToSupplierValue(product, warehouse, qty, lineCost,
                     StockMovementType.PURCHASE_RETURN_OUT, doc.Id, number);
@@ -465,6 +521,7 @@ public sealed class ReturnsService
                 Discount = discount, LineTotal = lineTotal, IsBonus = src.IsBonus, DocDiscount = docDiscount,
                 UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - docDiscount - lineCost : 0,
                 SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
+                ReturnReason = reason, ReasonNote = note, Damaged = isSale ? damagedTo : null,
             };
             doc.Lines.Add(line);
             made.Add((line, invoice.Id));
@@ -477,7 +534,8 @@ public sealed class ReturnsService
         {
             var invoice = invoices[group.Key];
             var lines = allLines.Where(l => l.DocumentId == invoice.Id).ToList();
-            var taking = picks.Where(p => p.Invoice.Id == invoice.Id).ToDictionary(p => p.Source.Id, p => p.Quantity);
+            var taking = picks.Where(p => p.Invoice.Id == invoice.Id).GroupBy(p => p.Source.Id)
+                .ToDictionary(g => g.Key, g => g.Sum(p => p.Quantity));
             var completes = lines.All(l =>
                 l.Quantity - (returned.GetValueOrDefault(l.Id)?.Quantity ?? 0) - taking.GetValueOrDefault(l.Id) == 0);
             if (completes) completed.Add(invoice);
@@ -519,7 +577,8 @@ public sealed class ReturnsService
         // PaidAmount on a return = cash settled now: handed back to the customer (sales) or received
         // back from the supplier (purchases). A cash customer has no account to carry the credit, so
         // they're paid back in full now (owner decision 2026-10-01); everyone else's goes on their account.
-        doc.PaidAmount = Math.Clamp(isSale && party.IsCashCustomer ? grand : refund, 0, grand);
+        // In an exchange nothing is paid back here: the new invoice takes the credit first.
+        doc.PaidAmount = exchange ? 0 : Math.Clamp(isSale && party.IsCashCustomer ? grand : refund, 0, grand);
         doc.Status = doc.PaidAmount >= grand && grand > 0 ? DocumentStatus.PAID
             : doc.PaidAmount > 0 ? DocumentStatus.PARTIALLY_PAID
             : DocumentStatus.CONFIRMED;
@@ -541,8 +600,9 @@ public sealed class ReturnsService
             refundAccount = account!;
             doc.PaidAccountId = account!.Id;
         }
-        if (isSale) await _ledger.PostSalesReturnAsync(doc, party, refundAccount, staffId);
-        else await _ledger.PostPurchaseReturnAsync(doc, party, refundAccount, staffId);
+        if (isSale && !exchange) await _ledger.PostSalesReturnAsync(doc, party, refundAccount, staffId);
+        else if (!isSale) await _ledger.PostPurchaseReturnAsync(doc, party, refundAccount, staffId);
+        if (writtenOff > 0) await _ledger.PostDamagedWriteOffAsync(doc.Id, number, branchId, writtenOff, staffId);
 
         // Shipping we paid to get a customer's goods back: our expense.
         if (isSale && shippingCost > 0)
@@ -555,8 +615,36 @@ public sealed class ReturnsService
         foreach (var invoice in completed) invoice.Status = DocumentStatus.RETURNED;
         _db.SalesDocuments.Add(doc);
         await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return (doc, null);
+    }
+
+    /// <summary>
+    /// An exchange's return, once its invoice is made: <paramref name="refund"/> of it is paid back now
+    /// from <paramref name="refundAccountId"/> (the rest stays on the customer's account, where the
+    /// invoice takes it), and its entry is posted. Inside the exchange's transaction.
+    /// </summary>
+    public async Task<ReturnError?> SettleExchangeAsync(SalesDocument doc, long refund, string? refundAccountId,
+        ClaimsPrincipal user, Guid staffId)
+    {
+        var party = await _db.Parties.FirstAsync(p => p.Id == doc.PartyId);
+        MoneyAccount? account = null;
+        refund = Math.Clamp(refund, 0, doc.GrandTotal);
+        if (refund > 0)
+        {
+            var (found, moneyError) = await _money.ForDocumentAsync(refundAccountId, doc.BranchId, user);
+            moneyError ??= _money.Move(found!, -refund, MoneyMovementKind.SALES_REFUND, staffId, doc.Number,
+                documentId: doc.Id, partyId: party.Id);
+            if (moneyError is not null) return new(moneyError.Code, moneyError.Message);
+            account = found!;
+            doc.PaidAccountId = account.Id;
+            doc.PaidAmount = refund;
+            party.Balance += refund;
+            doc.Status = refund >= doc.GrandTotal ? DocumentStatus.PAID : DocumentStatus.PARTIALLY_PAID;
+        }
+        await _ledger.PostSalesReturnAsync(doc, party, account, staffId);
+        await _db.SaveChangesAsync();
+        return null;
     }
 
     /// <summary>
@@ -596,6 +684,12 @@ public sealed class ReturnsService
         var invoices = await _db.SalesDocuments.Where(d => ordered.Contains(d.Id)).ToListAsync();
         var lines = doc.Lines.Where(l => l.Quantity > 0 && l.Warehouse is not null).ToList();
         var products = await _inventory.LockProductsAsync(lines.Select(l => l.ProductId));
+        // Damaged goods written off with it come back first (at the cost they went out at), then leave with it.
+        if (isSale)
+            foreach (var l in lines.Where(l => l.Damaged == ReturnReasons.WriteOff))
+                if (products.TryGetValue(l.ProductId, out var gone))
+                    _inventory.ReceiveValue(gone, l.Warehouse!, l.Quantity, l.LineCost,
+                        StockMovementType.DAMAGED_WRITE_OFF_CANCELLED, doc.Id, doc.Number);
         if (isSale)
             foreach (var g in lines.GroupBy(l => (l.ProductId, l.WarehouseId!.Value)))
             {
@@ -632,6 +726,9 @@ public sealed class ReturnsService
         var source2 = isSale ? "SALES_RETURN" : "PURCHASE_RETURN";
         await _ledger.ReverseAsync(source2, doc.Id, $"{source2}_CANCEL", doc.Number,
             $"{(isSale ? "Sales" : "Purchase")} return {doc.Number} cancelled", staffId);
+        if (isSale)
+            await _ledger.ReverseAsync(LedgerService.DamagedWriteOffSource, doc.Id, $"{LedgerService.DamagedWriteOffSource}_CANCEL",
+                doc.Number, $"Damaged goods of {doc.Number} back with its cancellation", staffId);
 
         doc.Status = DocumentStatus.CANCELLED;
         foreach (var invoice in invoices.Where(i => i.Status == DocumentStatus.RETURNED))

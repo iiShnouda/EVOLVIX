@@ -1171,7 +1171,7 @@ public sealed class SalesController : ControllerBase
         CreateSalesInvoiceRequest req, DocumentType type, Guid? fromId, Guid? branch = null,
         DiscountMode discounts = DiscountMode.None, SalesDocument? baseline = null, Guid? replaceId = null,
         Guid? editId = null, bool approved = false, bool overLimit = false, bool trustPrices = false,
-        string? approvalNote = null, bool systemApproval = false)
+        string? approvalNote = null, bool systemApproval = false, long exchangeCredit = 0)
     {
         var quote = type == DocumentType.QUOTATION;
         // Quotations and pending invoices post nothing.
@@ -1678,9 +1678,12 @@ public sealed class SalesController : ControllerBase
         // the customer's credit); a cash customer settles the difference now.
         if (paidBefore is { } was)
             doc.PaidAmount = party.IsCashCustomer ? grand : was.Counter;
+        // In an exchange the goods brought back pay first (owner, 2026-11-18): a cash customer pays the rest.
+        var payNow = Math.Max(0, grand - exchangeCredit);
+        if (exchangeCredit > 0 && party.IsCashCustomer) doc.PaidAmount = payNow;
         doc.PaidDirect = doc.PaidAmount;
         // A cash customer (عميل نقدي) pays the whole invoice now.
-        if (party.IsCashCustomer && doc.PaidAmount < grand)
+        if (party.IsCashCustomer && doc.PaidAmount < payNow)
             return BadRequest(new
             {
                 message = $"{party.Name} is a cash customer: the whole {InvoiceLines.Major(grand)} is paid now.",
@@ -1837,11 +1840,7 @@ public sealed class SalesController : ControllerBase
     {
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
         var (doc, error) = await _returns.CreateForPartyAsync(true, req, User, staffId);
-        if (error is not null)
-        {
-            var body = new { message = error.Message, code = error.Code, from = error.From };
-            return error.Code == "not_found" ? NotFound(body) : BadRequest(body);
-        }
+        if (error is not null) return ReturnRefused(error);
 
         await _notifications.ReturnMadeAsync(doc!, User);
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "sales_return",
@@ -1850,6 +1849,72 @@ public sealed class SalesController : ControllerBase
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
         return Created($"/api/sales/returns/{doc.Id}", Costs.Guard(User, Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc))));
+    }
+
+    private ActionResult ReturnRefused(ReturnsService.ReturnError error)
+    {
+        var body = new { message = error.Message, code = error.Code, from = error.From };
+        return error.Code switch
+        {
+            "not_found" => NotFound(body),
+            "write_off_not_allowed" => StatusCode(403, body),
+            _ => BadRequest(body),
+        };
+    }
+
+    /// <summary>
+    /// An exchange (استبدال, owner 2026-11-18): the customer brings back what they bought and takes
+    /// other goods, saved together or not at all — a sales return and a sales invoice that name each
+    /// other. The return goes on their account and the invoice takes it, so only the difference is
+    /// paid now or owed: a cash customer pays it, or is paid it back, at once. Needs both a return's
+    /// and an invoice's permission, and the invoice's own price and discount rules hold.
+    /// </summary>
+    [HttpPost("exchanges")]
+    [Authorize(Policy = Permissions.SalesReturn)]
+    public async Task<ActionResult<ExchangeDto>> CreateExchange([FromBody] CreateExchangeRequest req)
+    {
+        if (!User.Has(Permissions.SalesCreate))
+            return StatusCode(403, new { message = "Not allowed.", code = "forbidden" });
+        if (req.Return is null || req.Invoice is null)
+            return BadRequest(new { message = "Add what comes back and what is taken.", code = "no_lines" });
+        Guid.TryParse(CurrentUser.Id(User), out var staffId);
+        // One customer, one branch, today.
+        var back = req.Return with { PartyId = req.Invoice.PartyId, BranchId = req.Invoice.BranchId ?? req.Return.BranchId };
+        var taken = req.Invoice with { BranchId = back.BranchId, DocumentDate = null };
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var (ret, error) = await _returns.CreateForPartyAsync(true, back, User, staffId, exchange: true);
+        if (error is not null) return ReturnRefused(error);
+        var made = await CreateCore(taken, DocumentType.SALES_INVOICE, fromId: null, exchangeCredit: ret!.GrandTotal);
+        if ((made.Result as ObjectResult) is not { StatusCode: 201, Value: SalesDetailDto created })
+            return made.Result ?? BadRequest(new { message = "The invoice could not be saved.", code = "invoice_failed" });
+        var invoice = await _db.SalesDocuments.FirstAsync(d => d.Id == Guid.Parse(created.Id));
+
+        // The return's credit pays the invoice first; what it is worth over the invoice may be paid back.
+        var over = Math.Max(0, ret.GrandTotal - invoice.GrandTotal);
+        var party = await _db.Parties.AsNoTracking().FirstAsync(p => p.Id == ret.PartyId);
+        var refund = party.IsCashCustomer ? over : Math.Clamp(req.Refund, 0, over);
+        ret.ExchangeId = invoice.Id;
+        ret.ExchangeNumber = invoice.Number;
+        invoice.ExchangeId = ret.Id;
+        invoice.ExchangeNumber = ret.Number;
+        var settleError = await _returns.SettleExchangeAsync(ret, refund, req.RefundAccountId, User, staffId);
+        if (settleError is not null) return ReturnRefused(settleError);
+        await _notifications.ReturnMadeAsync(ret, User);
+        await AuditAsync("create", "sales_return", ret);
+        await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "exchange",
+            ret.BranchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), ret.Id.ToString(),
+            $"{ret.Number} ↔ {invoice.Number} · {(invoice.GrandTotal - ret.GrandTotal) / 100m:N2}");
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        _db.ChangeTracker.Clear();
+        static SalesDetailDto? Of(ActionResult<SalesDetailDto> r) => r.Value ?? (r.Result as ObjectResult)?.Value as SalesDetailDto;
+        var returnDto = Of(await GetOne(ret.Id));
+        var invoiceDto = Of(await GetOne(invoice.Id));
+        return Created($"/api/sales/returns/{ret.Id}",
+            new ExchangeDto(returnDto!, invoiceDto!, invoice.GrandTotal - ret.GrandTotal));
     }
 
     /// <summary>

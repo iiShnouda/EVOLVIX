@@ -10,6 +10,7 @@ import {
   type Permission,
   type SalesDocument,
   type TranslationKey,
+  RETURN_REASONS,
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { DocumentPreview } from '../components/DocumentPreview';
@@ -203,6 +204,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
   const [warehouseId, setWarehouseId] = useState(kept.warehouseId ?? '');
   // The detailed search (owner, 2026-11-16): the rep and the total between two amounts.
   const [repId, setRepId] = useState(kept.repId ?? '');
+  const [reason, setReason] = useState('');
   const [minAmount, setMinAmount] = useState(kept.minAmount ?? '');
   const [maxAmount, setMaxAmount] = useState(kept.maxAmount ?? '');
   const amounts = useSettled(`${minorOf(minAmount)}\u0001${minorOf(maxAmount)}`);
@@ -237,6 +239,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     branchId: branchId || undefined,
     warehouseId: warehouseId || undefined,
     repId: isSales && kind === 'invoices' ? repId || undefined : undefined,
+    reason: kind === 'returns' ? reason || undefined : undefined,
     min: dMin || undefined,
     max: dMax || undefined,
     enabled: listed,
@@ -253,6 +256,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     branchId,
     warehouseId,
     repId,
+    reason,
     amounts,
     pageSize,
   ].join('\u0001');
@@ -304,6 +308,7 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
     status,
     kind === 'invoices' && isSales ? state : '',
     kind === 'invoices' && isSales ? repId : '',
+    kind === 'returns' ? reason : '',
     minAmount || maxAmount,
   ].filter(Boolean).length;
   function clearDetailed() {
@@ -447,6 +452,21 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           {t('return.action')}
         </Button>
       )}
+      {/* An exchange from the invoice (owner, 2026-11-18): needs a return's and an invoice's permission. */}
+      {invoice &&
+        canReturn &&
+        permissions.includes('sales:create') &&
+        isReturnable(detail.data) && (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="returns"
+            disabled={returnTooSoon}
+            onClick={() => navigate(`/sales/invoices/${invoice.id}/exchange`)}
+          >
+            {t('exchange.title')}
+          </Button>
+        )}
       {invoice && canTogether && invoice.partyCode !== 0 && (
         <Button
           size="sm"
@@ -513,9 +533,20 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
               {t('together.open')}
             </Button>
           ) : kind === 'returns' && canReturn ? (
-            <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/returns/new`)}>
-              {t('return.new')}
-            </Button>
+            <span className="flex flex-wrap gap-2">
+              {isSales && permissions.includes('sales:create') && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate('/sales/exchange/new')}
+                >
+                  {t('exchange.new')}
+                </Button>
+              )}
+              <Button icon="plus" size="sm" onClick={() => navigate(`/${scope}/returns/new`)}>
+                {t('return.new')}
+              </Button>
+            </span>
           ) : canStart ? (
             <span className="flex flex-wrap gap-2">
               {isSales && canTogether && (
@@ -721,6 +752,22 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
                   {(reps.data ?? []).map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.code ? `${r.code} · ${r.name}` : r.name}
+                    </option>
+                  ))}
+                </select>
+              </Filter>
+            )}
+            {kind === 'returns' && (
+              <Filter label={t('return.reason')}>
+                <select
+                  className={filterField}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                >
+                  <option value="">{t('return.allReasons')}</option>
+                  {RETURN_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`return.reason.${r}`)}
                     </option>
                   ))}
                 </select>

@@ -170,6 +170,9 @@ public static class DocumentLists
         if (Guid.TryParse(query["repId"], out var rep)) q = q.Where(d => d.RepId == rep);
         if (long.TryParse(query["min"], out var min)) q = q.Where(d => d.GrandTotal >= min);
         if (long.TryParse(query["max"], out var max)) q = q.Where(d => d.GrandTotal <= max);
+        // Returns of one reason (owner, 2026-11-18).
+        if (query["reason"].ToString() is { Length: > 0 } reason)
+            q = q.Where(d => d.Lines.Any(l => l.ReturnReason == reason));
         return q;
     }
 
@@ -260,8 +263,16 @@ public static class DocumentLists
             .Include(d => d.Branch).Include(d => d.Party).Include(d => d.Staff).Include(d => d.SourceDocument)
             .Include(d => d.Department).Include(d => d.Rep)
             .ToDictionaryAsync(d => d.Id);
+        // A return's reasons, on the list (owner, 2026-11-18).
+        var reasons = (await db.DocumentLines.AsNoTracking()
+                .Where(l => ids.Contains(l.DocumentId) && l.ReturnReason != null)
+                .Select(l => new { l.DocumentId, l.ReturnReason }).Distinct().ToListAsync())
+            .GroupBy(x => x.DocumentId).ToDictionary(g => g.Key, g => g.Select(x => x.ReturnReason!).OrderBy(x => x).ToArray());
         var items = pageRows.Where(r => docs.ContainsKey(r.Id))
-            .Select(r => Mapper.ToSummary(docs[r.Id]) with { Owed = Math.Max(0, r.Owed), State = StateOf(r), Edited = r.Edited }).ToArray();
+            .Select(r => Mapper.ToSummary(docs[r.Id]) with
+            {
+                Owed = Math.Max(0, r.Owed), State = StateOf(r), Edited = r.Edited, Reasons = reasons.GetValueOrDefault(r.Id),
+            }).ToArray();
         return new DocumentListDto(items, total, page, pageSize, sums);
     }
 

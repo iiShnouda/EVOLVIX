@@ -86,7 +86,8 @@ public sealed class SettingsController : ControllerBase
                 || Differs(req.HideNewPlaces, s.HideNewPlaces)
                 || (req.DailySummaryMinute is int dm && (dm < 0 ? null : (int?)Math.Clamp(dm, 0, 24 * 60 - 1)) != s.DailySummaryMinute)
                 || Differs(req.NoteAlertDays is int nd ? (int?)Math.Clamp(nd, 0, 60) : null, s.NoteAlertDays)
-                || (req.CurrentSeasonId is { } cs && cs != (s.CurrentSeasonId?.ToString() ?? ""))),
+                || (req.CurrentSeasonId is { } cs && cs != (s.CurrentSeasonId?.ToString() ?? ""))
+                || (req.DamagedReturns is { } dr && dr.ToUpperInvariant() != s.DamagedReturns)),
             (Permissions.SettingsSecurity, Differs(req.IdleMinutes is int i ? (int?)Math.Clamp(i, 0, 24 * 60) : null, s.IdleMinutes)),
         };
         if (parts.FirstOrDefault(x => x.Changes && !User.Has(x.Permission)) is { Permission: { } part })
@@ -114,6 +115,14 @@ public sealed class SettingsController : ControllerBase
         // days ahead a cheque is told of.
         if (req.DailySummaryMinute is int summaryAt) s.DailySummaryMinute = summaryAt < 0 ? null : Math.Clamp(summaryAt, 0, 24 * 60 - 1);
         if (req.NoteAlertDays is int alertDays) s.NoteAlertDays = Math.Clamp(alertDays, 0, 60);
+        // Where a damaged line of a sales return goes unless chosen on it (owner, 2026-11-18).
+        if (req.DamagedReturns is { } damagedTo)
+        {
+            var to = damagedTo.Trim().ToUpperInvariant();
+            if (to is not (ReturnReasons.ToWarehouse or ReturnReasons.WriteOff))
+                return BadRequest(new { message = "Choose where damaged goods go.", code = "bad_damaged" });
+            s.DamagedReturns = to;
+        }
         // "" = back to automatic; else a season that exists and is in use.
         if (req.CurrentSeasonId is { } seasonId)
         {

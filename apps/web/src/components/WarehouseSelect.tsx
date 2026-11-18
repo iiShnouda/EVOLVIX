@@ -1,6 +1,7 @@
 import type { Warehouse } from '@skb/shared';
 import { useT } from '../lib/i18n';
 import { useWarehouses } from '../lib/queries';
+import { useWarehousesWithDamaged } from '../lib/returnsQueries';
 import { useWorkBranch } from '../stores/workBranch';
 
 const field =
@@ -35,9 +36,12 @@ export function WarehouseSelect({
   className,
   label,
   branchId,
+  withDamaged,
 }: {
   value: string;
-  onChange: (id: string) => void;
+  onChange: (id: string, warehouse?: Warehouse) => void;
+  /** The branches' damaged goods warehouses too (stock pages; owner, 2026-11-18). */
+  withDamaged?: boolean;
   allowAll?: boolean;
   includeClosed?: boolean;
   className?: string;
@@ -46,14 +50,25 @@ export function WarehouseSelect({
   branchId?: string;
 }) {
   const { t } = useT();
-  const list = useWarehouses(!includeClosed);
+  const plain = useWarehouses(!includeClosed);
+  const damaged = useWarehousesWithDamaged(!includeClosed, !!withDamaged);
+  const list = withDamaged ? damaged : plain;
   const rows = (list.data ?? []).filter((w) => !branchId || w.branchId === branchId);
   const showBranch = new Set(rows.map((w) => w.branchId)).size > 1;
 
   return (
     <label className={`block ${className ?? ''}`}>
       <span className="mb-0.5 block text-xs text-muted">{label ?? t('warehouse.label')}</span>
-      <select className={field} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        className={field}
+        value={value}
+        onChange={(e) =>
+          onChange(
+            e.target.value,
+            rows.find((w) => w.id === e.target.value),
+          )
+        }
+      >
         {allowAll && <option value="">{t('warehouse.all')}</option>}
         {!allowAll && !value && <option value="">…</option>}
         {rows.map((w) => (

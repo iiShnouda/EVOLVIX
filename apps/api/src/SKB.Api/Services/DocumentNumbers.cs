@@ -55,6 +55,18 @@ public static class DocumentNumbers
     }
 
     /// <summary>Next transfer permit number, e.g. TRF-2026-000003.</summary>
+    /// <summary>A repair or write-off of damaged goods (owner, 2026-11-18): DMG-YYYY-000001.</summary>
+    public static async Task<string> NextDamagedAsync(AppDbContext db)
+    {
+        var prefix = $"DMG-{CompanyClock.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.StockMovements.Where(m => m.Reference != null && m.Reference.StartsWith(prefix))
+            .OrderByDescending(m => m.Reference).Select(m => m.Reference).FirstOrDefaultAsync();
+        var seq = 1;
+        if (last is not null && int.TryParse(last[prefix.Length..], out var n)) seq = n + 1;
+        return $"{prefix}{seq:D6}";
+    }
+
     public static async Task<string> NextTransferAsync(AppDbContext db)
     {
         var prefix = $"TRF-{CompanyClock.Year}-";

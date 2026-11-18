@@ -274,12 +274,13 @@ export function InventoryPage() {
         <WarehouseSelect
           className="w-full min-w-0"
           value={warehouseId}
-          onChange={(id) => {
+          onChange={(id, w) => {
             update({ wh: id || null });
-            if (id) setPlace({ warehouseId: id });
+            if (id && w?.kind !== 'DAMAGED') setPlace({ warehouseId: id });
           }}
           allowAll
           includeClosed
+          withDamaged
         />
       }
       {departments.length > 0 && (

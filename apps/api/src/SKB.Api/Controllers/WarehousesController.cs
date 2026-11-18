@@ -40,11 +40,14 @@ public sealed class WarehousesController : ControllerBase
     [HttpGet("warehouses")]
     [Authorize]
     public async Task<ActionResult<WarehouseDto[]>> List(
-        [FromQuery] bool activeOnly = false, [FromQuery] bool includeTransit = false)
+        [FromQuery] bool activeOnly = false, [FromQuery] bool includeTransit = false,
+        [FromQuery] bool includeDamaged = false)
     {
         var q = _warehouses.Visible(User).AsNoTracking().Include(w => w.Branch).AsQueryable();
         if (activeOnly) q = q.Where(w => w.IsActive);
-        if (!includeTransit) q = q.Where(w => w.Kind == WarehouseKind.STORE);
+        // The branches' damaged goods warehouses (owner, 2026-11-18) only where asked: stock pages, purchase returns.
+        q = q.Where(w => w.Kind == WarehouseKind.STORE || (includeTransit && w.Kind == WarehouseKind.TRANSIT)
+                         || (includeDamaged && w.Kind == WarehouseKind.DAMAGED));
         var rows = await q.ToListAsync();
         var stats = await StatsAsync();
         return Ok(rows
