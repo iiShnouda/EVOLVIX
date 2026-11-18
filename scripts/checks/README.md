@@ -67,6 +67,7 @@ live company server.
 | `logs.test.mjs` | The server log (`system:logs`, owner only): a line per request with its request id, a forced error's stack trace and `server_error` + `requestId`, client errors (`POST /client-errors`, rate-limited), secrets and search terms scrubbed, only a day (no paths), downloading audited. |
 | `notify.test.mjs` | Notifications everywhere: each kind to the people with its permission and place (never the actor), cheques due/overdue/bounced once each, stock out/low once until restocked, transfers, returns, payroll, lock and year close, a new device's sign-in, per-person choices, delete and pages, the daily summary scoped to each person (`POST /notifications/run-daily`, Development only). |
 | `deptseasons.test.mjs` | A department's season read from its name (صيفي / شتوي / summer / winter, spelling variants; none or both = both seasons), server and web alike; `season=` on the dashboard, profit and loss, assortment, stock items and valuation; scoping kept. |
+| `filters.test.mjs` | The detailed searches' server filters: invoices by rep and amount, parties by phone, cheques by bank and amount, vouchers by number/period/amount, handovers by number/box/amount, deliveries by number/customer/carrier/period, transfers by number, the activity log by words and branch, items by sale price — each only narrowing what the person may see. |
 
 ## Running
 

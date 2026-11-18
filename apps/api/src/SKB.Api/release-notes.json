@@ -75,6 +75,18 @@
         {
           "ar": "في لوحة التحكم والتحليلات والمخزون بقى فيه اختيار موسم الأقسام (كل المواسم / صيفي / شتوي) جنب القسم، بيعرف الموسم من اسم القسم، والأقسام اللي من غير موسم زي \"داخلي\" بتظهر مع الصيفي والشتوي",
           "en": "Dashboard, analytics and stock now have a departments' season choice (all / summer / winter) beside the department, read from each department's name; departments with no season word, such as underwear, show with both"
+        },
+        {
+          "ar": "صفحات كتير بقى ليها الأعمدة (إخفاء وترتيب وعرض وترتيب الصفوف): شاشة المشتريات، المرتجع، الشيكات، الباركود، أسعار المورد، العملاء والموردين، السندات، سجل النشاط، الموظفين والسلف، أصناف قوائم الأسعار",
+          "en": "Columns (show/hide, order, width, sort) on many more tables: purchase and return screens, cheque form, labels, supplier prices, parties, vouchers, activity log, employees and advances, price list items"
+        },
+        {
+          "ar": "البحث التفصيلي بقى بشكل واحد في كل صفحة: زرار بعدد الشروط، الشروط جنب بعض، وزرار مسح، وبيفضل محفوظ لما ترجع",
+          "en": "One detailed search on every list: a button counting the filters in use, the filters side by side, a Clear button, and kept when you come back"
+        },
+        {
+          "ar": "بحث جديد: الفواتير بالمندوب والمبلغ، العملاء بالتليفون، الشيكات بالبنك والمبلغ، السندات بالرقم والفترة والمبلغ، التوصيل بالرقم والعميل وشركة الشحن، الأصناف بسعر البيع، سجل النشاط بالكلمات والفرع",
+          "en": "New filters: invoices by rep and amount, parties by phone, cheques by bank and amount, vouchers by number, period and amount, deliveries by number, customer and shipping company, items by sale price, activity log by words and branch"
         }
       ],
       "fixes": [
