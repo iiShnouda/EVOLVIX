@@ -99,6 +99,18 @@
         {
           "ar": "فاتورة المورد ممكن تيجي PDF متصوّر (سكانر) وتتقري زي الصورة",
           "en": "A supplier's scanned PDF invoice is read like a photo"
+        },
+        {
+          "ar": "في «الموردون والأقسام» بقى فيه «الموسم» وجنبه «السنة»: اختار صيفي 2026 مثلاً تشوف بضاعة الموسم ده في السنة دي بس",
+          "en": "Suppliers and departments: a Season choice with a Year beside it, showing only that season's goods of that year"
+        },
+        {
+          "ar": "«مقارنة المواسم»: نفس الموسم على كذا سنة جنب بعض: المبيعات والمرتجعات والصافي والربح وعدد الأصناف والمتبقي في آخر الموسم، بالقسم أو المورد أو الصنف",
+          "en": "Seasons across years: the same season side by side over the years — sales, returns, net, profit, items and stock left at its end, by department, supplier or item"
+        },
+        {
+          "ar": "«اقتراحات الشراء»: لكل صنف الرصيد ومبيعات آخر أيام وهيكفي كام يوم والكمية المقترحة، متقسمة على الموردين",
+          "en": "What to buy: each item's stock, recent sales, days left and a suggested quantity, by supplier"
         }
       ],
       "fixes": [

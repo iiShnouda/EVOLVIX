@@ -70,6 +70,7 @@ live company server.
 | `filters.test.mjs` | The detailed searches' server filters: invoices by rep and amount, parties by phone, cheques by bank and amount, vouchers by number/period/amount, handovers by number/box/amount, deliveries by number/customer/carrier/period, transfers by number, the activity log by words and branch, items by sale price — each only narrowing what the person may see. |
 | `imports.test.mjs` | Excel imports per kind (`import:*`): server templates in Arabic and English read back, the check step's row errors, all-or-nothing, items, customers, suppliers and opening balances (parties, cash and banks, stock), audit, warehouse limits; scanned and text-only PDF invoices. |
 | `restore.test.mjs` | Restoring a backup in the app (`backup:restore`, owner only): what it holds first, wrong passphrase, not a backup, newer version, picking by name only, the typed confirmation, the safety backup, the old database kept, everyone signed out, audit. **Replaces the server's data: throwaway database only** (`PGURL`, `Backup__Folder`). |
+| `seasoncompare.test.mjs` | The year beside the season on suppliers and departments, seasons across years (per-year figures, stock at season end, items without a season), what to buy (suggestion math, order, by supplier), permissions and scoping. |
 
 ## Running
 
