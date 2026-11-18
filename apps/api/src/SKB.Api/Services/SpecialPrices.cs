@@ -43,12 +43,12 @@ public sealed class SpecialPrices
     private readonly Dictionary<Guid, HashSet<Guid>> _groups;
     /// <summary>Each item group's department.</summary>
     private readonly Dictionary<Guid, Guid?> _departmentOf;
-    /// <summary>The departments of each season, by their names (<see cref="DepartmentSeasons"/>).</summary>
-    private readonly Dictionary<string, HashSet<Guid>> _seasonDepartments;
+    /// <summary>Each department's season by its name (<see cref="DepartmentSeasons"/>; null = both).</summary>
+    private readonly Dictionary<Guid, string?> _seasonDepartments;
 
     private SpecialPrices(List<(PriceList, Dictionary<(Guid, Guid), long>)> lists, Dictionary<Guid, List<QuantityBreak>> breaks,
         Dictionary<Guid, HashSet<Guid>> groups, Dictionary<Guid, Guid?> departmentOf,
-        Dictionary<string, HashSet<Guid>> seasonDepartments)
+        Dictionary<Guid, string?> seasonDepartments)
     {
         _lists = lists;
         _breaks = breaks;
@@ -92,14 +92,10 @@ public sealed class SpecialPrices
             foreach (var l in ordered.Where(l => l.GroupId != null))
                 groups[l.Id] = Catalog.Subtree(l.GroupId!.Value, all).ToHashSet();
         }
-        var seasonDepartments = new Dictionary<string, HashSet<Guid>>();
+        var seasonDepartments = new Dictionary<Guid, string?>();
         if (ordered.Any(l => l.DepartmentSeason != null))
             foreach (var d in await db.Departments.AsNoTracking().Select(d => new { d.Id, d.Name }).ToListAsync())
-                if (DepartmentSeasons.SeasonOf(d.Name) is { } season)
-                {
-                    if (!seasonDepartments.TryGetValue(season, out var set)) seasonDepartments[season] = set = new();
-                    set.Add(d.Id);
-                }
+                seasonDepartments[d.Id] = DepartmentSeasons.SeasonOf(d.Name);
         return new SpecialPrices(
             ordered.Select(l => (l, items.Where(i => i.ListId == l.Id)
                 .ToDictionary(i => ((i.ProductId ?? i.ModelId)!.Value, i.UnitId), i => i.Price))).ToList(),
@@ -110,14 +106,16 @@ public sealed class SpecialPrices
 
     /// <summary>
     /// A seasonal list (owner, 2026-11-18) covers only the items of its season: bought for that
-    /// season, and/or of a department of that season (by its name; one with no season word is not).
+    /// season, and/or of a department of that season (by its name). A department with no season word
+    /// (e.g. «داخلي») and an item of no department count for both seasons (owner, 2026-11-18), as
+    /// in the analytics' season filter (<see cref="DepartmentSeasons.Fits"/>).
     /// </summary>
     private bool SeasonFits(PriceList list, Product product)
     {
         if (list.SeasonId is Guid season && product.SeasonId != season) return false;
         if (list.DepartmentSeason is not { } ds) return true;
-        return _departmentOf.GetValueOrDefault(product.CategoryId) is Guid d
-               && _seasonDepartments.TryGetValue(ds, out var set) && set.Contains(d);
+        return _departmentOf.GetValueOrDefault(product.CategoryId) is not Guid d
+               || _seasonDepartments.GetValueOrDefault(d) is not { } own || own == ds;
     }
 
     /// <summary>A list's own price for the item's unit (its model's, or the base unit's × factor).</summary>
