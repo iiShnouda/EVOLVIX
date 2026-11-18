@@ -38,6 +38,16 @@ import {
 import type { Tone } from '../components/ui';
 import { PartyLink } from '../components/PartyContact';
 import { Pager } from '../components/Pager';
+import { TableColumns } from '../components/TableColumns';
+import { useDeviceInfo } from '../lib/device';
+import { useAuth } from '../stores/auth';
+import {
+  Filter,
+  FilterPanel,
+  filterField,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 
 // A factory is a supplier, so there is no separate factory type.
 const TYPES: PartyType[] = ['CUSTOMER', 'SUPPLIER', 'CARRIER'];
@@ -68,8 +78,8 @@ const input =
 /** How an account stands (owner, 2026-10-02), to filter the list by. */
 const STATUSES = ['OVER_LIMIT', 'NEAR_LIMIT', 'OWES', 'CREDIT', 'SETTLED', 'CLOSED'] as const;
 
-const filterField =
-  'h-10 w-full min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
+/** What the list remembers while the app is open. */
+const PARTY_FILTERS = { search: '', code: '', phone: '', closed: '' };
 
 /** The code box's name for the kind of account searched (owner, 2026-10-22). */
 /** Whoever may change any part of an account opens its form. */
@@ -105,7 +115,13 @@ export function PartiesPage() {
   const { t } = useT();
   const can = useCan();
   const [params, setParams] = useSearchParams();
-  const [search, setSearch] = useState('');
+  // Kept while the app is open, as on the sales list (owner, 2026-11-16: the detailed search).
+  const myId = useAuth((st) => st.user?.id);
+  const [kept, keep, clearKept] = useKeptFilters(`skb.list.${myId ?? ''}.parties`, PARTY_FILTERS);
+  const search = kept.search;
+  const setSearch = (v: string) => keep({ search: v });
+  const code = kept.code;
+  const setCode = (v: string) => keep({ code: v });
   const [type, setType] = useState<PartyType | ''>(() =>
     (TYPES as string[]).includes(params.get('type') ?? '') ? (params.get('type') as PartyType) : '',
   );
@@ -116,7 +132,8 @@ export function PartiesPage() {
     else next.delete('status');
     setParams(next, { replace: true });
   };
-  const [showClosed, setShowClosed] = useState(false);
+  const showClosed = kept.closed === '1';
+  const setShowClosed = (v: boolean) => keep({ closed: v ? '1' : '' });
   const [editing, setEditing] = useState<Party | 'new' | null>(null);
   // `?new=1` (the quick-action button): the add form opens at once.
   useEffect(() => {
@@ -127,12 +144,20 @@ export function PartiesPage() {
     setParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
-  const [code, setCode] = useState('');
   const [page, setPage] = useState(1);
   const [size, setSize] = usePageSize('parties', 50);
   const query = useDeferredValue(search.trim());
   const codeQuery = useDeferredValue(/^\d+$/.test(code.trim()) ? code.trim() : '');
-  useEffect(() => setPage(1), [query, codeQuery, type, status, showClosed]);
+  const phoneQuery = useSettled(kept.phone.replace(/[^\d+]/g, ''));
+  useEffect(() => setPage(1), [query, codeQuery, phoneQuery, type, status, showClosed]);
+  const { deviceClass } = useDeviceInfo();
+  const [opened, setOpened] = useState<Party | null>(null);
+  const detailed = [type, status, kept.phone.trim(), kept.closed].filter(Boolean).length;
+  function clearDetailed() {
+    setType('');
+    setStatus('');
+    clearKept();
+  }
   const { data, isLoading } = useParties({
     page,
     pageSize: size,
@@ -140,6 +165,7 @@ export function PartiesPage() {
     search: query || undefined,
     code: codeQuery || undefined,
     status: status || undefined,
+    phone: phoneQuery || undefined,
     active: showClosed || status === 'CLOSED' ? undefined : true,
   });
   return (
@@ -156,10 +182,38 @@ export function PartiesPage() {
         }
       />
 
-      {/* Each filter with its name over it, two to a row on a phone (owner, 2026-10-22). */}
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end">
-        <label className="block min-w-0 sm:w-40">
-          <span className="mb-0.5 block text-xs text-muted">{t('parties.type')}</span>
+      <FilterPanel
+        id="parties"
+        active={detailed}
+        onClear={clearDetailed}
+        quick={
+          <>
+            <label className="block w-24 min-w-0 sm:w-32">
+              <span className="mb-0.5 block text-xs text-muted">{t(codeLabel(type))}</span>
+              <input
+                className={`${filterField} tnum`}
+                inputMode="numeric"
+                dir="ltr"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </label>
+            <label className="relative block min-w-0 flex-1 basis-48">
+              <span className="mb-0.5 block text-xs text-muted">{t(nameSearchLabel(type))}</span>
+              <span className="pointer-events-none absolute bottom-0 start-3 grid h-9 place-items-center text-faint">
+                <Icon name="search" size={16} />
+              </span>
+              <input
+                className={`${filterField} ps-9`}
+                value={search}
+                placeholder={t('parties.search')}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+          </>
+        }
+      >
+        <Filter label={t('parties.type')}>
           <select
             className={filterField}
             value={type}
@@ -172,9 +226,8 @@ export function PartiesPage() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="block min-w-0 sm:w-44">
-          <span className="mb-0.5 block text-xs text-muted">{t('parties.status')}</span>
+        </Filter>
+        <Filter label={t('parties.status')}>
           <select
             className={filterField}
             value={status}
@@ -187,30 +240,17 @@ export function PartiesPage() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="block min-w-0 sm:w-32">
-          <span className="mb-0.5 block text-xs text-muted">{t(codeLabel(type))}</span>
+        </Filter>
+        <Filter label={t('parties.phone')}>
           <input
             className={`${filterField} tnum`}
-            inputMode="numeric"
+            inputMode="tel"
             dir="ltr"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
+            value={kept.phone}
+            onChange={(e) => keep({ phone: e.target.value })}
           />
-        </label>
-        <label className="relative block min-w-0 sm:flex-1 sm:basis-64">
-          <span className="mb-0.5 block text-xs text-muted">{t(nameSearchLabel(type))}</span>
-          <span className="pointer-events-none absolute bottom-0 start-3 grid h-10 place-items-center text-faint">
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            className={`${filterField} ps-9`}
-            value={search}
-            placeholder={t('parties.search')}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-        <label className="col-span-2 flex h-10 items-center gap-2 text-sm text-muted">
+        </Filter>
+        <label className="flex h-9 items-center gap-2 self-end text-sm text-muted">
           <input
             type="checkbox"
             checked={showClosed}
@@ -218,7 +258,7 @@ export function PartiesPage() {
           />
           {t('parties.showClosed')}
         </label>
-      </div>
+      </FilterPanel>
 
       {isLoading ? (
         <div className="grid place-items-center py-16 text-muted">
@@ -230,15 +270,23 @@ export function PartiesPage() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {data.items.map((party) => (
-              <PartyCard
-                key={party.id}
-                party={party}
-                onEdit={EDIT_PERMISSIONS.some(can) ? () => setEditing(party) : undefined}
-              />
-            ))}
-          </div>
+          {deviceClass === 'phone' ? (
+            <div className="grid grid-cols-1 gap-3">
+              {data.items.map((party) => (
+                <PartyCard
+                  key={party.id}
+                  party={party}
+                  onEdit={EDIT_PERMISSIONS.some(can) ? () => setEditing(party) : undefined}
+                />
+              ))}
+            </div>
+          ) : (
+            <PartyTable
+              parties={data.items}
+              onOpen={setOpened}
+              onEdit={EDIT_PERMISSIONS.some(can) ? setEditing : undefined}
+            />
+          )}
           {data.total > 10 && (
             <div className="flex justify-center">
               <Pager
@@ -256,6 +304,23 @@ export function PartiesPage() {
         </>
       )}
 
+      {/* The table opens a party's card with everything on it. */}
+      {opened && (
+        <Sheet title={opened.name} onClose={() => setOpened(null)} closeLabel={t('common.close')}>
+          <PartyCard
+            party={data?.items.find((p) => p.id === opened.id) ?? opened}
+            onEdit={
+              EDIT_PERMISSIONS.some(can)
+                ? () => {
+                    setEditing(opened);
+                    setOpened(null);
+                  }
+                : undefined
+            }
+          />
+        </Sheet>
+      )}
+
       {editing && (
         <PartySheet
           key={editing === 'new' ? 'new' : editing.id}
@@ -264,6 +329,119 @@ export function PartiesPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The parties as a table on a computer or tablet (owner, 2026-11-16: every list with its columns):
+ * code, name, kind, phone, balance and limit; a row opens the party's card.
+ */
+function PartyTable({
+  parties,
+  onOpen,
+  onEdit,
+}: {
+  parties: Party[];
+  onOpen: (p: Party) => void;
+  onEdit?: (p: Party) => void;
+}) {
+  const { t, locale } = useT();
+  const seeBalance = parties.some((p) => p.balance != null);
+  const seeLimit = parties.some((p) => p.creditLimit != null);
+  return (
+    <Card padded={false} className="overflow-hidden">
+      <TableColumns id="parties" className="pt-2">
+        <div className="overflow-x-auto">
+          <table className="w-full whitespace-nowrap text-sm">
+            <thead className="bg-surface-2 text-xs text-muted">
+              <tr>
+                <th className="p-2 text-start font-medium">{t('parties.code')}</th>
+                <th className="p-2 text-start font-medium">{t('parties.name')}</th>
+                <th className="p-2 text-start font-medium">{t('parties.type')}</th>
+                <th className="p-2 text-start font-medium">{t('parties.phone')}</th>
+                <th className="p-2 text-start font-medium">{t('parties.address')}</th>
+                {seeBalance && <th className="p-2 text-end font-medium">{t('parties.balance')}</th>}
+                {seeLimit && (
+                  <th className="p-2 text-end font-medium">{t('parties.creditLimit')}</th>
+                )}
+                <th className="p-2 text-start font-medium">{t('parties.status')}</th>
+                <th className="w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {parties.map((party) => {
+                const bal = balanceView(party.balance ?? 0, party.currency);
+                return (
+                  <tr
+                    key={party.id}
+                    onClick={() => onOpen(party)}
+                    className={`cursor-pointer hover:bg-surface-2 ${party.isActive ? '' : 'opacity-70'}`}
+                  >
+                    <td className="p-2 text-muted tnum">{party.code}</td>
+                    <td className="max-w-72 p-2 font-medium" onClick={(e) => e.stopPropagation()}>
+                      <PartyLink id={party.id} name={party.name} truncate />
+                    </td>
+                    <td className="p-2 text-xs">
+                      {party.types.map((type) => t(TYPE_LABEL[type])).join(' · ')}
+                    </td>
+                    <td className="p-2 tnum" dir="ltr">
+                      {party.phone ?? ''}
+                    </td>
+                    <td className="max-w-60 truncate p-2 text-xs text-muted">
+                      {party.address ?? ''}
+                    </td>
+                    {seeBalance && (
+                      <td
+                        className={`p-2 text-end font-medium tnum ${
+                          bal.direction === 'receivable'
+                            ? 'text-positive'
+                            : bal.direction === 'payable'
+                              ? 'text-warning'
+                              : 'text-muted'
+                        }`}
+                      >
+                        {party.balance == null ? '' : formatMoney(bal.amount, bal.currency, locale)}
+                      </td>
+                    )}
+                    {seeLimit && (
+                      <td className="p-2 text-end tnum">
+                        {party.creditLimit == null
+                          ? ''
+                          : formatMoney(party.creditLimit, party.currency, locale)}
+                      </td>
+                    )}
+                    <td className="p-2 text-xs">
+                      {!party.isActive
+                        ? t('parties.closed')
+                        : party.balance == null
+                          ? ''
+                          : bal.direction === 'receivable'
+                            ? t('parties.theyOweUs')
+                            : bal.direction === 'payable'
+                              ? t('parties.weOweThem')
+                              : t('parties.settled')}
+                    </td>
+                    <td className="p-1" onClick={(e) => e.stopPropagation()}>
+                      {onEdit && (
+                        <button
+                          type="button"
+                          className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-fg"
+                          aria-label={t('parties.edit')}
+                          title={t('parties.edit')}
+                          onClick={() => onEdit(party)}
+                        >
+                          <Icon name="notes" size={15} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </TableColumns>
+    </Card>
   );
 }
 

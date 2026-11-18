@@ -234,6 +234,10 @@ export function useDocumentList(
     state?: string;
     branchId?: string;
     warehouseId?: string;
+    /** Sales: the rep; and the total between two amounts (minor units). */
+    repId?: string;
+    min?: string;
+    max?: string;
     pageSize?: number;
     /** Off: not asked for (e.g. no permission to see that list). */
     enabled?: boolean;
@@ -256,6 +260,9 @@ export function useDocumentList(
   if (params.state) query.set('state', params.state);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
+  if (params.repId) query.set('repId', params.repId);
+  if (params.min) query.set('min', params.min);
+  if (params.max) query.set('max', params.max);
   return useQuery({
     queryKey: [scope, kind, key],
     queryFn: () => api.get<DocumentList>(`/${scope}/${kind}?${query}`),
@@ -282,6 +289,8 @@ export function useParties(params: {
   active?: boolean;
   /** How the account stands: OVER_LIMIT, NEAR_LIMIT, OWES, CREDIT, SETTLED or CLOSED. */
   status?: string;
+  /** A phone number or part of it (digits). */
+  phone?: string;
   pageSize?: number;
   enabled?: boolean;
 }) {
@@ -290,6 +299,7 @@ export function useParties(params: {
     pageSize: String(params.pageSize ?? 20),
   });
   if (params.type) query.set('type', params.type);
+  if (params.phone) query.set('phone', params.phone);
   if (params.status) query.set('status', params.status);
   if (params.search) query.set('search', params.search);
   if (params.code) query.set('code', params.code);
@@ -749,6 +759,9 @@ export function useInventory(params: {
   season?: DepartmentSeason;
   code?: string;
   supplierId?: string;
+  /** The sale price between two amounts (minor units). */
+  priceMin?: string;
+  priceMax?: string;
   /** One page, sorted by a column (the inventory list); none = every item (stock look-ups). */
   page?: number;
   pageSize?: number;
@@ -771,6 +784,8 @@ export function useInventory(params: {
   if (params.search) query.set('search', params.search);
   if (params.code) query.set('code', params.code);
   if (params.supplierId) query.set('supplierId', params.supplierId);
+  if (params.priceMin) query.set('priceMin', params.priceMin);
+  if (params.priceMax) query.set('priceMax', params.priceMax);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.departmentId) query.set('departmentId', params.departmentId);
   if (params.departmentId && params.groupId) query.set('groupId', params.groupId);
@@ -906,6 +921,8 @@ export interface TransferFilter {
   toBranchId?: string;
   toWarehouseId?: string;
   departmentId?: string;
+  /** Its number, or part of it. */
+  number?: string;
 }
 
 export function useTransfers(
@@ -1636,8 +1653,20 @@ function invalidateAfterDelivery(qc: ReturnType<typeof useQueryClient>) {
   invalidateAfterPosting(qc, 'sales');
 }
 
-export function useDeliveries(params: { status?: string; method?: string }) {
+export function useDeliveries(params: {
+  status?: string;
+  method?: string;
+  /** The detailed search: invoice number, customer name / code, shipping company, company days. */
+  number?: string;
+  party?: string;
+  partyCode?: string;
+  carrierId?: string;
+  from?: string;
+  to?: string;
+}) {
   const query = new URLSearchParams({ pageSize: '100' });
+  for (const k of ['number', 'party', 'partyCode', 'carrierId', 'from', 'to'] as const)
+    if (params[k]) query.set(k, params[k]!);
   if (params.status) query.set('status', params.status);
   if (params.method) query.set('method', params.method);
   return useQuery({
@@ -1780,8 +1809,20 @@ export function useVouchers(params: {
   status?: string;
   partyId?: string;
   branchId?: string;
+  /** The detailed search: an account, its number, company days and the amount (minor units). */
+  accountId?: string;
+  number?: string;
+  from?: string;
+  to?: string;
+  min?: string;
+  max?: string;
+  page?: number;
+  pageSize?: number;
 }) {
-  const query = new URLSearchParams({ pageSize: '100' });
+  const query = new URLSearchParams({ pageSize: String(params.pageSize ?? 100) });
+  if (params.page && params.page > 1) query.set('page', String(params.page));
+  for (const k of ['accountId', 'number', 'from', 'to', 'min', 'max'] as const)
+    if (params[k]) query.set(k, params[k]!);
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.type) query.set('type', params.type);
   if (params.status) query.set('status', params.status);
@@ -1884,16 +1925,24 @@ export function useDeleteMoneyAccount() {
 export function useCashHandovers(
   side: '' | 'in' | 'out',
   status: string,
-  period: { from?: string; to?: string } = {},
+  period: {
+    from?: string;
+    to?: string;
+    /** The detailed search: its number, a box on either side, the amount (minor units). */
+    number?: string;
+    accountId?: string;
+    min?: string;
+    max?: string;
+  } = {},
 ) {
   return useQuery({
-    queryKey: ['money', 'handovers', side, status, period.from ?? '', period.to ?? ''],
+    queryKey: ['money', 'handovers', side, status, period],
     queryFn: () => {
       const q = new URLSearchParams();
       if (side) q.set('side', side);
       if (status) q.set('status', status);
-      if (period.from) q.set('from', period.from);
-      if (period.to) q.set('to', period.to);
+      for (const k of ['from', 'to', 'number', 'accountId', 'min', 'max'] as const)
+        if (period[k]) q.set(k, period[k]!);
       return api.get<CashHandover[]>(`/cash-handovers?${q}`);
     },
   });
@@ -2071,9 +2120,16 @@ export function useNotes(params: {
   /** Due between two days (yyyy-mm-dd). */
   dueFrom?: string;
   dueTo?: string;
+  /** The bank, and the amount between two (minor units). */
+  bankId?: string;
+  min?: string;
+  max?: string;
   page?: number;
 }) {
   const query = new URLSearchParams({ pageSize: '100' });
+  if (params.bankId) query.set('bankId', params.bankId);
+  if (params.min) query.set('min', params.min);
+  if (params.max) query.set('max', params.max);
   if (params.kind) query.set('kind', params.kind);
   if (params.partyId) query.set('partyId', params.partyId);
   if (params.dueFrom) query.set('dueFrom', params.dueFrom);
@@ -2268,6 +2324,9 @@ export interface AuditFilter {
   to?: string;
   /** One record's own history (an invoice's activity log). */
   resourceId?: string;
+  /** Words in what was done, and a branch (the detailed search). */
+  search?: string;
+  branchId?: string;
   page: number;
   pageSize?: number;
 }

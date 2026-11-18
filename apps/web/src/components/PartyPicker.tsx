@@ -32,7 +32,8 @@ export function PartyPicker({
   withCode,
   disabled,
 }: {
-  type: 'CUSTOMER' | 'SUPPLIER' | 'CARRIER';
+  /** '' = any kind (a filter over customers and suppliers alike). */
+  type: 'CUSTOMER' | 'SUPPLIER' | 'CARRIER' | '';
   value: Party | null;
   onChange: (party: Party | null) => void;
   label: string;
@@ -55,7 +56,7 @@ export function PartyPicker({
   const list = useParties({
     page: 1,
     pageSize: 7,
-    type,
+    type: type || undefined,
     active: true,
     search: search || undefined,
     enabled: open,
@@ -136,13 +137,17 @@ export function PartyPicker({
       ? 'parties.customerCode'
       : type === 'SUPPLIER'
         ? 'parties.supplierCode'
-        : 'parties.carrierCode';
+        : type === 'CARRIER'
+          ? 'parties.carrierCode'
+          : 'parties.code';
   const nameKey: TranslationKey =
     type === 'CUSTOMER'
       ? 'parties.customerName'
       : type === 'SUPPLIER'
         ? 'parties.supplierName'
-        : 'parties.carrierName';
+        : type === 'CARRIER'
+          ? 'parties.carrierName'
+          : 'parties.name';
   const generic = [t('invoice.customer'), t('invoice.supplier'), t('inventory.supplier')];
   const nameLabel = !withCode
     ? label

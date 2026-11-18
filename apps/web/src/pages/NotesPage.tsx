@@ -23,6 +23,15 @@ import { api } from '../lib/api';
 import { useDeviceInfo } from '../lib/device';
 import { TableColumns } from '../components/TableColumns';
 import { Pager } from '../components/Pager';
+import {
+  Filter,
+  FilterPanel,
+  RangeFilter,
+  filterField,
+  minorOf,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
 import { CodeName } from '../components/CodeName';
@@ -30,6 +39,7 @@ import { PartyLink } from '../components/PartyContact';
 import {
   useDepositNotes,
   useMoneyAccounts,
+  useBanks,
   useNotes,
   useNotesSummary,
   useNoteStep,
@@ -93,8 +103,8 @@ const TONE: Record<NoteStatus, Tone> = {
 
 const input =
   'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand disabled:opacity-60';
-const small =
-  'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
+/** What a list of notes remembers while the app is open. */
+const NOTE_FILTERS = { search: '', kind: '', dueFrom: '', dueTo: '', bankId: '', min: '', max: '' };
 
 /**
  * Cheques & promissory notes (الأوراق المالية): what we hold (receivable) and what we issued
@@ -309,24 +319,39 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
   const { t, locale } = useT();
   const can = useCan();
   const [status, setStatus] = useState<NoteStatus | ''>('');
-  const [search, setSearch] = useState('');
-  const term = useDeferredValue(search);
-  const [kind, setKind] = useState('');
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [f, keep, clearKept] = useKeptFilters(`skb.list.notes.${direction}`, NOTE_FILTERS);
+  const search = f.search;
+  const setSearch = (v: string) => keep({ search: v });
+  const term = useSettled(search);
   const [party, setParty] = useState<Party | null>(null);
-  const [dueFrom, setDueFrom] = useState('');
-  const [dueTo, setDueTo] = useState('');
   const [page, setPage] = useState(1);
+  const banks = useBanks();
+  const amounts = useSettled(`${minorOf(f.min)}\u0001${minorOf(f.max)}`);
+  const [min = '', max = ''] = amounts.split('\u0001');
+  const filterKey = [term, f.kind, f.dueFrom, f.dueTo, f.bankId, amounts, party?.id].join('|');
+  const [lastKey, setLastKey] = useState(filterKey);
+  if (lastKey !== filterKey) {
+    setLastKey(filterKey);
+    setPage(1);
+  }
   const { deviceClass } = useDeviceInfo();
   const { data, isLoading } = useNotes({
     direction,
     status: status || undefined,
     search: term,
-    kind: kind || undefined,
+    kind: f.kind || undefined,
     partyId: party?.id,
-    dueFrom: dueFrom || undefined,
-    dueTo: dueTo || undefined,
+    dueFrom: f.dueFrom || undefined,
+    dueTo: f.dueTo || undefined,
+    bankId: f.bankId || undefined,
+    min: min || undefined,
+    max: max || undefined,
     page,
   });
+  const detailed =
+    [f.kind, f.dueFrom || f.dueTo, f.bankId, f.min || f.max].filter(Boolean).length +
+    (party ? 1 : 0);
   const [open, setOpen] = useState<Note | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [depositing, setDepositing] = useState(false);
@@ -356,32 +381,37 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
             </button>
           ))}
         </div>
-        <input
-          className={`${small} w-56`}
-          placeholder={t('cheque.findHint')}
-          aria-label={t('cheque.find')}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-        />
         {canDeposit && picked.length > 0 && (
           <Button size="sm" onClick={() => setDepositing(true)}>
             {t('notes.depositSelected')} ({picked.length})
           </Button>
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('notes.kindCol')}</span>
+      <FilterPanel
+        id={`notes.${direction}`}
+        active={detailed}
+        onClear={() => {
+          clearKept();
+          setParty(null);
+        }}
+        quick={
+          <label className="block min-w-48 flex-1 sm:max-w-sm">
+            <span className="mb-0.5 block text-xs text-muted">{t('cheque.find')}</span>
+            <input
+              type="search"
+              className={filterField}
+              placeholder={t('cheque.findHint')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+        }
+      >
+        <Filter label={t('notes.kindCol')}>
           <select
-            className={small}
-            value={kind}
-            onChange={(e) => {
-              setKind(e.target.value);
-              setPage(1);
-            }}
+            className={filterField}
+            value={f.kind}
+            onChange={(e) => keep({ kind: e.target.value })}
           >
             <option value="">{t('notes.allKinds')}</option>
             {(['CHEQUE', 'PROMISSORY_NOTE'] as const).map((k) => (
@@ -390,45 +420,59 @@ function NotesTab({ direction }: { direction: NoteDirection }) {
               </option>
             ))}
           </select>
-        </label>
-        <PartyPicker
-          type={direction === 'RECEIVABLE' ? 'CUSTOMER' : 'SUPPLIER'}
-          withCode
-          value={party}
-          onChange={(p) => {
-            setParty(p);
-            setPage(1);
-          }}
-          label={t('notes.party')}
-          placeholder={t('notes.allParties')}
+        </Filter>
+        <div className="min-w-0 sm:col-span-2">
+          <PartyPicker
+            type={direction === 'RECEIVABLE' ? 'CUSTOMER' : 'SUPPLIER'}
+            withCode
+            value={party}
+            onChange={setParty}
+            label={t('notes.party')}
+            placeholder={t('notes.allParties')}
+          />
+        </div>
+        {(banks.data ?? []).length > 0 && (
+          <Filter label={t('notes.bank')}>
+            <select
+              className={filterField}
+              value={f.bankId}
+              onChange={(e) => keep({ bankId: e.target.value })}
+            >
+              <option value="">{t('list.all')}</option>
+              {(banks.data ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </Filter>
+        )}
+        <Filter label={t('notes.dueFrom')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.dueFrom}
+            max={f.dueTo || undefined}
+            onChange={(e) => keep({ dueFrom: e.target.value })}
+          />
+        </Filter>
+        <Filter label={t('notes.dueTo')}>
+          <input
+            type="date"
+            className={`${filterField} tnum`}
+            value={f.dueTo}
+            min={f.dueFrom || undefined}
+            onChange={(e) => keep({ dueTo: e.target.value })}
+          />
+        </Filter>
+        <RangeFilter
+          label={t('notes.amount')}
+          from={f.min}
+          to={f.max}
+          onFrom={(v) => keep({ min: v })}
+          onTo={(v) => keep({ max: v })}
         />
-        <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('notes.dueFrom')}</span>
-          <input
-            type="date"
-            className={small}
-            value={dueFrom}
-            max={dueTo || undefined}
-            onChange={(e) => {
-              setDueFrom(e.target.value);
-              setPage(1);
-            }}
-          />
-        </label>
-        <label className="block">
-          <span className="mb-0.5 block text-xs text-muted">{t('notes.dueTo')}</span>
-          <input
-            type="date"
-            className={small}
-            value={dueTo}
-            min={dueFrom || undefined}
-            onChange={(e) => {
-              setDueTo(e.target.value);
-              setPage(1);
-            }}
-          />
-        </label>
-      </div>
+      </FilterPanel>
       {isLoading ? (
         <Loading />
       ) : !data || data.items.length === 0 ? (

@@ -39,6 +39,14 @@ import {
   useSetPriceListParties,
   useSetQuantityBreaks,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
+import {
+  Filter,
+  FilterPanel,
+  countActive,
+  filterField,
+  useKeptFilters,
+} from '../components/FilterPanel';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:opacity-60';
@@ -120,12 +128,29 @@ export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}
 
 // ------------------------------------------------------------------ lists
 
+/** What the price lists remember while the app is open. */
+const LIST_FILTERS = { search: '', side: '', state: '' };
+
 function ListsTab() {
   const { t, locale } = useT();
   const can = useCan();
   const lists = usePriceLists();
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [f, keep, clear] = useKeptFilters('skb.list.priceLists', LIST_FILTERS);
+  const words = f.search.trim().toLowerCase();
+  const shown = (lists.data ?? []).filter(
+    (l) =>
+      (!words || l.name.toLowerCase().includes(words)) &&
+      (!f.side || l.side === f.side) &&
+      (!f.state ||
+        (f.state === 'closed'
+          ? !l.isActive
+          : f.state === 'current'
+            ? l.isActive && l.current
+            : l.isActive && !l.current)),
+  );
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
@@ -143,16 +168,56 @@ function ListsTab() {
               {t('pl.new')}
             </Button>
           ))}
+        <FilterPanel
+          id="priceLists"
+          active={countActive(f, LIST_FILTERS, ['side', 'state'])}
+          onClear={clear}
+          quick={
+            <label className="block min-w-40 flex-1">
+              <span className="mb-0.5 block text-xs text-muted">{t('pl.name')}</span>
+              <input
+                type="search"
+                className={filterField}
+                value={f.search}
+                onChange={(e) => keep({ search: e.target.value })}
+              />
+            </label>
+          }
+        >
+          <Filter label={t('pl.side')}>
+            <select
+              className={filterField}
+              value={f.side}
+              onChange={(e) => keep({ side: e.target.value })}
+            >
+              <option value="">{t('common.all')}</option>
+              <option value="SALE">{t('pl.sideSale')}</option>
+              <option value="PURCHASE">{t('pl.sidePurchase')}</option>
+            </select>
+          </Filter>
+          <Filter label={t('common.status')}>
+            <select
+              className={filterField}
+              value={f.state}
+              onChange={(e) => keep({ state: e.target.value })}
+            >
+              <option value="">{t('common.all')}</option>
+              <option value="current">{t('pl.current')}</option>
+              <option value="notCurrent">{t('pl.notCurrent')}</option>
+              <option value="closed">{t('pl.closed')}</option>
+            </select>
+          </Filter>
+        </FilterPanel>
         <Card padded={false} className="overflow-hidden">
           {lists.isLoading ? (
             <div className="grid place-items-center py-12 text-muted">
               <Spinner size={24} />
             </div>
-          ) : (lists.data ?? []).length === 0 ? (
+          ) : shown.length === 0 ? (
             <EmptyState title={t('pl.empty')} icon="inventory" />
           ) : (
             <ul className="divide-y divide-[var(--c-line)]">
-              {(lists.data ?? []).map((l) => (
+              {shown.map((l) => (
                 <li key={l.id}>
                   <button
                     onClick={() => setSelected(l.id)}
@@ -584,42 +649,64 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
         {rows.length === 0 ? (
           <p className="text-sm text-muted">{t('pl.noItems')}</p>
         ) : (
-          <ul className="divide-y divide-[var(--c-line)]">
-            {rows.map((r) => (
-              <li key={r.key} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="min-w-0 flex-1">
-                  <bdi className="block truncate text-sm font-medium">{r.name}</bdi>
-                  <span className="block truncate text-xs text-muted">
-                    <bdi>{r.unitName}</bdi>
-                    {r.factor > 1 ? ` × ${formatNumber(r.factor, locale)}` : ''}
-                    {r.levelPrice != null &&
-                      ` · ${t('pl.levelPrice')} ${formatMoney(r.levelPrice, currency, locale)}`}
-                  </span>
-                </span>
-                <input
-                  className={`${field} tnum !w-28`}
-                  inputMode="decimal"
-                  aria-label={t('pl.listPrice')}
-                  disabled={!canManage}
-                  value={r.price}
-                  onChange={(e) =>
-                    setRows(
-                      rows.map((x) => (x.key === r.key ? { ...x, price: e.target.value } : x)),
-                    )
-                  }
-                />
-                {canManage && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon="close"
-                    aria-label={t('common.cancel')}
-                    onClick={() => setRows(rows.filter((x) => x.key !== r.key))}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
+          <TableColumns id="priceLists.items">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('invoice.item')}</th>
+                    <th className="p-2 text-start font-medium">{t('invoice.unit')}</th>
+                    <th className="p-2 text-end font-medium">{t('pl.levelPrice')}</th>
+                    <th className="p-2 text-end font-medium">{t('pl.listPrice')}</th>
+                    {canManage && <th className="w-10" />}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((r) => (
+                    <tr key={r.key}>
+                      <td className="max-w-72 p-2">
+                        <bdi className="block truncate font-medium">{r.name}</bdi>
+                      </td>
+                      <td className="whitespace-nowrap p-2 text-xs text-muted">
+                        <bdi>{r.unitName}</bdi>
+                        {r.factor > 1 ? ` × ${formatNumber(r.factor, locale)}` : ''}
+                      </td>
+                      <td className="whitespace-nowrap p-2 text-end text-muted tnum">
+                        {r.levelPrice != null ? formatMoney(r.levelPrice, currency, locale) : ''}
+                      </td>
+                      <td className="p-1 text-end">
+                        <input
+                          className={`${field} tnum !w-28`}
+                          inputMode="decimal"
+                          aria-label={t('pl.listPrice')}
+                          disabled={!canManage}
+                          value={r.price}
+                          onChange={(e) =>
+                            setRows(
+                              rows.map((x) =>
+                                x.key === r.key ? { ...x, price: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                      {canManage && (
+                        <td className="p-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="close"
+                            aria-label={t('common.cancel')}
+                            onClick={() => setRows(rows.filter((x) => x.key !== r.key))}
+                          />
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
         )}
         {(canManage || deletes) && (
           <div className="flex flex-wrap items-center gap-2">

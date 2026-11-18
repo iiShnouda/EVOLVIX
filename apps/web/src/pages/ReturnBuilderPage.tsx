@@ -29,6 +29,7 @@ import {
   useWarehouses,
   type DocScope,
 } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
@@ -546,65 +547,69 @@ function ReturnForm({ scope, fromInvoice }: { scope: DocScope; fromInvoice: stri
             ))}
           </ul>
         ) : (
-          <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-            <table className="w-full text-[13px]">
-              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-                <tr className="whitespace-nowrap">
-                  <th className="px-1.5 py-2 text-start font-medium">#</th>
-                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
-                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
-                  <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
-                  <th className="px-1.5 py-2 text-end font-medium">{t('return.remaining')}</th>
-                  <th className="px-1.5 py-2 text-end font-medium">{t('return.pricePaid')}</th>
-                  <th className="px-1.5 py-2 text-start font-medium">{t('return.fromInvoices')}</th>
-                  <th className="px-1.5 py-2 text-end font-medium">{t('invoice.lineTotal')}</th>
-                  <th className="w-8" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {rows.map((r, i) => (
-                  <tr key={r.l.key} className={r.short ? 'bg-destructive-soft/40' : ''}>
-                    <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
-                    <td className="min-w-40 px-1.5 py-2">
-                      <span className="block font-medium">{r.item?.name}</span>
-                      <span className="block text-xs text-muted tnum">{r.item?.sku}</span>
-                    </td>
-                    <td className="px-1.5 py-1.5">
-                      <UnitSelect
-                        row={r}
-                        onChange={(unitId) => update(r.l.key, { unitId })}
-                        className="w-28"
-                      />
-                    </td>
-                    <td className="px-1.5 py-1.5">
-                      <QtyInput
-                        value={r.l.qty}
-                        max={r.room}
-                        onChange={(v) => update(r.l.key, { qty: v })}
-                      />
-                    </td>
-                    <td className="whitespace-nowrap px-1.5 py-2 text-end text-muted tnum">
-                      {r.room}
-                    </td>
-                    <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
-                      {priceOf(r) != null ? formatMoney(priceOf(r)!, currency, locale) : ''}
-                    </td>
-                    <td className="px-1.5 py-2 text-xs text-muted tnum">
-                      <RowNote row={r} fromOf={fromOf} inline />
-                    </td>
-                    <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
-                      {formatMoney(r.value, currency, locale)}
-                    </td>
-                    <td className="px-1 py-1.5">
-                      <RemoveButton
-                        onClick={() => setLines((p) => p.filter((x) => x.key !== r.l.key))}
-                      />
-                    </td>
+          <TableColumns id="return.lines">
+            <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
+              <table className="w-full text-[13px]">
+                <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                  <tr className="whitespace-nowrap">
+                    <th className="px-1.5 py-2 text-start font-medium">#</th>
+                    <th className="px-1.5 py-2 text-start font-medium">{t('invoice.item')}</th>
+                    <th className="px-1.5 py-2 text-start font-medium">{t('invoice.unit')}</th>
+                    <th className="px-1.5 py-2 text-start font-medium">{t('invoice.qty')}</th>
+                    <th className="px-1.5 py-2 text-end font-medium">{t('return.remaining')}</th>
+                    <th className="px-1.5 py-2 text-end font-medium">{t('return.pricePaid')}</th>
+                    <th className="px-1.5 py-2 text-start font-medium">
+                      {t('return.fromInvoices')}
+                    </th>
+                    <th className="px-1.5 py-2 text-end font-medium">{t('invoice.lineTotal')}</th>
+                    <th className="w-8" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((r, i) => (
+                    <tr key={r.l.key} className={r.short ? 'bg-destructive-soft/40' : ''}>
+                      <td className="px-1.5 py-2 text-muted tnum">{i + 1}</td>
+                      <td className="min-w-40 px-1.5 py-2">
+                        <span className="block font-medium">{r.item?.name}</span>
+                        <span className="block text-xs text-muted tnum">{r.item?.sku}</span>
+                      </td>
+                      <td className="px-1.5 py-1.5">
+                        <UnitSelect
+                          row={r}
+                          onChange={(unitId) => update(r.l.key, { unitId })}
+                          className="w-28"
+                        />
+                      </td>
+                      <td className="px-1.5 py-1.5">
+                        <QtyInput
+                          value={r.l.qty}
+                          max={r.room}
+                          onChange={(v) => update(r.l.key, { qty: v })}
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-1.5 py-2 text-end text-muted tnum">
+                        {r.room}
+                      </td>
+                      <td className="whitespace-nowrap px-1.5 py-2 text-end tnum">
+                        {priceOf(r) != null ? formatMoney(priceOf(r)!, currency, locale) : ''}
+                      </td>
+                      <td className="px-1.5 py-2 text-xs text-muted tnum">
+                        <RowNote row={r} fromOf={fromOf} inline />
+                      </td>
+                      <td className="whitespace-nowrap px-1.5 py-2 text-end font-semibold tnum">
+                        {formatMoney(r.value, currency, locale)}
+                      </td>
+                      <td className="px-1 py-1.5">
+                        <RemoveButton
+                          onClick={() => setLines((p) => p.filter((x) => x.key !== r.l.key))}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
         )}
 
         <Labelled label={t('invoice.notes')}>

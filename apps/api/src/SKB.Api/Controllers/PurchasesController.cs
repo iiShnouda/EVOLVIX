@@ -60,6 +60,7 @@ public sealed class PurchasesController : ControllerBase
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
+        q = DocumentLists.More(q, Request.Query);
         // Invoices with items of this department (owner, 2026-10-19: a purchase isn't of one department).
         if (Guid.TryParse(Request.Query["departmentId"], out var dep))
             q = q.Where(d => d.Lines.Any(l => l.Product != null && l.Product.Category != null && l.Product.Category.DepartmentId == dep));

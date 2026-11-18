@@ -88,6 +88,7 @@ public sealed class SalesController : ControllerBase
         q = DocumentLists.Filter(q, search, status, from, to);
         q = DocumentLists.Find(q, Request.Query["number"], Request.Query["party"], Request.Query["partyCode"]);
         q = DocumentLists.Narrow(q, Request.Query["branchId"], Request.Query["warehouseId"]);
+        q = DocumentLists.More(q, Request.Query);
         return Ok(await DocumentLists.PageAsync(_db, q, page, pageSize, payment, Request.Query["state"]));
     }
 
@@ -686,7 +687,8 @@ public sealed class SalesController : ControllerBase
     /// new cash box, and whose sign-in an employee is. Only for those who pick one of them.
     /// </summary>
     [HttpGet("reps")]
-    [AnyPermission(Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesOrder,
+    // Also for the sales list's detailed search (owner, 2026-11-16: by rep).
+    [AnyPermission(Permissions.SalesCreate, Permissions.SalesEdit, Permissions.SalesOrder, Permissions.SalesView,
         Permissions.MoneyAccountsCreate, Permissions.EmployeesCreate, Permissions.EmployeesEdit)]
     public async Task<ActionResult<RepOptionDto[]>> Reps()
     {

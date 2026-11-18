@@ -2,6 +2,7 @@ import { confirm } from '../lib/confirm';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  companyDay,
   formatDate,
   formatMoney,
   formatMonth,
@@ -62,6 +63,14 @@ import {
   useShifts,
 } from '../lib/queries';
 import { TableColumns } from '../components/TableColumns';
+import { useDeviceInfo } from '../lib/device';
+import {
+  Filter,
+  FilterPanel,
+  countActive,
+  filterField,
+  useKeptFilters,
+} from '../components/FilterPanel';
 
 type Tab = 'runs' | 'attendance' | 'employees' | 'advances' | 'setup';
 /** Each part opens for its own permissions (owner, 2026-10-23: none needs another). */
@@ -1000,25 +1009,128 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
 
 /* ------------------------------------------------------------ employees */
 
+/** What the employees list remembers while the app is open. */
+const EMPLOYEE_FILTERS = { search: '', branchId: '', shiftId: '', job: '', owes: '', inactive: '' };
+
 function EmployeesTab() {
   const { t, locale } = useT();
   const can = useCan();
   const currency = useCurrency();
   const list = useEmployees();
   const [editing, setEditing] = useState<Employee | 'new' | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
-  const rows = (list.data ?? []).filter((e) => showInactive || e.isActive);
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [f, keep, clear] = useKeptFilters('skb.list.employees', EMPLOYEE_FILTERS);
+  const showInactive = f.inactive === '1';
+  const all = list.data ?? [];
+  const words = f.search.trim().toLowerCase();
+  const rows = all.filter(
+    (e) =>
+      (showInactive || e.isActive) &&
+      (!words ||
+        e.name.toLowerCase().includes(words) ||
+        e.code.toLowerCase().includes(words) ||
+        (e.phone ?? '').includes(words)) &&
+      (!f.branchId || e.branchId === f.branchId) &&
+      (!f.shiftId || e.shiftId === f.shiftId) &&
+      (!f.job || (e.jobTitle ?? '') === f.job) &&
+      (!f.owes || e.advanceBalance > 0),
+  );
+  const pick = (of: (e: Employee) => [string | null, string | null]) => [
+    ...new Map(all.map(of).filter(([id]) => id) as [string, string][]).entries(),
+  ];
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-          />
-          {t('payroll.showInactive')}
-        </label>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <FilterPanel
+            id="employees"
+            active={countActive(f, EMPLOYEE_FILTERS, [
+              'branchId',
+              'shiftId',
+              'job',
+              'owes',
+              'inactive',
+            ])}
+            onClear={clear}
+            quick={
+              <label className="block min-w-48 flex-1 sm:max-w-sm">
+                <span className="mb-0.5 block text-xs text-muted">{t('payroll.findEmployee')}</span>
+                <input
+                  type="search"
+                  className={filterField}
+                  value={f.search}
+                  onChange={(e) => keep({ search: e.target.value })}
+                />
+              </label>
+            }
+          >
+            {pick((e) => [e.branchId, e.branchName]).length > 1 && (
+              <Filter label={t('payroll.branch')}>
+                <select
+                  className={filterField}
+                  value={f.branchId}
+                  onChange={(e) => keep({ branchId: e.target.value })}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {pick((e) => [e.branchId, e.branchName]).map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </Filter>
+            )}
+            {pick((e) => [e.shiftId, e.shiftName]).length > 0 && (
+              <Filter label={t('payroll.shift')}>
+                <select
+                  className={filterField}
+                  value={f.shiftId}
+                  onChange={(e) => keep({ shiftId: e.target.value })}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {pick((e) => [e.shiftId, e.shiftName]).map(([id, name]) => (
+                    <option key={id} value={id}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </Filter>
+            )}
+            {pick((e) => [e.jobTitle, e.jobTitle]).length > 0 && (
+              <Filter label={t('payroll.jobTitle')}>
+                <select
+                  className={filterField}
+                  value={f.job}
+                  onChange={(e) => keep({ job: e.target.value })}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {pick((e) => [e.jobTitle, e.jobTitle]).map(([id]) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </Filter>
+            )}
+            <label className="flex h-9 items-center gap-2 self-end text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={!!f.owes}
+                onChange={(e) => keep({ owes: e.target.checked ? '1' : '' })}
+              />
+              {t('payroll.withAdvance')}
+            </label>
+            <label className="flex h-9 items-center gap-2 self-end text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => keep({ inactive: e.target.checked ? '1' : '' })}
+              />
+              {t('payroll.showInactive')}
+            </label>
+          </FilterPanel>
+        </div>
         {can('employees:create') && (
           <Button size="sm" icon="plus" onClick={() => setEditing('new')}>
             {t('payroll.addEmployee')}
@@ -1030,6 +1142,58 @@ function EmployeesTab() {
       ) : rows.length === 0 ? (
         <Card>
           <EmptyState title={t('payroll.noEmployees')} icon="payroll" />
+        </Card>
+      ) : !isPhone ? (
+        <Card padded={false} className="overflow-hidden">
+          <TableColumns id="payroll.employees" className="pt-2">
+            <div className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('payroll.code')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.employee')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.jobTitle')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.branch')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.shift')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.phone')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.hireDate')}</th>
+                    <th className="p-2 text-end font-medium">{t('payroll.salary')}</th>
+                    <th className="p-2 text-end font-medium">{t('payroll.advance')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((e) => {
+                    const opens = can('employees:edit') || can('employees:delete');
+                    return (
+                      <tr
+                        key={e.id}
+                        onClick={opens ? () => setEditing(e) : undefined}
+                        className={`${opens ? 'cursor-pointer hover:bg-surface-2' : ''} ${e.isActive ? '' : 'opacity-60'}`}
+                      >
+                        <td className="p-2 text-muted tnum">{e.code}</td>
+                        <td className="p-2 font-medium">{e.name}</td>
+                        <td className="p-2">{e.jobTitle ?? ''}</td>
+                        <td className="p-2 text-muted">{e.branchName}</td>
+                        <td className="p-2 text-muted">{e.shiftName ?? ''}</td>
+                        <td className="p-2 tnum" dir="ltr">
+                          {e.phone ?? ''}
+                        </td>
+                        <td className="p-2 tnum">{formatDate(e.hireDate, locale)}</td>
+                        <td className="p-2 text-end font-medium tnum">
+                          {formatMoney(e.monthlySalary, currency, locale)}
+                        </td>
+                        <td className="p-2 text-end text-warning tnum">
+                          {e.advanceBalance > 0
+                            ? formatMoney(e.advanceBalance, currency, locale)
+                            : ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
         </Card>
       ) : (
         <Card padded={false} className="overflow-hidden">
@@ -1312,6 +1476,9 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
 
 /* ------------------------------------------------------------ advances */
 
+/** What the advances list remembers while the app is open. */
+const ADVANCE_FILTERS = { employeeId: '', status: '', from: '', to: '' };
+
 function AdvancesTab() {
   const { t, locale } = useT();
   const can = useCan();
@@ -1330,21 +1497,155 @@ function AdvancesTab() {
     notes: '',
   });
   const money = (v: number) => formatMoney(v, currency, locale);
-  const rows = list.data ?? [];
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [q, keep, clear] = useKeptFilters('skb.list.advances', ADVANCE_FILTERS);
+  const rows = (list.data ?? []).filter((a) => {
+    const day = companyDay(a.createdAt);
+    return (
+      (!q.employeeId || a.employeeId === q.employeeId) &&
+      (!q.status || a.status === q.status) &&
+      (!q.from || day >= q.from) &&
+      (!q.to || day <= q.to)
+    );
+  });
+  const isPhone = useDeviceInfo().deviceClass === 'phone';
   return (
     <div className="space-y-3">
-      {can('payroll:advance') && (
-        <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <FilterPanel
+            id="advances"
+            active={countActive(q, ADVANCE_FILTERS, ['status', 'from', 'to'])}
+            onClear={() => clear()}
+            quick={
+              <label className="block w-56 min-w-0">
+                <span className="mb-0.5 block text-xs text-muted">{t('payroll.employee')}</span>
+                <select
+                  className={filterField}
+                  value={q.employeeId}
+                  onChange={(e) => keep({ employeeId: e.target.value })}
+                >
+                  <option value="">{t('common.all')}</option>
+                  {(employees.data ?? []).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.code} · {e.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            }
+          >
+            <Filter label={t('payroll.status')}>
+              <select
+                className={filterField}
+                value={q.status}
+                onChange={(e) => keep({ status: e.target.value })}
+              >
+                <option value="">{t('common.all')}</option>
+                {(['OPEN', 'SETTLED', 'CANCELLED'] as const).map((x) => (
+                  <option key={x} value={x}>
+                    {t(`payroll.adv.${x}`)}
+                  </option>
+                ))}
+              </select>
+            </Filter>
+            <Filter label={t('money.from')}>
+              <input
+                type="date"
+                className={`${filterField} tnum`}
+                value={q.from}
+                max={q.to || undefined}
+                onChange={(e) => keep({ from: e.target.value })}
+              />
+            </Filter>
+            <Filter label={t('money.to')}>
+              <input
+                type="date"
+                className={`${filterField} tnum`}
+                value={q.to}
+                min={q.from || undefined}
+                onChange={(e) => keep({ to: e.target.value })}
+              />
+            </Filter>
+          </FilterPanel>
+        </div>
+        {can('payroll:advance') && (
           <Button size="sm" icon="plus" onClick={() => setOpen(true)}>
             {t('payroll.newAdvance')}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {list.isLoading ? (
         <Loading />
       ) : rows.length === 0 ? (
         <Card>
           <EmptyState title={t('payroll.noAdvances')} icon="payroll" />
+        </Card>
+      ) : !isPhone ? (
+        <Card padded={false} className="overflow-hidden">
+          <TableColumns id="payroll.advances" className="pt-2">
+            <div className="overflow-x-auto">
+              <table className="w-full whitespace-nowrap text-sm">
+                <thead className="bg-surface-2 text-xs text-muted">
+                  <tr>
+                    <th className="p-2 text-start font-medium">{t('ledger.docNumber')}</th>
+                    <th className="p-2 text-start font-medium">{t('common.date')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.employee')}</th>
+                    <th className="p-2 text-start font-medium">{t('money.account')}</th>
+                    <th className="p-2 text-end font-medium">{t('money.amount')}</th>
+                    <th className="p-2 text-end font-medium">{t('payroll.installment')}</th>
+                    <th className="p-2 text-end font-medium">{t('payroll.leftCol')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.status')}</th>
+                    <th className="p-2 text-start font-medium">{t('payroll.notes')}</th>
+                    <th className="w-24" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-line)]">
+                  {rows.map((a) => (
+                    <tr key={a.id}>
+                      <td className="p-2 text-muted tnum">{a.number}</td>
+                      <td className="p-2 tnum">{formatDate(a.createdAt, locale)}</td>
+                      <td className="p-2 font-medium">{a.employeeName}</td>
+                      <td className="p-2 text-muted">{a.accountName}</td>
+                      <td className="p-2 text-end tnum">{money(a.amount)}</td>
+                      <td className="p-2 text-end tnum">{money(a.installment)}</td>
+                      <td className="p-2 text-end text-warning tnum">
+                        {a.status === 'OPEN' ? money(a.remaining) : ''}
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          tone={
+                            a.status === 'OPEN'
+                              ? 'warning'
+                              : a.status === 'SETTLED'
+                                ? 'positive'
+                                : 'neutral'
+                          }
+                        >
+                          {t(`payroll.adv.${a.status}` as TranslationKey)}
+                        </Badge>
+                      </td>
+                      <td className="max-w-64 truncate p-2 text-xs text-muted">{a.notes ?? ''}</td>
+                      <td className="p-1">
+                        {a.status === 'OPEN' &&
+                          a.remaining === a.amount &&
+                          can('payroll:advance_cancel') && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              loading={cancel.isPending && cancel.variables === a.id}
+                              onClick={() => cancel.mutate(a.id)}
+                            >
+                              {t('payroll.returned')}
+                            </Button>
+                          )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableColumns>
         </Card>
       ) : (
         <Card padded={false} className="overflow-hidden">

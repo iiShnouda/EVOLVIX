@@ -1,4 +1,13 @@
 import { useState } from 'react';
+import {
+  Filter,
+  FilterPanel,
+  RangeFilter,
+  filterField,
+  minorOf,
+  useKeptFilters,
+  useSettled,
+} from '../components/FilterPanel';
 import { useSearchParams } from 'react-router-dom';
 import {
   formatDate,
@@ -38,15 +47,46 @@ const STATUS_TONE: Record<CashHandover['status'], Tone> = {
  * branch's box to the company's main box. The sender sends it; it stays held in the box until
  * whoever holds the next box confirms it arrived, then it moves. Either side may call it off.
  */
+/** What the list remembers while the app is open. */
+const HANDOVER_FILTERS = {
+  number: '',
+  status: '',
+  from: '',
+  to: '',
+  accountId: '',
+  min: '',
+  max: '',
+};
+
 export function HandoversPage() {
   const { t } = useT();
   const can = useCan();
   const [params, setParams] = useSearchParams();
   const side = (params.get('side') ?? (can('cash:handover_receive') ? 'in' : 'out')) as Side;
-  const [status, setStatus] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const list = useCashHandovers(side, status, { from, to });
+  // The detailed search (owner, 2026-11-16), kept while the app is open.
+  const [f, keep, clear] = useKeptFilters('skb.list.handovers', HANDOVER_FILTERS);
+  const number = useSettled(f.number.trim());
+  const amounts = useSettled(`${minorOf(f.min)}\u0001${minorOf(f.max)}`);
+  const [min = '', max = ''] = amounts.split('\u0001');
+  const list = useCashHandovers(side, f.status, {
+    from: f.from,
+    to: f.to,
+    number,
+    accountId: f.accountId,
+    min,
+    max,
+  });
+  // The boxes in the list so far, to pick one of.
+  const [boxes, setBoxes] = useState<{ id: string; name: string }[]>([]);
+  const seen = (list.data ?? [])
+    .flatMap((h) => [
+      { id: h.fromAccountId, name: `${h.fromAccountName} · ${h.fromBranchName}` },
+      { id: h.toAccountId, name: `${h.toAccountName} · ${h.toBranchName}` },
+    ])
+    .filter((b) => !boxes.some((x) => x.id === b.id))
+    .filter((b, i, all) => all.findIndex((x) => x.id === b.id) === i);
+  if (seen.length > 0) setBoxes([...boxes, ...seen]);
+  const detailed = [f.status, f.from || f.to, f.accountId, f.min || f.max].filter(Boolean).length;
   const { deviceClass } = useDeviceInfo();
 
   return (
@@ -72,13 +112,28 @@ export function HandoversPage() {
             </button>
           ))}
         </div>
-        <label className="block shrink-0">
-          <span className="mb-0.5 block text-xs text-muted">{t('common.status')}</span>
+      </div>
+      <FilterPanel
+        id="handovers"
+        active={detailed}
+        onClear={clear}
+        quick={
+          <label className="block w-40">
+            <span className="mb-0.5 block text-xs text-muted">{t('ledger.docNumber')}</span>
+            <input
+              type="search"
+              className={`${filterField} tnum`}
+              value={f.number}
+              onChange={(e) => keep({ number: e.target.value })}
+            />
+          </label>
+        }
+      >
+        <Filter label={t('common.status')}>
           <select
-            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
-            value={status}
-            aria-label={t('common.status')}
-            onChange={(e) => setStatus(e.target.value)}
+            className={filterField}
+            value={f.status}
+            onChange={(e) => keep({ status: e.target.value })}
           >
             <option value="">{t('hand.all')}</option>
             {(['SENT', 'RECEIVED', 'CANCELLED'] as const).map((s) => (
@@ -87,28 +142,49 @@ export function HandoversPage() {
               </option>
             ))}
           </select>
-        </label>
-        <label className="block shrink-0">
-          <span className="mb-0.5 block text-xs text-muted">{t('money.from')}</span>
+        </Filter>
+        {boxes.length > 0 && (
+          <Filter label={t('money.account')}>
+            <select
+              className={filterField}
+              value={f.accountId}
+              onChange={(e) => keep({ accountId: e.target.value })}
+            >
+              <option value="">{t('hand.all')}</option>
+              {boxes.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </Filter>
+        )}
+        <Filter label={t('money.from')}>
           <input
             type="date"
-            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
+            className={`${filterField} tnum`}
+            value={f.from}
+            max={f.to || undefined}
+            onChange={(e) => keep({ from: e.target.value })}
           />
-        </label>
-        <label className="block shrink-0">
-          <span className="mb-0.5 block text-xs text-muted">{t('money.to')}</span>
+        </Filter>
+        <Filter label={t('money.to')}>
           <input
             type="date"
-            className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => setTo(e.target.value)}
+            className={`${filterField} tnum`}
+            value={f.to}
+            min={f.from || undefined}
+            onChange={(e) => keep({ to: e.target.value })}
           />
-        </label>
-      </div>
+        </Filter>
+        <RangeFilter
+          label={t('money.amount')}
+          from={f.min}
+          to={f.max}
+          onFrom={(v) => keep({ min: v })}
+          onTo={(v) => keep({ max: v })}
+        />
+      </FilterPanel>
       {list.isLoading ? (
         <div className="grid place-items-center py-10">
           <Spinner />

@@ -44,7 +44,8 @@ public sealed class CashHandoversController : ControllerBase
     /// </summary>
     [HttpGet("cash-handovers")]
     public async Task<ActionResult<CashHandoverDto[]>> List([FromQuery] string? status = null, [FromQuery] string? side = null,
-        [FromQuery] string? from = null, [FromQuery] string? to = null)
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? number = null,
+        [FromQuery] string? accountId = null, [FromQuery] long? min = null, [FromQuery] long? max = null)
     {
         if (!User.HasAny(Permissions.CashHandoverSend, Permissions.CashHandoverReceive, Permissions.MoneyAccounts))
             return Forbid();
@@ -57,6 +58,15 @@ public sealed class CashHandoversController : ControllerBase
             _ => q.Where(h => mine.Contains(h.ToAccountId) || mine.Contains(h.FromAccountId)),
         };
         if (Enum.TryParse<HandoverStatus>(status, true, out var st)) q = q.Where(h => h.Status == st);
+        // The detailed search (owner, 2026-11-16): its number, a box on either side, the amount.
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            var n = number.Trim().ToLower();
+            q = q.Where(h => h.Number.ToLower().Contains(n));
+        }
+        if (Guid.TryParse(accountId, out var box)) q = q.Where(h => h.FromAccountId == box || h.ToAccountId == box);
+        if (min is long low) q = q.Where(h => h.Amount >= low);
+        if (max is long high) q = q.Where(h => h.Amount <= high);
         // Sent between two company days; no further back than the person sees money (their access).
         if (CompanyClock.ParseDay(from) is DateOnly fromDay) q = q.Where(h => h.SentAt >= CompanyClock.StartOf(fromDay));
         if (CompanyClock.ParseDay(to) is DateOnly toDay) q = q.Where(h => h.SentAt < CompanyClock.StartOf(toDay.AddDays(1)));

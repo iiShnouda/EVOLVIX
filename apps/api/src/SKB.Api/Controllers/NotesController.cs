@@ -76,7 +76,8 @@ public sealed class NotesController : ControllerBase
         [FromQuery] string? direction = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
         [FromQuery] bool? open = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
         [FromQuery] string? search = null, [FromQuery] string? kind = null, [FromQuery] string? dueFrom = null,
-        [FromQuery] string? dueTo = null, [FromQuery] string? branchId = null)
+        [FromQuery] string? dueTo = null, [FromQuery] string? branchId = null, [FromQuery] string? bankId = null,
+        [FromQuery] long? min = null, [FromQuery] long? max = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -96,6 +97,10 @@ public sealed class NotesController : ControllerBase
         if (open == true) q = q.Where(n => Open.Contains(n.Status));
         if (Enum.TryParse<NoteKind>(kind, true, out var k)) q = q.Where(n => n.Kind == k);
         if (Guid.TryParse(branchId, out var bid)) q = q.Where(n => n.BranchId == bid);
+        // The detailed search (owner, 2026-11-16): the bank and the amount between two (minor units).
+        if (Guid.TryParse(bankId, out var bank)) q = q.Where(n => n.BankId == bank);
+        if (min is long low0) q = q.Where(n => n.Amount >= low0);
+        if (max is long high0) q = q.Where(n => n.Amount <= high0);
         // Due dates are calendar days (00:00 UTC).
         if (CompanyClock.ParseDay(dueFrom) is DateOnly dueA) q = q.Where(n => n.DueDate >= CompanyClock.AsDate(dueA));
         if (CompanyClock.ParseDay(dueTo) is DateOnly dueB) q = q.Where(n => n.DueDate <= CompanyClock.AsDate(dueB));

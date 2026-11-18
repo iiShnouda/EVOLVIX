@@ -25,7 +25,8 @@ public sealed class AuditController : ControllerBase
     public async Task<ActionResult<PaginatedDto<AuditEntryDto>>> List(
         [FromQuery] string? actorId = null, [FromQuery] string? resource = null, [FromQuery] string? action = null,
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50, [FromQuery] string? resourceId = null)
+        [FromQuery] int pageSize = 50, [FromQuery] string? resourceId = null, [FromQuery] string? search = null,
+        [FromQuery] string? branchId = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -35,6 +36,17 @@ public sealed class AuditController : ControllerBase
         if (!string.IsNullOrWhiteSpace(action)) q = q.Where(a => a.Action == action);
         // One record's own history (owner, 2026-10-19: an invoice shows its activity log).
         if (!string.IsNullOrWhiteSpace(resourceId)) q = q.Where(a => a.ResourceId == resourceId);
+        // The detailed search (owner, 2026-11-16): words in what was done (a number, a name), a branch.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var words = search.Trim().ToLower();
+            q = q.Where(a => a.Details != null && a.Details.ToLower().Contains(words));
+        }
+        if (Guid.TryParse(branchId, out var inBranch))
+        {
+            var id = inBranch.ToString();
+            q = q.Where(a => a.BranchId == id);
+        }
         if (CompanyClock.ParseDay(from) is DateOnly f)
         {
             var start = CompanyClock.StartOf(f);

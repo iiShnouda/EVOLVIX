@@ -59,12 +59,18 @@ public sealed class TransfersController : ControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? fromBranchId = null, [FromQuery] string? fromWarehouseId = null,
         [FromQuery] string? toBranchId = null, [FromQuery] string? toWarehouseId = null,
-        [FromQuery] string? departmentId = null)
+        [FromQuery] string? departmentId = null, [FromQuery] string? number = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var q = Scoped();
+        // The detailed search (owner, 2026-11-16): by its number.
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            var n = number.Trim().ToLower();
+            q = q.Where(t => t.Number.ToLower().Contains(n));
+        }
         if (Enum.TryParse<TransferStatus>(status, out var st)) q = q.Where(t => t.Status == st);
         if (Guid.TryParse(warehouseId, out var wid)) q = q.Where(t => t.FromWarehouseId == wid || t.ToWarehouseId == wid);
         if (Guid.TryParse(fromBranchId, out var fb)) q = q.Where(t => t.FromWarehouse!.BranchId == fb);

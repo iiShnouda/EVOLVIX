@@ -9,6 +9,7 @@ import { useT } from '../lib/i18n';
 import { api } from '../lib/api';
 import { useAuth } from '../stores/auth';
 import { useDepartments, useInventory, usePageSize } from '../lib/queries';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -152,67 +153,69 @@ export function LabelPicker({ onAdd }: { onAdd: (picks: LabelPick[]) => void }) 
             <Spinner size={22} />
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-line bg-surface-2 text-xs text-muted">
-              <tr>
-                <th className="w-10 p-2">
-                  <input
-                    type="checkbox"
-                    aria-label={t('common.all')}
-                    checked={allTicked}
-                    onChange={() =>
+          <TableColumns id="labels.pick">
+            <table className="w-full text-sm">
+              <thead className="border-b border-line bg-surface-2 text-xs text-muted">
+                <tr>
+                  <th className="w-10 p-2">
+                    <input
+                      type="checkbox"
+                      aria-label={t('common.all')}
+                      checked={allTicked}
+                      onChange={() =>
+                        setTicked((cur) => {
+                          const next = new Map(cur);
+                          for (const r of rows)
+                            if (allTicked) next.delete(r.id);
+                            else next.set(r.id, stockOf(r));
+                          return next;
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
+                  <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
+                  <th className="p-2 text-start font-medium">{t('inventory.category')}</th>
+                  <th className="p-2 text-end font-medium">{t('inventory.stock')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--c-line)]">
+                {rows.map((r) => (
+                  <tr
+                    key={r.id}
+                    className="cursor-pointer hover:bg-surface-2"
+                    onClick={() =>
                       setTicked((cur) => {
                         const next = new Map(cur);
-                        for (const r of rows)
-                          if (allTicked) next.delete(r.id);
-                          else next.set(r.id, stockOf(r));
+                        if (next.has(r.id)) next.delete(r.id);
+                        else next.set(r.id, stockOf(r));
                         return next;
                       })
                     }
-                  />
-                </th>
-                <th className="p-2 text-start font-medium">{t('inventory.sku')}</th>
-                <th className="p-2 text-start font-medium">{t('inventory.itemName')}</th>
-                <th className="p-2 text-start font-medium">{t('inventory.category')}</th>
-                <th className="p-2 text-end font-medium">{t('inventory.stock')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--c-line)]">
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  className="cursor-pointer hover:bg-surface-2"
-                  onClick={() =>
-                    setTicked((cur) => {
-                      const next = new Map(cur);
-                      if (next.has(r.id)) next.delete(r.id);
-                      else next.set(r.id, stockOf(r));
-                      return next;
-                    })
-                  }
-                >
-                  <td className="p-2 text-center">
-                    <input type="checkbox" readOnly checked={ticked.has(r.id)} />
-                  </td>
-                  <td className="p-2 text-muted tnum" dir="ltr">
-                    {r.sku}
-                  </td>
-                  <td className="p-2 font-medium">{r.name}</td>
-                  <td className="p-2 text-muted">{r.categoryName}</td>
-                  <td className="p-2 text-end tnum">
-                    {formatNumber(r.stockOnHand, locale)} {r.unit}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted">
-                    {t('common.empty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  >
+                    <td className="p-2 text-center">
+                      <input type="checkbox" readOnly checked={ticked.has(r.id)} />
+                    </td>
+                    <td className="p-2 text-muted tnum" dir="ltr">
+                      {r.sku}
+                    </td>
+                    <td className="p-2 font-medium">{r.name}</td>
+                    <td className="p-2 text-muted">{r.categoryName}</td>
+                    <td className="p-2 text-end tnum">
+                      {formatNumber(r.stockOnHand, locale)} {r.unit}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-muted">
+                      {t('common.empty')}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </TableColumns>
         )}
       </div>
 

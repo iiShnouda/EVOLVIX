@@ -359,11 +359,30 @@ public sealed class MoneyController : ControllerBase
     public async Task<ActionResult<PaginatedDto<VoucherDto>>> Vouchers(
         [FromQuery] string? type = null, [FromQuery] string? status = null, [FromQuery] string? partyId = null,
         [FromQuery] string? accountId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 30,
-        [FromQuery] string? branchId = null)
+        [FromQuery] string? branchId = null, [FromQuery] string? number = null, [FromQuery] string? from = null,
+        [FromQuery] string? to = null, [FromQuery] long? min = null, [FromQuery] long? max = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var q = ScopedVouchers();
+        // The detailed search (owner, 2026-11-16): its number, company days, the amount between two.
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            var n = number.Trim().ToLower();
+            q = q.Where(v => v.Number.ToLower().Contains(n));
+        }
+        if (CompanyClock.ParseDay(from) is DateOnly fromDay)
+        {
+            var start = CompanyClock.StartOf(fromDay);
+            q = q.Where(v => v.CreatedAt >= start);
+        }
+        if (CompanyClock.ParseDay(to) is DateOnly toDay)
+        {
+            var end = CompanyClock.StartOf(toDay.AddDays(1));
+            q = q.Where(v => v.CreatedAt < end);
+        }
+        if (min is long low) q = q.Where(v => v.Amount >= low);
+        if (max is long high) q = q.Where(v => v.Amount <= high);
         // One of the person's branches (the list is already limited to theirs).
         if (Guid.TryParse(branchId, out var bid)) q = q.Where(v => v.BranchId == bid);
         if (Enum.TryParse<VoucherType>(type, true, out var vt)) q = q.Where(v => v.Type == vt);

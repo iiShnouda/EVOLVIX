@@ -29,6 +29,7 @@ import { CompanyMark } from '../components/CompanyBadge';
 import { errorText } from '../lib/errors';
 import { GetApps } from '../components/GetApps';
 import { BackupsCard } from '../components/BackupsCard';
+import { TableColumns } from '../components/TableColumns';
 
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
@@ -726,105 +727,110 @@ function NumberingCard({ disabled }: { disabled: boolean }) {
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
         {t('settings.numbering')}
       </h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="py-1.5 text-start font-medium" />
-              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.prefix')}</th>
-              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.startAt')}</th>
-              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.digits')}</th>
-              <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.nextNumber')}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--c-line)]">
-            {rows.map((n) => {
-              const e = edits[n.type] ?? {
-                prefix: n.prefix,
-                startAt: String(n.startAt),
-                digits: String(n.digits),
-              };
-              const changed =
-                e.prefix !== n.prefix ||
-                e.startAt !== String(n.startAt) ||
-                e.digits !== String(n.digits);
-              const set = (patch: Partial<typeof e>) =>
-                setEdits((all) => ({ ...all, [n.type]: { ...e, ...patch } }));
-              return (
-                <tr key={n.type}>
-                  <td className="whitespace-nowrap py-1.5 pe-2">{t(`doc.${n.type}`)}</td>
-                  <td className="px-1.5 py-1.5">
-                    <input
-                      dir="ltr"
-                      className={`${field} !w-28`}
-                      disabled={disabled}
-                      placeholder={t('settings.builtIn')}
-                      maxLength={20}
-                      value={e.prefix}
-                      onChange={(ev) => set({ prefix: ev.target.value })}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1.5">
-                    <input
-                      aria-label={`${t('settings.startAt')} — ${t(`doc.${n.type}`)}`}
-                      type="number"
-                      min={1}
-                      className={`${field} !w-24 tnum`}
-                      disabled={disabled || !e.prefix.trim()}
-                      value={e.startAt}
-                      onChange={(ev) => set({ startAt: ev.target.value })}
-                    />
-                  </td>
-                  <td className="px-1.5 py-1.5">
-                    <input
-                      aria-label={`${t('settings.digits')} — ${t(`doc.${n.type}`)}`}
-                      type="number"
-                      min={1}
-                      max={10}
-                      className={`${field} !w-16 tnum`}
-                      disabled={disabled || !e.prefix.trim()}
-                      value={e.digits}
-                      onChange={(ev) => set({ digits: ev.target.value })}
-                    />
-                  </td>
-                  <td className="whitespace-nowrap px-1.5 py-1.5 font-medium tnum" dir="ltr">
-                    {n.next}
-                  </td>
-                  <td className="py-1.5">
-                    {!disabled && changed && (
-                      <Button
-                        size="sm"
-                        loading={save.isPending && save.variables?.type === n.type}
-                        onClick={() =>
-                          save.mutate(
-                            {
-                              type: n.type,
-                              prefix: e.prefix.trim(),
-                              startAt: Math.max(1, Math.floor(Number(e.startAt) || 1)),
-                              digits: Math.min(10, Math.max(1, Math.floor(Number(e.digits) || 6))),
-                            },
-                            {
-                              onSuccess: () =>
-                                setEdits((all) => {
-                                  const next = { ...all };
-                                  delete next[n.type];
-                                  return next;
-                                }),
-                            },
-                          )
-                        }
-                      >
-                        {t('settings.save')}
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <TableColumns id="settings.numbering">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted">
+              <tr>
+                <th className="py-1.5 text-start font-medium" />
+                <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.prefix')}</th>
+                <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.startAt')}</th>
+                <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.digits')}</th>
+                <th className="px-1.5 py-1.5 text-start font-medium">{t('settings.nextNumber')}</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--c-line)]">
+              {rows.map((n) => {
+                const e = edits[n.type] ?? {
+                  prefix: n.prefix,
+                  startAt: String(n.startAt),
+                  digits: String(n.digits),
+                };
+                const changed =
+                  e.prefix !== n.prefix ||
+                  e.startAt !== String(n.startAt) ||
+                  e.digits !== String(n.digits);
+                const set = (patch: Partial<typeof e>) =>
+                  setEdits((all) => ({ ...all, [n.type]: { ...e, ...patch } }));
+                return (
+                  <tr key={n.type}>
+                    <td className="whitespace-nowrap py-1.5 pe-2">{t(`doc.${n.type}`)}</td>
+                    <td className="px-1.5 py-1.5">
+                      <input
+                        dir="ltr"
+                        className={`${field} !w-28`}
+                        disabled={disabled}
+                        placeholder={t('settings.builtIn')}
+                        maxLength={20}
+                        value={e.prefix}
+                        onChange={(ev) => set({ prefix: ev.target.value })}
+                      />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <input
+                        aria-label={`${t('settings.startAt')} — ${t(`doc.${n.type}`)}`}
+                        type="number"
+                        min={1}
+                        className={`${field} !w-24 tnum`}
+                        disabled={disabled || !e.prefix.trim()}
+                        value={e.startAt}
+                        onChange={(ev) => set({ startAt: ev.target.value })}
+                      />
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      <input
+                        aria-label={`${t('settings.digits')} — ${t(`doc.${n.type}`)}`}
+                        type="number"
+                        min={1}
+                        max={10}
+                        className={`${field} !w-16 tnum`}
+                        disabled={disabled || !e.prefix.trim()}
+                        value={e.digits}
+                        onChange={(ev) => set({ digits: ev.target.value })}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-1.5 py-1.5 font-medium tnum" dir="ltr">
+                      {n.next}
+                    </td>
+                    <td className="py-1.5">
+                      {!disabled && changed && (
+                        <Button
+                          size="sm"
+                          loading={save.isPending && save.variables?.type === n.type}
+                          onClick={() =>
+                            save.mutate(
+                              {
+                                type: n.type,
+                                prefix: e.prefix.trim(),
+                                startAt: Math.max(1, Math.floor(Number(e.startAt) || 1)),
+                                digits: Math.min(
+                                  10,
+                                  Math.max(1, Math.floor(Number(e.digits) || 6)),
+                                ),
+                              },
+                              {
+                                onSuccess: () =>
+                                  setEdits((all) => {
+                                    const next = { ...all };
+                                    delete next[n.type];
+                                    return next;
+                                  }),
+                              },
+                            )
+                          }
+                        >
+                          {t('settings.save')}
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </TableColumns>
       {save.error && <p className="mt-2 text-sm text-destructive">{errorText(t, save.error)}</p>}
     </Card>
   );
