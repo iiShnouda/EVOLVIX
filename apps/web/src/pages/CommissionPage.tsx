@@ -120,7 +120,8 @@ function ReportTab() {
   const money = (v: number) => formatMoney(v, currency, locale);
   const today = companyToday();
   const [from, setFrom] = useState(`${today.slice(0, 7)}-01`);
-  const [to, setTo] = useState(today);
+  // The whole month by default, so its commission can go into the month's payroll.
+  const [to, setTo] = useState(() => addDays(addMonths(`${today.slice(0, 7)}-01`, 1), -1));
   const [branchId, setBranchId] = useState('');
   const branches = useBranches();
   const report = useCommissionReport(from, to, branchId);
@@ -364,6 +365,7 @@ function ItemsSheet({
   return (
     <Sheet
       title={codeName(row.repCode, row.repName)}
+      wide
       onClose={onClose}
       closeLabel={t('common.close')}
     >
@@ -371,7 +373,7 @@ function ItemsSheet({
         <Loading />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-sm">
+          <table className="w-full text-sm">
             <thead className="text-xs text-muted">
               <tr>
                 <th className="py-1.5 text-start font-normal">{t('commission.date')}</th>
