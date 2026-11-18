@@ -78,6 +78,7 @@ const NEEDS: [string, () => readonly Permission[] | undefined][] = [
   ['/import', () => menu('import')],
   ['/license', () => menu('license')],
   ['/payroll', () => menu('payroll')],
+  ['/commission', () => menu('commission')],
   ['/staff', () => menu('staff')],
   ['/branches', () => menu('branches')],
   ['/settings', () => menu('settings')],

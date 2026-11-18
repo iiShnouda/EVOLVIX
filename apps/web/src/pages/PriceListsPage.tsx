@@ -11,6 +11,8 @@ import {
   type Party,
   type Permission,
   type PriceList,
+  type PriceListState,
+  type TranslationKey,
   type PriceListItem,
   type PriceListParty,
   type Product,
@@ -20,7 +22,7 @@ import { api } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { PartyPicker } from '../components/PartyPicker';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
-import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
+import { Badge, Button, Card, EmptyState, PageHeader, Spinner, type Tone } from '../components/ui';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
 import { errorText } from '../lib/errors';
@@ -29,6 +31,7 @@ import {
   useDeletePriceList,
   useDepartments,
   useGroups,
+  useSeasons,
   usePriceLevels,
   usePriceList,
   usePriceLists,
@@ -128,6 +131,23 @@ export function PriceListsPage({ embedded = false }: { embedded?: boolean } = {}
 
 // ------------------------------------------------------------------ lists
 
+/** On now, starting later, over, or switched off (the server works it out by the dates). */
+function listState(l: PriceList): PriceListState {
+  return l.state ?? (!l.isActive ? 'OFF' : l.current ? 'ACTIVE' : 'ENDED');
+}
+const STATE_TONE: Record<PriceListState, Tone> = {
+  ACTIVE: 'positive',
+  UPCOMING: 'info',
+  ENDED: 'neutral',
+  OFF: 'neutral',
+};
+const STATE_LABEL: Record<PriceListState, TranslationKey> = {
+  ACTIVE: 'pl.current',
+  UPCOMING: 'pl.upcoming',
+  ENDED: 'pl.ended',
+  OFF: 'pl.closed',
+};
+
 /** What the price lists remember while the app is open. */
 const LIST_FILTERS = { search: '', side: '', state: '' };
 
@@ -149,7 +169,9 @@ function ListsTab() {
           ? !l.isActive
           : f.state === 'current'
             ? l.isActive && l.current
-            : l.isActive && !l.current)),
+            : f.state === 'upcoming' || f.state === 'ended'
+              ? listState(l) === f.state.toUpperCase()
+              : l.isActive && !l.current)),
   );
 
   return (
@@ -203,6 +225,8 @@ function ListsTab() {
             >
               <option value="">{t('common.all')}</option>
               <option value="current">{t('pl.current')}</option>
+              <option value="upcoming">{t('pl.upcoming')}</option>
+              <option value="ended">{t('pl.ended')}</option>
               <option value="notCurrent">{t('pl.notCurrent')}</option>
               <option value="closed">{t('pl.closed')}</option>
             </select>
@@ -234,9 +258,12 @@ function ListsTab() {
                         </Badge>
                       )}
                       {l.forEveryone && <Badge tone="info">{t('pl.forEveryone')}</Badge>}
-                      <Badge tone={l.current ? 'positive' : 'neutral'}>
-                        {t(!l.isActive ? 'pl.closed' : l.current ? 'pl.current' : 'pl.notCurrent')}
-                      </Badge>
+                      {(l.seasonName || l.departmentSeason) && (
+                        <Badge tone="info">
+                          {l.seasonName ?? t(`pl.deptSeason.${l.departmentSeason!}`)}
+                        </Badge>
+                      )}
+                      <Badge tone={STATE_TONE[listState(l)]}>{t(STATE_LABEL[listState(l)])}</Badge>
                     </span>
                     <span className="text-xs text-muted">
                       {t('pl.itemsCount')} {formatNumber(l.items, locale)}
@@ -271,7 +298,10 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
   const save = useSavePriceList();
   const departments = useDepartments();
   const groups = useGroups();
+  const seasons = useSeasons();
   const [f, setF] = useState({
+    // One choice (owner, 2026-11-18): an item season, the summer or winter departments, or any.
+    season: list?.seasonId ?? (list?.departmentSeason ? `dept:${list.departmentSeason}` : ''),
     name: list?.name ?? '',
     forEveryone: list?.forEveryone ?? false,
     validFrom: list ? (list.validFrom ?? '') : companyToday(),
@@ -307,6 +337,8 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
           groupId: f.departmentId ? f.groupId : '',
           percent: Number(f.percent || 0),
           minAmount: toMinor(Number(f.minAmount || 0)),
+          seasonId: f.season.startsWith('dept:') ? '' : f.season,
+          departmentSeason: f.season.startsWith('dept:') ? f.season.slice(5) : '',
         },
       });
       onDone(saved.list.id);
@@ -397,6 +429,26 @@ function ListSettings({ list, onDone }: { list?: PriceList; onDone: (id?: string
             </select>
           </label>
         )}
+        <label className="block">
+          <span className="mb-0.5 block text-xs text-muted">{t('pl.season')}</span>
+          <select
+            className={field}
+            disabled={disabled}
+            value={f.season}
+            onChange={(e) => setF({ ...f, season: e.target.value })}
+          >
+            <option value="">{t('pl.everySeason')}</option>
+            <option value="dept:SUMMER">{t('pl.deptSeason.SUMMER')}</option>
+            <option value="dept:WINTER">{t('pl.deptSeason.WINTER')}</option>
+            {(seasons.data ?? [])
+              .filter((x) => x.kind !== 'NONE' && (x.isActive || x.id === f.season))
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+          </select>
+        </label>
         <label className="block">
           <span className="mb-0.5 block text-xs text-muted">{t('pl.listPercent')}</span>
           <input
@@ -618,6 +670,8 @@ function ListEditor({ id, onGone }: { id: string; onGone: () => void }) {
           list.groupId,
           list.percentBp,
           list.minAmount,
+          list.seasonId,
+          list.departmentSeason,
         ].join(':')}
         list={list}
         onDone={() => undefined}

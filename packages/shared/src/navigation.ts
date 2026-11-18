@@ -236,7 +236,7 @@ export const NAV_SECTIONS: NavSection[] = [
         labelKey: 'nav.analytics',
         icon: 'analytics',
         path: '/analytics',
-        anyOf: opens('reports', ['reports:print', 'reports:export']),
+        anyOf: opens('reports', ['reports:print', 'reports:export', 'reports:commission']),
       },
       {
         key: 'audit',
@@ -256,7 +256,14 @@ export const NAV_SECTIONS: NavSection[] = [
         labelKey: 'nav.payroll',
         icon: 'payroll',
         path: '/payroll',
-        anyOf: opens('payroll', ['payroll:print']),
+        anyOf: opens('payroll', ['payroll:print', 'commission:setup', 'commission:payroll']),
+      },
+      {
+        key: 'commission',
+        labelKey: 'nav.commission',
+        icon: 'payroll',
+        path: '/commission',
+        anyOf: ['reports:commission', 'commission:setup'],
       },
       {
         key: 'staff',

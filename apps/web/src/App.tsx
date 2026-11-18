@@ -72,6 +72,7 @@ import { LogsPage } from './pages/LogsPage';
 import { ImportPage } from './pages/ImportPage';
 import { LicensePage } from './pages/LicensePage';
 import { PayrollPage } from './pages/PayrollPage';
+import { CommissionPage } from './pages/CommissionPage';
 import { ThemesPage } from './pages/ThemesPage';
 import { mayOpenPath } from './lib/routeAccess';
 
@@ -367,6 +368,7 @@ const routes = createRoutesFromElements(
       <Route path="/import" element={<ImportPage />} />
       <Route path="/license" element={<LicensePage />} />
       <Route path="/payroll" element={<PayrollPage />} />
+      <Route path="/commission" element={<CommissionPage />} />
       <Route path="/staff" element={<StaffPage />} />
       <Route path="/branches" element={<BranchesPage />} />
       <Route path="/settings" element={<SettingsPage />} />
