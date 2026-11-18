@@ -478,7 +478,7 @@ export function ItemFinderSheet({
             >
               <TableColumns id="itemFinder">
                 {/* What to pick comes first, so the add button is never off the screen. */}
-                <table className="w-full whitespace-nowrap text-[13px]">
+                <table className="w-full whitespace-nowrap text-[0.8125rem]">
                   <thead className="sticky top-0 z-10 border-b border-line bg-surface-2 text-xs text-muted">
                     <tr>
                       <th className="w-8 px-2 py-2">

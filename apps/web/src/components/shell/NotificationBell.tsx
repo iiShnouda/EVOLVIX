@@ -161,7 +161,7 @@ export function NotificationBell() {
             {notificationDetail(popup, t, locale)}
           </span>
           {popup.actorName && (
-            <span className="mt-0.5 block text-[11px] text-faint">{popup.actorName}</span>
+            <span className="mt-0.5 block text-[0.6875rem] text-faint">{popup.actorName}</span>
           )}
         </button>
       )}
@@ -176,7 +176,7 @@ export function NotificationBell() {
       >
         <Icon name="bell" size={18} />
         {unread > 0 && (
-          <span className="absolute -end-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white tnum">
+          <span className="absolute -end-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[0.625rem] font-semibold text-white tnum">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
@@ -251,7 +251,7 @@ export function NotificationBell() {
                       {n.message && (
                         <span className="mt-0.5 block text-xs text-destructive">{n.message}</span>
                       )}
-                      <span className="mt-0.5 block text-[11px] text-faint">
+                      <span className="mt-0.5 block text-[0.6875rem] text-faint">
                         {n.actorName && <>{n.actorName} · </>}
                         {formatDateTime(n.createdAt, locale)}
                       </span>
@@ -358,7 +358,7 @@ function BellSettings({ onBack }: { onBack: () => void }) {
                 <label className="flex items-center justify-between gap-2">
                   <span>{t(`notify.${k}`)}</span>
                   {always.has(k) ? (
-                    <span className="text-[11px] text-faint">{t('notify.alwaysOn')}</span>
+                    <span className="text-[0.6875rem] text-faint">{t('notify.alwaysOn')}</span>
                   ) : (
                     <input type="checkbox" checked={!off.has(k)} onChange={() => toggle(k)} />
                   )}
@@ -382,7 +382,7 @@ function Summary({ n, onBack }: { n: AppNotification; onBack: () => void }) {
       <div className="flex items-baseline justify-between gap-2 py-1" key={label}>
         <span>
           {label}{' '}
-          <span className="text-[11px] text-faint tnum">
+          <span className="text-[0.6875rem] text-faint tnum">
             ({t('notify.sum.count').replace('{n}', formatNumber(f.count, locale))})
           </span>
         </span>

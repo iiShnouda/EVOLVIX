@@ -258,7 +258,7 @@ export function TabsView() {
             }`}
           >
             {t('tabs.split')}
-            <span className="rounded bg-warning-soft px-1 text-[10px] text-warning">
+            <span className="rounded bg-warning-soft px-1 text-[0.625rem] text-warning">
               {t('tabs.beta')}
             </span>
           </button>

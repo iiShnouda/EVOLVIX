@@ -75,6 +75,7 @@ import { PayrollPage } from './pages/PayrollPage';
 import { CommissionPage } from './pages/CommissionPage';
 import { ThemesPage } from './pages/ThemesPage';
 import { mayOpenPath } from './lib/routeAccess';
+import { useAppZoom } from './lib/zoom';
 
 /** Apply locale/theme to <html> and keep them in sync with preferences + system changes. */
 function useApplyPrefs(): void {
@@ -387,6 +388,7 @@ const router = createBrowserRouter(routes);
 
 export default function App() {
   useApplyPrefs();
+  useAppZoom();
   useRefetchOnLocale();
   useConnectionMonitor();
   useIdleLogout();

@@ -755,7 +755,7 @@ function PartyStatementTable({
         }}
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1250px] text-sm">
+          <table className="w-full min-w-[78.125rem] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 {order.map((k) => (

@@ -151,7 +151,7 @@ export function LoginPage() {
 
         <form
           onSubmit={onSubmit}
-          className="w-full max-w-[400px] space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,.45)] sm:p-8"
+          className="w-full max-w-[25rem] space-y-6 rounded-2xl border border-line bg-surface p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,.45)] sm:p-8"
         >
           <div className="flex flex-col items-center gap-3 text-center lg:hidden">
             <CompanyMark size={60} className="rounded-2xl" />
@@ -260,7 +260,7 @@ export function LoginPage() {
           </p>
         </form>
 
-        <div className="mt-6 w-full max-w-[400px] space-y-3">
+        <div className="mt-6 w-full max-w-[25rem] space-y-3">
           <GetApps compact />
           <p className="flex items-center justify-center gap-1.5 text-xs text-muted lg:hidden">
             {t('auth.poweredBy')} <Logo size={16} /> <Wordmark className="text-xs" />

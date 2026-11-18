@@ -978,7 +978,7 @@ export function InvoiceBuilderPage({
             const discount = priceEditable && l.touched ? 0 : (info?.discount ?? 0);
             const total = gross - discount;
             const changed = price !== list;
-            const label = 'mb-0.5 block text-[11px] text-muted';
+            const label = 'mb-0.5 block text-[0.6875rem] text-muted';
             const left = available(l.product) - (baseWanted.get(l.product.id) ?? 0);
             const tooMany = l.quantity * factor > left;
             return (
@@ -1937,7 +1937,7 @@ export function InvoiceBuilderPage({
                 // Wide screens: the lines as a table, like the old program's grid.
                 <div className="mt-3 overflow-x-auto rounded-[var(--radius-app)] border border-line">
                   <TableColumns id="invoice.sale" onMove={moveColumn} onDrop={dropColumn}>
-                    <table className="w-full text-[13px]">
+                    <table className="w-full text-[0.8125rem]">
                       <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                         <tr className="whitespace-nowrap">
                           <th className="w-8" aria-label={t('col.delete')} />

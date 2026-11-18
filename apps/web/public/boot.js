@@ -9,6 +9,10 @@
   try {
     var p = JSON.parse(localStorage.getItem('skb.prefs') || '{}');
     if (p && p.state && p.state.locale === 'en') ar = false;
+    // The app's zoom (lib/zoom.ts), set before anything paints so the page doesn't jump.
+    var z = p && p.state && p.state.zoom;
+    if (typeof z === 'number' && z >= 0.7 && z <= 1.5 && z !== 1)
+      document.documentElement.style.setProperty('--app-zoom', String(z));
   } catch (e) {
     /* default to Arabic */
   }

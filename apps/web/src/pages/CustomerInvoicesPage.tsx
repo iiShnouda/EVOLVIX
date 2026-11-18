@@ -385,7 +385,7 @@ export function CustomerInvoicesPage() {
           aria-hidden
           className="pointer-events-none fixed start-0 top-0 h-0 w-0 overflow-hidden"
         >
-          <div className="w-[760px]">
+          <div className="w-[47.5rem]">
             <div ref={everything}>
               {[...invoices, ...returns].map((doc) => (
                 <div key={doc.id} className="print-page">

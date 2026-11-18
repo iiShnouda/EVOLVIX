@@ -111,8 +111,8 @@ export function Icon({ name, size = 20, className, style, strokeWidth = 1.75, ti
   const flip = DIRECTIONAL.has(name) ? 'flip-rtl' : '';
   return (
     <svg
-      width={size}
-      height={size}
+      width={`${size / 16}rem`}
+      height={`${size / 16}rem`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

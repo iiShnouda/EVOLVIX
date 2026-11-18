@@ -667,7 +667,7 @@ export function NoteFormPage({ direction }: { direction: NoteDirection }) {
 
         <TableColumns id="notes.form.rows">
           <div className="relative overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[47.5rem] text-sm">
               <thead className="text-xs text-muted">
                 <tr>
                   <th className="w-8 px-1 py-1.5 text-start font-medium">#</th>

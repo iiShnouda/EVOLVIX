@@ -137,7 +137,7 @@ export function ChatPage() {
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{titleOf(c, me)}</span>
                     <span
-                      className="shrink-0 text-[11px] text-faint tnum"
+                      className="shrink-0 text-[0.6875rem] text-faint tnum"
                       title={formatDateTime(c.lastAt, locale)}
                     >
                       {listTime(c.lastAt, locale)}
@@ -175,7 +175,7 @@ export function ChatPage() {
       <PageHeader title={t('nav.chat')} />
       <Card
         padded={false}
-        className="grid h-[calc(100vh-15rem)] min-h-[420px] grid-cols-1 overflow-hidden md:grid-cols-[320px_minmax(0,1fr)]"
+        className="grid h-[calc(100vh-15rem)] min-h-[26.25rem] grid-cols-1 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)]"
       >
         {phone ? (
           current ? (
@@ -305,7 +305,7 @@ function Thread({
                     </p>
                   )}
                   <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                  <p className={`mt-1 text-[10px] tnum ${mine ? 'opacity-80' : 'text-faint'}`}>
+                  <p className={`mt-1 text-[0.625rem] tnum ${mine ? 'opacity-80' : 'text-faint'}`}>
                     {formatDateTime(m.at, locale)}
                   </p>
                 </div>

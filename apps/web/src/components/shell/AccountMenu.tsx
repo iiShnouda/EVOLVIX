@@ -10,6 +10,8 @@ import { queryClient } from '../../lib/queryClient';
 import { SHOW_COSTS_KEY, useMaySeeProfit } from '../../lib/can';
 import { usePreferences } from '../../lib/queries';
 import { confirm } from '../../lib/confirm';
+import { usePrefs } from '../../stores/prefs';
+import { stepZoom, ZOOM_MAX, ZOOM_MIN } from '../../lib/zoom';
 
 export function AccountMenu() {
   const { t } = useT();
@@ -73,7 +75,7 @@ export function AccountMenu() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-full border border-line bg-surface p-1 pe-2.5 transition-colors hover:bg-surface-2"
+        className="flex items-center gap-2 rounded-full border border-line bg-surface p-1 pe-2.5 transition-colors hover:bg-surface-2 max-xs:pe-1"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -92,13 +94,13 @@ export function AccountMenu() {
             )}
           </span>
         </span>
-        <Icon name="chevronDown" size={16} className="text-muted" />
+        <Icon name="chevronDown" size={16} className="text-muted max-xs:hidden" />
       </button>
 
       {open && (
         <div
           role="menu"
-          className="absolute end-0 z-40 mt-2 w-60 overflow-hidden rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-pop)]"
+          className="absolute end-0 z-40 mt-2 max-h-[calc(100dvh-5rem)] w-64 overflow-y-auto rounded-[var(--radius-app)] border border-line bg-surface shadow-[var(--shadow-pop)]"
         >
           <div className="border-b border-line p-3">
             <p className="text-sm font-semibold">{user.fullName}</p>
@@ -151,12 +153,13 @@ export function AccountMenu() {
                 aria-hidden
               >
                 <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${showCosts ? 'start-[18px]' : 'start-0.5'}`}
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${showCosts ? 'start-[1.125rem]' : 'start-0.5'}`}
                 />
               </span>
               <span className="min-w-0 flex-1">{t('costs.show')}</span>
             </button>
           )}
+          <ZoomRow />
           <button
             role="menuitem"
             onClick={logoutEverywhere}
@@ -175,6 +178,58 @@ export function AccountMenu() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The app's zoom (owner, 2026-11-18): smaller or bigger, laid out again for the screen (lib/zoom.ts).
+ * Also Ctrl/⌘ with + − 0 on a computer; the phone's own pinch still works.
+ */
+function ZoomRow() {
+  const { t } = useT();
+  const zoom = usePrefs((s) => s.zoom);
+  const setZoom = usePrefs((s) => s.setZoom);
+  const btn =
+    'grid h-9 w-9 place-items-center rounded-lg border border-line text-fg transition-colors hover:bg-surface-2 disabled:opacity-40';
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 text-sm"
+      role="group"
+      aria-label={t('zoom.label')}
+    >
+      <Icon name="search" size={18} className="text-muted" />
+      <span className="min-w-0 flex-1">{t('zoom.label')}</span>
+      <button
+        type="button"
+        className={btn}
+        onClick={() => setZoom(stepZoom(zoom, -1))}
+        disabled={zoom <= ZOOM_MIN}
+        title={t('zoom.out')}
+        aria-label={t('zoom.out')}
+      >
+        <Icon name="minimize" size={16} />
+      </button>
+      <button
+        type="button"
+        className="h-9 min-w-[3.25rem] rounded-lg px-1 text-center text-sm font-medium tnum transition-colors hover:bg-surface-2"
+        onClick={() => setZoom(1)}
+        title={t('zoom.reset')}
+        aria-label={t('zoom.reset')}
+        dir="ltr"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        type="button"
+        className={btn}
+        onClick={() => setZoom(stepZoom(zoom, 1))}
+        disabled={zoom >= ZOOM_MAX}
+        title={t('zoom.in')}
+        aria-label={t('zoom.in')}
+      >
+        <Icon name="plus" size={16} />
+      </button>
     </div>
   );
 }

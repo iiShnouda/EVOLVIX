@@ -113,7 +113,7 @@ export function AssistantPage() {
                 <span dir="auto" className="block truncate text-start text-sm font-semibold">
                   {c.title}
                 </span>
-                <span className="block text-[11px] text-faint tnum">
+                <span className="block text-[0.6875rem] text-faint tnum">
                   {formatDateTime(c.updatedAt, locale)}
                 </span>
               </button>
@@ -170,7 +170,7 @@ export function AssistantPage() {
       )}
       <Card
         padded={false}
-        className="grid h-[calc(100vh-16rem)] min-h-[440px] grid-cols-1 overflow-hidden md:grid-cols-[280px_minmax(0,1fr)]"
+        className="grid h-[calc(100vh-16rem)] min-h-[27.5rem] grid-cols-1 overflow-hidden md:grid-cols-[17.5rem_minmax(0,1fr)]"
       >
         {phone ? (
           showThread ? (
@@ -379,7 +379,7 @@ function Bubble({
         <p dir="auto" className="whitespace-pre-wrap break-words text-start">
           {turn.content}
         </p>
-        <p className={`mt-1 text-[10px] tnum ${mine ? 'opacity-80' : 'text-faint'}`}>
+        <p className={`mt-1 text-[0.625rem] tnum ${mine ? 'opacity-80' : 'text-faint'}`}>
           {formatDateTime(turn.at, locale)}
         </p>
       </div>

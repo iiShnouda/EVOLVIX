@@ -1161,7 +1161,7 @@ export function AddItemsPage() {
         ) : (
           <TableColumns id="purchase.lines">
             <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-              <table className="w-full whitespace-nowrap text-[13px]">
+              <table className="w-full whitespace-nowrap text-[0.8125rem]">
                 <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                   <tr>
                     <th className="px-2 py-2 text-start font-medium">#</th>
@@ -1546,7 +1546,7 @@ function InvoicePhotos({ files, onChange }: { files: File[]; onChange: (f: File[
           <a href={u} target="_blank" rel="noreferrer" title={`${t('additems.page')} ${i + 1}`}>
             <img src={u} alt="" className="h-16 w-16 rounded-md border border-line object-cover" />
           </a>
-          <span className="absolute bottom-0.5 start-0.5 rounded bg-black/60 px-1 text-[10px] text-white tnum">
+          <span className="absolute bottom-0.5 start-0.5 rounded bg-black/60 px-1 text-[0.625rem] text-white tnum">
             {i + 1}
           </span>
           <button

@@ -91,7 +91,7 @@ function SidebarShell() {
           {sections.map((section) => (
             <div key={section.key} className="space-y-0.5">
               {section.labelKey && (
-                <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-faint">
+                <p className="px-3 pb-1 text-[0.6875rem] font-semibold tracking-wide text-faint">
                   {t(section.labelKey)}
                 </p>
               )}
@@ -198,16 +198,19 @@ function PhoneShell() {
       <div aria-hidden style={{ height: headerHeight }} />
       <header
         ref={headerRef}
-        className="fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top"
+        className="fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 safe-top max-xs:gap-1 max-xs:px-2"
       >
         {/* The Evolvix mark, then the company's own logo and name (owner, 2026-10-15: the
             company's logo had no place on the phone). */}
         <span className="flex min-w-0 items-center gap-2">
           <Logo size={30} />
-          <CompanyMark size={32} />
+          {/* A narrow screen (or zoomed in) keeps the room for the name. */}
+          <span className="contents max-xs:hidden">
+            <CompanyMark size={32} />
+          </span>
           <span className="min-w-0 leading-tight">
             <CompanyName className="block truncate text-sm font-semibold" />
-            <Wordmark className="block text-[11px] text-muted" />
+            <Wordmark className="block text-[0.6875rem] text-muted" />
           </span>
         </span>
         {/* Language and look sit in "More" on a phone, so the name in the header has room. */}
@@ -242,7 +245,7 @@ function PhoneShell() {
           className="flex flex-col items-center justify-center gap-0.5 py-2 text-faint"
         >
           <Icon name="more" size={22} />
-          <span className="text-[11px] font-medium">{t('nav.more')}</span>
+          <span className="text-[0.6875rem] font-medium">{t('nav.more')}</span>
         </button>
       </nav>
 
@@ -269,7 +272,7 @@ function PhoneShell() {
                 .map((section) => (
                   <div key={section.key}>
                     {section.labelKey && (
-                      <p className="mb-1.5 px-1 text-[11px] font-semibold tracking-wide text-faint">
+                      <p className="mb-1.5 px-1 text-[0.6875rem] font-semibold tracking-wide text-faint">
                         {t(section.labelKey)}
                       </p>
                     )}
@@ -441,7 +444,7 @@ function RailLink({ item, label, active }: { item: NavItem; label: string; activ
       to={item.path}
       title={label}
       aria-current={active ? 'page' : undefined}
-      className={`flex w-16 flex-col items-center gap-1 rounded-xl py-2 text-[10px] font-medium transition-colors ${
+      className={`flex w-16 flex-col items-center gap-1 rounded-xl py-2 text-[0.625rem] font-medium transition-colors ${
         active ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-surface-2 hover:text-fg'
       }`}
     >
@@ -462,7 +465,7 @@ function PhoneTab({ item, label, active }: { item: NavItem; label: string; activ
       className={`flex flex-col items-center justify-center gap-0.5 py-2 ${active ? 'text-brand' : 'text-faint'}`}
     >
       <Icon name={item.icon} size={22} />
-      <span className="text-[11px] font-medium">{label}</span>
+      <span className="text-[0.6875rem] font-medium">{label}</span>
     </MenuLink>
   );
 }

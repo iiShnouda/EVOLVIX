@@ -299,7 +299,7 @@ function SkinPreview({ id, mode, rtl }: { id: Skin; mode: 'light' | 'dark'; rtl:
             key={i}
             data-ui="nav"
             aria-current={on ? 'page' : undefined}
-            className={`flex items-center gap-1 rounded-[var(--radius-app)] px-1.5 py-1 text-[10px] ${
+            className={`flex items-center gap-1 rounded-[var(--radius-app)] px-1.5 py-1 text-[0.625rem] ${
               on ? 'bg-brand-soft text-brand' : 'text-muted'
             }`}
           >
@@ -316,7 +316,7 @@ function SkinPreview({ id, mode, rtl }: { id: Skin; mode: 'light' | 'dark'; rtl:
           data-ui="card"
           className="space-y-1.5 rounded-[var(--radius-app)] border border-line bg-surface p-2.5 shadow-[var(--shadow-card)]"
         >
-          <div className="flex items-center justify-between text-[11px]">
+          <div className="flex items-center justify-between text-[0.6875rem]">
             <span className="font-medium">{t('themes.sampleLine')} #1042</span>
             <span className="tnum text-positive">12,450</span>
           </div>
@@ -326,7 +326,7 @@ function SkinPreview({ id, mode, rtl }: { id: Skin; mode: 'light' | 'dark'; rtl:
         <span
           data-ui="btn"
           data-variant="primary"
-          className="inline-flex h-7 items-center rounded-[var(--radius-app)] bg-brand px-3 text-[11px] font-medium text-brand-fg"
+          className="inline-flex h-7 items-center rounded-[var(--radius-app)] bg-brand px-3 text-[0.6875rem] font-medium text-brand-fg"
         >
           {t('themes.sampleButton')}
         </span>

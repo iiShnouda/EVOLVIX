@@ -549,7 +549,7 @@ function ReturnForm({ scope, fromInvoice }: { scope: DocScope; fromInvoice: stri
         ) : (
           <TableColumns id="return.lines">
             <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-              <table className="w-full text-[13px]">
+              <table className="w-full text-[0.8125rem]">
                 <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                   <tr className="whitespace-nowrap">
                     <th className="px-1.5 py-2 text-start font-medium">#</th>

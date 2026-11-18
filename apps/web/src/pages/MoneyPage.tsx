@@ -1170,7 +1170,7 @@ export function MoneyStatementBody({ a }: { a: MoneyAccount }) {
             <div className="mt-3 rounded-[var(--radius-app)] border border-line">
               <TableColumns id="statement.money" className="pt-2">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1300px] text-sm">
+                  <table className="w-full min-w-[81.25rem] text-sm">
                     <thead className="bg-surface-2 text-xs text-muted">
                       <tr>
                         {MOVE_COLS.map((c) => (

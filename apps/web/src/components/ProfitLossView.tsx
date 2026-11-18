@@ -56,7 +56,7 @@ function Tile({
       >
         {value}
       </p>
-      {sub && <p className="truncate text-[11px] text-faint tnum">{sub}</p>}
+      {sub && <p className="truncate text-[0.6875rem] text-faint tnum">{sub}</p>}
     </div>
   );
 }
@@ -253,7 +253,7 @@ export function ProfitLossTab() {
             ) : (
               <div className="overflow-x-auto">
                 <TableColumns id="pnl.places">
-                  <table className="w-full min-w-[860px] whitespace-nowrap text-[13px]">
+                  <table className="w-full min-w-[53.75rem] whitespace-nowrap text-[0.8125rem]">
                     <thead className="border-b border-line bg-surface-2 text-xs text-muted">
                       <tr>
                         {columns.map((c, i) => (
