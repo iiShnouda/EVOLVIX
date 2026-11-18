@@ -396,4 +396,45 @@ for (const kind of [
     log.items.map((e) => e.resource),
   );
 
+// ------------------------------------------------------------------ a supplier's PDF invoice
+console.log('== PDF invoices');
+const { deflateSync } = await import('node:zlib');
+const pdfOf = (objects) => {
+  let out = '%PDF-1.4\n';
+  const parts = [Buffer.from(out, 'latin1')];
+  objects.forEach((o, i) =>
+    parts.push(
+      Buffer.from(`${i + 1} 0 obj\n`, 'latin1'),
+      ...o,
+      Buffer.from('\nendobj\n', 'latin1'),
+    ),
+  );
+  parts.push(Buffer.from('trailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1'));
+  return Buffer.concat(parts);
+};
+const textPdf = pdfOf([
+  [Buffer.from('<< /Type /Catalog >>')],
+  [Buffer.from('<< /Length 20 >>\nstream\nBT (Invoice) Tj ET\nendstream')],
+]);
+const pixels = deflateSync(Buffer.alloc(320 * 320 * 3, 200));
+const imagePdf = pdfOf([
+  [Buffer.from('<< /Type /Catalog >>')],
+  [
+    Buffer.from(
+      `<< /Type /XObject /Subtype /Image /Width 320 /Height 320 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${pixels.length} >>\nstream\n`,
+      'latin1',
+    ),
+    pixels,
+    Buffer.from('\nendstream', 'latin1'),
+  ],
+]);
+const scanText = await upload(BASE, owner, '/assistant/scan/purchase', textPdf, 'invoice.pdf');
+eq('a PDF with no scanned page', [scanText.status, scanText.data?.code], [400, 'pdf_no_image']);
+const scanImage = await upload(BASE, owner, '/assistant/scan/purchase', imagePdf, 'invoice.pdf');
+check(
+  'a scanned PDF is taken as its page picture',
+  !['pdf_no_image', 'bad_image'].includes(scanImage.data?.code),
+  scanImage,
+);
+
 summary('imports');

@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Net.Http.Headers;
 using Npgsql;
 using SKB.Api.Data;
 using SKB.Api.Hubs;
@@ -86,47 +84,32 @@ public sealed class RestoreService
 
     // ------------------------------------------------------------------ the file
 
-    /// <summary>Stream the uploaded file (multipart, one file) to a temporary file, at most <see cref="MaxUpload"/>.</summary>
-    public async Task<Staged> UploadAsync(HttpRequest request, string ownerId, CancellationToken ct)
+    /// <summary>
+    /// Copy the uploaded file (ASP.NET has streamed it to disk, size-capped) to a temporary file named
+    /// by the server, at most <see cref="MaxUpload"/>.
+    /// </summary>
+    public async Task<Staged> UploadAsync(IFormFile? upload, string ownerId, CancellationToken ct)
     {
         Sweep();
-        var boundary = HeaderUtilities.RemoveQuotes(MediaTypeHeaderValue.Parse(request.ContentType ?? "").Boundary).Value;
-        if (string.IsNullOrEmpty(boundary)) throw new BackupException("Choose a backup file.", "no_file");
-        var reader = new MultipartReader(boundary, request.Body);
+        if (upload is null || upload.Length == 0) throw new BackupException("Choose a backup file.", "no_file");
+        if (upload.Length > MaxUpload) throw new BackupException("The file is too large.", "file_too_big");
         Directory.CreateDirectory(Folder);
-        while (await reader.ReadNextSectionAsync(ct) is { } section)
+        var id = Guid.NewGuid();
+        var path = Path.Combine(Folder, $"{id:N}.bak");
+        try
         {
-            if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var cd) || !cd.IsFileDisposition())
-                continue;
-            var id = Guid.NewGuid();
-            var path = Path.Combine(Folder, $"{id:N}.bak");
-            long size = 0;
-            try
-            {
-                await using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true))
-                {
-                    var buffer = new byte[81920];
-                    int n;
-                    while ((n = await section.Body.ReadAsync(buffer, ct)) > 0)
-                    {
-                        size += n;
-                        if (size > MaxUpload) throw new BackupException("The file is too large.", "file_too_big");
-                        await file.WriteAsync(buffer.AsMemory(0, n), ct);
-                    }
-                }
-                if (size == 0) throw new BackupException("Choose a backup file.", "no_file");
-            }
-            catch
-            {
-                File.Delete(path);
-                throw;
-            }
-            var name = Path.GetFileName(cd.FileName.Value ?? cd.FileNameStar.Value ?? "backup");
-            var staged = new Staged(id, path, name.Length > 120 ? name[..120] : name, size, ownerId, DateTime.UtcNow, true);
-            _staged[id] = staged;
-            return staged;
+            await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+            await upload.CopyToAsync(file, ct);
         }
-        throw new BackupException("Choose a backup file.", "no_file");
+        catch
+        {
+            File.Delete(path);
+            throw;
+        }
+        var name = Path.GetFileName(upload.FileName ?? "backup");
+        var staged = new Staged(id, path, name.Length > 120 ? name[..120] : name, upload.Length, ownerId, DateTime.UtcNow, true);
+        _staged[id] = staged;
+        return staged;
     }
 
     /// <summary>One of the automatic backups in the server's folder, by its name (never a path).</summary>
@@ -242,7 +225,19 @@ public sealed class RestoreService
 
         // 1. A safety backup of what is there now (the current database is kept as well, below).
         job.Step = "safety";
-        if (_scheduler.Folder is not null) job.SafetyBackup = (await _scheduler.RunAsync()).Name;
+        if (_scheduler.Folder is not null)
+        {
+            try
+            {
+                job.SafetyBackup = (await _scheduler.RunAsync()).Name;
+            }
+            catch (IOException)
+            {
+                // One was written this very second (its name is the time): the next second's.
+                await Task.Delay(1100);
+                job.SafetyBackup = (await _scheduler.RunAsync()).Name;
+            }
+        }
 
         var live = Live();
         var name = live.Database ?? throw new BackupException("No database is set.", "restore_failed");

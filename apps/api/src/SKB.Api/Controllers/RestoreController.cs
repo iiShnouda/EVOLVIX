@@ -38,15 +38,15 @@ public sealed class RestoreController : ControllerBase
         await _restore.UnavailableAsync(ct), RestoreService.MaxUpload, _scheduler.Folder is not null,
         _scheduler.Files().Select(f => new BackupFileDto(f.Name, f.Length, f.LastWriteTimeUtc.ToString("o"))).ToArray()));
 
-    /// <summary>Upload a backup file (multipart, streamed to a temporary file the server names).</summary>
+    /// <summary>Upload a backup file (multipart, streamed to disk, then a temporary file the server names).</summary>
     [HttpPost("upload")]
-    [DisableRequestSizeLimit]
+    [RequestSizeLimit(RestoreService.MaxUpload + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = RestoreService.MaxUpload)]
-    public async Task<ActionResult<StagedBackupDto>> Upload(CancellationToken ct)
+    public async Task<ActionResult<StagedBackupDto>> Upload(IFormFile? file, CancellationToken ct)
     {
         try
         {
-            var staged = await _restore.UploadAsync(Request, CurrentUser.Id(User), ct);
+            var staged = await _restore.UploadAsync(file, CurrentUser.Id(User), ct);
             return Ok(await StagedAsync(staged, ct));
         }
         catch (BackupException e)
