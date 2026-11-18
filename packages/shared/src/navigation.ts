@@ -93,7 +93,6 @@ export const NAV_SECTIONS: NavSection[] = [
         path: '/sales',
         anyOf: opens('sales', [
           'sales:print',
-          'sales:invoice_alerts',
           'sales:change_price',
           'sales:raise_price',
           'sales:choose_price_level',
