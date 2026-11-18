@@ -156,6 +156,7 @@ export function SettingsPage() {
             currentSeasonId: form.currentSeasonId ?? '',
             dailySummaryMinute: form.dailySummaryMinute ?? -1,
             noteAlertDays: form.noteAlertDays ?? 3,
+            damagedReturns: form.damagedReturns ?? 'WAREHOUSE',
           }
         : {}),
       ...(edits.security ? { idleMinutes: form.idleMinutes ?? 30 } : {}),
@@ -432,6 +433,23 @@ export function SettingsPage() {
                 value={form.returnAfterHours ?? 12}
                 onChange={(e) => set({ returnAfterHours: clampInt(e.target.value, 0, 720) })}
               />
+            </label>
+            {/* Where a damaged line of a sales return goes unless chosen on it (owner, 2026-11-18). */}
+            <label className="block">
+              <span className="mb-0.5 block text-xs text-muted">
+                {t('settings.damagedReturns')}
+              </span>
+              <select
+                className={field}
+                disabled={!edits.rules}
+                value={form.damagedReturns ?? 'WAREHOUSE'}
+                onChange={(e) =>
+                  set({ damagedReturns: e.target.value as 'WAREHOUSE' | 'WRITE_OFF' })
+                }
+              >
+                <option value="WAREHOUSE">{t('return.damaged.WAREHOUSE')}</option>
+                <option value="WRITE_OFF">{t('return.damaged.WRITE_OFF')}</option>
+              </select>
             </label>
             {/* The bell's daily summary and cheque notices (owner, 2026-11-12). */}
             <div className="block">

@@ -15,7 +15,20 @@ import { api } from './api';
  */
 
 function invalidateStock(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ['sales', 'purchases', 'dashboard', 'products', 'inventory', 'parties', 'report', 'reports', 'ledger', 'returnable', 'damaged', 'money'])
+  for (const key of [
+    'sales',
+    'purchases',
+    'dashboard',
+    'products',
+    'inventory',
+    'parties',
+    'report',
+    'reports',
+    'ledger',
+    'returnable',
+    'damaged',
+    'money',
+  ])
     void qc.invalidateQueries({ queryKey: [key] });
 }
 
@@ -29,11 +42,14 @@ export function useCreateExchange() {
 }
 
 /** Every warehouse the person may see, the branches' damaged goods warehouses too. */
-export function useWarehousesWithDamaged(activeOnly = true) {
+export function useWarehousesWithDamaged(activeOnly = true, enabled = true) {
   return useQuery({
     queryKey: ['inventory', 'warehouses', 'damaged', activeOnly],
+    enabled,
     queryFn: () =>
-      api.get<Warehouse[]>(`/warehouses?includeDamaged=true${activeOnly ? '&activeOnly=true' : ''}`),
+      api.get<Warehouse[]>(
+        `/warehouses?includeDamaged=true${activeOnly ? '&activeOnly=true' : ''}`,
+      ),
   });
 }
 

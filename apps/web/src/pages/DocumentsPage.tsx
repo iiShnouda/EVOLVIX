@@ -535,7 +535,11 @@ export function DocumentsPage({ scope }: { scope: DocScope }) {
           ) : kind === 'returns' && canReturn ? (
             <span className="flex flex-wrap gap-2">
               {isSales && permissions.includes('sales:create') && (
-                <Button variant="secondary" size="sm" onClick={() => navigate('/sales/exchange/new')}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate('/sales/exchange/new')}
+                >
                   {t('exchange.new')}
                 </Button>
               )}

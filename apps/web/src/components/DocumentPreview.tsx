@@ -27,6 +27,7 @@ import { useReportTools } from '../lib/report';
 import { TableColumns } from './TableColumns';
 import { useHiddenColumns, usePrintPaper } from '../lib/queries';
 import { StateBadge } from './StateBadge';
+import { ExchangePrintSheet } from './ExchangePrint';
 
 /** The parts of a printed document a person may leave out (owner, 2026-10-01). */
 export const PRINT_PARTS = [
@@ -151,6 +152,7 @@ export function DocumentPreview({
   const canPdf = !!doc && mayPrint(can, doc, 'pdf');
   // Printing opens the setup first (the paper and what shows), then prints (or saves the PDF) from there.
   const [setup, setSetup] = useState<'print' | 'pdf' | null>(null);
+  const [exchangePrint, setExchangePrint] = useState(false);
   useEffect(() => {
     if (autoPrint && ready && canPrint) setSetup('print');
   }, [autoPrint, ready, canPrint]);
@@ -234,6 +236,16 @@ export function DocumentPreview({
                 onClick={() => setSetup('print')}
               />
             )}
+            {canPrint && doc.exchangeId && doc.status !== 'CANCELLED' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="returns"
+                aria-label={t('exchange.print')}
+                title={t('exchange.print')}
+                onClick={() => setExchangePrint(true)}
+              />
+            )}
             {canPdf && (
               <Button
                 size="sm"
@@ -266,6 +278,7 @@ export function DocumentPreview({
           <DocumentActivity id={doc.id} />
         </div>
       </div>
+      {exchangePrint && <ExchangePrintSheet doc={doc} onClose={() => setExchangePrint(false)} />}
       {setup && (
         <PrintSetupSheet
           doc={doc}
@@ -361,6 +374,12 @@ export function InvoicePaper({
             <p>
               {t('quote.from')}:{' '}
               <span className="font-medium text-fg tnum">{doc.sourceNumber}</span>
+            </p>
+          )}
+          {doc.exchangeNumber && (
+            <p className="tnum">
+              {t('exchange.with')}:{' '}
+              <span className="font-medium text-fg">{doc.exchangeNumber}</span>
             </p>
           )}
           {isReturn && doc.sourceNumber && (
@@ -503,6 +522,13 @@ export function InvoicePaper({
                       {l.warehouseName && (
                         <span className="block text-xs text-muted" data-noprint>
                           {l.warehouseName}
+                        </span>
+                      )}
+                      {l.reason && (
+                        <span className="block text-xs text-muted">
+                          {t(`return.reason.${l.reason}` as TranslationKey)}
+                          {l.reasonNote ? `: ${l.reasonNote}` : ''}
+                          {l.damaged ? ` · ${t(`return.damaged.${l.damaged}`)}` : ''}
                         </span>
                       )}
                       {l.returnedQuantity > 0 && (

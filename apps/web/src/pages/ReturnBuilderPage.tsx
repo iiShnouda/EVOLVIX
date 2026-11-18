@@ -32,11 +32,7 @@ import {
   useReturnable,
   type DocScope,
 } from '../lib/queries';
-import {
-  useCreateExchange,
-  useTakenSearch,
-  useWarehousesWithDamaged,
-} from '../lib/returnsQueries';
+import { useCreateExchange, useTakenSearch, useWarehousesWithDamaged } from '../lib/returnsQueries';
 import { TableColumns } from '../components/TableColumns';
 
 const field =
@@ -92,7 +88,13 @@ let nextKey = 1;
  * the server takes the same pieces and has the last word. A return started from an invoice opens
  * with that invoice chosen.
  */
-export function ReturnBuilderPage({ scope, exchange = false }: { scope: DocScope; exchange?: boolean }) {
+export function ReturnBuilderPage({
+  scope,
+  exchange = false,
+}: {
+  scope: DocScope;
+  exchange?: boolean;
+}) {
   const { id = '' } = useParams();
   return (
     <ReturnForm
@@ -318,7 +320,10 @@ function ReturnForm({
   );
 
   // An exchange: what the customer takes instead, priced as the server will (owner, 2026-11-18).
-  const takenRows = taken.map((x) => ({ ...x, quantity: Math.max(0, Math.floor(Number(x.qty) || 0)) }));
+  const takenRows = taken.map((x) => ({
+    ...x,
+    quantity: Math.max(0, Math.floor(Number(x.qty) || 0)),
+  }));
   const pricing = usePricing('sale', {
     partyId: party?.id,
     warehouseId: warehouseId || undefined,
@@ -798,7 +803,10 @@ function ReturnForm({
                       type="button"
                       className="flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm hover:bg-surface-2"
                       onClick={() => {
-                        setTaken((prev) => [...prev, { key: `t${nextKey++}`, product: p, qty: '1' }]);
+                        setTaken((prev) => [
+                          ...prev,
+                          { key: `t${nextKey++}`, product: p, qty: '1' },
+                        ]);
                         setTakenSearch('');
                       }}
                     >
@@ -1048,7 +1056,11 @@ function ReasonSelect({
 }) {
   const { t } = useT();
   return (
-    <select className={`${field} ${className}`} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select
+      className={`${field} ${className}`}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
       <option value="">{empty}</option>
       {RETURN_REASONS.map((r) => (
         <option key={r} value={r}>
@@ -1168,7 +1180,13 @@ function ExchangeBar({
             />
           </label>
         )}
-        <Button className="ms-auto" icon="check" loading={saving} disabled={disabled} onClick={onSave}>
+        <Button
+          className="ms-auto"
+          icon="check"
+          loading={saving}
+          disabled={disabled}
+          onClick={onSave}
+        >
           {saving ? t('exchange.saving') : t('exchange.save')}
         </Button>
       </div>

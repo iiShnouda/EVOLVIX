@@ -14,6 +14,7 @@ import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../c
 import { PeriodBars } from '../components/charts/PeriodBars';
 import { ProfitabilityPage } from './ProfitabilityPage';
 import { AssortmentTab } from './AssortmentTab';
+import { ReturnsReportTab } from './ReturnsReportTab';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
@@ -43,6 +44,7 @@ type Tab =
   | 'aging'
   | 'items'
   | 'assortment'
+  | 'returns'
   | 'changes';
 /** Each report is a permission of its own (owner, 2026-10-23). */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
@@ -54,6 +56,7 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'aging', label: 'analytics.tabAging', permission: 'reports:aging' },
   { key: 'items', label: 'analytics.tabItems', permission: 'reports:items' },
   { key: 'assortment', label: 'analytics.tabAssortment', permission: 'reports:assortment' },
+  { key: 'returns', label: 'analytics.tabReturns', permission: 'reports:returns' },
   { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
@@ -100,6 +103,7 @@ export function AnalyticsPage() {
       {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
       {tab === 'assortment' && <AssortmentTab />}
+      {tab === 'returns' && <ReturnsReportTab />}
       {tab === 'changes' && <ChangesTab />}
     </div>
   );
