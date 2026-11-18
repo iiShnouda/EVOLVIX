@@ -381,6 +381,19 @@ public sealed class PriceListsController : ControllerBase
                 list.GroupId = gid;
             else return Bad("group_not_found", "Choose a sub-group of the list's department.");
         }
+        // Seasonal (owner, 2026-11-18): only the items of one season ("" = any).
+        if (req.SeasonId is not null)
+        {
+            if (req.SeasonId == "") list.SeasonId = null;
+            else if (Guid.TryParse(req.SeasonId, out var sid) && await _db.Seasons.AnyAsync(x => x.Id == sid)) list.SeasonId = sid;
+            else return Bad("season_not_found", "Season not found.");
+        }
+        if (req.DepartmentSeason is not null)
+        {
+            if (req.DepartmentSeason == "") list.DepartmentSeason = null;
+            else if (DepartmentSeasons.Parse(req.DepartmentSeason) is { } ds) list.DepartmentSeason = ds;
+            else return Bad("bad_season", "Summer or winter.");
+        }
         if (req.Percent is decimal percent)
         {
             var bp = (int)decimal.Round(percent * 100m, MidpointRounding.AwayFromZero);
@@ -409,12 +422,22 @@ public sealed class PriceListsController : ControllerBase
             .GroupBy(p => p.PurchasePriceListId!.Value).Select(g => new { g.Key, Count = g.Count() }).ToListAsync();
         var parties = sales.Concat(purchases).GroupBy(x => x.Key).ToDictionary(g => g.Key, g => g.Sum(x => x.Count));
         var today = CompanyClock.TodayDate;
+        var seasonIds = lists.Where(l => l.SeasonId != null).Select(l => l.SeasonId!.Value).Distinct().ToList();
+        var seasons = await _db.Seasons.AsNoTracking().Where(x => seasonIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        // By its dates (owner, 2026-11-18): it turns on on its first day and off after its last.
+        static string State(PriceList l, DateTime today) =>
+            !l.IsActive ? "OFF"
+            : l.ValidFrom is DateTime from && from > today ? "UPCOMING"
+            : l.ValidTo is DateTime to && to < today ? "ENDED"
+            : "ACTIVE";
         return lists.Select(l => new PriceListDto(
             l.Id.ToString(), Loc.Name(l), l.Side.ToString(), l.ForEveryone, l.ValidFrom?.ToString("yyyy-MM-dd"),
             l.ValidTo?.ToString("yyyy-MM-dd"), l.IsActive, l.Notes, items.GetValueOrDefault(l.Id),
             parties.GetValueOrDefault(l.Id),
             l.IsActive && (l.ValidFrom == null || l.ValidFrom <= today) && (l.ValidTo == null || l.ValidTo >= today),
-            l.DepartmentId?.ToString(), l.GroupId?.ToString(), l.PercentBp, l.MinAmount)).ToList();
+            l.DepartmentId?.ToString(), l.GroupId?.ToString(), l.PercentBp, l.MinAmount, l.SeasonId?.ToString(),
+            l.SeasonId is Guid sid && seasons.TryGetValue(sid, out var season) ? Seasons.NameOf(season) : null,
+            l.DepartmentSeason, State(l, today))).ToList();
     }
 
     private async Task<PriceListDetailDto> DetailAsync(PriceList list)

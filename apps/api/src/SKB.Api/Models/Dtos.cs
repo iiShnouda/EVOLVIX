@@ -612,7 +612,8 @@ public record SetPartyPriceLevelsRequest(
 public record PriceListDto(
     string Id, string Name, string Side, bool ForEveryone, string? ValidFrom, string? ValidTo, bool IsActive,
     string? Notes, int Items, int Parties, bool Current, string? DepartmentId = null, string? GroupId = null,
-    int PercentBp = 0, long MinAmount = 0);
+    int PercentBp = 0, long MinAmount = 0, string? SeasonId = null, string? SeasonName = null,
+    string? DepartmentSeason = null, string State = "ACTIVE");
 
 public record PriceListPartyDto(string Id, string Name, string? Code);
 
@@ -630,7 +631,7 @@ public record SetPriceListPartiesRequest(string[]? PartyIds);
 public record SavePriceListRequest(
     string? Name = null, string? Side = null, bool? ForEveryone = null, string? ValidFrom = null, string? ValidTo = null,
     bool? IsActive = null, string? Notes = null, string? DepartmentId = null, string? GroupId = null,
-    decimal? Percent = null, long? MinAmount = null);
+    decimal? Percent = null, long? MinAmount = null, string? SeasonId = null, string? DepartmentSeason = null);
 
 /// <summary>One price on a list: an item or a whole model (every size and color), one unit.</summary>
 public record PriceListItemRequest(string? ProductId, string? ModelId, string? UnitId, long Price);
@@ -1230,16 +1231,17 @@ public record EmployeeDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string? JobTitle, string? Phone,
     string? NationalId, string HireDate, long MonthlySalary, string? ShiftId, string? ShiftName, string? DeviceUserId,
     string? StaffId, string? StaffName, long AdvanceBalance, bool IsActive, string[]? OtherPhones = null,
-    string[]? OtherPhoneLabels = null);
+    string[]? OtherPhoneLabels = null, string PayType = "MONTHLY", long PayRate = 0, string? LeaveDate = null);
 
 /// <summary>Any field left null is unchanged (on create: the defaults). "" clears an optional text.</summary>
 public record SaveEmployeeRequest(
     string? Name = null, string? BranchId = null, string? JobTitle = null, string? Phone = null,
     string? NationalId = null, string? HireDate = null, long? MonthlySalary = null, string? ShiftId = null,
     string? DeviceUserId = null, string? StaffId = null, bool? IsActive = null, string[]? OtherPhones = null,
-    string[]? OtherPhoneLabels = null);
+    string[]? OtherPhoneLabels = null, string? PayType = null, long? PayRate = null, string? LeaveDate = null);
 
-public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent);
+/// <param name="PaidHolidays">Holidays paid to daily and hourly workers; null leaves it as it is.</param>
+public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent, bool? PaidHolidays = null);
 
 public record AttendanceRowDto(
     string EmployeeId, string Code, string Name, string BranchName, string? ShiftName, bool DayOff, string? Status,
@@ -1277,7 +1279,7 @@ public record PayrollLineDto(
     string Id, string EmployeeId, string EmployeeCode, string EmployeeName, long MonthlySalary, int EmployedDays,
     int WorkDays, int AbsentDays, int LateMinutes, int OvertimeMinutes, long Basic, long OvertimePay, long Bonuses,
     long AbsenceDeduction, long LateDeduction, long Deductions, long Earned, long AdvanceRecovery, long Net,
-    long PaidAmount, string? PaidAt);
+    long PaidAmount, string? PaidAt, string PayType = "MONTHLY", long PayRate = 0, int PaidDays = 0, int WorkedMinutes = 0);
 
 public record PayrollRunDto(
     string Id, string Number, int Year, int Month, string? BranchId, string? BranchName, string Status, long Earned,

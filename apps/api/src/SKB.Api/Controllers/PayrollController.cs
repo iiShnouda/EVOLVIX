@@ -156,6 +156,40 @@ public sealed class PayrollController : ControllerBase
             if (salary is < 0 or > MaxAmount) return Bad("bad_amount", "Enter a valid salary.");
             e.MonthlySalary = salary;
         }
+        if (req.PayType is not null)
+        {
+            if (!Enum.TryParse<PayType>(req.PayType, true, out var payType) || !Enum.IsDefined(payType))
+                return Bad("bad_pay_type", "Paid by the month, the day or the hour.");
+            e.PayType = payType;
+        }
+        if (req.PayRate is long rate)
+        {
+            if (rate is < 0 or > MaxAmount) return Bad("bad_amount", "Enter a valid rate.");
+            e.PayRate = rate;
+        }
+        if (e.PayType != PayType.MONTHLY && e.PayRate <= 0)
+            return Bad("bad_rate", e.PayType == PayType.DAILY ? "Enter a day's pay." : "Enter an hour's pay.");
+        if (req.LeaveDate is not null)
+        {
+            DateTime? leave = null;
+            if (req.LeaveDate != "")
+            {
+                if (!DateOnly.TryParse(req.LeaveDate, CultureInfo.InvariantCulture, out var day) || day.Year < 1950
+                    || day > CompanyClock.Today.AddYears(1))
+                    return Bad("bad_date", "Enter a valid leaving date.");
+                leave = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+                if (leave < e.HireDate) return Bad("leave_before_hire", "The leaving date is before the hiring date.");
+                // Leaving, like stopping work, waits until their advances are settled.
+                if (e.AdvanceBalance > 0 && leave != e.LeaveDate)
+                    return Bad("advance_open", "Recover or cancel this employee's advances first.");
+            }
+            // A month already paid stays as it was paid.
+            if (leave != e.LeaveDate)
+                foreach (var when in new[] { e.LeaveDate, leave }.OfType<DateTime>())
+                    if (await MonthPostedAsync(e.Id, when.Year, when.Month))
+                        return Bad("month_posted", "That month's payroll is already posted.");
+            e.LeaveDate = leave;
+        }
         if (req.ShiftId is not null)
         {
             if (req.ShiftId == "") e.ShiftId = null;
@@ -268,7 +302,7 @@ public sealed class PayrollController : ControllerBase
     public async Task<ActionResult<PayrollSettingsDto>> Settings()
     {
         var s = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
-        return Ok(new PayrollSettingsDto(s.PayrollDayBasis, s.OvertimePercent, s.MissingAttendanceIsAbsent));
+        return Ok(new PayrollSettingsDto(s.PayrollDayBasis, s.OvertimePercent, s.MissingAttendanceIsAbsent, s.PaidHolidays));
     }
 
     [HttpPut("settings")]
@@ -281,10 +315,11 @@ public sealed class PayrollController : ControllerBase
         s.PayrollDayBasis = req.DayBasis;
         s.OvertimePercent = req.OvertimePercent;
         s.MissingAttendanceIsAbsent = req.MissingAttendanceIsAbsent;
+        if (req.PaidHolidays is bool paidHolidays) s.PaidHolidays = paidHolidays;
         s.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await AuditAsync("update", "payroll_settings", s.Id);
-        return Ok(req);
+        return Ok(req with { PaidHolidays = s.PaidHolidays });
     }
 
     // ------------------------------------------------------------------ bonuses and deductions
@@ -612,7 +647,8 @@ public sealed class PayrollController : ControllerBase
             l.Id.ToString(), l.EmployeeId.ToString(), l.Employee?.Code ?? "", l.EmployeeName, l.MonthlySalary, l.EmployedDays,
             l.WorkDays, l.AbsentDays, l.LateMinutes, l.OvertimeMinutes, l.Basic, l.OvertimePay, l.Bonuses,
             l.AbsenceDeduction, l.LateDeduction, l.Deductions, l.Earned, l.AdvanceRecovery, l.Net, l.PaidAmount,
-            l.PaidAt?.ToString("o"))).ToArray(), await CurrencyAsync());
+            l.PaidAt?.ToString("o"), l.PayType.ToString(), l.PayRate, l.PaidDays, l.WorkedMinutes)).ToArray(),
+            await CurrencyAsync());
     }
 
     private static PayrollRunDto ToDto(PayrollRun r, int employees, PayrollLineDto[] lines, string currency) => new(
@@ -624,7 +660,8 @@ public sealed class PayrollController : ControllerBase
         e.Id.ToString(), e.Code, e.Name, e.BranchId.ToString(), Loc.Name(e.Branch), e.JobTitle, e.Phone, e.NationalId,
         e.HireDate.ToString("yyyy-MM-dd"), e.MonthlySalary, e.ShiftId?.ToString(), e.Shift is null ? null : Loc.Name(e.Shift),
         e.DeviceUserId, e.StaffId?.ToString(), e.Staff?.FullName, e.AdvanceBalance, e.IsActive, e.OtherPhones.ToArray(),
-        e.OtherPhones.Select((_, i) => i < e.OtherPhoneLabels.Count ? e.OtherPhoneLabels[i] : "").ToArray());
+        e.OtherPhones.Select((_, i) => i < e.OtherPhoneLabels.Count ? e.OtherPhoneLabels[i] : "").ToArray(),
+        e.PayType.ToString(), e.PayRate, e.LeaveDate?.ToString("yyyy-MM-dd"));
 
     private static ShiftDto ToDto(Shift s) => new(
         s.Id.ToString(), Loc.Name(s), PayrollService.Clock(s.StartMinute)!, PayrollService.Clock(s.EndMinute)!, s.GraceMinutes,
