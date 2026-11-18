@@ -42,16 +42,16 @@ public sealed class NotificationService
     public static readonly IReadOnlyDictionary<string, string?> Kinds = new Dictionary<string, string?>
     {
         [InvoiceNew] = Permissions.SalesInvoiceAlerts,
-        [InvoiceEdited] = Permissions.SalesInvoiceAlerts,
-        [OrderPending] = Permissions.SalesApprove,
-        [LimitWait] = Permissions.SalesApprove,
+        [InvoiceEdited] = Permissions.NotifyInvoiceEdited,
+        [OrderPending] = Permissions.NotifyOrderPending,
+        [LimitWait] = Permissions.NotifyLimitWait,
         [OrderApproved] = null,
         [OrderRejected] = null,
         [ReturnMade] = null,
-        [CashSent] = Permissions.CashHandoverReceive,
+        [CashSent] = Permissions.NotifyCashSent,
         [CashReceived] = null,
         [CashCancelled] = null,
-        [TransferSent] = Permissions.InventoryTransferReceive,
+        [TransferSent] = Permissions.NotifyTransferSent,
         [TransferReceived] = null,
         [TransferCancelled] = null,
         [NoteDue] = Permissions.NotifyCheques,
@@ -59,13 +59,13 @@ public sealed class NotificationService
         [NoteBounced] = Permissions.NotifyCheques,
         [StockOut] = Permissions.NotifyStock,
         [StockLow] = Permissions.NotifyStock,
-        [PayrollPosted] = Permissions.PayrollRuns,
-        [PayrollPaid] = Permissions.PayrollRuns,
-        [BackupFailed] = Permissions.BackupCreate,
+        [PayrollPosted] = Permissions.NotifyPayroll,
+        [PayrollPaid] = Permissions.NotifyPayroll,
+        [BackupFailed] = Permissions.NotifyBackup,
         [UpdateAvailable] = Permissions.SystemUpdate,
         [NewSignIn] = null,
-        [PeriodLock] = Permissions.LedgerJournal,
-        [YearClosed] = Permissions.LedgerJournal,
+        [PeriodLock] = Permissions.NotifyBooks,
+        [YearClosed] = Permissions.NotifyBooks,
         [DailySummary] = Permissions.NotifyDailySummary,
     };
 
@@ -182,16 +182,26 @@ public sealed class NotificationService
 
     /// <summary>The one writer: a row for <paramref name="staffId"/>, told live once saved.</summary>
     private void Add(Guid staffId, string kind, ClaimsPrincipal? actor, Guid? documentId = null, string? number = null,
-        string? party = null, string? place = null, long amount = 0, string? message = null, object? data = null)
+        string? party = null, string? place = null, long amount = 0, string? message = null, object? data = null,
+        Where? at = null)
     {
         _db.Notifications.Add(new Notification
         {
             StaffId = staffId, Kind = kind, DocumentId = documentId, DocumentNumber = number,
+            BranchId = at?.Branch, DepartmentId = at?.Department, WarehouseId = at?.Warehouse,
             PartyName = party, DepartmentName = place, Amount = amount, ActorName = NameOf(actor),
             Message = string.IsNullOrWhiteSpace(message) ? null : message.Length > 300 ? message[..300] : message,
             Data = data is null ? null : JsonSerializer.Serialize(data, Json),
         });
         _toTell.Add(staffId);
+    }
+
+    /// <summary>Where it happened (kept on the row so the notifications page can be filtered by place).</summary>
+    public sealed record Where(Guid? Branch, Guid? Department = null, Guid? Warehouse = null)
+    {
+        public static Where Of(SalesDocument d) => new(d.BranchId, d.DepartmentId);
+        public static Where Of(Warehouse w) => new(w.BranchId, Warehouse: w.Id);
+        public static Where Of(MoneyAccount a) => new(a.BranchId, Warehouse: a.WarehouseId);
     }
 
     // ------------------------------------------------------------------ sales
@@ -215,7 +225,7 @@ public sealed class NotificationService
     private async Task TellAsync(string kind, SalesDocument doc, string partyName, string? departmentName, ClaimsPrincipal actor)
     {
         foreach (var p in await ForAsync(kind, IdOf(actor), p => p.InBranch(doc.BranchId) && p.InDepartment(doc.DepartmentId)))
-            Add(p.Id, kind, actor, doc.Id, doc.Number, partyName, departmentName, doc.GrandTotal);
+            Add(p.Id, kind, actor, doc.Id, doc.Number, partyName, departmentName, doc.GrandTotal, at: Where.Of(doc));
     }
 
     /// <summary>A pending invoice was approved or turned down: tell its maker.</summary>
@@ -225,7 +235,7 @@ public sealed class NotificationService
         if (await OneAsync(kind, order.StaffId, IdOf(actor)) is null) return;
         var (partyName, departmentName) = await NamesAsync(order);
         Add(order.StaffId, kind, actor, order.Id, order.Number, partyName, departmentName, order.GrandTotal,
-            approved ? null : order.RejectReason);
+            approved ? null : order.RejectReason, at: Where.Of(order));
     }
 
     /// <summary>
@@ -248,7 +258,7 @@ public sealed class NotificationService
         {
             if (await OneAsync(ReturnMade, source.StaffId, IdOf(actor)) is null) continue;
             Add(source.StaffId, ReturnMade, actor, ret.Id, ret.Number, partyName, departmentName, ret.GrandTotal,
-                data: new { invoiceId = source.Id.ToString(), invoice = source.Number });
+                data: new { invoiceId = source.Id.ToString(), invoice = source.Number }, at: Where.Of(ret));
         }
         await _db.SaveChangesAsync();
     }
@@ -268,7 +278,7 @@ public sealed class NotificationService
     public async Task CashSentAsync(CashHandover h, MoneyAccount from, MoneyAccount to, ClaimsPrincipal actor)
     {
         foreach (var p in await ForAsync(CashSent, IdOf(actor), p => p.Uses(to)))
-            Add(p.Id, CashSent, actor, h.Id, h.Number, from.Name, to.Name, h.Amount, h.Notes);
+            Add(p.Id, CashSent, actor, h.Id, h.Number, from.Name, to.Name, h.Amount, h.Notes, at: Where.Of(to));
     }
 
     /// <summary>Cash sent up arrived or was called off: tell the sender (unless they did it).</summary>
@@ -276,7 +286,7 @@ public sealed class NotificationService
     {
         var kind = h.Status == HandoverStatus.RECEIVED ? CashReceived : CashCancelled;
         if (await OneAsync(kind, h.SentById, IdOf(actor)) is null) return;
-        Add(h.SentById, kind, actor, h.Id, h.Number, from.Name, to.Name, h.Amount, h.Reason);
+        Add(h.SentById, kind, actor, h.Id, h.Number, from.Name, to.Name, h.Amount, h.Reason, at: Where.Of(from));
     }
 
     // ------------------------------------------------------------------ stock
@@ -285,7 +295,7 @@ public sealed class NotificationService
     public async Task TransferSentAsync(StockTransfer t, Warehouse from, Warehouse to, ClaimsPrincipal actor)
     {
         foreach (var p in await ForAsync(TransferSent, IdOf(actor), p => p.Uses(to)))
-            Add(p.Id, TransferSent, actor, t.Id, t.Number, Loc.Name(from), Loc.Name(to), message: t.Notes);
+            Add(p.Id, TransferSent, actor, t.Id, t.Number, Loc.Name(from), Loc.Name(to), message: t.Notes, at: Where.Of(to));
     }
 
     /// <summary>A transfer arrived or was sent back: tell whoever sent it (unless they did it).</summary>
@@ -293,7 +303,7 @@ public sealed class NotificationService
     {
         var kind = t.Status == TransferStatus.RECEIVED ? TransferReceived : TransferCancelled;
         if (await OneAsync(kind, t.CreatedById, IdOf(actor)) is null) return;
-        Add(t.CreatedById, kind, actor, t.Id, t.Number, Loc.Name(from), Loc.Name(to));
+        Add(t.CreatedById, kind, actor, t.Id, t.Number, Loc.Name(from), Loc.Name(to), at: Where.Of(from));
     }
 
     /// <summary>
@@ -314,7 +324,8 @@ public sealed class NotificationService
             var kind = c.Out ? StockOut : StockLow;
             foreach (var p in await ForAsync(kind, IdOf(actor), p => p.Uses(w)))
                 Add(p.Id, kind, actor, c.Product.Id, c.Product.Sku, c.Product.Name, Loc.Name(w),
-                    data: new { qty = c.Out ? c.WarehouseQty : c.Product.StockOnHand, level = c.Product.ReorderLevel });
+                    data: new { qty = c.Out ? c.WarehouseQty : c.Product.StockOnHand, level = c.Product.ReorderLevel },
+                    at: Where.Of(w));
         }
     }
 
@@ -325,7 +336,8 @@ public sealed class NotificationService
     {
         var party = await _db.Parties.Where(p => p.Id == n.PartyId).Select(p => p.Name).FirstOrDefaultAsync();
         foreach (var p in await ForAsync(NoteBounced, IdOf(actor), p => p.InBranch(n.BranchId)))
-            Add(p.Id, NoteBounced, actor, n.Id, NoteNumber(n), party, n.BankName, n.Amount, data: NoteData(n));
+            Add(p.Id, NoteBounced, actor, n.Id, NoteNumber(n), party, n.BankName, n.Amount, data: NoteData(n),
+                at: new Where(n.BranchId));
     }
 
     /// <summary>
@@ -347,7 +359,8 @@ public sealed class NotificationService
             var kind = overdue ? NoteOverdue : NoteDue;
             n.AlertStage = overdue ? 2 : 1;
             foreach (var p in await ForAsync(kind, null, p => p.InBranch(n.BranchId)))
-                Add(p.Id, kind, null, n.Id, NoteNumber(n), n.Party?.Name, n.BankName, n.Amount, data: NoteData(n));
+                Add(p.Id, kind, null, n.Id, NoteNumber(n), n.Party?.Name, n.BankName, n.Amount, data: NoteData(n),
+                    at: new Where(n.BranchId));
         }
         if (notes.Count > 0) await _db.SaveChangesAsync();
         return notes.Count;
@@ -368,7 +381,7 @@ public sealed class NotificationService
         var kind = paid ? PayrollPaid : PayrollPosted;
         foreach (var p in await ForAsync(kind, IdOf(actor), p => run.BranchId is not Guid b || p.InBranch(b)))
             Add(p.Id, kind, actor, run.Id, run.Number, amount: paid ? run.Paid : run.Net,
-                data: new { year = run.Year, month = run.Month });
+                data: new { year = run.Year, month = run.Month }, at: run.BranchId is Guid rb ? new Where(rb) : null);
     }
 
     /// <summary>The books were locked up to a day (or opened): tell the others who work in the journal.</summary>

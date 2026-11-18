@@ -1,5 +1,5 @@
 import type { Permission, Role } from './types';
-import { PERMISSION_GROUPS } from './permissions';
+import { NOTIFY_EARNED_BEFORE, PERMISSION_GROUPS } from './permissions';
 
 /**
  * Default permission set per role. The server derives a user's permissions from their role
@@ -28,7 +28,7 @@ export const OWNER_ONLY: Permission[] = [
   'system:logs',
 ];
 
-export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
+export const ROLE_PERMISSIONS: Record<Role, Permission[]> = withNotifications({
   // Founder/owner: everything, including the audit + presence (who's online) views and backups.
   OWNER: ALL_PERMISSIONS,
   // The admin has every permission, new ones too (owner decision 2026-10-02).
@@ -449,7 +449,20 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
   // Starts with nothing; the owner ticks exactly what the person may do (owner, 2026-10-23).
   NONE: [],
-};
+});
+
+/** A role that holds an action's permission is also told of it (NOTIFY_EARNED_BEFORE; Roles.cs). */
+function withNotifications(map: Record<Role, Permission[]>): Record<Role, Permission[]> {
+  const out = {} as Record<Role, Permission[]>;
+  for (const [role, set] of Object.entries(map) as [Role, Permission[]][]) {
+    const told = (Object.entries(NOTIFY_EARNED_BEFORE) as [Permission, Permission][])
+      .filter(([, before]) => set.includes(before))
+      .map(([kind]) => kind)
+      .filter((p) => !set.includes(p));
+    out[role] = [...set, ...told];
+  }
+  return out;
+}
 
 export function permissionsForRole(role: Role): Permission[] {
   return ROLE_PERMISSIONS[role] ?? [];
