@@ -3688,7 +3688,8 @@ export const en = {
   'perm.notifications:backup': 'Notified when the automatic backup fails',
   'perm.notifications:books': 'Notified of period locks and year closings',
   'perm.notifications:payroll': 'Notified when payroll is posted or paid',
-  'perm.notifications:transfer_sent': 'Notified of transfers waiting to be received at my warehouses',
+  'perm.notifications:transfer_sent':
+    'Notified of transfers waiting to be received at my warehouses',
   'perm.notifications:cash_sent': 'Notified of cash sent to my cash boxes',
   'perm.notifications:limit_wait': "Notified of invoices over a customer's purchase limit",
   'perm.notifications:order_pending': 'Notified of sales invoices waiting for approval',
