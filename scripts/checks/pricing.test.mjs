@@ -304,6 +304,7 @@ seasonLines = (await priceFor(karim, c4, [[SI.id, 1], [NI.id, 1], [WI.id, 1]])).
 eq('only items of a summer department', seasonLines.map((l) => l.unitPrice), [900, 1000, 1000]);
 ok('off', await owner.put(`/price-lists/${DS.list.id}`, { isActive: false }));
 eq('switched off', (await owner.get('/price-lists')).data.find((l) => l.id === DS.list.id)?.state, 'OFF');
+for (const d of [sDep, wDep]) ok('department closed', await owner.put(`/departments/${d.id}`, { isActive: false }));
 
 // ------------------------------------------------------------------ quantity discounts by amount
 console.log('== steps by amount');

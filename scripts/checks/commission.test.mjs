@@ -382,4 +382,8 @@ eq(
 );
 eq('a rule deleted', (await mona.del(`/commission/rules/${later.id}`)).status, 204);
 
+// Its departments closed again, so later suites' sales needn't name one.
+for (const d of [dA, dB])
+  ok('department closed', await owner.put(`/departments/${d.id}`, { isActive: false }));
+
 summary('commission');

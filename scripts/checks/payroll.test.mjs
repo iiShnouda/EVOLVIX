@@ -613,11 +613,7 @@ const back = ok(
   }),
 );
 eq('kept', back.paidHolidays, true);
-eq(
-  'the rules say so',
-  (await owner.get('/payroll/settings')).data.paidHolidays,
-  true,
-);
+eq('the rules say so', (await owner.get('/payroll/settings')).data.paidHolidays, true);
 const now = ok(
   'this month',
   await mona.post('/payroll/runs', { year: thisYear, month: thisMonth, branchId: branch2.id }),
