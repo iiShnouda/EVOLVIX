@@ -131,6 +131,22 @@
         {
           "ar": "قوائم أسعار موسمية: القائمة ممكن تبقى لأصناف موسم معين (صيفي ٢٠٢٦ مثلًا) أو للأقسام الصيفي أو الشتوي، وبتشتغل وتقف لوحدها حسب تواريخها، والصفحة بتوضح القائمة سارية ولا لسه ولا خلصت",
           "en": "Seasonal price lists: a list can cover one season's items (e.g. Summer 2026) or the summer or winter departments, turns on and off by its dates, and the page shows whether each list is running, starts later or has ended"
+        },
+        {
+          "ar": "الأصناف المرتجعة بقى ليها سبب (مقاس، لون، تالف، العميل غيّر رأيه، تأخير، سبب تاني) وبيظهر في المرتجع وطباعته، والقائمة بتتفلتر بيه",
+          "en": "Each returned line now has a reason (wrong size or colour, damaged, changed mind, late delivery, other); shown on the return and its print, and the returns list filters by it"
+        },
+        {
+          "ar": "تقرير المرتجعات: حسب السبب والصنف والعميل والمندوب ونسبة الإرجاع",
+          "en": "Returns report: by reason, item, customer and rep, with the return rate"
+        },
+        {
+          "ar": "المرتجع التالف بيروح مخزن التالف بتاع الفرع أو بيتعدم على طول؛ ومن صفحة البضاعة التالفة ترجّعه للمخزن بعد التصليح أو تعدمه أو ترجّعه للمورد",
+          "en": "Damaged returns go to the branch's damaged warehouse or are written off at once; the Damaged goods page moves them back to a store, writes them off, or returns them to the supplier"
+        },
+        {
+          "ar": "استبدال: العميل يرجّع ويأخد أصناف تانية في خطوة واحدة، ويدفع أو ياخد الفرق بس، وورقة واحدة للطباعة",
+          "en": "Exchange: the customer returns items and takes others in one go, paying or getting back only the difference, printed on one paper"
         }
       ],
       "fixes": [

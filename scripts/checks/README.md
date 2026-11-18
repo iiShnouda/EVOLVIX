@@ -72,6 +72,7 @@ live company server.
 | `restore.test.mjs` | Restoring a backup in the app (`backup:restore`, owner only): what it holds first, wrong passphrase, not a backup, newer version, picking by name only, the typed confirmation, the safety backup, the old database kept, everyone signed out, audit. **Replaces the server's data: throwaway database only** (`PGURL`, `Backup__Folder`). |
 | `seasoncompare.test.mjs` | The year beside the season on suppliers and departments, seasons across years (per-year figures, stock at season end, items without a season), what to buy (suggestion math, order, by supplier), permissions and scoping. |
 | `commission.test.mjs` | Sales reps' commission: rules by rep, basis (net sales / collections), department and start date; the report's math with returns and discounts; collections by counter money and receipts; adding a month to payroll once (linked employee only); permissions and scoping. |
+| `exchange.test.mjs` | Return reasons (list, per line, other with words, filter, report by reason/item/customer/rep with the rate), damaged goods (the branch's damaged warehouse, write-off at cost with its entry, repair to a store, supplier return from it, cancelling), and exchange (one transaction, linked documents, the difference for credit and cash customers), permissions and scoping. |
 
 ## Running
 
