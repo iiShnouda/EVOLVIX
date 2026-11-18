@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SKB.Api.Data;
@@ -22,6 +23,7 @@ namespace SKB.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/imports")]
+[Authorize]
 public sealed class ImportController : ControllerBase
 {
     private const long MaxBytes = 10 * 1024 * 1024;
@@ -103,22 +105,23 @@ public sealed class ImportController : ControllerBase
         new("amount", "Balance", "الرصيد", true, "amount", "المبلغ"),
     };
 
-    private bool May(string kind) => Permissions.Imports.TryGetValue(kind, out var p) && User.Has(p);
+    // Each kind's permission is checked here (owner-only permissions are never "any of" policies);
+    // they are the owner's alone, so nobody else holds them.
+    private bool May(string kind) => Permissions.Imports.TryGetValue(kind, out var p) && User.Has(p)
+        && CurrentUser.Role(User) == Role.OWNER;
 
     /// <summary>The kinds this person may import, with their columns.</summary>
     [HttpGet]
-    [AnyPermission(Permissions.ImportItems, Permissions.ImportCustomers, Permissions.ImportSuppliers,
-        Permissions.ImportOpeningCustomers, Permissions.ImportOpeningSuppliers, Permissions.ImportOpeningMoney,
-        Permissions.ImportOpeningStock)]
-    public ActionResult<ImportKindDto[]> List() => Ok(Kinds.Where(k => May(k.Key))
-        .Select(k => new ImportKindDto(k.Key, k.Value.Select(c => new ImportColumnDto(c.Key, c.En, c.Ar, c.Required)).ToArray()))
-        .ToArray());
+    public ActionResult<ImportKindDto[]> List()
+    {
+        var mine = Kinds.Where(k => May(k.Key)).ToList();
+        if (mine.Count == 0) return Forbidden();
+        return Ok(mine.Select(k => new ImportKindDto(k.Key, k.Value.Select(c => new ImportColumnDto(c.Key, c.En, c.Ar, c.Required)).ToArray()))
+            .ToArray());
+    }
 
     /// <summary>The kind's template: its headers (Arabic or English), and for cash boxes their names.</summary>
     [HttpGet("{kind}/template")]
-    [AnyPermission(Permissions.ImportItems, Permissions.ImportCustomers, Permissions.ImportSuppliers,
-        Permissions.ImportOpeningCustomers, Permissions.ImportOpeningSuppliers, Permissions.ImportOpeningMoney,
-        Permissions.ImportOpeningStock)]
     public async Task<IActionResult> Template(string kind, [FromQuery] string? lang = null)
     {
         if (!Kinds.TryGetValue(kind, out var cols)) return NotFound(new { message = "Unknown kind.", code = "not_found" });
@@ -135,9 +138,6 @@ public sealed class ImportController : ControllerBase
 
     /// <summary>Check a file: what it would add or skip, and every row's problems. Nothing is saved.</summary>
     [HttpPost("{kind}/preview")]
-    [AnyPermission(Permissions.ImportItems, Permissions.ImportCustomers, Permissions.ImportSuppliers,
-        Permissions.ImportOpeningCustomers, Permissions.ImportOpeningSuppliers, Permissions.ImportOpeningMoney,
-        Permissions.ImportOpeningStock)]
     [RequestSizeLimit(MaxBytes + 64 * 1024)]
     public async Task<IActionResult> Preview(string kind, IFormFile? file)
     {
@@ -148,9 +148,6 @@ public sealed class ImportController : ControllerBase
 
     /// <summary>Import a file: only when every row is right, all in one go.</summary>
     [HttpPost("{kind}")]
-    [AnyPermission(Permissions.ImportItems, Permissions.ImportCustomers, Permissions.ImportSuppliers,
-        Permissions.ImportOpeningCustomers, Permissions.ImportOpeningSuppliers, Permissions.ImportOpeningMoney,
-        Permissions.ImportOpeningStock)]
     [RequestSizeLimit(MaxBytes + 64 * 1024)]
     public async Task<IActionResult> Import(string kind, IFormFile? file)
     {
@@ -270,6 +267,12 @@ public sealed class ImportController : ControllerBase
         {
             var before = plan.Errors.Count;
             var name = Required(plan, r, "name");
+            // Already there (by name): left as it is, whatever else the row says.
+            if (name is not null && names.Contains(Lower(name)) && inFile.Add("name:" + Lower(name)))
+            {
+                plan.Skipped.Add(r.No);
+                continue;
+            }
             var department = Required(plan, r, "department");
             string? code = null;
             if (r["code"] is { } rawCode)
@@ -290,7 +293,6 @@ public sealed class ImportController : ControllerBase
             }
             if (name is not null && !inFile.Add("name:" + Lower(name))) plan.Err(r.No, "name", "duplicate", name);
             if (plan.Errors.Count > before) continue;
-            if (names.Contains(Lower(name!))) { plan.Skipped.Add(r.No); continue; }
             ready.Add(new ItemRow(r.No, name!, code, department!, Loc.Clean(r["group"]), Loc.Clean(r["unit"]), price, supply,
                 Loc.Clean(r["supplier"]), barcode, reorder));
         }
