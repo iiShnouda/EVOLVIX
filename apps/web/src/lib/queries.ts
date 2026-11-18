@@ -69,6 +69,10 @@ import type {
   DepartmentSeason,
   Assortment,
   AssortmentQuery,
+  SeasonCompare,
+  SeasonCompareQuery,
+  PurchaseSuggestions,
+  PurchaseSuggestionsQuery,
   InventoryList,
   ItemCard,
   BulkPriceItem,
@@ -2278,9 +2282,38 @@ export function useAssortment(q: AssortmentQuery) {
   if (q.groupId) query.set('groupId', q.groupId);
   if (q.seasonId) query.set('seasonId', q.seasonId);
   if (q.season) query.set('season', q.season);
+  if (q.year) query.set('year', String(q.year));
   return useQuery({
     queryKey: ['analytics', 'assortment', query.toString()],
     queryFn: () => api.get<Assortment>(`/analytics/assortment?${query}`),
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** The same season across years (owner, 2026-11-18). */
+export function useSeasonCompare(q: SeasonCompareQuery) {
+  const query = new URLSearchParams({ season: q.season, by: q.by, count: String(q.count) });
+  if (q.years?.length) query.set('years', q.years.join(','));
+  if (q.departmentId) query.set('departmentId', q.departmentId);
+  if (q.supplierIds.length) query.set('supplierIds', q.supplierIds.join(','));
+  return useQuery({
+    queryKey: ['analytics', 'season-compare', query.toString()],
+    queryFn: () => api.get<SeasonCompare>(`/analytics/season-compare?${query}`),
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** What to buy again (owner, 2026-11-18). */
+export function usePurchaseSuggestions(q: PurchaseSuggestionsQuery) {
+  const query = new URLSearchParams({ days: String(q.days), target: String(q.target) });
+  if (q.supplierId) query.set('supplierId', q.supplierId);
+  if (q.departmentId) query.set('departmentId', q.departmentId);
+  if (q.season) query.set('season', q.season);
+  if (q.year) query.set('year', String(q.year));
+  if (q.all) query.set('all', 'true');
+  return useQuery({
+    queryKey: ['analytics', 'purchase-suggestions', query.toString()],
+    queryFn: () => api.get<PurchaseSuggestions>(`/analytics/purchase-suggestions?${query}`),
     placeholderData: (prev) => prev,
   });
 }

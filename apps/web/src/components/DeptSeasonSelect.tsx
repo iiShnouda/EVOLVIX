@@ -9,15 +9,18 @@ export function DeptSeasonSelect({
   value,
   onChange,
   className,
+  label,
 }: {
   value?: DepartmentSeason;
   onChange: (season: DepartmentSeason | undefined) => void;
   className?: string;
+  /** What it is called (default «موسم الأقسام»). */
+  label?: string;
 }) {
   const { t } = useT();
   return (
     <select
-      aria-label={t('dash.deptSeason')}
+      aria-label={label ?? t('dash.deptSeason')}
       className={className}
       value={value ?? ''}
       onChange={(e) => onChange(parseDepartmentSeason(e.target.value))}

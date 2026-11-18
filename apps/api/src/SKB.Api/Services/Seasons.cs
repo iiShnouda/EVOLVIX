@@ -63,6 +63,53 @@ public static class Seasons
         return await db.Seasons.FirstOrDefaultAsync(s => s.Kind == kind && s.Year == year);
     }
 
+    /// <summary>
+    /// An item season's kind (SUMMER or WINTER, or null) and year (or null), for the analyses by season
+    /// and year (owner, 2026-11-18). The system's seasons carry both. One added by hand has only a name
+    /// («صيفي 2024», "Winter 2025"): its kind is read with the departments' season words
+    /// (<see cref="DepartmentSeasons.SeasonOf"/>) and its year is the name's 4-digit year (1900–2099).
+    /// "No season" has neither. The web app mirrors this (<c>itemSeasonOf</c> in @skb/shared).
+    /// </summary>
+    public static (string? Kind, int? Year) KindAndYear(Season s)
+    {
+        if (s.Kind == None) return (null, null);
+        var kind = s.Kind is Summer or Winter ? s.Kind : DepartmentSeasons.SeasonOf(s.Name);
+        var year = s.Year;
+        if (year is null)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(s.Name ?? "", @"(?<![\p{L}\p{N}])(19|20)\d{2}(?![\p{L}\p{N}])");
+            if (m.Success) year = int.Parse(m.Value);
+        }
+        return (kind, year);
+    }
+
+    /// <summary>Every season with its kind and year read (see <see cref="KindAndYear"/>).</summary>
+    public static async Task<List<(Guid Id, string? Kind, int? Year)>> KindsAndYearsAsync(AppDbContext db) =>
+        (await db.Seasons.AsNoTracking().ToListAsync()).Select(s =>
+        {
+            var (kind, year) = KindAndYear(s);
+            return (s.Id, kind, year);
+        }).ToList();
+
+    /// <summary>
+    /// The seasons of a year (either kind when <paramref name="kind"/> is null), or of a kind in any
+    /// year when <paramref name="year"/> is null; null when neither is asked.
+    /// </summary>
+    public static async Task<Guid[]?> IdsAsync(AppDbContext db, string? kind, int? year)
+    {
+        if (kind is null && year is null) return null;
+        return (await KindsAndYearsAsync(db))
+            .Where(s => (year is null || s.Year == year) && (kind is null || s.Kind == kind))
+            .Select(s => s.Id).ToArray();
+    }
+
+    /// <summary>
+    /// The last day of a season: summer ends on 30 September of its year, winter (named for the year it
+    /// ends in) on 31 March.
+    /// </summary>
+    public static DateOnly EndOf(string kind, int year) =>
+        kind == Summer ? new DateOnly(year, 9, 30) : new DateOnly(year, 3, 31);
+
     public static SeasonDto ToDto(Season s, Guid? currentId) =>
         new(s.Id.ToString(), NameOf(s), s.Kind, s.Year, s.IsActive, s.Id == currentId);
 }

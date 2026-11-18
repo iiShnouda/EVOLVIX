@@ -295,6 +295,8 @@ export type Permission =
   | 'reports:items'
   | 'reports:changes'
   | 'reports:assortment'
+  | 'reports:season_compare'
+  | 'reports:purchase_suggestions'
   | 'reports:print'
   | 'reports:pdf'
   | 'reports:export'
@@ -2690,6 +2692,115 @@ export interface AssortmentQuery {
   seasonId?: string;
   /** SUMMER or WINTER: only that season's departments, by their names (owner, 2026-11-16). */
   season?: 'SUMMER' | 'WINTER';
+  /** Only items whose own season is of this year, and of `season`'s kind (owner, 2026-11-18). */
+  year?: number;
+}
+
+/** One season's year in the season comparison (owner, 2026-11-18). */
+export interface SeasonCompareCell {
+  year: number;
+  items: number;
+  soldQty: number;
+  returnedQty: number;
+  sales: number;
+  returns: number;
+  netSales: number;
+  profit: number;
+  /** What was left at the season's end (today's stock for a season not over yet). */
+  stockQty: number;
+  stockValue: number;
+}
+
+export interface SeasonCompareRow {
+  id: string;
+  name: string;
+  kind: 'DEPARTMENT' | 'NO_DEPARTMENT' | 'SUPPLIER' | 'NO_SUPPLIER' | 'ITEM' | 'TOTAL';
+  code: string | null;
+  detail: string | null;
+  opens: boolean;
+  /** One cell a year, in the order of `SeasonCompare.years`. */
+  years: SeasonCompareCell[];
+}
+
+/** The same season across years: an item counts in the season and year it was bought for. */
+export interface SeasonCompare {
+  season: 'SUMMER' | 'WINTER';
+  /** The years compared, oldest first. */
+  years: number[];
+  /** Every year the season has, newest first. */
+  available: number[];
+  by: 'department' | 'supplier' | 'item';
+  rows: SeasonCompareRow[];
+  total: SeasonCompareRow;
+  /** What items with no season sold (net); left out of every year. */
+  unplaced: { soldQty: number; netSales: number };
+  path: { id: string; name: string; kind: 'DEPARTMENT' | 'GROUP' }[];
+  /** Left out for the person: 'profit', 'costs'. */
+  hidden: string[];
+  currency: string;
+}
+
+export interface SeasonCompareQuery {
+  season: 'SUMMER' | 'WINTER';
+  /** How many of the last years, when `years` is not given. */
+  count: number;
+  years?: number[];
+  by: 'department' | 'supplier' | 'item';
+  departmentId?: string;
+  supplierIds: string[];
+}
+
+/** An item to buy again (owner, 2026-11-18). */
+export interface PurchaseSuggestionRow {
+  id: string;
+  sku: string;
+  name: string;
+  department: string | null;
+  stock: number;
+  /** Sold less returned in the days looked at. */
+  soldQty: number;
+  dailyAverage: number;
+  /** How many days the stock lasts at that pace; null when nothing sold. */
+  daysLeft: number | null;
+  reorderLevel: number;
+  /** Target days × daily average − stock, never below 0, rounded up. */
+  suggested: number;
+  /** 0 without costs:view. */
+  cost: number;
+  value: number;
+}
+
+export interface PurchaseSuggestionGroup {
+  /** The supplier, or 'none'. */
+  id: string;
+  name: string;
+  code: string | null;
+  rows: PurchaseSuggestionRow[];
+  items: number;
+  suggested: number;
+  value: number;
+}
+
+export interface PurchaseSuggestions {
+  days: number;
+  target: number;
+  groups: PurchaseSuggestionGroup[];
+  items: number;
+  suggested: number;
+  value: number;
+  /** 'costs' when the person may not see them. */
+  hidden: string[];
+  currency: string;
+}
+
+export interface PurchaseSuggestionsQuery {
+  days: number;
+  target: number;
+  supplierId?: string;
+  departmentId?: string;
+  season?: 'SUMMER' | 'WINTER';
+  year?: number;
+  all: boolean;
 }
 
 /** One row of the activity log (سجل النشاط): who did what, when and from where. */

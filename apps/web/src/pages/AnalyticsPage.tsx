@@ -14,6 +14,8 @@ import { Badge, Card, EmptyState, PageHeader, SectionTitle, Spinner } from '../c
 import { PeriodBars } from '../components/charts/PeriodBars';
 import { ProfitabilityPage } from './ProfitabilityPage';
 import { AssortmentTab } from './AssortmentTab';
+import { SeasonCompareTab } from './SeasonCompareTab';
+import { PurchaseSuggestionsTab } from './PurchaseSuggestionsTab';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
@@ -43,6 +45,8 @@ type Tab =
   | 'aging'
   | 'items'
   | 'assortment'
+  | 'seasons'
+  | 'buy'
   | 'changes';
 /** Each report is a permission of its own (owner, 2026-10-23). */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
@@ -54,6 +58,12 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
   { key: 'aging', label: 'analytics.tabAging', permission: 'reports:aging' },
   { key: 'items', label: 'analytics.tabItems', permission: 'reports:items' },
   { key: 'assortment', label: 'analytics.tabAssortment', permission: 'reports:assortment' },
+  { key: 'seasons', label: 'analytics.tabSeasonCompare', permission: 'reports:season_compare' },
+  {
+    key: 'buy',
+    label: 'analytics.tabPurchaseSuggestions',
+    permission: 'reports:purchase_suggestions',
+  },
   { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
@@ -100,6 +110,8 @@ export function AnalyticsPage() {
       {tab === 'aging' && <AgingTab />}
       {tab === 'items' && <ItemsTab />}
       {tab === 'assortment' && <AssortmentTab />}
+      {tab === 'seasons' && <SeasonCompareTab />}
+      {tab === 'buy' && <PurchaseSuggestionsTab />}
       {tab === 'changes' && <ChangesTab />}
     </div>
   );

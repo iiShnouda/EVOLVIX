@@ -56,3 +56,34 @@ export function departmentFitsSeason(
   const own = seasonOfDepartment(name);
   return own === null || own === season;
 }
+
+/**
+ * An item season's kind and year (owner, 2026-11-18), as the server reads it (`Seasons.KindAndYear`):
+ * the system's summer and winter carry both; one added by hand only has a name («صيفي 2024»), whose
+ * season words (as for departments) give the kind and whose 4-digit year (1900–2099) gives the year.
+ */
+export function itemSeasonOf(season: { kind: string; year?: number | null; name: string }): {
+  kind: DepartmentSeason | null;
+  year: number | null;
+} {
+  if (season.kind === 'NONE') return { kind: null, year: null };
+  const kind =
+    season.kind === 'SUMMER' || season.kind === 'WINTER'
+      ? season.kind
+      : seasonOfDepartment(season.name);
+  const found = /(?<![\p{L}\p{N}])(19|20)\d{2}(?![\p{L}\p{N}])/u.exec(season.name ?? '');
+  return { kind, year: season.year ?? (found ? Number(found[0]) : null) };
+}
+
+/** The years the item seasons have (of one kind, or any), newest first. */
+export function itemSeasonYears(
+  seasons: { kind: string; year?: number | null; name: string }[],
+  kind?: DepartmentSeason | null,
+): number[] {
+  const years = new Set<number>();
+  for (const s of seasons) {
+    const own = itemSeasonOf(s);
+    if (own.year !== null && (!kind || own.kind === kind)) years.add(own.year);
+  }
+  return [...years].sort((a, b) => b - a);
+}

@@ -1167,6 +1167,47 @@ public record AssortmentDto(string By, string From, string To, AssortmentRowDto[
 
 public record AssortmentStepDto(string Id, string Name, string Kind);
 
+/// <summary>One season's year in the season comparison (owner, 2026-11-18): its items' sales, returns,
+/// net, profit, how many items and what was left at the season's end.</summary>
+public record SeasonCompareCellDto(int Year, int Items, long SoldQty, long ReturnedQty, long Sales, long Returns,
+    long NetSales, long Profit, long StockQty, long StockValue);
+
+/// <param name="Kind">DEPARTMENT, NO_DEPARTMENT, SUPPLIER, NO_SUPPLIER, ITEM or TOTAL.</param>
+/// <param name="Years">One cell a year, in the order of <see cref="SeasonCompareDto.Years"/>.</param>
+public record SeasonCompareRowDto(string Id, string Name, string Kind, string? Code, string? Detail, bool Opens,
+    SeasonCompareCellDto[] Years);
+
+/// <summary>What items with no season sold (net), left out of every year.</summary>
+public record SeasonUnplacedDto(long SoldQty, long NetSales);
+
+/// <param name="Season">SUMMER or WINTER.</param>
+/// <param name="Years">The years compared, oldest first.</param>
+/// <param name="Available">Every year the season has, newest first.</param>
+/// <param name="Hidden">What the person may not see: "profit", "costs".</param>
+public record SeasonCompareDto(string Season, int[] Years, int[] Available, string By, SeasonCompareRowDto[] Rows,
+    SeasonCompareRowDto Total, SeasonUnplacedDto Unplaced, AssortmentStepDto[] Path, string[] Hidden, string Currency);
+
+/// <summary>An item to buy again (owner, 2026-11-18).</summary>
+/// <param name="SoldQty">Sold less returned in the days looked at.</param>
+/// <param name="DailyAverage">Sold a day on average.</param>
+/// <param name="DaysLeft">How many days the stock lasts at that pace; null when nothing sold.</param>
+/// <param name="Suggested">target days × daily average − stock, never below 0, rounded up.</param>
+/// <param name="Cost">The item's cost, and <paramref name="Value"/> the suggestion's: 0 without costs:view.</param>
+public record PurchaseSuggestionRowDto(string Id, string Sku, string Name, string? Department, long Stock, long SoldQty,
+    decimal DailyAverage, decimal? DaysLeft, int ReorderLevel, long Suggested, long Cost, long Value)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Guid? SupplierId { get; init; }
+}
+
+/// <param name="Id">The supplier, or "none".</param>
+public record PurchaseSuggestionGroupDto(string Id, string Name, string? Code, PurchaseSuggestionRowDto[] Rows,
+    int Items, long Suggested, long Value);
+
+/// <param name="Hidden">"costs" when the person may not see them.</param>
+public record PurchaseSuggestionsDto(int Days, int Target, PurchaseSuggestionGroupDto[] Groups, int Items,
+    long Suggested, long Value, string[] Hidden, string Currency);
+
 // ---- Admin & close: activity log, aging, year-end close ----
 
 public record AuditEntryDto(

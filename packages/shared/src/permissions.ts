@@ -497,6 +497,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'reports:items',
           'reports:changes',
           'reports:assortment',
+          'reports:season_compare',
+          'reports:purchase_suggestions',
         ],
       },
       {

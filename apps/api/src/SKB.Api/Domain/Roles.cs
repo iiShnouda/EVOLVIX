@@ -552,6 +552,10 @@ public static class Permissions
     public const string ReportsChanges = "reports:changes";
     /// <summary>Reports · Reports: Items by supplier and department (owner, 2026-11-11).</summary>
     public const string ReportsAssortment = "reports:assortment";
+    /// <summary>Reports · Reports: The same season across years (owner, 2026-11-18).</summary>
+    public const string ReportsSeasonCompare = "reports:season_compare";
+    /// <summary>Reports · Reports: What to buy again (owner, 2026-11-18).</summary>
+    public const string ReportsPurchaseSuggestions = "reports:purchase_suggestions";
     /// <summary>Reports · Printing: Print.</summary>
     public const string ReportsPrint = "reports:print";
     /// <summary>Reports · Printing: PDF.</summary>
@@ -773,7 +777,7 @@ public static class Permissions
         EmployeesCreate, EmployeesEdit, EmployeesDelete, ShiftsCreate, ShiftsEdit, PayrollSettings, AttendanceEdit,
         AttendanceImport, PayrollAdjust, PayrollAdjustCancel, PayrollAdvance, PayrollAdvanceCancel, PayrollRun,
         PayrollPost, PayrollRunCancel, PayrollPay, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
-        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
+        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsSeasonCompare, ReportsPurchaseSuggestions, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
         AuditExport, PresenceView, ChatUse, ChatMonitor, ChatGroups, ChatMute, AiChat, AiVoice, AiScanPurchase,
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
@@ -880,6 +884,7 @@ public static class RolePermissions
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
             Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment,
+            Permissions.ReportsSeasonCompare, Permissions.ReportsPurchaseSuggestions,
             Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport, Permissions.ChatUse,
             Permissions.DocumentsBackdate,
         },
@@ -934,6 +939,7 @@ public static class RolePermissions
             Permissions.UnitsClose, Permissions.SizesCreate, Permissions.SizesEdit, Permissions.SizesClose,
             Permissions.ColorsCreate, Permissions.ColorsEdit, Permissions.ColorsClose,
             Permissions.StatementWarehouses, Permissions.CashHandoverSend, Permissions.ChatUse,
+            Permissions.ReportsPurchaseSuggestions,
         },
         [Role.VIEWER] = new[]
         {
@@ -953,7 +959,7 @@ public static class RolePermissions
             Permissions.MoneyAccounts, Permissions.VouchersView, Permissions.ExpenseCategoriesView,
             Permissions.MoneyPrint, Permissions.MoneyPdf, Permissions.MoneyExport, Permissions.ReportsMonthly,
             Permissions.ReportsPerformance, Permissions.ReportsParties, Permissions.ReportsAging,
-            Permissions.ReportsItems, Permissions.ReportsAssortment, Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport,
+            Permissions.ReportsItems, Permissions.ReportsAssortment, Permissions.ReportsSeasonCompare, Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport,
         },
         // Starts with nothing; the owner ticks exactly what the person may do (owner, 2026-10-23).
         [Role.NONE] = Array.Empty<string>(),

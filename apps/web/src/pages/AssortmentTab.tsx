@@ -6,6 +6,7 @@ import {
   formatDate,
   formatMoney,
   formatNumber,
+  itemSeasonYears,
   parseDepartmentSeason,
   type AssortmentQuery,
   type AssortmentRow,
@@ -42,32 +43,41 @@ export function AssortmentTab() {
   // The departments' season (owner, 2026-11-16), kept in the address like the analytics tab.
   const [params, setParams] = useSearchParams();
   const season = parseDepartmentSeason(params.get('season'));
-  const allDepartments = useDepartments().data ?? [];
-  const setSeason = (v?: string) => {
+  // …and next to it the year (owner, 2026-11-18): the products of that season in that year, by
+  // their own season (e.g. Summer 2026); with every season, those of the year whatever the season.
+  const seasons = useSeasons().data ?? [];
+  const yearParam = Number(params.get('year')) || undefined;
+  const years = itemSeasonYears(seasons, season);
+  const year =
+    yearParam && (seasons.length === 0 || years.includes(yearParam)) ? yearParam : undefined;
+  const setAddress = (key: string, v?: string) =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (v) next.set('season', v);
-        else next.delete('season');
+        if (v) next.set(key, v);
+        else next.delete(key);
         return next;
       },
       { replace: true },
     );
+  const allDepartments = useDepartments().data ?? [];
+  const setSeason = (v?: string) => {
+    setAddress('season', v);
     // A department of the other season is let go.
     const picked = allDepartments.find((d) => d.id === q.departmentId);
     if (picked && !departmentFitsSeason(picked.name, parseDepartmentSeason(v)))
       set({ departmentId: undefined, groupId: undefined });
   };
-  const { data, isLoading } = useAssortment({ ...q, season });
+  const { data, isLoading } = useAssortment({ ...q, season, year });
   // The suppliers to choose from: those with items in what is asked, apart from the suppliers chosen.
-  const choices = useAssortment({ ...q, season, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
+  const choices =
+    useAssortment({ ...q, season, year, by: 'supplier', supplierIds: [] }).data?.rows ?? [];
   const mine = useAuth((s) => s.user?.departmentIds ?? null);
   const departments = allDepartments.filter(
     (d) =>
       d.isActive && (!mine?.length || mine.includes(d.id)) && departmentFitsSeason(d.name, season),
   );
   const groupList = useGroups().data;
-  const seasons = (useSeasons().data ?? []).filter((s) => s.isActive);
   const [picking, setPicking] = useState(false);
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
@@ -174,8 +184,15 @@ export function AssortmentTab() {
   const chosen = q.supplierIds.map((id) =>
     id === 'none' ? t('assort.noSupplier') : (choices.find((c) => c.id === id)?.name ?? ''),
   );
+  const seasonLabel = [
+    season ? t(season === 'SUMMER' ? 'dash.summer' : 'dash.winter') : null,
+    year ? String(year) : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
   const subtitle = [
     period,
+    ...(seasonLabel ? [seasonLabel] : []),
     ...(data?.path ?? []).map((p) => p.name),
     ...(chosen.length ? [chosen.join('، ')] : []),
   ].join(' · ');
@@ -270,7 +287,21 @@ export function AssortmentTab() {
           className={`${small} max-w-[10rem] flex-1 sm:flex-none`}
           value={season}
           onChange={setSeason}
+          label={t('assort.season')}
         />
+        <select
+          aria-label={t('assort.year')}
+          className={`${small} max-w-[8rem] flex-1 sm:flex-none`}
+          value={year ?? ''}
+          onChange={(e) => setAddress('year', e.target.value || undefined)}
+        >
+          <option value="">{t('assort.allYears')}</option>
+          {years.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
         {q.departmentId && groupOptions.length > 0 && (
           <select
             aria-label={t('assort.group')}
@@ -282,21 +313,6 @@ export function AssortmentTab() {
             {groupOptions.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {seasons.length > 0 && (
-          <select
-            aria-label={t('assort.season')}
-            className={`${small} max-w-[10rem] flex-1 sm:flex-none`}
-            value={q.seasonId ?? ''}
-            onChange={(e) => set({ seasonId: e.target.value || undefined })}
-          >
-            <option value="">{t('assort.allSeasons')}</option>
-            {seasons.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
               </option>
             ))}
           </select>

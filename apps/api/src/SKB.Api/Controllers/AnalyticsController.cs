@@ -267,12 +267,15 @@ public sealed class AnalyticsController : ControllerBase
     /// </summary>
     /// <param name="by">supplier, department or item.</param>
     /// <param name="supplierIds">Comma-separated suppliers; "none" = items without one.</param>
+    /// <param name="season">SUMMER or WINTER: that season's departments (by their names) and those of none.</param>
+    /// <param name="year">Only items whose own season is of this year (and of <paramref name="season"/>'s kind).</param>
+    /// <param name="seasonId">One item season (older links).</param>
     [HttpGet("assortment")]
     [Authorize(Policy = Permissions.ReportsAssortment)]
     public async Task<ActionResult<AssortmentDto>> Assortment([FromQuery] string by = "supplier",
         [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? supplierIds = null,
         [FromQuery] string? departmentId = null, [FromQuery] string? groupId = null, [FromQuery] string? seasonId = null,
-        [FromQuery] string? season = null)
+        [FromQuery] string? season = null, [FromQuery] int? year = null)
     {
         var (fromDay, toDay, start, end) = Period(from, to);
         by = by.ToLowerInvariant() is "department" or "item" ? by.ToLowerInvariant() : "supplier";
@@ -304,6 +307,10 @@ public sealed class AnalyticsController : ControllerBase
             items = items.Where(p => under.Contains(p.CategoryId));
         }
         if (Guid.TryParse(seasonId, out var itemSeason)) items = items.Where(p => p.SeasonId == itemSeason);
+        // The year (owner, 2026-11-18: "the year shows what sold in that season that year"): items whose
+        // own season is of that year, and of the season asked (either kind when none is).
+        if (year is int y && await Seasons.IdsAsync(_db, DepartmentSeasons.Parse(season), y) is { } ofYear)
+            items = items.Where(p => p.SeasonId != null && ofYear.Contains(p.SeasonId.Value));
         var wanted = (supplierIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (wanted.Length > 0)
         {
