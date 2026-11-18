@@ -18,7 +18,8 @@ public static class LedgerKeys
         NotesReceivable = "NOTES_RECEIVABLE", NotesUnderCollection = "NOTES_UNDER_COLLECTION",
         NotesPayable = "NOTES_PAYABLE", EmployeeAdvances = "EMPLOYEE_ADVANCES",
         SalariesPayable = "SALARIES_PAYABLE", Salaries = "SALARIES",
-        DiscountAllowed = "DISCOUNT_ALLOWED", DiscountReceived = "DISCOUNT_RECEIVED";
+        DiscountAllowed = "DISCOUNT_ALLOWED", DiscountReceived = "DISCOUNT_RECEIVED",
+        DamagedLoss = "DAMAGED_LOSS";
 
     /// <summary>Accounts that only documents post to (their own sub-ledgers keep them in step).</summary>
     public static readonly string[] DocumentOnly =
@@ -82,6 +83,7 @@ public sealed class LedgerService
         new("5106", LedgerKeys.Rounding, "فروق التقريب", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5107", LedgerKeys.Salaries, "الرواتب والأجور", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
         new("5108", LedgerKeys.DiscountAllowed, "خصم مسموح به", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
+        new("5112", LedgerKeys.DamagedLoss, "خسائر البضاعة التالفة", LedgerAccountType.EXPENSE, LedgerKeys.Expenses, false),
     };
 
     // ------------------------------------------------------------------ accounts
@@ -409,6 +411,20 @@ public sealed class LedgerService
     public Task ReverseVoucherAsync(Voucher v, Guid staffId) =>
         ReverseAsync("VOUCHER", v.Id, "VOUCHER_CANCEL", v.Number, $"Cancelled {v.Number}", staffId);
 
+    /// <summary>The source of a write-off of damaged goods (with a sales return, or later on its own).</summary>
+    public const string DamagedWriteOffSource = "DAMAGED_WRITE_OFF";
+
+    /// <summary>
+    /// Damaged goods written off (owner, 2026-11-18): Dr damaged goods loss · Cr inventory, at their
+    /// cost. <paramref name="sourceId"/> is the sales return it came with, or null for a later one.
+    /// </summary>
+    public async Task PostDamagedWriteOffAsync(Guid? sourceId, string number, Guid branchId, long cost, Guid staffId)
+    {
+        Post(Begin(DamagedWriteOffSource, sourceId, number, $"Damaged goods written off {number}", branchId, staffId)
+            .Debit(await SystemAsync(LedgerKeys.DamagedLoss), cost)
+            .Credit(await SystemAsync(LedgerKeys.Inventory), cost));
+    }
+
     /// <summary>Stocktake: gains Dr inventory · Cr stock gain; losses Dr stock loss · Cr inventory.</summary>
     public async Task PostStocktakeAsync(string reference, Guid branchId, long gains, long losses, Guid staffId)
     {
@@ -470,9 +486,13 @@ public sealed class LedgerService
         foreach (var row in Chart)
         {
             if (existing.ContainsKey(row.Key)) continue;
+            // An account added to the chart later takes the next free code if someone's account has its own.
+            var code = row.Code;
+            while (await db.LedgerAccounts.AnyAsync(a => a.Code == code) || db.LedgerAccounts.Local.Any(a => a.Code == code))
+                code = (long.Parse(code) + 1).ToString();
             var account = new LedgerAccount
             {
-                Code = row.Code, Name = row.Name, Type = row.Type, IsGroup = row.Group, SystemKey = row.Key,
+                Code = code, Name = row.Name, Type = row.Type, IsGroup = row.Group, SystemKey = row.Key,
                 ParentId = row.Parent is null ? null : existing[row.Parent].Id,
             };
             db.LedgerAccounts.Add(account);

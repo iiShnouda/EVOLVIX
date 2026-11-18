@@ -48,7 +48,8 @@ public record SalesSummaryDto(
     string? SourceNumber, string? DepartmentId = null, string? DepartmentName = null,
     int? PartyCode = null, string? RepName = null, long Subtotal = 0, long DiscountTotal = 0, long Owed = 0,
     string? Notes = null, string? State = null, bool Edited = false, bool OverLimit = false,
-    string? ApprovalNote = null, string? PartyId = null, int? RepCode = null);
+    string? ApprovalNote = null, string? PartyId = null, int? RepCode = null, string[]? Reasons = null,
+    string? ExchangeNumber = null);
 
 /// <summary>A page of documents (like <see cref="PaginatedDto{T}"/>) and the totals of everything the filter found.</summary>
 public record DocumentListDto(SalesSummaryDto[] Items, int Total, int Page, int PageSize, DocumentListTotalsDto Totals);
@@ -69,7 +70,8 @@ public record DocumentLineDto(
     string Id, string ProductId, string ProductName, int Quantity, long UnitPrice, long Discount, long LineTotal,
     long UnitCost, long LineProfit, int ReturnedQuantity, string? WarehouseId, string? WarehouseName,
     string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName,
-    bool IsBonus, long DocDiscount, string? ProductCode = null);
+    bool IsBonus, long DocDiscount, string? ProductCode = null, string? Reason = null, string? ReasonNote = null,
+    string? Damaged = null);
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
@@ -93,7 +95,8 @@ public record SalesDetailDto(
     string? BranchId = null, string? RejectReason = null, int? PartyCode = null, int? RepCode = null,
     string? CancelReason = null, bool OverLimit = false, string? ApprovalNote = null, bool Edited = false,
     string? EnteredAt = null, string? State = null, long? Owed = null, bool Locked = false, string? CreatedAt = null,
-    bool HasImage = false, int ImagePages = 0, long? PreviousBalance = null);
+    bool HasImage = false, int ImagePages = 0, long? PreviousBalance = null,
+    string? ExchangeId = null, string? ExchangeNumber = null);
 
 /// <summary>A customer's invoices of a period, together (see SalesController.CustomerInvoices).</summary>
 /// <param name="PreviousBalance">What they owed before these invoices.</param>
@@ -226,13 +229,18 @@ public record CreateReturnLineRequest(string LineId, int Quantity);
 /// </summary>
 /// <param name="InvoiceId">Take the items only from this invoice of theirs.</param>
 /// <param name="RefundAccountId">Where a cash customer is paid back from (none = the branch's cash box).</param>
+/// <param name="Reason">Why the goods came back (<see cref="Domain.ReturnReasons"/>), for every line that names none.</param>
 public record CreateFreeReturnRequest(
     string PartyId, FreeReturnLineRequest[] Lines, string? WarehouseId = null, string? BranchId = null,
-    string? DepartmentId = null, string? Notes = null, string? InvoiceId = null, string? RefundAccountId = null);
+    string? DepartmentId = null, string? Notes = null, string? InvoiceId = null, string? RefundAccountId = null,
+    string? Reason = null, string? ReasonNote = null);
 
 /// <param name="Quantity">In <paramref name="UnitId"/> units (none = the item's base unit).</param>
 /// <param name="SourceLineId">Take the pieces only from this invoice line.</param>
-public record FreeReturnLineRequest(string ProductId, int Quantity, string? UnitId = null, string? SourceLineId = null);
+/// <param name="Reason">This line's reason (else the return's); <paramref name="ReasonNote"/> the words for OTHER.</param>
+/// <param name="Damaged">For a DAMAGED line of a sales return: WAREHOUSE or WRITE_OFF (else the Settings default).</param>
+public record FreeReturnLineRequest(string ProductId, int Quantity, string? UnitId = null, string? SourceLineId = null,
+    string? Reason = null, string? ReasonNote = null, string? Damaged = null);
 
 /// <summary>An item the party can still return, with its units and the invoice lines it can come from, newest first.</summary>
 public record ReturnableItemDto(string ProductId, string Name, string Sku, ReturnableUnitDto[] Units,
@@ -248,6 +256,41 @@ public record ReturnableLineDto(string LineId, string InvoiceId, string InvoiceN
 
 /// <param name="RefundAmount">Cash settled now (minor units); the rest goes on the party's account.</param>
 /// <param name="RefundAccountId">The money account the refund goes through (none = the branch's cash box).</param>
+/// <summary>
+/// An exchange (استبدال, owner 2026-11-18): the customer returns <paramref name="Return"/> and takes
+/// <paramref name="Invoice"/> in one go. <paramref name="Refund"/>: when what comes back is worth more,
+/// how much of the difference is paid back now (a cash customer gets all of it).
+/// </summary>
+public record CreateExchangeRequest(CreateFreeReturnRequest Return, CreateSalesInvoiceRequest Invoice,
+    long Refund = 0, string? RefundAccountId = null);
+
+/// <param name="Difference">Invoice total less return total: &gt; 0 the customer pays it, &lt; 0 they get it.</param>
+public record ExchangeDto(SalesDetailDto Return, SalesDetailDto Invoice, long Difference);
+
+/// <summary>Damaged goods held in a branch's damaged warehouse (owner, 2026-11-18), with the item's supplier.</summary>
+public record DamagedRowDto(string WarehouseId, string WarehouseName, string BranchId, string BranchName,
+    string ProductId, string Sku, string Name, int Quantity, string? SupplierId, string? SupplierName, int? SupplierCode,
+    long? UnitCost, long? Value);
+
+/// <param name="ToWarehouseId">For a repair: the store of the same branch they go back to (else its default).</param>
+public record DamagedMoveRequest(string WarehouseId, DamagedMoveLine[] Lines, string? ToWarehouseId = null,
+    string? Notes = null);
+
+public record DamagedMoveLine(string ProductId, int Quantity);
+
+/// <param name="Value">For a write-off, what it cost (only for who may see costs).</param>
+public record DamagedMoveDto(string Number, int Quantity, long? Value);
+
+/// <param name="Key">The reason (empty = none given), or the item's / customer's / rep's id.</param>
+/// <param name="Value">What came back, after discounts, with its tax (minor units).</param>
+/// <param name="Sold">Pieces sold in the period (not by reason).</param>
+/// <param name="Rate">Basis points: returned ÷ sold (by reason: ÷ all returned).</param>
+public record ReturnsReportRowDto(string Key, string Label, string? Code, int Returns, int Quantity, long Value,
+    int? Sold, int? Rate);
+
+public record ReturnsReportDto(string By, string From, string To, string Currency, ReturnsReportRowDto[] Rows,
+    int Returns, int Quantity, long Value, int? Sold, int? Rate);
+
 public record CreateReturnRequest(
     CreateReturnLineRequest[] Lines, long RefundAmount = 0, string? Notes = null, string? RefundAccountId = null,
     long ShippingCost = 0, string? ShippingAccountId = null);
@@ -259,7 +302,7 @@ public record CompanySettingsDto(
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
     int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
     bool HideNewPlaces = true, int IdleMinutes = 30, string? CurrentSeasonId = null,
-    int? DailySummaryMinute = null, int NoteAlertDays = 3);
+    int? DailySummaryMinute = null, int NoteAlertDays = 3, string DamagedReturns = "WAREHOUSE");
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -284,7 +327,8 @@ public record UpdateSettingsRequest(
     string? TaxNumber = null, string? CommercialRegister = null, string? TimeZone = null,
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
     int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null,
-    string? CurrentSeasonId = null, int? DailySummaryMinute = null, int? NoteAlertDays = null);
+    string? CurrentSeasonId = null, int? DailySummaryMinute = null, int? NoteAlertDays = null,
+    string? DamagedReturns = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 

@@ -61,10 +61,30 @@ public enum StockMovementType
     SALE_CANCELLED, // back into stock when a sales invoice is cancelled or changed
     SALES_RETURN_CANCELLED,    // a customer's return cancelled: the goods leave stock again
     PURCHASE_RETURN_CANCELLED, // a return to a supplier cancelled: the goods are back in stock
+    DAMAGED_WRITE_OFF,           // damaged goods written off (out at cost, to the damaged goods loss)
+    DAMAGED_WRITE_OFF_CANCELLED, // a write-off undone with the return it came with: the goods are back
 }
 
-/// <summary>STORE holds stock people use; TRANSIT is the system place goods sit while being transferred.</summary>
-public enum WarehouseKind { STORE, TRANSIT }
+/// <summary>
+/// STORE holds stock people use; TRANSIT is the system place goods sit while being transferred;
+/// DAMAGED is a branch's place for damaged goods customers brought back (owner, 2026-11-18): not
+/// sold from, kept at cost until repaired (moved to a store), written off or sent back to a supplier.
+/// </summary>
+public enum WarehouseKind { STORE, TRANSIT, DAMAGED }
+
+/// <summary>
+/// Why goods came back (owner, 2026-11-18): a fixed list plus OTHER with its own words. DAMAGED
+/// lines of a sales return go to the branch's damaged warehouse or are written off.
+/// </summary>
+public static class ReturnReasons
+{
+    public const string WrongSize = "WRONG_SIZE", WrongColor = "WRONG_COLOR", Damaged = "DAMAGED",
+        ChangedMind = "CHANGED_MIND", LateDelivery = "LATE_DELIVERY", Other = "OTHER";
+    public static readonly string[] All = { WrongSize, WrongColor, Damaged, ChangedMind, LateDelivery, Other };
+
+    /// <summary>Where a damaged line of a sales return goes: the damaged warehouse, or written off at once.</summary>
+    public const string ToWarehouse = "WAREHOUSE", WriteOff = "WRITE_OFF";
+}
 
 /// <summary>
 /// Which documents a price level (مستوى سعر) prices: SALE levels fill sales invoices (e.g. the

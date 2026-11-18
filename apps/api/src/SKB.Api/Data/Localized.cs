@@ -29,6 +29,8 @@ public static class Loc
     {
         null => "",
         Warehouse { Kind: WarehouseKind.TRANSIT } => Lang == "ar" ? "في الطريق" : "In transit",
+        // A branch's damaged goods warehouse keeps the branch's name.
+        Warehouse { Kind: WarehouseKind.DAMAGED } w => Lang == "ar" ? $"التالف · {w.Name}" : $"Damaged · {w.Name}",
         _ => e.Name,
     };
 

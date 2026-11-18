@@ -558,6 +558,11 @@ namespace SKB.Api.Migrations
                     b.Property<int?>("DailySummaryMinute")
                         .HasColumnType("integer");
 
+                    b.Property<string>("DamagedReturns")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<int>("DefaultMarkupPercent")
                         .HasColumnType("integer");
 
@@ -767,6 +772,10 @@ namespace SKB.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Damaged")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<long>("Discount")
                         .HasColumnType("bigint");
 
@@ -803,6 +812,14 @@ namespace SKB.Api.Migrations
 
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ReasonNote")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ReturnReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<Guid?>("SourceLineId")
                         .HasColumnType("uuid");
@@ -2519,6 +2536,13 @@ namespace SKB.Api.Migrations
 
                     b.Property<DateTime?>("EnteredAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ExchangeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExchangeNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<long>("GrandTotal")
                         .HasColumnType("bigint");

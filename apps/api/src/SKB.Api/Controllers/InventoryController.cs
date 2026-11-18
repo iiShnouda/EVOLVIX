@@ -110,6 +110,9 @@ public sealed class InventoryController : ControllerBase
             mine = inBranch;
         }
 
+        var damaged = mine is null && wid is null
+            ? (await _db.Warehouses.Where(w => w.Kind == WarehouseKind.DAMAGED).Select(w => w.Id).ToListAsync()).ToHashSet()
+            : new HashSet<Guid>();
         var all = products.Select(p =>
         {
             if (wid is Guid w)
@@ -125,6 +128,12 @@ public sealed class InventoryController : ControllerBase
                 return Mapper.ToInventoryItem(p, qty, qty > 0 ? value / qty : p.CostPrice, value);
             }
             var total = state.Of(p.Id);
+            // Damaged goods aren't for sale (owner, 2026-11-18): the company's stock leaves them out.
+            if (damaged.Count > 0)
+            {
+                var (dq, dv) = state.Of(p.Id, damaged);
+                return Mapper.ToInventoryItem(p, p.StockOnHand - dq, p.CostPrice, total.Value - dv);
+            }
             return Mapper.ToInventoryItem(p, p.StockOnHand, p.CostPrice, total.Value);
         }).ToList();
 
@@ -188,7 +197,7 @@ public sealed class InventoryController : ControllerBase
 
         // Where each one is: the branch and warehouse holding it (among those the person may see).
         var names = await _db.Warehouses.AsNoTracking().Include(x => x.Branch)
-            .Where(x => x.Kind == WarehouseKind.STORE).ToDictionaryAsync(x => x.Id);
+            .Where(x => x.Kind == WarehouseKind.STORE || x.Id == wid).ToDictionaryAsync(x => x.Id);
         var ids = pageRows.Select(i => Guid.Parse(i.Id)).ToHashSet();
         var places = state.Quantity
             .Where(kv => kv.Value != 0 && ids.Contains(kv.Key.Product) && names.ContainsKey(kv.Key.Warehouse)
@@ -476,10 +485,11 @@ public sealed class InventoryController : ControllerBase
 
         var all = state.Quantity
             .Where(kv => products.TryGetValue(kv.Key.Product, out var p) && (date < today || p.IsActive)
-                         && warehouses.TryGetValue(kv.Key.Warehouse, out var w) && w.Kind == WarehouseKind.STORE
+                         && warehouses.TryGetValue(kv.Key.Warehouse, out var w) && w.Kind != WarehouseKind.TRANSIT
                          && (wid is null || kv.Key.Warehouse == wid)
                          && (branch is null || w.BranchId == branch)
-                         && (mine is null || mine.Contains(kv.Key.Warehouse)))
+                         && (mine is null || mine.Contains(kv.Key.Warehouse)
+                             || (w.Kind == WarehouseKind.DAMAGED && Access.CanUseBranch(User, w.BranchId))))
             .Select(kv => new
             {
                 kv.Key.Product, kv.Key.Warehouse, Qty = kv.Value,

@@ -859,7 +859,7 @@ public sealed class LedgerController : ControllerBase
     {
         if (Costs.CanSeeBoth(User)) return new HashSet<Guid>();
         string[] keys = { LedgerKeys.Inventory, LedgerKeys.Cogs, LedgerKeys.StockGain, LedgerKeys.StockLoss,
-            LedgerKeys.RetainedEarnings };
+            LedgerKeys.RetainedEarnings, LedgerKeys.DamagedLoss };
         var all = await _db.LedgerAccounts.AsNoTracking().Select(a => new { a.Id, a.ParentId, a.SystemKey }).ToListAsync();
         var ids = all.Where(a => a.SystemKey != null && keys.Contains(a.SystemKey)).Select(a => a.Id).ToHashSet();
         for (var grew = true; grew;)

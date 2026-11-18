@@ -77,7 +77,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: 'returns',
-        permissions: ['sales:return', 'sales:return_cancel'],
+        permissions: ['sales:return', 'sales:return_cancel', 'returns:write_off'],
       },
       {
         key: 'prices_and_discounts',
@@ -224,6 +224,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'inventory:transfer_receive',
           'inventory:transfer_cancel',
         ],
+      },
+      {
+        key: 'damaged',
+        permissions: ['damaged:view', 'damaged:repair'],
       },
       {
         key: 'labels',
@@ -497,6 +501,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'reports:items',
           'reports:changes',
           'reports:assortment',
+          'reports:returns',
         ],
       },
       {

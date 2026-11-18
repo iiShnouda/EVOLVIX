@@ -27,7 +27,7 @@ public sealed class WarehouseService
         if (Access.Branches(user) is { } branches)
             q = q.Where(w => branches.Contains(w.BranchId) || w.Kind == WarehouseKind.TRANSIT);
         if (Access.Warehouses(user) is { } only)
-            q = q.Where(w => only.Contains(w.Id) || w.Kind == WarehouseKind.TRANSIT);
+            q = q.Where(w => only.Contains(w.Id) || w.Kind == WarehouseKind.TRANSIT || w.Kind == WarehouseKind.DAMAGED);
         return q;
     }
 
@@ -44,7 +44,8 @@ public sealed class WarehouseService
     /// <summary>May the person use this warehouse (see it, sell from it, count it)?</summary>
     public static bool CanUse(ClaimsPrincipal user, Warehouse w) =>
         w.Kind == WarehouseKind.TRANSIT
-        || (Access.CanUseBranch(user, w.BranchId) && (Access.Warehouses(user) is not { } only || only.Contains(w.Id)));
+        || (Access.CanUseBranch(user, w.BranchId)
+            && (w.Kind == WarehouseKind.DAMAGED || Access.Warehouses(user) is not { } only || only.Contains(w.Id)));
 
     /// <summary>The branch's default store (or its first active one if none is marked default).</summary>
     public async Task<Warehouse?> DefaultForBranchAsync(Guid branchId) =>
@@ -70,6 +71,30 @@ public sealed class WarehouseService
         };
         _db.Warehouses.Add(transit);
         return transit;
+    }
+
+    /// <summary>
+    /// The branch's damaged goods warehouse (owner, 2026-11-18), made on first use: named after the
+    /// branch, not sold from, its goods at the branch's cost.
+    /// </summary>
+    public async Task<Warehouse> DamagedForBranchAsync(Guid branchId)
+    {
+        var found = _db.Warehouses.Local.FirstOrDefault(w => w.BranchId == branchId && w.Kind == WarehouseKind.DAMAGED)
+                    ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.BranchId == branchId && w.Kind == WarehouseKind.DAMAGED);
+        if (found is not null)
+        {
+            found.IsActive = true;
+            return found;
+        }
+        var branch = await _db.Branches.FirstAsync(b => b.Id == branchId);
+        var code = $"DMG-{branch.Code}";
+        if (code.Length > 40 || await _db.Warehouses.AnyAsync(w => w.Code == code)) code = $"DMG-{branchId:N}"[..20];
+        found = new Warehouse
+        {
+            Name = branch.Name, Code = code, BranchId = branchId, Kind = WarehouseKind.DAMAGED, IsActive = true,
+        };
+        _db.Warehouses.Add(found);
+        return found;
     }
 
     /// <summary>

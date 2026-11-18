@@ -95,6 +95,8 @@ public static class Permissions
     public const string SalesReturn = "sales:return";
     /// <summary>Cancel a sales return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
     public const string SalesReturnCancel = "sales:return_cancel";
+    /// <summary>Sales · Returns: Write off damaged goods, on a return or later (owner, 2026-11-18).</summary>
+    public const string ReturnsWriteOff = "returns:write_off";
     /// <summary>Sell at a price other than the price level's (and give a line discount).</summary>
     public const string SalesChangePrice = "sales:change_price";
     /// <summary>
@@ -255,6 +257,10 @@ public static class Permissions
     public const string InventoryTransferReceive = "inventory:transfer_receive";
     /// <summary>Stock · Transfers: Call a transfer back.</summary>
     public const string InventoryTransferCancel = "inventory:transfer_cancel";
+    /// <summary>Stock · Damaged goods: The damaged goods list, by supplier (owner, 2026-11-18).</summary>
+    public const string DamagedView = "damaged:view";
+    /// <summary>Stock · Damaged goods: Move repaired goods back to a store.</summary>
+    public const string DamagedRepair = "damaged:repair";
     /// <summary>Print barcode labels for items (label printer or sticker sheets).</summary>
     public const string LabelsPrint = "labels:print";
     /// <summary>Save barcode labels as PDF.</summary>
@@ -552,6 +558,8 @@ public static class Permissions
     public const string ReportsChanges = "reports:changes";
     /// <summary>Reports · Reports: Items by supplier and department (owner, 2026-11-11).</summary>
     public const string ReportsAssortment = "reports:assortment";
+    /// <summary>Reports · Reports: Returns by reason, item, customer and rep, with the return rate (owner, 2026-11-18).</summary>
+    public const string ReportsReturns = "reports:returns";
     /// <summary>Reports · Printing: Print.</summary>
     public const string ReportsPrint = "reports:print";
     /// <summary>Reports · Printing: PDF.</summary>
@@ -738,7 +746,7 @@ public static class Permissions
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
         SalesReturnsView, SalesTogether, SalesPrint, SalesPdf, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
         SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, NotifyCheques, NotifyStock, NotifyDailySummary,
-        SalesReturn, SalesReturnCancel, SalesChangePrice,
+        SalesReturn, SalesReturnCancel, ReturnsWriteOff, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
@@ -751,7 +759,8 @@ public static class Permissions
         InventoryCard, ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices,
         InventoryValuation, ValuationDepartments, ValuationWarehouses, ValuationItems, ValuationPrices,
         ValuationSuppliers, InventoryStocktakeView, StocktakePrint, StocktakePdf, InventoryStocktake, TransfersView, TransfersPrint, TransfersPdf,
-        InventoryTransfer, InventoryTransferEdit, InventoryTransferReceive, InventoryTransferCancel, LabelsPrint, LabelsPdf,
+        InventoryTransfer, InventoryTransferEdit, InventoryTransferReceive, InventoryTransferCancel, DamagedView,
+        DamagedRepair, LabelsPrint, LabelsPdf,
         PriceListsView, PriceListsCreate, PriceListsEdit, PriceListsPrices, PriceListsCustomers, PriceListsDelete,
         QuantityBreaksView, QuantityBreaksEdit, DepartmentsCreate, DepartmentsEdit, DepartmentsClose,
         DepartmentsDelete, GroupsCreate, GroupsEdit, GroupsClose, GroupsDelete, UnitsCreate, UnitsEdit, UnitsClose,
@@ -773,7 +782,7 @@ public static class Permissions
         EmployeesCreate, EmployeesEdit, EmployeesDelete, ShiftsCreate, ShiftsEdit, PayrollSettings, AttendanceEdit,
         AttendanceImport, PayrollAdjust, PayrollAdjustCancel, PayrollAdvance, PayrollAdvanceCancel, PayrollRun,
         PayrollPost, PayrollRunCancel, PayrollPay, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
-        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
+        ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsReturns, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
         AuditExport, PresenceView, ChatUse, ChatMonitor, ChatGroups, ChatMute, AiChat, AiVoice, AiScanPurchase,
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
         StaffPasswordNote, StaffClose, StaffDelete, StaffAccess, StaffPermissions, RolesCreate, RolesEdit,
@@ -847,7 +856,8 @@ public static class RolePermissions
             Permissions.ProductsCardSales, Permissions.ProductsCardReturns, Permissions.ProductsCardPrices,
             Permissions.InventoryStocktakeView, Permissions.StocktakePrint, Permissions.StocktakePdf, Permissions.InventoryStocktake, Permissions.TransfersView,
             Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer, Permissions.InventoryTransferReceive,
-            Permissions.InventoryTransferCancel, Permissions.LabelsPrint, Permissions.LabelsPdf, Permissions.PriceListsView,
+            Permissions.InventoryTransferCancel, Permissions.DamagedView, Permissions.DamagedRepair,
+            Permissions.ReturnsWriteOff, Permissions.LabelsPrint, Permissions.LabelsPdf, Permissions.PriceListsView,
             Permissions.QuantityBreaksView, Permissions.DepartmentsCreate, Permissions.DepartmentsEdit,
             Permissions.DepartmentsClose, Permissions.GroupsCreate, Permissions.GroupsEdit,
             Permissions.GroupsClose, Permissions.UnitsCreate, Permissions.UnitsEdit, Permissions.UnitsClose,
@@ -879,7 +889,7 @@ public static class RolePermissions
             Permissions.PayrollAdjustCancel, Permissions.PayrollAdvance, Permissions.PayrollAdvanceCancel,
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
-            Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment,
+            Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment, Permissions.ReportsReturns,
             Permissions.ReportsPrint, Permissions.ReportsPdf, Permissions.ReportsExport, Permissions.ChatUse,
             Permissions.DocumentsBackdate,
         },
@@ -927,7 +937,8 @@ public static class RolePermissions
             Permissions.ProductsImages, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
             Permissions.ProductsCardReturns, Permissions.InventoryStocktakeView, Permissions.StocktakePrint, Permissions.StocktakePdf, Permissions.InventoryStocktake,
             Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.InventoryTransfer,
-            Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel, Permissions.LabelsPrint, Permissions.LabelsPdf,
+            Permissions.InventoryTransferReceive, Permissions.InventoryTransferCancel, Permissions.DamagedView,
+            Permissions.DamagedRepair, Permissions.LabelsPrint, Permissions.LabelsPdf,
             Permissions.PriceListsView, Permissions.QuantityBreaksView, Permissions.DepartmentsCreate,
             Permissions.DepartmentsEdit, Permissions.DepartmentsClose, Permissions.GroupsCreate,
             Permissions.GroupsEdit, Permissions.GroupsClose, Permissions.UnitsCreate, Permissions.UnitsEdit,

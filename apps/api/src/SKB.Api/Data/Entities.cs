@@ -751,6 +751,13 @@ public class SalesDocument
     public Guid? SourceDocumentId { get; set; }
     public SalesDocument? SourceDocument { get; set; }
 
+    /// <summary>
+    /// An exchange (استبدال, owner 2026-11-18): the sales return and the sales invoice made together
+    /// each name the other here, with its number.
+    /// </summary>
+    public Guid? ExchangeId { get; set; }
+    public string? ExchangeNumber { get; set; }
+
     /// <summary>The price level the invoice was priced at (customer price, supplier price…).</summary>
     public Guid? PriceLevelId { get; set; }
     public PriceLevel? PriceLevel { get; set; }
@@ -856,6 +863,15 @@ public class DocumentLine
     /// its amounts. Every newer return line takes its exact share of the invoice line.
     /// </summary>
     public bool PricedApart { get; set; }
+
+    /// <summary>For a return line: why it came back (<see cref="Domain.ReturnReasons"/>), and the words for OTHER.</summary>
+    public string? ReturnReason { get; set; }
+    public string? ReasonNote { get; set; }
+    /// <summary>
+    /// For a damaged line of a sales return: WAREHOUSE (kept in the branch's damaged warehouse) or
+    /// WRITE_OFF (written off at once at its cost to the damaged goods loss).
+    /// </summary>
+    public string? Damaged { get; set; }
 
     /// <summary>Warehouse the goods left from (sale) or arrived into (purchase). Returns reuse it.</summary>
     public Guid? WarehouseId { get; set; }
@@ -1265,6 +1281,8 @@ public class CompanySettings
     /// 2026-10-02: until then the invoice itself is changed); 0 = at once.
     /// </summary>
     public int ReturnAfterHours { get; set; } = 12;
+    /// <summary>Where a damaged line of a sales return goes unless chosen on it: WAREHOUSE or WRITE_OFF.</summary>
+    public string DamagedReturns { get; set; } = "WAREHOUSE";
     /// <summary>
     /// A new branch, warehouse, money account or department is hidden from everyone (owners and
     /// admins aside) until they are given it (owner decision 2026-10-02).
