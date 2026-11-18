@@ -10,7 +10,7 @@ import {
 import { Badge } from './ui';
 import { Icon } from './Icon';
 import { TableColumns } from './TableColumns';
-import { useT } from '../lib/i18n';
+import { joinList, useT } from '../lib/i18n';
 import { CodeName } from './CodeName';
 import { PartyLink } from './PartyContact';
 import { StateBadge } from './StateBadge';
@@ -24,6 +24,7 @@ type ColumnKey =
   | 'rep'
   | 'department'
   | 'source'
+  | 'reason'
   | 'gross'
   | 'discount'
   | 'net'
@@ -120,6 +121,16 @@ export function DocumentTable({
             key: 'source',
             label: 'return.against',
             cell: (d) => d.sourceNumber ?? '',
+          } satisfies Column,
+          {
+            key: 'reason',
+            label: 'return.reason',
+            cell: (d) => (
+              <span className="block max-w-48 truncate text-muted">
+                {joinList((d.reasons ?? []).map((r) => t(`return.reason.${r}` as TranslationKey)))}
+                {d.exchangeNumber ? ` · ${t('exchange.with')} ${d.exchangeNumber}` : ''}
+              </span>
+            ),
           } satisfies Column,
         ]
       : []),

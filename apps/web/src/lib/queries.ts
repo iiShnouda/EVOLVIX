@@ -240,6 +240,8 @@ export function useDocumentList(
     warehouseId?: string;
     /** Sales: the rep; and the total between two amounts (minor units). */
     repId?: string;
+    /** Returns of one reason (owner, 2026-11-18). */
+    reason?: string;
     min?: string;
     max?: string;
     pageSize?: number;
@@ -265,6 +267,7 @@ export function useDocumentList(
   if (params.branchId) query.set('branchId', params.branchId);
   if (params.warehouseId) query.set('warehouseId', params.warehouseId);
   if (params.repId) query.set('repId', params.repId);
+  if (params.reason) query.set('reason', params.reason);
   if (params.min) query.set('min', params.min);
   if (params.max) query.set('max', params.max);
   return useQuery({
