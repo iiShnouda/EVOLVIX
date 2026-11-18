@@ -156,6 +156,14 @@ export const NAV_SECTIONS: NavSection[] = [
         path: '/inventory/supplier-prices',
         anyOf: ['prices:bulk_edit'],
       },
+      // Damaged goods brought back (owner, 2026-11-18): repaired, written off or claimed from the supplier.
+      {
+        key: 'damaged',
+        labelKey: 'damaged.title',
+        icon: 'inventory',
+        path: '/inventory/damaged',
+        anyOf: ['damaged:view', 'damaged:repair', 'returns:write_off'],
+      },
       // The item setup (departments, sub-groups, units, sizes, colors, seasons) on its own page.
       {
         key: 'setup',
