@@ -74,6 +74,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AccessService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<PayrollService>();
+builder.Services.AddScoped<CommissionService>();
 builder.Services.AddSingleton<BackupScheduler>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupScheduler>());
 builder.Services.AddSingleton<RestoreService>();

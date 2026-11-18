@@ -669,7 +669,7 @@ public sealed class PayrollController : ControllerBase
 
     private static AdjustmentDto ToDto(PayrollAdjustment a) => new(
         a.Id.ToString(), a.EmployeeId.ToString(), a.Employee?.Name ?? "", a.Year, a.Month, a.Kind.ToString(), a.Amount,
-        a.Reason, a.RunId is not null, a.CreatedBy?.FullName ?? "", a.CreatedAt.ToString("o"));
+        a.Reason, a.RunId is not null, a.CreatedBy?.FullName ?? "", a.CreatedAt.ToString("o"), a.CommissionRepId is not null);
 
     private static AdvanceDto ToDto(EmployeeAdvance a) => new(
         a.Id.ToString(), a.Number, a.EmployeeId.ToString(), a.Employee?.Name ?? "", a.Amount, a.Installment, a.Remaining,

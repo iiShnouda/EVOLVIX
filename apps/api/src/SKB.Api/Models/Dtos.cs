@@ -1262,7 +1262,7 @@ public record ImportAttendanceResultDto(int Punches, int Days, int Skipped, int 
 
 public record AdjustmentDto(
     string Id, string EmployeeId, string EmployeeName, int Year, int Month, string Kind, long Amount, string Reason,
-    bool Posted, string CreatedByName, string CreatedAt);
+    bool Posted, string CreatedByName, string CreatedAt, bool Commission = false);
 
 public record CreateAdjustmentRequest(string EmployeeId, int Year, int Month, string Kind, long Amount, string? Reason = null);
 
@@ -1431,3 +1431,38 @@ public record WarehouseStatementLineDto(string Date, string Type, string? Refere
     string? DocumentKind = null, string? PartyId = null, string[]? PartyTypes = null);
 public record WarehouseStatementDto(string Name, string Currency, int Opening, long? OpeningValue, int In, int Out,
     int Closing, long? ClosingValue, WarehouseStatementLineDto[] Lines);
+
+// ---- Sales reps' commission (owner, 2026-11-18) ----
+
+/// <param name="PercentBp">Hundredths of a percent (250 = 2.5%).</param>
+/// <param name="Basis">NET_SALES or COLLECTIONS.</param>
+public record CommissionRuleDto(
+    string Id, string RepId, int RepCode, string RepName, string Basis, int PercentBp, string? DepartmentId,
+    string? DepartmentName, string StartDate, string? EmployeeId, string? EmployeeName);
+
+/// <param name="Percent">The percent, to two decimals (2.5 = 2.5%).</param>
+public record SaveCommissionRuleRequest(
+    string? RepId = null, string? Basis = null, decimal? Percent = null, string? DepartmentId = null, string? StartDate = null);
+
+/// <summary>A sign-in a sale can be credited to, and the employee it is (if any).</summary>
+public record CommissionRepDto(string Id, int Code, string Name, string? EmployeeId, string? EmployeeName, bool Active);
+
+public record CommissionDepartmentDto(string Id, string Name);
+
+public record CommissionOptionsDto(CommissionRepDto[] Reps, CommissionDepartmentDto[] Departments);
+
+/// <param name="Returns">What came back, as a positive amount.</param>
+/// <param name="AddedToPayroll">The period is one month and this rep's commission is already in its payroll.</param>
+public record CommissionRowDto(
+    string RepId, int RepCode, string RepName, string? EmployeeId, string? EmployeeName, long Sales, long Returns, long Net,
+    long Collected, long Commission, int Invoices, bool AddedToPayroll);
+
+public record CommissionReportDto(string From, string To, CommissionRowDto[] Rows, string Currency);
+
+/// <param name="Kind">SALE, RETURN or COLLECTION.</param>
+/// <param name="Reference">The invoice for a sale; the invoice returned from; the receipt, cheque or invoice for money collected.</param>
+public record CommissionItemDto(
+    string Kind, string DocumentId, string Number, string Reference, string Date, string? DepartmentName, string PartyName,
+    long Amount, int PercentBp, long Commission);
+
+public record CommissionPayrollRequest(string RepId, int Year, int Month);
