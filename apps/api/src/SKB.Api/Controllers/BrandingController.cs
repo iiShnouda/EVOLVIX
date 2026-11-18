@@ -33,7 +33,7 @@ public sealed class BrandingController : ControllerBase
     public async Task<ActionResult<BrandingDto>> Get()
     {
         var s = await _db.CompanySettings.AsNoTracking()
-            .Select(x => new BrandingDto(x.CompanyName, x.LogoVersion))
+            .Select(x => new BrandingDto(x.CompanyName, x.LogoVersion, x.RememberDays))
             .FirstOrDefaultAsync();
         return Ok(s ?? new BrandingDto("", 0));
     }

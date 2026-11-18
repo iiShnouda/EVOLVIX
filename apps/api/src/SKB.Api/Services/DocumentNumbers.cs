@@ -176,6 +176,16 @@ public static class DocumentNumbers
         return Next(prefix, last);
     }
 
+    /// <summary>Next purchase order number, e.g. PO-2026-000012 (owner, 2026-11-18).</summary>
+    public static async Task<string> NextPurchaseOrderAsync(AppDbContext db)
+    {
+        var prefix = $"PO-{CompanyClock.Year}-";
+        await LockAsync(db, prefix);
+        var last = await db.PurchaseOrders.Where(o => o.Number.StartsWith(prefix))
+            .OrderByDescending(o => o.Number).Select(o => o.Number).FirstOrDefaultAsync();
+        return Next(prefix, last);
+    }
+
     private static string Next(string prefix, string? last)
     {
         var seq = 1;

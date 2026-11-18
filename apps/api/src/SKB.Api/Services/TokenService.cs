@@ -74,10 +74,14 @@ public sealed class TokenService
     /// A new sign-in: its own device id, and (owner, 2026-10-01) the only one the account works on —
     /// every other session of it ends ("other_device"), so the device signed in before is signed out.
     /// </summary>
-    public async Task<(string Raw, Guid DeviceId)> CreateSessionAsync(Staff staff, SessionContext ctx, bool remember)
+    public async Task<(string Raw, Guid DeviceId, bool Remember, DateTime ExpiresAt)> CreateSessionAsync(
+        Staff staff, SessionContext ctx, bool remember)
     {
         var raw = CryptoService.GenerateOpaqueToken();
-        var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
+        var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
+        // Remembered only when the owner offers it (Settings → security: 0 days = not offered).
+        remember = remember && settings.RememberDays > 0;
+        var expires = ExpiryOf(remember, settings);
         var device = Guid.NewGuid();
         var kind = DeviceGate.Kind(ctx.UserAgent);
         var now = DateTime.UtcNow;
@@ -92,7 +96,7 @@ public sealed class TokenService
             Ip = ctx.Ip,
             UserAgent = ctx.UserAgent,
             DeviceLabel = ctx.DeviceLabel,
-            ExpiresAt = now.AddSeconds(ttl),
+            ExpiresAt = expires,
             DeviceId = device,
             Kind = kind,
             Remember = remember,
@@ -101,13 +105,41 @@ public sealed class TokenService
         else staff.CurrentDesktopDeviceId = device;
         await _db.SaveChangesAsync();
         DeviceGate.Set(staff.Id, staff.CurrentMobileDeviceId, staff.CurrentDesktopDeviceId);
-        return (raw, device);
+        return (raw, device, remember, expires);
     }
 
-    /// <summary>Why a refresh was refused: null = fine; "other_device" = signed in elsewhere since.</summary>
-    public sealed record Rotated(Staff Staff, string RefreshToken, Guid DeviceId, bool Remember);
+    /// <summary>A session not remembered lasts while the app is in use, at most this long between refreshes.</summary>
+    public static readonly TimeSpan NotRemembered = TimeSpan.FromHours(12);
 
-    public async Task<(Rotated? Result, string? Refused)> RotateSessionAsync(string rawToken, SessionContext ctx)
+    /// <summary>
+    /// When a session ends unless refreshed (owner, 2026-11-18): a remembered device keeps it for the
+    /// days the owner chose; one not remembered for <see cref="NotRemembered"/> (its cookie ends with
+    /// the browser anyway).
+    /// </summary>
+    public static DateTime ExpiryOf(bool remember, CompanySettings settings) =>
+        remember && settings.RememberDays > 0
+            ? DateTime.UtcNow.AddDays(settings.RememberDays)
+            : DateTime.UtcNow.Add(NotRemembered);
+
+    /// <summary>Why a refresh was refused: null = fine; "other_device" = signed in elsewhere since.</summary>
+    public sealed record Rotated(Staff Staff, string RefreshToken, Guid DeviceId, bool Remember, DateTime ExpiresAt);
+
+    /// <summary>The live session a refresh token belongs to (not ended, not run out), with its person.</summary>
+    public async Task<Session?> LiveSessionAsync(string? rawToken)
+    {
+        if (string.IsNullOrEmpty(rawToken)) return null;
+        var hash = CryptoService.Sha256(rawToken);
+        var session = await _db.Sessions.Include(s => s.Staff).FirstOrDefaultAsync(s => s.TokenHash == hash);
+        if (session is null || session.RevokedAt is not null || session.ExpiresAt < DateTime.UtcNow
+            || _crypto.Decrypt(session.EncryptedToken) != rawToken)
+            return null;
+        return session;
+    }
+
+    /// <param name="unlocking">Unlocking a locked screen: the time it sat idle doesn't count.</param>
+    /// <returns>Refused: "other_device" (signed in elsewhere since) or "locked" (the screen is locked).</returns>
+    public async Task<(Rotated? Result, string? Refused)> RotateSessionAsync(string rawToken, SessionContext ctx,
+        bool unlocking = false)
     {
         var hash = CryptoService.Sha256(rawToken);
         var session = await _db.Sessions.Include(s => s.Staff)
@@ -133,11 +165,28 @@ public sealed class TokenService
             return (null, null);
         if (_crypto.Decrypt(session.EncryptedToken) != rawToken)
             return (null, null);
+        // A locked screen opens only with the password or PIN (owner, 2026-11-18).
+        if (session.LockedAt is not null) return (null, "locked");
+        var settings = await _db.CompanySettings.AsNoTracking().FirstOrDefaultAsync() ?? new CompanySettings();
+        // Not refreshed for longer than the idle time (and an access token's life): the app was closed or
+        // asleep that long. A remembered device that locks is locked; any other one is signed out.
+        var accessTtl = int.Parse(_config["Jwt:AccessTtlSeconds"] ?? "900");
+        if (!unlocking && settings.IdleMinutes > 0
+            && DateTime.UtcNow - session.CreatedAt > TimeSpan.FromMinutes(settings.IdleMinutes) + TimeSpan.FromSeconds(accessTtl))
+        {
+            if (session.Remember && settings.IdleAction == "LOCK")
+            {
+                await LockAsync(session);
+                return (null, "locked");
+            }
+            await EndDeviceAsync(session.StaffId, session.DeviceId, "idle");
+            return (null, null);
+        }
 
         session.RevokedAt = DateTime.UtcNow;
         session.RevokedReason = "rotated";
         var newRaw = CryptoService.GenerateOpaqueToken();
-        var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
+        var expires = ExpiryOf(session.Remember, settings);
         _db.Sessions.Add(new Session
         {
             StaffId = session.StaffId,
@@ -146,17 +195,26 @@ public sealed class TokenService
             Ip = ctx.Ip,
             UserAgent = ctx.UserAgent,
             DeviceLabel = ctx.DeviceLabel,
-            ExpiresAt = DateTime.UtcNow.AddSeconds(ttl),
+            ExpiresAt = expires,
             DeviceId = session.DeviceId,
             Kind = session.Kind,
             Remember = session.Remember,
         });
         await _db.SaveChangesAsync();
-        return (new Rotated(session.Staff, newRaw, session.DeviceId, session.Remember), null);
+        return (new Rotated(session.Staff, newRaw, session.DeviceId, session.Remember, expires), null);
+    }
+
+    /// <summary>Lock a device's screen: no refresh and no access token works until it is unlocked.</summary>
+    public async Task LockAsync(Session session)
+    {
+        session.LockedAt = DateTime.UtcNow;
+        session.UnlockFailures = 0;
+        await _db.SaveChangesAsync();
+        LockGate.Lock(session.DeviceId);
     }
 
     /// <summary>End one device's sign-in: its sessions, and its place as the account's device of its kind.</summary>
-    private async Task EndDeviceAsync(Guid staffId, Guid deviceId, string reason)
+    public async Task EndDeviceAsync(Guid staffId, Guid deviceId, string reason)
     {
         var now = DateTime.UtcNow;
         await _db.Sessions.Where(s => s.StaffId == staffId && s.DeviceId == deviceId && s.RevokedAt == null)
@@ -168,6 +226,7 @@ public sealed class TokenService
         var row = await _db.Staff.AsNoTracking().Where(s => s.Id == staffId)
             .Select(s => new { s.CurrentMobileDeviceId, s.CurrentDesktopDeviceId }).FirstOrDefaultAsync();
         DeviceGate.Set(staffId, row?.CurrentMobileDeviceId, row?.CurrentDesktopDeviceId);
+        LockGate.Unlock(deviceId);
         // Its access tokens stop at once too (the account's other device just asks for a new one).
         await AccessGate.ChangedAsync(_db, _db.Staff.Where(s => s.Id == staffId));
     }

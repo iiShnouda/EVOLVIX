@@ -62,11 +62,19 @@ public sealed class ProductsController : ControllerBase
         // and only the department's own items, not those of no department.
         [FromQuery] string? branchId = null, [FromQuery] bool onlyDepartment = false,
         // A group of a department's tree and everything under it (owner, 2026-10-06).
-        [FromQuery] string? groupId = null)
+        [FromQuery] string? groupId = null,
+        // These items only (comma-separated ids): a purchase order received on the purchase screen.
+        [FromQuery(Name = "ids")] string? onlyIds = null)
     {
         limit = Math.Clamp(limit, 1, 200);
         offset = Math.Max(0, offset);
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive);
+        if (!string.IsNullOrWhiteSpace(onlyIds))
+        {
+            var only = onlyIds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(200).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+            q = q.Where(p => only.Contains(p.Id));
+        }
 
         // A warehouse or a branch: the stock counted is what is there (and only what the person may see).
         IQueryable<Guid>? stores = null;
@@ -606,6 +614,7 @@ public sealed class ProductsController : ControllerBase
             });
         if (await HasMovementsAsync(new[] { id })
             || await _db.StockTransferLines.AnyAsync(l => l.ProductId == id)
+            || await _db.PurchaseOrderLines.AnyAsync(l => l.ProductId == id)
             || await _db.StockBalances.AnyAsync(b => b.ProductId == id && b.Quantity != 0)
             || await _db.PriceListItems.AnyAsync(i => i.ProductId == id)
             || await _db.QuantityBreaks.AnyAsync(q => q.ProductId == id))

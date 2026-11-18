@@ -188,6 +188,13 @@ public enum NoteStatus { IN_HAND, UNDER_COLLECTION, COLLECTED, BOUNCED, ENDORSED
 /// </summary>
 public enum TransferStatus { SENT, RECEIVED, CANCELLED }
 
+/// <summary>
+/// A purchase order to a supplier (أمر شراء, owner 2026-11-18): DRAFT while it is prepared, SENT once
+/// it went to the factory, PARTLY_RECEIVED / RECEIVED as purchase invoices take its goods in, or
+/// CANCELLED. It is no accounting document: it moves no stock, money or ledger.
+/// </summary>
+public enum PurchaseOrderStatus { DRAFT, SENT, PARTLY_RECEIVED, RECEIVED, CANCELLED }
+
 // ---- Payroll & attendance (DOMAIN.md §2.9) ----
 
 /// <summary>A day of an employee: at work, absent, on paid or unpaid leave, or a holiday.</summary>

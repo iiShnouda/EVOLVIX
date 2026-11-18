@@ -23,6 +23,7 @@ public sealed class OutputsController : ControllerBase
         {
             ["sales"] = (Permissions.SalesPrint, Permissions.SalesPdf, null),
             ["purchases"] = (Permissions.PurchasesPrint, Permissions.PurchasesPdf, null),
+            ["purchase_orders"] = (Permissions.PurchaseOrdersPrint, Permissions.PurchaseOrdersPdf, Permissions.PurchaseOrdersExport),
             ["inventory"] = (Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport),
             ["stocktake"] = (Permissions.StocktakePrint, Permissions.StocktakePdf, null),
             ["transfers"] = (Permissions.TransfersPrint, Permissions.TransfersPdf, null),

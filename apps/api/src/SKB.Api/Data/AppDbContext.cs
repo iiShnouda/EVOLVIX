@@ -84,6 +84,9 @@ public class AppDbContext : DbContext
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
     public DbSet<StockCost> StockCosts => Set<StockCost>();
     public DbSet<StockTransferLine> StockTransferLines => Set<StockTransferLine>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<PurchaseOrderLine> PurchaseOrderLines => Set<PurchaseOrderLine>();
+    public DbSet<PurchaseOrderReceipt> PurchaseOrderReceipts => Set<PurchaseOrderReceipt>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
     public DbSet<IssuedLicense> IssuedLicenses => Set<IssuedLicense>();
     public DbSet<CompanyLogo> CompanyLogos => Set<CompanyLogo>();
@@ -528,6 +531,25 @@ public class AppDbContext : DbContext
             .HasOne(l => l.Product).WithMany()
             .HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<StockTransferLine>().HasIndex(l => l.ProductId);
+
+        // Purchase orders (owner, 2026-11-18). History keeps its references (Restrict).
+        b.Entity<PurchaseOrder>().Property(o => o.Status).HasConversion<string>();
+        b.Entity<PurchaseOrder>().HasIndex(o => o.Number).IsUnique();
+        b.Entity<PurchaseOrder>().HasIndex(o => new { o.Status, o.OrderDate });
+        b.Entity<PurchaseOrder>().HasIndex(o => o.PartyId);
+        b.Entity<PurchaseOrder>().HasIndex(o => o.BranchId);
+        b.Entity<PurchaseOrder>().HasOne(o => o.Party).WithMany().HasForeignKey(o => o.PartyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrder>().HasOne(o => o.Branch).WithMany().HasForeignKey(o => o.BranchId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrder>().HasOne(o => o.Warehouse).WithMany().HasForeignKey(o => o.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrder>().HasOne(o => o.Department).WithMany().HasForeignKey(o => o.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrder>().HasOne(o => o.CreatedBy).WithMany().HasForeignKey(o => o.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrder>().HasOne(o => o.CancelledBy).WithMany().HasForeignKey(o => o.CancelledById).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrderLine>().HasOne(l => l.Order).WithMany(o => o.Lines).HasForeignKey(l => l.OrderId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PurchaseOrderLine>().HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrderLine>().HasIndex(l => l.ProductId);
+        b.Entity<PurchaseOrderReceipt>().HasOne(r => r.Order).WithMany(o => o.Receipts).HasForeignKey(r => r.OrderId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PurchaseOrderReceipt>().HasOne(r => r.Document).WithMany().HasForeignKey(r => r.DocumentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PurchaseOrderReceipt>().HasIndex(r => r.DocumentId);
 
         // Units (وحدات). A barcode identifies one unit of one item, company-wide.
         b.Entity<ItemUnit>().HasIndex(u => new { u.ProductId, u.UnitId }).IsUnique();

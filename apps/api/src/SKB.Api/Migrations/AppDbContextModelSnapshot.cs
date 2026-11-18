@@ -570,6 +570,10 @@ namespace SKB.Api.Migrations
                     b.Property<bool>("HideNewPlaces")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("IdleAction")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("IdleMinutes")
                         .HasColumnType("integer");
 
@@ -614,8 +618,14 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("text");
 
+                    b.Property<bool>("PinUnlock")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PrintLayout")
                         .HasColumnType("text");
+
+                    b.Property<int>("RememberDays")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("RequireDepartment")
                         .HasColumnType("boolean");
@@ -2403,6 +2413,169 @@ namespace SKB.Api.Migrations
                     b.ToTable("ProductModels");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BranchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("ExpectedDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly>("OrderDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("CancelledById");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("PartyId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("Status", "OrderDate");
+
+                    b.ToTable("PurchaseOrders");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrderLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ColorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsNew")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("LineNo")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReceivedPieces")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("SizeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SupplierCode")
+                        .HasColumnType("text");
+
+                    b.Property<int>("UnitFactor")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("UnitId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("UnitPrice")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("PurchaseOrderLines");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrderReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Pieces")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("PurchaseOrderReceipts");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.QuantityBreak", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2679,6 +2852,9 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LockedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("Remember")
                         .HasColumnType("boolean");
 
@@ -2695,6 +2871,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("UnlockFailures")
+                        .HasColumnType("integer");
 
                     b.Property<string>("UserAgent")
                         .HasColumnType("text");
@@ -2918,6 +3097,9 @@ namespace SKB.Api.Migrations
                         .HasColumnType("bytea");
 
                     b.Property<string>("Phone")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PinHash")
                         .HasColumnType("text");
 
                     b.PrimitiveCollection<List<string>>("RevokedPermissions")
@@ -4266,6 +4448,92 @@ namespace SKB.Api.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrder", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Staff", "CancelledBy")
+                        .WithMany()
+                        .HasForeignKey("CancelledById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Staff", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Party", "Party")
+                        .WithMany()
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("CancelledBy");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Party");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrderLine", b =>
+                {
+                    b.HasOne("SKB.Api.Data.PurchaseOrder", "Order")
+                        .WithMany("Lines")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Order");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrderReceipt", b =>
+                {
+                    b.HasOne("SKB.Api.Data.SalesDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SKB.Api.Data.PurchaseOrder", "Order")
+                        .WithMany("Receipts")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.QuantityBreak", b =>
                 {
                     b.HasOne("SKB.Api.Data.ProductModel", "Model")
@@ -4773,6 +5041,13 @@ namespace SKB.Api.Migrations
                     b.Navigation("Units");
 
                     b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PurchaseOrder", b =>
+                {
+                    b.Navigation("Lines");
+
+                    b.Navigation("Receipts");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.SalesDocument", b =>
