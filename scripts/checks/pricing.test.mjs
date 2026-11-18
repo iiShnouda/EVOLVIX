@@ -258,6 +258,53 @@ eq('covered again', (await one(c3, D.id, 5)).unitPrice, 900);
 ok('taken from customer 3', await owner.put(`/price-lists/${DL.list.id}/parties`, { partyIds: [] }));
 eq('…back to the level', (await one(c3, D.id, 5)).unitPrice, 1000);
 
+// ------------------------------------------------------------------ seasonal lists (owner, 2026-11-18)
+console.log('== a seasonal list');
+const allSeasons = (await owner.get('/seasons')).data;
+const [sy] = companyToday().split('-').map(Number);
+const summerS = allSeasons.find((x) => x.kind === 'SUMMER' && x.year === sy) ?? allSeasons.find((x) => x.kind === 'SUMMER');
+const winterS = allSeasons.find((x) => x.kind === 'WINTER' && x.year === sy) ?? allSeasons.find((x) => x.kind === 'WINTER');
+const sDep = ok('a summer department', await owner.post('/departments', { name: `Summer ${tag}` }));
+const wDep = ok('a winter department', await owner.post('/departments', { name: `Winter ${tag}` }));
+const sGroup = ok('its sub-group', await owner.post('/groups', { departmentId: sDep.id, name: `SG ${tag}` }));
+const wGroup = ok('its sub-group', await owner.post('/groups', { departmentId: wDep.id, name: `WG ${tag}` }));
+const seasonal = (name, groupId, seasonId) => owner.post('/products', {
+  name: `${name} ${tag}`, categoryId: groupId, seasonId, units: [{ unitId: piece.id, factor: 1 }],
+  prices: [{ unitId: piece.id, priceLevelId: sale.id, price: 1000 }, { unitId: piece.id, priceLevelId: supply.id, price: 600 }],
+});
+const SI = ok(`a summer item (${summerS.name}, 10.00)`, await seasonal('SI', sGroup.id, summerS.id));
+const WI = ok(`a winter item (${winterS.name}, 10.00)`, await seasonal('WI', wGroup.id, winterS.id));
+const NI = ok('a summer item in a department of no season', await seasonal('NI', cat.id, summerS.id));
+const c4 = ok('customer 4', await party('PCust4', ['CUSTOMER']));
+eq('a season that isn’t there', (await owner.post('/price-lists', { name: `x${tag}`, seasonId: '00000000-0000-0000-0000-000000000000' })).data?.code, 'season_not_found');
+eq('summer or winter', (await owner.post('/price-lists', { name: `x${tag}`, departmentSeason: 'SPRING' })).data?.code, 'bad_season');
+const day0 = companyToday();
+const SL = ok(`list: 20% off ${summerS.name} from today`, await owner.post('/price-lists', { name: `Season ${tag}`, seasonId: summerS.id, percent: 20, validFrom: day0 }));
+eq('kept', [SL.list.seasonId, SL.list.seasonName, SL.list.state], [summerS.id, summerS.name, 'ACTIVE']);
+ok('a winter item’s own price on it', await owner.put(`/price-lists/${SL.list.id}/items`, { items: [{ productId: WI.id, unitId: piece.id, price: 500 }] }));
+ok('given to customer 4', await owner.put(`/price-lists/${SL.list.id}/parties`, { partyIds: [c4.id] }));
+let seasonLines = (await priceFor(karim, c4, [[SI.id, 1], [NI.id, 1], [WI.id, 1]])).lines;
+eq('only the season’s items: 20% off both summer items, the winter one keeps its price (even its own on the list)',
+  seasonLines.map((l) => [l.unitPrice, l.source]), [[800, 'LIST'], [800, 'LIST'], [1000, 'LEVEL']]);
+ok('starts tomorrow', await owner.put(`/price-lists/${SL.list.id}`, { validFrom: addDays(day0, 1) }));
+eq('upcoming', (await owner.get('/price-lists')).data.find((l) => l.id === SL.list.id)?.state, 'UPCOMING');
+eq('…not yet', (await one(c4, SI.id)).unitPrice, 1000);
+ok('ended yesterday', await owner.put(`/price-lists/${SL.list.id}`, { validFrom: addDays(day0, -30), validTo: addDays(day0, -1) }));
+eq('ended', (await owner.get('/price-lists')).data.find((l) => l.id === SL.list.id)?.state, 'ENDED');
+eq('…no more', (await one(c4, SI.id)).unitPrice, 1000);
+ok('runs to the end of the month', await owner.put(`/price-lists/${SL.list.id}`, { validTo: addDays(day0, 20) }));
+eq('active again by itself', (await one(c4, SI.id)).unitPrice, 800);
+ok('every season', await owner.put(`/price-lists/${SL.list.id}`, { seasonId: '' }));
+seasonLines = (await priceFor(karim, c4, [[SI.id, 1], [WI.id, 1]])).lines;
+eq('…then the winter item’s own price applies too', seasonLines.map((l) => l.unitPrice), [800, 500]);
+const DS = ok('list: 10% off the summer departments', await owner.post('/price-lists', { name: `SDeps ${tag}`, departmentSeason: 'summer', percent: 10 }));
+eq('kept', DS.list.departmentSeason, 'SUMMER');
+ok('customer 4 moves to it', await owner.put(`/price-lists/${DS.list.id}/parties`, { partyIds: [c4.id] }));
+seasonLines = (await priceFor(karim, c4, [[SI.id, 1], [NI.id, 1], [WI.id, 1]])).lines;
+eq('only items of a summer department', seasonLines.map((l) => l.unitPrice), [900, 1000, 1000]);
+ok('off', await owner.put(`/price-lists/${DS.list.id}`, { isActive: false }));
+eq('switched off', (await owner.get('/price-lists')).data.find((l) => l.id === DS.list.id)?.state, 'OFF');
+
 // ------------------------------------------------------------------ quantity discounts by amount
 console.log('== steps by amount');
 eq('all by quantity or all by amount', (await steps({ productId: B.id }, [{ minQuantity: 0, minAmount: 5000, percent: 2 }, { minQuantity: 10, percent: 5 }])).data?.code, 'bad_steps');
