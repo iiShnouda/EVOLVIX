@@ -87,6 +87,18 @@
         {
           "ar": "بحث جديد: الفواتير بالمندوب والمبلغ، العملاء بالتليفون، الشيكات بالبنك والمبلغ، السندات بالرقم والفترة والمبلغ، التوصيل بالرقم والعميل وشركة الشحن، الأصناف بسعر البيع، سجل النشاط بالكلمات والفرع",
           "en": "New filters: invoices by rep and amount, parties by phone, cheques by bank and amount, vouchers by number, period and amount, deliveries by number, customer and shipping company, items by sale price, activity log by words and branch"
+        },
+        {
+          "ar": "صفحة \"الاستيراد والاسترجاع\": ترجّع نسخة احتياطية من جوه البرنامج — تشوف فيها إيه قبل ما ترجّعها، وبياخد نسخة أمان الأول ويخرّج الكل",
+          "en": "The \"Import and restore\" page: restore a backup inside the app — see what it holds first; a safety backup is taken and everyone is signed out"
+        },
+        {
+          "ar": "استيراد من Excel للأصناف والعملاء والموردين والأرصدة الافتتاحية (عملاء، موردين، خزن وبنوك، مخزون): نموذج جاهز، فحص بيوريك غلط كل صف، والملف يدخل كله أو مايدخلش خالص",
+          "en": "Excel import of items, customers, suppliers and opening balances (customers, suppliers, cash and banks, stock): a template, a check showing each row's problems, and all-or-nothing import"
+        },
+        {
+          "ar": "فاتورة المورد ممكن تيجي PDF متصوّر (سكانر) وتتقري زي الصورة",
+          "en": "A supplier's scanned PDF invoice is read like a photo"
         }
       ],
       "fixes": [

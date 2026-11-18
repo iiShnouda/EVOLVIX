@@ -68,6 +68,8 @@ live company server.
 | `notify.test.mjs` | Notifications everywhere: each kind to the people with its permission and place (never the actor), cheques due/overdue/bounced once each, stock out/low once until restocked, transfers, returns, payroll, lock and year close, a new device's sign-in, per-person choices, delete and pages, the daily summary scoped to each person (`POST /notifications/run-daily`, Development only). |
 | `deptseasons.test.mjs` | A department's season read from its name (صيفي / شتوي / summer / winter, spelling variants; none or both = both seasons), server and web alike; `season=` on the dashboard, profit and loss, assortment, stock items and valuation; scoping kept. |
 | `filters.test.mjs` | The detailed searches' server filters: invoices by rep and amount, parties by phone, cheques by bank and amount, vouchers by number/period/amount, handovers by number/box/amount, deliveries by number/customer/carrier/period, transfers by number, the activity log by words and branch, items by sale price — each only narrowing what the person may see. |
+| `imports.test.mjs` | Excel imports per kind (`import:*`): server templates in Arabic and English read back, the check step's row errors, all-or-nothing, items, customers, suppliers and opening balances (parties, cash and banks, stock), audit, warehouse limits; scanned and text-only PDF invoices. |
+| `restore.test.mjs` | Restoring a backup in the app (`backup:restore`, owner only): what it holds first, wrong passphrase, not a backup, newer version, picking by name only, the typed confirmation, the safety backup, the old database kept, everyone signed out, audit. **Replaces the server's data: throwaway database only** (`PGURL`, `Backup__Folder`). |
 
 ## Running
 
