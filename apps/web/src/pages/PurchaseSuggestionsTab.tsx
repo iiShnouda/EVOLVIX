@@ -158,7 +158,7 @@ export function PurchaseSuggestionsTab() {
       <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label={t('assort.supplier')}
-          className={`${small} max-w-[14rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[14rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={q.supplierId ?? ''}
           onChange={(e) => set({ supplierId: e.target.value || undefined })}
         >
@@ -171,7 +171,7 @@ export function PurchaseSuggestionsTab() {
         </select>
         <select
           aria-label={t('invoice.department')}
-          className={`${small} max-w-[12rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[12rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={q.departmentId ?? ''}
           onChange={(e) => set({ departmentId: e.target.value || undefined })}
         >
@@ -183,7 +183,7 @@ export function PurchaseSuggestionsTab() {
           ))}
         </select>
         <DeptSeasonSelect
-          className={`${small} max-w-[10rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[10rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={season}
           label={t('assort.season')}
           onChange={(v) => {
@@ -194,7 +194,7 @@ export function PurchaseSuggestionsTab() {
         />
         <select
           aria-label={t('assort.year')}
-          className={`${small} max-w-[8rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[8rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={year ?? ''}
           onChange={(e) => setAddress('year', e.target.value || undefined)}
         >

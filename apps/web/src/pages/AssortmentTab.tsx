@@ -272,7 +272,7 @@ export function AssortmentTab() {
         </Button>
         <select
           aria-label={t('invoice.department')}
-          className={`${small} max-w-[12rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[12rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={q.departmentId ?? ''}
           onChange={(e) => set({ departmentId: e.target.value || undefined, groupId: undefined })}
         >
@@ -284,14 +284,14 @@ export function AssortmentTab() {
           ))}
         </select>
         <DeptSeasonSelect
-          className={`${small} max-w-[10rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[10rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={season}
           onChange={setSeason}
           label={t('assort.season')}
         />
         <select
           aria-label={t('assort.year')}
-          className={`${small} max-w-[8rem] flex-1 sm:flex-none`}
+          className={`${small} max-w-[8rem] flex-1 basis-[6.5rem] sm:flex-none`}
           value={year ?? ''}
           onChange={(e) => setAddress('year', e.target.value || undefined)}
         >
@@ -305,7 +305,7 @@ export function AssortmentTab() {
         {q.departmentId && groupOptions.length > 0 && (
           <select
             aria-label={t('assort.group')}
-            className={`${small} max-w-[14rem] flex-1 sm:flex-none`}
+            className={`${small} max-w-[14rem] flex-1 basis-[6.5rem] sm:flex-none`}
             value={q.groupId ?? ''}
             onChange={(e) => set({ groupId: e.target.value || undefined })}
           >
