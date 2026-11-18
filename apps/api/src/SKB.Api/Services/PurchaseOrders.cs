@@ -44,35 +44,35 @@ public static class PurchaseOrders
     {
         if (string.IsNullOrWhiteSpace(orderId))
             return lines.Any(l => !string.IsNullOrWhiteSpace(l.OrderLineId))
-                ? (null, new("order_not_found", "Purchase order not found.", 404))
+                ? (null, new("po_not_found", "Purchase order not found.", 404))
                 : (null, null);
         if (!user.Has(Permissions.PurchaseOrdersReceive))
             return (null, new("forbidden", "Receiving a purchase order needs permission.", 403));
         if (!Guid.TryParse(orderId, out var id))
-            return (null, new("order_not_found", "Purchase order not found.", 404));
+            return (null, new("po_not_found", "Purchase order not found.", 404));
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"PurchaseOrders\" WHERE \"Id\" = {id} FOR UPDATE");
         var order = await db.PurchaseOrders.Visible(user).Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id);
-        if (order is null) return (null, new("order_not_found", "Purchase order not found.", 404));
+        if (order is null) return (null, new("po_not_found", "Purchase order not found.", 404));
         if (!Open(order))
-            return (null, new("order_closed", $"Order {order.Number} is already received or cancelled.", 409));
+            return (null, new("po_closed", $"Order {order.Number} is already received or cancelled.", 409));
         if (order.PartyId != partyId)
-            return (null, new("order_other_supplier", $"Order {order.Number} is to another supplier."));
+            return (null, new("po_other_supplier", $"Order {order.Number} is to another supplier."));
         if (order.BranchId != branchId)
-            return (null, new("order_other_branch", $"Order {order.Number} is of another branch: work in its branch to receive it."));
+            return (null, new("po_other_branch", $"Order {order.Number} is of another branch: work in its branch to receive it."));
 
         var received = 0;
         foreach (var (lineId, productId, pieces) in lines)
         {
             if (string.IsNullOrWhiteSpace(lineId)) continue;
             var line = Guid.TryParse(lineId, out var lid) ? order.Lines.FirstOrDefault(l => l.Id == lid) : null;
-            if (line is null) return (null, new("order_line_not_found", "A line is not on the order."));
+            if (line is null) return (null, new("po_line_not_found", "A line is not on the order."));
             if (line.ProductId is Guid ordered && ordered != productId)
-                return (null, new("order_line_other_item", $"{line.Name}: another item was ordered on this line."));
+                return (null, new("po_line_other_item", $"{line.Name}: another item was ordered on this line."));
             line.ProductId ??= productId;
             line.ReceivedPieces += pieces;
             received += pieces;
         }
-        if (received == 0) return (null, new("order_nothing_received", "Nothing on the invoice is from the order."));
+        if (received == 0) return (null, new("po_nothing_received", "Nothing on the invoice is from the order."));
         order.Status = order.Lines.All(l => l.ReceivedPieces >= l.Quantity * l.UnitFactor)
             ? PurchaseOrderStatus.RECEIVED
             : PurchaseOrderStatus.PARTLY_RECEIVED;

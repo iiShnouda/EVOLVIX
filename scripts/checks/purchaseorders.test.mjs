@@ -86,7 +86,7 @@ eq('its total', po?.total, (sShirt?.suggested ?? 5) * 10000 + 4 * 12000 + 6 * 20
 eq('the order moved no stock', (await owner.get(`/products/${shirt.id}`)).data.stockOnHand, stockBefore);
 eq('…nor the supplier’s account', (await owner.get(`/parties/${supplier.id}`)).data.balance, balanceBefore);
 eq('…nor the ledger', (await owner.get('/ledger/entries?page=1&pageSize=1')).data?.total, entriesBefore);
-eq('a new item needs a name', (await owner.post('/purchase-orders', { ...body, lines: [{ quantity: 1 }] })).data?.code, 'no_name');
+eq('a new item needs a name', (await owner.post('/purchase-orders', { ...body, lines: [{ quantity: 1 }] })).data?.code, 'po_no_name');
 eq('a group of another department is refused', (await owner.post('/purchase-orders', { ...body, lines: [{ name: 'x', groupId: group.id, quantity: 1 }] })).data?.code, 'group_not_found');
 eq('a customer is no supplier', (await owner.post('/purchase-orders', { ...body, partyId: customer.id })).data?.code, 'party_not_found');
 eq('a quantity of 0 is refused', (await owner.post('/purchase-orders', { ...body, lines: [{ productId: shirt.id, quantity: 0 }] })).data?.code, 'bad_quantity');
@@ -120,11 +120,11 @@ eq('receiving needs its own permission', (await karim.post('/purchases/invoices'
 eq('another supplier’s invoice can’t receive it', (await owner.post('/purchases/invoices', {
   partyId: other.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po.id,
   lines: [{ productId: shirt.id, unitId: piece.id, quantity: 1, unitCost: 10000, orderLineId: lineOf(0).id }],
-})).data?.code, 'order_other_supplier');
+})).data?.code, 'po_other_supplier');
 eq('a line takes only the item ordered', (await owner.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po.id,
   lines: [{ productId: trousers.id, unitId: piece.id, quantity: 1, unitCost: 10000, orderLineId: lineOf(0).id }],
-})).data?.code, 'order_line_other_item');
+})).data?.code, 'po_line_other_item');
 const shirtsOrdered = lineOf(0).quantity;
 const part = ok('part received (the accountant)', await mona.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po.id,
@@ -139,7 +139,7 @@ eq('what each line received', now?.lines.map((l) => l.receivedPieces), [shirtsOr
 eq('the new line now names the item made', now?.lines[2].productId, jacket.id);
 eq('the invoice is among its receipts', now?.receipts.map((r) => r.number), [part?.number]);
 eq('the stock came in on the invoice', (await owner.get(`/products/${shirt.id}`)).data.stockOnHand, stockBefore + shirtsOrdered);
-eq('no more changes once received', (await owner.put(`/purchase-orders/${po.id}`, body)).data?.code, 'order_locked');
+eq('no more changes once received', (await owner.put(`/purchase-orders/${po.id}`, body)).data?.code, 'po_locked');
 const rest = ok('the rest received', await owner.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po.id,
   lines: [
@@ -153,7 +153,7 @@ eq('two receipts', now?.receipts.map((r) => r.number), [part?.number, rest?.numb
 eq('a received order takes no more', (await owner.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po.id,
   lines: [{ productId: shirt.id, unitId: piece.id, quantity: 1, unitCost: 10000, orderLineId: lineOf(0).id }],
-})).data?.code, 'order_closed');
+})).data?.code, 'po_closed');
 eq('nor can it be cancelled', (await owner.post(`/purchase-orders/${po.id}/cancel`)).status, 409);
 
 console.log('== cancelling');
@@ -169,7 +169,7 @@ eq('cancelled', cancelled?.status, 'CANCELLED');
 eq('a cancelled order receives nothing', (await owner.post('/purchases/invoices', {
   partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: po2.id,
   lines: [{ productId: shirt.id, unitId: piece.id, quantity: 1, unitCost: 10000, orderLineId: po2.lines[0].id }],
-})).data?.code, 'order_closed');
+})).data?.code, 'po_closed');
 
 console.log('== permissions and scope');
 for (const [what, res] of [
@@ -193,7 +193,7 @@ if (farWh) {
   eq('receiving it needs working in its branch', (await owner.post('/purchases/invoices', {
     partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: farOrder?.id,
     lines: [{ productId: shirt.id, unitId: piece.id, quantity: 1, unitCost: 10000, orderLineId: farOrder?.lines[0].id }],
-  })).data?.code, 'order_other_branch');
+  })).data?.code, 'po_other_branch');
 } else check('the new branch has a store', false);
 
 console.log('== the activity log');

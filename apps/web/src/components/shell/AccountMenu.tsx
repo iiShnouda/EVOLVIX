@@ -8,8 +8,12 @@ import { useAuth } from '../../stores/auth';
 import { useWorkBranch, useWorkBranchStore } from '../../stores/workBranch';
 import { queryClient } from '../../lib/queryClient';
 import { SHOW_COSTS_KEY, useMaySeeProfit } from '../../lib/can';
-import { usePreferences } from '../../lib/queries';
+import { useCompanySettings, usePreferences } from '../../lib/queries';
 import { confirm } from '../../lib/confirm';
+import { Sheet } from '../Sheet';
+import { Button } from '../ui';
+import { ApiError } from '../../lib/api';
+import { errorText } from '../../lib/errors';
 
 export function AccountMenu() {
   const { t } = useT();
@@ -23,6 +27,11 @@ export function AccountMenu() {
   const maySeeCosts = useMaySeeProfit();
   const prefs = usePreferences();
   const showCosts = prefs.data?.[SHOW_COSTS_KEY] === '1';
+  // Locking by hand (owner, 2026-11-18): on a remembered device, when idle locks rather than signs out.
+  const remembered = useAuth((s) => s.remembered);
+  const settings = useCompanySettings().data;
+  const canLock = remembered && (settings?.idleAction ?? 'LOCK') === 'LOCK';
+  const [pinOpen, setPinOpen] = useState(false);
   const toggleCosts = () => {
     const value = showCosts ? '' : '1';
     queryClient.setQueryData<Record<string, string>>(['preferences'], (old) => ({
@@ -157,6 +166,30 @@ export function AccountMenu() {
               <span className="min-w-0 flex-1">{t('costs.show')}</span>
             </button>
           )}
+          {canLock && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                void api.lock();
+              }}
+              className="flex w-full items-center gap-2 border-t border-line px-3 py-2.5 text-sm transition-colors hover:bg-surface-2"
+            >
+              <Icon name="lock" size={18} className="text-muted" />
+              <span className="min-w-0 flex-1 text-start">{t('lock.now')}</span>
+            </button>
+          )}
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setPinOpen(true);
+            }}
+            className="flex w-full items-center gap-2 border-t border-line px-3 py-2.5 text-sm transition-colors hover:bg-surface-2"
+          >
+            <Icon name="key" size={18} className="text-muted" />
+            <span className="min-w-0 flex-1 text-start">{t('pin.title')}</span>
+          </button>
           <button
             role="menuitem"
             onClick={logoutEverywhere}
@@ -175,7 +208,102 @@ export function AccountMenu() {
           </button>
         </div>
       )}
+      {pinOpen && <PinSheet onClose={() => setPinOpen(false)} />}
     </div>
+  );
+}
+
+const pinBox =
+  'h-10 w-full rounded-[var(--radius-app)] border border-line bg-surface px-3 text-sm outline-none focus:border-brand';
+
+/**
+ * One's own PIN for the lock screen (owner, 2026-11-18): 4–6 digits, kept hashed on the server, set
+ * or changed with the password; or removed.
+ */
+function PinSheet({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
+  const state = useQuery({
+    queryKey: ['auth', 'pin'],
+    queryFn: () => api.get<{ hasPin: boolean; allowed: boolean }>('/auth/pin'),
+  });
+  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const run = async (action: () => Promise<unknown>, saved = true) => {
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      await action();
+      setPin('');
+      setPassword('');
+      setDone(saved);
+      await state.refetch();
+    } catch (e) {
+      setError(e instanceof ApiError ? errorText(t, e) : t('error.generic'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet title={t('pin.title')} onClose={onClose} closeLabel={t('common.close')}>
+      <div className="space-y-3">
+        <p className="text-sm text-muted">{t('pin.hint')}</p>
+        {state.data && !state.data.allowed && (
+          <p className="text-sm text-warning">{t('pin.off')}</p>
+        )}
+        {state.data && (
+          <p className="text-sm font-medium">{t(state.data.hasPin ? 'pin.has' : 'pin.none')}</p>
+        )}
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted">{t('pin.new')}</span>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={6}
+            dir="ltr"
+            className={`${pinBox} tnum tracking-[0.3em]`}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-muted">{t('pin.password')}</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            dir="ltr"
+            className={pinBox}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {done && <p className="text-sm text-positive">{t('pin.saved')}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {state.data?.hasPin && (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => void run(() => api.del('/auth/pin'), false)}
+            >
+              {t('pin.clear')}
+            </Button>
+          )}
+          <Button
+            icon="check"
+            loading={busy}
+            disabled={pin.length < 4 || !password}
+            onClick={() => void run(() => api.put('/auth/pin', { pin, password }))}
+          >
+            {t('pin.save')}
+          </Button>
+        </div>
+      </div>
+    </Sheet>
   );
 }
 

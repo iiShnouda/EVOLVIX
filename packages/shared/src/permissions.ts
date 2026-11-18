@@ -154,6 +154,24 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    key: 'purchase_orders',
+    sections: [
+      {
+        key: 'view',
+        permissions: ['purchase_orders:view', 'purchase_orders:print', 'purchase_orders:pdf', 'purchase_orders:export'],
+      },
+      {
+        key: 'actions',
+        permissions: [
+          'purchase_orders:create',
+          'purchase_orders:edit',
+          'purchase_orders:cancel',
+          'purchase_orders:receive',
+        ],
+      },
+    ],
+  },
+  {
     key: 'inventory',
     sections: [
       {

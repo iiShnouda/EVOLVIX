@@ -31,6 +31,7 @@ import { setScroll } from './lib/scrollRoot';
 import { BootDone } from './lib/bootSplash';
 import { startAppUpdates } from './lib/appUpdate';
 import { CrashScreen } from './components/CrashScreen';
+import { LockScreen } from './components/LockScreen';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { DocumentsPage } from './pages/DocumentsPage';
@@ -147,6 +148,9 @@ function ProtectedApp() {
   // Still starting: the index.html splash stays on screen (lib/bootSplash).
   if (status === 'unknown') return null;
   if (status === 'anonymous') return <Navigate to="/login" replace />;
+  // The idle time locked this remembered device (owner, 2026-11-18): only the lock screen, over
+  // everything; the pages and what they read are gone. Unlocking opens this same page again.
+  if (status === 'locked') return <LockScreen />;
 
   // Server-authoritative security: nothing is readable without a live connection. The open pages
   // stay alive behind the gate, hidden and unusable, so what was being typed is still there when
@@ -259,7 +263,7 @@ function HomeRedirect() {
 
 function LoginRoute() {
   const status = useAuth((s) => s.status);
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated' || status === 'locked') return <Navigate to="/" replace />;
   return (
     <>
       <BootDone />

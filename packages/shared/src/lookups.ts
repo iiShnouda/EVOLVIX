@@ -17,6 +17,7 @@ export const LOOKUPS = {
       'parties:',
       'sales:',
       'purchases:',
+      'purchase_orders:',
       'delivery:',
       'shipments:',
       'settlements:',
@@ -56,6 +57,7 @@ export const LOOKUPS = {
       'labels:',
       'sales:',
       'purchases:',
+      'purchase_orders:',
     ],
     [
       'prices:edit',

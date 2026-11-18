@@ -156,7 +156,7 @@ public sealed class PurchaseOrdersController : ControllerBase
         var order = await _db.PurchaseOrders.Visible(User).Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound(new { message = "Purchase order not found.", code = "not_found" });
         if (!PurchaseOrders.Editable(order))
-            return Conflict(new { message = "Only an order with nothing received can be changed.", code = "order_locked" });
+            return Conflict(new { message = "Only an order with nothing received can be changed.", code = "po_locked" });
         var old = order.Lines.ToList();
         order.Lines = new List<PurchaseOrderLine>();
         var error = await FillAsync(order, req);
@@ -177,7 +177,7 @@ public sealed class PurchaseOrdersController : ControllerBase
         var order = await _db.PurchaseOrders.Visible(User).FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound(new { message = "Purchase order not found.", code = "not_found" });
         if (order.Status != PurchaseOrderStatus.DRAFT)
-            return Conflict(new { message = "Only a draft can be marked sent.", code = "order_not_draft" });
+            return Conflict(new { message = "Only a draft can be marked sent.", code = "po_not_draft" });
         order.Status = PurchaseOrderStatus.SENT;
         order.SentAt = order.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -195,7 +195,7 @@ public sealed class PurchaseOrdersController : ControllerBase
         var order = await _db.PurchaseOrders.Visible(User).FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound(new { message = "Purchase order not found.", code = "not_found" });
         if (!PurchaseOrders.Open(order))
-            return Conflict(new { message = "The order is already received or cancelled.", code = "order_closed" });
+            return Conflict(new { message = "The order is already received or cancelled.", code = "po_closed" });
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
         order.Status = PurchaseOrderStatus.CANCELLED;
         order.CancelledById = staffId;
@@ -243,13 +243,13 @@ public sealed class PurchaseOrdersController : ControllerBase
         var orderDate = CompanyClock.Today;
         if (!string.IsNullOrWhiteSpace(req.OrderDate))
         {
-            if (CompanyClock.ParseDay(req.OrderDate) is not DateOnly od) return new("bad_date", "Enter a valid date.");
+            if (CompanyClock.ParseDay(req.OrderDate) is not DateOnly od) return new("po_bad_date", "Enter a valid date.");
             orderDate = od;
         }
         DateOnly? expected = null;
         if (!string.IsNullOrWhiteSpace(req.ExpectedDate))
         {
-            if (CompanyClock.ParseDay(req.ExpectedDate) is not DateOnly ed) return new("bad_date", "Enter a valid date.");
+            if (CompanyClock.ParseDay(req.ExpectedDate) is not DateOnly ed) return new("po_bad_date", "Enter a valid date.");
             if (ed < orderDate) return new("bad_expected_date", "The expected date is before the order's date.");
             expected = ed;
         }
@@ -296,7 +296,7 @@ public sealed class PurchaseOrdersController : ControllerBase
             {
                 // A new item: only named; it is made when its goods arrive.
                 var name = Loc.Clean(l.Name);
-                if (name is null) return new("no_name", "Name the new item.");
+                if (name is null) return new("po_no_name", "Name the new item.");
                 line.IsNew = true;
                 line.Name = name;
                 line.SupplierCode = l.SupplierCode?.Trim() is { Length: > 0 } code ? code[..Math.Min(code.Length, 100)] : null;

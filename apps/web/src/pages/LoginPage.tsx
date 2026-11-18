@@ -12,6 +12,7 @@ import { useAuth } from '../stores/auth';
 import { GetApps } from '../components/GetApps';
 import { useConnection } from '../stores/connection';
 import { errorText } from '../lib/errors';
+import { useBranding } from '../lib/queries';
 
 /** A labelled box with an icon at its start. */
 function Field({
@@ -49,6 +50,8 @@ export function LoginPage() {
   const setSession = useAuth((s) => s.setSession);
   const notice = useAuth((s) => s.notice);
   const connection = useConnection((s) => s.state);
+  // How long a remembered device stays signed in; 0 = the owner turned remembering off.
+  const rememberDays = useBranding().data?.rememberDays ?? 30;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,16 +63,20 @@ export function LoginPage() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const parsed = loginSchema.safeParse({ email, password, rememberDevice: remember });
+    const parsed = loginSchema.safeParse({
+      email,
+      password,
+      rememberDevice: remember && rememberDays > 0,
+    });
     if (!parsed.success) {
       setError(t('auth.invalidCredentials'));
       return;
     }
     setLoading(true);
     try {
-      const { user, accessToken } = await api.login(parsed.data);
+      const { user, accessToken, remembered } = await api.login(parsed.data);
       // The app then opens the page the person was on (kept on the server).
-      setSession(user, accessToken);
+      setSession(user, accessToken, remembered);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'INVALID_CREDENTIALS') {
         setError(t('auth.invalidCredentials'));
@@ -168,11 +175,17 @@ export function LoginPage() {
               className="flex items-start gap-2 rounded-[var(--radius-app)] border border-warning/40 bg-warning-soft px-3 py-2.5 text-sm text-warning"
             >
               <Icon
-                name={notice === 'idle' ? 'lock' : 'device'}
+                name={notice === 'signedInElsewhere' ? 'device' : 'lock'}
                 size={18}
                 className="mt-0.5 shrink-0"
               />
-              {t(notice === 'idle' ? 'auth.idleSignedOut' : 'auth.signedInElsewhere')}
+              {t(
+                notice === 'idle'
+                  ? 'auth.idleSignedOut'
+                  : notice === 'unlockFailed'
+                    ? 'auth.unlockSignedOut'
+                    : 'auth.signedInElsewhere',
+              )}
             </div>
           )}
 
@@ -214,20 +227,24 @@ export function LoginPage() {
             </Field>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-2.5 text-sm">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[var(--c-brand)]"
-            />
-            <span>
-              <span className="font-medium">{t('auth.rememberDevice')}</span>
-              {remember && (
-                <span className="block text-xs text-muted">{t('auth.rememberHint')}</span>
-              )}
-            </span>
-          </label>
+          {rememberDays > 0 && (
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--c-brand)]"
+              />
+              <span>
+                <span className="font-medium">{t('auth.rememberDevice')}</span>
+                {remember && (
+                  <span className="block text-xs text-muted">
+                    {t('auth.rememberDays').replace('{n}', String(rememberDays))}
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
 
           {error && (
             <div

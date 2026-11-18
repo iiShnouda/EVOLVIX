@@ -121,6 +121,18 @@ export const NAV_SECTIONS: NavSection[] = [
           'purchases:additions',
         ]),
       },
+      // Orders to a factory (owner, 2026-11-18): no accounting, received on a purchase invoice.
+      {
+        key: 'purchaseOrders',
+        labelKey: 'nav.purchaseOrders',
+        icon: 'purchases',
+        path: '/purchase-orders',
+        anyOf: opens('purchase_orders', [
+          'purchase_orders:print',
+          'purchase_orders:pdf',
+          'purchase_orders:export',
+        ]),
+      },
       {
         key: 'deliveries',
         labelKey: 'nav.deliveries',

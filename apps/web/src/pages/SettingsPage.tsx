@@ -8,6 +8,7 @@ import {
   formatClock,
   formatDateTime,
   type CompanySettings,
+  type IdleAction,
   type Locale,
   type Permission,
 } from '@skb/shared';
@@ -158,7 +159,14 @@ export function SettingsPage() {
             noteAlertDays: form.noteAlertDays ?? 3,
           }
         : {}),
-      ...(edits.security ? { idleMinutes: form.idleMinutes ?? 30 } : {}),
+      ...(edits.security
+        ? {
+            idleMinutes: form.idleMinutes ?? 30,
+            idleAction: form.idleAction ?? 'LOCK',
+            pinUnlock: form.pinUnlock !== false,
+            rememberDays: form.rememberDays ?? 30,
+          }
+        : {}),
     });
     setSaved(true);
     setDirty(false);
@@ -540,6 +548,41 @@ export function SettingsPage() {
                 </option>
               ))}
             </select>
+          </label>
+          {/* Idle locks a remembered device instead of signing it out (owner, 2026-11-18). */}
+          <label className="mt-3 flex items-center gap-3">
+            <span className="min-w-0 flex-1 text-sm">{t('settings.idleAction')}</span>
+            <select
+              className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
+              value={form.idleAction ?? 'LOCK'}
+              onChange={(e) => set({ idleAction: e.target.value as IdleAction })}
+            >
+              <option value="LOCK">{t('settings.idleLockScreen')}</option>
+              <option value="SIGN_OUT">{t('settings.idleSignOut')}</option>
+            </select>
+          </label>
+          <label className="mt-3 flex items-center gap-3">
+            <span className="min-w-0 flex-1 text-sm">{t('settings.rememberDays')}</span>
+            <select
+              className="h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm"
+              value={form.rememberDays ?? 30}
+              onChange={(e) => set({ rememberDays: Number(e.target.value) })}
+            >
+              {[...new Set([1, 7, 14, 30, 60, 90, form.rememberDays ?? 30, 0])].map((d) => (
+                <option key={d} value={d}>
+                  {d === 0 ? t('settings.rememberOff') : t('settings.rememberN').replace('{n}', String(d))}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="mt-3 flex cursor-pointer items-center gap-3">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--c-brand)]"
+              checked={form.pinUnlock !== false}
+              onChange={(e) => set({ pinUnlock: e.target.checked })}
+            />
+            <span className="min-w-0 flex-1 text-sm">{t('settings.pinUnlock')}</span>
           </label>
         </Card>
       )}
