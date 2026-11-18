@@ -356,9 +356,9 @@ const store = warehouses.find((w) => w.kind !== 'TRANSIT' && w.isActive !== fals
 const transit = warehouses.find((w) => w.kind === 'TRANSIT');
 const stockRows = [
   ['Item (code, barcode or name)', 'Warehouse', 'Quantity', 'Unit cost'],
-  [`IMP-${tag}-1`, store.name, 10, '5'],
-  [`Imported belt ${tag}`, store.name, '1.5', 2],
-  [`Nothing ${tag}`, store.name, 1, 1],
+  [`IMP-${tag}-1`, store.code, 10, '5'],
+  [`Imported belt ${tag}`, store.code, '1.5', 2],
+  [`Nothing ${tag}`, store.code, 1, 1],
   ...(transit ? [[`Imported belt ${tag}`, transit.name, 1, 1]] : []),
 ];
 const ps = ok('stock preview', await send(owner, 'opening_stock', stockRows));

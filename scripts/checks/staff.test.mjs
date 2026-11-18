@@ -23,12 +23,12 @@ check(
   staff.map((s) => s.email),
 );
 const me = staff.find((s) => s.email === 'owner@skb.local');
-// Every grantable permission, plus the owner's own (server monitor and update, data import,
-// licence, server log), which nobody can be given.
+// Every grantable permission, plus the owner's own (server monitor and update, restoring a backup,
+// the seven Excel imports, licence, server log), which nobody can be given.
 eq(
-  "owner has every permission (and the five that are the owner's alone)",
+  "owner has every permission (and the twelve that are the owner's alone)",
   me.permissions.length,
-  (await owner.get('/permissions')).data.length + 5,
+  (await owner.get('/permissions')).data.length + 12,
 );
 eq('sales cannot list staff', (await karim.get('/staff')).status, 403);
 eq('accountant cannot list staff', (await mona.get('/staff')).status, 403);
