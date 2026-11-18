@@ -441,4 +441,193 @@ check(
   ['create', 'post', 'pay'].every((x) => audit.items.some((e) => e.action === x)),
 );
 
+console.log('== paid by the day or the hour, and a leaving date');
+// Rates chosen so a minute is exact: 240.00 a day ÷ 480 minutes = 0.50; 30.00 an hour = 0.50 a minute.
+const branch2 = ok('another branch', await owner.post('/branches', { name: `Payroll2 ${tag}` }));
+const hired = `${Y - 1}-01-01`;
+eq(
+  'a daily worker needs a day’s pay',
+  (
+    await owner.post('/payroll/employees', {
+      name: 'X',
+      branchId: branch2.id,
+      payType: 'DAILY',
+    })
+  ).data?.code,
+  'bad_rate',
+);
+eq(
+  'paid by the month, the day or the hour',
+  (
+    await owner.post('/payroll/employees', {
+      name: 'X',
+      branchId: branch2.id,
+      payType: 'WEEKLY',
+    })
+  ).data?.code,
+  'bad_pay_type',
+);
+const Dw = ok(
+  'Doaa: 240.00 a day',
+  await owner.post('/payroll/employees', {
+    name: `Doaa ${tag}`,
+    branchId: branch2.id,
+    payType: 'DAILY',
+    payRate: 24000,
+    shiftId: shift.id,
+    hireDate: hired,
+  }),
+);
+eq('kept', [Dw.payType, Dw.payRate, Dw.leaveDate], ['DAILY', 24000, null]);
+const Hw = ok(
+  'Hany: 30.00 an hour',
+  await owner.post('/payroll/employees', {
+    name: `Hany ${tag}`,
+    branchId: branch2.id,
+    payType: 'HOURLY',
+    payRate: 3000,
+    shiftId: shift.id,
+    hireDate: hired,
+  }),
+);
+const Lw = ok(
+  'Laila: 3,100.00 a month',
+  await owner.post('/payroll/employees', {
+    name: `Laila ${tag}`,
+    branchId: branch2.id,
+    monthlySalary: 310000,
+    hireDate: hired,
+  }),
+);
+eq(
+  'leaving before being hired',
+  (await owner.put(`/payroll/employees/${Lw.id}`, { leaveDate: `${Y - 2}-12-31` })).data?.code,
+  'leave_before_hire',
+);
+const box2 = ok(
+  'a cash box there',
+  await owner.post('/money-accounts', {
+    branchId: branch2.id,
+    name: `PBox2 ${tag}`,
+    kind: 'CASH_BOX',
+    openingBalance: 100000,
+  }),
+);
+const advL = ok(
+  'Laila takes an advance',
+  await owner.post('/payroll/advances', { employeeId: Lw.id, amount: 10000, accountId: box2.id }),
+);
+eq(
+  "can't leave while owing",
+  (await owner.put(`/payroll/employees/${Lw.id}`, { leaveDate: iso(10) })).data?.code,
+  'advance_open',
+);
+ok('the advance handed back', await owner.post(`/payroll/advances/${advL.id}/cancel`));
+const left = ok(
+  'she left on the 10th',
+  await owner.put(`/payroll/employees/${Lw.id}`, { leaveDate: iso(10) }),
+);
+eq('leaving date kept', left.leaveDate, iso(10));
+ok('and stopped working', await owner.put(`/payroll/employees/${Lw.id}`, { isActive: false }));
+const sheetOf = async (d) =>
+  ok(`sheet ${d}`, await mona.get(`/payroll/attendance?date=${iso(d)}&branchId=${branch2.id}`))
+    .rows;
+check(
+  'on the attendance sheet up to her last day, not after',
+  (await sheetOf(10)).some((r) => r.employeeId === Lw.id) &&
+    !(await sheetOf(11)).some((r) => r.employeeId === Lw.id),
+);
+
+const att = async (who, d, row) =>
+  ok(
+    `${who.name.split(' ')[0]} day ${d}`,
+    await mona.put('/payroll/attendance', { date: iso(d), rows: [{ employeeId: who.id, ...row }] }),
+  );
+const [w1, w2, w3, w4, w5, w6] = workdays;
+// Doaa: three days present (one 30 minutes late, one an hour over), paid leave, a holiday, absent.
+await att(Dw, w1, { status: 'PRESENT', checkIn: '09:00', checkOut: '17:00' });
+await att(Dw, w2, { status: 'PRESENT', checkIn: '09:30', checkOut: '17:00' });
+await att(Dw, w3, { status: 'LEAVE' });
+await att(Dw, w4, { status: 'HOLIDAY' });
+await att(Dw, w5, { status: 'ABSENT' });
+await att(Dw, w6, { status: 'PRESENT', checkIn: '09:00', checkOut: '18:00' });
+// Hany: 8 hours; 6.5 hours (late and early: not paid); 08:30–18:00 (an hour over the shift's end);
+// paid leave and a holiday (the shift's 8 hours each); two hours on a day off (overtime).
+await att(Hw, w1, { status: 'PRESENT', checkIn: '09:00', checkOut: '17:00' });
+await att(Hw, w2, { status: 'PRESENT', checkIn: '09:30', checkOut: '16:00' });
+await att(Hw, w3, { status: 'PRESENT', checkIn: '08:30', checkOut: '18:00' });
+await att(Hw, w4, { status: 'LEAVE' });
+await att(Hw, w5, { status: 'HOLIDAY' });
+await att(Hw, dFriday, { status: 'PRESENT', checkIn: '10:00', checkOut: '12:00' });
+
+let run3 = ok(
+  "that branch's payroll",
+  await mona.post('/payroll/runs', { year: Y, month: M, branchId: branch2.id }),
+);
+eq('all three, Laila too', run3.lines.length, 3);
+const lineOf = (r, e) => r.lines.find((l) => l.employeeId === e.id);
+const d1 = lineOf(run3, Dw);
+eq(
+  'Doaa: 5 days paid (present, leave, holiday) × 240.00, 30 minutes late, an hour over',
+  [d1.payType, d1.paidDays, d1.basic, d1.absenceDeduction, d1.lateDeduction, d1.overtimePay],
+  ['DAILY', 4 + 1, 5 * 24000, 0, 30 * 50, 60 * 50 * 1.5],
+);
+eq('Doaa earned', d1.earned, 120000 - 1500 + 4500);
+const h1 = lineOf(run3, Hw);
+const hanyMinutes = 480 + 390 + 510 + 480 + 480;
+eq(
+  'Hany: the minutes worked within the shift × 0.50, overtime at 150%',
+  [h1.payType, h1.workedMinutes, h1.basic, h1.lateDeduction, h1.overtimeMinutes, h1.overtimePay],
+  ['HOURLY', hanyMinutes, hanyMinutes * 50, 0, 180, 180 * 50 * 1.5],
+);
+eq('Hany earned', h1.earned, hanyMinutes * 50 + 13500);
+const l1 = lineOf(run3, Lw);
+eq(
+  'Laila paid up to the 10th',
+  [l1.payType, l1.employedDays, l1.basic],
+  ['MONTHLY', 10, Math.round((310000 * 10) / daysIn)],
+);
+
+ok(
+  'holidays not paid',
+  await owner.put('/payroll/settings', {
+    dayBasis: 30,
+    overtimePercent: 150,
+    missingAttendanceIsAbsent: false,
+    paidHolidays: false,
+  }),
+);
+run3 = ok('recalculated', await mona.post(`/payroll/runs/${run3.id}/recalculate`));
+eq(
+  'a day and 8 hours less',
+  [lineOf(run3, Dw).basic, lineOf(run3, Hw).workedMinutes],
+  [4 * 24000, hanyMinutes - 480],
+);
+const back = ok(
+  'holidays paid again',
+  await owner.put('/payroll/settings', {
+    dayBasis: 30,
+    overtimePercent: 150,
+    missingAttendanceIsAbsent: false,
+    paidHolidays: true,
+  }),
+);
+eq('kept', back.paidHolidays, true);
+eq('the rules say so', (await owner.get('/payroll/settings')).data.paidHolidays, true);
+const now = ok(
+  'this month',
+  await mona.post('/payroll/runs', { year: thisYear, month: thisMonth, branchId: branch2.id }),
+);
+check(
+  'Laila is not on a month after she left',
+  !now.lines.some((l) => l.employeeId === Lw.id) && now.lines.some((l) => l.employeeId === Dw.id),
+  now.lines.map((l) => l.employeeName),
+);
+ok('posted', await mona.post(`/payroll/runs/${run3.id}/post`));
+eq(
+  'a leaving date in a paid month stays',
+  (await owner.put(`/payroll/employees/${Lw.id}`, { leaveDate: iso(12) })).data?.code,
+  'month_posted',
+);
+
 summary('payroll');

@@ -57,6 +57,7 @@ public class AppDbContext : DbContext
     public DbSet<EmployeeAdvance> EmployeeAdvances => Set<EmployeeAdvance>();
     public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
     public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
+    public DbSet<CommissionRule> CommissionRules => Set<CommissionRule>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<Party> Parties => Set<Party>();
     public DbSet<PartyIdCard> PartyIdCards => Set<PartyIdCard>();
@@ -638,6 +639,17 @@ public class AppDbContext : DbContext
         b.Entity<PayrollLine>().HasOne(l => l.Run).WithMany(r => r.Lines).HasForeignKey(l => l.RunId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<PayrollLine>().HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<PayrollLine>().HasIndex(l => new { l.RunId, l.EmployeeId }).IsUnique();
+        b.Entity<PayrollLine>().Property(l => l.PayType).HasConversion<string>().HasMaxLength(10);
+        b.Entity<Employee>().Property(e => e.PayType).HasConversion<string>().HasMaxLength(10);
+        // A rep's commission goes into a month's payroll once.
+        b.Entity<PayrollAdjustment>().HasIndex(a => new { a.CommissionRepId, a.Year, a.Month }).IsUnique()
+            .HasFilter("\"CommissionRepId\" IS NOT NULL");
+        b.Entity<CommissionRule>().Property(r => r.Basis).HasConversion<string>().HasMaxLength(12);
+        b.Entity<CommissionRule>().HasIndex(r => r.StaffId);
+        b.Entity<CommissionRule>().HasOne(r => r.Staff).WithMany().HasForeignKey(r => r.StaffId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<CommissionRule>().HasOne(r => r.Department).WithMany().HasForeignKey(r => r.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PriceList>().HasOne(l => l.Season).WithMany().HasForeignKey(l => l.SeasonId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PriceList>().Property(l => l.DepartmentSeason).HasMaxLength(10);
 
         b.HasDbFunction(typeof(AppDbContext).GetMethod(nameof(LocalTime))!).HasName("timezone").IsBuiltIn()
             .HasStoreType("timestamp without time zone");

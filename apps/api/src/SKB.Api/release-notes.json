@@ -111,6 +111,26 @@
         {
           "ar": "«اقتراحات الشراء»: لكل صنف الرصيد ومبيعات آخر أيام وهيكفي كام يوم والكمية المقترحة، متقسمة على الموردين",
           "en": "What to buy: each item's stock, recent sales, days left and a suggested quantity, by supplier"
+        },
+        {
+          "ar": "عمولة المندوبين: حدد لكل مندوب نسبة من صافي مبيعاته أو من اللي اتحصل من فواتيره، لكل الأقسام أو لقسم معين، من تاريخ معين، وتقرير بالعمولة لكل مندوب وتقدر تفتح الفواتير اللي وراها",
+          "en": "Sales reps' commission: a percent of each rep's net sales or of what was collected on their invoices, for every department or one, from a set date, with a report per rep and the invoices behind it"
+        },
+        {
+          "ar": "إضافة عمولة الشهر لراتب المندوب بضغطة واحدة، مرة واحدة بس في الشهر",
+          "en": "Add a rep's month of commission to their payroll in one click, once a month"
+        },
+        {
+          "ar": "الموظف بقى ممكن يقبض شهري أو باليومية أو بالساعة من الحضور والانصراف",
+          "en": "Employees can be paid by the month, by the day or by the hour, from attendance"
+        },
+        {
+          "ar": "تاريخ ترك العمل: الموظف اللي ساب في نص الشهر بياخد لحد آخر يوم اشتغله",
+          "en": "A leaving date: someone who leaves mid-month is paid up to their last day"
+        },
+        {
+          "ar": "قوائم أسعار موسمية: القائمة ممكن تبقى لأصناف موسم معين (صيفي ٢٠٢٦ مثلًا) أو للأقسام الصيفي أو الشتوي، وبتشتغل وتقف لوحدها حسب تواريخها، والصفحة بتوضح القائمة سارية ولا لسه ولا خلصت",
+          "en": "Seasonal price lists: a list can cover one season's items (e.g. Summer 2026) or the summer or winter departments, turns on and off by its dates, and the page shows whether each list is running, starts later or has ended"
         }
       ],
       "fixes": [

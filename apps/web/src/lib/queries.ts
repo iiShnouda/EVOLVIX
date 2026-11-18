@@ -8,6 +8,10 @@ import {
 import { periodQuery, type Period } from './period';
 import { toMinor } from '@skb/shared';
 import type {
+  CommissionItem,
+  CommissionOptions,
+  CommissionReport,
+  CommissionRule,
   IssuedLicense,
   LicenseStatus,
   Season,
@@ -2436,6 +2440,83 @@ export function usePerformance(from: string, to: string, by: 'rep' | 'branch' | 
       api.get<Performance>(
         `/analytics/performance?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&by=${by}`,
       ),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sales reps' commission (owner, 2026-11-18)
+// ---------------------------------------------------------------------------
+
+export function useCommissionOptions(enabled = true) {
+  return useQuery({
+    queryKey: ['commission', 'options'],
+    queryFn: () => api.get<CommissionOptions>('/commission/options'),
+    enabled,
+  });
+}
+
+export function useCommissionRules(enabled = true) {
+  return useQuery({
+    queryKey: ['commission', 'rules'],
+    queryFn: () => api.get<CommissionRule[]>('/commission/rules'),
+    enabled,
+  });
+}
+
+export function useSaveCommissionRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id?: string; input: Record<string, unknown> }) =>
+      id
+        ? api.put<CommissionRule>(`/commission/rules/${id}`, input)
+        : api.post<CommissionRule>('/commission/rules', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['commission'] }),
+  });
+}
+
+export function useDeleteCommissionRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/commission/rules/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['commission'] }),
+  });
+}
+
+export function useCommissionReport(from: string, to: string, branchId: string, enabled = true) {
+  const q = new URLSearchParams({ from, to });
+  if (branchId) q.set('branchId', branchId);
+  return useQuery({
+    queryKey: ['commission', 'report', from, to, branchId],
+    queryFn: () => api.get<CommissionReport>(`/commission/report?${q.toString()}`),
+    enabled: enabled && !!from && !!to,
+  });
+}
+
+export function useCommissionItems(
+  repId: string | null,
+  from: string,
+  to: string,
+  branchId: string,
+) {
+  const q = new URLSearchParams({ from, to });
+  if (branchId) q.set('branchId', branchId);
+  return useQuery({
+    queryKey: ['commission', 'items', repId, from, to, branchId],
+    queryFn: () => api.get<CommissionItem[]>(`/commission/report/${repId}/items?${q.toString()}`),
+    enabled: !!repId,
+  });
+}
+
+/** Add a rep's month of commission to the payroll of the employee they are. */
+export function useCommissionToPayroll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { repId: string; year: number; month: number }) =>
+      api.post<{ id: string; employeeName: string; amount: number }>('/commission/payroll', input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['commission'] });
+      void qc.invalidateQueries({ queryKey: ['payroll'] });
+    },
   });
 }
 

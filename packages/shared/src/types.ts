@@ -286,6 +286,8 @@ export type Permission =
   | 'payroll:post'
   | 'payroll:run_cancel'
   | 'payroll:pay'
+  | 'commission:setup'
+  | 'commission:payroll'
   | 'reports:pl'
   | 'reports:profit'
   | 'reports:monthly'
@@ -297,6 +299,7 @@ export type Permission =
   | 'reports:assortment'
   | 'reports:season_compare'
   | 'reports:purchase_suggestions'
+  | 'reports:commission'
   | 'reports:print'
   | 'reports:pdf'
   | 'reports:export'
@@ -592,7 +595,16 @@ export interface PriceList {
   percentBp: number;
   /** It applies once the covered items come to this much at the selling price (minor units; 0 = always). */
   minAmount: number;
+  /** Only items bought for this season (owner, 2026-11-18). */
+  seasonId?: string | null;
+  seasonName?: string | null;
+  /** Only items of the departments of this season, by their names. */
+  departmentSeason?: 'SUMMER' | 'WINTER' | null;
+  /** By its dates: on now, starting later, over, or switched off. */
+  state?: PriceListState;
 }
+
+export type PriceListState = 'ACTIVE' | 'UPCOMING' | 'ENDED' | 'OFF';
 
 export interface PriceListParty {
   id: string;
@@ -636,6 +648,10 @@ export interface SavePriceListInput {
   groupId?: string;
   percent?: number;
   minAmount?: number;
+  /** "" = every season. */
+  seasonId?: string;
+  /** SUMMER / WINTER; "" = any. */
+  departmentSeason?: string;
 }
 
 export interface PriceListItemInput {
@@ -2948,13 +2964,23 @@ export interface Employee {
   /** Advances still to recover. */
   advanceBalance: number;
   isActive: boolean;
+  /** By the month (monthlySalary), the day or the hour (payRate) — owner, 2026-11-18. */
+  payType?: PayType;
+  /** A day's or an hour's pay, minor units. */
+  payRate?: number;
+  /** Their last day at work (yyyy-MM-dd): paid up to it. */
+  leaveDate?: string | null;
 }
+
+export type PayType = 'MONTHLY' | 'DAILY' | 'HOURLY';
 
 export interface PayrollRules {
   /** A day's pay = monthly salary ÷ this. */
   dayBasis: number;
   overtimePercent: number;
   missingAttendanceIsAbsent: boolean;
+  /** Holidays are paid to daily and hourly workers. */
+  paidHolidays?: boolean;
 }
 
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LEAVE' | 'UNPAID_LEAVE' | 'HOLIDAY';
@@ -3002,6 +3028,8 @@ export interface PayrollAdjustment {
   posted: boolean;
   createdByName: string;
   createdAt: string;
+  /** A sales rep's commission added from the commission report. */
+  commission?: boolean;
 }
 
 export interface EmployeeAdvance {
@@ -3042,6 +3070,12 @@ export interface PayrollLine {
   net: number;
   paidAmount: number;
   paidAt: string | null;
+  payType?: PayType;
+  payRate?: number;
+  /** Days paid (daily workers). */
+  paidDays?: number;
+  /** Minutes paid within the shift (hourly workers). */
+  workedMinutes?: number;
 }
 
 export type PayrollRunStatus = 'DRAFT' | 'POSTED' | 'PAID' | 'CANCELLED';
@@ -3647,4 +3681,81 @@ export interface IssuedLicense {
   code: string;
   issuedBy: string;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Sales reps' commission (owner, 2026-11-18)
+// ---------------------------------------------------------------------------
+
+export type CommissionBasis = 'NET_SALES' | 'COLLECTIONS';
+
+export interface CommissionRule {
+  id: string;
+  repId: string;
+  repCode: number;
+  repName: string;
+  basis: CommissionBasis;
+  /** Hundredths of a percent. */
+  percentBp: number;
+  /** null = every department. */
+  departmentId: string | null;
+  departmentName: string | null;
+  /** First day it counts (yyyy-MM-dd). */
+  startDate: string;
+  employeeId: string | null;
+  employeeName: string | null;
+}
+
+export interface CommissionRep {
+  id: string;
+  code: number;
+  name: string;
+  /** The employee this sign-in is, for the payroll. */
+  employeeId: string | null;
+  employeeName: string | null;
+  active: boolean;
+}
+
+export interface CommissionOptions {
+  reps: CommissionRep[];
+  departments: { id: string; name: string }[];
+}
+
+export interface CommissionRow {
+  repId: string;
+  repCode: number;
+  repName: string;
+  employeeId: string | null;
+  employeeName: string | null;
+  sales: number;
+  /** What came back, positive. */
+  returns: number;
+  net: number;
+  collected: number;
+  commission: number;
+  invoices: number;
+  /** The period is one month and it is already in that month's payroll. */
+  addedToPayroll: boolean;
+}
+
+export interface CommissionReport {
+  from: string;
+  to: string;
+  rows: CommissionRow[];
+  currency: string;
+}
+
+export interface CommissionItem {
+  kind: 'SALE' | 'RETURN' | 'COLLECTION';
+  documentId: string;
+  number: string;
+  /** The invoice returned from; the receipt or cheque the money came by. */
+  reference: string;
+  date: string;
+  departmentName: string | null;
+  partyName: string;
+  /** Signed: a return is negative. */
+  amount: number;
+  percentBp: number;
+  commission: number;
 }

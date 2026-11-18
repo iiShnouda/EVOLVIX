@@ -10,6 +10,7 @@ import {
   toMinor,
   type AttendanceStatus,
   type Employee,
+  type PayType,
   type PayrollRun,
   type PayrollRunStatus,
   type Permission,
@@ -211,6 +212,11 @@ function RunsTab() {
   const report = useReportTools();
   const paper = useRef<HTMLDivElement>(null);
   const money = (v: number) => formatMoney(v, currency, locale);
+  // Days present of the workdays; days paid for a daily worker; hours worked for an hourly one.
+  const daysOf = (l: PayrollRun['lines'][number]) =>
+    l.payType === 'HOURLY'
+      ? `${formatNumber(Math.round((l.workedMinutes ?? 0) / 0.6) / 100, locale)} ${t('payroll.hoursShort')}`
+      : `${formatNumber(l.payType === 'DAILY' ? (l.paidDays ?? 0) : l.workDays - l.absentDays, locale)}/${formatNumber(l.workDays, locale)}`;
   const monthName = formatMonth(month, locale);
   const r = run.data;
   const title = `${t('payroll.title')} — ${monthName}${r?.branchName ? ` · ${r.branchName}` : ''}`;
@@ -272,7 +278,7 @@ function RunsTab() {
                 r.lines.map((l) => [
                   l.employeeCode,
                   l.employeeName,
-                  `${l.workDays - l.absentDays}/${l.workDays}`,
+                  daysOf(l),
                   ...cols.map((c) => ({ money: l[c.key] as number })),
                   l.paidAmount >= l.net ? t('payroll.yes') : '',
                 ]),
@@ -431,16 +437,16 @@ function RunsTab() {
                           <span className="font-medium">{l.employeeName}</span>
                           <span className="block text-xs text-faint tnum">
                             {l.employeeCode}
+                            {l.payType &&
+                              l.payType !== 'MONTHLY' &&
+                              ` · ${t(`payroll.payType.${l.payType}` as TranslationKey)} ${money(l.payRate ?? 0)}`}
                             {l.lateMinutes > 0 &&
                               ` · ${t('payroll.lateMin')} ${formatNumber(l.lateMinutes, locale)}`}
                             {l.overtimeMinutes > 0 &&
                               ` · ${t('payroll.overtimeMin')} ${formatNumber(l.overtimeMinutes, locale)}`}
                           </span>
                         </td>
-                        <td className="px-2 py-1.5 text-end tnum">
-                          {formatNumber(l.workDays - l.absentDays, locale)}/
-                          {formatNumber(l.workDays, locale)}
-                        </td>
+                        <td className="px-2 py-1.5 text-end tnum">{daysOf(l)}</td>
                         {cols.map((c) => {
                           const v = l[c.key] as number;
                           return (
@@ -594,7 +600,11 @@ function AdjustmentsCard({
                   {t(`payroll.kind.${a.kind}` as TranslationKey)}
                 </Badge>{' '}
                 {a.employeeName}
-                {a.reason && <span className="text-xs text-muted"> · {a.reason}</span>}
+                {a.commission ? (
+                  <span className="text-xs text-muted"> · {t('commission.title')}</span>
+                ) : (
+                  a.reason && <span className="text-xs text-muted"> · {a.reason}</span>
+                )}
               </span>
               <span className="flex items-center gap-2">
                 <span className="tnum">{formatMoney(a.amount, currency, locale)}</span>
@@ -1039,6 +1049,11 @@ function EmployeesTab() {
     ...new Map(all.map(of).filter(([id]) => id) as [string, string][]).entries(),
   ];
   const isPhone = useDeviceInfo().deviceClass === 'phone';
+  // The monthly salary, or the day's / hour's pay (owner, 2026-11-18).
+  const pay = (e: Employee) =>
+    e.payType && e.payType !== 'MONTHLY'
+      ? `${formatMoney(e.payRate ?? 0, currency, locale)} / ${t(e.payType === 'DAILY' ? 'payroll.perDay' : 'payroll.perHour')}`
+      : formatMoney(e.monthlySalary, currency, locale);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -1178,10 +1193,15 @@ function EmployeesTab() {
                         <td className="p-2 tnum" dir="ltr">
                           {e.phone ?? ''}
                         </td>
-                        <td className="p-2 tnum">{formatDate(e.hireDate, locale)}</td>
-                        <td className="p-2 text-end font-medium tnum">
-                          {formatMoney(e.monthlySalary, currency, locale)}
+                        <td className="p-2 tnum">
+                          {formatDate(e.hireDate, locale)}
+                          {e.leaveDate && (
+                            <span className="block text-xs text-warning">
+                              {t('payroll.leftOn')} {formatDate(e.leaveDate, locale)}
+                            </span>
+                          )}
                         </td>
+                        <td className="p-2 text-end font-medium tnum">{pay(e)}</td>
                         <td className="p-2 text-end text-warning tnum">
                           {e.advanceBalance > 0
                             ? formatMoney(e.advanceBalance, currency, locale)
@@ -1221,9 +1241,12 @@ function EmployeesTab() {
                     </span>
                   </span>
                   <span className="text-end">
-                    <span className="block font-medium tnum">
-                      {formatMoney(e.monthlySalary, currency, locale)}
-                    </span>
+                    <span className="block font-medium tnum">{pay(e)}</span>
+                    {e.leaveDate && (
+                      <span className="block text-xs text-warning">
+                        {t('payroll.leftOn')} {formatDate(e.leaveDate, locale)}
+                      </span>
+                    )}
                     {e.advanceBalance > 0 && (
                       <span className="text-xs text-warning tnum">
                         {t('payroll.owesAdvance')} {formatMoney(e.advanceBalance, currency, locale)}
@@ -1270,6 +1293,9 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
     nationalId: employee?.nationalId ?? '',
     hireDate: employee?.hireDate ?? todayIso(),
     salary: employee ? String(employee.monthlySalary / 100) : '',
+    payType: employee?.payType ?? 'MONTHLY',
+    rate: employee?.payRate ? String(employee.payRate / 100) : '',
+    leaveDate: employee?.leaveDate ?? '',
     shiftId: employee?.shiftId ?? '',
     deviceUserId: employee?.deviceUserId ?? '',
     staffId: employee?.staffId ?? '',
@@ -1283,6 +1309,9 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
     nationalId: f.nationalId,
     hireDate: f.hireDate,
     monthlySalary: toMinor(Number(f.salary) || 0),
+    payType: f.payType,
+    ...(f.payType !== 'MONTHLY' ? { payRate: toMinor(Number(f.rate) || 0) } : {}),
+    leaveDate: f.leaveDate,
     shiftId: f.shiftId,
     deviceUserId: f.deviceUserId,
     staffId: f.staffId,
@@ -1341,22 +1370,57 @@ function EmployeeSheet({ employee, onClose }: { employee?: Employee; onClose: ()
             onChange={(e) => set({ jobTitle: e.target.value })}
           />
         </Field>
-        <Field label={t('payroll.salary')}>
-          <input
-            className={`${field} tnum`}
-            type="number"
-            min={0}
-            step="0.01"
-            value={f.salary}
-            onChange={(e) => set({ salary: e.target.value })}
-          />
+        <Field label={t('payroll.payBy')}>
+          <select
+            className={field}
+            value={f.payType}
+            onChange={(e) => set({ payType: e.target.value as PayType })}
+          >
+            {(['MONTHLY', 'DAILY', 'HOURLY'] as const).map((p) => (
+              <option key={p} value={p}>
+                {t(`payroll.payType.${p}`)}
+              </option>
+            ))}
+          </select>
         </Field>
+        {f.payType === 'MONTHLY' ? (
+          <Field label={t('payroll.salary')}>
+            <input
+              className={`${field} tnum`}
+              type="number"
+              min={0}
+              step="0.01"
+              value={f.salary}
+              onChange={(e) => set({ salary: e.target.value })}
+            />
+          </Field>
+        ) : (
+          <Field label={t(f.payType === 'DAILY' ? 'payroll.dayRate' : 'payroll.hourRate')}>
+            <input
+              className={`${field} tnum`}
+              type="number"
+              min={0}
+              step="0.01"
+              value={f.rate}
+              onChange={(e) => set({ rate: e.target.value })}
+            />
+          </Field>
+        )}
         <Field label={t('payroll.hireDate')}>
           <input
             className={field}
             type="date"
             value={f.hireDate}
             onChange={(e) => set({ hireDate: e.target.value })}
+          />
+        </Field>
+        <Field label={t('payroll.leaveDate')}>
+          <input
+            className={field}
+            type="date"
+            value={f.leaveDate}
+            min={f.hireDate}
+            onChange={(e) => set({ leaveDate: e.target.value })}
           />
         </Field>
         <Field label={t('payroll.shift')}>
@@ -1825,6 +1889,7 @@ function SetupTab() {
     dayBasis: string;
     overtimePercent: string;
     missing: boolean;
+    paidHolidays: boolean;
   } | null>(null);
   useEffect(() => {
     if (rules.data && !r)
@@ -1832,6 +1897,7 @@ function SetupTab() {
         dayBasis: String(rules.data.dayBasis),
         overtimePercent: String(rules.data.overtimePercent),
         missing: rules.data.missingAttendanceIsAbsent,
+        paidHolidays: rules.data.paidHolidays ?? true,
       });
   }, [rules.data, r]);
   const dayNames = useDayNames();
@@ -1920,6 +1986,16 @@ function SetupTab() {
                 />
                 <span>{t('payroll.missingIsAbsent')}</span>
               </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  disabled={!manage}
+                  checked={r.paidHolidays}
+                  onChange={(e) => setR({ ...r, paidHolidays: e.target.checked })}
+                />
+                <span>{t('payroll.paidHolidays')}</span>
+              </label>
               {manage && (
                 <Button
                   size="sm"
@@ -1930,6 +2006,7 @@ function SetupTab() {
                       dayBasis: Number(r.dayBasis),
                       overtimePercent: Number(r.overtimePercent),
                       missingAttendanceIsAbsent: r.missing,
+                      paidHolidays: r.paidHolidays,
                     })
                   }
                 >

@@ -612,7 +612,8 @@ public record SetPartyPriceLevelsRequest(
 public record PriceListDto(
     string Id, string Name, string Side, bool ForEveryone, string? ValidFrom, string? ValidTo, bool IsActive,
     string? Notes, int Items, int Parties, bool Current, string? DepartmentId = null, string? GroupId = null,
-    int PercentBp = 0, long MinAmount = 0);
+    int PercentBp = 0, long MinAmount = 0, string? SeasonId = null, string? SeasonName = null,
+    string? DepartmentSeason = null, string State = "ACTIVE");
 
 public record PriceListPartyDto(string Id, string Name, string? Code);
 
@@ -630,7 +631,7 @@ public record SetPriceListPartiesRequest(string[]? PartyIds);
 public record SavePriceListRequest(
     string? Name = null, string? Side = null, bool? ForEveryone = null, string? ValidFrom = null, string? ValidTo = null,
     bool? IsActive = null, string? Notes = null, string? DepartmentId = null, string? GroupId = null,
-    decimal? Percent = null, long? MinAmount = null);
+    decimal? Percent = null, long? MinAmount = null, string? SeasonId = null, string? DepartmentSeason = null);
 
 /// <summary>One price on a list: an item or a whole model (every size and color), one unit.</summary>
 public record PriceListItemRequest(string? ProductId, string? ModelId, string? UnitId, long Price);
@@ -1271,16 +1272,17 @@ public record EmployeeDto(
     string Id, string Code, string Name, string BranchId, string BranchName, string? JobTitle, string? Phone,
     string? NationalId, string HireDate, long MonthlySalary, string? ShiftId, string? ShiftName, string? DeviceUserId,
     string? StaffId, string? StaffName, long AdvanceBalance, bool IsActive, string[]? OtherPhones = null,
-    string[]? OtherPhoneLabels = null);
+    string[]? OtherPhoneLabels = null, string PayType = "MONTHLY", long PayRate = 0, string? LeaveDate = null);
 
 /// <summary>Any field left null is unchanged (on create: the defaults). "" clears an optional text.</summary>
 public record SaveEmployeeRequest(
     string? Name = null, string? BranchId = null, string? JobTitle = null, string? Phone = null,
     string? NationalId = null, string? HireDate = null, long? MonthlySalary = null, string? ShiftId = null,
     string? DeviceUserId = null, string? StaffId = null, bool? IsActive = null, string[]? OtherPhones = null,
-    string[]? OtherPhoneLabels = null);
+    string[]? OtherPhoneLabels = null, string? PayType = null, long? PayRate = null, string? LeaveDate = null);
 
-public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent);
+/// <param name="PaidHolidays">Holidays paid to daily and hourly workers; null leaves it as it is.</param>
+public record PayrollSettingsDto(int DayBasis, int OvertimePercent, bool MissingAttendanceIsAbsent, bool? PaidHolidays = null);
 
 public record AttendanceRowDto(
     string EmployeeId, string Code, string Name, string BranchName, string? ShiftName, bool DayOff, string? Status,
@@ -1301,7 +1303,7 @@ public record ImportAttendanceResultDto(int Punches, int Days, int Skipped, int 
 
 public record AdjustmentDto(
     string Id, string EmployeeId, string EmployeeName, int Year, int Month, string Kind, long Amount, string Reason,
-    bool Posted, string CreatedByName, string CreatedAt);
+    bool Posted, string CreatedByName, string CreatedAt, bool Commission = false);
 
 public record CreateAdjustmentRequest(string EmployeeId, int Year, int Month, string Kind, long Amount, string? Reason = null);
 
@@ -1318,7 +1320,7 @@ public record PayrollLineDto(
     string Id, string EmployeeId, string EmployeeCode, string EmployeeName, long MonthlySalary, int EmployedDays,
     int WorkDays, int AbsentDays, int LateMinutes, int OvertimeMinutes, long Basic, long OvertimePay, long Bonuses,
     long AbsenceDeduction, long LateDeduction, long Deductions, long Earned, long AdvanceRecovery, long Net,
-    long PaidAmount, string? PaidAt);
+    long PaidAmount, string? PaidAt, string PayType = "MONTHLY", long PayRate = 0, int PaidDays = 0, int WorkedMinutes = 0);
 
 public record PayrollRunDto(
     string Id, string Number, int Year, int Month, string? BranchId, string? BranchName, string Status, long Earned,
@@ -1470,3 +1472,38 @@ public record WarehouseStatementLineDto(string Date, string Type, string? Refere
     string? DocumentKind = null, string? PartyId = null, string[]? PartyTypes = null);
 public record WarehouseStatementDto(string Name, string Currency, int Opening, long? OpeningValue, int In, int Out,
     int Closing, long? ClosingValue, WarehouseStatementLineDto[] Lines);
+
+// ---- Sales reps' commission (owner, 2026-11-18) ----
+
+/// <param name="PercentBp">Hundredths of a percent (250 = 2.5%).</param>
+/// <param name="Basis">NET_SALES or COLLECTIONS.</param>
+public record CommissionRuleDto(
+    string Id, string RepId, int RepCode, string RepName, string Basis, int PercentBp, string? DepartmentId,
+    string? DepartmentName, string StartDate, string? EmployeeId, string? EmployeeName);
+
+/// <param name="Percent">The percent, to two decimals (2.5 = 2.5%).</param>
+public record SaveCommissionRuleRequest(
+    string? RepId = null, string? Basis = null, decimal? Percent = null, string? DepartmentId = null, string? StartDate = null);
+
+/// <summary>A sign-in a sale can be credited to, and the employee it is (if any).</summary>
+public record CommissionRepDto(string Id, int Code, string Name, string? EmployeeId, string? EmployeeName, bool Active);
+
+public record CommissionDepartmentDto(string Id, string Name);
+
+public record CommissionOptionsDto(CommissionRepDto[] Reps, CommissionDepartmentDto[] Departments);
+
+/// <param name="Returns">What came back, as a positive amount.</param>
+/// <param name="AddedToPayroll">The period is one month and this rep's commission is already in its payroll.</param>
+public record CommissionRowDto(
+    string RepId, int RepCode, string RepName, string? EmployeeId, string? EmployeeName, long Sales, long Returns, long Net,
+    long Collected, long Commission, int Invoices, bool AddedToPayroll);
+
+public record CommissionReportDto(string From, string To, CommissionRowDto[] Rows, string Currency);
+
+/// <param name="Kind">SALE, RETURN or COLLECTION.</param>
+/// <param name="Reference">The invoice for a sale; the invoice returned from; the receipt, cheque or invoice for money collected.</param>
+public record CommissionItemDto(
+    string Kind, string DocumentId, string Number, string Reference, string Date, string? DepartmentName, string PartyName,
+    long Amount, int PercentBp, long Commission);
+
+public record CommissionPayrollRequest(string RepId, int Year, int Month);

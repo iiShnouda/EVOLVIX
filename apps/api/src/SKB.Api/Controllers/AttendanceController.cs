@@ -35,7 +35,7 @@ public sealed class AttendanceController : ControllerBase
     {
         var day = ParseDay(date) ?? CompanyClock.TodayDate;
         var q = Scoped().AsNoTracking().Include(e => e.Shift).Include(e => e.Branch)
-            .Where(e => e.IsActive && e.HireDate <= day);
+            .Where(e => (e.LeaveDate == null ? e.IsActive : e.LeaveDate >= day) && e.HireDate <= day);
         if (Guid.TryParse(branchId, out var b)) q = q.Where(e => e.BranchId == b);
         var employees = await q.OrderBy(e => e.Code).ToListAsync();
         var ids = employees.Select(e => e.Id).ToList();
@@ -77,7 +77,7 @@ public sealed class AttendanceController : ControllerBase
             parsed.Add((id, status, inAt, outAt, Text(row.Notes, 200)));
         }
         var ids = parsed.Select(p => p.Id).Distinct().ToList();
-        var employees = await Scoped().Include(e => e.Shift).Where(e => ids.Contains(e.Id) && e.IsActive).ToDictionaryAsync(e => e.Id);
+        var employees = await Scoped().Include(e => e.Shift).Where(e => ids.Contains(e.Id) && (e.LeaveDate == null ? e.IsActive : e.LeaveDate >= day)).ToDictionaryAsync(e => e.Id);
         if (employees.Count != ids.Count) return Bad("employee_not_found", "Employee not found.");
         var locked = await LockedAsync(ids, day.Value);
         if (locked.Count > 0) return Bad("month_posted", "That month's payroll is already posted.");
@@ -119,7 +119,7 @@ public sealed class AttendanceController : ControllerBase
         if (req.Text.Length > MaxImportChars) return Bad("too_big", "The file is too big; import a month at a time.");
         var (punches, skipped) = PayrollService.ParsePunches(req.Text);
         var userIds = punches.Select(p => p.UserId).Distinct().ToList();
-        var employees = await Scoped().Include(e => e.Shift).Where(e => e.DeviceUserId != null && userIds.Contains(e.DeviceUserId) && e.IsActive)
+        var employees = await Scoped().Include(e => e.Shift).Where(e => e.DeviceUserId != null && userIds.Contains(e.DeviceUserId) && (e.IsActive || e.LeaveDate != null))
             .ToDictionaryAsync(e => e.DeviceUserId!);
         var unknown = userIds.Where(u => !employees.ContainsKey(u)).OrderBy(u => u).ToArray();
         var days = punches.Where(p => employees.ContainsKey(p.UserId))

@@ -532,6 +532,10 @@ public static class Permissions
     public const string PayrollRunCancel = "payroll:run_cancel";
     /// <summary>Payroll · Runs: Pay salaries.</summary>
     public const string PayrollPay = "payroll:pay";
+    /// <summary>Payroll · Sales reps' commission: Set the commission rules (owner, 2026-11-18).</summary>
+    public const string CommissionSetup = "commission:setup";
+    /// <summary>Payroll · Sales reps' commission: Add a rep's commission to the month's payroll.</summary>
+    public const string CommissionPayroll = "commission:payroll";
 
     // ──── Reports ────
     /// <summary>Reports · Reports: Profit and loss.</summary>
@@ -556,6 +560,8 @@ public static class Permissions
     public const string ReportsSeasonCompare = "reports:season_compare";
     /// <summary>Reports · Reports: What to buy again (owner, 2026-11-18).</summary>
     public const string ReportsPurchaseSuggestions = "reports:purchase_suggestions";
+    /// <summary>Reports · Reports: Sales reps' commission (owner, 2026-11-18).</summary>
+    public const string ReportsCommission = "reports:commission";
     /// <summary>Reports · Printing: Print.</summary>
     public const string ReportsPrint = "reports:print";
     /// <summary>Reports · Printing: PDF.</summary>
@@ -776,7 +782,7 @@ public static class Permissions
         PayrollRuns, PayrollAttendance, PayrollEmployees, PayrollAdvances, PayrollSetup, PayrollPrint, PayrollPdf, PayrollExport,
         EmployeesCreate, EmployeesEdit, EmployeesDelete, ShiftsCreate, ShiftsEdit, PayrollSettings, AttendanceEdit,
         AttendanceImport, PayrollAdjust, PayrollAdjustCancel, PayrollAdvance, PayrollAdvanceCancel, PayrollRun,
-        PayrollPost, PayrollRunCancel, PayrollPay, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
+        PayrollPost, PayrollRunCancel, PayrollPay, CommissionSetup, CommissionPayroll, ReportsCommission, ReportsPl, ReportsProfit, ReportsMonthly, ReportsPerformance,
         ReportsParties, ReportsAging, ReportsItems, ReportsChanges, ReportsAssortment, ReportsSeasonCompare, ReportsPurchaseSuggestions, ReportsPrint, ReportsPdf, ReportsExport, AuditView, AuditPrint, AuditPdf,
         AuditExport, PresenceView, ChatUse, ChatMonitor, ChatGroups, ChatMute, AiChat, AiVoice, AiScanPurchase,
         AiScanStocktake, AiScanCheques, StaffView, RolesView, StaffCreate, StaffEdit, StaffRole, StaffPassword,
@@ -882,6 +888,7 @@ public static class RolePermissions
             Permissions.AttendanceEdit, Permissions.AttendanceImport, Permissions.PayrollAdjust,
             Permissions.PayrollAdjustCancel, Permissions.PayrollAdvance, Permissions.PayrollAdvanceCancel,
             Permissions.PayrollRun, Permissions.PayrollPost, Permissions.PayrollRunCancel, Permissions.PayrollPay,
+            Permissions.CommissionSetup, Permissions.CommissionPayroll, Permissions.ReportsCommission,
             Permissions.ReportsMonthly, Permissions.ReportsPerformance, Permissions.ReportsParties,
             Permissions.ReportsAging, Permissions.ReportsItems, Permissions.ReportsChanges, Permissions.ReportsAssortment,
             Permissions.ReportsSeasonCompare, Permissions.ReportsPurchaseSuggestions,

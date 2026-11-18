@@ -502,6 +502,47 @@ namespace SKB.Api.Migrations
                     b.ToTable("ChatMutes");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CommissionRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Basis")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PercentBp")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("StaffId");
+
+                    b.ToTable("CommissionRules");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.CompanyLogo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -604,6 +645,9 @@ namespace SKB.Api.Migrations
 
                     b.Property<int>("OvertimePercent")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("PaidHolidays")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("PayrollDayBasis")
                         .HasColumnType("integer");
@@ -899,6 +943,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("JobTitle")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("LeaveDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long>("MonthlySalary")
                         .HasColumnType("bigint");
 
@@ -916,6 +963,14 @@ namespace SKB.Api.Migrations
                     b.PrimitiveCollection<List<string>>("OtherPhones")
                         .IsRequired()
                         .HasColumnType("text[]");
+
+                    b.Property<long>("PayRate")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PayType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("Phone")
                         .HasColumnType("text");
@@ -1903,6 +1958,9 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("CommissionRepId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1936,6 +1994,10 @@ namespace SKB.Api.Migrations
                     b.HasIndex("EmployeeId");
 
                     b.HasIndex("Year", "Month");
+
+                    b.HasIndex("CommissionRepId", "Year", "Month")
+                        .IsUnique()
+                        .HasFilter("\"CommissionRepId\" IS NOT NULL");
 
                     b.ToTable("PayrollAdjustments");
                 });
@@ -2004,10 +2066,24 @@ namespace SKB.Api.Migrations
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("PaidDays")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("PayRate")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PayType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<Guid>("RunId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("WorkDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WorkedMinutes")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -2162,6 +2238,10 @@ namespace SKB.Api.Migrations
                     b.Property<Guid?>("DepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DepartmentSeason")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<bool>("ForEveryone")
                         .HasColumnType("boolean");
 
@@ -2184,6 +2264,9 @@ namespace SKB.Api.Migrations
                     b.Property<int>("PercentBp")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("SeasonId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Side")
                         .IsRequired()
                         .HasColumnType("text");
@@ -2198,6 +2281,8 @@ namespace SKB.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SeasonId");
 
                     b.ToTable("PriceLists");
                 });
@@ -3599,6 +3684,24 @@ namespace SKB.Api.Migrations
                     b.Navigation("Staff");
                 });
 
+            modelBuilder.Entity("SKB.Api.Data.CommissionRule", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SKB.Api.Data.Staff", "Staff")
+                        .WithMany()
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Staff");
+                });
+
             modelBuilder.Entity("SKB.Api.Data.DocumentCharge", b =>
                 {
                     b.HasOne("SKB.Api.Data.SalesDocument", "Document")
@@ -4159,6 +4262,16 @@ namespace SKB.Api.Migrations
                     b.Navigation("Branch");
 
                     b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("SKB.Api.Data.PriceList", b =>
+                {
+                    b.HasOne("SKB.Api.Data.Season", "Season")
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Season");
                 });
 
             modelBuilder.Entity("SKB.Api.Data.PriceListItem", b =>

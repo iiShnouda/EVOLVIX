@@ -540,6 +540,14 @@ public class PriceList : INamed
     public Guid? DepartmentId { get; set; }
     /// <summary>Only items of this sub-group and those under it; null = the whole department.</summary>
     public Guid? GroupId { get; set; }
+    /// <summary>
+    /// Only items bought for this season (owner, 2026-11-18: seasonal lists, e.g. Summer 2026); null =
+    /// every season. Together with <see cref="ValidFrom"/>/<see cref="ValidTo"/> it turns on and off by itself.
+    /// </summary>
+    public Guid? SeasonId { get; set; }
+    public Season? Season { get; set; }
+    /// <summary>Only items of the departments of this season, by their names (SUMMER or WINTER); null = any.</summary>
+    public string? DepartmentSeason { get; set; }
     /// <summary>A percent off the selling price of every item it covers that has no price of its own on it (hundredths of a percent).</summary>
     public int PercentBp { get; set; }
     /// <summary>It applies only once the invoice's covered items come to this much at the selling price (minor units; 0 = always).</summary>
@@ -1195,6 +1203,8 @@ public class CompanySettings
     public int OvertimePercent { get; set; } = 150;
     /// <summary>Payroll: a past working day with no attendance counts as absent (else as present).</summary>
     public bool MissingAttendanceIsAbsent { get; set; }
+    /// <summary>A holiday is paid to daily and hourly workers (a day's pay / the shift's hours; owner, 2026-11-18).</summary>
+    public bool PaidHolidays { get; set; } = true;
     /// <summary>
     /// The daily summary goes out at this minute of the company's day (1260 = 21:00); null = never.
     /// Before noon it tells of the day before, else of the day itself.
@@ -1562,6 +1572,15 @@ public class Employee
     public DateTime HireDate { get; set; }
     /// <summary>Monthly salary, minor units.</summary>
     public long MonthlySalary { get; set; }
+    /// <summary>
+    /// How they are paid (owner, 2026-11-18): by the month (<see cref="MonthlySalary"/>), by the day
+    /// present or by the hour worked (<see cref="PayRate"/>).
+    /// </summary>
+    public PayType PayType { get; set; } = PayType.MONTHLY;
+    /// <summary>A day's or an hour's pay (minor units) for a daily or hourly worker.</summary>
+    public long PayRate { get; set; }
+    /// <summary>Their last day at work: the month they leave in is paid up to it, and later months not at all.</summary>
+    public DateTime? LeaveDate { get; set; }
     public Guid? ShiftId { get; set; }
     public Shift? Shift { get; set; }
     /// <summary>Their user number on the fingerprint device, to match its attendance export.</summary>
@@ -1607,6 +1626,11 @@ public class PayrollAdjustment
     public AdjustmentKind Kind { get; set; }
     public long Amount { get; set; }
     public string Reason { get; set; } = "";
+    /// <summary>
+    /// A sales rep's commission added from the commission report (owner, 2026-11-18): the rep's
+    /// sign-in. Once per rep and month.
+    /// </summary>
+    public Guid? CommissionRepId { get; set; }
     /// <summary>The posted payroll run that included it (then it can't change).</summary>
     public Guid? RunId { get; set; }
     public Guid CreatedById { get; set; }
@@ -1673,6 +1697,13 @@ public class PayrollLine
     public Employee? Employee { get; set; }
     public string EmployeeName { get; set; } = "";
     public long MonthlySalary { get; set; }
+    public PayType PayType { get; set; } = PayType.MONTHLY;
+    /// <summary>The day's or hour's pay, for a daily or hourly worker.</summary>
+    public long PayRate { get; set; }
+    /// <summary>Days paid for a daily worker: present, paid leave, and holidays when they are paid.</summary>
+    public int PaidDays { get; set; }
+    /// <summary>Minutes paid for an hourly worker, within the shift (overtime apart).</summary>
+    public int WorkedMinutes { get; set; }
     /// <summary>Calendar days employed in the month (a new starter's month is shorter).</summary>
     public int EmployedDays { get; set; }
     public int WorkDays { get; set; }
@@ -1695,6 +1726,30 @@ public class PayrollLine
     public Guid? PaidAccountId { get; set; }
 }
 
+
+/// <summary>
+/// A sales rep's commission rule (owner, 2026-11-18): a percent of their net sales (sales less
+/// returns, after discounts, without tax) or of what was collected on their invoices — for every
+/// department or one — from a day on. A later rule for the same rep and department takes over.
+/// </summary>
+public class CommissionRule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>The rep: the sign-in a sale is credited to (<see cref="SalesDocument.RepId"/>).</summary>
+    public Guid StaffId { get; set; }
+    public Staff? Staff { get; set; }
+    public CommissionBasis Basis { get; set; } = CommissionBasis.NET_SALES;
+    /// <summary>Hundredths of a percent (250 = 2.5%).</summary>
+    public int PercentBp { get; set; }
+    /// <summary>Only sales of this department; null = every department.</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+    /// <summary>The first day it counts (a company day).</summary>
+    public DateTime StartDate { get; set; }
+    public Guid CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
 
 /// <summary>An in-app notification for one person (the bell), e.g. a pending invoice to approve.</summary>
 public class Notification

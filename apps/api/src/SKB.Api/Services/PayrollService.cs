@@ -19,6 +19,13 @@ namespace SKB.Api.Services;
 /// </list>
 /// A day's pay is the monthly salary ÷ <c>PayrollDayBasis</c> (30); a minute's is a day's ÷ the
 /// shift's minutes.
+/// <para>Daily and hourly workers (owner, 2026-11-18): a daily worker earns the day's rate for each
+/// workday present or on paid leave (and holidays, when the rules pay them), less lateness by the
+/// minute (the day's rate ÷ the shift's minutes); an hourly worker earns the hour's rate for the
+/// minutes between their in and out times within the shift (paid leave and paid holidays count the
+/// shift's length). Overtime for both is as for the monthly: past the shift's end, at the overtime
+/// percent. Missing attendance is not a day worked for them. Someone with a leaving date is paid up
+/// to it: a monthly salary pro rata, the others for what they worked.</para>
 /// </summary>
 public sealed partial class PayrollService
 {
@@ -118,6 +125,24 @@ public sealed partial class PayrollService
         return (start, start.AddMonths(1));
     }
 
+    /// <summary>
+    /// Who a run pays: hired before the month ends, of its branch, and still working — or, with a
+    /// leaving date, leaving on or after its first day (whether or not they were deactivated since).
+    /// </summary>
+    public static IQueryable<Employee> PayableIn(IQueryable<Employee> q, PayrollRun run)
+    {
+        var (start, end) = MonthRange(run.Year, run.Month);
+        return q.Where(e => e.HireDate < end && (e.LeaveDate == null ? e.IsActive : e.LeaveDate >= start)
+                            && (run.BranchId == null || e.BranchId == run.BranchId));
+    }
+
+    /// <summary>Minutes between a day's in and out (out before in runs past midnight); 0 without both.</summary>
+    public static int Worked(AttendanceDay d)
+    {
+        if (d.CheckIn is not int inAt || d.CheckOut is not int outAt) return 0;
+        return outAt < inAt ? outAt + 1440 - inAt : outAt - inAt;
+    }
+
     /// <summary>Work out every line of a draft run afresh from attendance, adjustments and advances.</summary>
     public async Task<List<PayrollLine>> ComputeAsync(PayrollRun run)
     {
@@ -127,8 +152,7 @@ public sealed partial class PayrollService
         var basis = Math.Max(1, settings.PayrollDayBasis);
         var today = CompanyClock.TodayDate;
 
-        var employees = await _db.Employees.AsNoTracking().Include(e => e.Shift)
-            .Where(e => e.IsActive && e.HireDate < end && (run.BranchId == null || e.BranchId == run.BranchId))
+        var employees = await PayableIn(_db.Employees.AsNoTracking().Include(e => e.Shift), run)
             .OrderBy(e => e.Code).ToListAsync();
         var ids = employees.Select(e => e.Id).ToList();
         var days = await _db.AttendanceDays.AsNoTracking()
@@ -147,13 +171,17 @@ public sealed partial class PayrollService
         {
             var shift = e.Shift ?? DefaultShift;
             var from = e.HireDate.Date > start ? DateTime.SpecifyKind(e.HireDate.Date, DateTimeKind.Utc) : start;
-            var employed = Math.Max(0, (end - from).Days);
-            var basic = (long)Math.Round((decimal)e.MonthlySalary * employed / daysInMonth, MidpointRounding.AwayFromZero);
-            var daily = (decimal)e.MonthlySalary / basis;
-            var perMinute = daily / ShiftMinutes(shift);
+            // Paid up to the leaving date (its day included).
+            var to = e.LeaveDate is DateTime left && left.Date.AddDays(1) < end
+                ? DateTime.SpecifyKind(left.Date.AddDays(1), DateTimeKind.Utc)
+                : end;
+            var employed = Math.Max(0, (to - from).Days);
+            var shiftMinutes = ShiftMinutes(shift);
+            var daily = e.PayType == PayType.DAILY ? e.PayRate : (decimal)e.MonthlySalary / basis;
+            var perMinute = e.PayType == PayType.HOURLY ? e.PayRate / 60m : daily / shiftMinutes;
 
-            int work = 0, absent = 0, late = 0, overtime = 0;
-            for (var d = from; d < end; d = d.AddDays(1))
+            int work = 0, absent = 0, late = 0, overtime = 0, paidDays = 0, worked = 0;
+            for (var d = from; d < to; d = d.AddDays(1))
             {
                 var dayOff = shift.DaysOff.Contains((int)d.DayOfWeek);
                 days.TryGetValue((e.Id, d), out var rec);
@@ -171,12 +199,41 @@ public sealed partial class PayrollService
                     case AttendanceStatus.PRESENT:
                         late += rec.LateMinutes;
                         overtime += rec.OvertimeMinutes;
+                        if (!dayOff)
+                        {
+                            paidDays++;
+                            worked += Math.Max(0, Worked(rec) - rec.OvertimeMinutes);
+                        }
+                        break;
+                    case AttendanceStatus.LEAVE when !dayOff:
+                    case AttendanceStatus.HOLIDAY when !dayOff && settings.PaidHolidays:
+                        paidDays++;
+                        worked += shiftMinutes;
                         break;
                 }
             }
             long Money(decimal v) => (long)Math.Round(v, MidpointRounding.AwayFromZero);
-            var absence = Money(daily * absent);
-            var lateness = Money(perMinute * late);
+            long basic, absence, lateness;
+            switch (e.PayType)
+            {
+                case PayType.DAILY: // the day's rate for each day paid; a day away is simply not paid
+                    basic = e.PayRate * paidDays;
+                    absence = 0;
+                    lateness = Money(perMinute * late);
+                    break;
+                case PayType.HOURLY: // the hour's rate for the time worked: lateness is time not paid already
+                    basic = Money(perMinute * worked);
+                    absence = 0;
+                    lateness = 0;
+                    break;
+                default:
+                    basic = Money((decimal)e.MonthlySalary * employed / daysInMonth);
+                    absence = Money(daily * absent);
+                    lateness = Money(perMinute * late);
+                    paidDays = 0;
+                    worked = 0;
+                    break;
+            }
             var overtimePay = Money(perMinute * overtime * settings.OvertimePercent / 100m);
             var mine = adjustments.Where(a => a.EmployeeId == e.Id).ToList();
             var bonuses = mine.Where(a => a.Kind == AdjustmentKind.BONUS).Sum(a => a.Amount);
@@ -187,6 +244,8 @@ public sealed partial class PayrollService
             var line = new PayrollLine
             {
                 RunId = run.Id, EmployeeId = e.Id, EmployeeName = e.Name, MonthlySalary = e.MonthlySalary,
+                PayType = e.PayType, PayRate = e.PayType == PayType.MONTHLY ? 0 : e.PayRate, PaidDays = paidDays,
+                WorkedMinutes = worked,
                 EmployedDays = employed, WorkDays = work, AbsentDays = absent, LateMinutes = late,
                 OvertimeMinutes = overtime, Basic = basic, OvertimePay = overtimePay, Bonuses = bonuses,
                 AbsenceDeduction = absence, LateDeduction = lateness, Deductions = deductions, Earned = earned,
@@ -218,9 +277,7 @@ public sealed partial class PayrollService
         if (start > CompanyClock.TodayDate)
             return new("future_month", "A month that hasn't started can't be posted.");
 
-        var employeeIds = await _db.Employees
-            .Where(e => e.IsActive && e.HireDate < end && (run.BranchId == null || e.BranchId == run.BranchId))
-            .Select(e => e.Id).OrderBy(i => i).ToArrayAsync();
+        var employeeIds = await PayableIn(_db.Employees, run).Select(e => e.Id).OrderBy(i => i).ToArrayAsync();
         if (employeeIds.Length > 0)
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Employees\" WHERE \"Id\" = ANY({employeeIds}) ORDER BY \"Id\" FOR UPDATE");

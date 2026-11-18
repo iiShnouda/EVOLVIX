@@ -198,6 +198,12 @@ public enum AttendanceSource { MANUAL, DEVICE }
 
 public enum AdjustmentKind { BONUS, DEDUCTION }
 
+/// <summary>How an employee is paid: by the month, by the day present, or by the hour worked.</summary>
+public enum PayType { MONTHLY, DAILY, HOURLY }
+
+/// <summary>What a sales rep's commission is worked out on: net sales, or money collected on their invoices.</summary>
+public enum CommissionBasis { NET_SALES, COLLECTIONS }
+
 /// <summary>OPEN (still being recovered) → SETTLED; CANCELLED if handed back untouched.</summary>
 public enum AdvanceStatus { OPEN, SETTLED, CANCELLED }
 

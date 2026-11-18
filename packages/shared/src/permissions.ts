@@ -480,6 +480,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         key: 'runs',
         permissions: ['payroll:run', 'payroll:post', 'payroll:run_cancel', 'payroll:pay'],
       },
+      {
+        key: 'commission',
+        permissions: ['commission:setup', 'commission:payroll'],
+      },
     ],
   },
   {
@@ -499,6 +503,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'reports:assortment',
           'reports:season_compare',
           'reports:purchase_suggestions',
+          'reports:commission',
         ],
       },
       {
