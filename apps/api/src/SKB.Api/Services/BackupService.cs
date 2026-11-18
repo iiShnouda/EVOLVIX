@@ -28,8 +28,9 @@ namespace SKB.Api.Services;
 /// anyone, including us.
 /// </para>
 /// <para>
-/// Restoring is a server command (<c>SKB.Api restore &lt;file&gt;</c>), never a web button: it fills
-/// a new, empty database, then brings it up to this version.
+/// Restoring always fills a new, empty database, then brings it up to this version: from the server
+/// command (<c>SKB.Api restore &lt;file&gt;</c>), or from the owner's page (<see cref="RestoreService"/>),
+/// which then puts the new database in place of the current one and keeps the current one aside.
 /// </para>
 /// </summary>
 public sealed class BackupService
@@ -156,21 +157,14 @@ public sealed class BackupService
             }
         }
         if (read >= 2 && head[0] == (byte)'P' && head[1] == (byte)'K') return await RestoreZipAsync(input, log, ct);
-        throw new BackupException("This isn't an SKB backup file.");
+        throw new BackupException("This isn't an SKB backup file.", "not_a_backup");
     }
 
     public async Task<Manifest> RestoreZipAsync(Stream zipStream, Action<string> log, CancellationToken ct = default)
     {
         using var zip = new ZipArchive(zipStream, ZipArchiveMode.Read);
-        var manifestEntry = zip.GetEntry("manifest.json") ?? throw new BackupException("This isn't an SKB backup file.");
-        Manifest manifest;
-        await using (var ms = manifestEntry.Open())
-            manifest = await JsonSerializer.DeserializeAsync<Manifest>(ms, JsonOptions, ct)
-                       ?? throw new BackupException("The backup's manifest is unreadable.");
-        if (manifest.Format != Format || manifest.Version != FormatVersion)
-            throw new BackupException("This isn't an SKB backup file, or it's from a newer version of SKB.");
-        if (!_db.Database.GetMigrations().Contains(manifest.Migration))
-            throw new BackupException("This backup is from a newer version of SKB. Update SKB first, then restore.");
+        var manifest = await ReadManifestAsync(zip, ct);
+        CheckVersion(manifest);
         if ((await _db.Database.GetAppliedMigrationsAsync(ct)).Any())
             throw new BackupException(
                 "This database isn't empty. Restore into a new, empty database, before SKB first starts on it.");
@@ -202,9 +196,9 @@ public sealed class BackupService
 
             foreach (var table in manifest.Tables)
             {
-                if (!model.Contains(table.Name)) throw new BackupException($"Unknown table {table.Name} in the backup.");
+                if (!model.Contains(table.Name)) throw new BackupException($"Unknown table {table.Name} in the backup.", "backup_damaged");
                 var entry = zip.GetEntry($"tables/{table.Name}.csv")
-                            ?? throw new BackupException($"The backup is missing {table.Name}.");
+                            ?? throw new BackupException($"The backup is missing {table.Name}.", "backup_damaged");
                 string header;
                 await using (var s = entry.Open())
                 using (var sr = new StreamReader(s, Encoding.UTF8))
@@ -221,7 +215,7 @@ public sealed class BackupService
                 }
                 var rows = (long)(await Scalar(conn, tx, $"SELECT count(*) FROM {Quote(table.Name)}", ct))!;
                 if (rows != table.Rows)
-                    throw new BackupException($"{table.Name}: {rows} rows loaded, the backup says {table.Rows}.");
+                    throw new BackupException($"{table.Name}: {rows} rows loaded, the backup says {table.Rows}.", "backup_damaged");
                 log($"  {table.Name}: {rows}");
             }
 
@@ -259,6 +253,84 @@ public sealed class BackupService
         log("Bringing the database up to this version…");
         await migrator.MigrateAsync(cancellationToken: ct);
         return manifest;
+    }
+
+    // ------------------------------------------------------------------ looking inside
+
+    /// <summary>Whether the file is an encrypted backup (needs its passphrase to be read).</summary>
+    public static async Task<bool> IsEncryptedAsync(string path, CancellationToken ct = default)
+    {
+        await using var input = File.OpenRead(path);
+        var head = new byte[Magic.Length];
+        var read = await input.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+        return read == Magic.Length && head.AsSpan().SequenceEqual(Magic);
+    }
+
+    /// <summary>
+    /// What a backup file holds (its manifest: when, which version, rows per table), without
+    /// touching the database. An encrypted one is opened into a temporary file, removed at once.
+    /// Throws for a wrong passphrase, a damaged file or one that isn't a backup.
+    /// </summary>
+    public static async Task<Manifest> InspectFileAsync(string path, string? passphrase, CancellationToken ct = default)
+    {
+        if (await IsEncryptedAsync(path, ct))
+        {
+            if (string.IsNullOrEmpty(passphrase)) throw new BackupException("A passphrase is needed.", "wrong_passphrase");
+            var zipPath = Path.Combine(Path.GetTempPath(), $"skb-inspect-{Guid.NewGuid():N}.zip");
+            try
+            {
+                await using (var input = File.OpenRead(path))
+                await using (var plain = new FileStream(zipPath, FileMode.CreateNew, FileAccess.Write))
+                    await DecryptAsync(input, plain, passphrase, ct);
+                await using var zipFile = File.OpenRead(zipPath);
+                return await ManifestOfAsync(zipFile, ct);
+            }
+            finally
+            {
+                File.Delete(zipPath);
+            }
+        }
+        await using var file = File.OpenRead(path);
+        return await ManifestOfAsync(file, ct);
+    }
+
+    private static async Task<Manifest> ManifestOfAsync(Stream zipStream, CancellationToken ct)
+    {
+        try
+        {
+            using var zip = new ZipArchive(zipStream, ZipArchiveMode.Read);
+            return await ReadManifestAsync(zip, ct);
+        }
+        catch (InvalidDataException)
+        {
+            throw new BackupException("This isn't an SKB backup file.", "not_a_backup");
+        }
+    }
+
+    private static async Task<Manifest> ReadManifestAsync(ZipArchive zip, CancellationToken ct)
+    {
+        var entry = zip.GetEntry("manifest.json") ?? throw new BackupException("This isn't an SKB backup file.", "not_a_backup");
+        try
+        {
+            await using var ms = entry.Open();
+            var manifest = await JsonSerializer.DeserializeAsync<Manifest>(ms, JsonOptions, ct);
+            if (manifest is null || manifest.Format is null || manifest.Migration is null || manifest.Tables is null)
+                throw new BackupException("The backup's manifest is unreadable.", "backup_damaged");
+            return manifest;
+        }
+        catch (JsonException)
+        {
+            throw new BackupException("The backup's manifest is unreadable.", "backup_damaged");
+        }
+    }
+
+    /// <summary>Refuse a backup this version can't take: another format, or made by a newer version.</summary>
+    public void CheckVersion(Manifest manifest)
+    {
+        if (manifest.Format != Format) throw new BackupException("This isn't an SKB backup file.", "not_a_backup");
+        if (manifest.Version != FormatVersion || !_db.Database.GetMigrations().Contains(manifest.Migration))
+            throw new BackupException("This backup is from a newer version of SKB. Update SKB first, then restore.",
+                "backup_newer");
     }
 
     // ------------------------------------------------------------------ encryption
@@ -302,10 +374,10 @@ public sealed class BackupService
     {
         var header = new byte[Magic.Length + 16 + 4 + 4];
         await ReadExactly(input, header, ct);
-        if (!header.AsSpan(0, Magic.Length).SequenceEqual(Magic)) throw new BackupException("This isn't an SKB backup file.");
+        if (!header.AsSpan(0, Magic.Length).SequenceEqual(Magic)) throw new BackupException("This isn't an SKB backup file.", "not_a_backup");
         var salt = header.AsSpan(Magic.Length, 16).ToArray();
         var iterations = BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(Magic.Length + 16));
-        if (iterations is < 100_000 or > 10_000_000) throw new BackupException("The backup file is damaged.");
+        if (iterations is < 100_000 or > 10_000_000) throw new BackupException("The backup file is damaged.", "backup_damaged");
         var prefix = header.AsSpan(Magic.Length + 20, 4).ToArray();
         using var gcm = new AesGcm(DeriveKey(passphrase, salt, iterations), TagSize);
         var chunkHeader = new byte[5];
@@ -315,10 +387,10 @@ public sealed class BackupService
             await ReadExactly(input, chunkHeader, ct);
             var last = chunkHeader[0] switch
             {
-                0 => false, 1 => true, _ => throw new BackupException("The backup file is damaged."),
+                0 => false, 1 => true, _ => throw new BackupException("The backup file is damaged.", "backup_damaged"),
             };
             var n = BinaryPrimitives.ReadInt32BigEndian(chunkHeader.AsSpan(1));
-            if (n is < 0 or > ChunkSize) throw new BackupException("The backup file is damaged.");
+            if (n is < 0 or > ChunkSize) throw new BackupException("The backup file is damaged.", "backup_damaged");
             var cipher = new byte[n];
             await ReadExactly(input, cipher, ct);
             await ReadExactly(input, tag, ct);
@@ -329,14 +401,14 @@ public sealed class BackupService
             }
             catch (CryptographicException)
             {
-                throw new BackupException(index == 0
-                    ? "Wrong passphrase, or the backup file is damaged."
-                    : "The backup file is damaged.");
+                throw index == 0
+                    ? new BackupException("Wrong passphrase, or the backup file is damaged.", "wrong_passphrase")
+                    : new BackupException("The backup file is damaged.", "backup_damaged");
             }
             await plain.WriteAsync(data, ct);
             if (last) break;
         }
-        if (input.ReadByte() != -1) throw new BackupException("The backup file is damaged.");
+        if (input.ReadByte() != -1) throw new BackupException("The backup file is damaged.", "backup_damaged");
     }
 
     private static byte[] DeriveKey(string passphrase, byte[] salt, int iterations) =>
@@ -361,7 +433,7 @@ public sealed class BackupService
     private static async Task ReadExactly(Stream s, byte[] buffer, CancellationToken ct)
     {
         if (await s.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct) < buffer.Length)
-            throw new BackupException("The backup file is cut short.");
+            throw new BackupException("The backup file is cut short.", "backup_damaged");
     }
 
     // ------------------------------------------------------------------ helpers
@@ -420,5 +492,8 @@ public sealed class BackupService
 /// <summary>A backup that can't be made or restored, with a message for the person.</summary>
 public sealed class BackupException : Exception
 {
-    public BackupException(string message) : base(message) { }
+    public BackupException(string message, string code = "backup_failed") : base(message) => Code = code;
+
+    /// <summary>What went wrong, for the app's message in the person's language.</summary>
+    public string Code { get; }
 }

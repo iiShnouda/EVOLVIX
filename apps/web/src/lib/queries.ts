@@ -32,7 +32,11 @@ import type {
   ChatMessage,
   AssistantConversation,
   SystemMonitor,
-  ImportResult,
+  ImportKind,
+  ImportKindInfo,
+  ImportPreview,
+  ImportDone,
+  RestoreOptions,
   SystemUpdates,
   LogPage,
   AssistantStatus,
@@ -2887,17 +2891,41 @@ export function useServerLog(query: LogQuery, live: boolean) {
   });
 }
 
-/** Import items, customers and suppliers from an uploaded Excel file (owner only). */
-export function useImportData() {
+const fileName = (f: Blob) => (f instanceof File ? f.name : 'import.xlsx');
+
+/** The Excel import kinds this person may use, with their columns. */
+export function useImportKinds(enabled: boolean) {
+  return useQuery({
+    queryKey: ['imports'],
+    queryFn: () => api.get<ImportKindInfo[]>('/imports'),
+    enabled,
+  });
+}
+
+/** Check an Excel file for an import kind: what it would do and every row's problems (nothing saved). */
+export function usePreviewImport() {
+  return useMutation({
+    mutationFn: ({ kind, file }: { kind: ImportKind; file: Blob }) =>
+      api.upload<ImportPreview>(`/imports/${kind}/preview`, file, false, 'POST', 'import.xlsx'),
+  });
+}
+
+/** Import an Excel file: all rows or none. */
+export function useRunImport() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: Blob) => api.upload<ImportResult>('/import', file, false, 'POST'),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['products'] });
-      void qc.invalidateQueries({ queryKey: ['parties'] });
-      void qc.invalidateQueries({ queryKey: ['inventory'] });
-      void qc.invalidateQueries({ queryKey: ['departments'] });
-    },
+    mutationFn: ({ kind, file }: { kind: ImportKind; file: Blob }) =>
+      api.upload<ImportDone>(`/imports/${kind}`, file, false, 'POST', fileName(file)),
+    onSuccess: () => void qc.invalidateQueries(),
+  });
+}
+
+/** What can be restored here: the automatic backups, and whether this server allows it. */
+export function useRestoreOptions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['backups', 'restore'],
+    queryFn: () => api.get<RestoreOptions>('/backups/restore'),
+    enabled,
   });
 }
 

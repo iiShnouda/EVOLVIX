@@ -347,7 +347,14 @@ export type Permission =
   | 'rules:override'
   | 'system:monitor'
   | 'system:update'
-  | 'data:import'
+  | 'backup:restore'
+  | 'import:items'
+  | 'import:customers'
+  | 'import:suppliers'
+  | 'import:opening_customers'
+  | 'import:opening_suppliers'
+  | 'import:opening_money'
+  | 'import:opening_stock'
   | 'license:manage'
   | 'print:settings'
   | 'print:default'
@@ -3416,25 +3423,94 @@ export interface SystemUpdates {
   finishedAt: string | null;
 }
 
-/** One row an import couldn't read: its sheet, 1-based row number and why. */
-export interface ImportIssue {
-  sheet: string;
-  row: number;
-  message: string;
+/** The kinds of data imported from Excel (owner, 2026-10-14 and 2026-11-16), each its own permission. */
+export type ImportKind =
+  | 'items'
+  | 'customers'
+  | 'suppliers'
+  | 'opening_customers'
+  | 'opening_suppliers'
+  | 'opening_money'
+  | 'opening_stock';
+
+/** A column of an import: its key, and its header in each language (either is read back). */
+export interface ImportColumn {
+  key: string;
+  en: string;
+  ar: string;
+  required: boolean;
 }
 
-/** How one kind fared in an import (owner, 2026-10-14). */
-export interface ImportGroup {
-  kind: 'items' | 'customers' | 'suppliers';
+export interface ImportKindInfo {
+  kind: ImportKind;
+  columns: ImportColumn[];
+}
+
+/** A problem with a row (its number in the sheet; 0 = the whole file), as a code for `import.err.<code>`. */
+export interface ImportError {
+  row: number;
+  column: string | null;
+  code: string;
+  value: string | null;
+}
+
+/** A row as read, cells in the kind's column order. */
+export interface ImportRow {
+  row: number;
+  status: 'new' | 'skip' | 'error';
+  values: string[];
+}
+
+/** What a file would do (nothing saved): rows ready to add, already there, and every problem. */
+export interface ImportPreview {
+  kind: ImportKind;
+  rows: number;
+  ready: number;
+  skipped: number;
+  errors: ImportError[];
+  errorCount: number;
+  sample: ImportRow[];
+}
+
+export interface ImportDone {
+  kind: ImportKind;
   added: number;
   skipped: number;
-  issues: ImportIssue[];
 }
 
-/** The result of importing an uploaded Excel file: a group per kind, plus any sheets not recognised. */
-export interface ImportResult {
-  groups: ImportGroup[];
-  unknownSheets: string[];
+/** Restoring a backup from the owner's page (owner, 2026-11-16). */
+export interface RestoreOptions {
+  /** Why it can't be done on this server (e.g. restore_no_rights), else null. */
+  unavailable: string | null;
+  maxBytes: number;
+  hasFolder: boolean;
+  files: BackupFile[];
+}
+
+export interface StagedBackup {
+  id: string;
+  name: string;
+  size: number;
+  encrypted: boolean;
+}
+
+export interface BackupContents {
+  name: string;
+  createdAt: string;
+  migration: string;
+  appVersion: string | null;
+  totalRows: number;
+  tables: { name: string; rows: number }[];
+}
+
+export interface RestoreJob {
+  state: 'running' | 'done' | 'failed';
+  step: 'checking' | 'safety' | 'loading' | 'switching' | 'done';
+  error: string | null;
+  safetyBackup: string | null;
+  keptDatabase: string | null;
+  rows: number;
+  restarting: boolean;
 }
 
 /** This server's licence (owner only; see the server's Licensing). maxUsers null = no limit. */

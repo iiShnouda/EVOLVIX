@@ -16,7 +16,14 @@ export const ALL_PERMISSIONS: Permission[] = PERMISSION_GROUPS.flatMap((g) =>
 export const OWNER_ONLY: Permission[] = [
   'system:monitor',
   'system:update',
-  'data:import',
+  'backup:restore',
+  'import:items',
+  'import:customers',
+  'import:suppliers',
+  'import:opening_customers',
+  'import:opening_suppliers',
+  'import:opening_money',
+  'import:opening_stock',
   'license:manage',
   'system:logs',
 ];

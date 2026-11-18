@@ -1193,6 +1193,21 @@ public record ClosedYearDto(int Year, string EntryId, long NetProfit, string Clo
 
 public record DownloadBackupRequest(string? Passphrase);
 
+// Restoring a backup from the owner's page (owner, 2026-11-16).
+/// <param name="Unavailable">Why it can't be done here (e.g. restore_no_rights), else null.</param>
+public record RestoreOptionsDto(string? Unavailable, long MaxBytes, bool HasFolder, BackupFileDto[] Files);
+public record PickBackupRequest(string? Name);
+public record StagedBackupDto(Guid Id, string Name, long Size, bool Encrypted);
+public record InspectBackupRequest(string? Passphrase);
+public record BackupTableDto(string Name, long Rows);
+public record BackupContentsDto(string Name, string CreatedAt, string Migration, string? AppVersion, long TotalRows,
+    BackupTableDto[] Tables);
+public record RestoreBackupRequest(string? Passphrase, string? Confirm);
+/// <param name="State">running, done or failed.</param>
+/// <param name="Step">checking, safety, loading, switching, done.</param>
+public record RestoreJobDto(string State, string Step, string? Error, string? SafetyBackup, string? KeptDatabase, long Rows,
+    bool Restarting);
+
 public record BackupFileDto(string Name, long Size, string CreatedAt);
 
 /// <param name="Automatic">Daily backups to a folder on the server are on.</param>
@@ -1386,14 +1401,18 @@ public record SystemUpdatesDto(bool Enabled, string Version, IReadOnlyList<SKB.A
 public record SystemMonitorDto(DateTime At, SystemMachineDto Machine, List<SystemServiceDto> Services, SystemAppDto App,
     SystemDatabaseDto Database, SystemAssistantDto Assistant, SystemBackupsDto Backups, SystemStorageDto Storage);
 
-/// <summary>
-/// The result of a data import (owner, 2026-10-14): for each kind (items, customers, suppliers) how
-/// many rows were added and how many skipped, and the rows that couldn't be read with why.
-/// </summary>
-public record ImportGroupDto(string Kind, int Added, int Skipped, ImportIssueDto[] Issues);
-/// <summary>One row that couldn't be imported: its sheet, 1-based row number and the reason.</summary>
-public record ImportIssueDto(string Sheet, int Row, string Message);
-public record ImportResultDto(ImportGroupDto[] Groups, string[] UnknownSheets);
+// Importing from Excel (owner, 2026-10-14 and 2026-11-16).
+/// <summary>A kind of import the person may use, with its columns (their headers in both languages).</summary>
+public record ImportKindDto(string Kind, ImportColumnDto[] Columns);
+public record ImportColumnDto(string Key, string En, string Ar, bool Required);
+/// <summary>A problem with a row (its number in the sheet; 0 = the file as a whole), as a code for the app's text.</summary>
+public record ImportErrorDto(int Row, string? Column, string Code, string? Value);
+/// <summary>A row as read, its cells in the kind's column order; Status: new, skip (already there) or error.</summary>
+public record ImportRowDto(int Row, string Status, string[] Values);
+/// <summary>What a file would do: Ready rows added, Skipped already there, and every problem (nothing is saved).</summary>
+public record ImportPreviewDto(string Kind, int Rows, int Ready, int Skipped, ImportErrorDto[] Errors, int ErrorCount,
+    ImportRowDto[] Sample);
+public record ImportDoneDto(string Kind, int Added, int Skipped);
 
 /// <summary>A purchase invoice's items with their sale price per piece (minor units), for the salespeople.</summary>
 public record PriceSheetLineDto(string Code, string Name, int Pieces, long SalePrice);

@@ -54,19 +54,22 @@ export function ScanButton<T>({
   };
   /** Read one photo; false when it failed (the error is shown). */
   const readOne = async (picked: File): Promise<boolean> => {
-    // The photo kept with the invoice (at most 1600 px), and a smaller one for the model (1280 px):
-    // the model's time grows with the photo's size, and the writing still reads at that size.
-    const small = await shrinkPhoto(picked).catch(() => picked);
-    const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
-    onPhoto?.(photo);
-    const forModel = await shrinkPhoto(picked, 1280).catch(() => small);
+    // A supplier's invoice as a scanned PDF (owner, 2026-11-16): the server reads its page itself.
+    const pdf = picked.type === 'application/pdf' || /\.pdf$/i.test(picked.name);
+    let toRead: File;
+    if (pdf) toRead = new File([picked], 'scan.pdf', { type: 'application/pdf' });
+    else {
+      // The photo kept with the invoice (at most 1600 px), and a smaller one for the model (1280 px):
+      // the model's time grows with the photo's size, and the writing still reads at that size.
+      const small = await shrinkPhoto(picked).catch(() => picked);
+      const photo = new File([small], 'invoice.jpg', { type: small.type || 'image/jpeg' });
+      onPhoto?.(photo);
+      const forModel = await shrinkPhoto(picked, 1280).catch(() => small);
+      toRead = new File([forModel], 'scan.jpg', { type: forModel.type || 'image/jpeg' });
+    }
     let result: T;
     try {
-      result = await scanPhoto<T>(
-        kind,
-        new File([forModel], 'scan.jpg', { type: forModel.type || 'image/jpeg' }),
-        setWaited,
-      );
+      result = await scanPhoto<T>(kind, toRead, setWaited);
     } catch (err) {
       // A gateway in front of the server that gave up waiting answers without our code.
       const gaveUp = err instanceof ApiError && !err.code && [502, 504, 524].includes(err.status);
@@ -91,7 +94,11 @@ export function ScanButton<T>({
         tabIndex={-1}
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/webp"
+        accept={
+          kind === 'purchase'
+            ? 'image/jpeg,image/png,image/webp,application/pdf'
+            : 'image/jpeg,image/png,image/webp'
+        }
         className="sr-only"
         onChange={read}
       />

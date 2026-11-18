@@ -197,10 +197,11 @@ async function upload<T>(
   file: Blob,
   retried = false,
   method: 'PUT' | 'POST' = 'PUT',
+  name = 'photo',
 ): Promise<T> {
   const token = getAccessToken();
   const form = new FormData();
-  form.append('file', file, 'photo');
+  form.append('file', file, name);
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     credentials: 'include',
@@ -209,7 +210,7 @@ async function upload<T>(
   });
   if (res.status === 401 && !retried) {
     if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
-    else if (await tryRefresh()) return upload(path, file, true, method);
+    else if (await tryRefresh()) return upload(path, file, true, method, name);
     else if (useAuth.getState().status !== 'anonymous') endSession();
   }
   if (!res.ok) {
