@@ -52,6 +52,9 @@ import type {
   CustomerAccount,
   NotificationList,
   NotificationPrefs,
+  NotificationFilter,
+  NotificationPlaces,
+  DeleteNotificationsInput,
   UpdateSettingsInput,
   BranchWithWarehouses,
   CreateBranchInput,
@@ -680,6 +683,58 @@ export function useDeleteNotification() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string | 'read') => api.del<void>(`/notifications/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+/**
+ * The notifications page: mine, filtered, a page at a time as the list scrolls (in memory only,
+ * rule 1). Live news reaches it through the bell's invalidation of `['notifications']`.
+ */
+export function useNotificationFeed(filter: NotificationFilter) {
+  return useInfiniteQuery({
+    queryKey: ['notifications', 'feed', filter],
+    queryFn: ({ pageParam }) => {
+      const p = new URLSearchParams({ take: '40' });
+      if (filter.unread) p.set('unread', 'true');
+      if (filter.kinds?.length) p.set('kinds', filter.kinds.join(','));
+      for (const k of ['from', 'to', 'branchId', 'departmentId', 'warehouseId'] as const)
+        if (filter[k]) p.set(k, filter[k]!);
+      if (pageParam) p.set('before', pageParam);
+      return api.get<NotificationList>(`/notifications?${p.toString()}`);
+    },
+    initialPageParam: '' as string,
+    getNextPageParam: (last) =>
+      last.more && last.items.length ? last.items[last.items.length - 1]!.id : undefined,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** The branches, departments and stores my notifications came from (within my access). */
+export function useNotificationPlaces() {
+  return useQuery({
+    queryKey: ['notifications', 'places'],
+    queryFn: () => api.get<NotificationPlaces>('/notifications/places'),
+    staleTime: 60_000,
+  });
+}
+
+/** Mark some of mine read or unread. */
+export function useMarkNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: string[]; read: boolean }) =>
+      api.post<void>('/notifications/mark', input),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+/** Delete several of mine: these ids, all before a day, all read, or all. */
+export function useDeleteNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeleteNotificationsInput) =>
+      api.post<{ deleted: number }>('/notifications/delete', input),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }

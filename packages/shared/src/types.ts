@@ -3224,6 +3224,12 @@ export interface AppNotification {
   data?: Record<string, unknown> | null;
   createdAt: string;
   read: boolean;
+  /** The company day it came on (yyyy-MM-dd): the notifications page groups by it. */
+  day?: string | null;
+  /** Where it happened, when known (the page's place filter). */
+  branchId?: string | null;
+  departmentId?: string | null;
+  warehouseId?: string | null;
 }
 
 export interface NotificationList {
@@ -3231,6 +3237,36 @@ export interface NotificationList {
   items: AppNotification[];
   /** There are older ones (ask with `before` = the last id). */
   more?: boolean;
+  /** How many match the filters, all pages together. */
+  total?: number;
+}
+
+/** What the notifications page can be filtered by (all optional). */
+export interface NotificationFilter {
+  unread?: boolean;
+  kinds?: NotificationKind[];
+  /** Company days, yyyy-MM-dd. */
+  from?: string;
+  to?: string;
+  branchId?: string;
+  departmentId?: string;
+  warehouseId?: string;
+}
+
+/** The places my notifications happened in that I may still see. */
+export interface NotificationPlaces {
+  branches: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+  warehouses: { id: string; name: string }[];
+}
+
+/** Which of mine to delete at once (one of these). */
+export interface DeleteNotificationsInput {
+  ids?: string[];
+  /** Every one before this company day. */
+  before?: string;
+  readOnly?: boolean;
+  all?: boolean;
 }
 
 /** My notification choices (kept on the server). */

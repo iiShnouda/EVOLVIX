@@ -69,6 +69,7 @@ import { PresencePage } from './pages/PresencePage';
 import { SystemPage } from './pages/SystemPage';
 import { UpdatesPage } from './pages/UpdatesPage';
 import { LogsPage } from './pages/LogsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { ImportPage } from './pages/ImportPage';
 import { LicensePage } from './pages/LicensePage';
 import { PayrollPage } from './pages/PayrollPage';
@@ -333,6 +334,7 @@ const routes = createRoutesFromElements(
       <Route path="/inventory/setup" element={<CatalogSetupPage />} />
       <Route path="/inventory/labels" element={<InventoryTabRoute tab="labels" />} />
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/assistant" element={<AssistantPage />} />
       <Route path="/inventory/price-lists" element={<InventoryTabRoute tab="pricelists" />} />
       <Route path="/inventory/products/new" element={<NewItemsRoute />} />
