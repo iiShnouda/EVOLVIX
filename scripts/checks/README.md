@@ -73,6 +73,8 @@ live company server.
 | `seasoncompare.test.mjs` | The year beside the season on suppliers and departments, seasons across years (per-year figures, stock at season end, items without a season), what to buy (suggestion math, order, by supplier), permissions and scoping. |
 | `commission.test.mjs` | Sales reps' commission: rules by rep, basis (net sales / collections), department and start date; the report's math with returns and discounts; collections by counter money and receipts; adding a month to payroll once (linked employee only); permissions and scoping. |
 | `exchange.test.mjs` | Return reasons (list, per line, other with words, filter, report by reason/item/customer/rep with the rate), damaged goods (the branch's damaged warehouse, write-off at cost with its entry, repair to a store, supplier return from it, cancelling), and exchange (one transaction, linked documents, the difference for credit and cash customers), permissions and scoping. |
+| `purchaseorders.test.mjs` | Purchase orders to a factory: existing and new lines, suggestions to prefill, statuses (draft, sent, partly received, received, cancelled), receiving on a purchase invoice in parts and in full with new items created then, no stock/money/ledger on the order itself, permissions, scoping, audit. |
+| `lock.test.mjs` | The idle screen lock: a remembered device locks (tokens refused with LOCKED), unlocking with the password or a PIN on the server, five wrong tries sign out, PIN set/clear and its rules, the settings (lock or sign out, PIN allowed, remember days), a device not remembered signs out; a stale session (needs `PGURL`). |
 
 ## Running
 

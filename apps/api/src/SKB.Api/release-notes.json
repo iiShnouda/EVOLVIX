@@ -155,6 +155,26 @@
         {
           "ar": "كل نوع إشعار بقى ليه صلاحية لوحده في شاشة الصلاحيات، وكل واحد بيوصله اللي كان بيوصله قبل كده",
           "en": "Each kind of notification has its own permission in the permission editor; everyone keeps receiving what they received before"
+        },
+        {
+          "ar": "صفحة أوامر الشراء: تطلب من المصنع أصناف عندك (مقترحة بالكمية من \"اقتراحات الشراء\") وأصناف جديدة لسه هتجيبها، تطبعها أو تبعتها PDF/Excel، وتستلمها بفاتورة مشتريات كاملة أو على دفعات والأصناف الجديدة تتعمل وقت الاستلام",
+          "en": "Purchase orders: order from a factory items you have (suggested with quantities from \"What to buy\") and new items you'll bring, print it or send it as PDF/Excel, and receive it on a purchase invoice in full or in parts — new items are created on receipt"
+        },
+        {
+          "ar": "الجهاز المحفوظ بقى يقفل الشاشة بعد مدة عدم الاستخدام بدل ما يخرج، وتفتحه بكلمة السر أو برمز شخصي (4–6 أرقام)، و5 محاولات غلط تخرجك",
+          "en": "A remembered device now locks the screen after the idle time instead of signing out; unlock with your password or a 4–6 digit PIN, and 5 wrong tries sign you out"
+        },
+        {
+          "ar": "في الإعدادات ← الأمان: تختار قفل الشاشة أو الخروج، السماح بالرمز الشخصي، ومدة حفظ الجهاز (أو إلغاء الخيار)",
+          "en": "Settings → security: lock or sign out when idle, allow PIN unlock, and how long a device is remembered (or turn it off)"
+        },
+        {
+          "ar": "تقدر تكبّر وتصغّر البرنامج من قايمة حسابك (أو Ctrl مع + و − و 0)، والصفحة بتترتّب على قد الشاشة من غير فراغ",
+          "en": "Zoom the app in and out from your account menu (or Ctrl with + − 0); the page lays itself out again to fill the screen"
+        },
+        {
+          "ar": "عمولة المندوبين على الموبايل بقت كروت تتقري من غير ما تسحب يمين وشمال",
+          "en": "Sales reps' commission reads as cards on a phone"
         }
       ],
       "fixes": [
@@ -189,6 +209,14 @@
         {
           "ar": "جرس الإشعارات بقى بيتسكرول جوّه بارتفاع ثابت ومش بيطلع برّه الشاشة على الموبايل، وكل إشعار بأيقونة نوعه وعنوان واضح ووقته، وفيه لينك \"كل الإشعارات\"",
           "en": "The bell scrolls inside a fixed-height panel (a sheet on phones, no longer off-screen), each notification shows its kind's icon, a clear title and its time, with a link to All notifications"
+        },
+        {
+          "ar": "قايمة الأسعار الخاصة بأقسام الصيف أو الشتا بقت تشمل الأقسام اللي ملهاش موسم (زي «داخلي»)",
+          "en": "Summer/winter department price lists now also cover departments with no season (e.g. «داخلي»)"
+        },
+        {
+          "ar": "تواريخ قوايم الأسعار بقت تتقري صح بالعربي، وشريط البرنامج اللي فوق مبقاش بيطلع برة الشاشة على الموبايل",
+          "en": "Price-list date ranges read the right way in Arabic, and the top bar no longer spills off narrow phone screens"
         }
       ]
     },
