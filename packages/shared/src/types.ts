@@ -869,11 +869,13 @@ export interface DocumentLine {
   increase?: number;
   /** Its share of the invoice's increase, minor units (in `lineTotal`). */
   docIncrease?: number;
-  /** The increase and discount as typed: a percent and an amount for the line. */
+  /** The increase and discount as typed: a percent, an amount for the line, and an amount a piece. */
   increaseRate?: number | null;
   increaseFixed?: number | null;
+  increasePiece?: number | null;
   discountRate?: number | null;
   discountFixed?: number | null;
+  discountPiece?: number | null;
   /** Weighted-average cost of one base unit at posting time, minor units. */
   unitCost: number;
   /** Exact cost of the whole line, minor units. */

@@ -58,7 +58,9 @@ export function ApproveOrderSheet({
   const grossOf = (l: (typeof lines)[number]) => l.lineTotal + l.discount - (l.docIncrease ?? 0);
   const newDiscount = (l: (typeof lines)[number]) => {
     const e = edits[l.id];
-    return e ? lineDiscount(e.mode, e.value, grossOf(l), l.quantity) : l.discount;
+    return e
+      ? lineDiscount(e.mode, e.value, grossOf(l), l.quantity, grossOf(l) - (l.increase ?? 0))
+      : l.discount;
   };
   const changedLines = lines.filter((l) => edits[l.id] && newDiscount(l) !== l.discount);
   const invoiceChanged = (invoicePct.trim() === '' ? null : Number(invoicePct)) !== invoiceRate;

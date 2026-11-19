@@ -79,13 +79,16 @@ export const invoiceLineSchema = z.object({
   priceBasis: z.enum(['LIST', 'LAST', 'COST']).optional(),
   /**
    * The line's increase and discount as typed (owner, 2026-11-19), each its own permission: a
-   * percent and an amount for the line. The increase goes on quantity × price first, the discount
-   * on what that comes to; with a discount typed, `discount` is ignored.
+   * percent, an amount for the line and an amount a piece (the item's smallest unit). Nothing
+   * compounds: both percents are of quantity × price, so they net out. With a discount typed,
+   * `discount` is ignored.
    */
   increasePercent: z.number().min(0).max(100).optional(),
   increaseAmount: z.number().int().min(0).optional(),
+  increasePerPiece: z.number().int().min(0).optional(),
   discountPercent: z.number().min(0).max(100).optional(),
   discountAmount: z.number().int().min(0).optional(),
+  discountPerPiece: z.number().int().min(0).optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 

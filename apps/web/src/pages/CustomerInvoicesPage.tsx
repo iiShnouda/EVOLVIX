@@ -471,7 +471,9 @@ function InvoiceCard({
     l.lineTotal + l.discount - (l.docIncrease ?? 0);
   const newLineDiscount = (l: SalesDocument['lines'][number]) => {
     const d = lineDrafts[l.id];
-    return d ? lineDiscount(d.mode, d.value, grossOf(l), l.quantity) : l.discount;
+    return d
+      ? lineDiscount(d.mode, d.value, grossOf(l), l.quantity, grossOf(l) - (l.increase ?? 0))
+      : l.discount;
   };
   const changedLines = items.filter((l) => newLineDiscount(l) !== l.discount);
   function openDiscount() {

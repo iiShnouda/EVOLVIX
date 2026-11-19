@@ -836,6 +836,9 @@ namespace SKB.Api.Migrations
                     b.Property<long?>("DiscountFixed")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("DiscountPieceFixed")
+                        .HasColumnType("bigint");
+
                     b.Property<int?>("DiscountRateBp")
                         .HasColumnType("integer");
 
@@ -852,6 +855,9 @@ namespace SKB.Api.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<long?>("IncreaseFixed")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("IncreasePieceFixed")
                         .HasColumnType("bigint");
 
                     b.Property<int?>("IncreaseRateBp")

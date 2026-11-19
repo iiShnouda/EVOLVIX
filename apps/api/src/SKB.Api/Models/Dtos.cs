@@ -72,7 +72,8 @@ public record DocumentLineDto(
     string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName,
     bool IsBonus, long DocDiscount, string? ProductCode = null, string? Reason = null, string? ReasonNote = null,
     string? Damaged = null, long Increase = 0, long DocIncrease = 0, decimal? IncreaseRate = null,
-    long? IncreaseFixed = null, decimal? DiscountRate = null, long? DiscountFixed = null);
+    long? IncreaseFixed = null, decimal? DiscountRate = null, long? DiscountFixed = null,
+    long? IncreasePiece = null, long? DiscountPiece = null);
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
@@ -146,14 +147,18 @@ public record RejectOrderRequest(string? Reason);
 
 /// <param name="PriceBasis">This line's basis (LIST, LAST or COST); none = the invoice's (owner, 2026-10-01).</param>
 /// <param name="Discount">The line's discount as one amount (a quantity discount, or one kept from before).</param>
-/// <param name="DiscountPercent">The discount typed as a percent of the line after its increase (owner, 2026-11-19).</param>
-/// <param name="DiscountAmount">The discount typed as an amount for the line. With either, <paramref name="Discount"/> is ignored.</param>
+/// <param name="DiscountPercent">The discount typed as a percent of Quantity × UnitPrice (owner, 2026-11-19): the
+/// same base as the increase's percent, so the two net out.</param>
+/// <param name="DiscountAmount">The discount typed as an amount for the line. With any of the three, <paramref name="Discount"/> is ignored.</param>
+/// <param name="DiscountPerPiece">The discount typed as an amount a piece (the item's smallest unit), times the pieces.</param>
 /// <param name="IncreasePercent">An increase as a percent of Quantity × UnitPrice.</param>
 /// <param name="IncreaseAmount">An increase as an amount for the line.</param>
+/// <param name="IncreasePerPiece">An increase as an amount a piece, times the pieces.</param>
 public record CreateInvoiceLineRequest(
     string ProductId, int Quantity, long UnitPrice, long Discount = 0, string? WarehouseId = null,
     string? UnitId = null, bool IsBonus = false, string? PriceBasis = null, decimal? DiscountPercent = null,
-    long? DiscountAmount = null, decimal? IncreasePercent = null, long? IncreaseAmount = null);
+    long? DiscountAmount = null, decimal? IncreasePercent = null, long? IncreaseAmount = null,
+    long? DiscountPerPiece = null, long? IncreasePerPiece = null);
 
 /// <param name="Percent">A rate (14 = 14%, up to 2 decimals); give this or Amount.</param>
 /// <param name="Amount">A fixed amount in minor units; give this or Percent.</param>

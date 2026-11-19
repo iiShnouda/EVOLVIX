@@ -951,15 +951,21 @@ public class DocumentLine
     public long Increase { get; set; }
     /// <summary>This line's share of the invoice's increase (an INCREASE charge); in <see cref="LineTotal"/>.</summary>
     public long DocIncrease { get; set; }
-    /// <summary>The line's increase as typed: a percent (basis points) of UnitQuantity × UnitPrice, and an amount.</summary>
+    /// <summary>
+    /// The line's increase as typed: a percent (basis points) of UnitQuantity × UnitPrice, an amount for
+    /// the line, and an amount a piece (the item's smallest unit).
+    /// </summary>
     public int? IncreaseRateBp { get; set; }
     public long? IncreaseFixed { get; set; }
+    public long? IncreasePieceFixed { get; set; }
     /// <summary>
-    /// The line's discount as typed on the invoice: a percent (basis points) of the line after its
-    /// increase, and an amount. Null both when it is a quantity discount or one given as a plain amount.
+    /// The line's discount as typed on the invoice: a percent (basis points) of UnitQuantity × UnitPrice
+    /// (the increase's base: they net out, owner 2026-11-19), an amount, and an amount a piece. All null
+    /// when it is a quantity discount or one given as a plain amount.
     /// </summary>
     public int? DiscountRateBp { get; set; }
     public long? DiscountFixed { get; set; }
+    public long? DiscountPieceFixed { get; set; }
     // Cost snapshot per BASE unit at the moment the line was posted (weighted-average cost for a
     // sale; the purchase price for a purchase). Kept on the line so profit reports stay correct
     // for all time even after the product's average cost later moves. LineCost is exact.

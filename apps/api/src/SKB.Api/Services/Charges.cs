@@ -9,9 +9,13 @@ namespace SKB.Api.Services;
 /// apply in kind order — INCREASE, DISCOUNT, EXTRA_DISCOUNT, TAX, OTHER_TAX, ADDITION — and in entry
 /// order within a kind:
 /// <list type="number">
-/// <item>a sale's increase (owner, 2026-11-19) goes on the lines' total first: it is sales, shared
-/// over the lines like a discount, so each line's net includes its share;</item>
-/// <item>each discount comes off what is left after the increases and the discounts before it;</item>
+/// <item>a sale's increase (owner, 2026-11-19) goes on the lines' total: it is sales, shared over the
+/// lines like a discount, so each line's net includes its share;</item>
+/// <item>the DISCOUNT comes off it. Nothing compounds (owner, 2026-11-19): an INCREASE's and a
+/// DISCOUNT's percents are both of the same base, the lines' total, so they net out (+10% +2.00 −5%
+/// −1.00 on 200.00 is 211.00); amounts are as typed;</item>
+/// <item>the EXTRA_DISCOUNT (the accountant's second discount, or one over several invoices) is a
+/// discount on top: its percent is of what is left after the first;</item>
 /// <item>taxes and additions are worked out on the discounted amount.</item>
 /// </list>
 /// The total discount is shared out over the lines in proportion to their net amounts (bonus lines
@@ -93,6 +97,7 @@ public static class Charges
     {
         var rows = new List<DocumentCharge>();
         var running = nets.Sum();
+        var lines = running; // the base an increase's and the first discount's percents are of
         long discount = 0, tax = 0, addition = 0, increase = 0;
         var ordered = specs.Select((s, i) => (Spec: s, Index: i))
             .OrderBy(x => Order(x.Spec.Kind)).ThenBy(x => x.Index).Select(x => x.Spec).ToList();
@@ -100,7 +105,7 @@ public static class Charges
         // Increases first, on the lines' total; each line takes its share (it is part of what it brings in).
         foreach (var s in ordered.Where(s => s.Kind == ChargeKind.INCREASE))
         {
-            var amount = Amount(s, running);
+            var amount = Amount(s, lines);
             running += amount;
             increase += amount;
             rows.Add(Row(s, amount, rows.Count));
@@ -110,10 +115,10 @@ public static class Charges
             return (null, new("increase_nothing", "There is nothing on the invoice to increase."));
         var raised = nets.Select((n, i) => n + increased[i]).ToList();
 
-        // Then discounts, each on what is left.
+        // Then discounts: the first's percent on the lines' total too, the second's on what is left.
         foreach (var s in ordered.Where(s => s.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT))
         {
-            var amount = Amount(s, running);
+            var amount = Amount(s, s.Kind == ChargeKind.DISCOUNT ? lines : running);
             if (amount > running)
                 return (null, new("discount_too_big", "A discount can't be more than what is left of the invoice."));
             running -= amount;

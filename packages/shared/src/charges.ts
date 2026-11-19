@@ -2,8 +2,10 @@
  * Invoice-level charges (DOMAIN.md §2.5) — the same rules the server applies (`Charges.cs`), so
  * the invoice screen shows exactly what will be posted:
  *  1. a sale's INCREASE on the lines' total (it is sales; owner, 2026-11-19);
- *  2. DISCOUNT, then EXTRA_DISCOUNT, each on what is left after the one before;
- *  3. TAX, OTHER_TAX and ADDITION on the discounted amount.
+ *  2. DISCOUNT off it. Nothing compounds (owner, 2026-11-19): INCREASE's and DISCOUNT's percents
+ *     are both of the lines' total, so they net out (+10% +2.00 −5% −1.00 on 200.00 = 211.00);
+ *  3. EXTRA_DISCOUNT (the second discount) on what is left after them;
+ *  4. TAX, OTHER_TAX and ADDITION on the discounted amount.
  * The increase, then the discount, is shared over the lines in proportion to their nets (bonus lines
  * take none), with the shares adding up exactly. Money is integer minor units; rates are percents
  * (2 decimals).
@@ -57,7 +59,7 @@ export interface ChargesOutcome {
 const isDiscount = (k: ChargeKind) => k === 'DISCOUNT' || k === 'EXTRA_DISCOUNT';
 
 function amountOf(c: ChargeInput, on: number): number {
-  if (c.percent !== undefined) return Math.round((on * Math.round(c.percent * 100)) / 10000);
+  if (c.percent !== undefined) return percentOf(on, c.percent);
   return Math.max(0, Math.round(c.amount ?? 0));
 }
 
@@ -96,6 +98,7 @@ export function applyCharges(
     .sort((a, b) => CHARGE_ORDER.indexOf(a.c.kind) - CHARGE_ORDER.indexOf(b.c.kind) || a.i - b.i)
     .map((x) => x.c);
   let running = nets.reduce((s, n) => s + n, 0);
+  const base = running; // what an increase's and the first discount's percents are of
   let discount = 0;
   let tax = 0;
   let addition = 0;
@@ -103,7 +106,7 @@ export function applyCharges(
   let error: ChargesOutcome['error'];
   const rows: ChargesOutcome['rows'] = [];
   for (const c of ordered.filter((c) => c.kind === 'INCREASE')) {
-    const amount = amountOf(c, running);
+    const amount = amountOf(c, base);
     running += amount;
     increase += amount;
     rows.push({ kind: c.kind, amount, label: c.label });
@@ -112,7 +115,7 @@ export function applyCharges(
   if (!increaseAllocation) error = 'discount_too_big';
   const raised = nets.map((n, i) => n + (increaseAllocation?.[i] ?? 0));
   for (const c of ordered.filter((c) => isDiscount(c.kind))) {
-    const amount = amountOf(c, running);
+    const amount = amountOf(c, c.kind === 'DISCOUNT' ? base : running);
     if (amount > running) error = 'discount_too_big';
     const taken = Math.min(amount, running);
     running -= taken;
@@ -137,4 +140,32 @@ export function applyCharges(
     increaseAllocation: increaseAllocation ?? nets.map(() => 0),
     error,
   };
+}
+
+/** What a percent (2 decimals) of `on` comes to, rounded to the piastre half away from zero, as the server does. */
+export function percentOf(on: number, percent: number): number {
+  const bp = Math.round(percent * 100);
+  const exact = (on * bp) / 10000;
+  return Math.sign(exact) * Math.round(Math.abs(exact));
+}
+
+/** A sales line's own increase or discount as typed: a percent, an amount for the line, an amount a piece. */
+export interface LineAdjustInput {
+  percent?: number;
+  amount?: number;
+  perPiece?: number;
+}
+
+/**
+ * A sales line's own increase or discount (owner, 2026-11-19), as the server works it out
+ * (`Adjust.Of`): nothing compounds, the percent is of `gross` (quantity × price, before any increase
+ * or discount) for both, so an increase and a discount net out; the amount is added as typed, and
+ * the amount a piece times `pieces` (the line's pieces of the item's smallest unit).
+ */
+export function lineAdjust(gross: number, pieces: number, a: LineAdjustInput): number {
+  return (
+    (a.percent ? percentOf(gross, a.percent) : 0) +
+    Math.max(0, a.amount ?? 0) +
+    Math.max(0, a.perPiece ?? 0) * pieces
+  );
 }

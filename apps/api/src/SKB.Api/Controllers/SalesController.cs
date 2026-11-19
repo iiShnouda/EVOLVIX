@@ -498,16 +498,17 @@ public sealed class SalesController : ControllerBase
         }
 
         // What is asked: each line's own discount, then the invoice's. A line's gross here is without
-        // its share of the invoice's increase, which is shared out again below.
+        // its share of the invoice's increase, which is shared out again below; a percent is of its
+        // price × quantity, before its increase (they net out, owner 2026-11-19).
         var lines = doc.Lines.OrderBy(l => l.LineNo).ToList();
         var given = new long[lines.Count];
-        var typed = new (int? Bp, long? Fixed)[lines.Count];
+        var typed = new (int? Bp, long? Fixed, long? Piece)[lines.Count];
         for (var i = 0; i < lines.Count; i++)
         {
             var l = lines[i];
             var own = l.LineTotal - l.DocIncrease + l.Discount;
             given[i] = l.Discount;
-            typed[i] = (l.DiscountRateBp, l.DiscountFixed);
+            typed[i] = (l.DiscountRateBp, l.DiscountFixed, l.DiscountPieceFixed);
             if (lineDiscounts is not null && lineDiscounts.TryGetValue(l.Id, out var d))
             {
                 if (d.Percent is decimal pc)
@@ -517,8 +518,8 @@ public sealed class SalesController : ControllerBase
                     if (pc > 0 && !Can(Permissions.SalesDiscountLinePct))
                         return InvoiceLines.Refuse(this, new("discount_line_pct_not_allowed",
                             $"{l.ProductName}: a discount as a percent needs permission."));
-                    given[i] = Adjust.Of(own, pc, null);
-                    typed[i] = pc > 0 ? (Adjust.Bp(pc), null) : (null, null);
+                    given[i] = Adjust.Of(own - l.Increase, pc, null);
+                    typed[i] = pc > 0 ? (Adjust.Bp(pc), null, null) : (null, null, null);
                 }
                 else
                 {
@@ -526,7 +527,7 @@ public sealed class SalesController : ControllerBase
                         return InvoiceLines.Refuse(this, new("discount_line_amount_not_allowed",
                             $"{l.ProductName}: a discount as an amount needs permission."));
                     given[i] = d.Discount;
-                    typed[i] = d.Discount > 0 ? (null, d.Discount) : (null, null);
+                    typed[i] = d.Discount > 0 ? (null, d.Discount, null) : (null, null, null);
                 }
             }
             if (given[i] < 0 || given[i] > own)
@@ -571,7 +572,9 @@ public sealed class SalesController : ControllerBase
                 var l = lines[i];
                 if (l.IsBonus) continue;
                 var own = given[i] == automatic[i] ? 0 : given[i];
-                if ((own + charges.Allocation[i]) * 100 > (l.LineTotal + l.Discount) * maxDiscount)
+                // The net discount (less the line's increases) against its price × quantity.
+                var gross = l.LineTotal - l.DocIncrease + l.Discount - l.Increase;
+                if ((own + charges.Allocation[i] - l.Increase - charges.IncreaseAllocation[i]) * 100 > gross * maxDiscount)
                     return InvoiceLines.Refuse(this, new("discount_over_limit",
                         $"{l.ProductName}: the discount is more than your limit of {maxDiscount}%."));
             }
@@ -603,7 +606,7 @@ public sealed class SalesController : ControllerBase
             var l = lines[i];
             var gross = l.LineTotal - l.DocIncrease + l.Discount;
             l.Discount = given[i];
-            (l.DiscountRateBp, l.DiscountFixed) = typed[i];
+            (l.DiscountRateBp, l.DiscountFixed, l.DiscountPieceFixed) = typed[i];
             l.DocIncrease = charges.IncreaseAllocation[i];
             l.LineTotal = gross + l.DocIncrease - given[i];
             l.DocDiscount = charges.Allocation[i];
@@ -965,15 +968,18 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     private static CreateInvoiceLineRequest StoredLine(DocumentLine l, string? warehouseId, LineDiscountRequest? given)
     {
-        var typed = l.DiscountRateBp is not null || l.DiscountFixed is not null;
-        var (pct, amount, sum) = given is not null
-            ? given.Percent is decimal p ? (p, (long?)null, 0L) : ((decimal?)null, (long?)given.Discount, 0L)
-            : typed ? (l.DiscountRateBp / 100m, l.DiscountFixed ?? (l.DiscountRateBp is null ? 0 : null), 0L)
-            : ((decimal?)null, (long?)null, l.Discount);
+        var typed = l.DiscountRateBp is not null || l.DiscountFixed is not null || l.DiscountPieceFixed is not null;
+        var (pct, amount, piece, sum) = given is not null
+            ? given.Percent is decimal p ? (p, (long?)null, (long?)null, 0L) : ((decimal?)null, (long?)given.Discount, (long?)null, 0L)
+            : typed ? (l.DiscountRateBp / 100m,
+                l.DiscountFixed ?? (l.DiscountRateBp is null && l.DiscountPieceFixed is null ? 0 : null),
+                l.DiscountPieceFixed, 0L)
+            : ((decimal?)null, (long?)null, (long?)null, l.Discount);
         return new CreateInvoiceLineRequest(
             l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, sum,
             warehouseId, l.UnitId?.ToString(), l.IsBonus, DiscountPercent: pct, DiscountAmount: amount,
-            IncreasePercent: l.IncreaseRateBp / 100m, IncreaseAmount: l.IncreaseFixed);
+            IncreasePercent: l.IncreaseRateBp / 100m, IncreaseAmount: l.IncreaseFixed,
+            DiscountPerPiece: piece, IncreasePerPiece: l.IncreasePieceFixed);
     }
 
     /// <summary>
@@ -1499,18 +1505,20 @@ public sealed class SalesController : ControllerBase
                     ". Changing a price needs permission."));
         }
 
-        // ---- Each line's increase and discount (owner, 2026-11-19): the increase on its price first,
-        // then the discount on what that comes to; typed as a percent and/or an amount. A line with no
-        // discount typed keeps the one it is sent with (its quantity discount, or one kept from before).
+        // ---- Each line's increase and discount (owner, 2026-11-19), typed as a percent, an amount for the
+        // line and an amount a piece. Nothing compounds: both percents are of Quantity × UnitPrice, so they
+        // net out. A line with no discount typed keeps the one it is sent with (its quantity discount, or
+        // one kept from before).
         var increases = new long[resolved.Count];
         var lineDiscounts = new long[resolved.Count];
         for (var i = 0; i < resolved.Count; i++)
         {
             var line = resolved[i].Req;
             var gross = (long)line.Quantity * line.UnitPrice;
-            increases[i] = Adjust.Of(gross, line.IncreasePercent, line.IncreaseAmount);
+            var pieces = (long)resolved[i].BaseQty;
+            increases[i] = Adjust.Of(gross, line.IncreasePercent, line.IncreaseAmount, line.IncreasePerPiece, pieces);
             lineDiscounts[i] = Adjust.DiscountTyped(line)
-                ? Adjust.Of(gross + increases[i], line.DiscountPercent, line.DiscountAmount)
+                ? Adjust.Of(gross, line.DiscountPercent, line.DiscountAmount, line.DiscountPerPiece, pieces)
                 : line.Discount;
             if (lineDiscounts[i] > gross + increases[i])
                 return BadRequest(new { message = "A discount can't be more than the line's amount.", code = "bad_price" });
@@ -1548,6 +1556,11 @@ public sealed class SalesController : ControllerBase
                         discountChanged = true;
                         Need(Permissions.SalesDiscountLineAmount, "discount_line_amount_not_allowed", name);
                     }
+                    if (line.DiscountPerPiece is long dp && dp > 0 && same.All(b => b.DiscountPieceFixed != dp))
+                    {
+                        discountChanged = true;
+                        Need(Permissions.SalesDiscountLineAmount, "discount_line_amount_not_allowed", name);
+                    }
                 }
                 else if (line.Discount != 0 && line.Discount != priced[i].Discount
                          && !same.Any(b => b.Discount > 0
@@ -1560,6 +1573,8 @@ public sealed class SalesController : ControllerBase
                 if (Adjust.Bp(line.IncreasePercent) is int ip && ip > 0 && same.All(b => b.IncreaseRateBp != ip))
                     Need(Permissions.SalesIncreaseLinePct, "increase_line_pct_not_allowed", name);
                 if (line.IncreaseAmount is long ia && ia > 0 && same.All(b => b.IncreaseFixed != ia))
+                    Need(Permissions.SalesIncreaseLineAmount, "increase_line_amount_not_allowed", name);
+                if (line.IncreasePerPiece is long ip2 && ip2 > 0 && same.All(b => b.IncreasePieceFixed != ip2))
                     Need(Permissions.SalesIncreaseLineAmount, "increase_line_amount_not_allowed", name);
             }
             // The invoice's own, as a list per kind and way (a zero one is none).
@@ -1604,17 +1619,19 @@ public sealed class SalesController : ControllerBase
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
 
-        // The person's discount limit, when they change one: a line's own discount plus its share of the
-        // invoice discount, against what the line comes to with its increases. Increases don't count.
+        // The person's discount limit, when they change one: the net discount on a line — its own discount
+        // and its share of the invoice's, less its own increase and its share of the invoice's (they net
+        // out, owner 2026-11-19) — against Quantity × UnitPrice.
         if (discountChanged && Access.MaxDiscount(User) is int maxDiscount)
             for (var i = 0; i < resolved.Count; i++)
             {
                 var (line, product, _, _, _, _) = resolved[i];
                 if (line.IsBonus) continue;
-                var gross = (long)line.Quantity * line.UnitPrice + increases[i] + charges!.IncreaseAllocation[i];
+                var gross = (long)line.Quantity * line.UnitPrice;
                 // The quantity discount is the company's own rule: it doesn't count against the limit.
                 var automatic = !Adjust.DiscountTyped(line) && line.Discount == priced[i].Discount ? priced[i].Discount : 0;
-                if ((lineDiscounts[i] - automatic + charges.Allocation[i]) * 100 > gross * maxDiscount
+                var off = lineDiscounts[i] - automatic + charges!.Allocation[i] - increases[i] - charges.IncreaseAllocation[i];
+                if (off * 100 > gross * maxDiscount
                     && !Access.OverridePasses(User))
                     return InvoiceLines.Refuse(this, new("discount_over_limit",
                         $"{Loc.Name(product)}: the discount is more than your limit of {maxDiscount}%."));
@@ -1759,8 +1776,10 @@ public sealed class SalesController : ControllerBase
                 Increase = increases[i], DocIncrease = docIncrease,
                 IncreaseRateBp = Adjust.Bp(line.IncreasePercent) is > 0 ? Adjust.Bp(line.IncreasePercent) : null,
                 IncreaseFixed = line.IncreaseAmount is > 0 ? line.IncreaseAmount : null,
+                IncreasePieceFixed = line.IncreasePerPiece is > 0 ? line.IncreasePerPiece : null,
                 DiscountRateBp = typed && Adjust.Bp(line.DiscountPercent) is > 0 ? Adjust.Bp(line.DiscountPercent) : null,
                 DiscountFixed = typed && line.DiscountAmount is > 0 ? line.DiscountAmount : null,
+                DiscountPieceFixed = typed && line.DiscountPerPiece is > 0 ? line.DiscountPerPiece : null,
                 IsBonus = line.IsBonus, DocDiscount = docDiscount,
                 UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - docDiscount - lineCost,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,
