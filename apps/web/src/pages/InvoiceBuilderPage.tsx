@@ -2332,9 +2332,9 @@ export function InvoiceBuilderPage({
                         </div>
                       </div>
                       {!r.line.bonus && isOpen(r.line.key) && ADJ_KEYS.some((k) => may.line[k]) && (
-                        <div className="mt-2 grid grid-cols-2 gap-2">
+                        <div className="mt-2 grid grid-cols-3 gap-2">
                           {ADJ_KEYS.filter((k) => may.line[k]).map((k) => (
-                            <label key={k} className="block">
+                            <label key={k} className="flex flex-col justify-end">
                               <span className="mb-0.5 block text-xs text-muted">
                                 {t(ADJ_LABEL[k])}
                               </span>
