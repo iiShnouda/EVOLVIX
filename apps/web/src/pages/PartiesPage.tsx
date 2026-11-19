@@ -568,6 +568,19 @@ function PartyCard({ party, onEdit }: { party: Party; onEdit?: () => void }) {
         </Button>
       )}
 
+      {/* An order to this factory, and its orders (owner, 2026-11-18). */}
+      {party.types.includes('SUPPLIER') && can('purchase_orders:create') && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon="plus"
+          className="mt-2"
+          onClick={() => navigate(`/purchase-orders/new?supplier=${party.id}`)}
+        >
+          {t('po.new')}
+        </Button>
+      )}
+
       {(party.hasIdFront || party.hasIdBack) &&
         (can('parties:id_cards_view') || can('parties:id_cards_edit')) && (
           <Button size="sm" variant="ghost" className="mt-2" onClick={() => setIdCard(true)}>

@@ -122,6 +122,8 @@ export const purchaseLineSchema = z.object({
   isBonus: z.boolean().optional(),
   /** The supplier's discount on the whole line (minor units). */
   discount: z.number().int().min(0).optional(),
+  /** The purchase order line it receives (owner, 2026-11-18). */
+  orderLineId: z.string().uuid().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -147,6 +149,8 @@ export const createPurchaseInvoiceSchema = z.object({
   /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
   shippingCost: z.number().int().min(0).optional(),
   shippingAccountId: z.string().uuid().optional(),
+  /** The purchase order it receives goods of (needs purchase_orders:receive). */
+  purchaseOrderId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 

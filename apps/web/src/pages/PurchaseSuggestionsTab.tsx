@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   departmentFitsSeason,
   formatMoney,
@@ -15,6 +15,8 @@ import { useT } from '../lib/i18n';
 import { useReportTools } from '../lib/report';
 import { useDepartments, usePurchaseSuggestions, useSeasons } from '../lib/queries';
 import { useAuth } from '../stores/auth';
+import { useCan } from '../lib/can';
+import { Icon } from '../components/Icon';
 
 const small =
   'h-9 min-w-0 rounded-[var(--radius-app)] border border-line bg-surface px-2 text-sm outline-none focus:border-brand';
@@ -26,6 +28,8 @@ const small =
  */
 export function PurchaseSuggestionsTab() {
   const { t, locale } = useT();
+  // An order to the factory straight from here (owner, 2026-11-18).
+  const canOrder = useCan()('purchase_orders:create');
   const [q, setQ] = useState<PurchaseSuggestionsQuery>({ days: 30, target: 30, all: false });
   const set = (patch: Partial<PurchaseSuggestionsQuery>) => setQ((x) => ({ ...x, ...patch }));
   const [params, setParams] = useSearchParams();
@@ -237,6 +241,16 @@ export function PurchaseSuggestionsTab() {
                     {g.code && <span className="me-1 text-xs text-faint tnum">{g.code}</span>}
                     {supplierLabel(g)}
                   </h3>
+                  {canOrder && g.id !== 'none' && (
+                    <Link
+                      data-noprint
+                      to={`/purchase-orders/new?supplier=${g.id}&suggested=1&days=${q.days}&target=${q.target}`}
+                      className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline print:hidden"
+                    >
+                      <Icon name="plus" size={16} />
+                      {t('po.makeOrder')}
+                    </Link>
+                  )}
                   <p className="text-sm text-muted">
                     {t('assort.items')}: <span className="tnum">{n(g.items)}</span> ·{' '}
                     {t('buy.suggested')}:{' '}

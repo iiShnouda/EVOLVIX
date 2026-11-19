@@ -50,6 +50,8 @@ import { AssistantPage } from './pages/AssistantPage';
 import { ProductEditorPage } from './pages/ProductEditorPage';
 import { BulkPricesPage } from './pages/BulkPricesPage';
 import { AddItemsPage } from './pages/AddItemsPage';
+import { PurchaseOrderPage, PurchaseOrdersPage } from './pages/PurchaseOrdersPage';
+import { PurchaseOrderEditorPage } from './pages/PurchaseOrderEditorPage';
 import { useCan } from './lib/can';
 import { ModelsPage } from './pages/ModelsPage';
 import { ModelEditorPage } from './pages/ModelEditorPage';
@@ -302,6 +304,16 @@ function EditTransferRoute() {
   return <TransferBuilderPage key={`edit-${id}`} editId={id} />;
 }
 
+/** A purchase order, and changing one (owner, 2026-11-18). */
+function PurchaseOrderRoute() {
+  const { id } = useParams();
+  return <PurchaseOrderPage key={id} />;
+}
+function EditPurchaseOrderRoute() {
+  const { id } = useParams();
+  return <PurchaseOrderEditorPage key={`edit-${id}`} editId={id} />;
+}
+
 /** Changing a saved sales invoice opens the invoice screen on it (owner, 2026-10-01). */
 function EditSalesInvoiceRoute() {
   const { id } = useParams();
@@ -355,6 +367,10 @@ const routes = createRoutesFromElements(
         path="/purchases/returns/new"
         element={<ReturnBuilderPage key="new" scope="purchases" />}
       />
+      <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+      <Route path="/purchase-orders/new" element={<PurchaseOrderEditorPage key="new" />} />
+      <Route path="/purchase-orders/:id" element={<PurchaseOrderRoute />} />
+      <Route path="/purchase-orders/:id/edit" element={<EditPurchaseOrderRoute />} />
       <Route path="/receipts" element={<MoneyPage />} />
       <Route path="/receipts/move" element={<CashMovePage />} />
       <Route path="/handovers" element={<HandoversPage />} />
