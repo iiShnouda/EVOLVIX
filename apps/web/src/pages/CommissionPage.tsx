@@ -153,7 +153,6 @@ function ReportTab() {
     if (ok) toPayroll.mutate({ repId: r.repId, year, month });
   }
 
-
   /** Adding a rep's commission to their payroll, or where it stands. */
   const payrollCell = (r: CommissionRow) =>
     !r.employeeId ? (
