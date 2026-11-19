@@ -105,7 +105,8 @@ console.log('== a pending invoice');
 const before = { stock: await stock(), balance: await balance() };
 eq(
   'no invoice increase while saving it, without the permission (owner, 2026-11-19)',
-  (await rep.post('/sales/orders', body(6, { charges: [{ kind: 'INCREASE', percent: 5 }] }))).data?.code,
+  (await rep.post('/sales/orders', body(6, { charges: [{ kind: 'INCREASE', percent: 5 }] }))).data
+    ?.code,
   'increase_pct_not_allowed',
 );
 const saved = ok(

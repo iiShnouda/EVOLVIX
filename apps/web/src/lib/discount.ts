@@ -8,7 +8,10 @@ export type LineDiscountMode = 'percent' | 'piece' | 'amount';
  * sales:discount_line_pct, an amount (a piece's or the line's) with sales:discount_line_amount.
  */
 export function lineDiscountModes(pct: boolean, amount: boolean): LineDiscountMode[] {
-  return [...(pct ? (['percent'] as const) : []), ...(amount ? (['piece', 'amount'] as const) : [])];
+  return [
+    ...(pct ? (['percent'] as const) : []),
+    ...(amount ? (['piece', 'amount'] as const) : []),
+  ];
 }
 
 /**

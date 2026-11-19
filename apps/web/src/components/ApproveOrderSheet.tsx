@@ -38,7 +38,10 @@ export function ApproveOrderSheet({
   const maxDiscount = useAuth((s) => s.user?.maxDiscountPercent ?? null);
   // Each kind and way of discount is its own permission (owner, 2026-10-24, 2026-11-19).
   const canDiscount = can('sales:discount_pct');
-  const lineModes = lineDiscountModes(can('sales:discount_line_pct'), can('sales:discount_line_amount'));
+  const lineModes = lineDiscountModes(
+    can('sales:discount_line_pct'),
+    can('sales:discount_line_amount'),
+  );
   const canLineDiscount = lineModes.length > 0;
   const money = (v: number) => formatMoney(v, order.currency, locale);
 
@@ -199,7 +202,10 @@ export function ApproveOrderSheet({
                             onChange={(ev) =>
                               setEdits((s) => ({
                                 ...s,
-                                [l.id]: { mode: e?.mode ?? lineModes.at(-1)!, value: ev.target.value },
+                                [l.id]: {
+                                  mode: e?.mode ?? lineModes.at(-1)!,
+                                  value: ev.target.value,
+                                },
                               }))
                             }
                           />

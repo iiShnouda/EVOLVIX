@@ -656,10 +656,14 @@ export function InvoiceBuilderPage({
     );
   };
   // The invoice's increase, then its discount, each a percent and/or an amount (in that order).
-  if (pctOf(invoiceAdj.iPct) > 0) chargeInputs.push({ kind: 'INCREASE', percent: pctOf(invoiceAdj.iPct) });
-  if (amtOf(invoiceAdj.iAmt) > 0) chargeInputs.push({ kind: 'INCREASE', amount: amtOf(invoiceAdj.iAmt) });
-  if (pctOf(invoiceAdj.dPct) > 0) chargeInputs.push({ kind: 'DISCOUNT', percent: pctOf(invoiceAdj.dPct) });
-  if (amtOf(invoiceAdj.dAmt) > 0) chargeInputs.push({ kind: 'DISCOUNT', amount: amtOf(invoiceAdj.dAmt) });
+  if (pctOf(invoiceAdj.iPct) > 0)
+    chargeInputs.push({ kind: 'INCREASE', percent: pctOf(invoiceAdj.iPct) });
+  if (amtOf(invoiceAdj.iAmt) > 0)
+    chargeInputs.push({ kind: 'INCREASE', amount: amtOf(invoiceAdj.iAmt) });
+  if (pctOf(invoiceAdj.dPct) > 0)
+    chargeInputs.push({ kind: 'DISCOUNT', percent: pctOf(invoiceAdj.dPct) });
+  if (amtOf(invoiceAdj.dAmt) > 0)
+    chargeInputs.push({ kind: 'DISCOUNT', amount: amtOf(invoiceAdj.dAmt) });
   pushDiscount('EXTRA_DISCOUNT', discount2);
   if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
   const outcome = applyCharges(
@@ -901,7 +905,9 @@ export function InvoiceBuilderPage({
                   : undefined,
               adj:
                 l.adj && typeof l.adj === 'object'
-                  ? (Object.fromEntries(ADJ_KEYS.map((k) => [k, text(l.adj?.[k])])) as unknown as Adj)
+                  ? (Object.fromEntries(
+                      ADJ_KEYS.map((k) => [k, text(l.adj?.[k])]),
+                    ) as unknown as Adj)
                   : undefined,
             },
           ];
@@ -1394,7 +1400,7 @@ export function InvoiceBuilderPage({
       )}
       {r.docIncrease > 0 && (
         <span>
-          {t('charge.INCREASE')}: +{formatMoney(r.docIncrease, currency, locale)}
+          {t('invoice.shareIncrease')}: +{formatMoney(r.docIncrease, currency, locale)}
         </span>
       )}
       {r.docDiscount > 0 && (
@@ -1479,34 +1485,40 @@ export function InvoiceBuilderPage({
     if (boxes.length === 0 && amount === 0) return null;
     const rate = pctOf(invoiceAdj[pk]);
     return (
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <dt className="min-w-0 text-muted">
-          {t(kind === 'i' ? 'charge.INCREASE' : 'charge.DISCOUNT')}
-          {boxes.length === 0 && rate > 0 ? ` (${formatNumber(rate, locale)}%)` : ''}
-        </dt>
-        <dd className="flex shrink-0 items-center gap-1">
-          {amount > 0 && (
-            <span className={`text-xs tnum ${kind === 'i' ? 'text-positive' : 'text-warning'}`}>
-              {kind === 'i' ? '+' : '−'}
-              {formatMoney(amount, currency, locale)}
-            </span>
-          )}
-          {boxes.map((k) => (
-            <input
-              key={k}
-              type="number"
-              min={0}
-              max={k === pk ? 100 : undefined}
-              step="0.01"
-              inputMode="decimal"
-              className={`${field} !h-8 ${k === pk ? '!w-16' : '!w-20'} tnum`}
-              aria-label={t(ADJ_LABEL[k as keyof Adj])}
-              placeholder={k === pk ? '%' : currency}
-              value={invoiceAdj[k as keyof Adj]}
-              onChange={(e) => setInvoiceAdj((v) => ({ ...v, [k]: e.target.value }))}
-            />
-          ))}
-        </dd>
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <dt className="min-w-0 text-muted">
+            {t(kind === 'i' ? 'charge.INCREASE' : 'charge.DISCOUNT')}
+            {boxes.length === 0 && rate > 0 ? ` (${formatNumber(rate, locale)}%)` : ''}
+          </dt>
+          <dd
+            className={`tnum ${amount > 0 ? (kind === 'i' ? 'text-positive' : 'text-warning') : 'text-faint'}`}
+          >
+            {kind === 'i' ? '+' : '−'}
+            {formatMoney(amount, currency, locale)}
+          </dd>
+        </div>
+        {boxes.length > 0 && (
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            {boxes.map((k) => (
+              <label key={k} className="flex min-w-0 items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={k === pk ? 100 : undefined}
+                  step="0.01"
+                  inputMode="decimal"
+                  className={`${field} !h-8 min-w-0 tnum`}
+                  aria-label={t(ADJ_LABEL[k as keyof Adj])}
+                  placeholder="0"
+                  value={invoiceAdj[k as keyof Adj]}
+                  onChange={(e) => setInvoiceAdj((v) => ({ ...v, [k]: e.target.value }))}
+                />
+                <span className="shrink-0 text-xs text-muted">{k === pk ? '%' : currency}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -2281,20 +2293,18 @@ export function InvoiceBuilderPage({
                           </div>
                         </div>
                       </div>
-                      {!r.line.bonus &&
-                        isOpen(r.line.key) &&
-                        ADJ_KEYS.some((k) => may.line[k]) && (
-                          <div className="mt-2 grid grid-cols-2 gap-2">
-                            {ADJ_KEYS.filter((k) => may.line[k]).map((k) => (
-                              <label key={k} className="block">
-                                <span className="mb-0.5 block text-xs text-muted">
-                                  {t(ADJ_LABEL[k])}
-                                </span>
-                                {adjBox(r, k, `${field} tnum`)}
-                              </label>
-                            ))}
-                          </div>
-                        )}
+                      {!r.line.bonus && isOpen(r.line.key) && ADJ_KEYS.some((k) => may.line[k]) && (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {ADJ_KEYS.filter((k) => may.line[k]).map((k) => (
+                            <label key={k} className="block">
+                              <span className="mb-0.5 block text-xs text-muted">
+                                {t(ADJ_LABEL[k])}
+                              </span>
+                              {adjBox(r, k, `${field} tnum`)}
+                            </label>
+                          ))}
+                        </div>
+                      )}
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
                         {lineNotes(r)}
                         {lineDiscountCell(r)}

@@ -2411,6 +2411,7 @@ export const ar: TranslationDictionary = {
   'stage.addOne': 'إضافة',
   'stage.addAll': 'إضافة الكل إلى الفاتورة',
   'invoice.overStock': 'كمية أكبر من رصيد أحد الأصناف',
+  'invoice.shareIncrease': 'زيادة الفاتورة',
   'invoice.lineEdit': 'تعديل هذا الصنف',
   'invoice.lineDone': 'إنهاء التعديل',
   'invoice.notReady': 'لم تُحفظ بعد. المطلوب:',

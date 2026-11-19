@@ -2422,6 +2422,7 @@ export const en = {
   'stage.addOne': 'Add',
   'stage.addAll': 'Add all to invoice',
   'invoice.overStock': 'More than the stock of an item',
+  'invoice.shareIncrease': 'Invoice increase',
   'invoice.lineEdit': 'Change this item',
   'invoice.lineDone': 'Done changing',
   'invoice.notReady': 'Not saved yet. Still needed:',

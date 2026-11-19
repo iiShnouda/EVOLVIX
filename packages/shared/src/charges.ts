@@ -10,12 +10,7 @@
  */
 
 export type ChargeKind =
-  | 'INCREASE'
-  | 'DISCOUNT'
-  | 'EXTRA_DISCOUNT'
-  | 'TAX'
-  | 'OTHER_TAX'
-  | 'ADDITION';
+  'INCREASE' | 'DISCOUNT' | 'EXTRA_DISCOUNT' | 'TAX' | 'OTHER_TAX' | 'ADDITION';
 
 export const CHARGE_ORDER: ChargeKind[] = [
   'INCREASE',
