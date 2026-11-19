@@ -127,7 +127,10 @@ export function LockScreen() {
         )}
 
         {error && (
-          <p role="alert" className="rounded-[var(--radius-app)] bg-destructive-soft px-3 py-2 text-sm text-destructive">
+          <p
+            role="alert"
+            className="rounded-[var(--radius-app)] bg-destructive-soft px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </p>
         )}

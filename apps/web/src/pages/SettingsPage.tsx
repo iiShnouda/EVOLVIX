@@ -570,7 +570,9 @@ export function SettingsPage() {
             >
               {[...new Set([1, 7, 14, 30, 60, 90, form.rememberDays ?? 30, 0])].map((d) => (
                 <option key={d} value={d}>
-                  {d === 0 ? t('settings.rememberOff') : t('settings.rememberN').replace('{n}', String(d))}
+                  {d === 0
+                    ? t('settings.rememberOff')
+                    : t('settings.rememberN').replace('{n}', String(d))}
                 </option>
               ))}
             </select>

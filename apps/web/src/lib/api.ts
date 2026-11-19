@@ -61,7 +61,8 @@ function lockSession(lock: LockInfo, tell = true): void {
 }
 
 /** The app's other tabs in this browser: one locking locks them all. */
-const lockChannel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('skb-lock');
+const lockChannel =
+  typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('skb-lock');
 if (lockChannel)
   lockChannel.onmessage = (e: MessageEvent<LockInfo>) => {
     if (useAuth.getState().status === 'authenticated' && typeof e.data?.name === 'string')

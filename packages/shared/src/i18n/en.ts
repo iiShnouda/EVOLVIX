@@ -1879,7 +1879,8 @@ export const en = {
   'error.po_not_found': 'Purchase order not found.',
   'error.po_closed': 'This order is already received or cancelled.',
   'error.po_other_supplier': 'This order is to another supplier.',
-  'error.po_other_branch': 'This order belongs to another branch: work in its branch to receive it.',
+  'error.po_other_branch':
+    'This order belongs to another branch: work in its branch to receive it.',
   'error.po_line_not_found': 'An item is not on the order.',
   'error.po_line_other_item': 'Another item was ordered on this line.',
   'error.po_nothing_received': 'Nothing on the invoice is from the order.',

@@ -158,7 +158,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'view',
-        permissions: ['purchase_orders:view', 'purchase_orders:print', 'purchase_orders:pdf', 'purchase_orders:export'],
+        permissions: [
+          'purchase_orders:view',
+          'purchase_orders:print',
+          'purchase_orders:pdf',
+          'purchase_orders:export',
+        ],
       },
       {
         key: 'actions',
