@@ -183,6 +183,10 @@
         {
           "ar": "الزيادة بتطلع في الطباعة كزيادة في السعر، والخصم كخصم",
           "en": "An increase prints as a price increase and a discount as a discount"
+        },
+        {
+          "ar": "رجعنا خانة «خصم على الحتة» في شاشة الفاتورة، وكمان «زيادة على الحتة» جنبها",
+          "en": "The invoice screen has its \"discount per piece\" box back, with an \"increase per piece\" box beside it"
         }
       ],
       "fixes": [
@@ -229,6 +233,14 @@
         {
           "ar": "صلاحية خصم الفاتورة وخصم الصنف بقت اتنين: بالنسبة وبالمبلغ (اللي كان معاه القديمة معاه الاتنين)",
           "en": "The invoice and item discount permissions are now two each, percent and amount (whoever had the old one has both)"
+        },
+        {
+          "ar": "الزيادة والخصم مبقوش يتحسبوا فوق بعض: النسبتين من نفس المبلغ ويتقاصّوا (زيادة 10% و2 جنيه وخصم 5% وجنيه على 200 = 211)",
+          "en": "Increases and discounts no longer compound: both percents come from the same amount and net out (+10% +2.00 −5% −1.00 on 200.00 = 211.00)"
+        },
+        {
+          "ar": "حد الخصم بقى على صافي الخصم بعد الزيادة",
+          "en": "The discount limit counts the net discount after increases"
         }
       ]
     },
