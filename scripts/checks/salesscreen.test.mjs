@@ -208,8 +208,8 @@ const editor = async (name, permissions, max) => {
   return login(`scr.${name}.${tag}@skb.local`, PASS);
 };
 const plain = await editor('plain', []);
-const liner = await editor('liner', ['sales:discount_line'], 10);
-const giver = await editor('giver', ['sales:discount'], 10);
+const liner = await editor('liner', ['sales:discount_line_pct', 'sales:discount_line_amount'], 10);
+const giver = await editor('giver', ['sales:discount_pct', 'sales:discount_amount'], 10);
 const d0 = ok(
   'an invoice: 10 of B at 10.00',
   await owner.post('/sales/invoices', sale([line(b, 10)])),
@@ -220,22 +220,22 @@ const off = (discount, quantity = 10) => [{ ...line(b, quantity), discount }];
 eq(
   'no discount permission: a line discount is refused',
   (await put(plain, off(500))).data?.code,
-  'discount_not_allowed',
+  'discount_line_amount_not_allowed',
 );
 eq(
   '…and an invoice discount',
   (await put(plain, off(0), [{ kind: 'DISCOUNT', percent: 5 }])).data?.code,
-  'discount_not_allowed',
+  'discount_pct_not_allowed',
 );
 eq(
   'the invoice-discount permission does not give line discounts',
   (await put(giver, off(500))).data?.code,
-  'discount_not_allowed',
+  'discount_line_amount_not_allowed',
 );
 eq(
   'the line-discount permission does not give invoice discounts',
   (await put(liner, off(0), [{ kind: 'DISCOUNT', percent: 5 }])).data?.code,
-  'discount_not_allowed',
+  'discount_pct_not_allowed',
 );
 eq(
   'over the person’s limit is refused',
@@ -262,7 +262,7 @@ eq('…taken off', [g1.discountTotal, g1.grandTotal], [440, 4560]);
 eq(
   'someone without it cannot remove it',
   (await put(plain, off(250, 5))).data?.code,
-  'discount_not_allowed',
+  'discount_pct_not_allowed',
 );
 ok(
   '…but keeps it while changing the items',
@@ -273,9 +273,9 @@ eq('…gone', [g2.charges.filter((c) => c.kind === 'DISCOUNT').length, g2.grandT
 const l2 = ok('the line discount removed', await put(liner, off(0, 6)));
 eq('…none left', [l2.discountTotal, l2.grandTotal], [0, 6000]);
 eq(
-  'a new invoice still takes no discount',
-  (await owner.post('/sales/invoices', sale(off(500)))).data?.code,
-  'discount_on_customer_invoices',
+  'a new invoice takes a discount from whoever may give it (owner, 2026-11-19)',
+  (await liner.post('/sales/invoices', sale(off(500)))).data?.lines?.[0]?.discount,
+  500,
 );
 eq('the changes are edits', (await owner.get(`/sales/invoices/${d0.id}`)).data.edited, true);
 

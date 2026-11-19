@@ -88,7 +88,7 @@ ok(
 ok(
   '…saving pending invoices, and discounting items on the customer’s invoices',
   await owner.put(`/staff/${repP.id}/permissions`, {
-    granted: ['sales:discount_line', 'sales:order'],
+    granted: ['sales:discount_line_pct', 'sales:discount_line_amount', 'sales:order'],
   }),
 );
 const rep = await login(repP.email, PASS);
@@ -104,9 +104,9 @@ check('the accountant approves', acc.user.permissions.includes('sales:approve'))
 console.log('== a pending invoice');
 const before = { stock: await stock(), balance: await balance() };
 eq(
-  'no discount while saving it (owner, 2026-10-24)',
-  (await rep.post('/sales/orders', body(6, {}, { discount: 300 }))).data?.code,
-  'discount_on_customer_invoices',
+  'no invoice increase while saving it, without the permission (owner, 2026-11-19)',
+  (await rep.post('/sales/orders', body(6, { charges: [{ kind: 'INCREASE', percent: 5 }] }))).data?.code,
+  'increase_pct_not_allowed',
 );
 const saved = ok(
   'rep saves 6 coats with a note',
