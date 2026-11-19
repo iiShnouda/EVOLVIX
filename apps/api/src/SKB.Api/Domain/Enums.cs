@@ -106,6 +106,7 @@ public enum ChargeKind
     TAX,            // VAT (ضريبة القيمة المضافة)
     OTHER_TAX,      // another tax, e.g. a table tax
     ADDITION,       // زيادات أخرى, e.g. a delivery fee — not revenue, not cost
+    INCREASE,       // زيادة على الفاتورة (sales only): sales, applied first, before the discounts
 }
 
 /// <summary>How the goods of a sale reach the customer (DOMAIN.md §2.5).</summary>

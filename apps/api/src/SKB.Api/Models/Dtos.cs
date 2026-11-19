@@ -71,7 +71,8 @@ public record DocumentLineDto(
     long UnitCost, long LineProfit, int ReturnedQuantity, string? WarehouseId, string? WarehouseName,
     string? UnitId, string UnitName, int UnitFactor, int UnitQuantity, long LineCost, string BaseUnitName,
     bool IsBonus, long DocDiscount, string? ProductCode = null, string? Reason = null, string? ReasonNote = null,
-    string? Damaged = null);
+    string? Damaged = null, long Increase = 0, long DocIncrease = 0, decimal? IncreaseRate = null,
+    long? IncreaseFixed = null, decimal? DiscountRate = null, long? DiscountFixed = null);
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
@@ -144,9 +145,15 @@ public record RejectOrderRequest(string? Reason);
 // IsBonus: free goods, sent with price / cost 0.
 
 /// <param name="PriceBasis">This line's basis (LIST, LAST or COST); none = the invoice's (owner, 2026-10-01).</param>
+/// <param name="Discount">The line's discount as one amount (a quantity discount, or one kept from before).</param>
+/// <param name="DiscountPercent">The discount typed as a percent of the line after its increase (owner, 2026-11-19).</param>
+/// <param name="DiscountAmount">The discount typed as an amount for the line. With either, <paramref name="Discount"/> is ignored.</param>
+/// <param name="IncreasePercent">An increase as a percent of Quantity × UnitPrice.</param>
+/// <param name="IncreaseAmount">An increase as an amount for the line.</param>
 public record CreateInvoiceLineRequest(
     string ProductId, int Quantity, long UnitPrice, long Discount = 0, string? WarehouseId = null,
-    string? UnitId = null, bool IsBonus = false, string? PriceBasis = null);
+    string? UnitId = null, bool IsBonus = false, string? PriceBasis = null, decimal? DiscountPercent = null,
+    long? DiscountAmount = null, decimal? IncreasePercent = null, long? IncreaseAmount = null);
 
 /// <param name="Percent">A rate (14 = 14%, up to 2 decimals); give this or Amount.</param>
 /// <param name="Amount">A fixed amount in minor units; give this or Percent.</param>
@@ -192,7 +199,8 @@ public record AccountDocumentDto(
     long GrandTotal, long PaidAmount, long Outstanding, string? Notes, string? SourceNumber);
 
 /// <summary>A line's discount (minor units, for the whole line).</summary>
-public record LineDiscountRequest(string? LineId, long Discount);
+/// <param name="Percent">The discount as a percent of the line (its own permission); else <paramref name="Discount"/>, an amount.</param>
+public record LineDiscountRequest(string? LineId, long Discount, decimal? Percent = null);
 
 /// <summary>
 /// Turning a quotation into an invoice: its lines, prices and charges come from the quotation; this

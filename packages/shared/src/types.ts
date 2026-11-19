@@ -95,8 +95,14 @@ export type Permission =
   | 'sales:choose_price_level'
   | 'sales:price_basis'
   | 'sales:override_floor'
-  | 'sales:discount'
-  | 'sales:discount_line'
+  | 'sales:discount_pct'
+  | 'sales:discount_amount'
+  | 'sales:discount_line_pct'
+  | 'sales:discount_line_amount'
+  | 'sales:increase_pct'
+  | 'sales:increase_amount'
+  | 'sales:increase_line_pct'
+  | 'sales:increase_line_amount'
   | 'sales:discount_combined'
   | 'sales:bonus'
   | 'sales:change_tax'
@@ -846,8 +852,20 @@ export interface DocumentLine {
   unitPrice: number;
   /** Line discount in minor units. */
   discount: number;
-  /** quantity * unitPrice - discount (+ tax), in minor units. */
+  /**
+   * unitQuantity * unitPrice + increase + docIncrease - discount, in minor units: what the line comes
+   * to with its own increase and its share of the invoice's increase (owner, 2026-11-19).
+   */
   lineTotal: number;
+  /** The line's own increase (a sale's), for the whole line, minor units. */
+  increase?: number;
+  /** Its share of the invoice's increase, minor units (in `lineTotal`). */
+  docIncrease?: number;
+  /** The increase and discount as typed: a percent and an amount for the line. */
+  increaseRate?: number | null;
+  increaseFixed?: number | null;
+  discountRate?: number | null;
+  discountFixed?: number | null;
   /** Weighted-average cost of one base unit at posting time, minor units. */
   unitCost: number;
   /** Exact cost of the whole line, minor units. */
@@ -3186,7 +3204,8 @@ export interface ApproveOrderInput {
   paidAmount: number;
   paidAccountId?: string;
   /** New discount per line (minor units, the whole line); lines left out keep theirs. */
-  lineDiscounts?: { lineId: string; discount: number }[];
+  /** A line's new discount: an amount for the line, or a `percent` of it (each its own permission). */
+  lineDiscounts?: { lineId: string; discount: number; percent?: number }[];
   /** New invoice discounts (DISCOUNT / EXTRA_DISCOUNT); left out = keep them. */
   charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
   notes?: string;
@@ -3198,7 +3217,8 @@ export interface ApproveOrderInput {
  * invoice's items — each line named and its discount (minor units, the whole line; 0 = none).
  */
 export interface SetLineDiscountsInput {
-  lines: { lineId: string; discount: number }[];
+  /** An amount for the line, or a `percent` of it (each its own permission; owner, 2026-11-19). */
+  lines: { lineId: string; discount: number; percent?: number }[];
 }
 
 /** One department's share of a customer's account (departmentId null = no department). */

@@ -823,11 +823,29 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Discount")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("DiscountFixed")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("DiscountRateBp")
+                        .HasColumnType("integer");
+
                     b.Property<long>("DocDiscount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DocIncrease")
                         .HasColumnType("bigint");
 
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
+
+                    b.Property<long>("Increase")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("IncreaseFixed")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("IncreaseRateBp")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsBonus")
                         .HasColumnType("boolean");

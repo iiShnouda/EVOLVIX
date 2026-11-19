@@ -4,6 +4,14 @@ import { toMinor } from '@skb/shared';
 export type LineDiscountMode = 'percent' | 'piece' | 'amount';
 
 /**
+ * The ways this person may type a line's discount (owner, 2026-11-19): a percent with
+ * sales:discount_line_pct, an amount (a piece's or the line's) with sales:discount_line_amount.
+ */
+export function lineDiscountModes(pct: boolean, amount: boolean): LineDiscountMode[] {
+  return [...(pct ? (['percent'] as const) : []), ...(amount ? (['piece', 'amount'] as const) : [])];
+}
+
+/**
  * A line discount in minor units, never more than the line (`gross`) is worth. "A piece" is the
  * item's smallest unit («على الحتة»): `pieces` is how many of them the line holds.
  */

@@ -38,8 +38,9 @@ public sealed class SalesController : ControllerBase
 
     [HttpGet("invoices")]
     [AnyPermission(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel, Permissions.SalesLock,
-        Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesDiscount,
-        Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined)]
+        Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesDiscountPct,
+        Permissions.SalesDiscountAmount, Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount,
+        Permissions.SalesDiscountCombined)]
     public Task<ActionResult<DocumentListDto>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null, [FromQuery] string? status = null,
@@ -180,7 +181,8 @@ public sealed class SalesController : ControllerBase
         {
             DocumentType.SALES_INVOICE => User.HasAny(Permissions.SalesView, Permissions.SalesEdit, Permissions.SalesCancel,
                     Permissions.SalesLock, Permissions.SalesReturn, Permissions.SalesApprove, Permissions.SalesReject,
-                    Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
+                    Permissions.SalesDiscountPct, Permissions.SalesDiscountAmount,
+                    Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount, Permissions.SalesDiscountCombined,
                     Permissions.SalesTogether, Permissions.StatementCustomers)
                 || (mine && User.HasAny(Permissions.SalesCreate, Permissions.SalesOrder)),
             DocumentType.SALES_RETURN => User.HasAny(Permissions.SalesReturnsView, Permissions.SalesReturnCancel,
@@ -189,7 +191,8 @@ public sealed class SalesController : ControllerBase
             // Quotations are gone (owner, 2026-10-01); an old one is read with the sales list.
             DocumentType.QUOTATION => User.Has(Permissions.SalesView),
             DocumentType.SALES_ORDER => User.HasAny(Permissions.SalesView, Permissions.SalesApprove, Permissions.SalesReject,
-                    Permissions.SalesDiscount, Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined,
+                    Permissions.SalesDiscountPct, Permissions.SalesDiscountAmount,
+                    Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount, Permissions.SalesDiscountCombined,
                     Permissions.SalesTogether)
                 || (mine && User.Has(Permissions.SalesOrder)),
             _ => false,
@@ -257,7 +260,8 @@ public sealed class SalesController : ControllerBase
     /// whoever prints them and whoever gives any kind of discount, which is given only here.
     /// </summary>
     [HttpGet("customers/{partyId:guid}/invoices")]
-    [AnyPermission(Permissions.SalesTogether, Permissions.SalesDiscount, Permissions.SalesDiscountLine,
+    [AnyPermission(Permissions.SalesTogether, Permissions.SalesDiscountPct, Permissions.SalesDiscountAmount,
+        Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount,
         Permissions.SalesDiscountCombined)]
     public async Task<ActionResult<CustomerInvoicesDto>> CustomerInvoices(Guid partyId, [FromQuery] string? from = null,
         [FromQuery] string? to = null)
@@ -324,13 +328,24 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     [HttpPost("invoices/{id:guid}/discount")]
     [HttpPost("orders/{id:guid}/discount")]
-    [Authorize(Policy = Permissions.SalesDiscount)]
+    [AnyPermission(Permissions.SalesDiscountPct, Permissions.SalesDiscountAmount)]
     public Task<ActionResult<SalesDetailDto>> SetDiscount(Guid id, [FromBody] SetInvoiceDiscountRequest req)
     {
         var kind = string.Equals(req.Kind, nameof(ChargeKind.EXTRA_DISCOUNT), StringComparison.OrdinalIgnoreCase)
             ? ChargeKind.EXTRA_DISCOUNT : ChargeKind.DISCOUNT;
+        // A percent and an amount are each their own permission (owner, 2026-11-19); so is taking off
+        // the one it has.
         return DiscountOneAsync(id, async doc =>
-            CheckDiscountTarget(doc) ?? await DiscountAsync(doc, kind, req.Percent, req.Amount, null));
+        {
+            var had = doc.Charges.Where(c => c.Kind == kind && c.Amount > 0).ToList();
+            var pct = req.Percent is > 0 || (req.Amount is not > 0 && had.Any(c => c.RateBp is not null));
+            var amount = req.Percent is not > 0 && (req.Amount is > 0 || had.Any(c => c.RateBp is null));
+            if (pct && !Can(Permissions.SalesDiscountPct))
+                return InvoiceLines.Refuse(this, new("discount_pct_not_allowed", "A discount as a percent needs permission."));
+            if (amount && !Can(Permissions.SalesDiscountAmount))
+                return InvoiceLines.Refuse(this, new("discount_amount_not_allowed", "A discount as an amount needs permission."));
+            return CheckDiscountTarget(doc) ?? await DiscountAsync(doc, kind, req.Percent, req.Amount, null);
+        });
     }
 
     /// <summary>
@@ -340,16 +355,16 @@ public sealed class SalesController : ControllerBase
     /// </summary>
     [HttpPost("invoices/{id:guid}/line-discounts")]
     [HttpPost("orders/{id:guid}/line-discounts")]
-    [Authorize(Policy = Permissions.SalesDiscountLine)]
+    [AnyPermission(Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount)]
     public Task<ActionResult<SalesDetailDto>> SetLineDiscounts(Guid id, [FromBody] SetLineDiscountsRequest req) =>
         DiscountOneAsync(id, async doc =>
         {
-            var discounts = new Dictionary<Guid, long>();
+            var discounts = new Dictionary<Guid, LineDiscountRequest>();
             foreach (var d in req.Lines ?? [])
             {
                 if (!Guid.TryParse(d.LineId, out var lineId) || doc.Lines.All(l => l.Id != lineId))
                     return BadRequest(new { message = "A line was not found on the invoice.", code = "line_not_found" });
-                discounts[lineId] = d.Discount;
+                discounts[lineId] = d;
             }
             if (discounts.Count == 0) return BadRequest(new { message = "Choose the items.", code = "line_not_found" });
             return CheckDiscountTarget(doc) ?? await DiscountAsync(doc, null, null, null, discounts);
@@ -463,7 +478,7 @@ public sealed class SalesController : ControllerBase
     /// discounts as they were then), nor in a locked period. Saved; the caller commits.
     /// </summary>
     private async Task<ActionResult?> DiscountAsync(SalesDocument doc, ChargeKind? kind, decimal? percent, long? amount,
-        IReadOnlyDictionary<Guid, long>? lineDiscounts)
+        IReadOnlyDictionary<Guid, LineDiscountRequest>? lineDiscounts)
     {
         var posted = doc.Type == DocumentType.SALES_INVOICE;
         if (posted)
@@ -482,14 +497,39 @@ public sealed class SalesController : ControllerBase
                 return InvoiceLines.Refuse(this, new("period_locked", "This invoice is in a locked period."));
         }
 
-        // What is asked: each line's own discount, then the invoice's.
+        // What is asked: each line's own discount, then the invoice's. A line's gross here is without
+        // its share of the invoice's increase, which is shared out again below.
         var lines = doc.Lines.OrderBy(l => l.LineNo).ToList();
         var given = new long[lines.Count];
+        var typed = new (int? Bp, long? Fixed)[lines.Count];
         for (var i = 0; i < lines.Count; i++)
         {
             var l = lines[i];
-            given[i] = lineDiscounts?.GetValueOrDefault(l.Id, l.Discount) ?? l.Discount;
-            if (given[i] < 0 || given[i] > l.LineTotal + l.Discount)
+            var own = l.LineTotal - l.DocIncrease + l.Discount;
+            given[i] = l.Discount;
+            typed[i] = (l.DiscountRateBp, l.DiscountFixed);
+            if (lineDiscounts is not null && lineDiscounts.TryGetValue(l.Id, out var d))
+            {
+                if (d.Percent is decimal pc)
+                {
+                    if (pc < 0 || pc > 100 || decimal.Round(pc, 2) != pc)
+                        return BadRequest(new { message = "A percent is between 0 and 100, with at most 2 decimals.", code = "bad_percent" });
+                    if (pc > 0 && !Can(Permissions.SalesDiscountLinePct))
+                        return InvoiceLines.Refuse(this, new("discount_line_pct_not_allowed",
+                            $"{l.ProductName}: a discount as a percent needs permission."));
+                    given[i] = Adjust.Of(own, pc, null);
+                    typed[i] = pc > 0 ? (Adjust.Bp(pc), null) : (null, null);
+                }
+                else
+                {
+                    if (d.Discount != l.Discount && !Can(Permissions.SalesDiscountLineAmount))
+                        return InvoiceLines.Refuse(this, new("discount_line_amount_not_allowed",
+                            $"{l.ProductName}: a discount as an amount needs permission."));
+                    given[i] = d.Discount;
+                    typed[i] = d.Discount > 0 ? (null, d.Discount) : (null, null);
+                }
+            }
+            if (given[i] < 0 || given[i] > own)
                 return BadRequest(new { message = "A discount can't be more than the line's amount.", code = "bad_price" });
             if (l.IsBonus && given[i] != 0)
                 return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
@@ -510,11 +550,12 @@ public sealed class SalesController : ControllerBase
                 specs.Add(new(asked, null, am, null));
             }
         }
-        var nets = lines.Select((l, i) => l.LineTotal + l.Discount - given[i]).ToList();
+        var nets = lines.Select((l, i) => l.LineTotal - l.DocIncrease + l.Discount - given[i]).ToList();
         var (charges, applyError) = Charges.Apply(nets, lines.Select(l => !l.IsBonus).ToList(), specs);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
 
-        var sameLines = lines.Select((l, i) => l.Discount == given[i] && l.DocDiscount == charges!.Allocation[i]).All(x => x);
+        var sameLines = lines.Select((l, i) => l.Discount == given[i] && l.DocDiscount == charges!.Allocation[i]
+                                               && l.DocIncrease == charges.IncreaseAllocation[i]).All(x => x);
         var sameCharges = doc.Charges.OrderBy(c => c.Seq).Select(c => (c.Kind, c.RateBp, c.FixedAmount, c.Amount))
             .SequenceEqual(charges!.Rows.Select(c => (c.Kind, c.RateBp, c.FixedAmount, c.Amount)));
         if (sameLines && sameCharges) return null;
@@ -542,7 +583,8 @@ public sealed class SalesController : ControllerBase
             if (l.IsBonus) continue;
             var units = l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity;
             var factor = l.UnitQuantity > 0 ? Math.Max(1, l.UnitFactor) : 1;
-            var floorError = CheckFloor(units, l.UnitPrice, given[i] + charges.Allocation[i], l.UnitCost * factor,
+            var floorError = CheckFloor(units, l.UnitPrice,
+                given[i] + charges.Allocation[i] - l.Increase - charges.IncreaseAllocation[i], l.UnitCost * factor,
                 settings.MinMarkupPercent, canOverride, overrideRequested: false);
             if (floorError is not null && !Access.OverridePasses(User))
                 return BadRequest(new
@@ -559,9 +601,11 @@ public sealed class SalesController : ControllerBase
         for (var i = 0; i < lines.Count; i++)
         {
             var l = lines[i];
-            var gross = l.LineTotal + l.Discount;
+            var gross = l.LineTotal - l.DocIncrease + l.Discount;
             l.Discount = given[i];
-            l.LineTotal = gross - given[i];
+            (l.DiscountRateBp, l.DiscountFixed) = typed[i];
+            l.DocIncrease = charges.IncreaseAllocation[i];
+            l.LineTotal = gross + l.DocIncrease - given[i];
             l.DocDiscount = charges.Allocation[i];
             l.LineProfit = l.LineTotal - l.DocDiscount - l.LineCost;
         }
@@ -880,17 +924,16 @@ public sealed class SalesController : ControllerBase
         if (order is null) return NotFound(new { message = "Pending invoice not found.", code = "not_found" });
 
         // New discounts, if the accountant changed them: per line, and the invoice's own.
-        var lineDiscounts = new Dictionary<Guid, long>();
+        var lineDiscounts = new Dictionary<Guid, LineDiscountRequest>();
         foreach (var d in req.LineDiscounts ?? Array.Empty<LineDiscountRequest>())
         {
             if (!Guid.TryParse(d.LineId, out var lineId) || order.Lines.All(l => l.Id != lineId))
                 return BadRequest(new { message = "A line was not found on the invoice.", code = "line_not_found" });
-            lineDiscounts[lineId] = d.Discount;
+            lineDiscounts[lineId] = d;
         }
-        var lines = order.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
-            l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice,
-            lineDiscounts.GetValueOrDefault(l.Id, l.Discount),
-            req.WarehouseId ?? l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray();
+        var lines = order.Lines.OrderBy(l => l.LineNo)
+            .Select(l => StoredLine(l, req.WarehouseId ?? l.WarehouseId?.ToString(), lineDiscounts.GetValueOrDefault(l.Id)))
+            .ToArray();
         var kept = order.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
             c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray();
         var charges = req.Charges is null ? kept
@@ -913,6 +956,24 @@ public sealed class SalesController : ControllerBase
         return await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: id, branch: order.BranchId,
             discounts: DiscountMode.Give, baseline: order, approved: true,
             approvalNote: order.OverLimit ? $"BY:{CurrentUser.Name(User)}" : null);
+    }
+
+    /// <summary>
+    /// A saved line asked for again (a pending invoice approved): its price, its increase and discount as
+    /// typed — or, with <paramref name="given"/>, the discount the approver gives it now (a percent, or an
+    /// amount for the line).
+    /// </summary>
+    private static CreateInvoiceLineRequest StoredLine(DocumentLine l, string? warehouseId, LineDiscountRequest? given)
+    {
+        var typed = l.DiscountRateBp is not null || l.DiscountFixed is not null;
+        var (pct, amount, sum) = given is not null
+            ? given.Percent is decimal p ? (p, (long?)null, 0L) : ((decimal?)null, (long?)given.Discount, 0L)
+            : typed ? (l.DiscountRateBp / 100m, l.DiscountFixed ?? (l.DiscountRateBp is null ? 0 : null), 0L)
+            : ((decimal?)null, (long?)null, l.Discount);
+        return new CreateInvoiceLineRequest(
+            l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, sum,
+            warehouseId, l.UnitId?.ToString(), l.IsBonus, DiscountPercent: pct, DiscountAmount: amount,
+            IncreasePercent: l.IncreaseRateBp / 100m, IncreaseAmount: l.IncreaseFixed);
     }
 
     /// <summary>
@@ -1023,9 +1084,7 @@ public sealed class SalesController : ControllerBase
                         ?? (await _db.Staff.AnyAsync(x => x.Id == order.StaffId && x.IsActive) ? order.StaffId : null);
             var invoice = new CreateSalesInvoiceRequest(
                 order.PartyId.ToString(),
-                order.Lines.OrderBy(l => l.LineNo).Select(l => new CreateInvoiceLineRequest(
-                    l.ProductId.ToString(), l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.UnitPrice, l.Discount,
-                    l.WarehouseId?.ToString(), l.UnitId?.ToString(), l.IsBonus)).ToArray(),
+                order.Lines.OrderBy(l => l.LineNo).Select(l => StoredLine(l, l.WarehouseId?.ToString(), null)).ToArray(),
                 Notes: order.Notes, PaidAmount: 0, PriceLevelId: order.PriceLevelId?.ToString(),
                 Charges: order.Charges.OrderBy(c => c.Seq).Select(c => new ChargeRequest(c.Kind.ToString(),
                     c.RateBp is int bp ? bp / 100m : null, c.RateBp is null ? c.FixedAmount : null, c.Label)).ToArray(),
@@ -1059,7 +1118,7 @@ public sealed class SalesController : ControllerBase
             return StatusCode(403, new { message = "Only its maker or an approver can change it.", code = "edit_not_allowed" });
         if (order.Status != DocumentStatus.PENDING)
             return BadRequest(new { message = "This invoice is no longer pending.", code = "order_closed" });
-        // Its discounts stay as they are: the accountant changes them from the customer's invoices.
+        // Its discounts stay as they are, unless the person may give that kind.
         return await CreateCore(req with { PaidAmount = 0, PaidAccountId = null }, DocumentType.SALES_ORDER,
             fromId: null, branch: order.BranchId, discounts: DiscountMode.Keep, baseline: order, replaceId: id);
     }
@@ -1139,15 +1198,15 @@ public sealed class SalesController : ControllerBase
             $"{doc.Number} · {doc.GrandTotal / 100m:N2}");
 
     /// <summary>
-    /// Where an invoice's discounts come from (owner, 2026-10-24): none are given while an invoice is
-    /// made or its items changed; the accountant gives every kind from the customer's invoices, each
-    /// with its own permission.
+    /// How an invoice's discounts and increases are checked. Each kind and way (an item's or the
+    /// invoice's, a percent or an amount) is its own permission wherever it is given (owner,
+    /// 2026-11-19: on the invoice screen too, new or changed); what it already had stays without one.
     /// </summary>
     private enum DiscountMode
     {
-        /// <summary>A new invoice, pending invoice or quotation: only the company's quantity discounts.</summary>
+        /// <summary>A new invoice, pending invoice or quotation.</summary>
         None,
-        /// <summary>Its items are changed: the discounts it has stay exactly as they are.</summary>
+        /// <summary>A pending invoice's items are changed: the discounts it has stay without a permission.</summary>
         Keep,
         /// <summary>
         /// A posted invoice is changed (owner, 2026-11-10): like <see cref="Keep"/>, but a discount may
@@ -1234,7 +1293,7 @@ public sealed class SalesController : ControllerBase
 
         // ---- Invoice charges: discounts, taxes, additions — each needs its own permission ----
         // (Discounts are checked with the lines' own, below.)
-        var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent);
+        var (specs, chargeError) = Charges.Parse(req.Charges, req.TaxPercent, settings.DefaultTaxPercent, sales: true);
         if (chargeError is not null) return BadRequest(new { message = chargeError.Message, code = chargeError.Code });
         if (specs!.Any(c => c.Kind == ChargeKind.ADDITION) && !Approved(Permissions.SalesAdditions))
             return InvoiceLines.Refuse(this, new("additions_not_allowed", "Adding charges needs permission."));
@@ -1302,14 +1361,16 @@ public sealed class SalesController : ControllerBase
         var lines = new List<(CreateInvoiceLineRequest Req, Guid ProductId, Guid? UnitId, Warehouse Warehouse)>();
         foreach (var line in req.Lines)
         {
-            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitPrice, line.Discount);
+            var shape = InvoiceLines.CheckShape(line.ProductId, line.UnitId, line.Quantity, line.UnitPrice,
+                Adjust.DiscountTyped(line) ? 0 : line.Discount);
             if (shape.Error is not null) return BadRequest(new { message = shape.Error.Message, code = shape.Error.Code });
+            if (Adjust.Check(line) is { } boxError) return BadRequest(new { message = boxError.Message, code = boxError.Code });
             if (line.IsBonus)
             {
                 // Changing its items keeps the free goods it had (checked below, once the units are known).
                 if (!Approved(Permissions.SalesBonus) && discounts is not (DiscountMode.Keep or DiscountMode.Edit))
                     return InvoiceLines.Refuse(this, new("bonus_not_allowed", "Giving free goods needs permission."));
-                if (line.UnitPrice != 0 || line.Discount != 0)
+                if (line.UnitPrice != 0 || line.Discount != 0 || Adjust.Any(line))
                     return BadRequest(new { message = "Free goods have no price.", code = "bad_bonus" });
             }
             // The system accepting a pending invoice takes the warehouses it was made with.
@@ -1438,65 +1499,122 @@ public sealed class SalesController : ControllerBase
                     ". Changing a price needs permission."));
         }
 
-        // ---- Discounts: what changed from before, kind by kind ----
+        // ---- Each line's increase and discount (owner, 2026-11-19): the increase on its price first,
+        // then the discount on what that comes to; typed as a percent and/or an amount. A line with no
+        // discount typed keeps the one it is sent with (its quantity discount, or one kept from before).
+        var increases = new long[resolved.Count];
+        var lineDiscounts = new long[resolved.Count];
+        for (var i = 0; i < resolved.Count; i++)
+        {
+            var line = resolved[i].Req;
+            var gross = (long)line.Quantity * line.UnitPrice;
+            increases[i] = Adjust.Of(gross, line.IncreasePercent, line.IncreaseAmount);
+            lineDiscounts[i] = Adjust.DiscountTyped(line)
+                ? Adjust.Of(gross + increases[i], line.DiscountPercent, line.DiscountAmount)
+                : line.Discount;
+            if (lineDiscounts[i] > gross + increases[i])
+                return BadRequest(new { message = "A discount can't be more than the line's amount.", code = "bad_price" });
+        }
+
+        // ---- Discounts and increases: what changed from before, kind by kind, each its own permission ----
         // A line's quantity discount comes by itself and none is no discount; any other stays as it was
         // when it is no more a piece than the same item had before (it follows the quantity, rounding
-        // aside), else it is a new one. (More than the line is worth is refused by the shape check.)
+        // aside), else it is a new one. A typed percent or amount stays when the same item had it.
         var discountChanged = false;
         if (discounts != DiscountMode.Trusted)
         {
             var before = edited ?? baseline;
-            var had = (before?.Lines ?? []).Where(l => !l.IsBonus && l.Discount > 0 && l.Quantity > 0).ToList();
-            string? lineGiven = null;
+            var had = (before?.Lines ?? []).Where(l => !l.IsBonus && l.Quantity > 0).ToList();
+            string? missing = null, missingOn = null;
+            void Need(string permission, string code, string item)
+            {
+                if (missing is null && !Can(permission)) { missing = code; missingOn = item; }
+            }
             for (var i = 0; i < resolved.Count; i++)
             {
                 var (line, product, _, baseQty, _, _) = resolved[i];
-                if (line.Discount == 0 || line.Discount == priced[i].Discount) continue;
-                if (had.Any(b => b.ProductId == product.Id
-                                 && (decimal)line.Discount * b.Quantity <= (decimal)b.Discount * baseQty + b.Quantity))
-                    continue;
-                lineGiven ??= Loc.Name(product);
+                if (line.IsBonus) continue;
+                var name = Loc.Name(product);
+                var same = had.Where(b => b.ProductId == product.Id).ToList();
+                if (Adjust.DiscountTyped(line))
+                {
+                    if (Adjust.Bp(line.DiscountPercent) is int bp && bp > 0 && same.All(b => b.DiscountRateBp != bp))
+                    {
+                        discountChanged = true;
+                        Need(Permissions.SalesDiscountLinePct, "discount_line_pct_not_allowed", name);
+                    }
+                    if (line.DiscountAmount is long da && da > 0 && same.All(b => b.DiscountFixed != da))
+                    {
+                        discountChanged = true;
+                        Need(Permissions.SalesDiscountLineAmount, "discount_line_amount_not_allowed", name);
+                    }
+                }
+                else if (line.Discount != 0 && line.Discount != priced[i].Discount
+                         && !same.Any(b => b.Discount > 0
+                                           && (decimal)line.Discount * b.Quantity <= (decimal)b.Discount * baseQty + b.Quantity))
+                {
+                    // A discount sent as one amount is an amount.
+                    discountChanged = true;
+                    Need(Permissions.SalesDiscountLineAmount, "discount_line_amount_not_allowed", name);
+                }
+                if (Adjust.Bp(line.IncreasePercent) is int ip && ip > 0 && same.All(b => b.IncreaseRateBp != ip))
+                    Need(Permissions.SalesIncreaseLinePct, "increase_line_pct_not_allowed", name);
+                if (line.IncreaseAmount is long ia && ia > 0 && same.All(b => b.IncreaseFixed != ia))
+                    Need(Permissions.SalesIncreaseLineAmount, "increase_line_amount_not_allowed", name);
             }
-            // The invoice's own discounts, as a list per kind (a zero one is none).
-            bool Changed(ChargeKind kind) =>
-                !specs!.Where(s => s.Kind == kind && ((long?)s.RateBp ?? s.Fixed ?? 0) != 0)
-                    .Select(s => (s.RateBp, s.RateBp is null ? s.Fixed : null))
-                    .SequenceEqual((before?.Charges ?? []).Where(c => c.Kind == kind
-                                                                     && ((long?)c.RateBp ?? c.FixedAmount ?? 0) != 0)
-                        .OrderBy(c => c.Seq).Select(c => (c.RateBp, c.RateBp is null ? c.FixedAmount : null)));
-            var invoiceGiven = Changed(ChargeKind.DISCOUNT);
-            var extraGiven = Changed(ChargeKind.EXTRA_DISCOUNT);
-            discountChanged = lineGiven is not null || invoiceGiven || extraGiven;
-            // Not while an invoice is made or a pending one's items changed (owner, 2026-10-24).
-            if (discountChanged && discounts is not (DiscountMode.Give or DiscountMode.Edit))
-                return InvoiceLines.Refuse(this, new("discount_on_customer_invoices",
-                    "Discounts are given from the customer's invoices."));
-            if (lineGiven is not null && !Can(Permissions.SalesDiscountLine))
-                return InvoiceLines.Refuse(this, new("discount_not_allowed",
-                    $"{lineGiven}: a discount on an item needs permission."));
-            if (invoiceGiven && !Can(Permissions.SalesDiscount))
-                return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
+            // The invoice's own, as a list per kind and way (a zero one is none).
+            bool Changed(ChargeKind kind, bool rate) =>
+                !specs!.Where(s => s.Kind == kind && (rate ? s.RateBp is > 0 : s.RateBp is null && s.Fixed is > 0))
+                    .Select(s => rate ? s.RateBp ?? 0 : s.Fixed ?? 0)
+                    .SequenceEqual((before?.Charges ?? []).OrderBy(c => c.Seq)
+                        .Where(c => c.Kind == kind && (rate ? c.RateBp is > 0 : c.RateBp is null && c.FixedAmount is > 0))
+                        .Select(c => rate ? c.RateBp ?? 0 : c.FixedAmount ?? 0));
+            const string whole = "";
+            if (Changed(ChargeKind.DISCOUNT, true))
+            {
+                discountChanged = true;
+                Need(Permissions.SalesDiscountPct, "discount_pct_not_allowed", whole);
+            }
+            if (Changed(ChargeKind.DISCOUNT, false))
+            {
+                discountChanged = true;
+                Need(Permissions.SalesDiscountAmount, "discount_amount_not_allowed", whole);
+            }
             // The second discount is also where one discount over several invoices goes.
-            if (extraGiven && !Can(Permissions.SalesDiscount) && !Can(Permissions.SalesDiscountCombined))
-                return InvoiceLines.Refuse(this, new("discount_not_allowed", "Giving an invoice discount needs permission."));
+            if (Changed(ChargeKind.EXTRA_DISCOUNT, true))
+            {
+                discountChanged = true;
+                if (!Can(Permissions.SalesDiscountCombined)) Need(Permissions.SalesDiscountPct, "discount_pct_not_allowed", whole);
+            }
+            if (Changed(ChargeKind.EXTRA_DISCOUNT, false))
+            {
+                discountChanged = true;
+                if (!Can(Permissions.SalesDiscountCombined))
+                    Need(Permissions.SalesDiscountAmount, "discount_amount_not_allowed", whole);
+            }
+            if (Changed(ChargeKind.INCREASE, true)) Need(Permissions.SalesIncreasePct, "increase_pct_not_allowed", whole);
+            if (Changed(ChargeKind.INCREASE, false)) Need(Permissions.SalesIncreaseAmount, "increase_amount_not_allowed", whole);
+            if (missing is not null)
+                return InvoiceLines.Refuse(this, new(missing, (missingOn is { Length: > 0 } ? $"{missingOn}: " : "") +
+                    (missing.StartsWith("increase") ? "this increase" : "this discount") + " needs permission."));
         }
 
-        // ---- Work out the charges and each line's share of the invoice discount ----
-        var nets = resolved.Select(r => (long)r.Req.Quantity * r.Req.UnitPrice - r.Req.Discount).ToList();
+        // ---- Work out the charges and each line's share of the invoice's increase and discount ----
+        var nets = resolved.Select((r, i) => (long)r.Req.Quantity * r.Req.UnitPrice + increases[i] - lineDiscounts[i]).ToList();
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!);
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
 
         // The person's discount limit, when they change one: a line's own discount plus its share of the
-        // invoice discount.
+        // invoice discount, against what the line comes to with its increases. Increases don't count.
         if (discountChanged && Access.MaxDiscount(User) is int maxDiscount)
             for (var i = 0; i < resolved.Count; i++)
             {
                 var (line, product, _, _, _, _) = resolved[i];
                 if (line.IsBonus) continue;
-                var gross = (long)line.Quantity * line.UnitPrice;
+                var gross = (long)line.Quantity * line.UnitPrice + increases[i] + charges!.IncreaseAllocation[i];
                 // The quantity discount is the company's own rule: it doesn't count against the limit.
-                var automatic = line.Discount == priced[i].Discount ? priced[i].Discount : 0;
-                if ((line.Discount - automatic + charges!.Allocation[i]) * 100 > gross * maxDiscount
+                var automatic = !Adjust.DiscountTyped(line) && line.Discount == priced[i].Discount ? priced[i].Discount : 0;
+                if ((lineDiscounts[i] - automatic + charges.Allocation[i]) * 100 > gross * maxDiscount
                     && !Access.OverridePasses(User))
                     return InvoiceLines.Refuse(this, new("discount_over_limit",
                         $"{Loc.Name(product)}: the discount is more than your limit of {maxDiscount}%."));
@@ -1507,7 +1625,9 @@ public sealed class SalesController : ControllerBase
         {
             var (line, product, unit, _, _, baseCost) = resolved[i];
             if (line.IsBonus) continue;
-            var floorError = CheckFloor(line.Quantity, line.UnitPrice, line.Discount + charges!.Allocation[i],
+            // What comes off it, less what was added to it.
+            var floorError = CheckFloor(line.Quantity, line.UnitPrice,
+                lineDiscounts[i] + charges!.Allocation[i] - increases[i] - charges.IncreaseAllocation[i],
                 baseCost * unit.Factor, settings.MinMarkupPercent, canOverride, req.OverrideFloor);
             if (floorError is not null && !Access.OverridePasses(User))
                 return BadRequest(new
@@ -1626,14 +1746,21 @@ public sealed class SalesController : ControllerBase
                 lineCost = (long)baseQty * unitCost;
             }
 
-            var lineTotal = (long)line.Quantity * line.UnitPrice - line.Discount;
-            var docDiscount = charges!.Allocation[i];
+            var docIncrease = charges!.IncreaseAllocation[i];
+            var lineTotal = (long)line.Quantity * line.UnitPrice + increases[i] + docIncrease - lineDiscounts[i];
+            var docDiscount = charges.Allocation[i];
+            var typed = Adjust.DiscountTyped(line);
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
                 ProductId = product.Id, ProductName = product.Name, Quantity = baseQty,
                 UnitId = unit.UnitId, UnitFactor = unit.Factor, UnitQuantity = line.Quantity,
-                UnitPrice = line.UnitPrice, Discount = line.Discount, LineTotal = lineTotal,
+                UnitPrice = line.UnitPrice, Discount = lineDiscounts[i], LineTotal = lineTotal,
+                Increase = increases[i], DocIncrease = docIncrease,
+                IncreaseRateBp = Adjust.Bp(line.IncreasePercent) is > 0 ? Adjust.Bp(line.IncreasePercent) : null,
+                IncreaseFixed = line.IncreaseAmount is > 0 ? line.IncreaseAmount : null,
+                DiscountRateBp = typed && Adjust.Bp(line.DiscountPercent) is > 0 ? Adjust.Bp(line.DiscountPercent) : null,
+                DiscountFixed = typed && line.DiscountAmount is > 0 ? line.DiscountAmount : null,
                 IsBonus = line.IsBonus, DocDiscount = docDiscount,
                 UnitCost = unitCost, LineCost = lineCost, LineProfit = lineTotal - docDiscount - lineCost,
                 WarehouseId = warehouse.Id, Warehouse = warehouse,

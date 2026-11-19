@@ -18,7 +18,8 @@ export type ReturnReason = (typeof RETURN_REASONS)[number];
 
 /** An invoice-level charge: a percent (up to 2 decimals) or a fixed amount in minor units. */
 export const chargeSchema = z.object({
-  kind: z.enum(['DISCOUNT', 'EXTRA_DISCOUNT', 'TAX', 'OTHER_TAX', 'ADDITION']),
+  /** INCREASE is a sale's only (owner, 2026-11-19). */
+  kind: z.enum(['INCREASE', 'DISCOUNT', 'EXTRA_DISCOUNT', 'TAX', 'OTHER_TAX', 'ADDITION']),
   percent: z.number().min(0).max(100).optional(),
   amount: z.number().int().min(0).optional(),
   label: z.string().trim().max(60).optional(),
@@ -76,6 +77,15 @@ export const invoiceLineSchema = z.object({
   isBonus: z.boolean().optional(),
   /** This line's price basis (owner, 2026-10-01); none = the invoice's. */
   priceBasis: z.enum(['LIST', 'LAST', 'COST']).optional(),
+  /**
+   * The line's increase and discount as typed (owner, 2026-11-19), each its own permission: a
+   * percent and an amount for the line. The increase goes on quantity × price first, the discount
+   * on what that comes to; with a discount typed, `discount` is ignored.
+   */
+  increasePercent: z.number().min(0).max(100).optional(),
+  increaseAmount: z.number().int().min(0).optional(),
+  discountPercent: z.number().min(0).max(100).optional(),
+  discountAmount: z.number().int().min(0).optional(),
 });
 export type InvoiceLineInput = z.infer<typeof invoiceLineSchema>;
 

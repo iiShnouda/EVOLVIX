@@ -141,10 +141,26 @@ public static class Permissions
     public const string SalesPriceBasis = "sales:price_basis";
     /// <summary>Allowed to sell below the configured profit floor (never below cost).</summary>
     public const string SalesOverrideFloor = "sales:override_floor";
-    /// <summary>Give a whole-invoice discount on a sale (خصم على الفاتورة), from the customer's invoice view.</summary>
-    public const string SalesDiscount = "sales:discount";
-    /// <summary>Give a discount on one line/item of a sale (خصم على صنف), from the customer's invoice view.</summary>
-    public const string SalesDiscountLine = "sales:discount_line";
+    // A discount or an increase on a sale (owner, 2026-11-19): on an item or on the whole invoice, as
+    // a percent or as an amount — each its own permission, on the invoice screen (new or changed),
+    // when a pending invoice is approved and from the customer's invoices. They replace
+    // sales:discount and sales:discount_line (whoever had one has both of its halves).
+    /// <summary>A whole-invoice discount as a percent (خصم على الفاتورة بالنسبة).</summary>
+    public const string SalesDiscountPct = "sales:discount_pct";
+    /// <summary>A whole-invoice discount as an amount (خصم على الفاتورة بالمبلغ).</summary>
+    public const string SalesDiscountAmount = "sales:discount_amount";
+    /// <summary>A discount on one item as a percent (خصم على الصنف بالنسبة).</summary>
+    public const string SalesDiscountLinePct = "sales:discount_line_pct";
+    /// <summary>A discount on one item as an amount, for the line or a piece (خصم على الصنف بالمبلغ).</summary>
+    public const string SalesDiscountLineAmount = "sales:discount_line_amount";
+    /// <summary>An increase on the whole invoice as a percent (زيادة على الفاتورة بالنسبة): it is sales.</summary>
+    public const string SalesIncreasePct = "sales:increase_pct";
+    /// <summary>An increase on the whole invoice as an amount (زيادة على الفاتورة بالمبلغ).</summary>
+    public const string SalesIncreaseAmount = "sales:increase_amount";
+    /// <summary>An increase on one item as a percent (زيادة على الصنف بالنسبة).</summary>
+    public const string SalesIncreaseLinePct = "sales:increase_line_pct";
+    /// <summary>An increase on one item as an amount for the line (زيادة على الصنف بالمبلغ).</summary>
+    public const string SalesIncreaseLineAmount = "sales:increase_line_amount";
     /// <summary>Give one discount across a customer's combined invoices (خصم على الفواتير المجمعة).</summary>
     public const string SalesDiscountCombined = "sales:discount_combined";
     /// <summary>Add free goods (بونص) to a sale.</summary>
@@ -790,8 +806,9 @@ public static class Permissions
         NotifyInvoiceEdited, NotifyOrderPending, NotifyLimitWait, NotifyCashSent, NotifyTransferSent, NotifyPayroll,
         NotifyBooks, NotifyBackup,
         SalesReturn, SalesReturnCancel, ReturnsWriteOff, SalesChangePrice,
-        SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
-        SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
+        SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscountPct,
+        SalesDiscountAmount, SalesDiscountLinePct, SalesDiscountLineAmount, SalesIncreasePct, SalesIncreaseAmount,
+        SalesIncreaseLinePct, SalesIncreaseLineAmount, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
         PurchasesPrint, PurchasesPdf, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
@@ -882,8 +899,10 @@ public static class RolePermissions
             Permissions.SalesApprove, Permissions.SalesReject, Permissions.SalesLock,
             Permissions.SalesInvoiceAlerts, Permissions.NotifyCheques, Permissions.NotifyStock, Permissions.SalesReturn,
             Permissions.SalesChangePrice, Permissions.SalesRaisePrice, Permissions.SalesChoosePriceLevel,
-            Permissions.SalesPriceBasis, Permissions.SalesOverrideFloor, Permissions.SalesDiscount,
-            Permissions.SalesDiscountLine, Permissions.SalesDiscountCombined, Permissions.SalesBonus,
+            Permissions.SalesPriceBasis, Permissions.SalesOverrideFloor, Permissions.SalesDiscountPct,
+            Permissions.SalesDiscountAmount, Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount,
+            Permissions.SalesIncreasePct, Permissions.SalesIncreaseAmount, Permissions.SalesIncreaseLinePct,
+            Permissions.SalesIncreaseLineAmount, Permissions.SalesDiscountCombined, Permissions.SalesBonus,
             Permissions.SalesChangeTax, Permissions.SalesAdditions, Permissions.SalesChangeShipping,
             Permissions.DeliveryView, Permissions.ShipmentsView, Permissions.SettlementsView,
             Permissions.DeliveryStatus, Permissions.ShipmentsCreate, Permissions.ShipmentsProgress,
@@ -951,7 +970,8 @@ public static class RolePermissions
             Permissions.DashboardRecent, Permissions.DashboardOverLimit, Permissions.DashboardLowStock,
             Permissions.SalesView, Permissions.SalesReturnsView, Permissions.SalesTogether, Permissions.SalesPrint, Permissions.SalesPdf,
             Permissions.SalesCreate, Permissions.SalesReturn,
-            Permissions.SalesRaisePrice, Permissions.DeliveryView, Permissions.ShipmentsView,
+            Permissions.SalesRaisePrice, Permissions.SalesIncreaseLinePct, Permissions.SalesIncreaseLineAmount,
+            Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.DeliveryStatus, Permissions.ShipmentsCreate,
             Permissions.ShipmentsProgress, Permissions.ShipmentsReturn, Permissions.ShipmentsCancel,
             Permissions.InventoryView, Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport,

@@ -51,8 +51,10 @@ export function mayOpenStatement(
  */
 export const TOGETHER_PERMISSIONS: Permission[] = [
   'sales:together',
-  'sales:discount',
-  'sales:discount_line',
+  'sales:discount_pct',
+  'sales:discount_amount',
+  'sales:discount_line_pct',
+  'sales:discount_line_amount',
   'sales:discount_combined',
 ];
 

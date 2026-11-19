@@ -519,6 +519,9 @@ public sealed class ReturnsService
                 UnitQuantity = inLineUnit ? qty / factor : qty,
                 UnitPrice = inLineUnit ? src.UnitPrice : (long)decimal.Round((decimal)gross / qty, MidpointRounding.AwayFromZero),
                 Discount = discount, LineTotal = lineTotal, IsBonus = src.IsBonus, DocDiscount = docDiscount,
+                // What was added to the line comes back with it (owner, 2026-11-19): its share of the gross.
+                Increase = inLineUnit && src.Increase + src.DocIncrease != 0
+                    ? gross - (long)src.UnitPrice * (qty / factor) : 0,
                 UnitCost = src.UnitCost, LineCost = lineCost, LineProfit = isSale ? lineTotal - docDiscount - lineCost : 0,
                 SourceLineId = src.Id, WarehouseId = warehouse.Id, Warehouse = warehouse,
                 ReturnReason = reason, ReasonNote = note, Damaged = isSale ? damagedTo : null,
