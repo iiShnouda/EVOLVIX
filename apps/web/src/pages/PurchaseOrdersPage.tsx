@@ -562,85 +562,126 @@ export function PurchaseOrderPage() {
               </Info>
             )}
           </dl>
-          <TableColumns id="purchaseOrder.lines">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[44rem] text-sm">
-                <thead className="bg-surface-2 text-xs text-muted">
-                  <tr>
-                    <th className={`${cell} text-start font-medium`}>#</th>
-                    <th className={`${cell} text-start font-medium`}>{t('po.item')}</th>
-                    <th className={`${cell} text-start font-medium`}>{t('po.model')}</th>
-                    <th className={`${cell} text-start font-medium`}>{t('po.size')}</th>
-                    <th className={`${cell} text-start font-medium`}>{t('po.color')}</th>
-                    <th className={`${cell} text-start font-medium`}>{t('po.unit')}</th>
-                    <th className={`${cell} text-end font-medium`}>{t('po.quantity')}</th>
-                    <th className={`${cell} text-end font-medium`}>{t('po.price')}</th>
-                    <th className={`${cell} text-end font-medium`}>{t('po.total')}</th>
-                    <th className={`${cell} text-end font-medium`} data-noprint>
-                      {t('po.received')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--c-line)]">
-                  {o.lines.map((l) => (
-                    <tr key={l.id}>
-                      <td className={`${cell} tnum text-muted`}>{l.lineNo}</td>
-                      <td className={cell}>
-                        <bdi className="font-medium">{l.name}</bdi>
-                        {l.isNew && (
-                          <span className="ms-1.5" data-noprint>
-                            <Badge tone="info">{t('po.newBadge')}</Badge>
-                          </span>
-                        )}
-                        {(l.sku || l.groupName) && (
-                          <span className="block text-xs text-muted">
-                            {[l.sku, l.departmentName, l.groupName].filter(Boolean).join(' · ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className={`${cell} tnum`}>
-                        <bdi>{l.supplierCode ?? ''}</bdi>
-                      </td>
-                      <td className={cell}>{l.sizeName ?? ''}</td>
-                      <td className={cell}>{l.colorName ?? ''}</td>
-                      <td className={cell}>{l.unitName ?? ''}</td>
-                      <td className={`${cell} text-end tnum`}>{n(l.quantity)}</td>
+          {/* On a phone each line is a card; the table stays for the paper. */}
+          <ul className="divide-y divide-[var(--c-line)] md:hidden" data-noprint>
+            {o.lines.map((l) => (
+              <li key={l.id} className="py-2.5 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <bdi className="font-medium">{l.name}</bdi>
+                    {l.isNew && (
+                      <span className="ms-1.5">
+                        <Badge tone="info">{t('po.newBadge')}</Badge>
+                      </span>
+                    )}
+                    <p className="text-xs text-muted">
+                      {[
+                        l.sku,
+                        l.supplierCode && `${t('po.model')} ${l.supplierCode}`,
+                        l.sizeName,
+                        l.colorName,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-semibold tnum">
+                    {l.lineTotal ? money(l.lineTotal) : ''}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted tnum">
+                  {n(l.quantity)} {l.unitName ?? ''}
+                  {l.unitPrice ? ` × ${money(l.unitPrice)}` : ''} · {t('po.received')}:{' '}
+                  {n(l.receivedPieces)} / {n(l.pieces)}
+                </p>
+              </li>
+            ))}
+            <li className="flex justify-between py-2.5 font-semibold">
+              <span>{t('po.total')}</span>
+              <span className="tnum">{money(o.total)}</span>
+            </li>
+          </ul>
+          <div className="hidden md:block print:block">
+            <TableColumns id="purchaseOrder.lines">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[44rem] text-sm">
+                  <thead className="bg-surface-2 text-xs text-muted">
+                    <tr>
+                      <th className={`${cell} text-start font-medium`}>#</th>
+                      <th className={`${cell} text-start font-medium`}>{t('po.item')}</th>
+                      <th className={`${cell} text-start font-medium`}>{t('po.model')}</th>
+                      <th className={`${cell} text-start font-medium`}>{t('po.size')}</th>
+                      <th className={`${cell} text-start font-medium`}>{t('po.color')}</th>
+                      <th className={`${cell} text-start font-medium`}>{t('po.unit')}</th>
+                      <th className={`${cell} text-end font-medium`}>{t('po.quantity')}</th>
+                      <th className={`${cell} text-end font-medium`}>{t('po.price')}</th>
+                      <th className={`${cell} text-end font-medium`}>{t('po.total')}</th>
+                      <th className={`${cell} text-end font-medium`} data-noprint>
+                        {t('po.received')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--c-line)]">
+                    {o.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td className={`${cell} tnum text-muted`}>{l.lineNo}</td>
+                        <td className={cell}>
+                          <bdi className="font-medium">{l.name}</bdi>
+                          {l.isNew && (
+                            <span className="ms-1.5" data-noprint>
+                              <Badge tone="info">{t('po.newBadge')}</Badge>
+                            </span>
+                          )}
+                          {(l.sku || l.groupName) && (
+                            <span className="block text-xs text-muted">
+                              {[l.sku, l.departmentName, l.groupName].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </td>
+                        <td className={`${cell} tnum`}>
+                          <bdi>{l.supplierCode ?? ''}</bdi>
+                        </td>
+                        <td className={cell}>{l.sizeName ?? ''}</td>
+                        <td className={cell}>{l.colorName ?? ''}</td>
+                        <td className={cell}>{l.unitName ?? ''}</td>
+                        <td className={`${cell} text-end tnum`}>{n(l.quantity)}</td>
+                        <td className={`${cell} text-end tnum`}>
+                          {l.unitPrice ? money(l.unitPrice) : ''}
+                        </td>
+                        <td className={`${cell} text-end font-semibold tnum`}>
+                          {l.lineTotal ? money(l.lineTotal) : ''}
+                        </td>
+                        <td
+                          className={`${cell} text-end tnum ${l.receivedPieces >= l.pieces ? 'text-positive' : l.receivedPieces > 0 ? 'text-warning' : 'text-faint'}`}
+                          data-noprint
+                        >
+                          {n(l.receivedPieces)} / {n(l.pieces)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-surface-2 font-semibold">
+                    <tr>
+                      <td className={cell} />
+                      <td className={cell}>{t('po.total')}</td>
+                      <td className={cell} />
+                      <td className={cell} />
+                      <td className={cell} />
+                      <td className={cell} />
                       <td className={`${cell} text-end tnum`}>
-                        {l.unitPrice ? money(l.unitPrice) : ''}
+                        {n(o.lines.reduce((s, l) => s + l.quantity, 0))}
                       </td>
-                      <td className={`${cell} text-end font-semibold tnum`}>
-                        {l.lineTotal ? money(l.lineTotal) : ''}
-                      </td>
-                      <td
-                        className={`${cell} text-end tnum ${l.receivedPieces >= l.pieces ? 'text-positive' : l.receivedPieces > 0 ? 'text-warning' : 'text-faint'}`}
-                        data-noprint
-                      >
-                        {n(l.receivedPieces)} / {n(l.pieces)}
+                      <td className={cell} />
+                      <td className={`${cell} text-end tnum`}>{money(o.total)}</td>
+                      <td className={`${cell} text-end tnum`} data-noprint>
+                        {n(o.receivedPieces)} / {n(o.pieces)}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-surface-2 font-semibold">
-                  <tr>
-                    <td className={cell} />
-                    <td className={cell}>{t('po.total')}</td>
-                    <td className={cell} />
-                    <td className={cell} />
-                    <td className={cell} />
-                    <td className={cell} />
-                    <td className={`${cell} text-end tnum`}>
-                      {n(o.lines.reduce((s, l) => s + l.quantity, 0))}
-                    </td>
-                    <td className={cell} />
-                    <td className={`${cell} text-end tnum`}>{money(o.total)}</td>
-                    <td className={`${cell} text-end tnum`} data-noprint>
-                      {n(o.receivedPieces)} / {n(o.pieces)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </TableColumns>
+                  </tfoot>
+                </table>
+              </div>
+            </TableColumns>
+          </div>
         </div>
       </Card>
 
