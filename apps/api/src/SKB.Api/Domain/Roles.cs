@@ -88,6 +88,37 @@ public static class Permissions
     public const string NotifyStock = "notifications:stock";
     /// <summary>The bell: the day's summary (sales, collections, boxes) at the company's chosen time (owner, 2026-11-12).</summary>
     public const string NotifyDailySummary = "notifications:daily_summary";
+    // Each kind of notification is earned by its own permission, so the owner chooses per kind who
+    // is told of what (owner, 2026-11-18). They were earned by the action's permission before; the
+    // migration gave each to whoever held that one (see NotifyEarnedBefore).
+    /// <summary>The bell: a posted sales invoice was changed (in my branches and departments).</summary>
+    public const string NotifyInvoiceEdited = "notifications:invoice_edited";
+    /// <summary>The bell: a sale waits for approval (in my branches and departments).</summary>
+    public const string NotifyOrderPending = "notifications:order_pending";
+    /// <summary>The bell: a sale waits over the customer's purchase limit (in my branches and departments).</summary>
+    public const string NotifyLimitWait = "notifications:limit_wait";
+    /// <summary>The bell: cash was sent up to a box I use.</summary>
+    public const string NotifyCashSent = "notifications:cash_sent";
+    /// <summary>The bell: goods wait to be received at a store I use.</summary>
+    public const string NotifyTransferSent = "notifications:transfer_sent";
+    /// <summary>The bell: a month's payroll was posted or paid (in my branches).</summary>
+    public const string NotifyPayroll = "notifications:payroll";
+    /// <summary>The bell: the books were locked up to a day, or a year was closed.</summary>
+    public const string NotifyBooks = "notifications:books";
+    /// <summary>The bell: the automatic backup failed.</summary>
+    public const string NotifyBackup = "notifications:backup";
+
+    /// <summary>
+    /// The permission that earned each of these kinds before it had its own: a role or person holding
+    /// it is given the new one (the migration NotificationPermissions; the built-in roles below).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> NotifyEarnedBefore = new Dictionary<string, string>
+    {
+        [NotifyInvoiceEdited] = SalesInvoiceAlerts, [NotifyOrderPending] = SalesApprove,
+        [NotifyLimitWait] = SalesApprove, [NotifyCashSent] = CashHandoverReceive,
+        [NotifyTransferSent] = InventoryTransferReceive, [NotifyPayroll] = PayrollRuns,
+        [NotifyBooks] = LedgerJournal, [NotifyBackup] = BackupCreate,
+    };
     /// <summary>
     /// Issue a sales return (restock + credit the customer). Separate from SalesCreate on purpose:
     /// a return moves money back out, so it is not granted to the SALES role by default.
@@ -756,6 +787,8 @@ public static class Permissions
         DashboardAwaiting, DashboardOverLimit, DashboardLowStock, DashboardStockValue, DashboardProfit, SalesView,
         SalesReturnsView, SalesTogether, SalesPrint, SalesPdf, SalesCreate, SalesOrder, SalesEdit, SalesCancel,
         SalesApprove, SalesReject, SalesLock, SalesInvoiceAlerts, NotifyCheques, NotifyStock, NotifyDailySummary,
+        NotifyInvoiceEdited, NotifyOrderPending, NotifyLimitWait, NotifyCashSent, NotifyTransferSent, NotifyPayroll,
+        NotifyBooks, NotifyBackup,
         SalesReturn, SalesReturnCancel, ReturnsWriteOff, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscount,
         SalesDiscountLine, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
@@ -829,7 +862,7 @@ public static class RolePermissions
     /// What each built-in role starts with; the owner changes any of them on the accounts page. Each
     /// is a plain list (owner, 2026-10-23: nothing comes with anything else).
     /// </summary>
-    public static readonly IReadOnlyDictionary<Role, string[]> Map = new Dictionary<Role, string[]>
+    public static readonly IReadOnlyDictionary<Role, string[]> Map = WithNotifications(new Dictionary<Role, string[]>
     {
         [Role.OWNER] = All,
         // The admin has every permission, and every one added later (owner decision 2026-10-02),
@@ -981,7 +1014,12 @@ public static class RolePermissions
         },
         // Starts with nothing; the owner ticks exactly what the person may do (owner, 2026-10-23).
         [Role.NONE] = Array.Empty<string>(),
-    };
+    });
+
+    /// <summary>A role that holds an action's permission is also told of it (Permissions.NotifyEarnedBefore).</summary>
+    private static Dictionary<Role, string[]> WithNotifications(Dictionary<Role, string[]> map) =>
+        map.ToDictionary(r => r.Key, r => r.Value.Concat(Permissions.NotifyEarnedBefore
+            .Where(n => r.Value.Contains(n.Value)).Select(n => n.Key)).Distinct().ToArray());
 
     public static string[] For(Role role) => Map.TryGetValue(role, out var p) ? p : Array.Empty<string>();
 }

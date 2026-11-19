@@ -1,9 +1,12 @@
 import {
+  addDays,
+  companyToday,
   formatDate,
   formatMoney,
   formatNumber,
   type AppNotification,
   type Locale,
+  type NotificationKind,
   type Translate,
 } from '@skb/shared';
 
@@ -141,4 +144,62 @@ export function notificationLink(n: AppNotification): string | null {
     default:
       return null;
   }
+}
+
+/** The icon and colour a kind is shown with, so the kinds tell apart at a glance. */
+export function notificationLook(kind: NotificationKind): { icon: string; tone: string } {
+  switch (kind) {
+    case 'INVOICE_NEW':
+    case 'INVOICE_EDITED':
+    case 'ORDER_PENDING':
+    case 'ORDER_APPROVED':
+      return { icon: 'sales', tone: 'text-brand bg-brand-soft' };
+    case 'ORDER_REJECTED':
+    case 'LIMIT_WAIT':
+      return { icon: 'alert', tone: 'text-warning bg-warning-soft' };
+    case 'RETURN_MADE':
+      return { icon: 'returns', tone: 'text-warning bg-warning-soft' };
+    case 'CASH_SENT':
+    case 'CASH_RECEIVED':
+    case 'CASH_CANCELLED':
+      return { icon: 'receipts', tone: 'text-positive bg-positive-soft' };
+    case 'TRANSFER_SENT':
+    case 'TRANSFER_RECEIVED':
+    case 'TRANSFER_CANCELLED':
+      return { icon: 'delivery', tone: 'text-info bg-info-soft' };
+    case 'NOTE_DUE':
+    case 'NOTE_OVERDUE':
+      return { icon: 'notes', tone: 'text-warning bg-warning-soft' };
+    case 'NOTE_BOUNCED':
+    case 'STOCK_OUT':
+    case 'BACKUP_FAILED':
+      return {
+        icon: kind === 'STOCK_OUT' ? 'inventory' : kind === 'NOTE_BOUNCED' ? 'notes' : 'alert',
+        tone: 'text-destructive bg-destructive-soft',
+      };
+    case 'STOCK_LOW':
+      return { icon: 'inventory', tone: 'text-warning bg-warning-soft' };
+    case 'PAYROLL_POSTED':
+    case 'PAYROLL_PAID':
+      return { icon: 'payroll', tone: 'text-info bg-info-soft' };
+    case 'PERIOD_LOCK':
+    case 'YEAR_CLOSED':
+      return { icon: 'ledger', tone: 'text-info bg-info-soft' };
+    case 'UPDATE_AVAILABLE':
+      return { icon: 'update', tone: 'text-brand bg-brand-soft' };
+    case 'NEW_SIGNIN':
+      return { icon: 'shield', tone: 'text-destructive bg-destructive-soft' };
+    case 'DAILY_SUMMARY':
+      return { icon: 'analytics', tone: 'text-brand bg-brand-soft' };
+    default:
+      return { icon: 'bell', tone: 'text-muted bg-surface-2' };
+  }
+}
+
+/** A company day as a heading: Today, Yesterday, else the date in numbers. */
+export function dayHeading(day: string, t: Translate, locale: Locale): string {
+  const today = companyToday();
+  if (day === today) return t('notify.today');
+  if (day === addDays(today, -1)) return t('notify.yesterday');
+  return formatDate(day, locale);
 }

@@ -1769,11 +1769,17 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("BranchId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Data")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("DepartmentName")
                         .HasColumnType("text");
@@ -1798,6 +1804,9 @@ namespace SKB.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("StaffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WarehouseId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");

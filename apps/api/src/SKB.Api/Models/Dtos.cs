@@ -1380,9 +1380,23 @@ public record PayPayrollRequest(string? AccountId = null, string[]? EmployeeIds 
 public record NotificationDto(
     string Id, string Kind, string? DocumentId, string? DocumentNumber, string? PartyName, long Amount,
     string? ActorName, string? Message, string CreatedAt, bool Read, string? DepartmentName = null,
-    System.Text.Json.JsonElement? Data = null);
+    System.Text.Json.JsonElement? Data = null, string? Day = null, string? BranchId = null, string? DepartmentId = null,
+    string? WarehouseId = null);
 
-public record NotificationsDto(int Unread, NotificationDto[] Items, bool More = false);
+/// <param name="Total">How many match the filters (all pages).</param>
+public record NotificationsDto(int Unread, NotificationDto[] Items, bool More = false, int Total = 0);
+
+/// <summary>A place my notifications happened in (the page's place filter).</summary>
+public record PlaceDto(string Id, string Name);
+
+public record NotificationPlacesDto(PlaceDto[] Branches, PlaceDto[] Departments, PlaceDto[] Warehouses);
+
+public record MarkNotificationsRequest(string[]? Ids, bool Read = true);
+
+/// <summary>Which of mine to remove: these ids, or all before a company day (only read ones with ReadOnly), or all read, or all.</summary>
+public record DeleteNotificationsRequest(string[]? Ids = null, string? Before = null, bool ReadOnly = false, bool All = false);
+
+public record DeletedDto(int Deleted);
 
 /// <summary>
 /// My notification choices: the kinds I may be sent (what my permissions allow), those I switched

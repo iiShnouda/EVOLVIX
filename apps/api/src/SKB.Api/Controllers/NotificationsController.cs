@@ -30,23 +30,73 @@ public sealed class NotificationsController : ControllerBase
 
     /// <param name="before">The id of the last one shown: the next page after it.</param>
     /// <param name="unread">Only the unread ones.</param>
+    /// <param name="from">From this company day (yyyy-MM-dd).</param>
+    /// <param name="to">Up to and including this company day.</param>
+    /// <param name="kinds">Only these kinds (comma-separated).</param>
+    /// <param name="branchId">Only those that happened in this branch (and so on).</param>
     [HttpGet]
-    public async Task<ActionResult<NotificationsDto>> List([FromQuery] Guid? before = null, [FromQuery] bool unread = false)
+    public async Task<ActionResult<NotificationsDto>> List([FromQuery] Guid? before = null, [FromQuery] bool unread = false,
+        [FromQuery] string? from = null, [FromQuery] string? to = null, [FromQuery] string? kinds = null,
+        [FromQuery] Guid? branchId = null, [FromQuery] Guid? departmentId = null, [FromQuery] Guid? warehouseId = null,
+        [FromQuery] int take = Page)
     {
         var me = Me();
         var mine = _db.Notifications.AsNoTracking().Where(n => n.StaffId == me);
         var count = await mine.CountAsync(n => n.ReadAt == null);
         var q = unread ? mine.Where(n => n.ReadAt == null) : mine;
+        if (CompanyClock.ParseDay(from) is DateOnly f)
+        {
+            var start = CompanyClock.StartOf(f);
+            q = q.Where(n => n.CreatedAt >= start);
+        }
+        if (CompanyClock.ParseDay(to) is DateOnly t)
+        {
+            var end = CompanyClock.StartOf(t.AddDays(1));
+            q = q.Where(n => n.CreatedAt < end);
+        }
+        var wanted = (kinds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(NotificationService.Kinds.ContainsKey).ToArray();
+        if (wanted.Length > 0) q = q.Where(n => wanted.Contains(n.Kind));
+        if (branchId is Guid bid) q = q.Where(n => n.BranchId == bid);
+        if (departmentId is Guid did) q = q.Where(n => n.DepartmentId == did);
+        if (warehouseId is Guid wid) q = q.Where(n => n.WarehouseId == wid);
+        var total = await q.CountAsync();
         if (before is Guid b && await mine.Where(n => n.Id == b).Select(n => (DateTime?)n.CreatedAt).FirstOrDefaultAsync() is DateTime at)
             q = q.Where(n => n.CreatedAt < at || (n.CreatedAt == at && n.Id.CompareTo(b) < 0));
-        var rows = await q.OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id).Take(Page + 1).ToListAsync();
-        return Ok(new NotificationsDto(count, rows.Take(Page).Select(ToDto).ToArray(), rows.Count > Page));
+        var size = Math.Clamp(take, 1, 100);
+        var rows = await q.OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id).Take(size + 1).ToListAsync();
+        return Ok(new NotificationsDto(count, rows.Take(size).Select(ToDto).ToArray(), rows.Count > size, total));
+    }
+
+    /// <summary>
+    /// The places my notifications happened in that I may still see (the page's place filter): only
+    /// my branches, departments and stores.
+    /// </summary>
+    [HttpGet("places")]
+    public async Task<ActionResult<NotificationPlacesDto>> Places([FromServices] WarehouseService warehouses)
+    {
+        var me = Me();
+        var mine = _db.Notifications.AsNoTracking().Where(n => n.StaffId == me);
+        var branchIds = mine.Where(n => n.BranchId != null).Select(n => n.BranchId!.Value).Distinct();
+        var branches = await _db.Branches.AsNoTracking().InBranches(User, x => x.Id).Where(x => branchIds.Contains(x.Id))
+            .ToListAsync();
+        var departmentIds = mine.Where(n => n.DepartmentId != null).Select(n => n.DepartmentId!.Value).Distinct();
+        var dq = _db.Departments.AsNoTracking().Where(x => departmentIds.Contains(x.Id));
+        if (Access.Departments(User) is Guid[] allowed) dq = dq.Where(x => allowed.Contains(x.Id));
+        var departments = await dq.ToListAsync();
+        var warehouseIds = mine.Where(n => n.WarehouseId != null).Select(n => n.WarehouseId!.Value).Distinct();
+        var stores = await warehouses.Visible(User).AsNoTracking().Where(x => warehouseIds.Contains(x.Id)).ToListAsync();
+        static PlaceDto[] Of<T>(IEnumerable<T> xs, Func<T, Guid> id, Func<T, string> name) =>
+            xs.Select(x => new PlaceDto(id(x).ToString(), name(x))).OrderBy(x => x.Name).ToArray();
+        return Ok(new NotificationPlacesDto(Of(branches, x => x.Id, x => Loc.Name(x)),
+            Of(departments, x => x.Id, x => x.Name), Of(stores, x => x.Id, x => Loc.Name(x))));
     }
 
     private static NotificationDto ToDto(Notification n) => new(
         n.Id.ToString(), n.Kind, n.DocumentId?.ToString(), n.DocumentNumber, n.PartyName, n.Amount, n.ActorName,
         n.Message, DateTime.SpecifyKind(n.CreatedAt, DateTimeKind.Utc).ToString("o"), n.ReadAt is not null,
-        n.DepartmentName, ParseData(n.Data));
+        n.DepartmentName, ParseData(n.Data), CompanyClock.DayOf(n.CreatedAt).ToString("yyyy-MM-dd"),
+        n.BranchId?.ToString(), n.DepartmentId?.ToString(), n.WarehouseId?.ToString());
 
     private static JsonElement? ParseData(string? json)
     {
@@ -54,6 +104,52 @@ public sealed class NotificationsController : ControllerBase
         try { return JsonDocument.Parse(json).RootElement.Clone(); }
         catch (JsonException) { return null; }
     }
+
+    /// <summary>Mark some of mine read or unread.</summary>
+    [HttpPost("mark")]
+    public async Task<IActionResult> Mark([FromBody] MarkNotificationsRequest req)
+    {
+        var me = Me();
+        var ids = Ids(req.Ids);
+        if (ids.Length == 0) return NoContent();
+        var mine = _db.Notifications.Where(n => n.StaffId == me && ids.Contains(n.Id));
+        if (req.Read)
+            await mine.Where(n => n.ReadAt == null).ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, DateTime.UtcNow));
+        else
+            await mine.Where(n => n.ReadAt != null).ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, (DateTime?)null));
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Remove several of mine at once: the ones given, or every one before a company day (read or
+    /// not), or every read one. Never anyone else's. Returns how many went.
+    /// </summary>
+    [HttpPost("delete")]
+    public async Task<ActionResult<DeletedDto>> DeleteMany([FromBody] DeleteNotificationsRequest req)
+    {
+        var me = Me();
+        var mine = _db.Notifications.Where(n => n.StaffId == me);
+        IQueryable<Notification>? q = null;
+        if (req.Ids is { Length: > 0 })
+        {
+            var ids = Ids(req.Ids);
+            q = mine.Where(n => ids.Contains(n.Id));
+        }
+        else if (CompanyClock.ParseDay(req.Before) is DateOnly day)
+        {
+            var start = CompanyClock.StartOf(day);
+            q = mine.Where(n => n.CreatedAt < start);
+            if (req.ReadOnly) q = q.Where(n => n.ReadAt != null);
+        }
+        else if (req.ReadOnly) q = mine.Where(n => n.ReadAt != null);
+        else if (req.All) q = mine;
+        if (q is null) return BadRequest(new { error = "NOTHING_CHOSEN" });
+        return Ok(new DeletedDto(await q.ExecuteDeleteAsync()));
+    }
+
+    private static Guid[] Ids(string[]? ids) =>
+        (ids ?? Array.Empty<string>()).Take(500).Select(x => Guid.TryParse(x, out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty).Distinct().ToArray();
 
     [HttpPost("{id:guid}/read")]
     public async Task<IActionResult> Read(Guid id)

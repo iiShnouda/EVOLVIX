@@ -27,6 +27,7 @@ export type IconName =
   | 'notes'
   | 'payroll'
   | 'themes'
+  | 'bell'
   | 'chat'
   | 'assistant'
   | 'layers';
@@ -92,7 +93,6 @@ export const NAV_SECTIONS: NavSection[] = [
         path: '/sales',
         anyOf: opens('sales', [
           'sales:print',
-          'sales:invoice_alerts',
           'sales:change_price',
           'sales:raise_price',
           'sales:choose_price_level',
@@ -306,6 +306,13 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: 'assistant',
         path: '/assistant',
         anyOf: ['ai:chat', 'ai:voice'],
+      },
+      // Each person's own notifications, by day (owner, 2026-11-18): no permission, only their own.
+      {
+        key: 'notifications',
+        labelKey: 'nav.notifications',
+        icon: 'bell',
+        path: '/notifications',
       },
     ],
   },

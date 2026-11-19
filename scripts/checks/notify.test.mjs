@@ -261,6 +261,152 @@ eq('none unread', (await bell(mona)).unread, 0);
 ok('clear the read ones', await mona.del('/notifications/read'), [204]);
 eq('none left', (await bell(mona)).items.length, 0);
 
+console.log('== a permission per kind, by place (owner, 2026-11-18)');
+const perms = mona.user.permissions;
+check(
+  'the accountant keeps what the action earned before (approve, cash, transfers, books)',
+  [
+    'notifications:order_pending',
+    'notifications:limit_wait',
+    'notifications:cash_sent',
+    'notifications:transfer_sent',
+    'notifications:books',
+    'notifications:invoice_edited',
+  ].every((x) => perms.includes(x)),
+);
+check(
+  'sales staff are not told of approvals',
+  !karim.user.permissions.includes('notifications:order_pending'),
+);
+const pemail = `notifkind.${tag}@skb.local`;
+const pers = ok(
+  'a person with no role',
+  await owner.post('/staff', {
+    fullName: `Kind ${tag}`,
+    email: pemail,
+    password: 'Str0ngPass!',
+    role: 'NONE',
+    branchId: sara.user.branchId,
+  }),
+);
+const placeHim = (branchIds) =>
+  owner.put(`/staff/${pers.id}/access`, {
+    allBranches: false,
+    branchIds,
+    warehouseIds: [],
+    moneyAccountIds: [],
+  });
+ok('works in the main branch too', await placeHim([mainId]));
+const grant = (granted) => owner.put(`/staff/${pers.id}/permissions`, { granted, revoked: [] });
+ok('told only of edited invoices', await grant(['notifications:invoice_edited']));
+let him = await login(pemail, 'Str0ngPass!');
+const kinds1 = ok('his choices', await him.get('/notifications/preferences')).offered;
+check('his choices offer edited invoices', kinds1.includes('INVOICE_EDITED'));
+check('…not new invoices (not his)', !kinds1.includes('INVOICE_NEW'));
+const s1 = await sell(karim, 1);
+eq('a new invoice: not told (another kind)', (await told(him, 'INVOICE_NEW', s1.id)).length, 0);
+ok('now told of new invoices', await grant(['sales:invoice_alerts']));
+const s2 = await sell(karim, 1);
+eq('a new invoice in his branch: told', (await told(him, 'INVOICE_NEW', s2.id)).length, 1);
+const got = (await told(him, 'INVOICE_NEW', s2.id))[0];
+eq('…with where it happened', got?.branchId, mainId);
+eq('…and its company day', got?.day, today);
+ok('no longer in the main branch', await placeHim([]));
+const s3 = await sell(karim, 1);
+eq(
+  'an invoice in a branch he no longer works in: not told',
+  (await told(him, 'INVOICE_NEW', s3.id)).length,
+  0,
+);
+him = await login(pemail, 'Str0ngPass!');
+const hisPlaces = ok('his places', await him.get('/notifications/places'));
+check(
+  'his place filter offers only the branches he may see',
+  !hisPlaces.branches.some((b) => b.id === mainId),
+  hisPlaces.branches,
+);
+check(
+  '…yet the notification stays his',
+  (await bell(him)).items.some((n) => n.id === got.id),
+);
+
+console.log('== the notifications page: filters, days, places');
+const ownerPlaces = ok('my places', await owner.get('/notifications/places'));
+check(
+  'the owner sees the main branch among them',
+  ownerPlaces.branches.some((b) => b.id === mainId),
+);
+const byKind = await bell(owner, '?kinds=INVOICE_NEW,STOCK_LOW&take=100');
+check(
+  'by kinds: only those',
+  byKind.items.length > 0 &&
+    byKind.items.every((n) => ['INVOICE_NEW', 'STOCK_LOW'].includes(n.kind)),
+);
+check('…counted', byKind.total >= byKind.items.length, byKind.total);
+const todays = await bell(owner, `?from=${today}&to=${today}&take=100`);
+check(
+  'today only: each on today',
+  todays.items.length > 0 && todays.items.every((n) => n.day === today),
+);
+eq('from tomorrow: none', (await bell(owner, `?from=${addDays(today, 1)}`)).items.length, 0);
+eq(
+  'up to yesterday: none of today',
+  (await bell(owner, `?to=${addDays(today, -1)}&take=100`)).items.filter((n) => n.day === today)
+    .length,
+  0,
+);
+const inMain = await bell(owner, `?branchId=${mainId}&take=100`);
+check(
+  'by branch: only there',
+  inMain.items.length > 0 && inMain.items.every((n) => n.branchId === mainId),
+);
+eq(
+  'a branch with nothing: none',
+  (await bell(owner, `?branchId=${'0'.repeat(8)}-0000-0000-0000-000000000000`)).items.length,
+  0,
+);
+const small = await bell(owner, '?take=2');
+eq('a page of two', small.items.length, 2);
+
+console.log('== read, unread and delete several, only mine');
+const ids = (await bell(him)).items.map((n) => n.id);
+check('he has some', ids.length > 0);
+ok('marked read', await him.post('/notifications/mark', { ids, read: true }), [204]);
+eq('none unread', (await bell(him)).unread, 0);
+ok(
+  'one marked unread',
+  await him.post('/notifications/mark', { ids: [ids[0]], read: false }),
+  [204],
+);
+eq('one unread', (await bell(him)).unread, 1);
+ok(
+  "someone else can't mark them",
+  await karim.post('/notifications/mark', { ids, read: true }),
+  [204],
+);
+eq('…still one unread', (await bell(him)).unread, 1);
+eq(
+  'someone else deletes none of them',
+  ok('karim deletes', await karim.post('/notifications/delete', { ids })).deleted,
+  0,
+);
+eq('…all still there', (await bell(him)).items.length, ids.length);
+eq('nothing chosen: refused', (await him.post('/notifications/delete', {})).status, 400);
+eq(
+  'the read ones',
+  ok('delete read', await him.post('/notifications/delete', { readOnly: true })).deleted,
+  ids.length - 1,
+);
+eq('…the unread one stays', (await bell(him)).items.length, 1);
+eq(
+  'all before tomorrow',
+  ok('delete older', await him.post('/notifications/delete', { before: addDays(today, 1) }))
+    .deleted,
+  1,
+);
+eq('none left', (await bell(him)).items.length, 0);
+check('the others still have theirs', (await bell(owner)).items.length > 0);
+
 console.log('== a new device on my account');
 const email = `notif.${tag}@skb.local`;
 ok(

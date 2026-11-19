@@ -72,7 +72,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'sales:approve',
           'sales:reject',
           'sales:lock',
-          'sales:invoice_alerts',
         ],
       },
       {
@@ -621,9 +620,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     sections: [
       {
         key: 'notifications',
+        // Each kind of notification is earned by its own permission (owner, 2026-11-18).
         permissions: [
+          'sales:invoice_alerts',
+          'notifications:invoice_edited',
+          'notifications:order_pending',
+          'notifications:limit_wait',
+          'notifications:cash_sent',
           'notifications:cheques',
+          'notifications:transfer_sent',
           'notifications:stock',
+          'notifications:payroll',
+          'notifications:books',
+          'notifications:backup',
           'notifications:daily_summary',
         ],
       },
@@ -657,3 +666,18 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
 export function groupPermissions(key: string): Permission[] {
   return PERMISSION_GROUPS.find((g) => g.key === key)?.sections.flatMap((s) => s.permissions) ?? [];
 }
+
+/**
+ * The permission that earned each of these notifications before it had its own (owner, 2026-11-18):
+ * a built-in role holding it is told of it too. Mirrors `Permissions.NotifyEarnedBefore` (Roles.cs).
+ */
+export const NOTIFY_EARNED_BEFORE: Partial<Record<Permission, Permission>> = {
+  'notifications:invoice_edited': 'sales:invoice_alerts',
+  'notifications:order_pending': 'sales:approve',
+  'notifications:limit_wait': 'sales:approve',
+  'notifications:cash_sent': 'cash:handover_receive',
+  'notifications:transfer_sent': 'inventory:transfer_receive',
+  'notifications:payroll': 'payroll:runs',
+  'notifications:books': 'ledger:journal',
+  'notifications:backup': 'backup:create',
+};

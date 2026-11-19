@@ -1790,6 +1790,10 @@ public class Notification
     /// the app words it in the screen language, so no sentence is stored.
     /// </summary>
     public string? Data { get; set; }
+    /// <summary>Where it happened, when known (the notifications page filters by it; owner, 2026-11-18).</summary>
+    public Guid? BranchId { get; set; }
+    public Guid? DepartmentId { get; set; }
+    public Guid? WarehouseId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReadAt { get; set; }
 }

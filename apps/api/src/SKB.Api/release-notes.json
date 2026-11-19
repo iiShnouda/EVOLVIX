@@ -147,6 +147,14 @@
         {
           "ar": "استبدال: العميل يرجّع ويأخد أصناف تانية في خطوة واحدة، ويدفع أو ياخد الفرق بس، وورقة واحدة للطباعة",
           "en": "Exchange: the customer returns items and takes others in one go, paying or getting back only the difference, printed on one paper"
+        },
+        {
+          "ar": "صفحة جديدة للإشعارات: كل الإشعارات القديمة والجديدة متقسمة بالأيام (النهارده، امبارح، وبعدين بالتاريخ)، تفلتر بغير المقروء والنوع والفترة والفرع أو القسم أو المخزن، وتعلّم مقروء/مش مقروء وتمسح واحد أو أكتر أو يوم كامل أو المقروء أو اللي أقدم من تاريخ",
+          "en": "A Notifications page: all old and new notifications grouped by day (Today, Yesterday, then the date), filtered by unread, kind, period and branch/department/warehouse; mark read/unread and delete one, several, a whole day, the read ones or everything older than a date"
+        },
+        {
+          "ar": "كل نوع إشعار بقى ليه صلاحية لوحده في شاشة الصلاحيات، وكل واحد بيوصله اللي كان بيوصله قبل كده",
+          "en": "Each kind of notification has its own permission in the permission editor; everyone keeps receiving what they received before"
         }
       ],
       "fixes": [
@@ -177,6 +185,10 @@
         {
           "ar": "كشف الحساب كان بيظهر كروت من غير أعمدة على اللابتوب أو الشاشة الأصغر؛ دلوقتي الأعمدة ظاهرة على أي شاشة أكبر من الموبايل",
           "en": "The statement showed cards without columns on laptops and narrower windows; columns now show on anything wider than a phone"
+        },
+        {
+          "ar": "جرس الإشعارات بقى بيتسكرول جوّه بارتفاع ثابت ومش بيطلع برّه الشاشة على الموبايل، وكل إشعار بأيقونة نوعه وعنوان واضح ووقته، وفيه لينك \"كل الإشعارات\"",
+          "en": "The bell scrolls inside a fixed-height panel (a sheet on phones, no longer off-screen), each notification shows its kind's icon, a clear title and its time, with a link to All notifications"
         }
       ]
     },
