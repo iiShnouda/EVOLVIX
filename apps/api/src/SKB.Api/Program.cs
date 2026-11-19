@@ -164,9 +164,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     ctx.Fail("Access changed.");
                     return;
                 }
+                var sid = ctx.Principal?.FindFirst(SKB.Api.Services.TokenService.DeviceClaim)?.Value;
+                // A locked screen (owner, 2026-11-18): nothing is read until it is unlocked.
+                if (Guid.TryParse(sid, out var lockedDevice) && await SKB.Api.Services.LockGate.IsLockedAsync(db, lockedDevice))
+                {
+                    ctx.HttpContext.Items["locked"] = true;
+                    ctx.Fail("The screen is locked.");
+                    return;
+                }
                 var current = await SKB.Api.Services.DeviceGate.CurrentAsync(db, staffId);
                 if (current.Mobile is null && current.Desktop is null) return;
-                var sid = ctx.Principal?.FindFirst(SKB.Api.Services.TokenService.DeviceClaim)?.Value;
                 if (!Guid.TryParse(sid, out var device) || !SKB.Api.Services.DeviceGate.Allows(current, device))
                 {
                     ctx.HttpContext.Items["signedInElsewhere"] = true;
@@ -180,6 +187,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     ctx.HandleResponse();
                     ctx.Response.StatusCode = 401;
                     await ctx.Response.WriteAsJsonAsync(new { message = "This account signed in on another device.", code = "SIGNED_IN_ELSEWHERE" });
+                }
+                else if (ctx.HttpContext.Items.ContainsKey("locked"))
+                {
+                    ctx.HandleResponse();
+                    ctx.Response.StatusCode = 401;
+                    await ctx.Response.WriteAsJsonAsync(new { message = "The screen is locked.", code = "LOCKED" });
                 }
                 else if (ctx.HttpContext.Items.ContainsKey("accessChanged"))
                 {

@@ -7,8 +7,13 @@ namespace SKB.Api.Services;
 
 /// <param name="Remember">Keep the session past the browser ("remember this device").</param>
 /// <param name="Refused">A refresh refused because the account signed in on another device.</param>
+/// <param name="ExpiresAt">When the session ends unless refreshed (a remembered device's cookie lasts as long).</param>
+/// <param name="Lock">Refused because the screen is locked: whose it is, and whether a PIN opens it.</param>
 public sealed record LoginResult(AuthUserDto User, string AccessToken, string RefreshToken, bool Remember = false,
-    string? Refused = null);
+    string? Refused = null, DateTime? ExpiresAt = null, LockInfo? Lock = null);
+
+/// <summary>A locked screen: the person's name and whether their PIN may open it.</summary>
+public sealed record LockInfo(string Name, bool Pin);
 
 public sealed class AuthService
 {
@@ -68,16 +73,28 @@ public sealed class AuthService
         var scope = await _access.ForAsync(staff);
         // A browser or app this account was not signed in from before: its owner is told (security).
         await _notify.NewSignInAsync(staff, ctx);
-        var (refresh, device) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
+        var (refresh, device, remember, expires) = await _tokens.CreateSessionAsync(staff, ctx, req.RememberDevice);
         var access = _tokens.IssueAccessToken(staff, permissions, scope, device);
         await _audit.RecordAsync(staff.Id.ToString(), staff.FullName, "auth.login", "auth",
             staff.BranchId.ToString(), ctx.Ip, ctx.UserAgent);
-        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, refresh, req.RememberDevice);
+        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, refresh, remember, ExpiresAt: expires);
     }
 
-    public async Task<LoginResult?> RefreshAsync(string rawToken, SessionContext ctx)
+    /// <summary>Whose a locked session is, for the lock screen.</summary>
+    public async Task<LockInfo?> LockInfoAsync(string rawToken)
     {
-        var (rotated, refused) = await _tokens.RotateSessionAsync(rawToken, ctx);
+        var session = await _tokens.LiveSessionAsync(rawToken);
+        if (session?.Staff is null || session.LockedAt is null) return null;
+        var pinUnlock = await _db.CompanySettings.AsNoTracking().Select(s => s.PinUnlock).FirstOrDefaultAsync();
+        return new LockInfo(session.Staff.FullName, pinUnlock && session.Staff.PinHash is not null);
+    }
+
+    /// <param name="unlocking">After the password or PIN opened a locked screen.</param>
+    public async Task<LoginResult?> RefreshAsync(string rawToken, SessionContext ctx, bool unlocking = false)
+    {
+        var (rotated, refused) = await _tokens.RotateSessionAsync(rawToken, ctx, unlocking);
+        if (refused == "locked")
+            return new LoginResult(null!, "", "", Refused: refused, Lock: await LockInfoAsync(rawToken));
         if (refused is not null)
             return new LoginResult(null!, "", "", Refused: refused);
         if (rotated is null) return null;
@@ -87,7 +104,8 @@ public sealed class AuthService
         var permissions = await _permissions.ForAsync(staff);
         var scope = await _access.ForAsync(staff);
         var access = _tokens.IssueAccessToken(staff, permissions, scope, rotated.DeviceId);
-        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, rotated.RefreshToken, rotated.Remember);
+        return new LoginResult(TokenService.ToDto(staff, permissions, scope), access, rotated.RefreshToken, rotated.Remember,
+            ExpiresAt: rotated.ExpiresAt);
     }
 }
 

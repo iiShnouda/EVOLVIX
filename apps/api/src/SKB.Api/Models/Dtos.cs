@@ -206,14 +206,14 @@ public record ConvertQuotationRequest(
 /// <summary><paramref name="Discount"/>: the supplier's discount on the whole line (minor units).</summary>
 public record CreatePurchaseLineRequest(
     string ProductId, int Quantity, long UnitCost, string? WarehouseId = null, string? UnitId = null,
-    bool IsBonus = false, long Discount = 0);
+    bool IsBonus = false, long Discount = 0, string? OrderLineId = null);
 
 public record CreatePurchaseInvoiceRequest(
     string PartyId, CreatePurchaseLineRequest[] Lines,
     int? TaxPercent = null, string? Notes = null, string? DueDate = null, long PaidAmount = 0,
     string? WarehouseId = null, string? PriceLevelId = null, ChargeRequest[]? Charges = null,
     string? PaidAccountId = null, long ShippingCost = 0, string? ShippingAccountId = null,
-    string? DocumentDate = null);
+    string? DocumentDate = null, string? PurchaseOrderId = null);
 
 /// <summary>Someone who can be credited with a sale (active staff).</summary>
 /// <param name="Code">The person's number (كود), shown beside the name.</param>
@@ -302,7 +302,8 @@ public record CompanySettingsDto(
     string? CommercialRegister = null, string TimeZone = "Africa/Cairo", int MaxDiscountPercent = 100,
     int PendingHoldDays = 0, int LogoVersion = 0, bool RequireDepartment = true, int ReturnAfterHours = 12,
     bool HideNewPlaces = true, int IdleMinutes = 30, string? CurrentSeasonId = null,
-    int? DailySummaryMinute = null, int NoteAlertDays = 3, string DamagedReturns = "WAREHOUSE");
+    int? DailySummaryMinute = null, int NoteAlertDays = 3, string DamagedReturns = "WAREHOUSE", string IdleAction = "LOCK",
+    bool PinUnlock = true, int RememberDays = 30);
 
 /// <summary>How one kind of document is numbered; <paramref name="Next"/> is the number the next one gets.</summary>
 public record NumberingDto(string Type, string Prefix, int StartAt, int Digits, bool Custom, string Next);
@@ -314,7 +315,8 @@ public record SaveNumberingRequest(string Type, string? Prefix, int StartAt = 1,
 /// What the app shows of the company before and after sign-in: its name and logo version
 /// (0 = no logo; the image is at /api/branding/logo).
 /// </summary>
-public record BrandingDto(string CompanyName, int LogoVersion);
+/// <param name="RememberDays">How long "remember this device" lasts; 0 = the sign-in page doesn't offer it.</param>
+public record BrandingDto(string CompanyName, int LogoVersion, int RememberDays = 30);
 
 /// <summary>The logo as base64 (a data: URL is accepted too).</summary>
 public record UploadLogoRequest(string Data);
@@ -328,7 +330,7 @@ public record UpdateSettingsRequest(
     int? MaxDiscountPercent = null, int? PendingHoldDays = null, bool? RequireDepartment = null,
     int? ReturnAfterHours = null, bool? HideNewPlaces = null, int? IdleMinutes = null,
     string? CurrentSeasonId = null, int? DailySummaryMinute = null, int? NoteAlertDays = null,
-    string? DamagedReturns = null);
+    string? DamagedReturns = null, string? IdleAction = null, bool? PinUnlock = null, int? RememberDays = null);
 
 // ---- Profitability report (تقارير الربحية) ----
 

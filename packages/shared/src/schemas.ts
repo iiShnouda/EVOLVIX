@@ -133,6 +133,8 @@ export const purchaseLineSchema = z.object({
   isBonus: z.boolean().optional(),
   /** The supplier's discount on the whole line (minor units). */
   discount: z.number().int().min(0).optional(),
+  /** The purchase order line it receives (owner, 2026-11-18). */
+  orderLineId: z.string().uuid().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineSchema>;
 
@@ -158,6 +160,8 @@ export const createPurchaseInvoiceSchema = z.object({
   /** Shipping we paid (minor units): a shipping expense out of `shippingAccountId` (else the cash box). */
   shippingCost: z.number().int().min(0).optional(),
   shippingAccountId: z.string().uuid().optional(),
+  /** The purchase order it receives goods of (needs purchase_orders:receive). */
+  purchaseOrderId: z.string().uuid().optional(),
 });
 export type CreatePurchaseInvoiceInput = z.infer<typeof createPurchaseInvoiceSchema>;
 
@@ -336,6 +340,12 @@ export const updateSettingsSchema = z.object({
   hideNewPlaces: z.boolean().optional(),
   /** Minutes without use before everyone is signed out; 0 = never. */
   idleMinutes: z.number().int().min(0).max(1440).optional(),
+  /** On a remembered device: lock the screen, or sign out. */
+  idleAction: z.enum(['LOCK', 'SIGN_OUT']).optional(),
+  /** A personal PIN may open a locked screen. */
+  pinUnlock: z.boolean().optional(),
+  /** Days "remember this device" lasts; 0 = not offered. */
+  rememberDays: z.number().int().min(0).max(90).optional(),
   /** The season it is now; "" = worked out from the date. */
   currentSeasonId: z.string().max(64).optional(),
   /** Where a damaged line of a sales return goes unless chosen on it. */

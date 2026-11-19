@@ -17,6 +17,7 @@ import {
   type Paginated,
   type Party,
   type Product,
+  type PurchaseOrder,
   type PurchaseScan,
 } from '@skb/shared';
 import { Button, Card, PageHeader } from '../components/ui';
@@ -131,6 +132,8 @@ interface NewLine {
   oldSeasonId?: string;
   oldSeasonName?: string;
   moveSeason?: boolean;
+  /** The purchase order line it receives (owner, 2026-11-18). */
+  orderLineId?: string;
 }
 
 interface AddItemsDraft {
@@ -382,6 +385,71 @@ export function AddItemsPage() {
   }, [asked, seasons.isLoading, season]);
 
   /**
+   * Receiving a purchase order (owner, 2026-11-18): its supplier and store, and what is still to come
+   * of each line — items of the catalog as they are, new items as new items to make here (named,
+   * placed and sized as ordered), at the order's price. The invoice then records what it received.
+   */
+  const orderId = params.get('order');
+  const [order, setOrder] = useState<PurchaseOrder | null>(null);
+  const tookOrder = useRef(false);
+  useEffect(() => {
+    if (!orderId || tookOrder.current || !pieceUnit || seasons.isLoading) return;
+    tookOrder.current = true;
+    void (async () => {
+      const o = await api.get<PurchaseOrder>(`/purchase-orders/${orderId}`).catch(() => null);
+      if (!o) return;
+      setOrder(o);
+      const party = await api.get<Party>(`/parties/${o.partyId}`).catch(() => null);
+      if (party) setSupplier(party);
+      setBranch(o.branchId);
+      setWarehouse(o.warehouseId);
+      if (o.departmentId) setDepartment(o.departmentId);
+      const open = o.lines.filter((l) => l.pieces > l.receivedPieces);
+      const ids = open.filter((l) => !l.isNew && l.productId).map((l) => l.productId);
+      const products = ids.length
+        ? await api.get<Product[]>(`/products?limit=200&ids=${ids.join(',')}`).catch(() => [])
+        : [];
+      const built: NewLine[] = [];
+      for (const [n, l] of open.entries()) {
+        const left = l.pieces - l.receivedPieces;
+        // Whole units when what is left fills them, else pieces.
+        const whole = l.unitFactor > 1 && left % l.unitFactor === 0;
+        const perPiece = l.unitPrice > 0 ? l.unitPrice / l.unitFactor / 100 : 0;
+        const key = `${Date.now()}-order-${n}`;
+        const p = products.find((x) => x.id === l.productId);
+        if (!l.isNew && p) {
+          const unitId =
+            whole && l.unitId ? l.unitId : (p.units.find((u) => u.factor === 1)?.unitId ?? '');
+          const line = existingLine(p, unitId, whole ? left / l.unitFactor : left, key);
+          built.push({
+            ...line,
+            costBefore: perPiece ? String(perPiece) : line.costBefore,
+            orderLineId: l.id,
+          });
+        } else if (l.isNew) {
+          built.push({
+            ...blank(whole && l.unitId ? l.unitId : pieceUnit.id),
+            key,
+            name: l.name,
+            qty: String(whole ? left / l.unitFactor : left),
+            costBefore: perPiece ? String(perPiece) : '',
+            departmentId: l.departmentId ?? '',
+            groupId: l.groupId ?? '',
+            sizeId: l.sizeId ?? '',
+            colorId: l.colorId ?? '',
+            withVariant: !!(l.sizeId || l.colorId),
+            picked: ['place', 'size', 'color'],
+            supplierCode: l.supplierCode ?? undefined,
+            orderLineId: l.id,
+          });
+        }
+      }
+      setLines((prev) => (prev.length ? prev : built));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, pieceUnit, seasons.isLoading]);
+
+  /**
    * A supplier invoice read from a photo (owner, 2026-10-06): the supplier when found, each line as
    * the item it names when the search finds one, else as a new item read like a typed name. The
    * person checks every line before saving.
@@ -560,6 +628,7 @@ export function AddItemsPage() {
         warehouseId,
         paidAmount: 0,
         documentDate: dayToSend(docDate),
+        purchaseOrderId: orderId ?? undefined,
         lines: rows.map((r, i) => {
           const big = r.l.existing || !pieceUnit || (r.perUnit > 1 && r.l.unitId !== pieceUnit.id);
           return {
@@ -568,6 +637,7 @@ export function AddItemsPage() {
             quantity: r.qty,
             unitCost: r.before * (big ? r.perUnit : 1),
             discount: r.discount > 0 ? r.discount * r.pieces : undefined,
+            orderLineId: orderId ? r.l.orderLineId : undefined,
           };
         }),
         charges:
@@ -620,7 +690,7 @@ export function AddItemsPage() {
           .upload(`/purchases/invoices/${invoice.id}/image?page=${page}`, photo)
           .catch(() => undefined);
       work.finished();
-      navigate('/purchases');
+      navigate(orderId ? `/purchase-orders/${orderId}` : '/purchases');
     } catch (e) {
       setError(errorText(t, e));
     } finally {
@@ -702,8 +772,14 @@ export function AddItemsPage() {
     <div className="space-y-4 pb-4">
       <PageHeader
         title={t('qa.purchaseInvoice')}
+        subtitle={order ? t('po.receiving').replace('{n}', order.number) : undefined}
         action={
-          <Button size="sm" variant="ghost" icon="close" onClick={() => navigate('/purchases')}>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon="close"
+            onClick={() => navigate(orderId ? `/purchase-orders/${orderId}` : '/purchases')}
+          >
             {t('invoice.back')}
           </Button>
         }

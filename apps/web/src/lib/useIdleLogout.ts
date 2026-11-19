@@ -8,9 +8,11 @@ import { queryClient } from './queryClient';
 const ACTIVITY = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
 
 /**
- * Sign out on its own after a stretch with no activity (owner, 2026-10-14: a device left open, or a
- * virus-hit machine, shouldn't keep a live session). The delay is a company setting the owner
- * chooses in Settings (2026-10-17; 0 = never). It only runs while signed in; the server session ends too, so nothing is left to reuse.
+ * Lock or sign out on its own after a stretch with no activity (owner, 2026-10-14: a device left
+ * open, or a virus-hit machine, shouldn't keep a live session). The delay is a company setting the
+ * owner chooses in Settings (2026-10-17; 0 = never). Since 2026-11-18 a remembered device LOCKS (the
+ * data goes at once; the password or PIN opens it again) and any other one signs out: the server
+ * decides which (api.lock). It only runs while signed in.
  */
 export function useIdleLogout(): void {
   const status = useAuth((s) => s.status);
@@ -43,7 +45,7 @@ export function useIdleLogout(): void {
 
     const sign = () => {
       // Guard against a stray timer after the session already ended elsewhere.
-      if (useAuth.getState().status === 'authenticated') void api.logout('idle');
+      if (useAuth.getState().status === 'authenticated') void api.lock();
     };
     const reset = () => {
       window.clearTimeout(timer.current);

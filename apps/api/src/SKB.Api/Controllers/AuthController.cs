@@ -81,8 +81,8 @@ public sealed class AuthController : ControllerBase
         if (result is null)
             return Unauthorized(new { message = "Incorrect email or password", code = "INVALID_CREDENTIALS" });
 
-        SetRefreshCookie(result.RefreshToken, req.RememberDevice);
-        return Ok(new { user = result.User, accessToken = result.AccessToken });
+        SessionCookie.Set(Response, _config, result.RefreshToken, result.Remember ? result.ExpiresAt : null);
+        return Ok(new { user = result.User, accessToken = result.AccessToken, remembered = result.Remember });
     }
 
     [AllowAnonymous]
@@ -94,6 +94,13 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new { message = "No session", code = "NO_SESSION" });
 
         var result = await _auth.RefreshAsync(raw, Context());
+        // The screen is locked (owner, 2026-11-18): the app shows the lock screen with the person's name.
+        if (result?.Refused == "locked")
+            return Unauthorized(new
+            {
+                message = "The screen is locked.", code = "LOCKED",
+                name = result.Lock?.Name ?? "", pin = result.Lock?.Pin ?? false,
+            });
         if (result?.Refused == "license_expired")
         {
             Response.Cookies.Delete(RefreshCookie, new CookieOptions { Path = RefreshPath });
@@ -108,8 +115,8 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid or expired session", code = "NO_SESSION" });
 
         // The session keeps what was chosen at sign-in: remembered on this device, or not.
-        SetRefreshCookie(result.RefreshToken, result.Remember);
-        return Ok(new { user = result.User, accessToken = result.AccessToken });
+        SessionCookie.Set(Response, _config, result.RefreshToken, result.Remember ? result.ExpiresAt : null);
+        return Ok(new { user = result.User, accessToken = result.AccessToken, remembered = result.Remember });
     }
 
     [Authorize]
@@ -166,18 +173,27 @@ public sealed class AuthController : ControllerBase
         HttpContext.Connection.RemoteIpAddress?.ToString(),
         Request.Headers.UserAgent.ToString());
 
-    private void SetRefreshCookie(string token, bool remember)
+}
+
+/// <summary>The refresh token's cookie: only for /api/auth, never readable by the page.</summary>
+public static class SessionCookie
+{
+    public const string Name = "skb_rt";
+    public const string Path = "/api/auth";
+
+    /// <param name="expires">A remembered device's end; null = the cookie ends with the browser.</param>
+    public static void Set(HttpResponse response, IConfiguration config, string token, DateTime? expires)
     {
-        var secure = bool.Parse(_config["Cookie:Secure"] ?? "false");
-        var ttl = int.Parse(_config["Jwt:RefreshTtlSeconds"] ?? "2592000");
-        var options = new CookieOptions
+        var secure = bool.Parse(config["Cookie:Secure"] ?? "false");
+        response.Cookies.Append(Name, token, new CookieOptions
         {
             HttpOnly = true,
             Secure = secure,
             SameSite = SameSiteMode.Lax,
-            Path = RefreshPath,
-            Expires = remember ? DateTimeOffset.UtcNow.AddSeconds(ttl) : null,
-        };
-        Response.Cookies.Append(RefreshCookie, token, options);
+            Path = Path,
+            Expires = expires is DateTime e ? new DateTimeOffset(e, TimeSpan.Zero) : null,
+        });
     }
+
+    public static void Delete(HttpResponse response) => response.Cookies.Delete(Name, new CookieOptions { Path = Path });
 }

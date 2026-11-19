@@ -126,6 +126,14 @@ export type Permission =
   | 'purchases:bonus'
   | 'purchases:change_tax'
   | 'purchases:additions'
+  | 'purchase_orders:view'
+  | 'purchase_orders:create'
+  | 'purchase_orders:edit'
+  | 'purchase_orders:cancel'
+  | 'purchase_orders:receive'
+  | 'purchase_orders:print'
+  | 'purchase_orders:pdf'
+  | 'purchase_orders:export'
   | 'inventory:view'
   | 'inventory:print'
   | 'inventory:pdf'
@@ -1400,6 +1408,12 @@ export interface CompanySettings {
   noteAlertDays?: number;
   /** Where a damaged line of a sales return goes unless chosen on it (owner, 2026-11-18). */
   damagedReturns?: 'WAREHOUSE' | 'WRITE_OFF';
+  /** What the idle time does on a remembered device: lock the screen or sign out (owner, 2026-11-18). */
+  idleAction?: IdleAction;
+  /** Whether a personal PIN may open a locked screen (else only the password). */
+  pinUnlock?: boolean;
+  /** How many days "remember this device" lasts; 0 = not offered on the sign-in page. */
+  rememberDays?: number;
 }
 
 /** An exchange, saved (owner, 2026-11-18): both parts, and invoice less return. */
@@ -1451,6 +1465,8 @@ export interface ReturnsReport {
   rate?: number | null;
 }
 
+export type IdleAction = 'LOCK' | 'SIGN_OUT';
+
 /**
  * The company's own name and logo, shown beside the Evolvix mark (readable before sign-in).
  * The logo is at `/api/branding/logo`; `logoVersion` 0 = none.
@@ -1458,6 +1474,8 @@ export interface ReturnsReport {
 export interface Branding {
   companyName: string;
   logoVersion: number;
+  /** How long "remember this device" lasts; 0 = the sign-in page doesn't offer it. */
+  rememberDays?: number;
 }
 
 /** Lightweight row for list views (no line items). */
@@ -3869,4 +3887,147 @@ export interface CommissionItem {
   amount: number;
   percentBp: number;
   commission: number;
+}
+
+// ---- Purchase orders to a factory (أوامر الشراء, owner 2026-11-18) ----
+
+export type PurchaseOrderStatus = 'DRAFT' | 'SENT' | 'PARTLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+
+/** One line of a purchase order: an item in the catalog, or a new one only named (`isNew`). */
+export interface PurchaseOrderLine {
+  id: string;
+  lineNo: number;
+  /** The item; a new one's once it was made on receipt. */
+  productId: string | null;
+  sku: string | null;
+  name: string;
+  isNew: boolean;
+  /** The factory's model number. */
+  supplierCode: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  groupId: string | null;
+  groupName: string | null;
+  sizeId: string | null;
+  sizeName: string | null;
+  colorId: string | null;
+  colorName: string | null;
+  unitId: string | null;
+  unitName: string | null;
+  /** Pieces in one unit. */
+  unitFactor: number;
+  quantity: number;
+  /** Expected price of one unit (minor units); 0 = not known. */
+  unitPrice: number;
+  lineTotal: number;
+  pieces: number;
+  receivedPieces: number;
+}
+
+export interface PurchaseOrderReceipt {
+  documentId: string;
+  number: string;
+  date: string;
+  pieces: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: string;
+  status: PurchaseOrderStatus;
+  partyId: string;
+  partyName: string;
+  partyCode: number;
+  partyPhone: string | null;
+  branchId: string;
+  branchName: string;
+  warehouseId: string;
+  warehouseName: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  orderDate: string;
+  expectedDate: string | null;
+  notes: string | null;
+  createdByName: string;
+  createdAt: string;
+  sentAt: string | null;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
+  lines: PurchaseOrderLine[];
+  receipts: PurchaseOrderReceipt[];
+  pieces: number;
+  receivedPieces: number;
+  total: number;
+  currency: string;
+  canEdit: boolean;
+  canReceive: boolean;
+  canCancel: boolean;
+}
+
+export interface PurchaseOrderSummary {
+  id: string;
+  number: string;
+  status: PurchaseOrderStatus;
+  partyId: string;
+  partyName: string;
+  partyCode: number;
+  branchName: string;
+  warehouseName: string;
+  departmentName: string | null;
+  orderDate: string;
+  expectedDate: string | null;
+  lines: number;
+  newItems: number;
+  pieces: number;
+  receivedPieces: number;
+  total: number;
+  createdByName: string;
+  notes: string | null;
+}
+
+export interface PurchaseOrderList {
+  items: PurchaseOrderSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  amount: number;
+  pieces: number;
+  currency: string;
+}
+
+export interface PurchaseOrderLineInput {
+  productId?: string;
+  name?: string;
+  quantity: number;
+  unitPrice?: number;
+  unitId?: string;
+  departmentId?: string;
+  groupId?: string;
+  sizeId?: string;
+  colorId?: string;
+  supplierCode?: string;
+}
+
+export interface SavePurchaseOrderInput {
+  partyId: string;
+  warehouseId?: string;
+  departmentId?: string;
+  orderDate?: string;
+  expectedDate?: string;
+  notes?: string;
+  lines: PurchaseOrderLineInput[];
+}
+
+/** An item of the supplier to buy again, with the quantity suggested (the "what to buy" figures). */
+export interface PurchaseOrderSuggestion {
+  productId: string;
+  sku: string;
+  name: string;
+  department: string | null;
+  stock: number;
+  soldQty: number;
+  daysLeft: number | null;
+  reorderLevel: number;
+  suggested: number;
+  cost: number;
 }

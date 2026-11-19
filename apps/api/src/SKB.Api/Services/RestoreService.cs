@@ -300,6 +300,7 @@ public sealed class RestoreService
         // 4. Nothing remembered from the old data stays.
         AccessGate.ForgetAll();
         DeviceGate.ForgetAll();
+        LockGate.ForgetAll();
         using (var scope = _scopes.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

@@ -67,6 +67,7 @@ export interface PrintJob {
 export type OutputPage =
   | 'sales'
   | 'purchases'
+  | 'purchase_orders'
   | 'inventory'
   | 'stocktake'
   | 'transfers'

@@ -230,6 +230,8 @@ public sealed class PurchasesController : ControllerBase
             return BadRequest(new { message = $"At most {InvoiceLines.MaxLines} lines per invoice.", code = "too_many_lines" });
         if (!Guid.TryParse(req.PartyId, out var partyId))
             return BadRequest(new { message = "A supplier is required.", code = "no_party" });
+        if (!string.IsNullOrWhiteSpace(req.PurchaseOrderId) && !User.Has(Permissions.PurchaseOrdersReceive))
+            return StatusCode(403, new { message = "Receiving a purchase order needs permission.", code = "forbidden" });
 
         var branchId = Access.Work(User);
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
@@ -358,6 +360,12 @@ public sealed class PurchasesController : ControllerBase
         }
         foreach (var c in charges!.Rows) doc.Charges.Add(c);
 
+        // An invoice made from a purchase order records what it received of it (owner, 2026-11-18).
+        var (order, orderError) = await PurchaseOrders.ReceiveAsync(_db, User, req.PurchaseOrderId, party.Id, branchId,
+            doc, resolved.Select(r => (r.Req.OrderLineId, r.Product.Id, r.BaseQty)).ToList());
+        if (orderError is not null)
+            return StatusCode(orderError.Status, new { message = orderError.Message, code = orderError.Code });
+
         var subtotal = doc.Lines.Sum(l => l.LineTotal + l.Discount);
         var lineDiscounts = doc.Lines.Sum(l => l.Discount);
         var net = subtotal - lineDiscounts - charges.Discount;
@@ -407,6 +415,10 @@ public sealed class PurchasesController : ControllerBase
         await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "create", "purchase_invoice",
             branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
             Request.Headers.UserAgent.ToString(), doc.Id.ToString());
+        if (order is not null)
+            await _audit.RecordAsync(CurrentUser.Id(User), CurrentUser.Name(User), "receive", "purchase_order",
+                branchId.ToString(), Request.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(), order.Id.ToString(), $"{order.Number} → {doc.Number}");
 
         await InvoiceLines.LoadForDetailAsync(_db, doc);
         return Created($"/api/purchases/invoices/{doc.Id}", Mapper.ToDetail(doc, null, await InvoiceLines.BaseUnitNamesAsync(_db, doc)));

@@ -29,14 +29,14 @@ public static class Lookups
 
     public static readonly IReadOnlyDictionary<string, string[]> Sets = new Dictionary<string, string[]>
     {
-        [Parties] = Of(new[] { "parties:", "sales:", "purchases:", "delivery:", "shipments:", "settlements:", "notes:", "reports:" },
+        [Parties] = Of(new[] { "parties:", "sales:", "purchases:", "purchase_orders:", "delivery:", "shipments:", "settlements:", "notes:", "reports:" },
             Permissions.StatementCustomers, Permissions.StatementSuppliers, Permissions.StatementCarriers,
             Permissions.VouchersView, Permissions.ReceiptsCreate, Permissions.PaymentsCreate, Permissions.ExpensesCreate,
             Permissions.VouchersDiscount, Permissions.PriceListsView, Permissions.PriceListsCustomers,
             Permissions.InventoryView, Permissions.ProductsCreate, Permissions.ProductsEdit, Permissions.ValuationSuppliers,
             Permissions.PricesBulkEdit,
             Permissions.LabelsPrint, Permissions.LabelsPdf, Permissions.AiScanPurchase, Permissions.AiScanCheques),
-        [Products] = Of(new[] { "inventory:", "products:", "transfers:", "price_lists:", "quantity_breaks:", "labels:", "sales:", "purchases:" },
+        [Products] = Of(new[] { "inventory:", "products:", "transfers:", "price_lists:", "quantity_breaks:", "labels:", "sales:", "purchases:", "purchase_orders:" },
             Permissions.PricesEdit, Permissions.PricesBulkEdit, Permissions.ReportsItems, Permissions.ReportsProfit, Permissions.StatementWarehouses,
             Permissions.AiScanPurchase, Permissions.AiScanStocktake),
         [MoneyAccounts] = Of(new[] { "money:", "vouchers:", "money_accounts:" },

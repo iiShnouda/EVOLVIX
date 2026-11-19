@@ -92,7 +92,7 @@ public static class Mapper
         s.DefaultMarkupPercent, s.MinMarkupPercent, s.DefaultTaxPercent, s.TransfersRequireReceipt,
         s.Address, s.Phone, s.Email, s.TaxNumber, s.CommercialRegister, s.TimeZone, s.MaxDiscountPercent,
         s.PendingHoldDays, s.LogoVersion, s.RequireDepartment, s.ReturnAfterHours, s.HideNewPlaces, s.IdleMinutes,
-        s.CurrentSeasonId?.ToString(), s.DailySummaryMinute, s.NoteAlertDays, s.DamagedReturns);
+        s.CurrentSeasonId?.ToString(), s.DailySummaryMinute, s.NoteAlertDays, s.DamagedReturns, s.IdleAction, s.PinUnlock, s.RememberDays);
 
     /// <summary>
     /// A party as this person may see it: its contact details (phones, email, addresses, owner or

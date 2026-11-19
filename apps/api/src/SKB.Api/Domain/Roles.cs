@@ -195,6 +195,23 @@ public static class Permissions
     public const string PurchasesReturn = "purchases:return";
     /// <summary>Cancel a purchase return entered by mistake: everything it moved goes back (owner, 2026-10-24).</summary>
     public const string PurchasesReturnCancel = "purchases:return_cancel";
+    // ──── Purchase orders (owner, 2026-11-18): orders to a factory, no accounting ────
+    /// <summary>See the purchase orders list and open an order.</summary>
+    public const string PurchaseOrdersView = "purchase_orders:view";
+    /// <summary>Prepare a new purchase order.</summary>
+    public const string PurchaseOrdersCreate = "purchase_orders:create";
+    /// <summary>Change an order not yet received, and mark it sent.</summary>
+    public const string PurchaseOrdersEdit = "purchase_orders:edit";
+    /// <summary>Cancel an order (what was received stays received).</summary>
+    public const string PurchaseOrdersCancel = "purchase_orders:cancel";
+    /// <summary>Receive an order's goods on a purchase invoice (which needs <see cref="PurchasesCreate"/> too).</summary>
+    public const string PurchaseOrdersReceive = "purchase_orders:receive";
+    /// <summary>Purchase orders · Print.</summary>
+    public const string PurchaseOrdersPrint = "purchase_orders:print";
+    /// <summary>Purchase orders · Save as PDF.</summary>
+    public const string PurchaseOrdersPdf = "purchase_orders:pdf";
+    /// <summary>Purchase orders · Save as Excel.</summary>
+    public const string PurchaseOrdersExport = "purchase_orders:export";
     /// <summary>Buy at a cost other than the supplier price level's.</summary>
     public const string PurchasesChangePrice = "purchases:change_price";
     /// <summary>Price a purchase invoice at a level other than the supplier's own.</summary>
@@ -796,7 +813,8 @@ public static class Permissions
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
         PurchasesPrint, PurchasesPdf, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
         PurchasesChangePrice, PurchasesChoosePriceLevel, PurchasesDiscount, PurchasesBonus, PurchasesChangeTax,
-        PurchasesAdditions, InventoryView, InventoryPrint, InventoryPdf, InventoryExport, ProductsCreate, ProductsEdit,
+        PurchasesAdditions, PurchaseOrdersView, PurchaseOrdersCreate, PurchaseOrdersEdit, PurchaseOrdersCancel,
+        PurchaseOrdersReceive, PurchaseOrdersPrint, PurchaseOrdersPdf, PurchaseOrdersExport, InventoryView, InventoryPrint, InventoryPdf, InventoryExport, ProductsCreate, ProductsEdit,
         ProductsClose, ProductsDelete, ProductsBarcodes, ProductsImages, PricesEdit, PricesBulkEdit, InventoryTotalItems,
         InventoryTotalQuantity, InventoryTotalSaleValue, InventoryTotalSupplyValue, InventoryTotalSold,
         InventoryCard, ProductsCardPurchases, ProductsCardSales, ProductsCardReturns, ProductsCardPrices,
@@ -892,7 +910,10 @@ public static class RolePermissions
             Permissions.PurchasesPrint, Permissions.PurchasesPdf, Permissions.PurchasesCreate, Permissions.PurchasesPhotos,
             Permissions.PurchasesReturn, Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
-            Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
+            Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions,
+            Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersCreate, Permissions.PurchaseOrdersEdit,
+            Permissions.PurchaseOrdersCancel, Permissions.PurchaseOrdersReceive, Permissions.PurchaseOrdersPrint,
+            Permissions.PurchaseOrdersPdf, Permissions.PurchaseOrdersExport, Permissions.InventoryView,
             Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.ProductsCreate,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes,
             Permissions.ProductsImages, Permissions.PricesEdit, Permissions.InventoryCard,
@@ -976,7 +997,10 @@ public static class RolePermissions
             Permissions.PurchasesCreate, Permissions.PurchasesPhotos, Permissions.PurchasesReturn,
             Permissions.PurchasesChangePrice,
             Permissions.PurchasesChoosePriceLevel, Permissions.PurchasesDiscount, Permissions.PurchasesBonus,
-            Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions, Permissions.InventoryView,
+            Permissions.PurchasesChangeTax, Permissions.PurchasesAdditions,
+            Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersCreate, Permissions.PurchaseOrdersEdit,
+            Permissions.PurchaseOrdersReceive, Permissions.PurchaseOrdersPrint, Permissions.PurchaseOrdersPdf,
+            Permissions.InventoryView,
             Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.ProductsCreate,
             Permissions.ProductsEdit, Permissions.ProductsClose, Permissions.ProductsBarcodes,
             Permissions.ProductsImages, Permissions.InventoryCard, Permissions.ProductsCardPurchases,
@@ -1002,7 +1026,8 @@ public static class RolePermissions
             Permissions.DashboardLowStock, Permissions.SalesView, Permissions.SalesReturnsView,
             Permissions.SalesTogether, Permissions.SalesPrint, Permissions.SalesPdf, Permissions.DeliveryView, Permissions.ShipmentsView,
             Permissions.SettlementsView, Permissions.PurchasesView, Permissions.PurchasesReturnsView,
-            Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint, Permissions.PurchasesPdf, Permissions.InventoryView,
+            Permissions.PurchasesPriceSheet, Permissions.PurchasesPrint, Permissions.PurchasesPdf,
+            Permissions.PurchaseOrdersView, Permissions.PurchaseOrdersPrint, Permissions.PurchaseOrdersPdf, Permissions.InventoryView,
             Permissions.InventoryPrint, Permissions.InventoryPdf, Permissions.InventoryExport, Permissions.InventoryCard,
             Permissions.TransfersView, Permissions.TransfersPrint, Permissions.TransfersPdf, Permissions.PriceListsView,
             Permissions.QuantityBreaksView, Permissions.PartiesView, Permissions.PartiesPrint, Permissions.PartiesPdf,

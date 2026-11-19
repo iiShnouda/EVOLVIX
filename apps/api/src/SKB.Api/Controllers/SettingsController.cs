@@ -88,7 +88,10 @@ public sealed class SettingsController : ControllerBase
                 || Differs(req.NoteAlertDays is int nd ? (int?)Math.Clamp(nd, 0, 60) : null, s.NoteAlertDays)
                 || (req.CurrentSeasonId is { } cs && cs != (s.CurrentSeasonId?.ToString() ?? ""))
                 || (req.DamagedReturns is { } dr && dr.ToUpperInvariant() != s.DamagedReturns)),
-            (Permissions.SettingsSecurity, Differs(req.IdleMinutes is int i ? (int?)Math.Clamp(i, 0, 24 * 60) : null, s.IdleMinutes)),
+            (Permissions.SettingsSecurity, Differs(req.IdleMinutes is int i ? (int?)Math.Clamp(i, 0, 24 * 60) : null, s.IdleMinutes)
+                || (req.IdleAction is { } ia && ia != s.IdleAction)
+                || Differs(req.PinUnlock, s.PinUnlock)
+                || Differs(req.RememberDays is int rd ? (int?)Math.Clamp(rd, 0, 90) : null, s.RememberDays)),
         };
         if (parts.FirstOrDefault(x => x.Changes && !User.Has(x.Permission)) is { Permission: { } part })
             return StatusCode(403, new { message = "Not allowed.", code = "forbidden", part });
@@ -111,6 +114,15 @@ public sealed class SettingsController : ControllerBase
         if (req.ReturnAfterHours is int returnAfter) s.ReturnAfterHours = Math.Clamp(returnAfter, 0, 720);
         if (req.HideNewPlaces is bool hideNew) s.HideNewPlaces = hideNew;
         if (req.IdleMinutes is int idle) s.IdleMinutes = Math.Clamp(idle, 0, 24 * 60);
+        // Idle on a remembered device locks the screen or signs out (owner, 2026-11-18).
+        if (req.IdleAction is { } idleAction)
+        {
+            if (idleAction is not ("LOCK" or "SIGN_OUT"))
+                return BadRequest(new { message = "Choose to lock or to sign out.", code = "bad_idle_action" });
+            s.IdleAction = idleAction;
+        }
+        if (req.PinUnlock is bool pinUnlock) s.PinUnlock = pinUnlock;
+        if (req.RememberDays is int rememberDays) s.RememberDays = Math.Clamp(rememberDays, 0, 90);
         // The daily summary's time (minutes into the company's day; below 0 = never) and how many
         // days ahead a cheque is told of.
         if (req.DailySummaryMinute is int summaryAt) s.DailySummaryMinute = summaryAt < 0 ? null : Math.Clamp(summaryAt, 0, 24 * 60 - 1);

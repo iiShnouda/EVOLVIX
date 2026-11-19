@@ -1,7 +1,7 @@
 import { createTranslator, type AuthUser, type LoginInput } from '@skb/shared';
 import { confirm } from './confirm';
 import { errorText } from './errors';
-import { getAccessToken, useAuth, type SessionNotice } from '../stores/auth';
+import { getAccessToken, useAuth, type LockInfo, type SessionNotice } from '../stores/auth';
 import { usePrefs } from '../stores/prefs';
 import { getWorkBranch, useWorkBranchStore } from '../stores/workBranch';
 import { queryClient } from './queryClient';
@@ -17,6 +17,8 @@ export class ApiError extends Error {
     readonly code?: string,
     /** The server's number for the request, to quote to the owner when it failed on the server. */
     readonly requestId?: string,
+    /** The rest of the server's answer (e.g. how many tries are left). */
+    readonly payload?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -47,6 +49,32 @@ function endSession(notice?: SessionNotice): void {
   useAuth.getState().clear(notice);
 }
 
+/**
+ * The screen locked (owner, 2026-11-18): forget the token and everything read with it, as when
+ * signing out, but keep the session on the server for the password or PIN to open. Other tabs of the
+ * app lock too.
+ */
+function lockSession(lock: LockInfo, tell = true): void {
+  queryClient.clear();
+  useAuth.getState().setLocked(lock);
+  if (tell) lockChannel?.postMessage(lock);
+}
+
+/** The app's other tabs in this browser: one locking locks them all. */
+const lockChannel =
+  typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('skb-lock');
+if (lockChannel)
+  lockChannel.onmessage = (e: MessageEvent<LockInfo>) => {
+    if (useAuth.getState().status === 'authenticated' && typeof e.data?.name === 'string')
+      lockSession({ name: e.data.name, pin: !!e.data.pin }, false);
+  };
+
+/** Answers that a refresh can't help (signing in, unlocking). */
+const NO_REFRESH = ['/auth/refresh', '/auth/login', '/auth/unlock', '/auth/lock/end'];
+
+/** An access token refused because the screen is locked: the lock screen comes up. */
+const LOCKED = 'LOCKED';
+
 async function codeOf(res: Response): Promise<string | undefined> {
   const payload = (await res
     .clone()
@@ -75,12 +103,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   // Transparent one-shot refresh on 401 (expired access token).
-  if (res.status === 401 && !_retried && path !== '/auth/refresh' && path !== '/auth/login') {
+  if (res.status === 401 && !_retried && !NO_REFRESH.includes(path)) {
     if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
     else {
       const refreshed = await tryRefresh();
       if (refreshed) return request<T>(path, { ...options, _retried: true });
-      if (useAuth.getState().status !== 'anonymous') endSession();
+      if (useAuth.getState().status === 'authenticated') endSession();
     }
   }
 
@@ -91,6 +119,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       payload.message ?? res.statusText,
       payload.code,
       payload.requestId ?? res.headers.get('X-Request-Id') ?? undefined,
+      payload,
     );
     // A rule the owner may go past (owner, 2026-10-22): warn them what it is, and only if they
     // choose to go on, send it again saying so. Everyone else just gets the refusal.
@@ -136,12 +165,21 @@ async function tryRefresh(): Promise<boolean> {
           credentials: 'include',
         });
         if (!res.ok) {
-          if (res.status === 401 && (await codeOf(res)) === SIGNED_IN_ELSEWHERE)
+          const body = (await res.json().catch(() => ({}))) as Partial<LockInfo> & {
+            code?: string;
+          };
+          if (res.status === 401 && body.code === SIGNED_IN_ELSEWHERE)
             endSession('signedInElsewhere');
+          else if (res.status === 401 && body.code === LOCKED)
+            lockSession({ name: body.name ?? '', pin: !!body.pin });
           return false;
         }
-        const data = (await res.json()) as { user: AuthUser; accessToken: string };
-        useAuth.getState().setSession(data.user, data.accessToken);
+        const data = (await res.json()) as {
+          user: AuthUser;
+          accessToken: string;
+          remembered?: boolean;
+        };
+        useAuth.getState().setSession(data.user, data.accessToken, data.remembered);
         return true;
       } catch {
         return false;
@@ -173,7 +211,7 @@ async function download(
   if (res.status === 401 && !retried) {
     if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
     else if (await tryRefresh()) return download(path, body, true);
-    else if (useAuth.getState().status !== 'anonymous') endSession();
+    else if (useAuth.getState().status === 'authenticated') endSession();
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
@@ -211,7 +249,7 @@ async function upload<T>(
   if (res.status === 401 && !retried) {
     if ((await codeOf(res)) === SIGNED_IN_ELSEWHERE) endSession('signedInElsewhere');
     else if (await tryRefresh()) return upload(path, file, true, method, name);
-    else if (useAuth.getState().status !== 'anonymous') endSession();
+    else if (useAuth.getState().status === 'authenticated') endSession();
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
@@ -223,6 +261,11 @@ async function upload<T>(
 /** End the session on the server, forget this person's working branch, and clear the device. */
 async function signOut(path: string, notice?: SessionNotice): Promise<void> {
   await request(path, { method: 'POST' }).catch(() => undefined);
+  forgetDevice(notice);
+}
+
+/** This device is signed out (the server already ended it): forget the working branch and clear. */
+function forgetDevice(notice?: SessionNotice): void {
   const user = useAuth.getState().user;
   if (user)
     useWorkBranchStore.setState((s) => {
@@ -241,7 +284,9 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
-  async login(input: LoginInput): Promise<{ user: AuthUser; accessToken: string }> {
+  async login(
+    input: LoginInput,
+  ): Promise<{ user: AuthUser; accessToken: string; remembered?: boolean }> {
     return request('/auth/login', { method: 'POST', body: input });
   },
   async me(): Promise<AuthUser> {
@@ -254,6 +299,34 @@ export const api = {
   logout: (notice?: SessionNotice) => signOut('/auth/logout', notice),
   /** Sign the account out of every device (lost or virus-hit device); this one included. */
   logoutAll: () => signOut('/auth/logout-all'),
+  /**
+   * The app sat idle (or the person locks it): the server locks a remembered device (the lock
+   * screen comes up, nothing is kept) or signs any other one out.
+   */
+  async lock(): Promise<void> {
+    if (useAuth.getState().status !== 'authenticated') return;
+    const res = await request<{ locked: boolean; name?: string; pin?: boolean }>('/auth/lock', {
+      method: 'POST',
+    }).catch(() => null);
+    if (res?.locked) lockSession({ name: res.name ?? '', pin: !!res.pin });
+    // Refreshing on the way found it locked already.
+    else if (useAuth.getState().status === 'locked') return;
+    else if (res) forgetDevice('idle');
+    else await signOut('/auth/logout', 'idle');
+  },
+  /** Open the locked screen: the server checks the password or PIN. Throws its refusal. */
+  async unlock(secret: { password: string } | { pin: string }): Promise<void> {
+    const data = await request<{ user: AuthUser; accessToken: string; remembered?: boolean }>(
+      '/auth/unlock',
+      { method: 'POST', body: secret },
+    );
+    useAuth.getState().setSession(data.user, data.accessToken, data.remembered);
+  },
+  /** "Sign out" on the lock screen: the device is signed out without unlocking it. */
+  async endLocked(notice?: SessionNotice): Promise<void> {
+    await request('/auth/lock/end', { method: 'POST' }).catch(() => undefined);
+    endSession(notice);
+  },
 };
 
 export { API_BASE };

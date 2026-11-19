@@ -91,6 +91,91 @@ public class StockTransfer
     public List<StockTransferLine> Lines { get; set; } = new();
 }
 
+/// <summary>
+/// A purchase order to a supplier (أمر شراء / طلبية, owner 2026-11-18): items to buy, some already in
+/// the catalog and some new (only named, made when the goods arrive), with the quantity and the
+/// price expected. Purchase invoices made from it record what arrived. It moves no stock or money.
+/// </summary>
+public class PurchaseOrder
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>PO-YYYY-NNNNNN.</summary>
+    public string Number { get; set; } = "";
+    public PurchaseOrderStatus Status { get; set; } = PurchaseOrderStatus.DRAFT;
+    public Guid PartyId { get; set; }
+    public Party? Party { get; set; }
+    /// <summary>The branch it belongs to: the warehouse's.</summary>
+    public Guid BranchId { get; set; }
+    public Branch? Branch { get; set; }
+    /// <summary>The store the goods are to be received into.</summary>
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    /// <summary>Its department, if it is for one (people limited to departments see only theirs).</summary>
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+    /// <summary>The company day it is dated.</summary>
+    public DateOnly OrderDate { get; set; }
+    /// <summary>When the goods are expected.</summary>
+    public DateOnly? ExpectedDate { get; set; }
+    public string? Notes { get; set; }
+    public Guid CreatedById { get; set; }
+    public Staff? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? SentAt { get; set; }
+    public Guid? CancelledById { get; set; }
+    public Staff? CancelledBy { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public List<PurchaseOrderLine> Lines { get; set; } = new();
+    public List<PurchaseOrderReceipt> Receipts { get; set; } = new();
+}
+
+/// <summary>
+/// One line of a purchase order: an item in the catalog (<see cref="ProductId"/>), or a new one
+/// named here with its department, group, size and colour, whose item is made when it is received
+/// (then <see cref="ProductId"/> is set to it).
+/// </summary>
+public class PurchaseOrderLine
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int LineNo { get; set; }
+    public Guid OrderId { get; set; }
+    public PurchaseOrder? Order { get; set; }
+    public Guid? ProductId { get; set; }
+    public Product? Product { get; set; }
+    /// <summary>A new item, not in the catalog when ordered.</summary>
+    public bool IsNew { get; set; }
+    /// <summary>The item's name as ordered (a new item's name, as typed).</summary>
+    public string Name { get; set; } = "";
+    /// <summary>The factory's model number (a new item's supplier code).</summary>
+    public string? SupplierCode { get; set; }
+    public Guid? DepartmentId { get; set; }
+    public Guid? GroupId { get; set; }
+    public Guid? SizeId { get; set; }
+    public Guid? ColorId { get; set; }
+    /// <summary>The unit ordered in, and how many pieces it holds.</summary>
+    public Guid? UnitId { get; set; }
+    public int UnitFactor { get; set; } = 1;
+    /// <summary>How many of the unit.</summary>
+    public int Quantity { get; set; }
+    /// <summary>The price expected for one unit (minor units); 0 = not known yet.</summary>
+    public long UnitPrice { get; set; }
+    /// <summary>Pieces received so far, by purchase invoices made from the order.</summary>
+    public int ReceivedPieces { get; set; }
+}
+
+/// <summary>A purchase invoice that received goods of an order.</summary>
+public class PurchaseOrderReceipt
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid OrderId { get; set; }
+    public PurchaseOrder? Order { get; set; }
+    public Guid DocumentId { get; set; }
+    public SalesDocument? Document { get; set; }
+    public int Pieces { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class StockTransferLine
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -128,6 +213,11 @@ public class Staff
     public string FullName { get; set; } = "";
     public string Email { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    /// <summary>
+    /// A personal PIN of 4–6 digits that unlocks a locked screen (owner, 2026-11-18), hashed like the
+    /// password; null = none set.
+    /// </summary>
+    public string? PinHash { get; set; }
     public Role Role { get; set; } = Role.VIEWER;
     /// <summary>A role the company made; its permissions replace <see cref="Role"/>'s (which it is based on).</summary>
     public Guid? CustomRoleId { get; set; }
@@ -238,6 +328,13 @@ public class Session
     public string Kind { get; set; } = "DESKTOP";
     /// <summary>"Remember this device": the cookie outlives the browser; else it ends with it.</summary>
     public bool Remember { get; set; }
+    /// <summary>
+    /// Locked after the idle time on a remembered device (owner, 2026-11-18): it cannot be refreshed
+    /// and its access tokens are refused until the person unlocks it with their password or PIN.
+    /// </summary>
+    public DateTime? LockedAt { get; set; }
+    /// <summary>Wrong passwords / PINs since it locked; too many sign the device out.</summary>
+    public int UnlockFailures { get; set; }
     /// <summary>Why it ended early: "logout", or "other_device" (the account signed in elsewhere).</summary>
     public string? RevokedReason { get; set; }
 }
@@ -1300,6 +1397,16 @@ public class CompanySettings
     public bool HideNewPlaces { get; set; } = true;
     /// <summary>Minutes without use before the app signs people out; 0 = never (owner, 2026-10-17: a company setting).</summary>
     public int IdleMinutes { get; set; } = 30;
+    /// <summary>
+    /// What the idle time does on a remembered device (owner, 2026-11-18): "LOCK" hides everything
+    /// behind a lock screen that the password or PIN opens, "SIGN_OUT" signs out. A device not
+    /// remembered always signs out.
+    /// </summary>
+    public string IdleAction { get; set; } = "LOCK";
+    /// <summary>Whether a personal PIN may unlock a locked screen (else only the password).</summary>
+    public bool PinUnlock { get; set; } = true;
+    /// <summary>How many days "remember this device" keeps a device signed in; 0 = not offered.</summary>
+    public int RememberDays { get; set; } = 30;
     /// <summary>
     /// The season it is now, when set by hand (owner, 2026-10-19: "automatic, and if wrong I change it
     /// in Settings"); null = worked out from the company's date (<see cref="Services.Seasons.Of"/>).
