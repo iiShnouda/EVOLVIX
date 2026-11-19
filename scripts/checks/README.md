@@ -75,6 +75,7 @@ live company server.
 | `exchange.test.mjs` | Return reasons (list, per line, other with words, filter, report by reason/item/customer/rep with the rate), damaged goods (the branch's damaged warehouse, write-off at cost with its entry, repair to a store, supplier return from it, cancelling), and exchange (one transaction, linked documents, the difference for credit and cash customers), permissions and scoping. |
 | `purchaseorders.test.mjs` | Purchase orders to a factory: existing and new lines, suggestions to prefill, statuses (draft, sent, partly received, received, cancelled), receiving on a purchase invoice in parts and in full with new items created then, no stock/money/ledger on the order itself, permissions, scoping, audit. |
 | `lock.test.mjs` | The idle screen lock: a remembered device locks (tokens refused with LOCKED), unlocking with the password or a PIN on the server, five wrong tries sign out, PIN set/clear and its rules, the settings (lock or sign out, PIN allowed, remember days), a device not remembered signs out; a stale session (needs `PGURL`). |
+| `invoiceadjust.test.mjs` | Discounts and increases on the sales invoice (owner, 2026-11-19): eight boxes (item/invoice × discount/increase × percent/amount), each allowed only by its own permission; the order applied (item increase → item discount → invoice increase → invoice discounts → taxes), limits for discounts only, below-cost refusal, totals and ledger, edits and pending invoices, print data, the permission migration. |
 
 ## Running
 

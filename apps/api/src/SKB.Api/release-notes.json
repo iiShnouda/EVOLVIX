@@ -175,6 +175,14 @@
         {
           "ar": "عمولة المندوبين على الموبايل بقت كروت تتقري من غير ما تسحب يمين وشمال",
           "en": "Sales reps' commission reads as cards on a phone"
+        },
+        {
+          "ar": "المندوب يقدر يزوّد أو يخصم على الصنف أو على الفاتورة كلها، بالنسبة أو بالمبلغ، كل خانة بصلاحيتها، في فاتورة جديدة كمان",
+          "en": "A discount or an increase on an item or on the whole invoice, as a percent or an amount, each box its own permission — on new invoices too"
+        },
+        {
+          "ar": "الزيادة بتطلع في الطباعة كزيادة في السعر، والخصم كخصم",
+          "en": "An increase prints as a price increase and a discount as a discount"
         }
       ],
       "fixes": [
@@ -217,6 +225,10 @@
         {
           "ar": "تواريخ قوايم الأسعار بقت تتقري صح بالعربي، وشريط البرنامج اللي فوق مبقاش بيطلع برة الشاشة على الموبايل",
           "en": "Price-list date ranges read the right way in Arabic, and the top bar no longer spills off narrow phone screens"
+        },
+        {
+          "ar": "صلاحية خصم الفاتورة وخصم الصنف بقت اتنين: بالنسبة وبالمبلغ (اللي كان معاه القديمة معاه الاتنين)",
+          "en": "The invoice and item discount permissions are now two each, percent and amount (whoever had the old one has both)"
         }
       ]
     },
