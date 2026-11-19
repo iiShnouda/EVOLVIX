@@ -936,10 +936,30 @@ public class DocumentLine
     public int UnitFactor { get; set; } = 1;
     /// <summary>Quantity in <see cref="UnitId"/> units, as typed.</summary>
     public int UnitQuantity { get; set; }
-    /// <summary>Price of one <see cref="UnitId"/> unit (minor units). Gross = UnitQuantity × UnitPrice = LineTotal + Discount.</summary>
+    /// <summary>
+    /// Price of one <see cref="UnitId"/> unit (minor units). Gross = UnitQuantity × UnitPrice + Increase +
+    /// DocIncrease = LineTotal + Discount.
+    /// </summary>
     public long UnitPrice { get; set; }
     public long Discount { get; set; }
     public long LineTotal { get; set; }
+
+    /// <summary>
+    /// The line's own increase on a sale (owner, 2026-11-19), for the whole line: it raises what the line
+    /// comes to (it is sales) and comes before the line's discount. In <see cref="LineTotal"/>.
+    /// </summary>
+    public long Increase { get; set; }
+    /// <summary>This line's share of the invoice's increase (an INCREASE charge); in <see cref="LineTotal"/>.</summary>
+    public long DocIncrease { get; set; }
+    /// <summary>The line's increase as typed: a percent (basis points) of UnitQuantity × UnitPrice, and an amount.</summary>
+    public int? IncreaseRateBp { get; set; }
+    public long? IncreaseFixed { get; set; }
+    /// <summary>
+    /// The line's discount as typed on the invoice: a percent (basis points) of the line after its
+    /// increase, and an amount. Null both when it is a quantity discount or one given as a plain amount.
+    /// </summary>
+    public int? DiscountRateBp { get; set; }
+    public long? DiscountFixed { get; set; }
     // Cost snapshot per BASE unit at the moment the line was posted (weighted-average cost for a
     // sale; the purchase price for a purchase). Kept on the line so profit reports stay correct
     // for all time even after the product's average cost later moves. LineCost is exact.

@@ -6,7 +6,7 @@ import { Button } from './ui';
 import { MoneyAccountPicker } from './MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
-import { lineDiscount, type LineDiscountMode } from '../lib/discount';
+import { lineDiscount, lineDiscountModes, type LineDiscountMode } from '../lib/discount';
 import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
@@ -36,9 +36,13 @@ export function ApproveOrderSheet({
   const navigate = useNavigate();
   const approve = useApproveOrder();
   const maxDiscount = useAuth((s) => s.user?.maxDiscountPercent ?? null);
-  // Each kind of discount is its own permission (owner, 2026-10-24).
-  const canDiscount = can('sales:discount');
-  const canLineDiscount = can('sales:discount_line');
+  // Each kind and way of discount is its own permission (owner, 2026-10-24, 2026-11-19).
+  const canDiscount = can('sales:discount_pct');
+  const lineModes = lineDiscountModes(
+    can('sales:discount_line_pct'),
+    can('sales:discount_line_amount'),
+  );
+  const canLineDiscount = lineModes.length > 0;
   const money = (v: number) => formatMoney(v, order.currency, locale);
 
   const lines = order.lines.filter((l) => !l.isBonus);
@@ -50,7 +54,8 @@ export function ApproveOrderSheet({
   const [override, setOverride] = useState(false);
   const [done, setDone] = useState<SalesDocument | null>(null);
 
-  const grossOf = (l: (typeof lines)[number]) => l.unitPrice * (l.unitQuantity || l.quantity);
+  // With its own increase; its share of the invoice's increase is shared out again.
+  const grossOf = (l: (typeof lines)[number]) => l.lineTotal + l.discount - (l.docIncrease ?? 0);
   const newDiscount = (l: (typeof lines)[number]) => {
     const e = edits[l.id];
     return e ? lineDiscount(e.mode, e.value, grossOf(l), l.quantity) : l.discount;
@@ -80,7 +85,12 @@ export function ApproveOrderSheet({
           paidAmount,
           paidAccountId: paidAmount > 0 && account ? account : undefined,
           lineDiscounts: changedLines.length
-            ? changedLines.map((l) => ({ lineId: l.id, discount: newDiscount(l) }))
+            ? changedLines.map((l) => {
+                const e = edits[l.id]!;
+                return e.mode === 'percent'
+                  ? { lineId: l.id, discount: 0, percent: Number(e.value) || 0 }
+                  : { lineId: l.id, discount: newDiscount(l) };
+              })
             : undefined,
           charges: invoiceChanged
             ? [
@@ -192,7 +202,10 @@ export function ApproveOrderSheet({
                             onChange={(ev) =>
                               setEdits((s) => ({
                                 ...s,
-                                [l.id]: { mode: e?.mode ?? 'amount', value: ev.target.value },
+                                [l.id]: {
+                                  mode: e?.mode ?? lineModes.at(-1)!,
+                                  value: ev.target.value,
+                                },
                               }))
                             }
                           />
@@ -200,7 +213,7 @@ export function ApproveOrderSheet({
                             aria-label={t('invoice.lineDiscountMode')}
                             disabled={!canLineDiscount}
                             className="h-8 rounded-lg border border-line bg-surface px-1 text-xs outline-none focus:border-brand"
-                            value={e?.mode ?? 'amount'}
+                            value={e?.mode ?? lineModes.at(-1) ?? 'amount'}
                             onChange={(ev) =>
                               setEdits((s) => ({
                                 ...s,
@@ -211,9 +224,15 @@ export function ApproveOrderSheet({
                               }))
                             }
                           >
-                            <option value="percent">%</option>
-                            <option value="piece">{t('invoice.perPiece')}</option>
-                            <option value="amount">{t('invoice.onLine')}</option>
+                            {(canLineDiscount ? lineModes : (['amount'] as const)).map((m) => (
+                              <option key={m} value={m}>
+                                {m === 'percent'
+                                  ? '%'
+                                  : m === 'piece'
+                                    ? t('invoice.perPiece')
+                                    : t('invoice.onLine')}
+                              </option>
+                            ))}
                           </select>
                           {d > 0 && <span className="text-xs text-muted tnum">−{money(d)}</span>}
                         </div>

@@ -1,15 +1,19 @@
 /**
  * Invoice-level charges (DOMAIN.md §2.5) — the same rules the server applies (`Charges.cs`), so
  * the invoice screen shows exactly what will be posted:
- *  1. DISCOUNT, then EXTRA_DISCOUNT, each on what is left after the one before;
- *  2. TAX, OTHER_TAX and ADDITION on the discounted amount.
- * The total discount is shared over the lines in proportion to their nets (bonus lines take none),
- * with the shares adding up exactly. Money is integer minor units; rates are percents (2 decimals).
+ *  1. a sale's INCREASE on the lines' total (it is sales; owner, 2026-11-19);
+ *  2. DISCOUNT, then EXTRA_DISCOUNT, each on what is left after the one before;
+ *  3. TAX, OTHER_TAX and ADDITION on the discounted amount.
+ * The increase, then the discount, is shared over the lines in proportion to their nets (bonus lines
+ * take none), with the shares adding up exactly. Money is integer minor units; rates are percents
+ * (2 decimals).
  */
 
-export type ChargeKind = 'DISCOUNT' | 'EXTRA_DISCOUNT' | 'TAX' | 'OTHER_TAX' | 'ADDITION';
+export type ChargeKind =
+  'INCREASE' | 'DISCOUNT' | 'EXTRA_DISCOUNT' | 'TAX' | 'OTHER_TAX' | 'ADDITION';
 
 export const CHARGE_ORDER: ChargeKind[] = [
+  'INCREASE',
   'DISCOUNT',
   'EXTRA_DISCOUNT',
   'TAX',
@@ -43,6 +47,9 @@ export interface ChargesOutcome {
   addition: number;
   /** Each line's share of the discount, in line order. */
   allocation: number[];
+  /** The invoice's increase, and each line's share of it. */
+  increase: number;
+  increaseAllocation: number[];
   /** Why the charges can't apply (e.g. a discount larger than the invoice). */
   error?: 'discount_too_big';
 }
@@ -92,8 +99,18 @@ export function applyCharges(
   let discount = 0;
   let tax = 0;
   let addition = 0;
+  let increase = 0;
   let error: ChargesOutcome['error'];
   const rows: ChargesOutcome['rows'] = [];
+  for (const c of ordered.filter((c) => c.kind === 'INCREASE')) {
+    const amount = amountOf(c, running);
+    running += amount;
+    increase += amount;
+    rows.push({ kind: c.kind, amount, label: c.label });
+  }
+  const increaseAllocation = allocate(increase, nets, shares);
+  if (!increaseAllocation) error = 'discount_too_big';
+  const raised = nets.map((n, i) => n + (increaseAllocation?.[i] ?? 0));
   for (const c of ordered.filter((c) => isDiscount(c.kind))) {
     const amount = amountOf(c, running);
     if (amount > running) error = 'discount_too_big';
@@ -102,13 +119,22 @@ export function applyCharges(
     discount += taken;
     rows.push({ kind: c.kind, amount: taken, label: c.label });
   }
-  for (const c of ordered.filter((c) => !isDiscount(c.kind))) {
+  for (const c of ordered.filter((c) => !isDiscount(c.kind) && c.kind !== 'INCREASE')) {
     const amount = amountOf(c, running);
     if (c.kind === 'ADDITION') addition += amount;
     else tax += amount;
     rows.push({ kind: c.kind, amount, label: c.label });
   }
-  const allocation = allocate(discount, nets, shares);
+  const allocation = allocate(discount, raised, shares);
   if (!allocation) error = 'discount_too_big';
-  return { rows, discount, tax, addition, allocation: allocation ?? nets.map(() => 0), error };
+  return {
+    rows,
+    discount,
+    tax,
+    addition,
+    allocation: allocation ?? nets.map(() => 0),
+    increase,
+    increaseAllocation: increaseAllocation ?? nets.map(() => 0),
+    error,
+  };
 }

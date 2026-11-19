@@ -5,10 +5,13 @@ using SKB.Api.Models;
 namespace SKB.Api.Services;
 
 /// <summary>
-/// Invoice-level charges (DOMAIN.md §2.5): discounts, taxes and additions, as a list. They apply in
-/// kind order — DISCOUNT, EXTRA_DISCOUNT, TAX, OTHER_TAX, ADDITION — and in entry order within a kind:
+/// Invoice-level charges (DOMAIN.md §2.5): increases, discounts, taxes and additions, as a list. They
+/// apply in kind order — INCREASE, DISCOUNT, EXTRA_DISCOUNT, TAX, OTHER_TAX, ADDITION — and in entry
+/// order within a kind:
 /// <list type="number">
-/// <item>each discount comes off what is left after the discounts before it;</item>
+/// <item>a sale's increase (owner, 2026-11-19) goes on the lines' total first: it is sales, shared
+/// over the lines like a discount, so each line's net includes its share;</item>
+/// <item>each discount comes off what is left after the increases and the discounts before it;</item>
 /// <item>taxes and additions are worked out on the discounted amount.</item>
 /// </list>
 /// The total discount is shared out over the lines in proportion to their net amounts (bonus lines
@@ -24,14 +27,20 @@ public static class Charges
     public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label);
 
     /// <param name="Allocation">Each line's share of <paramref name="Discount"/>, in line order.</param>
-    public sealed record Outcome(List<DocumentCharge> Rows, long Discount, long Tax, long Addition, long[] Allocation);
+    /// <param name="IncreaseAllocation">Each line's share of <paramref name="Increase"/>, in line order.</param>
+    public sealed record Outcome(List<DocumentCharge> Rows, long Discount, long Tax, long Addition, long[] Allocation,
+        long Increase, long[] IncreaseAllocation);
+
+    /// <summary>The order kinds apply in: increases, then discounts, then taxes and additions.</summary>
+    private static int Order(ChargeKind k) => k == ChargeKind.INCREASE ? -1 : (int)k;
 
     /// <summary>
     /// The charges asked for. With no list, the only charge is the tax: <paramref name="taxPercent"/>,
     /// or the company's rate (as before charges existed).
     /// </summary>
+    /// <param name="sales">An increase is a sale's only (not a purchase's).</param>
     public static (List<Spec>? Specs, InvoiceLines.LineError? Error) Parse(
-        ChargeRequest[]? request, int? taxPercent, int defaultTaxPercent)
+        ChargeRequest[]? request, int? taxPercent, int defaultTaxPercent, bool sales = false)
     {
         if (request is null)
         {
@@ -44,7 +53,8 @@ public static class Charges
         var specs = new List<Spec>();
         foreach (var c in request)
         {
-            if (!Enum.TryParse<ChargeKind>(c.Kind, true, out var kind))
+            if (!Enum.TryParse<ChargeKind>(c.Kind, true, out var kind) || !Enum.IsDefined(kind)
+                || (kind == ChargeKind.INCREASE && !sales))
                 return (null, new("bad_charge", "Unknown kind of charge."));
             if ((c.Percent is null) == (c.Amount is null))
                 return (null, new("bad_charge", "Give a charge either a percent or an amount."));
@@ -83,11 +93,24 @@ public static class Charges
     {
         var rows = new List<DocumentCharge>();
         var running = nets.Sum();
-        long discount = 0, tax = 0, addition = 0;
+        long discount = 0, tax = 0, addition = 0, increase = 0;
         var ordered = specs.Select((s, i) => (Spec: s, Index: i))
-            .OrderBy(x => (int)x.Spec.Kind).ThenBy(x => x.Index).Select(x => x.Spec).ToList();
+            .OrderBy(x => Order(x.Spec.Kind)).ThenBy(x => x.Index).Select(x => x.Spec).ToList();
 
-        // Discounts first, each on what is left.
+        // Increases first, on the lines' total; each line takes its share (it is part of what it brings in).
+        foreach (var s in ordered.Where(s => s.Kind == ChargeKind.INCREASE))
+        {
+            var amount = Amount(s, running);
+            running += amount;
+            increase += amount;
+            rows.Add(Row(s, amount, rows.Count));
+        }
+        var increased = Allocate(increase, nets, shares);
+        if (increased is null)
+            return (null, new("increase_nothing", "There is nothing on the invoice to increase."));
+        var raised = nets.Select((n, i) => n + increased[i]).ToList();
+
+        // Then discounts, each on what is left.
         foreach (var s in ordered.Where(s => s.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT))
         {
             var amount = Amount(s, running);
@@ -98,17 +121,18 @@ public static class Charges
             rows.Add(Row(s, amount, rows.Count));
         }
         // Then taxes and additions, on the discounted amount.
-        foreach (var s in ordered.Where(s => s.Kind is not (ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT)))
+        foreach (var s in ordered.Where(s => s.Kind is not (ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT
+                                                 or ChargeKind.INCREASE)))
         {
             var amount = Amount(s, running);
             if (s.Kind == ChargeKind.ADDITION) addition += amount; else tax += amount;
             rows.Add(Row(s, amount, rows.Count));
         }
 
-        var allocation = Allocate(discount, nets, shares);
+        var allocation = Allocate(discount, raised, shares);
         if (allocation is null)
             return (null, new("discount_too_big", "There is nothing on the invoice to discount."));
-        return (new Outcome(rows, discount, tax, addition, allocation), null);
+        return (new Outcome(rows, discount, tax, addition, allocation, increase, increased), null);
     }
 
     /// <summary>

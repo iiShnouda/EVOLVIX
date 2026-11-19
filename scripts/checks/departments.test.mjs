@@ -132,7 +132,7 @@ const settings = (await owner.get('/settings')).data;
 eq('no company limit at first', settings.maxDiscountPercent, 100);
 ok('company limit 10%', await owner.put('/settings', { maxDiscountPercent: 10 }));
 const seller = await person('SALES', 'seller');
-ok('may give discounts', await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:discount', 'sales:discount_line'] }));
+ok('may give discounts', await owner.put(`/staff/${seller.id}/permissions`, { granted: ['sales:discount_pct', 'sales:discount_amount', 'sales:discount_line_pct', 'sales:discount_line_amount'] }));
 let s = await login(seller.email, PASS);
 eq('the company’s limit in their sign-in', s.user.maxDiscountPercent, 10);
 ok('10% of a line', await sellGiven(s, [line(shirt, { quantity: 2, discount: 200 })]));

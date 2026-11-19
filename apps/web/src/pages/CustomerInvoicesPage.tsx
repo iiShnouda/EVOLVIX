@@ -27,7 +27,7 @@ import {
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
-import { lineDiscount, type LineDiscountMode } from '../lib/discount';
+import { lineDiscount, lineDiscountModes, type LineDiscountMode } from '../lib/discount';
 import { errorText } from '../lib/errors';
 import { asOutput, printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
@@ -81,8 +81,15 @@ export function CustomerInvoicesPage() {
   const navigate = useNavigate();
   const { t, locale } = useT();
   const can = useCan();
-  const canDiscount = can('sales:discount');
-  const canLineDiscount = can('sales:discount_line');
+  // A percent and an amount are each their own permission (owner, 2026-11-19).
+  const discountModes = [
+    ...(can('sales:discount_pct') ? (['percent'] as const) : []),
+    ...(can('sales:discount_amount') ? (['amount'] as const) : []),
+  ];
+  const lineModes = lineDiscountModes(
+    can('sales:discount_line_pct'),
+    can('sales:discount_line_amount'),
+  );
   const canDiscountCombined = can('sales:discount_combined');
   const canLock = can('sales:lock');
   // `?day=` opens on that day (an invoice's own); today otherwise.
@@ -211,8 +218,8 @@ export function CustomerInvoicesPage() {
                 key={doc.id}
                 doc={doc}
                 options={options}
-                canDiscount={canDiscount}
-                canLineDiscount={canLineDiscount}
+                discountModes={discountModes}
+                lineModes={lineModes}
                 busy={setDiscount.isPending || setLineDiscounts.isPending}
                 onLineDiscounts={(lines) => setLineDiscounts.mutate({ doc, lines })}
                 onDiscount={(d) => {
@@ -255,8 +262,8 @@ export function CustomerInvoicesPage() {
                 key={doc.id}
                 doc={doc}
                 options={options}
-                canDiscount={false}
-                canLineDiscount={false}
+                discountModes={[]}
+                lineModes={[]}
                 busy={false}
                 isReturn
                 onDiscount={() => undefined}
@@ -416,8 +423,8 @@ export function CustomerInvoicesPage() {
 function InvoiceCard({
   doc,
   options,
-  canDiscount,
-  canLineDiscount,
+  discountModes,
+  lineModes,
   busy,
   onDiscount,
   onLineDiscounts,
@@ -431,11 +438,12 @@ function InvoiceCard({
   doc: SalesDocument;
   isReturn?: boolean;
   options: PaperOptions;
-  canDiscount: boolean;
-  canLineDiscount: boolean;
+  /** The ways this person may give the invoice's discount, and an item's. */
+  discountModes: DiscountDraft['mode'][];
+  lineModes: LineDiscountMode[];
   busy: boolean;
   onDiscount: (d: DiscountDraft) => void;
-  onLineDiscounts: (lines: { lineId: string; discount: number }[]) => void;
+  onLineDiscounts: (lines: { lineId: string; discount: number; percent?: number }[]) => void;
   onPrint?: () => void;
   paperRef: (el: HTMLDivElement | null) => void;
   canLock?: boolean;
@@ -446,15 +454,21 @@ function InvoiceCard({
   const owner = useMayOverride();
   const [open, setOpen] = useState(false);
   const [discounting, setDiscounting] = useState(false);
-  const [draft, setDraft] = useState<DiscountDraft>(() => draftOf(doc, 'DISCOUNT'));
+  const canDiscount = discountModes.length > 0;
+  const canLineDiscount = lineModes.length > 0;
+  const [draft, setDraft] = useState<DiscountDraft>(() => {
+    const d = draftOf(doc, 'DISCOUNT');
+    return discountModes.includes(d.mode) ? d : { mode: discountModes[0] ?? 'percent', value: '' };
+  });
   // Each item's discount as typed, from what it has when the discount is opened.
   const [lineDrafts, setLineDrafts] = useState<Record<string, LineDraft>>({});
   const status = statusOf(doc);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
   const items = doc.lines.filter((l) => !l.isBonus);
+  // With its own increase; its share of the invoice's increase is shared out again.
   const grossOf = (l: SalesDocument['lines'][number]) =>
-    l.unitPrice * (l.unitQuantity || l.quantity);
+    l.lineTotal + l.discount - (l.docIncrease ?? 0);
   const newLineDiscount = (l: SalesDocument['lines'][number]) => {
     const d = lineDrafts[l.id];
     return d ? lineDiscount(d.mode, d.value, grossOf(l), l.quantity) : l.discount;
@@ -466,9 +480,11 @@ function InvoiceCard({
         Object.fromEntries(
           items.map((l) => [
             l.id,
-            l.discount > 0
-              ? { mode: 'amount', value: String(toMajor(l.discount)) }
-              : { mode: 'percent', value: '' },
+            l.discountRate && lineModes.includes('percent')
+              ? { mode: 'percent', value: String(l.discountRate) }
+              : l.discount > 0 && lineModes.includes('amount')
+                ? { mode: 'amount', value: String(toMajor(l.discount)) }
+                : { mode: lineModes[0] ?? 'amount', value: '' },
           ]),
         ),
       );
@@ -532,7 +548,7 @@ function InvoiceCard({
           <p className="mb-1 text-xs font-medium text-muted">{t('together.itemsDiscount')}</p>
           <ul className="divide-y divide-[var(--c-line)]">
             {items.map((l) => {
-              const d = lineDrafts[l.id] ?? { mode: 'percent', value: '' };
+              const d = lineDrafts[l.id] ?? { mode: lineModes[0] ?? 'amount', value: '' };
               const off = newLineDiscount(l);
               return (
                 <li key={l.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
@@ -570,9 +586,15 @@ function InvoiceCard({
                         }))
                       }
                     >
-                      <option value="percent">%</option>
-                      <option value="piece">{t('invoice.perPiece')}</option>
-                      <option value="amount">{t('invoice.onLine')}</option>
+                      {lineModes.map((m) => (
+                        <option key={m} value={m}>
+                          {m === 'percent'
+                            ? '%'
+                            : m === 'piece'
+                              ? t('invoice.perPiece')
+                              : t('invoice.onLine')}
+                        </option>
+                      ))}
                     </select>
                   </span>
                   <span className="w-28 text-end tnum">
@@ -590,7 +612,15 @@ function InvoiceCard({
             disabled={changedLines.length === 0}
             onClick={() => {
               onLineDiscounts(
-                changedLines.map((l) => ({ lineId: l.id, discount: newLineDiscount(l) })),
+                changedLines.map((l) =>
+                  lineDrafts[l.id]?.mode === 'percent'
+                    ? {
+                        lineId: l.id,
+                        discount: 0,
+                        percent: Math.round((Number(lineDrafts[l.id]!.value) || 0) * 100) / 100,
+                      }
+                    : { lineId: l.id, discount: newLineDiscount(l) },
+                ),
               );
               setDiscounting(false);
             }}
@@ -603,7 +633,12 @@ function InvoiceCard({
         <div className="border-t border-line p-3">
           <p className="mb-1 text-xs font-medium text-muted">{t('together.invoiceDiscount')}</p>
           <div className="flex flex-wrap items-end gap-2">
-            <DiscountInputs value={draft} onChange={setDraft} currency={doc.currency} />
+            <DiscountInputs
+              value={draft}
+              onChange={setDraft}
+              currency={doc.currency}
+              modes={discountModes}
+            />
             <Button
               size="sm"
               loading={busy}
@@ -629,10 +664,13 @@ function DiscountInputs({
   value,
   onChange,
   currency,
+  modes = ['percent', 'amount'],
 }: {
   value: DiscountDraft;
   onChange: (v: DiscountDraft) => void;
   currency: string;
+  /** The ways it may be typed. */
+  modes?: DiscountDraft['mode'][];
 }) {
   const { t } = useT();
   return (
@@ -654,8 +692,8 @@ function DiscountInputs({
         value={value.mode}
         onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountDraft['mode'] })}
       >
-        <option value="percent">%</option>
-        <option value="amount">{currency}</option>
+        {modes.includes('percent') && <option value="percent">%</option>}
+        {modes.includes('amount') && <option value="amount">{currency}</option>}
       </select>
     </span>
   );

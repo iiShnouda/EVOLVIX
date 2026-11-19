@@ -315,13 +315,13 @@ await cancelMade(refused);
 const noDisc = await sellGiven(seller, [
   { productId: item.id, quantity: 1, unitPrice: 1000, discount: 100 },
 ]);
-if (seller.user.permissions.includes('sales:discount_line'))
+if (seller.user.permissions.includes('sales:discount_line_amount'))
   check('sales has item discounts by role', noDisc.status === 200);
 else eq('without the item-discount permission', noDisc.status, 403);
 await cancelMade(noDisc);
 ok(
   'owner lets the seller discount items',
-  await owner.put(`/staff/${sellerP.staff.id}/permissions`, { granted: ['sales:discount_line'] }),
+  await owner.put(`/staff/${sellerP.staff.id}/permissions`, { granted: ['sales:discount_line_pct', 'sales:discount_line_amount'] }),
 );
 seller = await login(sellerP.email, PASS);
 const perPiece = ok(

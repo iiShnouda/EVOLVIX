@@ -31,7 +31,9 @@ public static class Mapper
             l.WarehouseId?.ToString(), l.Warehouse is null ? null : Loc.Name(l.Warehouse),
             l.UnitId?.ToString(), Loc.Name(l.Unit), l.UnitFactor, l.UnitQuantity, l.LineCost,
             baseUnits?.GetValueOrDefault(l.ProductId) ?? (l.UnitFactor == 1 ? Loc.Name(l.Unit) : ""),
-            l.IsBonus, l.DocDiscount, Reason: l.ReturnReason, ReasonNote: l.ReasonNote, Damaged: l.Damaged)).ToArray(),
+            l.IsBonus, l.DocDiscount, Reason: l.ReturnReason, ReasonNote: l.ReasonNote, Damaged: l.Damaged,
+            Increase: l.Increase, DocIncrease: l.DocIncrease, IncreaseRate: l.IncreaseRateBp / 100m,
+            IncreaseFixed: l.IncreaseFixed, DiscountRate: l.DiscountRateBp / 100m, DiscountFixed: l.DiscountFixed)).ToArray(),
         d.Subtotal, d.DiscountTotal, d.TaxTotal, d.GrandTotal, d.PaidAmount,
         d.CostTotal, d.ProfitTotal, d.Currency, d.Notes,
         d.SourceDocumentId?.ToString(), d.SourceDocument?.Number,
@@ -128,7 +130,8 @@ public static class Mapper
             var may = type switch
             {
                 nameof(PartyType.CUSTOMER) => user.HasAny(Permissions.StatementCustomers, Permissions.ReportsAging,
-                    Permissions.SalesTogether, Permissions.SalesDiscount, Permissions.SalesDiscountLine,
+                    Permissions.SalesTogether, Permissions.SalesDiscountPct, Permissions.SalesDiscountAmount,
+                    Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount,
                     Permissions.SalesDiscountCombined),
                 nameof(PartyType.SUPPLIER) => user.HasAny(Permissions.StatementSuppliers, Permissions.ReportsAging),
                 nameof(PartyType.CARRIER) => user.HasAny(Permissions.StatementCarriers, Permissions.DeliverySettle,

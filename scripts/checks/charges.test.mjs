@@ -132,9 +132,9 @@ eq('detail keeps charges', detail.charges.length, 4);
 console.log('== permissions');
 const plain = { lines: [{ productId: A.id, quantity: 1, unitPrice: 1000 }] };
 eq(
-  'no discount while selling',
-  (await sale(mona, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
-  'discount_on_customer_invoices',
+  'sales: no invoice discount while selling, without its permission',
+  (await sale(karim, { ...plain, charges: [{ kind: 'DISCOUNT', percent: 5 }] })).data?.code,
+  'discount_pct_not_allowed',
 );
 eq(
   'sales: no invoice discount',

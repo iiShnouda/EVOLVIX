@@ -322,6 +322,10 @@ export function InvoicePaper({
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
   // The discount column only when a line has one (owner, 2026-10-02).
   const anyLineDiscount = doc.lines.some((l) => l.discount > 0);
+  // …and the increase column only when a line has one (owner, 2026-11-19). A line shows without its
+  // share of the invoice's increase, which shows in the totals.
+  const anyLineIncrease = doc.lines.some((l) => (l.increase ?? 0) > 0);
+  const docIncreases = doc.lines.reduce((sum, l) => sum + (l.docIncrease ?? 0), 0);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
   const delivery =
@@ -503,6 +507,9 @@ export function InvoicePaper({
                   <th className="p-2 text-start font-medium">{t('invoice.itemName')}</th>
                   <th className="p-2 text-end font-medium">{t('sales.unitPrice')}</th>
                   <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
+                  {anyLineIncrease && (
+                    <th className="p-2 text-end font-medium">{t('col.increase')}</th>
+                  )}
                   {anyLineDiscount && (
                     <th className="p-2 text-end font-medium">{t('col.discount')}</th>
                   )}
@@ -548,6 +555,11 @@ export function InvoicePaper({
                         </span>
                       )}
                     </td>
+                    {anyLineIncrease && (
+                      <td className="p-2 text-end tnum">
+                        {(l.increase ?? 0) > 0 ? money(l.increase!) : ''}
+                      </td>
+                    )}
                     {anyLineDiscount && (
                       <td className="p-2 text-end tnum">
                         {l.discount > 0 ? money(l.discount) : ''}
@@ -559,7 +571,7 @@ export function InvoicePaper({
                           {t('invoice.bonus')}
                         </span>
                       ) : (
-                        money(l.lineTotal)
+                        money(l.lineTotal - (l.docIncrease ?? 0))
                       )}
                     </td>
                   </tr>
@@ -581,7 +593,7 @@ export function InvoicePaper({
       )}
       {shows('totals') && (
         <dl className="mt-2 space-y-1.5 text-sm">
-          <Row label={t('sales.subtotal')} value={money(doc.subtotal)} />
+          <Row label={t('sales.subtotal')} value={money(doc.subtotal - docIncreases)} />
           {lineDiscounts > 0 && <Row label={t('sales.discount')} value={money(-lineDiscounts)} />}
           {/* The invoice's own discounts and additions, in the order they applied; tax only when
               there is some (owner, 2026-10-02). */}

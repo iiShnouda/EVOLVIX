@@ -34,7 +34,6 @@ import { useDeviceInfo } from '../lib/device';
 import { useWorkPlace } from '../lib/workPlace';
 import { onlyChoice } from '../lib/onlyChoice';
 import { ItemLifeSheet } from '../components/ItemLifeSheet';
-import { lineDiscount, type LineDiscountMode } from '../lib/discount';
 import { DocumentDateField, dayToSend } from '../components/DocumentDate';
 import { ItemFinderSheet } from '../components/ItemFinderSheet';
 import {
@@ -75,9 +74,42 @@ interface Line {
    * stays, following the quantity — so much for so many pieces of the item's smallest unit.
    */
   kept?: { discount: number; pieces: number };
-  /** The line's discount as typed while the invoice is changed (sales:discount_line; owner, 2026-11-10). */
-  given?: { mode: LineDiscountMode; value: string };
+  /**
+   * The line's increase and discount as typed (owner, 2026-11-19), each box its own permission. With a
+   * discount typed (even 0), it replaces the quantity discount and the kept one.
+   */
+  adj?: Adj;
 }
+
+/**
+ * An increase and a discount as typed, each as a percent and an amount (owner, 2026-11-19): on a line
+ * (the amount for the whole line) or on the whole invoice. The increase comes first, then the
+ * discount on what that comes to.
+ */
+interface Adj {
+  iPct: string;
+  iAmt: string;
+  dPct: string;
+  dAmt: string;
+}
+const NO_ADJ: Adj = { iPct: '', iAmt: '', dPct: '', dAmt: '' };
+const ADJ_KEYS = ['iPct', 'iAmt', 'dPct', 'dAmt'] as const;
+/** A percent typed, rounded to 2 decimals, as the server reads it (0 when empty). */
+const pctOf = (v: string) => (v.trim() === '' ? 0 : Math.round(Number(v) * 100) / 100 || 0);
+/** What a typed percent comes to on `on`, rounded like the server. */
+const pctOn = (on: number, v: string) => Math.round((on * Math.round(pctOf(v) * 100)) / 10000);
+const amtOf = (v: string) => (v.trim() === '' ? 0 : Math.max(0, toMinor(Number(v) || 0)));
+/** Each box's name (a column, and the label of its input). */
+const ADJ_LABEL = {
+  iPct: 'col.increasePct',
+  iAmt: 'col.increaseAmount',
+  dPct: 'col.discountPct',
+  dAmt: 'col.discountAmount',
+} as const;
+const typedDiscount = (a?: Adj) => !!a && (a.dPct.trim() !== '' || a.dAmt.trim() !== '');
+/** A saved percent or amount as typed again. */
+const asText = (v: number | null | undefined, money = false) =>
+  v == null || v === 0 ? '' : String(money ? toMajor(v) : v);
 
 /** A line as kept in a draft. */
 const keepLine = (l: Line) => ({
@@ -90,7 +122,7 @@ const keepLine = (l: Line) => ({
   bonus: l.bonus,
   basis: l.basis,
   kept: l.kept,
-  given: l.given,
+  adj: l.adj,
 });
 
 /** An invoice discount as typed: a percent or an amount. */
@@ -155,9 +187,25 @@ export function InvoiceBuilderPage({
   // An invoice being changed: its discounts may be changed by whoever gives that kind (owner,
   // 2026-11-10); a new invoice still has none.
   const editing = !!editId && !readOnly;
-  const canEditDiscount = editing && can('sales:discount');
-  const canEditExtra = editing && (can('sales:discount') || can('sales:discount_combined'));
-  const canEditLineDiscount = editing && can('sales:discount_line');
+  // A discount or an increase, on an item or the whole invoice, as a percent or an amount: each box
+  // shows for whoever holds its permission, on a new invoice too (owner, 2026-11-19).
+  const may = {
+    line: {
+      iPct: can('sales:increase_line_pct'),
+      iAmt: can('sales:increase_line_amount'),
+      dPct: can('sales:discount_line_pct'),
+      dAmt: can('sales:discount_line_amount'),
+    },
+    invoice: {
+      iPct: can('sales:increase_pct'),
+      iAmt: can('sales:increase_amount'),
+      dPct: can('sales:discount_pct'),
+      dAmt: can('sales:discount_amount'),
+    },
+  };
+  const canEditExtra =
+    editing &&
+    (can('sales:discount_pct') || can('sales:discount_amount') || can('sales:discount_combined'));
   // Order of the line columns, kept per person.
   const [columnOrder, setColumnOrder] = useHiddenColumns('order.invoice.sale');
   const [cashAccountId, setCashAccountId] = useState('');
@@ -374,8 +422,9 @@ export function InvoiceBuilderPage({
     }
     return m;
   }, [lines]);
-  // The invoice discounts a changed invoice already has (the accountant's): they stay as they are.
-  const [discount1, setDiscount1] = useState<DiscountInput>({ mode: 'percent', value: '' });
+  // The invoice's own increase and discount as typed; its second discount (the accountant's, or one
+  // over several invoices) as a changed invoice has it.
+  const [invoiceAdj, setInvoiceAdj] = useState<Adj>(NO_ADJ);
   const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
@@ -560,22 +609,23 @@ export function InvoiceBuilderPage({
     const price = priceOf(l, i);
     const cost = costOf(l.product) * factor; // cost of one line unit at the warehouse's branch
     const gross = l.quantity * price;
+    // The line's increase first (owner, 2026-11-19), on its price.
+    const a = l.bonus ? undefined : l.adj;
+    const increase = a ? pctOn(gross, a.iPct) + amtOf(a.iAmt) : 0;
+    const raised = gross + increase;
     // The discount the accountant gave the line stays, following the quantity; it replaces the
     // quantity discount.
     const kept =
       !l.bonus && l.kept
-        ? Math.min(gross, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
+        ? Math.min(raised, Math.round((l.kept.discount * l.quantity * factor) / l.kept.pieces))
         : 0;
-    // Typed while changing the invoice: that instead (none typed = none).
-    const typed =
-      !l.bonus && l.given
-        ? lineDiscount(l.given.mode, l.given.value, gross, l.quantity * factor)
-        : 0;
-    const discount = l.given
-      ? typed || autoDiscountOf(l, i)
-      : kept > 0
-        ? kept
-        : autoDiscountOf(l, i);
+    // A discount typed on it: that instead, on what it comes to with its increase.
+    const discount =
+      a && typedDiscount(a)
+        ? Math.min(raised, pctOn(raised, a.dPct) + amtOf(a.dAmt))
+        : kept > 0
+          ? kept
+          : autoDiscountOf(l, i);
     const info = l.bonus || (priceEditable && l.touched) ? null : (priced?.[i] ?? null);
     return {
       line: l,
@@ -587,8 +637,9 @@ export function InvoiceBuilderPage({
       breakBp: info?.breakBp ?? 0,
       cost,
       gross,
+      increase,
       discount,
-      lineTotal: gross - discount,
+      lineTotal: raised - discount,
       lineCost: l.quantity * cost,
     };
   });
@@ -604,7 +655,15 @@ export function InvoiceBuilderPage({
         : { kind, amount: toMinor(Number(d.value)) },
     );
   };
-  pushDiscount('DISCOUNT', discount1);
+  // The invoice's increase, then its discount, each a percent and/or an amount (in that order).
+  if (pctOf(invoiceAdj.iPct) > 0)
+    chargeInputs.push({ kind: 'INCREASE', percent: pctOf(invoiceAdj.iPct) });
+  if (amtOf(invoiceAdj.iAmt) > 0)
+    chargeInputs.push({ kind: 'INCREASE', amount: amtOf(invoiceAdj.iAmt) });
+  if (pctOf(invoiceAdj.dPct) > 0)
+    chargeInputs.push({ kind: 'DISCOUNT', percent: pctOf(invoiceAdj.dPct) });
+  if (amtOf(invoiceAdj.dAmt) > 0)
+    chargeInputs.push({ kind: 'DISCOUNT', amount: amtOf(invoiceAdj.dAmt) });
   pushDiscount('EXTRA_DISCOUNT', discount2);
   if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
   const outcome = applyCharges(
@@ -615,7 +674,8 @@ export function InvoiceBuilderPage({
 
   const rows = pre.map((p, i) => {
     const docDiscount = outcome.allocation[i] ?? 0;
-    const net = p.lineTotal - docDiscount; // what the line really brings in
+    const docIncrease = outcome.increaseAllocation[i] ?? 0;
+    const net = p.lineTotal + docIncrease - docDiscount; // what the line really brings in
     const lineProfit = net - p.lineCost;
     const netUnit = p.line.quantity > 0 ? net / p.line.quantity : 0;
     const markupPct = p.cost > 0 ? ((netUnit - p.cost) / p.cost) * 100 : 0;
@@ -623,12 +683,22 @@ export function InvoiceBuilderPage({
     const belowCost = !p.line.bonus && net < p.lineCost;
     const belowFloor = !p.line.bonus && !belowCost && net < p.line.quantity * floorUnit;
     const overStock = (baseWanted.get(p.line.product.id) ?? 0) > available(p.line.product);
-    return { ...p, docDiscount, net, lineProfit, markupPct, belowCost, belowFloor, overStock };
+    return {
+      ...p,
+      docDiscount,
+      docIncrease,
+      net,
+      lineProfit,
+      markupPct,
+      belowCost,
+      belowFloor,
+      overStock,
+    };
   });
 
   const subtotal = rows.reduce((s, r) => s + r.lineTotal, 0);
   const costTotal = rows.reduce((s, r) => s + r.lineCost, 0);
-  const netTotal = subtotal - outcome.discount;
+  const netTotal = subtotal + outcome.increase - outcome.discount;
   const tax = outcome.tax;
   const grand = netTotal + outcome.tax + outcome.addition;
   // Over the customer's purchase limit: unless the person may allow it, the invoice is saved to
@@ -701,6 +771,18 @@ export function InvoiceBuilderPage({
           unitPrice: r.price,
           discount: r.discount,
           isBonus: r.line.bonus || undefined,
+          ...(r.line.adj && !r.line.bonus
+            ? {
+                increasePercent: pctOf(r.line.adj.iPct) || undefined,
+                increaseAmount: amtOf(r.line.adj.iAmt) || undefined,
+                ...(typedDiscount(r.line.adj)
+                  ? {
+                      discountPercent: pctOf(r.line.adj.dPct),
+                      discountAmount: amtOf(r.line.adj.dAmt),
+                    }
+                  : {}),
+              }
+            : {}),
           priceBasis: canPriceBasis && r.line.basis !== 'LIST' ? r.line.basis : undefined,
         })),
         charges: chargeInputs,
@@ -821,7 +903,12 @@ export function InvoiceBuilderPage({
                 l.kept && l.kept.discount > 0 && l.kept.pieces > 0
                   ? { discount: Math.round(l.kept.discount), pieces: Math.round(l.kept.pieces) }
                   : undefined,
-              given: l.given && typeof l.given.value === 'string' ? { ...l.given } : undefined,
+              adj:
+                l.adj && typeof l.adj === 'object'
+                  ? (Object.fromEntries(
+                      ADJ_KEYS.map((k) => [k, text(l.adj?.[k])]),
+                    ) as unknown as Adj)
+                  : undefined,
             },
           ];
         });
@@ -885,10 +972,19 @@ export function InvoiceBuilderPage({
           ? { mode: 'percent', value: String(c.rate) }
           : { mode: 'amount', value: String(toMajor(c.fixedAmount ?? c.amount)) };
       };
-      const d1 = asInput('DISCOUNT');
       const d2 = asInput('EXTRA_DISCOUNT');
-      if (d1) setDiscount1(d1);
       if (d2) setDiscount2(d2);
+      // Its own increase and discount, each a percent and an amount.
+      const typed = (kind: ChargeKind, rate: boolean) => {
+        const c = doc.charges.find((x) => x.kind === kind && (x.rate != null) === rate);
+        return !c ? '' : rate ? String(c.rate) : asText(c.fixedAmount ?? c.amount, true);
+      };
+      setInvoiceAdj({
+        iPct: typed('INCREASE', true),
+        iAmt: typed('INCREASE', false),
+        dPct: typed('DISCOUNT', true),
+        dAmt: typed('DISCOUNT', false),
+      });
       // Free goods it already has stay on it (owner, 2026-10-24), though none are added here.
       const loaded = doc.lines.flatMap((l) => {
         const product = byId.get(l.productId);
@@ -903,10 +999,27 @@ export function InvoiceBuilderPage({
             touched: true,
             bonus: l.isBonus,
             basis: 'LIST' as PriceBasis,
-            kept:
-              !l.isBonus && l.discount > 0 && l.quantity > 0
-                ? { discount: l.discount, pieces: l.quantity }
-                : undefined,
+            ...(l.discountRate != null || l.discountFixed != null
+              ? {}
+              : {
+                  kept:
+                    !l.isBonus && l.discount > 0 && l.quantity > 0
+                      ? { discount: l.discount, pieces: l.quantity }
+                      : undefined,
+                }),
+            adj:
+              l.isBonus ||
+              (l.increaseRate == null &&
+                l.increaseFixed == null &&
+                l.discountRate == null &&
+                l.discountFixed == null)
+                ? undefined
+                : {
+                    iPct: asText(l.increaseRate),
+                    iAmt: asText(l.increaseFixed, true),
+                    dPct: asText(l.discountRate),
+                    dAmt: asText(l.discountFixed, true),
+                  },
           },
         ];
       });
@@ -1280,6 +1393,16 @@ export function InvoiceBuilderPage({
           {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
         </span>
       )}
+      {isPhone && r.increase > 0 && (
+        <span className="text-positive">
+          {t('col.increase')}: +{formatMoney(r.increase, currency, locale)}
+        </span>
+      )}
+      {r.docIncrease > 0 && (
+        <span>
+          {t('invoice.shareIncrease')}: +{formatMoney(r.docIncrease, currency, locale)}
+        </span>
+      )}
       {r.docDiscount > 0 && (
         <span>
           {t('charge.DISCOUNT')}: −{formatMoney(r.docDiscount, currency, locale)}
@@ -1304,49 +1427,100 @@ export function InvoiceBuilderPage({
       </>
     );
 
-  /** What the line's discount comes to: the accountant's, or a quantity discount. */
-  const lineDiscountCell = (r: Row) => {
-    if (canEditLineDiscount && isOpen(r.line.key) && !r.line.bonus) {
-      const given: NonNullable<Line['given']> =
-        r.line.given ??
-        (r.discount > 0
-          ? { mode: 'amount', value: String(toMajor(r.discount)) }
-          : { mode: 'percent', value: '' });
-      return (
-        <span className="flex items-center gap-1">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className={`${cell} w-20 tnum`}
-            aria-label={t('invoice.lineDiscount')}
-            placeholder="0"
-            value={given.value}
-            onChange={(e) => updateLine(r.line.key, { given: { ...given, value: e.target.value } })}
-          />
-          <select
-            className={`${cell} px-1`}
-            aria-label={t('invoice.lineDiscountMode')}
-            value={given.mode}
-            onChange={(e) =>
-              updateLine(r.line.key, {
-                given: { ...given, mode: e.target.value as LineDiscountMode },
-              })
-            }
-          >
-            <option value="percent">%</option>
-            <option value="piece">{t('invoice.perPiece')}</option>
-            <option value="amount">{t('invoice.onLine')}</option>
-          </select>
-        </span>
-      );
-    }
-    return !r.line.bonus && r.discount > 0 ? (
+  /** What the line's discount comes to: typed, the accountant's, or a quantity discount. */
+  const lineDiscountCell = (r: Row) =>
+    !r.line.bonus && r.discount > 0 ? (
       <span className="whitespace-nowrap text-xs text-warning tnum">
         −{formatMoney(r.discount, currency, locale)}
       </span>
     ) : null;
+  /**
+   * One of the line's increase and discount boxes (owner, 2026-11-19): its input while the line is
+   * open, for whoever holds its permission; else what it holds.
+   */
+  const adjBox = (r: Row, k: keyof Adj, className = `${cell} w-20 tnum`) => {
+    if (r.line.bonus) return null;
+    const a = r.line.adj ?? NO_ADJ;
+    const pct = k === 'iPct' || k === 'dPct';
+    if (may.line[k] && isOpen(r.line.key))
+      return (
+        <input
+          type="number"
+          min={0}
+          max={pct ? 100 : undefined}
+          step="0.01"
+          inputMode="decimal"
+          className={className}
+          aria-label={t(ADJ_LABEL[k])}
+          placeholder={pct ? '%' : '0'}
+          value={a[k]}
+          onChange={(e) => updateLine(r.line.key, { adj: { ...a, [k]: e.target.value } })}
+        />
+      );
+    const v = pct ? pctOf(a[k]) : amtOf(a[k]);
+    return v > 0 ? (
+      <span className={k[0] === 'i' ? 'text-positive' : 'text-warning'}>
+        {pct ? `${formatNumber(v, locale)}%` : plain.format(toMajor(v))}
+      </span>
+    ) : (
+      ''
+    );
+  };
+  /** A box shows for whoever may use it, and wherever a line has it. */
+  const showsBox = (k: keyof Adj) =>
+    (may.line[k] && !readOnly) || lines.some((l) => !l.bonus && (l.adj?.[k] ?? '').trim() !== '');
+
+  /**
+   * The invoice's increase (`i`) or discount (`d`) in the totals: what it comes to, and its percent
+   * and amount boxes for whoever holds each one's permission.
+   */
+  const invoiceAdjRow = (kind: 'i' | 'd') => {
+    const pk = kind === 'i' ? 'iPct' : 'dPct';
+    const ak = kind === 'i' ? 'iAmt' : 'dAmt';
+    const amount =
+      kind === 'i'
+        ? outcome.increase
+        : outcome.rows.filter((c) => c.kind === 'DISCOUNT').reduce((sum, c) => sum + c.amount, 0);
+    const boxes = readOnly ? [] : [pk, ak].filter((k) => may.invoice[k as keyof Adj]);
+    if (boxes.length === 0 && amount === 0) return null;
+    const rate = pctOf(invoiceAdj[pk]);
+    return (
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <dt className="min-w-0 text-muted">
+            {t(kind === 'i' ? 'charge.INCREASE' : 'charge.DISCOUNT')}
+            {boxes.length === 0 && rate > 0 ? ` (${formatNumber(rate, locale)}%)` : ''}
+          </dt>
+          <dd
+            className={`tnum ${amount > 0 ? (kind === 'i' ? 'text-positive' : 'text-warning') : 'text-faint'}`}
+          >
+            {kind === 'i' ? '+' : '−'}
+            {formatMoney(amount, currency, locale)}
+          </dd>
+        </div>
+        {boxes.length > 0 && (
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            {boxes.map((k) => (
+              <label key={k} className="flex min-w-0 items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={k === pk ? 100 : undefined}
+                  step="0.01"
+                  inputMode="decimal"
+                  className={`${field} !h-8 min-w-0 tnum`}
+                  aria-label={t(ADJ_LABEL[k as keyof Adj])}
+                  placeholder="0"
+                  value={invoiceAdj[k as keyof Adj]}
+                  onChange={(e) => setInvoiceAdj((v) => ({ ...v, [k]: e.target.value }))}
+                />
+                <span className="shrink-0 text-xs text-muted">{k === pk ? '%' : currency}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // The lines table (owner, 2026-10-01): stock, selling and supply price, last price, the
@@ -1363,7 +1537,11 @@ export function InvoiceBuilderPage({
     | 'lastPrice'
     | 'price'
     | 'raise'
+    | 'increasePct'
+    | 'increaseAmount'
     | 'beforeDiscount'
+    | 'discountPct'
+    | 'discountAmount'
     | 'discount'
     | 'afterDiscount'
     | 'profit';
@@ -1452,12 +1630,36 @@ export function InvoiceBuilderPage({
         return up > 0 ? <span className="text-positive">+{plain.format(toMajor(up))}</span> : '';
       },
     },
+    ...when(showsBox('iPct'), {
+      key: 'increasePct',
+      label: t('col.increasePct'),
+      end: true,
+      cell: (r) => adjBox(r, 'iPct', `${cell} w-16 tnum`),
+    }),
+    ...when(showsBox('iAmt'), {
+      key: 'increaseAmount',
+      label: t('col.increaseAmount'),
+      end: true,
+      cell: (r) => adjBox(r, 'iAmt'),
+    }),
     {
       key: 'beforeDiscount',
       label: t('col.beforeDiscount'),
       end: true,
-      cell: (r) => plain.format(toMajor(r.gross)),
+      cell: (r) => plain.format(toMajor(r.gross + r.increase)),
     },
+    ...when(showsBox('dPct'), {
+      key: 'discountPct',
+      label: t('col.discountPct'),
+      end: true,
+      cell: (r) => adjBox(r, 'dPct', `${cell} w-16 tnum`),
+    }),
+    ...when(showsBox('dAmt'), {
+      key: 'discountAmount',
+      label: t('col.discountAmount'),
+      end: true,
+      cell: (r) => adjBox(r, 'dAmt'),
+    }),
     {
       key: 'discount',
       label: t('col.discount'),
@@ -2091,6 +2293,18 @@ export function InvoiceBuilderPage({
                           </div>
                         </div>
                       </div>
+                      {!r.line.bonus && isOpen(r.line.key) && ADJ_KEYS.some((k) => may.line[k]) && (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {ADJ_KEYS.filter((k) => may.line[k]).map((k) => (
+                            <label key={k} className="block">
+                              <span className="mb-0.5 block text-xs text-muted">
+                                {t(ADJ_LABEL[k])}
+                              </span>
+                              {adjBox(r, k, `${field} tnum`)}
+                            </label>
+                          ))}
+                        </div>
+                      )}
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
                         {lineNotes(r)}
                         {lineDiscountCell(r)}
@@ -2115,14 +2329,9 @@ export function InvoiceBuilderPage({
                   label={t('invoice.subtotal')}
                   value={formatMoney(subtotal, currency, locale)}
                 />
-                {/* The accountant's discounts on a changed invoice, as they are. */}
-                <KeptDiscount
-                  label={t('charge.DISCOUNT')}
-                  value={discount1}
-                  onChange={canEditDiscount ? setDiscount1 : undefined}
-                  amount={outcome.rows.find((c) => c.kind === 'DISCOUNT')?.amount ?? 0}
-                  currency={currency}
-                />
+                {/* The invoice's increase, then its discount (owner, 2026-11-19). */}
+                {invoiceAdjRow('i')}
+                {invoiceAdjRow('d')}
                 <KeptDiscount
                   label={t('charge.EXTRA_DISCOUNT')}
                   value={discount2}
@@ -2130,7 +2339,7 @@ export function InvoiceBuilderPage({
                   amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
                   currency={currency}
                 />
-                {outcome.discount > 0 && (
+                {(outcome.discount > 0 || outcome.increase > 0) && (
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
                 )}
                 {tax > 0 && (
@@ -2363,7 +2572,7 @@ interface InvoiceDraft {
     bonus: boolean;
     basis?: PriceBasis;
     kept?: { discount: number; pieces: number };
-    given?: { mode: LineDiscountMode; value: string };
+    adj?: Partial<Adj>;
   }[];
   /** Items being prepared, not on the invoice yet. */
   staged?: InvoiceDraft['lines'];
