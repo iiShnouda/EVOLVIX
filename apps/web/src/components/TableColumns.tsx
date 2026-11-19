@@ -467,7 +467,7 @@ function ColumnMenu({
         <Icon name="columns" size={15} />
         {t('list.columns')}
         {count > 0 && (
-          <span className="rounded-full bg-brand-soft px-1.5 text-[11px] text-brand tnum">
+          <span className="rounded-full bg-brand-soft px-1.5 text-[0.6875rem] text-brand tnum">
             {count}
           </span>
         )}
@@ -539,7 +539,7 @@ function ColumnMenu({
               {t('list.defaultWidths')}
             </button>
           )}
-          <p className="mt-1 border-t border-line px-2 pt-1.5 text-[11px] text-muted">
+          <p className="mt-1 border-t border-line px-2 pt-1.5 text-[0.6875rem] text-muted">
             {t('list.dragHint')}
           </p>
         </div>

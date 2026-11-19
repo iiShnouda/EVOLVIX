@@ -23,7 +23,7 @@ export function CompanyMark({
   const { data } = useBranding();
   if (!data) return null;
   const url = companyLogoUrl(data.logoVersion);
-  const box = { width: size, height: size };
+  const box = { width: `${size / 16}rem`, height: `${size / 16}rem` };
   if (url)
     return (
       <img
@@ -44,7 +44,7 @@ export function CompanyMark({
   if (!initials) return null;
   return (
     <span
-      style={{ ...box, fontSize: size * 0.38 }}
+      style={{ ...box, fontSize: `${(size * 0.38) / 16}rem` }}
       className={`grid shrink-0 place-items-center rounded-lg bg-brand-soft font-bold text-brand ${className ?? ''}`}
     >
       {initials}

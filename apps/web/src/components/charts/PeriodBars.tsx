@@ -59,7 +59,7 @@ export function PeriodBars({
   return (
     <div className="flex gap-2" dir="ltr">
       {/* The scale: a figure on each guide line. */}
-      <div className="relative h-56 w-12 shrink-0 text-[10px] text-faint tnum">
+      <div className="relative h-56 w-12 shrink-0 text-[0.625rem] text-faint tnum">
         {[1, 0.75, 0.5, 0.25, 0].map((f) => (
           <span key={f} className="absolute end-1 -translate-y-1/2" style={{ top: `${(1 - f) * 100}%` }}>
             {compact(max * f)}
@@ -114,7 +114,7 @@ export function PeriodBars({
           {rows.map((r, i) => (
             <span
               key={r.key}
-              className={`min-w-0 flex-1 truncate pt-1 text-center text-[11px] ${active === i ? 'font-semibold text-fg' : 'text-faint'}`}
+              className={`min-w-0 flex-1 truncate pt-1 text-center text-[0.6875rem] ${active === i ? 'font-semibold text-fg' : 'text-faint'}`}
             >
               {i % every === 0 || i === rows.length - 1 ? r.label : ''}
             </span>

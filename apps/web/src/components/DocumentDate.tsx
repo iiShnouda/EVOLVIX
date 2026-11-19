@@ -35,7 +35,7 @@ export function DocumentDateField({
         onChange={(e) => onChange(e.target.value || today)}
       />
       {value !== today && (
-        <span className="mt-0.5 block text-[11px] text-warning">{t('doc.dateEarlier')}</span>
+        <span className="mt-0.5 block text-[0.6875rem] text-warning">{t('doc.dateEarlier')}</span>
       )}
     </label>
   );

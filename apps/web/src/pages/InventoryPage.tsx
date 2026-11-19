@@ -1492,7 +1492,7 @@ function ValuationItems({
         }}
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[60rem] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 {columns.map((k) => (

@@ -153,6 +153,25 @@ function ReportTab() {
     if (ok) toPayroll.mutate({ repId: r.repId, year, month });
   }
 
+  /** Adding a rep's commission to their payroll, or where it stands. */
+  const payrollCell = (r: CommissionRow) =>
+    !r.employeeId ? (
+      <span className="text-xs text-muted">{t('commission.notLinked')}</span>
+    ) : r.addedToPayroll ? (
+      <Badge tone="positive">{t('commission.inPayroll')}</Badge>
+    ) : can('commission:payroll') && wholeMonth && r.commission > 0 ? (
+      <Button
+        size="sm"
+        variant="secondary"
+        loading={toPayroll.isPending && toPayroll.variables?.repId === r.repId}
+        onClick={() => void add(r)}
+      >
+        {t('commission.addToPayroll')}
+      </Button>
+    ) : (
+      <span className="text-xs text-muted">{r.employeeName}</span>
+    );
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -241,7 +260,51 @@ function ReportTab() {
         </Card>
       ) : (
         <div ref={paper}>
-          <Card padded={false} className="overflow-x-auto">
+          {/* A phone: a card a rep, every figure readable without scrolling sideways. */}
+          <div className="space-y-2 sm:hidden" data-noprint>
+            {rows.map((r) => (
+              <Card key={r.repId} className="space-y-2">
+                <button
+                  type="button"
+                  className="block w-full text-start"
+                  onClick={() => setOpen(r)}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <CodeName code={r.repCode} name={r.repName} />
+                      <span className="block text-xs text-faint">
+                        {t('commission.invoices')} {formatNumber(r.invoices, locale)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-end font-semibold tnum">
+                      {money(r.commission)}
+                    </span>
+                  </span>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    {cols
+                      .filter((c) => c.key !== 'commission')
+                      .map((c) => {
+                        const v = r[c.key] as number;
+                        return (
+                          <div key={c.key} className="flex justify-between gap-2">
+                            <dt className="text-muted">{t(c.label)}</dt>
+                            <dd className={`tnum ${c.minus && v ? 'text-destructive' : ''}`}>
+                              {v ? money(c.minus ? -v : v) : '–'}
+                            </dd>
+                          </div>
+                        );
+                      })}
+                  </dl>
+                </button>
+                <div className="flex justify-end">{payrollCell(r)}</div>
+              </Card>
+            ))}
+            <Card className="flex justify-between font-semibold">
+              <span>{t('ledger.total')}</span>
+              <span className="tnum">{money(total('commission'))}</span>
+            </Card>
+          </div>
+          <Card padded={false} className="overflow-x-auto max-sm:hidden">
             <table className="w-full min-w-[44rem] text-sm">
               <thead className="bg-surface-2 text-xs text-muted">
                 <tr>
@@ -285,22 +348,7 @@ function ReportTab() {
                       data-noprint
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {!r.employeeId ? (
-                        <span className="text-xs text-muted">{t('commission.notLinked')}</span>
-                      ) : r.addedToPayroll ? (
-                        <Badge tone="positive">{t('commission.inPayroll')}</Badge>
-                      ) : can('commission:payroll') && wholeMonth && r.commission > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={toPayroll.isPending && toPayroll.variables?.repId === r.repId}
-                          onClick={() => void add(r)}
-                        >
-                          {t('commission.addToPayroll')}
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted">{r.employeeName}</span>
-                      )}
+                      {payrollCell(r)}
                     </td>
                   </tr>
                 ))}

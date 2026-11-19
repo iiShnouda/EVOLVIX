@@ -191,7 +191,7 @@ export function ItemLifeSheet({ productId, onClose }: { productId: string; onClo
     const th = 'px-2 py-2 font-medium';
     return (
       <TableColumns id={id}>
-        <table className="w-full whitespace-nowrap text-[13px]">
+        <table className="w-full whitespace-nowrap text-[0.8125rem]">
           <thead className="sticky top-0 z-10 border-b border-line bg-surface-2 text-xs text-muted">
             <tr>
               <th className={`${th} text-start`}>{t('life.date')}</th>

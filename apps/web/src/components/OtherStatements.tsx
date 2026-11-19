@@ -339,7 +339,7 @@ export function ExpenseStatementBody({ id, title }: { id: string; title: string 
               id="statement.expense"
               cols={cols}
               lines={d.lines}
-              minWidth="min-w-[900px]"
+              minWidth="min-w-[56.25rem]"
               total={{ [t('common.amount')]: money(d.total) }}
             />
           )}
@@ -492,7 +492,7 @@ export function WarehouseStatementBody({ id, title }: { id: string; title: strin
               id="statement.warehouse"
               cols={cols}
               lines={d.lines}
-              minWidth="min-w-[900px]"
+              minWidth="min-w-[56.25rem]"
             />
           )}
         </>

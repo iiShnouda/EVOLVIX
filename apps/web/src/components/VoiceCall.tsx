@@ -230,7 +230,7 @@ export function VoiceCall({
           <div className="w-full space-y-2 text-start text-sm">
             {heard && (
               <p className="rounded-xl bg-surface-2 px-3 py-2">
-                <span className="block text-[11px] font-semibold text-muted">
+                <span className="block text-[0.6875rem] font-semibold text-muted">
                   {t('assistant.you')}
                 </span>
                 <span dir="auto" className="line-clamp-3 block break-words text-start">
@@ -240,7 +240,7 @@ export function VoiceCall({
             )}
             {said && (
               <p className="rounded-xl bg-brand-soft/60 px-3 py-2">
-                <span className="block text-[11px] font-semibold text-brand">
+                <span className="block text-[0.6875rem] font-semibold text-brand">
                   {t('nav.assistant')}
                 </span>
                 <span

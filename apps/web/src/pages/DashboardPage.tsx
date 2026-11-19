@@ -202,7 +202,7 @@ export function DashboardPage() {
         <PageHeader
           title={t('nav.dashboard')}
           action={
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button icon="settings" size="sm" variant="ghost" onClick={() => setChoosing(true)}>
                 {t('dash.customize')}
               </Button>
@@ -477,7 +477,7 @@ function KpiCard({ kpi, data }: { kpi: KpiValue; data: DashboardData }) {
           {!PERIOD_KPIS.has(kpi.key) && <NowTag />}
         </span>
       </div>
-      <p className="mt-3 text-[15px] font-bold whitespace-nowrap tnum sm:text-xl">{value}</p>
+      <p className="mt-3 text-[0.9375rem] font-bold whitespace-nowrap tnum sm:text-xl">{value}</p>
       {series && series.some((v) => v !== 0) ? (
         <div className="mt-auto pt-2">
           <Sparkline values={series} color={style.color} />
@@ -581,7 +581,7 @@ function MonthCard({
             <span className="block text-xl font-bold tnum" dir="ltr">
               {percent != null ? `${percent}%` : '—'}
             </span>
-            <span className="block text-[11px] text-muted">{t('dash.ofLastMonth')}</span>
+            <span className="block text-[0.6875rem] text-muted">{t('dash.ofLastMonth')}</span>
           </span>
         </Ring>
         <dl className="min-w-[13rem] flex-1 space-y-2 text-sm">
@@ -654,7 +654,7 @@ function Line({
 function Mini({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[11px] text-muted">{label}</p>
+      <p className="truncate text-[0.6875rem] text-muted">{label}</p>
       <p className="text-xs font-semibold whitespace-nowrap tnum">{value}</p>
     </div>
   );
@@ -739,7 +739,7 @@ function BarList({
           <div className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-2">
               <span
-                className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[11px] font-bold tnum ${
+                className={`grid h-6 w-6 shrink-0 place-items-center rounded-md text-[0.6875rem] font-bold tnum ${
                   i < 3 ? 'bg-brand-soft text-brand' : 'bg-surface-2 text-muted'
                 }`}
               >
@@ -756,7 +756,7 @@ function BarList({
                 style={{ width: `${Math.round((Math.abs(r.value) * 100) / top)}%` }}
               />
             </div>
-            {note?.(r) && <span className="shrink-0 text-[11px] text-muted">{note(r)}</span>}
+            {note?.(r) && <span className="shrink-0 text-[0.6875rem] text-muted">{note(r)}</span>}
           </div>
         </li>
       ))}
@@ -800,11 +800,11 @@ function Shares({ rows, money }: { rows: DashRank[]; money: (v: number) => strin
     <div className="flex flex-wrap items-center gap-4">
       <Donut values={rows.map((r) => r.value)}>
         <span>
-          <span className="block text-[11px] text-muted">{t('common.total')}</span>
+          <span className="block text-[0.6875rem] text-muted">{t('common.total')}</span>
           <span className="block text-sm font-bold tnum">{formatNumber(rows.length, locale)}</span>
         </span>
       </Donut>
-      <ul className="min-w-[140px] flex-1 space-y-2 text-sm">
+      <ul className="min-w-[8.75rem] flex-1 space-y-2 text-sm">
         {rows.map((r, i) => (
           <li key={r.id} className="flex items-center gap-2">
             <span
@@ -1053,7 +1053,7 @@ function NotesDueCard(p: PeriodProps) {
           />
         </div>
       )}
-      <p className="mt-2 text-[11px] text-muted">{t('dash.dueBy')}</p>
+      <p className="mt-2 text-[0.6875rem] text-muted">{t('dash.dueBy')}</p>
     </Card>
   );
 }

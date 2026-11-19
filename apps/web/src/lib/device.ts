@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { DeviceClass, Platform } from '@skb/shared';
+import { layoutWidth } from './zoom';
 
 export interface DeviceInfo {
   deviceClass: DeviceClass;
@@ -28,7 +29,8 @@ function classify(width: number): DeviceClass {
 }
 
 function read(): DeviceInfo {
-  const width = typeof window === 'undefined' ? 1280 : window.innerWidth;
+  // In the app's zoomed pixels (lib/zoom.ts): zoomed out, a laptop gets the wide layout.
+  const width = layoutWidth();
   const height = typeof window === 'undefined' ? 800 : window.innerHeight;
   const isTouch =
     typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
@@ -37,7 +39,7 @@ function read(): DeviceInfo {
     platform: detectPlatform(),
     width,
     isTouch,
-    isPortrait: height >= width,
+    isPortrait: height >= (typeof window === 'undefined' ? 1280 : window.innerWidth),
   };
 }
 

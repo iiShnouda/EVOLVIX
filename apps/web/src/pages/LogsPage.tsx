@@ -270,7 +270,7 @@ function Line({
             <div>
               <p className="mb-1 text-muted">{t('logs.stack')}</p>
               <pre
-                className="max-h-96 overflow-auto whitespace-pre rounded-[var(--radius-app)] border border-line bg-surface p-2 font-mono text-[11px] leading-relaxed"
+                className="max-h-96 overflow-auto whitespace-pre rounded-[var(--radius-app)] border border-line bg-surface p-2 font-mono text-[0.6875rem] leading-relaxed"
                 dir="ltr"
               >
                 {e.exception}

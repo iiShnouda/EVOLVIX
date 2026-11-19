@@ -135,7 +135,7 @@ export function PriceGrid({
                             aria-label={`${level.name} · ${u.name}`}
                             onChange={(e) => onChange({ ...inputs, [key]: e.target.value })}
                           />
-                          <span className="mt-0.5 block truncate text-[11px] text-faint">
+                          <span className="mt-0.5 block truncate text-[0.6875rem] text-faint">
                             {inputs[key]?.trim()
                               ? t('item.source.OWN')
                               : hint

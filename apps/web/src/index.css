@@ -7,6 +7,34 @@
    `data-theme` attribute on <html> re-themes everything (charts, borders,
    shadows, status colors), not just the page background.
 --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   App zoom (lib/zoom.ts; owner, 2026-11-18): bigger or smaller like the browser's zoom, laid out
+   again for the room it leaves, never a shrunken page with space around it.
+   - Every size is in rem, so the root font size (--app-zoom × the browser's own) grows or shrinks
+     the whole UI while the page keeps the screen's full width: more fits when smaller.
+   - The breakpoints (sm … 2xl) ask the page's own width in that rem (a container query on <html>,
+     whose rem is the zoomed one), not the screen's (a media query's rem never zooms): zoomed out,
+     a laptop gets the wide layout; zoomed in, the narrower one. lib/device.ts does the same.
+   - Paper ignores it: printing is at 100%.
+--------------------------------------------------------------------------- */
+html {
+  container: app / inline-size;
+}
+@media screen {
+  html {
+    font-size: calc(100% * var(--app-zoom, 1));
+  }
+}
+@custom-variant sm (@container app (width >= 40rem));
+@custom-variant md (@container app (width >= 48rem));
+@custom-variant lg (@container app (width >= 64rem));
+@custom-variant xl (@container app (width >= 80rem));
+@custom-variant 2xl (@container app (width >= 96rem));
+@custom-variant max-xs (@container app (width < 24rem));
+@custom-variant max-sm (@container app (width < 40rem));
+@custom-variant max-md (@container app (width < 48rem));
+@custom-variant max-lg (@container app (width < 64rem));
+
 @theme inline {
   --color-canvas: var(--c-canvas);
   --color-surface: var(--c-surface);

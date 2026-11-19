@@ -11,8 +11,8 @@ export function Logo({ size = 36, className }: { size?: number; className?: stri
   return (
     <svg
       viewBox="0 0 512 512"
-      width={size}
-      height={size}
+      width={`${size / 16}rem`}
+      height={`${size / 16}rem`}
       className={className}
       aria-hidden="true"
       focusable="false"

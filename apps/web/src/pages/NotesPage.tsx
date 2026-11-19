@@ -616,7 +616,7 @@ function NotesTable({
     <Card padded={false} className="overflow-hidden">
       <TableColumns id="notes.list" className="pt-2">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1500px] text-sm">
+          <table className="w-full min-w-[93.75rem] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 {canDeposit && <th className={cell} />}

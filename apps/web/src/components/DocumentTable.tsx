@@ -235,7 +235,7 @@ export function DocumentTable({
         }
       >
         <div className="overflow-x-auto">
-          <table className="w-full whitespace-nowrap text-[13px]">
+          <table className="w-full whitespace-nowrap text-[0.8125rem]">
             <thead className="border-b border-line bg-surface-2 text-xs text-muted">
               <tr>
                 {columns.map((c) => (

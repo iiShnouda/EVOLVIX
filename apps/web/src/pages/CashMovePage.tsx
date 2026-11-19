@@ -605,7 +605,7 @@ function SideCard({
             <p className="text-sm text-muted">{t('move.noDocs')}</p>
           ) : isPhone ? (
             // Phones (owner, 2026-10-19): each invoice on its own row, its payment box in view.
-            <ul className="max-h-96 divide-y divide-[var(--c-line)] overflow-y-auto rounded-[var(--radius-app)] border border-line text-[13px]">
+            <ul className="max-h-96 divide-y divide-[var(--c-line)] overflow-y-auto rounded-[var(--radius-app)] border border-line text-[0.8125rem]">
               {invoices.map((o) => (
                 <li key={o.documentId} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
@@ -640,7 +640,7 @@ function SideCard({
           ) : (
             <TableColumns id="move.invoices">
               <div className="max-h-80 overflow-auto rounded-[var(--radius-app)] border border-line">
-                <table className="w-full whitespace-nowrap text-[13px]">
+                <table className="w-full whitespace-nowrap text-[0.8125rem]">
                   <thead className="sticky top-0 border-b border-line bg-surface-2 text-xs text-muted">
                     <tr>
                       <th className="px-2 py-2 text-start font-medium">{t('move.docType')}</th>

@@ -168,7 +168,7 @@ export function CardPeriod({
         type="button"
         onClick={() => setOpen((o) => !o)}
         title={t('period.change')}
-        className={`flex h-7 max-w-[13rem] items-center gap-1.5 rounded-lg border px-2 text-[11px] font-medium ${
+        className={`flex h-7 max-w-[13rem] items-center gap-1.5 rounded-lg border px-2 text-[0.6875rem] font-medium ${
           own ? 'border-brand bg-brand-soft text-brand' : 'border-line text-muted hover:text-fg'
         }`}
       >
@@ -197,7 +197,7 @@ export function CardPeriod({
 export function NowTag() {
   const { t } = useT();
   return (
-    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.625rem] font-medium text-muted">
       {t('period.now')}
     </span>
   );

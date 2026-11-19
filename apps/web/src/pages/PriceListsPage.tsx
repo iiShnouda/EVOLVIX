@@ -269,8 +269,15 @@ function ListsTab() {
                       {t('pl.itemsCount')} {formatNumber(l.items, locale)}
                       {!l.forEveryone &&
                         ` · ${t('pl.partiesCount')} ${formatNumber(l.parties, locale)}`}
-                      {(l.validFrom || l.validTo) &&
-                        ` · ${l.validFrom ? formatDate(l.validFrom, locale) : '…'} → ${l.validTo ? formatDate(l.validTo, locale) : t('pl.openEnded')}`}
+                      {/* From → to, read in the screen's direction (← in Arabic). */}
+                      {(l.validFrom || l.validTo) && (
+                        <>
+                          {' · '}
+                          <bdi>{l.validFrom ? formatDate(l.validFrom, locale) : '…'}</bdi>
+                          {locale === 'ar' ? ' ← ' : ' → '}
+                          <bdi>{l.validTo ? formatDate(l.validTo, locale) : t('pl.openEnded')}</bdi>
+                        </>
+                      )}
                     </span>
                   </button>
                 </li>

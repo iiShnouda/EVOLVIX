@@ -7,6 +7,7 @@ import {
   type Locale,
   type TrendPoint,
 } from '@skb/shared';
+import { layoutWidth } from '../../lib/zoom';
 
 /** A smooth path through points (Catmull-Rom as cubic Béziers). */
 function smooth(points: [number, number][]): string {
@@ -106,7 +107,7 @@ export function AreaTrend({
       ? `${path} L${x(data.length - 1)},${pad.top + inner} L${x(0)},${pad.top + inner} Z`
       : '';
   // Fewer day labels on a phone, so neighbours never run into each other.
-  const narrow = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
+  const narrow = layoutWidth() <= 640;
   const step = Math.max(1, Math.ceil(data.length / (narrow ? 4 : 8)));
   const shown = hover != null ? data[hover] : null;
   const money = (v: number) => formatMoney(v, currency, locale);
@@ -190,7 +191,7 @@ export function AreaTrend({
           (i % step === 0 && data.length - 1 - i >= step / 2) || i === data.length - 1 ? (
             <span
               key={d.date}
-              className={`absolute bottom-0.5 whitespace-nowrap text-[11px] text-faint ${
+              className={`absolute bottom-0.5 whitespace-nowrap text-[0.6875rem] text-faint ${
                 data.length > 1 && i === 0
                   ? ''
                   : i === data.length - 1 && data.length > 1

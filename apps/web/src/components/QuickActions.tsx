@@ -174,14 +174,18 @@ export function QuickActions() {
     );
   }
 
+  // In a strip along the edge that clips what is tucked away: a phone would otherwise widen the
+  // page by the hidden part (a sideways scroll on an iPhone).
   const trigger = (
-    <div
-      className="fixed start-0 z-30 transition-transform duration-200"
-      style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
-      onPointerEnter={() => setHover(true)}
-      onPointerLeave={() => setHover(false)}
-    >
-      {triggerEl}
+    <div className="pointer-events-none fixed inset-y-0 start-0 z-30 w-28 overflow-hidden">
+      <div
+        className="pointer-events-auto absolute start-0 transition-transform duration-200"
+        style={{ top: `${y}vh`, transform: `translate(${shift}, -50%)` }}
+        onPointerEnter={() => setHover(true)}
+        onPointerLeave={() => setHover(false)}
+      >
+        {triggerEl}
+      </div>
     </div>
   );
 

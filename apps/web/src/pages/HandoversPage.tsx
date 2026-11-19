@@ -339,7 +339,7 @@ function HandoverTable({ rows }: { rows: CashHandover[] }) {
       {step.error && <p className="p-3 text-sm text-destructive">{errorText(t, step.error)}</p>}
       <TableColumns id="handovers" className="pt-2">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-sm">
+          <table className="w-full min-w-[75rem] text-sm">
             <thead className="bg-surface-2 text-xs text-muted">
               <tr>
                 <th className={`${cell} text-start font-medium`}>{t('hand.number')}</th>

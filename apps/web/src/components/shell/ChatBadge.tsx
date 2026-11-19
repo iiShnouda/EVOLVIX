@@ -15,7 +15,7 @@ export function ChatBadge({ className = '' }: { className?: string }) {
   if (!on || n === 0) return null;
   return (
     <span
-      className={`grid min-w-5 place-items-center rounded-full bg-destructive px-1.5 text-[11px] font-bold leading-5 text-white tnum ${className}`}
+      className={`grid min-w-5 place-items-center rounded-full bg-destructive px-1.5 text-[0.6875rem] font-bold leading-5 text-white tnum ${className}`}
     >
       {n > 99 ? '99+' : n}
     </span>

@@ -133,7 +133,7 @@ export function FilterPanel({
             <Icon name="search" size={16} />
             {t('finder.button')}
             {active > 0 && (
-              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[11px] font-semibold text-brand-fg tnum">
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1 text-[0.6875rem] font-semibold text-brand-fg tnum">
                 {active}
               </span>
             )}

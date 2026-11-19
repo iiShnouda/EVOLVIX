@@ -301,7 +301,7 @@ const DS = ok('list: 10% off the summer departments', await owner.post('/price-l
 eq('kept', DS.list.departmentSeason, 'SUMMER');
 ok('customer 4 moves to it', await owner.put(`/price-lists/${DS.list.id}/parties`, { partyIds: [c4.id] }));
 seasonLines = (await priceFor(karim, c4, [[SI.id, 1], [NI.id, 1], [WI.id, 1]])).lines;
-eq('only items of a summer department', seasonLines.map((l) => l.unitPrice), [900, 1000, 1000]);
+eq('items of a summer department and of one with no season word (both seasons); not winter’s', seasonLines.map((l) => l.unitPrice), [900, 900, 1000]);
 ok('off', await owner.put(`/price-lists/${DS.list.id}`, { isActive: false }));
 eq('switched off', (await owner.get('/price-lists')).data.find((l) => l.id === DS.list.id)?.state, 'OFF');
 for (const d of [sDep, wDep]) ok('department closed', await owner.put(`/departments/${d.id}`, { isActive: false }));

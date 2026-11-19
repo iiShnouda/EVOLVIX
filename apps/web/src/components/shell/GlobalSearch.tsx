@@ -144,7 +144,9 @@ function Results({ text, onPick }: { text: string; onPick: (to: string) => void 
       ) : (
         groups.map((g) => (
           <div key={g.title} className="py-1">
-            <p className="px-3 py-1 text-[11px] font-semibold uppercase text-muted">{t(g.title)}</p>
+            <p className="px-3 py-1 text-[0.6875rem] font-semibold uppercase text-muted">
+              {t(g.title)}
+            </p>
             {g.hits.map((h) => (
               <button
                 key={h.key}

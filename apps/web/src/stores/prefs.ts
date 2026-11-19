@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { cleanZoom } from '../lib/zoom';
 import { directionForLocale, type Locale, type ThemeMode } from '@skb/shared';
 
 /** The look themes (Themes page); colours, shapes and effects live in skins.css. */
@@ -34,6 +35,9 @@ interface PrefsState {
   /** The side menu shrunk to icons, for more room (owner, 2026-10-01). */
   navCollapsed: boolean;
   setNavCollapsed: (collapsed: boolean) => void;
+  /** The app's zoom on this device, 0.7–1.5 (lib/zoom.ts; owner, 2026-11-18). */
+  zoom: number;
+  setZoom: (zoom: number) => void;
   setLocale: (locale: Locale) => void;
   toggleLocale: () => void;
   setTheme: (theme: ThemeMode) => void;
@@ -62,6 +66,8 @@ export const usePrefs = create<PrefsState>()(
         set({ quickShape: QUICK_SHAPES.includes(quickShape) ? quickShape : 'dock' }),
       navCollapsed: false,
       setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
+      zoom: 1,
+      setZoom: (zoom) => set({ zoom: cleanZoom(zoom) }),
       setLocale: (locale) => set({ locale }),
       toggleLocale: () => set({ locale: get().locale === 'en' ? 'ar' : 'en' }),
       setTheme: (theme) => set({ theme }),
