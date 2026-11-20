@@ -1551,23 +1551,24 @@ export function InvoiceBuilderPage({
         {boxes.length > 0 && (
           <div className="mt-1 grid grid-cols-3 gap-2">
             {boxes.map((k) => (
-              <label key={k} className="flex min-w-0 items-center gap-1">
+              <label key={k} className="flex min-w-0 flex-col">
+                {/* Its way above it (owner, 2026-11-20: a piece's box too, so each keeps its width). */}
+                <span className="mb-0.5 truncate text-[11px] text-muted">
+                  {k === pk ? '%' : k === ck ? `${currency} ${t('invoice.perPiece')}` : currency}
+                </span>
                 <input
                   type="number"
                   min={0}
                   max={k === pk ? 100 : undefined}
                   step="0.01"
                   inputMode="decimal"
-                  className={`${field} !h-8 min-w-0 tnum`}
+                  className={`${field} !h-8 w-full min-w-0 tnum`}
                   aria-label={t(ADJ_LABEL[k as keyof Adj])}
                   placeholder="0"
                   title={t(ADJ_LABEL[k as keyof Adj])}
                   value={invoiceAdj[k as keyof Adj]}
                   onChange={(e) => setInvoiceAdj((v) => ({ ...v, [k]: e.target.value }))}
                 />
-                <span className="shrink-0 text-xs text-muted">
-                  {k === pk ? '%' : k === ck ? `${currency}/${t('invoice.perPiece')}` : currency}
-                </span>
               </label>
             ))}
           </div>
