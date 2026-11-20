@@ -328,6 +328,16 @@ eq(
   ).data.code,
   'insufficient_stock',
 );
+const huge = (quantity) =>
+  keeper.post('/inventory/damaged/repair', {
+    warehouseId: damaged.id,
+    lines: [1, 2, 3].map(() => ({ productId: shirt.id, quantity })),
+  });
+eq(
+  'an item on several lines, too many in all: refused, not a server error',
+  [(await huge(1_000_000_000)).status, (await huge(900_000)).data?.code],
+  [400, 'bad_qty'],
+);
 eq(
   'repaired only from a damaged warehouse',
   (
