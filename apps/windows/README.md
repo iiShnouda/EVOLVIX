@@ -21,6 +21,9 @@ Windows 10/11.
   network; plain http:// gets a warning.
 - **Links:** only pages of that server open inside the window. Other links open in the default
   browser.
+- **Notifications:** the server's pages may show system notifications (others are denied). While
+  the app is in the background, a new bell notification appears as a Windows notification (app
+  name and the kind only); clicking it brings the window to the front and opens what it is about.
 - **Server unreachable:** a page offers **Try again** / **Server address**.
 - **Stored on the PC:** settings (the server address, the screen it opens on and full screen) live in
   `HKCU\Software\SKB`, and the browser profile (the sign-in cookie) in `%LOCALAPPDATA%\SKB`.

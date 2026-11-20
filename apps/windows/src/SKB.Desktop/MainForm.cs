@@ -230,12 +230,18 @@ internal sealed class MainForm : Form
         core.Settings.IsGeneralAutofillEnabled = false;
         core.Settings.IsPasswordAutosaveEnabled = false;
 
-        // The company server's pages may use the microphone (the assistant's spoken questions).
+        // The company server's pages may use the microphone (the assistant's spoken questions) and
+        // show system notifications (owner, 2026-11-12); no other page may notify.
         core.PermissionRequested += (_, a) =>
         {
             if (a.PermissionKind == CoreWebView2PermissionKind.Microphone && AppSettings.IsServerUrl(a.Uri))
                 a.State = CoreWebView2PermissionState.Allow;
+            else if (a.PermissionKind == CoreWebView2PermissionKind.Notifications)
+                a.State = AppSettings.IsServerUrl(a.Uri)
+                    ? CoreWebView2PermissionState.Allow
+                    : CoreWebView2PermissionState.Deny;
         };
+        WatchNotifications(core);
         core.NavigationStarting += (_, a) =>
         {
             if (a.Uri.StartsWith("data:", StringComparison.Ordinal) || a.Uri.StartsWith("about:", StringComparison.Ordinal)
@@ -291,6 +297,97 @@ internal sealed class MainForm : Form
     }
 
     private void Later(Action action) => BeginInvoke(action);
+
+    // ---- System notifications (owner, 2026-11-12) ----
+
+    /// <summary>The tray icon a notification is shown from (a Windows toast on Windows 10/11).</summary>
+    private NotifyIcon? _tray;
+    /// <summary>The page's notification now showing, to tell the page when it is clicked.</summary>
+    private CoreWebView2Notification? _shown;
+
+    /// <summary>
+    /// The page's <c>new Notification(…)</c> (only the app's name and the kind's title, never an amount)
+    /// is shown by this window as a Windows notification; clicking it brings the window to the front
+    /// and tells the page, which opens what it is about. Without the event (an old WebView2 runtime),
+    /// WebView2 shows it its own way.
+    /// </summary>
+    private void WatchNotifications(CoreWebView2 core)
+    {
+        try
+        {
+            core.NotificationReceived += (_, a) =>
+            {
+                a.Handled = true; // never WebView2's own; a page that isn't the server's shows nothing
+                if (!AppSettings.IsServerUrl(a.SenderOrigin)) return;
+                ShowNotification(a.Notification);
+            };
+        }
+        catch (Exception)
+        {
+            // An old WebView2 runtime: it shows the page's notifications itself.
+        }
+    }
+
+    private void ShowNotification(CoreWebView2Notification note)
+    {
+        if (_closing || IsDisposed) return;
+        if (_tray is null)
+        {
+            _tray = new NotifyIcon { Icon = Icon, Text = Installer.Name };
+            _tray.BalloonTipClicked += (_, _) => OpenFromNotification();
+            _tray.MouseClick += (_, _) => OpenFromNotification();
+        }
+        var old = _shown;
+        _shown = note;
+        note.CloseRequested += (_, _) =>
+        {
+            if (ReferenceEquals(_shown, note)) _shown = null;
+        };
+        if (old is not null && !ReferenceEquals(old, note))
+            try { old.ReportClosed(); } catch (COMException) { /* already gone */ }
+        var title = string.IsNullOrWhiteSpace(note.Title) ? Installer.Name : Trim(note.Title, 63);
+        var body = string.IsNullOrWhiteSpace(note.Body) ? title : Trim(note.Body, 255);
+        _tray.Visible = true;
+        _tray.ShowBalloonTip(10_000, title, body, ToolTipIcon.None);
+        try { note.ReportShown(); } catch (COMException) { /* the page has moved on */ }
+    }
+
+    private static string Trim(string s, int max) => s.Length <= max ? s : s.Substring(0, max);
+
+    /// <summary>The notification (or the tray icon) was clicked: the window in front, the page told.</summary>
+    private void OpenFromNotification()
+    {
+        if (_closing || IsDisposed) return;
+        if (WindowState == FormWindowState.Minimized)
+            WindowState = _fullScreen ? FormWindowState.Normal : FormWindowState.Maximized;
+        Show();
+        Activate();
+        BringToFront();
+        var note = _shown;
+        _shown = null;
+        if (note is not null)
+            try { note.ReportClicked(); } catch (COMException) { /* the page has moved on */ }
+        HideTray();
+    }
+
+    private void HideTray()
+    {
+        if (_tray is not null) _tray.Visible = false;
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        // Back in the app: the tray icon goes until the next notification.
+        HideTray();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _tray?.Dispose(); // no ghost icon left in the tray
+        _tray = null;
+        base.OnFormClosed(e);
+    }
 
     private void OpenServer() => _web.CoreWebView2?.Navigate(AppSettings.Server);
 
