@@ -105,6 +105,13 @@ r = await unlock(dev, { password: 'bad5' });
 eq('the fifth signs out', [r.status, r.data?.code], [401, 'UNLOCK_SIGNED_OUT']);
 eq('even the right password is too late', (await unlock(dev, { password: PASS })).data?.code, 'NO_SESSION');
 eq('…and refreshing finds no session', (await json(await call({ cookie: dev.cookie }, 'POST', '/auth/refresh'))).data?.code, 'NO_SESSION');
+dev = await signIn(true);
+r = await lockIt(dev);
+const tries = await Promise.all(Array.from({ length: 12 }, (_, i) => unlock(dev, { password: `fast${i}` })));
+const codes = tries.map((t) => t.data?.code);
+check('twelve wrong tries at once: no more than four are let through', codes.filter((c) => c === 'WRONG_UNLOCK').length <= 4, codes);
+check('…the rest find it signed out', codes.filter((c) => c === 'WRONG_UNLOCK').length + codes.filter((c) => c === 'UNLOCK_SIGNED_OUT' || c === 'NO_SESSION').length === 12, codes);
+eq('…so the right password is too late', (await unlock(dev, { password: PASS })).data?.code, 'NO_SESSION');
 
 console.log('== a device not remembered is signed out, with no long refresh token');
 let brief = await signIn(false);
@@ -166,7 +173,7 @@ const acts = (a) => log.filter((e) => e.action === a).length;
 check('locks', acts('auth.lock') >= 4, log.map((e) => e.action));
 check('unlocks', acts('auth.unlock') >= 3);
 check('wrong tries', acts('auth.unlock.failed') >= 7);
-check('signed out after too many', acts('auth.unlock.signed_out') === 1);
+check('signed out after too many (one by one, then all at once)', acts('auth.unlock.signed_out') === 2, acts('auth.unlock.signed_out'));
 check('PIN set and cleared', acts('auth.pin.set') === 1 && acts('auth.pin.clear') === 1);
 
 ok('settings back', await owner.put('/settings', {
