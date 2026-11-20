@@ -2459,7 +2459,6 @@ export const ar: TranslationDictionary = {
   'lock.usePassword': 'استخدام كلمة المرور',
   'lock.usePin': 'استخدام الرمز الشخصي',
   'lock.unlock': 'فتح القفل',
-  'lock.left': 'غير صحيح. المحاولات المتبقية: {n}',
   'lock.now': 'قفل الشاشة',
   'pin.title': 'الرمز الشخصي لفتح القفل',
   'pin.hint': 'من 4 إلى 6 أرقام لفتح الشاشة المقفلة.',

@@ -2470,7 +2470,6 @@ export const en = {
   'lock.usePassword': 'Use the password',
   'lock.usePin': 'Use the PIN',
   'lock.unlock': 'Unlock',
-  'lock.left': 'Wrong. Tries left: {n}',
   'lock.now': 'Lock the screen',
   'pin.title': 'Lock-screen PIN',
   'pin.hint': '4 to 6 digits that open your locked screen.',

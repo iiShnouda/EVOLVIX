@@ -239,6 +239,8 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 var userPerMinute = builder.Configuration.GetValue("RateLimit:UserPerMinute", 600);
 var ipPerMinute = builder.Configuration.GetValue("RateLimit:IpPerMinute", 120);
 var loginPerMinute = builder.Configuration.GetValue("RateLimit:LoginPerMinute", 20);
+// Failed-login guard thresholds (Security:Login*): account lockout + per-address failure counter.
+SKB.Api.Services.LoginGuard.Configure(builder.Configuration);
 var clientErrorsPerMinute = Math.Max(1, builder.Configuration.GetValue("Logs:ClientErrorsPerMinute", 20));
 builder.Services.AddRateLimiter(options =>
 {

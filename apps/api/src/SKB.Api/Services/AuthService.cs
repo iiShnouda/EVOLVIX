@@ -41,11 +41,21 @@ public sealed class AuthService
 
     public string HashPassword(string plain) => _hasher.HashPassword(new Staff(), plain);
 
+    // For constant-ish timing when the email doesn't exist: a throwaway account and a real hash to
+    // verify against, so the hasher runs the same work it would for a genuine account.
+    private static readonly Staff DummyStaff = new();
+    private string? _dummyHash;
+    private string DummyHash => _dummyHash ??= _hasher.HashPassword(DummyStaff, "timing-equalizer");
+
     public async Task<LoginResult?> LoginAsync(LoginRequest req, SessionContext ctx)
     {
         var email = req.Email.Trim().ToLowerInvariant();
-        // Too many wrong passwords for this account lately: refuse without even checking this one.
-        if (LoginGuard.IsLocked(email))
+        // Too many wrong passwords lately — for this account, or hammered from this address — refuse
+        // without even checking this one. Both paths answer the same "locked", so a locked response
+        // never reveals whether the email exists.
+        // While locked, don't re-count the try: the window stays fixed from when it tripped, so a
+        // relentless guesser can never hold the owner out past it.
+        if (LoginGuard.IsLocked(email) || LoginGuard.IsAddressLocked(ctx.Ip))
         {
             await _audit.RecordAsync("anonymous", req.Email, "auth.login.locked", "auth",
                 ip: ctx.Ip, userAgent: ctx.UserAgent);
@@ -53,13 +63,23 @@ public sealed class AuthService
         }
         var staff = await _db.Staff.FirstOrDefaultAsync(s => s.Email == email);
 
-        var ok = staff is not null &&
-                 _hasher.VerifyHashedPassword(staff, staff.PasswordHash, req.Password)
+        bool ok;
+        if (staff is not null)
+            ok = _hasher.VerifyHashedPassword(staff, staff.PasswordHash, req.Password)
                      is PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded;
+        else
+        {
+            // No such account: still run the password hasher against a throwaway hash so the reply
+            // takes about as long as for a real account — the time taken never reveals which emails
+            // exist. The result is discarded.
+            _hasher.VerifyHashedPassword(DummyStaff, DummyHash, req.Password);
+            ok = false;
+        }
 
         if (staff is null || !ok || !staff.IsActive)
         {
             LoginGuard.Failed(email);
+            LoginGuard.AddressFailed(ctx.Ip);
             await _audit.RecordAsync("anonymous", req.Email, "auth.login.failed", "auth",
                 ip: ctx.Ip, userAgent: ctx.UserAgent);
             return null;
@@ -110,39 +130,73 @@ public sealed class AuthService
 }
 
 /// <summary>
-/// Password-guessing guard per account (2026-10-15 security review): 10 wrong passwords within
-/// 15 minutes lock that account's sign-in for 15 minutes; a right one clears the count. Kept in
-/// memory — a restart forgets it, which is fine for slowing guessing down. The per-address limit on
-/// the sign-in endpoint (Program.cs, "login") covers guessing across many accounts.
+/// Password-guessing guard (2026-10-15 security review; thresholds made configurable + a per-address
+/// failed-login counter added, owner 2026-11-20). Two in-memory counters that only count FAILURES, so
+/// ordinary users are never slowed:
+///  • per account — N wrong passwords within the window lock that account's sign-in for a spell; a
+///    right password clears its count. This counts the email string whether or not the account exists,
+///    so a "locked" answer never reveals which emails are real.
+///  • per address — a guesser hammering many different (often made-up) emails from one address is
+///    blocked after N wrong tries within the window, without locking out every real account they name.
+/// Kept in memory — a restart forgets it, which is fine for slowing guessing down; nobody is locked out
+/// for good, and the owner can always sign in once the window passes. Configure(): Security:Login*.
+/// The per-address request cap on the sign-in endpoint (Program.cs, "login") is a coarser backstop.
 /// </summary>
 public static class LoginGuard
 {
-    private const int MaxFailures = 10;
-    private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan LockFor = TimeSpan.FromMinutes(15);
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Entry> Seen = new();
+    // Safe defaults; overridden from configuration at startup (Configure).
+    private static int _maxFailures = 8;
+    private static int _addressMaxFailures = 20;
+    private static TimeSpan _window = TimeSpan.FromMinutes(15);
+    private static TimeSpan _lockFor = TimeSpan.FromMinutes(15);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Entry> Accounts = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Entry> Addresses = new();
 
     private sealed record Entry(int Count, DateTime First, DateTime? LockedUntil);
 
-    public static bool IsLocked(string email) =>
-        Seen.TryGetValue(email, out var e) && e.LockedUntil is { } until && until > DateTime.UtcNow;
-
-    public static void Failed(string email)
+    /// <summary>
+    /// Read the thresholds from configuration (safe defaults if unset). Minutes may be fractional so a
+    /// test can use a tiny window. N is held to a sane 3–50 so the company can never be shut out.
+    /// </summary>
+    public static void Configure(IConfiguration config)
     {
-        var now = DateTime.UtcNow;
-        Seen.AddOrUpdate(email,
-            _ => new Entry(1, now, null),
-            (_, e) =>
-            {
-                var fresh = now - e.First > Window ? new Entry(0, now, null) : e;
-                var count = fresh.Count + 1;
-                return fresh with { Count = count, LockedUntil = count >= MaxFailures ? now + LockFor : null };
-            });
-        // Don't grow without bound from guesses at made-up addresses.
-        if (Seen.Count > 10_000)
-            foreach (var (key, e) in Seen)
-                if (now - e.First > Window && (e.LockedUntil is null || e.LockedUntil < now)) Seen.TryRemove(key, out _);
+        _maxFailures = Math.Clamp(config.GetValue("Security:LoginMaxFailures", 8), 3, 50);
+        _addressMaxFailures = Math.Clamp(config.GetValue("Security:LoginAddressMaxFailures", 20), 5, 500);
+        _window = TimeSpan.FromMinutes(Math.Clamp(config.GetValue("Security:LoginWindowMinutes", 15.0), 0.01, 1440));
+        _lockFor = TimeSpan.FromMinutes(Math.Clamp(config.GetValue("Security:LoginLockMinutes", 15.0), 0.01, 1440));
     }
 
-    public static void Succeeded(string email) => Seen.TryRemove(email, out _);
+    public static bool IsLocked(string email) => Blocked(Accounts, email);
+
+    public static bool IsAddressLocked(string? ip) => ip is not null && Blocked(Addresses, ip);
+
+    public static void Failed(string email) => Record(Accounts, email, _maxFailures);
+
+    public static void AddressFailed(string? ip)
+    {
+        if (ip is not null) Record(Addresses, ip, _addressMaxFailures);
+    }
+
+    public static void Succeeded(string email) => Accounts.TryRemove(email, out _);
+
+    private static bool Blocked(System.Collections.Concurrent.ConcurrentDictionary<string, Entry> map, string key) =>
+        map.TryGetValue(key, out var e) && e.LockedUntil is { } until && until > DateTime.UtcNow;
+
+    private static void Record(System.Collections.Concurrent.ConcurrentDictionary<string, Entry> map, string key, int max)
+    {
+        var now = DateTime.UtcNow;
+        map.AddOrUpdate(key,
+            _ => new Entry(1, now, 1 >= max ? now + _lockFor : null),
+            (_, e) =>
+            {
+                var fresh = now - e.First > _window ? new Entry(0, now, null) : e;
+                var count = fresh.Count + 1;
+                return fresh with { Count = count, LockedUntil = count >= max ? now + _lockFor : null };
+            });
+        // Don't grow without bound from guesses at made-up addresses/emails.
+        if (map.Count > 10_000)
+            foreach (var (k, e) in map)
+                if (now - e.First > _window && (e.LockedUntil is null || e.LockedUntil < now)) map.TryRemove(k, out _);
+    }
 }

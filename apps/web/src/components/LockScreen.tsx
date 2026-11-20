@@ -43,9 +43,8 @@ export function LockScreen() {
       if (code === 'UNLOCK_SIGNED_OUT') await api.endLocked('unlockFailed');
       else if (code === 'SIGNED_IN_ELSEWHERE') await api.endLocked('signedInElsewhere');
       else if (code === 'NO_SESSION' || code === 'LICENSE_EXPIRED') await api.endLocked();
-      else if (code === 'WRONG_UNLOCK' && err instanceof ApiError)
-        setError(t('lock.left').replace('{n}', String(err.payload?.left ?? '')));
       else {
+        // Owner, 2026-11-20: a wrong try shows only "Wrong password or PIN" — never how many are left.
         if (code === 'PIN_NOT_ALLOWED') setUsePin(false);
         setError(errorText(t, err));
       }
