@@ -199,6 +199,18 @@
         {
           "ar": "خصم الفواتير المجمعة بيتوزّع على خصم كل فاتورة وبيبان نصيب كل واحدة قبل الحفظ",
           "en": "A discount on the combined invoices is spread into each invoice's own discount, with each one's share shown before saving"
+        },
+        {
+          "ar": "خصم وزيادة على الحتة للفاتورة كلها: تكتب مثلاً 20 جنيه والبرنامج يضربها في عدد حتت الفاتورة (الدستة 12 حتة) وتتوزّع على كل صنف بعدد حتته، ولو اتغيّرت الكميات الإجمالي بيتغيّر معاها، وفي الفواتير المجمعة كمان",
+          "en": "Invoice-wide discount and increase per piece: type e.g. 20.00 and it is multiplied by the invoice's pieces (a dozen is 12), spread over the items by their pieces, and it follows the quantities when the invoice changes; on the combined invoices too"
+        },
+        {
+          "ar": "الزيادة مبتظهرش للعميل خالص: في الطباعة والـPDF وكشف الحساب بتدخل جوّه سعر الصنف والإجمالي مظبوط بالقرش، وعلى الشاشة مبتبانش إلا بزرار العين الصغير",
+          "en": "An increase never shows to the customer: on prints, PDFs and statements it is folded into the item price with totals exact, and on screen it shows only behind a small eye toggle"
+        },
+        {
+          "ar": "صلاحية جديدة «يشوف الزيادات ومين اللي زوّدها» (للمحاسب والمالك)، وتقرير «الزيادات» في التحليلات: مين زوّد، كام فاتورة، وكام جنيه",
+          "en": "New permission \"See the increases and who added them\" (accountant and owner), with an \"Increases\" report in Analytics: who added, how many invoices, and how much"
         }
       ],
       "fixes": [
