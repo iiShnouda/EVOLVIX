@@ -153,6 +153,16 @@ public sealed class PurchaseOrdersController : ControllerBase
     [Authorize(Policy = Permissions.PurchaseOrdersEdit)]
     public async Task<ActionResult<PurchaseOrderDto>> Update(Guid id, [FromBody] SavePurchaseOrderRequest req)
     {
+        // Locked first, as receiving it does: goods received at this moment can't be wiped out. Its
+        // items before the order, in the order receiving takes them (items, then the order).
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var items = (req.Lines ?? Array.Empty<PurchaseOrderLineRequest>())
+            .Select(l => Guid.TryParse(l.ProductId, out var p) ? p : Guid.Empty).Where(p => p != Guid.Empty)
+            .Distinct().OrderBy(p => p).ToArray();
+        if (items.Length > 0)
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"Products\" WHERE \"Id\" = ANY({items}) ORDER BY \"Id\" FOR KEY SHARE");
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"PurchaseOrders\" WHERE \"Id\" = {id} FOR UPDATE");
         var order = await _db.PurchaseOrders.Visible(User).Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound(new { message = "Purchase order not found.", code = "not_found" });
         if (!PurchaseOrders.Editable(order))
@@ -165,6 +175,7 @@ public sealed class PurchaseOrdersController : ControllerBase
         _db.PurchaseOrderLines.AddRange(order.Lines);
         order.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         await Audit("update", order);
         return Ok(await PurchaseOrders.DetailAsync(_db, User, order.Id));
     }
@@ -174,6 +185,8 @@ public sealed class PurchaseOrdersController : ControllerBase
     [Authorize(Policy = Permissions.PurchaseOrdersEdit)]
     public async Task<ActionResult<PurchaseOrderDto>> Send(Guid id)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM \"PurchaseOrders\" WHERE \"Id\" = {id} FOR UPDATE");
         var order = await _db.PurchaseOrders.Visible(User).FirstOrDefaultAsync(o => o.Id == id);
         if (order is null) return NotFound(new { message = "Purchase order not found.", code = "not_found" });
         if (order.Status != PurchaseOrderStatus.DRAFT)
@@ -181,6 +194,7 @@ public sealed class PurchaseOrdersController : ControllerBase
         order.Status = PurchaseOrderStatus.SENT;
         order.SentAt = order.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         await Audit("send", order);
         return Ok(await PurchaseOrders.DetailAsync(_db, User, order.Id));
     }

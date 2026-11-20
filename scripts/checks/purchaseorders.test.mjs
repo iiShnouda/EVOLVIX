@@ -196,6 +196,30 @@ if (farWh) {
   })).data?.code, 'po_other_branch');
 } else check('the new branch has a store', false);
 
+console.log('== a change and a receipt at the same moment');
+// Each order is changed and received at once: one waits for the other, so either the change is
+// refused (something was received) or the receipt is (its line was replaced), and goods received
+// are never wiped off the order.
+let raceOk = true;
+for (let round = 0; round < 5; round++) {
+  const order = ok(`order ${round + 1}`, await owner.post('/purchase-orders', { ...body, lines: [{ productId: shirt.id, quantity: 3, unitPrice: 10000 }] }));
+  const [edit, recv] = await Promise.all([
+    owner.put(`/purchase-orders/${order.id}`, { ...body, lines: [{ productId: shirt.id, quantity: 4, unitPrice: 10000 }] }),
+    owner.post('/purchases/invoices', {
+      partyId: supplier.id, warehouseId: wh.id, taxPercent: 0, purchaseOrderId: order.id,
+      lines: [{ productId: shirt.id, unitId: piece.id, quantity: 2, unitCost: 10000, orderLineId: order.lines[0].id }],
+    }),
+  ]);
+  const after = (await owner.get(`/purchase-orders/${order.id}`)).data;
+  const received = after.lines.reduce((s, l) => s + l.receivedPieces, 0);
+  const both = edit.status === 200 && recv.status === 201;
+  if (edit.status >= 500 || recv.status >= 500 || both || received !== (recv.status === 201 ? 2 : 0)) {
+    raceOk = false;
+    console.log('   ', round, edit.status, edit.data?.code, recv.status, recv.data?.code, received);
+  }
+}
+check('either the change or the receipt waits: nothing received is lost', raceOk);
+
 console.log('== the activity log');
 const log = (await owner.get(`/audit?resource=purchase_order&resourceId=${po.id}&pageSize=50`)).data?.items ?? [];
 eq('created, changed, sent and received twice', ['create', 'update', 'send', 'receive'].map((a) => log.filter((e) => e.action === a).length), [1, 1, 1, 2]);
