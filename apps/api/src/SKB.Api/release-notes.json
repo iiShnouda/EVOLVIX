@@ -191,6 +191,14 @@
         {
           "ar": "لما البرنامج يكون في الخلفية، الإشعار الجديد يطلع كإشعار ويندوز؛ تدوس عليه يفتح البرنامج على الحاجة على طول (تطبيق ويندوز 1.9.0)",
           "en": "When the app is in the background, a new notification appears as a Windows notification; clicking it brings the app to the front on that item (Windows app 1.9.0)"
+        },
+        {
+          "ar": "المحاسب بيشوف الخصم اللي اتعمل على الصنف والفاتورة ويعدّله مكانه (نسبة، مبلغ، على الحتة)، والزيادات قدامه للعرض إلا لو معاه صلاحيتها",
+          "en": "The accountant sees the discount already on each item and invoice and changes it in place (percent, amount, per piece); increases show too, editable only with their permission"
+        },
+        {
+          "ar": "خصم الفواتير المجمعة بيتوزّع على خصم كل فاتورة وبيبان نصيب كل واحدة قبل الحفظ",
+          "en": "A discount on the combined invoices is spread into each invoice's own discount, with each one's share shown before saving"
         }
       ],
       "fixes": [
@@ -245,6 +253,10 @@
         {
           "ar": "حد الخصم بقى على صافي الخصم بعد الزيادة",
           "en": "The discount limit counts the net discount after increases"
+        },
+        {
+          "ar": "مفيش خصم تاني على فاتورة البيع؛ الخصم الإضافي القديم اتضم لخصم الفاتورة من غير ما الإجماليات تتغير",
+          "en": "A sales invoice has one discount; old extra discounts were merged into it without changing any total"
         }
       ],
       "apps": {
