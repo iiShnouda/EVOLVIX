@@ -12,8 +12,9 @@ namespace SKB.Api.Services;
 /// discount and without tax or additions (<c>Subtotal − DiscountTotal</c>), on its day.</item>
 /// <item>Returns: each returned line at what it took off its invoice (<c>LineTotal − DocDiscount</c>),
 /// for the rep of the invoice it came from, on the return's day — it lowers the net.</item>
-/// <item>Collected: money taken on the rep's invoices — paid at the counter, receipts settling them,
-/// and cheques settling them once collected — on the day it came in.</item>
+/// <item>Collected: money taken on the rep's invoices — paid at the counter (less what went back out
+/// when the invoice was changed), receipts settling them, cheques settling them once collected, and
+/// what an exchange's return paid on its invoice — on the day it came in.</item>
 /// </list>
 /// Each amount takes the rule of its rep for its department (else the rep's rule for every
 /// department) that started latest on or before its day; a net-sales rule pays on sales and returns,
@@ -71,10 +72,11 @@ public sealed class CommissionService
             items.Add((f.Rep, Return, f.Id, f.Number, f.Invoice, f.IssueDate, f.DepartmentId, f.Party, -g.Sum(x => x.Amount)));
         }
 
-        // Collected: paid at the counter.
+        // Collected: paid at the counter, less what went back out when the invoice was changed.
         var counter = await (from m in _db.MoneyMovements.AsNoTracking()
                              join d in invoices on m.DocumentId equals (Guid?)d.Id
-                             where m.Kind == MoneyMovementKind.SALE_PAID && m.CreatedAt >= start && m.CreatedAt < end
+                             where (m.Kind == MoneyMovementKind.SALE_PAID || m.Kind == MoneyMovementKind.CANCELLATION)
+                                   && m.CreatedAt >= start && m.CreatedAt < end
                              select new { d.Id, d.Number, m.CreatedAt, d.DepartmentId, Rep = d.RepId!.Value,
                                  Party = d.Party!.Name, m.Amount }).ToListAsync();
         foreach (var g in counter.GroupBy(x => (x.Id, x.CreatedAt)))
@@ -91,6 +93,17 @@ public sealed class CommissionService
                                   Rep = d.RepId!.Value, Party = d.Party!.Name, a.Amount }).ToListAsync();
         items.AddRange(receipts.Select(x =>
             (x.Rep, Collection, x.Id, x.Number, x.Voucher, x.CreatedAt, x.DepartmentId, x.Party, x.Amount)));
+        // … the goods an exchange brought back, paying its invoice (as if returned, then paid)…
+        var exchanged = await (from r in _db.SalesDocuments.AsNoTracking()
+                               join d in invoices on r.ExchangeId equals (Guid?)d.Id
+                               where r.Type == DocumentType.SALES_RETURN && r.Status != DocumentStatus.CANCELLED
+                                     && r.IssueDate >= start && r.IssueDate < end
+                               select new { d.Id, d.Number, Return = r.Number, r.IssueDate, d.DepartmentId,
+                                   Rep = d.RepId!.Value, Party = d.Party!.Name, OnAccount = r.GrandTotal - r.PaidAmount,
+                                   Unpaid = d.GrandTotal - d.PaidDirect }).ToListAsync();
+        foreach (var x in exchanged)
+            if (MoneyService.ExchangeCredit(x.OnAccount, x.Unpaid) is var paid and > 0)
+                items.Add((x.Rep, Collection, x.Id, x.Number, x.Return, x.IssueDate, x.DepartmentId, x.Party, paid));
         // … and cheques settling them, on the day they were collected.
         var cheques = await (from a in _db.NoteAllocations.AsNoTracking()
                              join d in invoices on a.DocumentId equals d.Id

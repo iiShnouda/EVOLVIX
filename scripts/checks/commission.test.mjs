@@ -382,6 +382,58 @@ eq(
 );
 eq('a rule deleted', (await mona.del(`/commission/rules/${later.id}`)).status, 204);
 
+console.log('== collected: an invoice changed down, an exchange');
+const R3 = await rep('Rafi');
+ok(
+  'Rafi: 10% of what is collected',
+  await rule(mona, { repId: R3.id, basis: 'COLLECTIONS', percent: 10, startDate: addDays(today, -40) }),
+);
+const walkIn = (await owner.get('/parties?code=0')).data.items[0];
+const cashSale = (quantity) => ({
+  partyId: walkIn.id,
+  warehouseId: wh.id,
+  repId: R3.id,
+  departmentId: dA.id,
+  taxPercent: 0,
+  paidAmount: quantity * 1000,
+  paidAccountId: box.id,
+  lines: [{ productId: IA.id, quantity, unitPrice: 1000 }],
+});
+const inv4 = ok('Rafi sells 3 to the cash customer (30.00 paid)', await owner.post('/sales/invoices', cashSale(3)));
+ok('changed down to 2: 10.00 goes back out', await owner.put(`/sales/invoices/${inv4.id}`, cashSale(2)));
+const swap = ok(
+  'an exchange: one back (10.00), two taken (20.00), 10.00 paid',
+  await owner.post('/sales/exchanges', {
+    return: {
+      partyId: walkIn.id,
+      warehouseId: wh.id,
+      departmentId: dA.id,
+      lines: [{ productId: IA.id, unitId: piece.id, quantity: 1 }],
+    },
+    invoice: {
+      partyId: walkIn.id,
+      warehouseId: wh.id,
+      repId: R3.id,
+      departmentId: dA.id,
+      taxPercent: 0,
+      lines: [{ productId: IA.id, quantity: 2, unitPrice: 1000 }],
+    },
+  }),
+);
+const rafi = ok(
+  'what is behind Rafi’s',
+  await mona.get(`/commission/report/${R3.id}/items?from=${today}&to=${today}`),
+);
+const collectedOn = (number) =>
+  rafi.filter((i) => i.kind === 'COLLECTION' && i.number === number).reduce((s, i) => s + i.amount, 0);
+eq('the changed invoice: 20.00 collected, not 30.00', collectedOn(inv4.number), 2000);
+eq(
+  'the exchange’s invoice: the 10.00 paid and the 10.00 the goods brought back',
+  collectedOn(swap.invoice.number),
+  2000,
+);
+eq('Rafi’s commission: 10% of 40.00', rowOf(R3, await report(mona)).commission, 400);
+
 // Its departments closed again, so later suites' sales needn't name one.
 for (const d of [dA, dB])
   ok('department closed', await owner.put(`/departments/${d.id}`, { isActive: false }));
