@@ -14,8 +14,9 @@ namespace SKB.Api.Services;
 /// <item>the DISCOUNT comes off it. Nothing compounds (owner, 2026-11-19): an INCREASE's and a
 /// DISCOUNT's percents are both of the same base, the lines' total, so they net out (+10% +2.00 −5%
 /// −1.00 on 200.00 is 211.00); amounts are as typed;</item>
-/// <item>the EXTRA_DISCOUNT (the accountant's second discount, or one over several invoices) is a
-/// discount on top: its percent is of what is left after the first;</item>
+/// <item>the EXTRA_DISCOUNT, a purchase's second discount, is a discount on top: its percent is of what
+/// is left after the first. A sale has none (owner, 2026-11-20): it has one invoice discount, which the
+/// accountant sees and changes, and a discount over several invoices is spread into each one's;</item>
 /// <item>taxes and additions are worked out on the discounted amount.</item>
 /// </list>
 /// The total discount is shared out over the lines in proportion to their net amounts (bonus lines
@@ -27,6 +28,10 @@ public static class Charges
 {
     public const int MaxCharges = 20;
     public const int MaxRateBp = 10_000;
+
+    /// <summary>A sale has one invoice discount (owner, 2026-11-20): no second one is added.</summary>
+    public static readonly InvoiceLines.LineError ExtraDiscountRetired = new("extra_discount_retired",
+        "An invoice has one discount: change it instead of adding a second one.");
 
     public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label);
 
@@ -60,6 +65,8 @@ public static class Charges
             if (!Enum.TryParse<ChargeKind>(c.Kind, true, out var kind) || !Enum.IsDefined(kind)
                 || (kind == ChargeKind.INCREASE && !sales))
                 return (null, new("bad_charge", "Unknown kind of charge."));
+            if (kind == ChargeKind.EXTRA_DISCOUNT && sales)
+                return (null, ExtraDiscountRetired);
             if ((c.Percent is null) == (c.Amount is null))
                 return (null, new("bad_charge", "Give a charge either a percent or an amount."));
             int? rate = null;

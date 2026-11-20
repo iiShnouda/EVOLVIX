@@ -112,6 +112,25 @@ public record CustomerInvoicesDto(PartyDto Party, long Balance, long PreviousBal
 /// <summary>One invoice's discount: a percent or an amount (neither = none).</summary>
 public record SetInvoiceDiscountRequest(decimal? Percent = null, long? Amount = null, string? Kind = null);
 
+/// <summary>
+/// A line's own increase and discount as the accountant leaves them (owner, 2026-11-20): every box,
+/// as typed — a percent, an amount for the line and an amount a piece (null or 0 = none). They
+/// replace what the line had.
+/// </summary>
+public record LineAdjustRequest(string? LineId, decimal? DiscountPercent = null, long? DiscountAmount = null,
+    long? DiscountPerPiece = null, decimal? IncreasePercent = null, long? IncreaseAmount = null,
+    long? IncreasePerPiece = null);
+
+/// <summary>The invoice's own increase and discount as the accountant leaves them: each a percent and an amount.</summary>
+public record InvoiceAdjustRequest(decimal? DiscountPercent = null, long? DiscountAmount = null,
+    decimal? IncreasePercent = null, long? IncreaseAmount = null);
+
+/// <summary>
+/// The accountant changes an invoice's discounts (and, with their permissions, its increases) in place:
+/// the lines named (<paramref name="Lines"/>) and the invoice's own (<paramref name="Invoice"/>; null = keep).
+/// </summary>
+public record SetAdjustmentsRequest(LineAdjustRequest[]? Lines = null, InvoiceAdjustRequest? Invoice = null);
+
 /// <summary>One discount shared over several invoices of a customer.</summary>
 public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = null, long? Amount = null);
 
@@ -176,12 +195,14 @@ public record CreateSalesInvoiceRequest(
 /// <summary>
 /// Approving a pending invoice: what the customer pays now and into which account; optionally new
 /// discounts — per line (<paramref name="LineDiscounts"/>) and for the whole invoice
-/// (<paramref name="Charges"/>: only its DISCOUNT / EXTRA_DISCOUNT rows count; null = keep them).
+/// (<paramref name="Charges"/>: only its DISCOUNT rows count; null = keep them); or, as the sheet sends
+/// them, every box as typed: <paramref name="Lines"/> per line and <paramref name="Invoice"/> for the
+/// invoice's own increase and discount (null = keep).
 /// </summary>
 public record ApproveOrderRequest(
     long PaidAmount = 0, string? PaidAccountId = null, LineDiscountRequest[]? LineDiscounts = null,
     ChargeRequest[]? Charges = null, string? Notes = null, string? DueDate = null, bool OverrideFloor = false,
-    string? WarehouseId = null);
+    string? WarehouseId = null, LineAdjustRequest[]? Lines = null, InvoiceAdjustRequest? Invoice = null);
 
 /// <summary>
 /// A customer's account for the accountant. <paramref name="Balance"/> is everything they owe now
