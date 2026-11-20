@@ -211,6 +211,10 @@
         {
           "ar": "صلاحية جديدة «يشوف الزيادات ومين اللي زوّدها» (للمحاسب والمالك)، وتقرير «الزيادات» في التحليلات: مين زوّد، كام فاتورة، وكام جنيه",
           "en": "New permission \"See the increases and who added them\" (accountant and owner), with an \"Increases\" report in Analytics: who added, how many invoices, and how much"
+        },
+        {
+          "ar": "قوّينا الحماية ضد تخمين كلمة السر في تسجيل الدخول: بنعدّ المحاولات الغلط لكل حساب ولكل جهاز، ومن غير ما نكشف إذا كان الإيميل موجود ولا لأ",
+          "en": "Hardened login against password guessing: failed attempts are counted per account and per device, without revealing whether an email exists"
         }
       ],
       "fixes": [
@@ -289,6 +293,10 @@
         {
           "ar": "الاستبدال اللي اترفض مبقاش بيبعت تنبيه، وكمية كبيرة جدًا في التالف بترجع رسالة واضحة",
           "en": "A refused exchange no longer sends a notification, and too large a quantity of damaged goods gives a clear message"
+        },
+        {
+          "ar": "شيلنا الرسالة اللي بتقول فاضلك كام محاولة في قفل الشاشة؛ دلوقتي بتقول بس «كلمة المرور أو الرمز غير صحيح»",
+          "en": "Removed the \"attempts left\" count on the lock screen; a wrong try now just says \"Wrong password or PIN\""
         }
       ],
       "apps": {
