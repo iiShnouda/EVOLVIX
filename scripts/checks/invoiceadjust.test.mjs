@@ -3,7 +3,7 @@
 // permission, on a new invoice, a changed one and a pending one. Nothing compounds (owner,
 // 2026-11-19): on an item both percents are of quantity × price, on the invoice both are of the
 // items' total, so an increase and a discount net out (+10% +2.00 −5% −1.00 on 200.00 = 211.00).
-// The second invoice discount is on what is left after the first; taxes on the result. An increase
+// An invoice has one discount (owner, 2026-11-20); taxes on the result. An increase
 // is sales (it raises the invoice and the customer's debt); the net discount keeps to the person's
 // limit and never goes below cost. Runs against BASE.
 import { login, check, eq, ok, summary } from './lib.mjs';
@@ -290,21 +290,19 @@ eq(
   ).data?.grandTotal,
   21100,
 );
-const extra = ok(
-  'the second discount is on what is left after the first',
-  await owner.post(
-    '/sales/invoices',
-    sale({}, [
-      { kind: 'INCREASE', percent: 10 },
-      { kind: 'DISCOUNT', percent: 10 },
-      { kind: 'EXTRA_DISCOUNT', percent: 10 },
-    ]),
-  ),
-);
+// One invoice discount (owner, 2026-11-20): a second one is no longer added.
 eq(
-  '…200 +20 −20 = 200, then −10% = 180.00',
-  [extra.charges.map((c) => c.amount), extra.grandTotal],
-  [[2000, 2000, 2000], 18000],
+  'a second discount is refused',
+  (
+    await owner.post(
+      '/sales/invoices',
+      sale({}, [
+        { kind: 'DISCOUNT', percent: 10 },
+        { kind: 'EXTRA_DISCOUNT', percent: 10 },
+      ]),
+    )
+  ).data?.code,
+  'extra_discount_retired',
 );
 
 console.log('== a discount or an increase a piece');
@@ -701,5 +699,248 @@ eq(
   shown.subtotal - shown.lines[0].docIncrease - shown.lines[0].discount + 522 - 2164 + 2724,
   shown.grandTotal,
 );
+
+console.log('== the accountant sees the discount made and changes it (owner, 2026-11-20)');
+const balanceOf = async () => (await owner.get(`/parties/${customer.id}`)).data.balance;
+const made = ok(
+  'an invoice with every box: the item 5% + 1.00 + 0.50 a piece off and +2.00; the invoice +2%, 5% + 1.00 off',
+  await owner.post(
+    '/sales/invoices',
+    sale({ discountPercent: 5, discountAmount: 100, discountPerPiece: 50, increaseAmount: 200 }, [
+      { kind: 'INCREASE', percent: 2 },
+      { kind: 'DISCOUNT', percent: 5 },
+      { kind: 'DISCOUNT', amount: 100 },
+    ]),
+  ),
+);
+eq('…200 + 2 − 12 = 190.00, +3.80 −10.50 = 183.30', made.grandTotal, 18330);
+const seen = ok(
+  'the customer’s invoices show it',
+  await accountant.get(`/sales/customers/${customer.id}/invoices`),
+).invoices.find((d) => d.id === made.id);
+eq(
+  '…each box of the item as typed',
+  [
+    seen.lines[0].discountRate,
+    seen.lines[0].discountFixed,
+    seen.lines[0].discountPiece,
+    seen.lines[0].increaseFixed,
+  ],
+  [5, 100, 50, 200],
+);
+eq(
+  '…and the invoice’s: one increase and one discount (a percent and an amount)',
+  seen.charges.map((c) => [c.kind, c.rate ?? null, c.fixedAmount ?? null]),
+  [
+    ['INCREASE', 2, null],
+    ['DISCOUNT', 5, null],
+    ['DISCOUNT', null, 100],
+  ],
+);
+const discounter = await only([
+  'sales:discount_line_pct',
+  'sales:discount_line_amount',
+  'sales:discount_pct',
+  'sales:discount_amount',
+]);
+const lineNow = {
+  lineId: made.lines[0].id,
+  discountPercent: 5,
+  discountAmount: 100,
+  discountPerPiece: 50,
+  increaseAmount: 200,
+};
+const invoiceNow = { increasePercent: 2, discountPercent: 5, discountAmount: 100 };
+eq(
+  'the item’s increase is only seen without its permission',
+  (
+    await discounter.post(`/sales/invoices/${made.id}/adjust`, {
+      lines: [{ ...lineNow, increaseAmount: 300 }],
+      invoice: invoiceNow,
+    })
+  ).data?.code,
+  'increase_line_amount_not_allowed',
+);
+eq(
+  '…and the invoice’s',
+  (
+    await discounter.post(`/sales/invoices/${made.id}/adjust`, {
+      lines: [lineNow],
+      invoice: { ...invoiceNow, increasePercent: 3 },
+    })
+  ).data?.code,
+  'increase_pct_not_allowed',
+);
+const before = await balanceOf();
+const changed = ok(
+  'the item’s 5% made 10%, the invoice’s 1.00 made 3.00 (the rest sent as it is)',
+  await discounter.post(`/sales/invoices/${made.id}/adjust`, {
+    lines: [{ ...lineNow, discountPercent: 10 }],
+    invoice: { ...invoiceNow, discountAmount: 300 },
+  }),
+);
+eq(
+  '…200 + 2 − 22 = 180.00, +3.60 −12.00 = 171.60',
+  [changed.lines[0].discount, changed.grandTotal],
+  [2200, 17160],
+);
+eq(
+  '…still one discount on the invoice, changed in place',
+  changed.charges.map((c) => [c.kind, c.rate ?? c.fixedAmount]),
+  [
+    ['INCREASE', 2],
+    ['DISCOUNT', 5],
+    ['DISCOUNT', 300],
+  ],
+);
+eq('…the customer owes 11.70 less', before - (await balanceOf()), 1170);
+const cleared = ok(
+  'every discount box emptied',
+  await discounter.post(`/sales/invoices/${made.id}/adjust`, {
+    lines: [{ lineId: made.lines[0].id, increaseAmount: 200 }],
+    invoice: { increasePercent: 2 },
+  }),
+);
+eq(
+  '…202.00 + 2% = 206.04, no discount left',
+  [cleared.grandTotal, cleared.discountTotal],
+  [20604, 0],
+);
+eq(
+  'no second discount over the old route',
+  (
+    await accountant.post(`/sales/invoices/${made.id}/discount`, {
+      kind: 'EXTRA_DISCOUNT',
+      percent: 5,
+    })
+  ).data?.code,
+  'extra_discount_retired',
+);
+
+console.log('== a pending invoice: the approver changes what is there');
+const o3 = ok(
+  'saved with 10% off the item and 5% off the invoice',
+  await owner.post(
+    '/sales/orders',
+    sale({ discountPercent: 10 }, [{ kind: 'DISCOUNT', percent: 5 }]),
+  ),
+);
+eq('…180 − 9 = 171.00', o3.grandTotal, 17100);
+eq(
+  'no second discount when it is approved',
+  (
+    await accountant.post(`/sales/orders/${o3.id}/approve`, {
+      charges: [{ kind: 'EXTRA_DISCOUNT', amount: 100 }],
+    })
+  ).data?.code,
+  'extra_discount_retired',
+);
+const a3 = ok(
+  'approved with the item’s 10% made 5.00 a piece and the invoice’s 5% made 2.00',
+  await accountant.post(`/sales/orders/${o3.id}/approve`, {
+    lines: [{ lineId: o3.lines[0].id, discountPerPiece: 500 }],
+    invoice: { discountAmount: 200 },
+  }),
+);
+eq(
+  '…200 − 10 = 190.00 − 2.00 = 188.00, one discount',
+  [a3.lines[0].discount, a3.lines[0].discountPiece, a3.grandTotal, a3.charges.map((c) => c.kind)],
+  [1000, 500, 18800, ['DISCOUNT']],
+);
+
+if (process.env.PGURL) {
+  console.log('== an old second discount joins the invoice’s, nothing moves');
+  const { default: pg } = await import('pg');
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const dir = new URL('../../apps/api/src/SKB.Api/Migrations/', import.meta.url);
+  const file = fs.readdirSync(dir).find((f) => f.endsWith('_OneInvoiceDiscount.cs'));
+  const sql = fs.readFileSync(path.join(dir.pathname, file), 'utf8').split('"""')[1];
+  const db = new pg.Client({ connectionString: process.env.PGURL });
+  await db.connect();
+  const charges = async (id) =>
+    (
+      await db.query(
+        `select "Kind", "RateBp", "FixedAmount", "Amount" from "DocumentCharges" where "DocumentId" = $1 order by "Seq"`,
+        [id],
+      )
+    ).rows.map((r) => [
+      r.Kind,
+      r.RateBp,
+      r.FixedAmount == null ? null : Number(r.FixedAmount),
+      Number(r.Amount),
+    ]);
+  const state = async (id) => {
+    const d = (await owner.get(`/sales/invoices/${id}`)).data;
+    const entries = (
+      await db.query(`select count(*)::int n from "JournalEntries" where "SourceId" = $1`, [id])
+    ).rows[0].n;
+    return [
+      d.grandTotal,
+      d.discountTotal,
+      d.lines.map((l) => l.docDiscount),
+      entries,
+      await balanceOf(),
+    ];
+  };
+  // A: 10% and then a second discount of 2.5% of what was left (a percent): it becomes the amount.
+  const oldA = ok(
+    'an invoice with 10% off and 5.00 more',
+    await owner.post(
+      '/sales/invoices',
+      sale({}, [
+        { kind: 'DISCOUNT', percent: 10 },
+        { kind: 'DISCOUNT', amount: 500 },
+      ]),
+    ),
+  );
+  await db.query(
+    `update "DocumentCharges" set "Kind" = 'EXTRA_DISCOUNT', "RateBp" = 278, "FixedAmount" = null
+     where "DocumentId" = $1 and "RateBp" is null and "Kind" = 'DISCOUNT'`,
+    [oldA.id],
+  );
+  // B: an amount off and a second amount: they join.
+  const oldB = ok(
+    'an invoice with 3.00 off and 2.00 more',
+    await owner.post(
+      '/sales/invoices',
+      sale({}, [
+        { kind: 'DISCOUNT', amount: 300 },
+        { kind: 'DISCOUNT', amount: 200 },
+      ]),
+    ),
+  );
+  await db.query(
+    `update "DocumentCharges" set "Kind" = 'EXTRA_DISCOUNT' where "DocumentId" = $1 and "Seq" = 2`,
+    [oldB.id],
+  );
+  eq(
+    '…made the old way',
+    [(await charges(oldA.id))[1][0], (await charges(oldB.id))[1][0]],
+    ['EXTRA_DISCOUNT', 'EXTRA_DISCOUNT'],
+  );
+  const wasA = await state(oldA.id);
+  const wasB = await state(oldB.id);
+  await db.query(sql);
+  eq('A: the second becomes its amount discount, as much as it came to', await charges(oldA.id), [
+    ['DISCOUNT', 1000, null, 2000],
+    ['DISCOUNT', null, 500, 500],
+  ]);
+  eq('B: the two amounts are one', await charges(oldB.id), [['DISCOUNT', null, 500, 500]]);
+  eq(
+    '…totals, shares, ledger and balance the same',
+    [await state(oldA.id), await state(oldB.id)],
+    [wasA, wasB],
+  );
+  ok(
+    'A opened and saved as it is',
+    await accountant.post(`/sales/invoices/${oldA.id}/adjust`, {
+      lines: [{ lineId: oldA.lines[0].id }],
+      invoice: { discountPercent: 10, discountAmount: 500 },
+    }),
+  );
+  eq('…nothing moves', await state(oldA.id), wasA);
+  await db.end();
+} else console.log('  (PGURL not set: the old second discount’s migration not checked)');
 
 process.exit(summary('invoiceadjust') ? 1 : 0);

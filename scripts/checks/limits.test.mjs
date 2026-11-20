@@ -358,22 +358,37 @@ const shared = ok(
   '5.00 off both together',
   await acc.post('/sales/invoices/discount-all', { invoiceIds: [a1.id, a2.id], amount: 500 }),
 );
+// One discount on the combined invoices (owner, 2026-11-20): it becomes each one's own discount,
+// shared by what their items come to — no second discount on top.
 eq(
-  'shared by what each comes to',
+  'shared by what each one’s items come to, as each one’s discount',
   shared.map((d) => d.grandTotal),
-  [1800 - 188, 3000 - 312],
+  [2000 - 200, 3000 - 300],
 );
-eq('…exactly 5.00 in all', await balance(c7.id), 4300);
+eq('…exactly 5.00 in all', await balance(c7.id), 4500);
 eq(
-  'each keeps its own discount first',
-  shared[0].charges.map((c) => c.kind),
-  ['DISCOUNT', 'EXTRA_DISCOUNT'],
+  'each has one discount: its share, as an amount',
+  shared.map((d) => d.charges.map((c) => [c.kind, c.rate ?? null, c.fixedAmount, c.amount])),
+  [[['DISCOUNT', null, 200, 200]], [['DISCOUNT', null, 300, 300]]],
 );
 ok(
   '10% off both instead',
   await acc.post('/sales/invoices/discount-all', { invoiceIds: [a1.id, a2.id], percent: 10 }),
 );
-eq('…replaces the shared amount', await balance(c7.id), Math.round(1800 * 0.9) + 2700);
+eq('…replaces the shared amount', await balance(c7.id), 1800 + 2700);
+eq(
+  '…each one’s discount is 10%',
+  (await acc.get(`/sales/customers/${c7.id}/invoices`)).data.invoices.map((d) =>
+    d.charges.map((c) => [c.kind, c.rate]),
+  ),
+  [[['DISCOUNT', 10]], [['DISCOUNT', 10]]],
+);
+eq(
+  'a second discount on one invoice is refused',
+  (await acc.post(`/sales/invoices/${a1.id}/discount`, { percent: 5, kind: 'EXTRA_DISCOUNT' })).data
+    ?.code,
+  'extra_discount_retired',
+);
 const other = await customer('Lim8', null);
 const b1 = ok('another customer’s invoice', await sale(owner, other.id, 1));
 eq(

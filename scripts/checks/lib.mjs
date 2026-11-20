@@ -86,12 +86,12 @@ export function addDays(day, n) {
 /**
  * Sell with discounts the way they are given now (owner, 2026-10-24): `maker` makes the invoice at
  * `path` without them, then `by` gives each kind from the customer's invoices — the lines' own (a
- * line's `discount`), then the invoice discount (a DISCOUNT charge) and the second one
- * (EXTRA_DISCOUNT). Answers with the first refusal (and the invoice as made, `made`), else the
- * invoice as it ends up.
+ * line's `discount`), then the invoice discount (its DISCOUNT charges: a percent and/or an amount;
+ * there is no second one, owner 2026-11-20). Answers with the first refusal (and the invoice as
+ * made, `made`), else the invoice as it ends up.
  */
 export async function sellDiscounted(maker, by, body, path = '/sales/invoices') {
-  const isDiscount = (c) => ['DISCOUNT', 'EXTRA_DISCOUNT'].includes(String(c.kind).toUpperCase());
+  const isDiscount = (c) => String(c.kind).toUpperCase() === 'DISCOUNT';
   const lines = body.lines ?? [];
   const r0 = await maker.post(path, {
     ...body,
@@ -104,9 +104,18 @@ export async function sellDiscounted(maker, by, body, path = '/sales/invoices') 
   let r = r0;
   const given = lines.flatMap((l, i) => (l.discount ? [{ lineId: made.lines[i].id, discount: l.discount }] : []));
   if (given.length) r = await by.post(`${at}/line-discounts`, { lines: given });
-  for (const c of (body.charges ?? []).filter(isDiscount)) {
-    if (r.status >= 300) break;
-    r = await by.post(`${at}/discount`, { kind: String(c.kind).toUpperCase(), percent: c.percent, amount: c.amount });
+  const asked = (body.charges ?? []).filter(isDiscount);
+  if (asked.length && r.status < 300) {
+    // The invoice's own increase stays as it was made.
+    const up = (rate) => made.charges.find((c) => c.kind === 'INCREASE' && (c.rate != null) === rate);
+    r = await by.post(`${at}/adjust`, {
+      invoice: {
+        discountPercent: asked.find((c) => c.percent != null)?.percent,
+        discountAmount: asked.find((c) => c.amount != null)?.amount,
+        increasePercent: up(true)?.rate ?? undefined,
+        increaseAmount: up(false)?.fixedAmount ?? undefined,
+      },
+    });
   }
   return r.status >= 300 ? { ...r, made } : r;
 }
