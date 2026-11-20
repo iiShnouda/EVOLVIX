@@ -105,13 +105,22 @@ public static class DocumentLists
                 && (x.Shipment!.Status == ShipmentStatus.CREATED || x.Shipment.Status == ShipmentStatus.PICKED_UP
                     || x.Shipment.Status == ShipmentStatus.DELIVERED)),
             // Paid at the counter more than it comes to now (a discount given after): the rest is
-            // already on the party's account, so it puts nothing on it.
-            Unit = d.GrandTotal > d.PaidDirect ? d.GrandTotal - d.PaidDirect : 0,
+            // already on the party's account, so it puts nothing on it. An exchange's invoice is paid
+            // by its return first (MoneyService.ExchangeCredit), so that part is not on it either.
+            Unit = (d.GrandTotal > d.PaidDirect ? d.GrandTotal - d.PaidDirect : 0)
+                   - Math.Min(d.GrandTotal > d.PaidDirect ? d.GrandTotal - d.PaidDirect : 0,
+                       Math.Max(0, db.SalesDocuments.Where(r => r.Id == d.ExchangeId && r.Type == DocumentType.SALES_RETURN
+                                                                && r.Status != DocumentStatus.CANCELLED)
+                           .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0)),
             Newer = db.SalesDocuments
                 .Where(o => o.PartyId == d.PartyId && o.Type == d.Type && o.Status != DocumentStatus.CANCELLED
                             && (o.IssueDate > d.IssueDate
                                 || (o.IssueDate == d.IssueDate && string.Compare(o.Number, d.Number) > 0)))
-                .Sum(o => (long?)(o.GrandTotal > o.PaidDirect ? o.GrandTotal - o.PaidDirect : 0)) ?? 0,
+                .Sum(o => (long?)((o.GrandTotal > o.PaidDirect ? o.GrandTotal - o.PaidDirect : 0)
+                    - Math.Min(o.GrandTotal > o.PaidDirect ? o.GrandTotal - o.PaidDirect : 0,
+                        Math.Max(0, db.SalesDocuments.Where(r => r.Id == o.ExchangeId && r.Type == DocumentType.SALES_RETURN
+                                                                 && r.Status != DocumentStatus.CANCELLED)
+                            .Sum(r => (long?)(r.GrandTotal - r.PaidAmount)) ?? 0)))) ?? 0,
             Owing = d.Type == DocumentType.PURCHASE_INVOICE ? -d.Party!.Balance : d.Party!.Balance,
             Deferred = db.NoteAllocations.Where(a => a.DocumentId == d.Id
                     && (a.Note!.Status == NoteStatus.IN_HAND || a.Note.Status == NoteStatus.UNDER_COLLECTION

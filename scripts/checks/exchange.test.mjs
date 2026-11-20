@@ -562,6 +562,80 @@ check(
   lossRow,
 );
 
+console.log('== the return pays the exchange’s invoice, not the invoices it came from');
+const openOf = async (party) =>
+  Object.fromEntries(
+    (await owner.get(`/parties/${party.id}/open-invoices`)).data.map((o) => [o.documentId, o.outstanding]),
+  );
+const stateOf = async (id) => {
+  const d = (await owner.get(`/sales/invoices/${id}`)).data;
+  return [d.state, d.owed];
+};
+const walkOpen = await openOf(walkIn);
+eq(
+  'cash customer: neither exchange invoice is left open',
+  [walkOpen[e4.invoice.id], walkOpen[e5.invoice.id]],
+  [undefined, undefined],
+);
+eq('…paid', [(await stateOf(e4.invoice.id))[0], (await stateOf(e5.invoice.id))[0]], ['PAID', 'PAID']);
+const c2 = ok(
+  'a customer on account',
+  await owner.post('/parties', { name: `ExCust2 ${tag}`, types: ['CUSTOMER'] }),
+);
+const src = ok(
+  'buys 5 shirts (50.00)',
+  await sell(owner, { lines: [{ productId: shirt.id, quantity: 5, unitPrice: 1000 }] }, c2),
+);
+const exOf = (ret, take, extra = {}) => ({
+  return: { partyId: c2.id, warehouseId: wh.id, lines: ret },
+  invoice: { partyId: c2.id, warehouseId: wh.id, taxPercent: 0, lines: take },
+  ...extra,
+});
+const xa = ok(
+  'a shirt back (10.00), trousers taken (15.00)',
+  await exchange(owner, exOf([line(shirt, 1)], [{ productId: pants.id, quantity: 1, unitPrice: 1500 }])),
+);
+let open2 = await openOf(c2);
+eq(
+  'the exchange’s invoice owes the 5.00 difference; the shirts’ invoice all of it',
+  [open2[xa.invoice.id], open2[src.id]],
+  [500, 5000],
+);
+eq('…part paid', await stateOf(xa.invoice.id), ['PARTIAL', 500]);
+const xb = ok(
+  'three shirts back (30.00), socks taken (4.00), 6.00 paid back',
+  await exchange(
+    owner,
+    exOf([line(shirt, 3)], [{ productId: socks.id, quantity: 1, unitPrice: 400 }], {
+      refund: 600,
+      refundAccountId: box.id,
+    }),
+  ),
+);
+open2 = await openOf(c2);
+eq(
+  'its invoice is paid; the rest (20.00) credits the shirts’ invoice',
+  [open2[xb.invoice.id], open2[src.id], open2[xa.invoice.id]],
+  [undefined, 3000, 500],
+);
+eq('…paid', await stateOf(xb.invoice.id), ['PAID', 0]);
+eq('the shirts’ invoice part paid', await stateOf(src.id), ['PARTIAL', 3000]);
+const agingRow = async () =>
+  (await owner.get('/analytics/aging')).data.rows.find((r) => r.partyId === c2.id);
+eq('aging: what is open is the balance', [(await agingRow()).total, await balance(c2)], [3500, 3500]);
+ok('the first exchange’s invoice is cancelled', await owner.post(`/sales/invoices/${xa.invoice.id}/cancel`, { reason: 'test' }));
+open2 = await openOf(c2);
+eq('its return credits the shirts’ invoice again', [open2[src.id], open2[xa.invoice.id]], [2000, undefined]);
+eq('…as the balance says', await balance(c2), 2000);
+ok('the second exchange’s return is cancelled', await owner.post(`/sales/returns/${xb.return.id}/cancel`, {}));
+open2 = await openOf(c2);
+eq(
+  'its invoice is owed again; the shirts’ invoice loses its credit',
+  [open2[xb.invoice.id], open2[src.id]],
+  [400, 4000],
+);
+eq('…as the balance says', await balance(c2), 4400);
+
 console.log('== cancelling either part follows the usual rules');
 const bc = await balance(customer);
 ok(
