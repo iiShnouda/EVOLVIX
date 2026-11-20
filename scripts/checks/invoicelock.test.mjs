@@ -136,12 +136,16 @@ solo = await only(['sales:discount_combined']);
 ok('they open for one discount over several', await solo.get(`/sales/customers/${customer.id}/invoices`));
 const e3 = await solo.post('/sales/invoices/discount-all', { invoiceIds: [e1.id], amount: 50 });
 ok('given on an invoice with its own discounts already', e3);
-eq('…all three on it', [e3.data?.[0]?.lines[0].discount, e3.data?.[0]?.charges.filter((c) => c.kind !== 'TAX').map((c) => [c.kind, c.rate ?? c.amount])], [30, [['DISCOUNT', 5], ['EXTRA_DISCOUNT', 50]]]);
+// It becomes the invoice's one discount (owner, 2026-11-20): no second one on top.
+eq('…it is now the invoice’s discount, the item’s kept', [e3.data?.[0]?.lines[0].discount, e3.data?.[0]?.charges.filter((c) => c.kind !== 'TAX').map((c) => [c.kind, c.rate ?? c.amount])], [30, [['DISCOUNT', 50]]]);
 eq('not a discount on items', (await solo.post(`/sales/invoices/${e1.id}/line-discounts`, { lines: [{ lineId: e2.lines[0].id, discount: 40 }] })).status, 403);
 solo = await only(['sales:discount_pct', 'sales:discount_amount']);
 ok('they open for an invoice discount', await solo.get(`/sales/customers/${customer.id}/invoices`));
 const e4 = ok('it is changed, the others kept', await solo.post(`/sales/invoices/${e1.id}/discount`, { percent: 6 }));
-eq('…6% now', [e4.lines[0].discount, e4.charges.filter((c) => c.kind !== 'TAX').map((c) => [c.kind, c.rate ?? c.amount])], [30, [['DISCOUNT', 6], ['EXTRA_DISCOUNT', 50]]]);
+eq('…6% now, in place of the 50', [e4.lines[0].discount, e4.charges.filter((c) => c.kind !== 'TAX').map((c) => [c.kind, c.rate ?? c.amount])], [30, [['DISCOUNT', 6]]]);
+eq('the invoice discount left as it is, an item’s changed: needs the item’s permission', (await solo.post(`/sales/invoices/${e1.id}/adjust`, { invoice: { discountPercent: 6 }, lines: [{ lineId: e4.lines[0].id, discountAmount: 40 }] })).data?.code, 'discount_line_amount_not_allowed');
+const e5 = ok('…and only the invoice’s, the item’s sent as it is', await solo.post(`/sales/invoices/${e1.id}/adjust`, { invoice: { discountAmount: 70 }, lines: [{ lineId: e4.lines[0].id, discountAmount: 30 }] }));
+eq('…an amount now, the item’s the same', [e5.lines[0].discount, e5.charges.filter((c) => c.kind !== 'TAX').map((c) => [c.kind, c.rate ?? c.amount])], [30, [['DISCOUNT', 70]]]);
 eq('not a discount on items', (await solo.post(`/sales/invoices/${e1.id}/line-discounts`, { lines: [{ lineId: e4.lines[0].id, discount: 40 }] })).status, 403);
 solo = await only([]);
 eq('with none of them, the customer’s invoices stay shut', (await solo.get(`/sales/customers/${customer.id}/invoices`)).status, 403);

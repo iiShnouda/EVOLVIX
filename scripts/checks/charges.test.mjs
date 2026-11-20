@@ -69,7 +69,7 @@ const lines = [
 ];
 const charges = [
   { kind: 'DISCOUNT', percent: 10 },
-  { kind: 'EXTRA_DISCOUNT', amount: 1000 },
+  { kind: 'DISCOUNT', amount: 1000 },
   { kind: 'TAX', percent: 14 },
   { kind: 'ADDITION', amount: 5000, label: 'Delivery' },
 ];
@@ -88,7 +88,7 @@ eq(
   inv.charges.map((c) => [c.kind, c.amount]),
   [
     ['DISCOUNT', 1950],
-    ['EXTRA_DISCOUNT', 1000],
+    ['DISCOUNT', 1000],
     ['TAX', 2317],
     ['ADDITION', 5000],
   ],

@@ -2555,6 +2555,15 @@ export const en = {
   'together.balance': 'Balance now',
   'together.discountAll': 'Discount on all the invoices',
   'together.applyAll': 'Apply to all',
+  'together.editDiscounts': 'Discounts',
+  'together.discountAllHint':
+    "It becomes each invoice's own discount (in place of the one it has): a percent on each, an amount shared by what their items come to.",
+  'together.discountAllEach': "Each invoice's discount",
+  'together.increaseSeen': 'Increases (you may only see them)',
+  'together.invoiceIncrease': 'Invoice increase',
+  'together.itemsIncrease': 'Increase on items',
+  'error.extra_discount_retired':
+    'An invoice has one discount: change it instead of adding a second one.',
   'together.apply': 'Apply',
   'together.printCombined': 'Print combined invoice',
   'together.printAll': 'Print every invoice + combined',

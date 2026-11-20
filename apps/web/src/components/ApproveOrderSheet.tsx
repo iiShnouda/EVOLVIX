@@ -1,16 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatMoney, toMajor, toMinor, type SalesDocument } from '@skb/shared';
+import { formatMoney, toMinor, type SalesDocument } from '@skb/shared';
 import { Sheet } from './Sheet';
 import { Button } from './ui';
 import { MoneyAccountPicker } from './MoneyAccountPicker';
 import { useT } from '../lib/i18n';
 import { useCan } from '../lib/can';
-import { lineDiscount, lineDiscountModes, type LineDiscountMode } from '../lib/discount';
+import {
+  AdjustEditor,
+  adjustPayload,
+  adjustPreview,
+  badPercent,
+  boxesChanged,
+  boxesOf,
+  mayAdjust,
+  useAdjustRights,
+  type AdjustBoxes,
+} from './AdjustEditor';
 import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
-import { TableColumns } from './TableColumns';
 import { CodeName } from './CodeName';
 
 const field =
@@ -18,8 +27,8 @@ const field =
 
 /**
  * The accountant approves a pending invoice: the items, prices, department and rep stay as the
- * sales person entered them; the discounts may change (within the accountant's own permission and
- * limit — the server checks); the customer pays what they pay now and the rest stays on their
+ * sales person entered them; the discounts there are may change in place (each box with the
+ * accountant's own permission, within his limit — the server checks; there is no second discount); the customer pays what they pay now and the rest stays on their
  * account. A cheque or promissory note is then taken against the invoice from Cheques & notes.
  */
 export function ApproveOrderSheet({
@@ -36,48 +45,22 @@ export function ApproveOrderSheet({
   const navigate = useNavigate();
   const approve = useApproveOrder();
   const maxDiscount = useAuth((s) => s.user?.maxDiscountPercent ?? null);
-  // Each kind and way of discount is its own permission (owner, 2026-10-24, 2026-11-19).
-  const canDiscount = can('sales:discount_pct');
-  const lineModes = lineDiscountModes(
-    can('sales:discount_line_pct'),
-    can('sales:discount_line_amount'),
-  );
-  const canLineDiscount = lineModes.length > 0;
+  // The discounts it has, filled in (owner, 2026-11-20): the accountant changes them in place, each
+  // box with its permission, within his limit (the server checks).
+  const rights = useAdjustRights();
+  const [boxes, setBoxes] = useState<AdjustBoxes>(() => boxesOf(order));
   const money = (v: number) => formatMoney(v, order.currency, locale);
-
-  const lines = order.lines.filter((l) => !l.isBonus);
-  const [edits, setEdits] = useState<Record<string, { mode: LineDiscountMode; value: string }>>({});
-  const invoiceRate = order.charges.find((c) => c.kind === 'DISCOUNT')?.rate ?? null;
-  const [invoicePct, setInvoicePct] = useState(invoiceRate != null ? String(invoiceRate) : '');
   const [paid, setPaid] = useState('');
   const [account, setAccount] = useState('');
   const [override, setOverride] = useState(false);
   const [done, setDone] = useState<SalesDocument | null>(null);
 
-  // With its own increase; its share of the invoice's increase is shared out again.
-  const grossOf = (l: (typeof lines)[number]) => l.lineTotal + l.discount - (l.docIncrease ?? 0);
-  const newDiscount = (l: (typeof lines)[number]) => {
-    const e = edits[l.id];
-    return e
-      ? lineDiscount(e.mode, e.value, grossOf(l), l.quantity, grossOf(l) - (l.increase ?? 0))
-      : l.discount;
-  };
-  const changedLines = lines.filter((l) => edits[l.id] && newDiscount(l) !== l.discount);
-  const invoiceChanged = (invoicePct.trim() === '' ? null : Number(invoicePct)) !== invoiceRate;
-  const badPct =
-    invoicePct.trim() !== '' &&
-    !(Number.isFinite(Number(invoicePct)) && Number(invoicePct) >= 0 && Number(invoicePct) <= 100);
-
-  // An estimate of the new total; the server works out the exact one.
-  const net = lines.reduce((s, l) => s + grossOf(l) - newDiscount(l), 0);
-  const invoiceOff = Math.round((net * (Number(invoicePct) || 0)) / 100);
-  const others = order.charges
-    .filter((c) => c.kind !== 'DISCOUNT' && c.kind !== 'EXTRA_DISCOUNT')
-    .reduce((s, c) => s + c.amount, 0);
-  const extra = order.charges.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0;
-  const total = net - invoiceOff - extra + others;
+  const preview = adjustPreview(order, boxes);
+  const changed = boxesChanged(order, boxes);
+  const badPct = badPercent(boxes);
+  const total = preview.total;
   const paidAmount = paid === '' ? 0 : toMinor(Number(paid));
-  const valid = paidAmount >= 0 && paidAmount <= total && !badPct;
+  const valid = paidAmount >= 0 && paidAmount <= total && !badPct && !preview.tooBig;
 
   async function save() {
     try {
@@ -86,28 +69,7 @@ export function ApproveOrderSheet({
         input: {
           paidAmount,
           paidAccountId: paidAmount > 0 && account ? account : undefined,
-          lineDiscounts: changedLines.length
-            ? changedLines.map((l) => {
-                const e = edits[l.id]!;
-                return e.mode === 'percent'
-                  ? { lineId: l.id, discount: 0, percent: Number(e.value) || 0 }
-                  : { lineId: l.id, discount: newDiscount(l) };
-              })
-            : undefined,
-          charges: invoiceChanged
-            ? [
-                ...(Number(invoicePct) > 0
-                  ? [{ kind: 'DISCOUNT' as const, percent: Number(invoicePct) }]
-                  : []),
-                ...order.charges
-                  .filter((c) => c.kind === 'EXTRA_DISCOUNT')
-                  .map((c) =>
-                    c.rate != null
-                      ? { kind: c.kind, percent: c.rate }
-                      : { kind: c.kind, amount: c.fixedAmount ?? c.amount },
-                  ),
-              ]
-            : undefined,
+          ...(changed ? adjustPayload(order, boxes) : {}),
           overrideFloor: override || undefined,
         },
       });
@@ -167,106 +129,14 @@ export function ApproveOrderSheet({
           {order.departmentName && <> · {order.departmentName}</>} · {order.staffName}
         </p>
 
-        <div className="overflow-x-auto rounded-[var(--radius-app)] border border-line">
-          <TableColumns id="approveOrder.lines">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-2 text-xs text-muted">
-                <tr>
-                  <th className="p-2 text-start font-medium">{t('analytics.item')}</th>
-                  <th className="p-2 text-end font-medium">{t('invoice.qty')}</th>
-                  <th className="p-2 text-end font-medium">{t('invoice.price')}</th>
-                  <th className="p-2 text-start font-medium">{t('order.lineDiscount')}</th>
-                  <th className="p-2 text-end font-medium">{t('common.total')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--c-line)]">
-                {lines.map((l) => {
-                  const e = edits[l.id];
-                  const d = newDiscount(l);
-                  return (
-                    <tr key={l.id}>
-                      <td className="p-2">{l.productName}</td>
-                      <td className="p-2 text-end tnum">
-                        {l.unitQuantity || l.quantity} {l.unitName}
-                      </td>
-                      <td className="p-2 text-end tnum">{money(l.unitPrice)}</td>
-                      <td className="p-2">
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            aria-label={t('order.lineDiscount')}
-                            disabled={!canLineDiscount}
-                            className="h-8 w-20 rounded-lg border border-line bg-surface px-2 text-sm tnum outline-none focus:border-brand"
-                            placeholder={l.discount ? String(toMajor(l.discount)) : '0'}
-                            value={e?.value ?? ''}
-                            onChange={(ev) =>
-                              setEdits((s) => ({
-                                ...s,
-                                [l.id]: {
-                                  mode: e?.mode ?? lineModes.at(-1)!,
-                                  value: ev.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <select
-                            aria-label={t('invoice.lineDiscountMode')}
-                            disabled={!canLineDiscount}
-                            className="h-8 rounded-lg border border-line bg-surface px-1 text-xs outline-none focus:border-brand"
-                            value={e?.mode ?? lineModes.at(-1) ?? 'amount'}
-                            onChange={(ev) =>
-                              setEdits((s) => ({
-                                ...s,
-                                [l.id]: {
-                                  mode: ev.target.value as LineDiscountMode,
-                                  value: e?.value ?? '',
-                                },
-                              }))
-                            }
-                          >
-                            {(canLineDiscount ? lineModes : (['amount'] as const)).map((m) => (
-                              <option key={m} value={m}>
-                                {m === 'percent'
-                                  ? '%'
-                                  : m === 'piece'
-                                    ? t('invoice.perPiece')
-                                    : t('invoice.onLine')}
-                              </option>
-                            ))}
-                          </select>
-                          {d > 0 && <span className="text-xs text-muted tnum">−{money(d)}</span>}
-                        </div>
-                      </td>
-                      <td className="p-2 text-end tnum">{money(grossOf(l) - d)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </TableColumns>
-        </div>
+        <AdjustEditor doc={order} value={boxes} onChange={setBoxes} rights={rights} />
+        {mayAdjust(rights) && maxDiscount !== null && (
+          <p className="text-xs text-faint">
+            {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
+          </p>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-0.5 block text-xs text-muted">{t('order.invoiceDiscount')}</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step="0.01"
-              disabled={!canDiscount}
-              className={`${field} tnum`}
-              value={invoicePct}
-              onChange={(e) => setInvoicePct(e.target.value)}
-            />
-            {(canDiscount || canLineDiscount) && maxDiscount !== null && (
-              <span className="mt-0.5 block text-xs text-faint">
-                {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>
-              </span>
-            )}
-          </label>
           <div className="rounded-[var(--radius-app)] bg-surface-2 p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">{t('order.newTotal')}</span>
@@ -310,6 +180,7 @@ export function ApproveOrderSheet({
           </label>
         )}
         {badPct && <p className="text-sm text-destructive">{t('error.bad_percent')}</p>}
+        {preview.tooBig && <p className="text-sm text-destructive">{t('charge.tooBig')}</p>}
         {approve.error && <p className="text-sm text-destructive">{errorText(t, approve.error)}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>

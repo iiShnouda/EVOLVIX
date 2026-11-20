@@ -7,7 +7,6 @@ import {
   formatDate,
   formatMoney,
   formatNumber,
-  toMajor,
   toMinor,
   type Party,
   type SalesDocument,
@@ -27,7 +26,19 @@ import {
 } from '../components/DocumentPreview';
 import { useT } from '../lib/i18n';
 import { useCan, useMayOverride } from '../lib/can';
-import { lineDiscount, lineDiscountModes, type LineDiscountMode } from '../lib/discount';
+import {
+  AdjustEditor,
+  adjustPayload,
+  adjustPreview,
+  badPercent,
+  boxesChanged,
+  boxesOf,
+  combinedShares,
+  mayAdjust,
+  useAdjustRights,
+  type AdjustBoxes,
+  type AdjustRights,
+} from '../components/AdjustEditor';
 import { errorText } from '../lib/errors';
 import { asOutput, printElement, safeName } from '../lib/print';
 import { useReportTools } from '../lib/report';
@@ -36,8 +47,7 @@ import {
   useCustomerInvoices,
   useDiscountAll,
   useLockInvoices,
-  useSetInvoiceDiscount,
-  useSetLineDiscounts,
+  useSetAdjustments,
 } from '../lib/queries';
 import { PartyLink } from '../components/PartyContact';
 import { TableColumns } from '../components/TableColumns';
@@ -48,21 +58,6 @@ const field =
 /** A discount as typed: a percent or an amount in the currency. */
 interface DiscountDraft {
   mode: 'percent' | 'amount';
-  value: string;
-}
-
-/** A charge of `doc` as a discount draft (empty when it has none). */
-function draftOf(doc: SalesDocument, kind: 'DISCOUNT' | 'EXTRA_DISCOUNT'): DiscountDraft {
-  const c = doc.charges.find((x) => x.kind === kind);
-  if (!c) return { mode: 'percent', value: '' };
-  return c.rate != null
-    ? { mode: 'percent', value: String(c.rate) }
-    : { mode: 'amount', value: String(toMajor(c.fixedAmount ?? c.amount)) };
-}
-
-/** A line's discount as typed. */
-interface LineDraft {
-  mode: LineDiscountMode;
   value: string;
 }
 
@@ -81,15 +76,9 @@ export function CustomerInvoicesPage() {
   const navigate = useNavigate();
   const { t, locale } = useT();
   const can = useCan();
-  // A percent and an amount are each their own permission (owner, 2026-11-19).
-  const discountModes = [
-    ...(can('sales:discount_pct') ? (['percent'] as const) : []),
-    ...(can('sales:discount_amount') ? (['amount'] as const) : []),
-  ];
-  const lineModes = lineDiscountModes(
-    can('sales:discount_line_pct'),
-    can('sales:discount_line_amount'),
-  );
+  // Each box is its own permission (owner, 2026-11-19); the accountant changes the discounts there
+  // are, he adds no second one (owner, 2026-11-20).
+  const rights = useAdjustRights();
   const canDiscountCombined = can('sales:discount_combined');
   const canLock = can('sales:lock');
   // `?day=` opens on that day (an invoice's own); today otherwise.
@@ -107,8 +96,7 @@ export function CustomerInvoicesPage() {
   const currency = data.data?.currency ?? 'EGP';
   const money = (v: number) => formatMoney(v, currency, locale);
 
-  const setDiscount = useSetInvoiceDiscount();
-  const setLineDiscounts = useSetLineDiscounts();
+  const setAdjustments = useSetAdjustments();
   const discountAll = useDiscountAll();
   const lock = useLockInvoices();
   const [all, setAll] = useState<DiscountDraft>({ mode: 'percent', value: '' });
@@ -218,22 +206,14 @@ export function CustomerInvoicesPage() {
                 key={doc.id}
                 doc={doc}
                 options={options}
-                discountModes={discountModes}
-                lineModes={lineModes}
-                busy={setDiscount.isPending || setLineDiscounts.isPending}
-                onLineDiscounts={(lines) => setLineDiscounts.mutate({ doc, lines })}
-                onDiscount={(d) => {
-                  const v = Number(d.value);
-                  setDiscount.mutate({
-                    doc,
-                    kind: 'DISCOUNT',
-                    ...(d.value.trim() === '' || !(v > 0)
-                      ? {}
-                      : d.mode === 'percent'
-                        ? { percent: Math.round(v * 100) / 100 }
-                        : { amount: toMinor(v) }),
-                  });
-                }}
+                rights={rights}
+                busy={setAdjustments.isPending}
+                onAdjust={(boxes) =>
+                  setAdjustments.mutateAsync({ doc, ...adjustPayload(doc, boxes) }).then(
+                    () => true,
+                    () => false,
+                  )
+                }
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
@@ -243,10 +223,8 @@ export function CustomerInvoicesPage() {
                 onToggleLock={() => lock.mutate({ ids: [doc.id], locked: !doc.locked })}
               />
             ))}
-            {(setDiscount.error || setLineDiscounts.error) && (
-              <p className="text-sm text-destructive">
-                {errorText(t, setDiscount.error ?? setLineDiscounts.error)}
-              </p>
+            {setAdjustments.error && (
+              <p className="text-sm text-destructive">{errorText(t, setAdjustments.error)}</p>
             )}
             {printing && (
               <PrintSetupSheet doc={printing} record onClose={() => setPrinting(null)} />
@@ -262,12 +240,8 @@ export function CustomerInvoicesPage() {
                 key={doc.id}
                 doc={doc}
                 options={options}
-                discountModes={[]}
-                lineModes={[]}
                 busy={false}
                 isReturn
-                onDiscount={() => undefined}
-                onLineDiscounts={() => undefined}
                 paperRef={(el) => {
                   single.current[doc.id] = el;
                 }}
@@ -308,7 +282,28 @@ export function CustomerInvoicesPage() {
               {canDiscountCombined && (
                 <div className="mt-4 space-y-2 border-t border-line pt-3">
                   <p className="text-xs font-medium text-muted">{t('together.discountAll')}</p>
+                  <p className="text-xs text-faint">{t('together.discountAllHint')}</p>
                   <DiscountInputs value={all} onChange={setAll} currency={currency} />
+                  {/* What each invoice's discount becomes, before it is given. */}
+                  {Number(all.value) > 0 && (
+                    <div className="rounded-[var(--radius-app)] bg-surface-2 p-2 text-xs">
+                      <p className="mb-1 font-medium text-muted">{t('together.discountAllEach')}</p>
+                      <ul className="space-y-0.5">
+                        {combinedShares(invoices, all.mode, all.value).map((x) => {
+                          const d = invoices.find((i) => i.id === x.id)!;
+                          return (
+                            <li key={x.id} className="flex justify-between gap-2 tnum">
+                              <span>
+                                {d.number}
+                                {x.percent != null && ` (${formatNumber(x.percent, locale)}%)`}
+                              </span>
+                              <span className="text-warning">−{money(x.amount)}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -423,11 +418,9 @@ export function CustomerInvoicesPage() {
 function InvoiceCard({
   doc,
   options,
-  discountModes,
-  lineModes,
+  rights,
   busy,
-  onDiscount,
-  onLineDiscounts,
+  onAdjust,
   onPrint,
   paperRef,
   isReturn,
@@ -438,12 +431,11 @@ function InvoiceCard({
   doc: SalesDocument;
   isReturn?: boolean;
   options: PaperOptions;
-  /** The ways this person may give the invoice's discount, and an item's. */
-  discountModes: DiscountDraft['mode'][];
-  lineModes: LineDiscountMode[];
+  /** The boxes this person may change; none on a return. */
+  rights?: AdjustRights;
   busy: boolean;
-  onDiscount: (d: DiscountDraft) => void;
-  onLineDiscounts: (lines: { lineId: string; discount: number; percent?: number }[]) => void;
+  /** Saves the boxes; true once saved. */
+  onAdjust?: (boxes: AdjustBoxes) => Promise<boolean>;
   onPrint?: () => void;
   paperRef: (el: HTMLDivElement | null) => void;
   canLock?: boolean;
@@ -453,45 +445,13 @@ function InvoiceCard({
   const { t, locale } = useT();
   const owner = useMayOverride();
   const [open, setOpen] = useState(false);
-  const [discounting, setDiscounting] = useState(false);
-  const canDiscount = discountModes.length > 0;
-  const canLineDiscount = lineModes.length > 0;
-  const [draft, setDraft] = useState<DiscountDraft>(() => {
-    const d = draftOf(doc, 'DISCOUNT');
-    return discountModes.includes(d.mode) ? d : { mode: discountModes[0] ?? 'percent', value: '' };
-  });
-  // Each item's discount as typed, from what it has when the discount is opened.
-  const [lineDrafts, setLineDrafts] = useState<Record<string, LineDraft>>({});
+  // The discounts it has, filled in when opened (owner, 2026-11-20): changed in place.
+  const [boxes, setBoxes] = useState<AdjustBoxes | null>(null);
+  const canAdjust = !isReturn && !!rights && mayAdjust(rights) && !!onAdjust;
   const status = statusOf(doc);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
-  const items = doc.lines.filter((l) => !l.isBonus);
-  // With its own increase; its share of the invoice's increase is shared out again.
-  const grossOf = (l: SalesDocument['lines'][number]) =>
-    l.lineTotal + l.discount - (l.docIncrease ?? 0);
-  const newLineDiscount = (l: SalesDocument['lines'][number]) => {
-    const d = lineDrafts[l.id];
-    return d
-      ? lineDiscount(d.mode, d.value, grossOf(l), l.quantity, grossOf(l) - (l.increase ?? 0))
-      : l.discount;
-  };
-  const changedLines = items.filter((l) => newLineDiscount(l) !== l.discount);
-  function openDiscount() {
-    if (!discounting)
-      setLineDrafts(
-        Object.fromEntries(
-          items.map((l) => [
-            l.id,
-            l.discountRate && lineModes.includes('percent')
-              ? { mode: 'percent', value: String(l.discountRate) }
-              : l.discount > 0 && lineModes.includes('amount')
-                ? { mode: 'amount', value: String(toMajor(l.discount)) }
-                : { mode: lineModes[0] ?? 'amount', value: '' },
-          ]),
-        ),
-      );
-    setDiscounting((d) => !d);
-  }
+  const bad = boxes ? badPercent(boxes) : false;
   return (
     <Card padded={false} className={`overflow-hidden ${isReturn ? 'border-destructive/40' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
@@ -524,9 +484,13 @@ function InvoiceCard({
         <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)}>
           {t(open ? 'together.hideItems' : 'together.showItems')} ({doc.lines.length})
         </Button>
-        {(canDiscount || canLineDiscount) && (!locked || owner) && (
-          <Button size="sm" variant="secondary" onClick={openDiscount}>
-            {t('invoice.addDiscount')}
+        {canAdjust && (!locked || owner) && (
+          <Button
+            size="sm"
+            variant={boxes ? 'primary' : 'secondary'}
+            onClick={() => setBoxes((b) => (b ? null : boxesOf(doc)))}
+          >
+            {t('together.editDiscounts')}
           </Button>
         )}
         {canLock && onToggleLock && (
@@ -545,120 +509,81 @@ function InvoiceCard({
           </Button>
         )}
       </div>
-      {discounting && canLineDiscount && items.length > 0 && (
-        <div className="border-t border-line p-3">
-          <p className="mb-1 text-xs font-medium text-muted">{t('together.itemsDiscount')}</p>
-          <ul className="divide-y divide-[var(--c-line)]">
-            {items.map((l) => {
-              const d = lineDrafts[l.id] ?? { mode: lineModes[0] ?? 'amount', value: '' };
-              const off = newLineDiscount(l);
-              return (
-                <li key={l.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">
-                      <ItemLink id={l.productId} name={l.productName} truncate />
-                    </span>
-                    <span className="text-xs text-muted tnum">
-                      {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName} ×{' '}
-                      {money(l.unitPrice)}
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      inputMode="decimal"
-                      className={`${field} w-24 tnum`}
-                      aria-label={t('invoice.lineDiscount')}
-                      placeholder="0"
-                      value={d.value}
-                      onChange={(e) =>
-                        setLineDrafts((s) => ({ ...s, [l.id]: { ...d, value: e.target.value } }))
-                      }
-                    />
-                    <select
-                      className={`${field} px-1.5`}
-                      aria-label={t('invoice.lineDiscountMode')}
-                      value={d.mode}
-                      onChange={(e) =>
-                        setLineDrafts((s) => ({
-                          ...s,
-                          [l.id]: { ...d, mode: e.target.value as LineDiscountMode },
-                        }))
-                      }
-                    >
-                      {lineModes.map((m) => (
-                        <option key={m} value={m}>
-                          {m === 'percent'
-                            ? '%'
-                            : m === 'piece'
-                              ? t('invoice.perPiece')
-                              : t('invoice.onLine')}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                  <span className="w-28 text-end tnum">
-                    {off > 0 && <span className="block text-xs text-warning">−{money(off)}</span>}
-                    {money(grossOf(l) - off)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <Button
-            size="sm"
-            className="mt-2"
-            loading={busy}
-            disabled={changedLines.length === 0}
-            onClick={() => {
-              onLineDiscounts(
-                changedLines.map((l) =>
-                  lineDrafts[l.id]?.mode === 'percent'
-                    ? {
-                        lineId: l.id,
-                        discount: 0,
-                        percent: Math.round((Number(lineDrafts[l.id]!.value) || 0) * 100) / 100,
-                      }
-                    : { lineId: l.id, discount: newLineDiscount(l) },
-                ),
-              );
-              setDiscounting(false);
-            }}
-          >
-            {t('together.apply')}
-          </Button>
-        </div>
-      )}
-      {discounting && canDiscount && (
-        <div className="border-t border-line p-3">
-          <p className="mb-1 text-xs font-medium text-muted">{t('together.invoiceDiscount')}</p>
-          <div className="flex flex-wrap items-end gap-2">
-            <DiscountInputs
-              value={draft}
-              onChange={setDraft}
-              currency={doc.currency}
-              modes={discountModes}
-            />
-            <Button
-              size="sm"
-              loading={busy}
-              onClick={() => {
-                onDiscount(draft);
-                setDiscounting(false);
-              }}
-            >
-              {t('together.apply')}
-            </Button>
-          </div>
-        </div>
+      {boxes && rights && onAdjust && (
+        <AdjustCard
+          doc={doc}
+          boxes={boxes}
+          onChange={setBoxes}
+          rights={rights}
+          busy={busy}
+          bad={bad}
+          onCancel={() => setBoxes(null)}
+          onSave={() => void onAdjust(boxes).then((saved) => saved && setBoxes(null))}
+        />
       )}
       {/* The invoice as it prints; its items show when opened. */}
       <div className={open ? 'border-t border-line' : 'hidden'}>
         <InvoicePaper ref={paperRef} doc={doc} options={options} />
       </div>
     </Card>
+  );
+}
+
+/** The discounts of one invoice being changed: the boxes, the new total, save or leave. */
+function AdjustCard({
+  doc,
+  boxes,
+  onChange,
+  rights,
+  busy,
+  bad,
+  onCancel,
+  onSave,
+}: {
+  doc: SalesDocument;
+  boxes: AdjustBoxes;
+  onChange: (b: AdjustBoxes) => void;
+  rights: AdjustRights;
+  busy: boolean;
+  bad: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const { t, locale } = useT();
+  const money = (v: number) => formatMoney(v, doc.currency, locale);
+  const preview = adjustPreview(doc, boxes);
+  const changed = boxesChanged(doc, boxes);
+  return (
+    <div className="space-y-3 border-t border-line p-3">
+      <AdjustEditor doc={doc} value={boxes} onChange={onChange} rights={rights} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm">
+          <span className="text-muted">{t('order.newTotal')}: </span>
+          <span className="font-semibold tnum">{money(preview.total)}</span>
+          {preview.total !== doc.grandTotal && (
+            <span className="ms-2 text-xs text-faint line-through tnum">
+              {money(doc.grandTotal)}
+            </span>
+          )}
+        </span>
+        <span className="ms-auto flex gap-2">
+          <Button size="sm" variant="ghost" onClick={onCancel}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            size="sm"
+            icon="check"
+            loading={busy}
+            disabled={!changed || bad || preview.tooBig}
+            onClick={onSave}
+          >
+            {t('common.save')}
+          </Button>
+        </span>
+      </div>
+      {bad && <p className="text-xs text-destructive">{t('error.bad_percent')}</p>}
+      {preview.tooBig && <p className="text-xs text-destructive">{t('charge.tooBig')}</p>}
+    </div>
   );
 }
 
@@ -836,7 +761,7 @@ function CombinedPaper({
       {doc.charges
         .filter((c) => c.amount !== 0)
         .map((c, i) => {
-          const off = c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT';
+          const off = c.kind === 'DISCOUNT';
           return (
             <div key={i} className="flex justify-between border-t border-line px-2.5 py-1 text-xs">
               <span className="text-muted">

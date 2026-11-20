@@ -3226,10 +3226,46 @@ export interface ApproveOrderInput {
   /** New discount per line (minor units, the whole line); lines left out keep theirs. */
   /** A line's new discount: an amount for the line, or a `percent` of it (each its own permission). */
   lineDiscounts?: { lineId: string; discount: number; percent?: number }[];
-  /** New invoice discounts (DISCOUNT / EXTRA_DISCOUNT); left out = keep them. */
+  /** New invoice discounts (DISCOUNT only: an invoice has one; owner, 2026-11-20); left out = keep them. */
   charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
+  /** Every box of these lines as the approver leaves them (in place of `lineDiscounts`). */
+  lines?: LineAdjustments[];
+  /** The invoice's own increase and discount as the approver leaves them (in place of `charges`). */
+  invoice?: InvoiceAdjustInput;
   notes?: string;
   overrideFloor?: boolean;
+}
+
+/**
+ * A line's own increase and discount as the accountant leaves them (owner, 2026-11-20): every box
+ * as typed — a percent, an amount for the line, an amount a piece (minor units; empty = none).
+ */
+export interface LineAdjustments {
+  lineId: string;
+  discountPercent?: number;
+  discountAmount?: number;
+  discountPerPiece?: number;
+  increasePercent?: number;
+  increaseAmount?: number;
+  increasePerPiece?: number;
+}
+
+/** The invoice's own increase and discount: a percent and an amount of each (empty = none). */
+export interface InvoiceAdjustInput {
+  discountPercent?: number;
+  discountAmount?: number;
+  increasePercent?: number;
+  increaseAmount?: number;
+}
+
+/**
+ * POST /sales/invoices/{id}/adjust (or orders/{id}): the accountant changes the discounts there are
+ * (and, with their permissions, the increases) in place; there is no second discount.
+ */
+export interface SetAdjustmentsInput {
+  lines?: LineAdjustments[];
+  /** Left out = the invoice's own stay. */
+  invoice?: InvoiceAdjustInput;
 }
 
 /**

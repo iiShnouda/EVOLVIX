@@ -135,12 +135,6 @@ const keepLine = (l: Line) => ({
   adj: l.adj,
 });
 
-/** An invoice discount as typed: a percent or an amount. */
-interface DiscountInput {
-  mode: 'percent' | 'amount';
-  value: string;
-}
-
 const field =
   'h-9 w-full rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand disabled:bg-surface-2';
 
@@ -194,9 +188,6 @@ export function InvoiceBuilderPage({
   const canPriceBasis = can('sales:price_basis');
   // The customer's shipping company and address are theirs unless this person may change them.
   const canChangeShipping = can('sales:change_shipping');
-  // An invoice being changed: its discounts may be changed by whoever gives that kind (owner,
-  // 2026-11-10); a new invoice still has none.
-  const editing = !!editId && !readOnly;
   // A discount or an increase, on an item or the whole invoice, as a percent or an amount (on an
   // item, a piece's too): each box shows for whoever holds its permission, on a new invoice too
   // (owner, 2026-11-19). An amount a piece is an amount.
@@ -218,9 +209,6 @@ export function InvoiceBuilderPage({
       dPc: false,
     },
   };
-  const canEditExtra =
-    editing &&
-    (can('sales:discount_pct') || can('sales:discount_amount') || can('sales:discount_combined'));
   // Order of the line columns, kept per person.
   const [columnOrder, setColumnOrder] = useHiddenColumns('order.invoice.sale');
   const [cashAccountId, setCashAccountId] = useState('');
@@ -440,7 +428,6 @@ export function InvoiceBuilderPage({
   // The invoice's own increase and discount as typed; its second discount (the accountant's, or one
   // over several invoices) as a changed invoice has it.
   const [invoiceAdj, setInvoiceAdj] = useState<Adj>(NO_ADJ);
-  const [discount2, setDiscount2] = useState<DiscountInput>({ mode: 'amount', value: '' });
   const [overrideFloor, setOverrideFloor] = useState(false);
   const [notes, setNotes] = useState('');
 
@@ -664,14 +651,6 @@ export function InvoiceBuilderPage({
   // Invoice charges, in the same order and with the same rounding as the server.
   const round2 = (v: string) => Math.round(Number(v) * 100) / 100;
   const chargeInputs: ChargeInput[] = [];
-  const pushDiscount = (kind: ChargeKind, d: DiscountInput) => {
-    if (d.value.trim() === '' || !(Number(d.value) > 0)) return;
-    chargeInputs.push(
-      d.mode === 'percent'
-        ? { kind, percent: round2(d.value) }
-        : { kind, amount: toMinor(Number(d.value)) },
-    );
-  };
   // The invoice's increase, then its discount, each a percent and/or an amount (in that order).
   if (pctOf(invoiceAdj.iPct) > 0)
     chargeInputs.push({ kind: 'INCREASE', percent: pctOf(invoiceAdj.iPct) });
@@ -681,7 +660,6 @@ export function InvoiceBuilderPage({
     chargeInputs.push({ kind: 'DISCOUNT', percent: pctOf(invoiceAdj.dPct) });
   if (amtOf(invoiceAdj.dAmt) > 0)
     chargeInputs.push({ kind: 'DISCOUNT', amount: amtOf(invoiceAdj.dAmt) });
-  pushDiscount('EXTRA_DISCOUNT', discount2);
   if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
   const outcome = applyCharges(
     pre.map((p) => p.lineTotal),
@@ -984,15 +962,6 @@ export function InvoiceBuilderPage({
         carrierId: doc.carrierId ?? '',
       });
       setNotes(doc.notes ?? '');
-      const asInput = (kind: ChargeKind): DiscountInput | null => {
-        const c = doc.charges.find((x) => x.kind === kind);
-        if (!c) return null;
-        return c.rate != null
-          ? { mode: 'percent', value: String(c.rate) }
-          : { mode: 'amount', value: String(toMajor(c.fixedAmount ?? c.amount)) };
-      };
-      const d2 = asInput('EXTRA_DISCOUNT');
-      if (d2) setDiscount2(d2);
       // Its own increase and discount, each a percent and an amount.
       const typed = (kind: ChargeKind, rate: boolean) => {
         const c = doc.charges.find((x) => x.kind === kind && (x.rate != null) === rate);
@@ -2370,13 +2339,6 @@ export function InvoiceBuilderPage({
                 {/* The invoice's increase, then its discount (owner, 2026-11-19). */}
                 {invoiceAdjRow('i')}
                 {invoiceAdjRow('d')}
-                <KeptDiscount
-                  label={t('charge.EXTRA_DISCOUNT')}
-                  value={discount2}
-                  onChange={canEditExtra ? setDiscount2 : undefined}
-                  amount={outcome.rows.find((c) => c.kind === 'EXTRA_DISCOUNT')?.amount ?? 0}
-                  currency={currency}
-                />
                 {(outcome.discount > 0 || outcome.increase > 0) && (
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
                 )}
@@ -2527,66 +2489,6 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <dt className="text-muted">{label}</dt>
       <dd className={`tnum ${strong ? 'text-base font-semibold' : ''}`}>{value}</dd>
     </div>
-  );
-}
-
-/**
- * An invoice discount a changed invoice already has: its percent (if one) and what it comes to.
- * With `onChange` (whoever may give it), typed here: a percent or an amount, empty = none.
- */
-function KeptDiscount({
-  label,
-  value,
-  onChange,
-  amount,
-  currency,
-}: {
-  label: string;
-  value: DiscountInput;
-  onChange?: (v: DiscountInput) => void;
-  amount: number;
-  currency: string;
-}) {
-  const { locale } = useT();
-  if (onChange)
-    return (
-      <div className="flex items-center justify-between gap-2">
-        <dt className="min-w-0 text-muted">{label}</dt>
-        <dd className="flex shrink-0 items-center gap-1">
-          {amount > 0 && (
-            <span className="text-xs text-warning tnum">
-              −{formatMoney(amount, currency, locale)}
-            </span>
-          )}
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            className={`${field} !h-8 !w-20 tnum`}
-            aria-label={label}
-            placeholder="0"
-            value={value.value}
-            onChange={(e) => onChange({ ...value, value: e.target.value })}
-          />
-          <select
-            className={`${field} !h-8 !w-auto px-1`}
-            aria-label={label}
-            value={value.mode}
-            onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountInput['mode'] })}
-          >
-            <option value="percent">%</option>
-            <option value="amount">{currency}</option>
-          </select>
-        </dd>
-      </div>
-    );
-  if (!value.value) return null;
-  return (
-    <Row
-      label={value.mode === 'percent' ? `${label} (${value.value}%)` : label}
-      value={`−${formatMoney(amount, currency, locale)}`}
-    />
   );
 }
 

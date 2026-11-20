@@ -99,6 +99,7 @@ import type {
   ProfitReport,
   SalesDocument,
   SetLineDiscountsInput,
+  SetAdjustmentsInput,
   DocumentList,
   UnitOfMeasure,
   PriceLevel,
@@ -595,7 +596,7 @@ export function useSetInvoiceDiscount() {
       doc: Pick<SalesDocument, 'id' | 'type'>;
       percent?: number;
       amount?: number;
-      kind?: 'DISCOUNT' | 'EXTRA_DISCOUNT';
+      kind?: 'DISCOUNT';
     }) =>
       api.post<SalesDocument>(
         `/sales/${doc.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${doc.id}/discount`,
@@ -621,7 +622,29 @@ export function useSetLineDiscounts() {
   });
 }
 
-/** One discount shared over several invoices of a customer. */
+/**
+ * The accountant changes an invoice's discounts (and, with their permissions, its increases) in
+ * place (owner, 2026-11-20): every box of its lines and its own, as he leaves them.
+ */
+export function useSetAdjustments() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      doc,
+      ...input
+    }: { doc: Pick<SalesDocument, 'id' | 'type'> } & SetAdjustmentsInput) =>
+      api.post<SalesDocument>(
+        `/sales/${doc.type === 'SALES_ORDER' ? 'orders' : 'invoices'}/${doc.id}/adjust`,
+        input,
+      ),
+    onSuccess: () => invalidateAfterPosting(qc, 'sales'),
+  });
+}
+
+/**
+ * One discount on a customer's combined invoices: it becomes each one's own discount (a percent on
+ * each, an amount shared by what their items come to; owner, 2026-11-20).
+ */
 export function useDiscountAll() {
   const qc = useQueryClient();
   return useMutation({
