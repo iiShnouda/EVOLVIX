@@ -22,6 +22,7 @@ import {
 import { Button, Card, PageHeader, Spinner } from '../components/ui';
 import { PrintSetupSheet } from '../components/DocumentPreview';
 import { DocumentActivity } from '../components/DocumentActivity';
+import { IncreaseDetails, IncreasesToggle, useIncreaseView } from '../components/Increases';
 import { Icon } from '../components/Icon';
 import { MoneyAccountPicker } from '../components/MoneyAccountPicker';
 import { PartyPicker } from '../components/PartyPicker';
@@ -210,6 +211,15 @@ export function InvoiceBuilderPage({
       dPc: can('sales:discount_amount'),
     },
   };
+  // An increase is discreet (owner, 2026-11-20: the customer may be looking at the screen): prices show
+  // with it in, and its boxes and amounts only behind the eye — for whoever may give one (to type it)
+  // or see them (with who gave each).
+  const increaseView = useIncreaseView(
+    !readOnly &&
+      (Object.entries(may.line).some(([k, v]) => k[0] === 'i' && v) ||
+        Object.entries(may.invoice).some(([k, v]) => k[0] === 'i' && v)),
+  );
+  const showUp = increaseView.shown;
   // Order of the line columns, kept per person.
   const [columnOrder, setColumnOrder] = useHiddenColumns('order.invoice.sale');
   const [cashAccountId, setCashAccountId] = useState('');
@@ -1361,7 +1371,15 @@ export function InvoiceBuilderPage({
     );
   const priceInput = (r: Row, base = field) =>
     !isOpen(r.line.key) ? (
-      <span className="block py-1.5 text-sm tnum">{plain.format(toMajor(r.price))}</span>
+      <span className="block py-1.5 text-sm tnum">
+        {plain.format(
+          toMajor(
+            showUp || r.line.bonus || r.line.quantity <= 0 || r.increase + r.docIncrease === 0
+              ? r.price
+              : Math.round((shownTotal(r) + r.discount) / r.line.quantity),
+          ),
+        )}
+      </span>
     ) : (
       <input
         type="number"
@@ -1412,12 +1430,12 @@ export function InvoiceBuilderPage({
           {t('invoice.listPrice')}: {formatMoney(listPriceOf(r.line, r.index), currency, locale)}
         </span>
       )}
-      {isPhone && r.increase > 0 && (
+      {showUp && isPhone && r.increase > 0 && (
         <span className="text-positive">
           {t('col.increase')}: +{formatMoney(r.increase, currency, locale)}
         </span>
       )}
-      {r.docIncrease > 0 && (
+      {showUp && r.docIncrease > 0 && (
         <span>
           {t('invoice.shareIncrease')}: +{formatMoney(r.docIncrease, currency, locale)}
         </span>
@@ -1487,7 +1505,10 @@ export function InvoiceBuilderPage({
   };
   /** A box shows for whoever may use it, and wherever a line has it. */
   const showsBox = (k: keyof Adj) =>
-    (may.line[k] && !readOnly) || lines.some((l) => !l.bonus && (l.adj?.[k] ?? '').trim() !== '');
+    (k[0] !== 'i' || showUp) &&
+    ((may.line[k] && !readOnly) || lines.some((l) => !l.bonus && (l.adj?.[k] ?? '').trim() !== ''));
+  /** What a line shows: with its increase and its share of the invoice's in it while they are hidden. */
+  const shownTotal = (r: Row) => r.lineTotal + (showUp ? 0 : r.docIncrease);
 
   /**
    * The invoice's increase (`i`) or discount (`d`) in the totals: what it comes to, and its percent,
@@ -1686,7 +1707,7 @@ export function InvoiceBuilderPage({
       key: 'beforeDiscount',
       label: t('col.beforeDiscount'),
       end: true,
-      cell: (r) => plain.format(toMajor(r.gross + r.increase)),
+      cell: (r) => plain.format(toMajor(shownTotal(r) + r.discount)),
     },
     ...when(showsBox('dPct'), {
       key: 'discountPct',
@@ -1715,7 +1736,7 @@ export function InvoiceBuilderPage({
       key: 'afterDiscount',
       label: t('col.afterDiscount'),
       end: true,
-      cell: (r) => <span className="font-semibold">{plain.format(toMajor(r.lineTotal))}</span>,
+      cell: (r) => <span className="font-semibold">{plain.format(toMajor(shownTotal(r)))}</span>,
     },
     ...when(seeProfit, {
       key: 'profit',
@@ -2335,22 +2356,30 @@ export function InvoiceBuilderPage({
                           <div
                             className={`${field} grid items-center tnum ${seeProfit ? (r.lineProfit < 0 ? 'text-destructive' : 'text-positive') : ''}`}
                           >
-                            {formatMoney(seeProfit ? r.lineProfit : r.lineTotal, currency, locale)}
+                            {formatMoney(
+                              seeProfit ? r.lineProfit : shownTotal(r),
+                              currency,
+                              locale,
+                            )}
                           </div>
                         </div>
                       </div>
-                      {!r.line.bonus && isOpen(r.line.key) && ADJ_KEYS.some((k) => may.line[k]) && (
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          {ADJ_KEYS.filter((k) => may.line[k]).map((k) => (
-                            <label key={k} className="flex flex-col justify-end">
-                              <span className="mb-0.5 block text-xs text-muted">
-                                {t(ADJ_LABEL[k])}
-                              </span>
-                              {adjBox(r, k, `${field} tnum`)}
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                      {!r.line.bonus &&
+                        isOpen(r.line.key) &&
+                        ADJ_KEYS.some((k) => may.line[k] && (k[0] !== 'i' || showUp)) && (
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            {ADJ_KEYS.filter((k) => may.line[k] && (k[0] !== 'i' || showUp)).map(
+                              (k) => (
+                                <label key={k} className="flex flex-col justify-end">
+                                  <span className="mb-0.5 block text-xs text-muted">
+                                    {t(ADJ_LABEL[k])}
+                                  </span>
+                                  {adjBox(r, k, `${field} tnum`)}
+                                </label>
+                              ),
+                            )}
+                          </div>
+                        )}
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted tnum">
                         {lineNotes(r)}
                         {lineDiscountCell(r)}
@@ -2367,18 +2396,29 @@ export function InvoiceBuilderPage({
           {/* Right: summary */}
           <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             <Card>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-                {t('common.total')}
-              </h2>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                  {t('common.total')}
+                </h2>
+                {increaseView.available && (
+                  <IncreasesToggle on={showUp} onChange={increaseView.setShown} />
+                )}
+              </div>
+              {showUp && increaseView.may && viewed && (
+                <div className="mb-3">
+                  <IncreaseDetails doc={viewed} />
+                </div>
+              )}
               <dl className="space-y-1.5 text-sm">
                 <Row
                   label={t('invoice.subtotal')}
-                  value={formatMoney(subtotal, currency, locale)}
+                  value={formatMoney(subtotal + (showUp ? 0 : outcome.increase), currency, locale)}
                 />
-                {/* The invoice's increase, then its discount (owner, 2026-11-19). */}
-                {invoiceAdjRow('i')}
+                {/* The invoice's increase, then its discount (owner, 2026-11-19); the increase
+                    only behind the eye (owner, 2026-11-20). */}
+                {showUp && invoiceAdjRow('i')}
                 {invoiceAdjRow('d')}
-                {(outcome.discount > 0 || outcome.increase > 0) && (
+                {(outcome.discount > 0 || (showUp && outcome.increase > 0)) && (
                   <Row label={t('charge.net')} value={formatMoney(netTotal, currency, locale)} />
                 )}
                 {tax > 0 && (

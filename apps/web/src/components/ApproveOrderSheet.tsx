@@ -17,6 +17,7 @@ import {
   useAdjustRights,
   type AdjustBoxes,
 } from './AdjustEditor';
+import { IncreaseDetails, IncreasesToggle, useIncreaseView } from './Increases';
 import { errorText } from '../lib/errors';
 import { useApproveOrder } from '../lib/queries';
 import { useAuth } from '../stores/auth';
@@ -48,6 +49,8 @@ export function ApproveOrderSheet({
   // The discounts it has, filled in (owner, 2026-11-20): the accountant changes them in place, each
   // box with its permission, within his limit (the server checks).
   const rights = useAdjustRights();
+  // The increases and who gave them, behind the eye (owner, 2026-11-20).
+  const increases = useIncreaseView();
   const [boxes, setBoxes] = useState<AdjustBoxes>(() => boxesOf(order));
   const money = (v: number) => formatMoney(v, order.currency, locale);
   const [paid, setPaid] = useState('');
@@ -124,12 +127,22 @@ export function ApproveOrderSheet({
       wide
     >
       <div className="space-y-3">
-        <p className="text-sm text-muted">
-          <CodeName code={order.partyCode} name={order.partyName} />
-          {order.departmentName && <> · {order.departmentName}</>} · {order.staffName}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-muted">
+            <CodeName code={order.partyCode} name={order.partyName} />
+            {order.departmentName && <> · {order.departmentName}</>} · {order.staffName}
+          </p>
+          {increases.may && <IncreasesToggle on={increases.shown} onChange={increases.setShown} />}
+        </div>
+        {increases.shown && <IncreaseDetails doc={order} />}
 
-        <AdjustEditor doc={order} value={boxes} onChange={setBoxes} rights={rights} />
+        <AdjustEditor
+          doc={order}
+          value={boxes}
+          onChange={setBoxes}
+          rights={rights}
+          showIncreases={increases.shown}
+        />
         {mayAdjust(rights) && maxDiscount !== null && (
           <p className="text-xs text-faint">
             {t('invoice.discountLimit')}: <span className="tnum">{maxDiscount}%</span>

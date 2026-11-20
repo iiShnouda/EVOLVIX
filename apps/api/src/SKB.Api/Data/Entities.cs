@@ -959,6 +959,13 @@ public class DocumentLine
     public long? IncreaseFixed { get; set; }
     public long? IncreasePieceFixed { get; set; }
     /// <summary>
+    /// Who gave the line's increase (owner, 2026-11-20): the staff member who typed it (on the invoice,
+    /// a change to it, or the accountant's boxes), kept while it stays as typed. Shown only to whoever
+    /// may see increases; the customer never sees an increase.
+    /// </summary>
+    public Guid? IncreaseById { get; set; }
+    public string? IncreaseByName { get; set; }
+    /// <summary>
     /// The line's discount as typed on the invoice: a percent (basis points) of UnitQuantity × UnitPrice
     /// (the increase's base: they net out, owner 2026-11-19), an amount, and an amount a piece. All null
     /// when it is a quantity discount or one given as a plain amount.
@@ -1294,6 +1301,9 @@ public class DocumentCharge
     /// quantities when the invoice changes. Null for a rate or a fixed amount.
     /// </summary>
     public long? PieceFixed { get; set; }
+    /// <summary>Who typed it (an increase's giver is shown to whoever may see increases; owner, 2026-11-20).</summary>
+    public Guid? ById { get; set; }
+    public string? ByName { get; set; }
     /// <summary>What it came to (minor units, always ≥ 0; discounts are subtracted).</summary>
     public long Amount { get; set; }
     public string? Label { get; set; }

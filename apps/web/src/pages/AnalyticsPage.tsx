@@ -17,6 +17,7 @@ import { AssortmentTab } from './AssortmentTab';
 import { SeasonCompareTab } from './SeasonCompareTab';
 import { PurchaseSuggestionsTab } from './PurchaseSuggestionsTab';
 import { ReturnsReportTab } from './ReturnsReportTab';
+import { IncreasesReportTab } from './IncreasesReportTab';
 import { ProfitLossTab } from '../components/ProfitLossView';
 import { ReportActions } from '../components/ReportActions';
 import { LedgerStatementSheet } from '../components/LedgerStatementSheet';
@@ -49,6 +50,7 @@ type Tab =
   | 'seasons'
   | 'buy'
   | 'returns'
+  | 'increases'
   | 'changes';
 /** Each report is a permission of its own (owner, 2026-10-23). */
 const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
@@ -67,6 +69,7 @@ const TABS: { key: Tab; label: TranslationKey; permission: Permission }[] = [
     permission: 'reports:purchase_suggestions',
   },
   { key: 'returns', label: 'analytics.tabReturns', permission: 'reports:returns' },
+  { key: 'increases', label: 'analytics.tabIncreases', permission: 'sales:see_increases' },
   { key: 'changes', label: 'changes.title', permission: 'reports:changes' },
 ];
 const small =
@@ -116,6 +119,7 @@ export function AnalyticsPage() {
       {tab === 'seasons' && <SeasonCompareTab />}
       {tab === 'buy' && <PurchaseSuggestionsTab />}
       {tab === 'returns' && <ReturnsReportTab />}
+      {tab === 'increases' && <IncreasesReportTab />}
       {tab === 'changes' && <ChangesTab />}
     </div>
   );

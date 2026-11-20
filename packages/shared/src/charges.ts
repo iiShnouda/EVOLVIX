@@ -44,6 +44,8 @@ export interface DocumentCharge {
   fixedAmount?: number | null;
   /** An amount a piece, as typed (minor units); `amount` is it times the invoice's pieces. */
   perPiece?: number | null;
+  /** Who typed an increase (only to whoever may see increases; owner, 2026-11-20). */
+  by?: string | null;
   /** What it came to, minor units. */
   amount: number;
   label?: string | null;
@@ -203,4 +205,57 @@ export function lineAdjust(gross: number, pieces: number, a: LineAdjustInput): n
     Math.max(0, a.amount ?? 0) +
     Math.max(0, a.perPiece ?? 0) * pieces
   );
+}
+
+/** What a line of a sales document needs to fold its increase into its price. */
+interface FoldableLine {
+  unitPrice: number;
+  lineTotal: number;
+  discount: number;
+  quantity: number;
+  unitQuantity: number;
+  isBonus: boolean;
+  increase?: number | null;
+  docIncrease?: number | null;
+  increaseRate?: number | null;
+  increaseFixed?: number | null;
+  increasePiece?: number | null;
+  increaseBy?: string | null;
+}
+
+/**
+ * The price a line unit shows with its increase in it (as the server's `Increases.Shown`): what the
+ * line comes to before its own discount, over its quantity, rounded to the piastre.
+ */
+export function shownPrice(l: FoldableLine): number {
+  const added = (l.increase ?? 0) + (l.docIncrease ?? 0);
+  const qty = l.unitQuantity || l.quantity;
+  return added !== 0 && qty > 0 && !l.isBonus
+    ? Math.round((l.lineTotal + l.discount) / qty)
+    : l.unitPrice;
+}
+
+/**
+ * A document as the customer sees it (owner, 2026-11-20): an increase never shows. Each line's
+ * increase and its share of the invoice's go into its price — its total exactly as it is, so the lines
+ * and the totals still add up to the invoice's total — and the invoice's increase rows go. Discounts
+ * stay. The server sends documents folded this way to whoever may not see increases.
+ */
+export function foldIncreases<D extends { lines: FoldableLine[]; charges: DocumentCharge[] }>(
+  doc: D,
+): D {
+  return {
+    ...doc,
+    lines: doc.lines.map((l) => ({
+      ...l,
+      unitPrice: shownPrice(l),
+      increase: 0,
+      docIncrease: 0,
+      increaseRate: null,
+      increaseFixed: null,
+      increasePiece: null,
+      increaseBy: null,
+    })),
+    charges: doc.charges.filter((c) => c.kind !== 'INCREASE'),
+  } as D;
 }

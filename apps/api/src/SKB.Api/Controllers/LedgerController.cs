@@ -333,7 +333,10 @@ public sealed class LedgerController : ControllerBase
                 .GroupBy(l => l.DocumentId)
                 .ToDictionary(g => g.Key, g => g.Select(l => new StatementItemDto(l.ProductName,
                     l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.Unit is null ? null : Loc.Name(l.Unit),
-                    l.UnitPrice, l.Discount, l.LineTotal, l.IsBonus)).ToArray());
+                    // A customer's statement never shows an increase: it is in the price (owner, 2026-11-20).
+                    Increases.Shown(l.UnitPrice, l.LineTotal, l.Discount, l.Increase + l.DocIncrease,
+                        l.UnitQuantity > 0 ? l.UnitQuantity : l.Quantity, l.IsBonus),
+                    l.Discount, l.LineTotal, l.IsBonus)).ToArray());
 
         // An invoice paid on the spot has two lines here; its items go under the first only.
         var listed = new HashSet<Guid>();

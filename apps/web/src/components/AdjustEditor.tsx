@@ -5,6 +5,7 @@ import {
   formatNumber,
   lineAdjust,
   percentOf,
+  shownPrice,
   toMajor,
   toMinor,
   chargeInputOf,
@@ -325,11 +326,17 @@ export function AdjustEditor({
   value,
   onChange,
   rights,
+  showIncreases = false,
 }: {
   doc: SalesDocument;
   value: AdjustBoxes;
   onChange: (v: AdjustBoxes) => void;
   rights: AdjustRights;
+  /**
+   * The increases show only when asked (owner, 2026-11-20: the customer may be looking): else the
+   * prices show with them in, and their boxes stay as they are.
+   */
+  showIncreases?: boolean;
 }) {
   const { t, locale } = useT();
   const money = (v: number) => formatMoney(v, doc.currency, locale);
@@ -337,13 +344,20 @@ export function AdjustEditor({
   const lines = pricedLines(doc);
   // Increases show where there are some, or for whoever may give them.
   const mayLineIncrease = rights.line.iPct || rights.line.iAmt;
-  const lineIncreases = mayLineIncrease || lines.some((l) => (l.increase ?? 0) > 0);
+  const lineIncreases =
+    showIncreases && (mayLineIncrease || lines.some((l) => (l.increase ?? 0) > 0));
+  // Each line's share of the invoice's increase, shown in its total while the increases are hidden.
+  const shareOf = (id: string) =>
+    showIncreases
+      ? 0
+      : (preview.outcome.increaseAllocation[doc.lines.findIndex((l) => l.id === id)] ?? 0);
   const mayInvoiceIncrease = rights.invoice.iPct || rights.invoice.iAmt || rights.invoice.iPc;
   const invoiceIncrease =
-    mayInvoiceIncrease ||
-    value.invoice.iPct !== '' ||
-    value.invoice.iAmt !== '' ||
-    value.invoice.iPc !== '';
+    showIncreases &&
+    (mayInvoiceIncrease ||
+      value.invoice.iPct !== '' ||
+      value.invoice.iAmt !== '' ||
+      value.invoice.iPc !== '');
   const pieces = piecesOf(doc);
   /** What an invoice box a piece comes to: "20.00 × 48 pieces". */
   const pieceNote = (v: string) =>
@@ -376,17 +390,17 @@ export function AdjustEditor({
                     </span>
                     <span className="text-xs text-muted tnum">
                       {formatNumber(l.unitQuantity || l.quantity, locale)} {l.unitName} ×{' '}
-                      {money(l.unitPrice)}
+                      {money(showIncreases ? l.unitPrice : shownPrice(l))}
                     </span>
                   </span>
                   <span className="shrink-0 text-end tnum">
                     {p.discount > 0 && (
                       <span className="block text-xs text-warning">−{money(p.discount)}</span>
                     )}
-                    {p.increase > 0 && (
+                    {showIncreases && p.increase > 0 && (
                       <span className="block text-xs text-positive">+{money(p.increase)}</span>
                     )}
-                    <span className="font-medium">{money(p.net)}</span>
+                    <span className="font-medium">{money(p.net + shareOf(l.id))}</span>
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">

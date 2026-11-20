@@ -95,6 +95,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
           'sales:increase_pct',
           'sales:increase_amount',
           'sales:discount_combined',
+          'sales:see_increases',
           'sales:bonus',
           'sales:change_tax',
           'sales:additions',

@@ -5,6 +5,7 @@ import {
   amountInWords,
   companyToday,
   formatDate,
+  foldIncreases,
   formatMoney,
   formatNumber,
   toMinor,
@@ -15,6 +16,7 @@ import {
 } from '@skb/shared';
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner } from '../components/ui';
 import { PartyPicker } from '../components/PartyPicker';
+import { IncreaseDetails, IncreasesToggle, useIncreaseView } from '../components/Increases';
 import { CompanyMark } from '../components/CompanyBadge';
 import {
   InvoicePaper,
@@ -458,6 +460,12 @@ function InvoiceCard({
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
   const bad = boxes ? badPercent(boxes) : false;
+  // What was added, and by whom: behind the eye, for whoever may see increases (owner, 2026-11-20).
+  const increases = useIncreaseView();
+  const added =
+    increases.may &&
+    (doc.lines.some((l) => (l.increase ?? 0) > 0) ||
+      doc.charges.some((c) => c.kind === 'INCREASE'));
   return (
     <Card padded={false} className={`overflow-hidden ${isReturn ? 'border-destructive/40' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
@@ -499,6 +507,7 @@ function InvoiceCard({
             {t('together.editDiscounts')}
           </Button>
         )}
+        {added && <IncreasesToggle on={increases.shown} onChange={increases.setShown} />}
         {canLock && onToggleLock && (
           <Button
             size="sm"
@@ -515,8 +524,14 @@ function InvoiceCard({
           </Button>
         )}
       </div>
+      {added && increases.shown && (
+        <div className="px-3 pb-3">
+          <IncreaseDetails doc={doc} />
+        </div>
+      )}
       {boxes && rights && onAdjust && (
         <AdjustCard
+          showIncreases={increases.shown}
           doc={doc}
           boxes={boxes}
           onChange={setBoxes}
@@ -537,6 +552,7 @@ function InvoiceCard({
 
 /** The discounts of one invoice being changed: the boxes, the new total, save or leave. */
 function AdjustCard({
+  showIncreases,
   doc,
   boxes,
   onChange,
@@ -546,6 +562,7 @@ function AdjustCard({
   onCancel,
   onSave,
 }: {
+  showIncreases: boolean;
   doc: SalesDocument;
   boxes: AdjustBoxes;
   onChange: (b: AdjustBoxes) => void;
@@ -561,7 +578,13 @@ function AdjustCard({
   const changed = boxesChanged(doc, boxes);
   return (
     <div className="space-y-3 border-t border-line p-3">
-      <AdjustEditor doc={doc} value={boxes} onChange={onChange} rights={rights} />
+      <AdjustEditor
+        doc={doc}
+        value={boxes}
+        onChange={onChange}
+        rights={rights}
+        showIncreases={showIncreases}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm">
           <span className="text-muted">{t('order.newTotal')}: </span>
@@ -651,8 +674,8 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
  * its total, then all of them together, what was owed before and what is owed now.
  */
 function CombinedPaper({
-  invoices,
-  returns = [],
+  invoices: rawInvoices,
+  returns: rawReturns = [],
   party,
   previousBalance,
   balance,
@@ -677,6 +700,9 @@ function CombinedPaper({
   const { company, details } = useReportTools();
   const shows = options.shows;
   const money = (v: number) => formatMoney(v, currency, locale);
+  // An increase never shows to the customer (owner, 2026-11-20): it is in the prices.
+  const invoices = rawInvoices.map(foldIncreases);
+  const returns = rawReturns.map(foldIncreases);
   const total = invoices.reduce((s, d) => s + d.grandTotal, 0);
   const back = returns.reduce((s, d) => s + d.grandTotal, 0);
   const discounts = invoices.reduce((s, d) => s + d.discountTotal, 0);

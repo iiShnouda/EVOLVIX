@@ -13,8 +13,8 @@ using SKB.Api.Data;
 namespace SKB.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261120092157_InvoicePerPiece")]
-    partial class InvoicePerPiece
+    [Migration("20261120094047_InvoicePerPieceAndIncreaseGivers")]
+    partial class InvoicePerPieceAndIncreaseGivers
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -769,6 +769,12 @@ namespace SKB.Api.Migrations
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("ById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ByName")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
 
@@ -859,6 +865,12 @@ namespace SKB.Api.Migrations
 
                     b.Property<long>("Increase")
                         .HasColumnType("bigint");
+
+                    b.Property<Guid?>("IncreaseById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IncreaseByName")
+                        .HasColumnType("text");
 
                     b.Property<long?>("IncreaseFixed")
                         .HasColumnType("bigint");

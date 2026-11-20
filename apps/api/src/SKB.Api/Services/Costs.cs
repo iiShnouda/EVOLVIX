@@ -33,6 +33,8 @@ public static class Costs
     /// <summary>A sales invoice, return or quotation without its cost and profit.</summary>
     public static SalesDetailDto Guard(ClaimsPrincipal user, SalesDetailDto d)
     {
+        // …and without its increases for whoever may not see them (owner, 2026-11-20).
+        d = Increases.Guard(user, d);
         bool cost = CanSee(user), profit = CanSeeProfit(user);
         if (cost && profit) return d;
         return d with

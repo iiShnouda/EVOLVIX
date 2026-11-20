@@ -73,13 +73,14 @@ public record DocumentLineDto(
     bool IsBonus, long DocDiscount, string? ProductCode = null, string? Reason = null, string? ReasonNote = null,
     string? Damaged = null, long Increase = 0, long DocIncrease = 0, decimal? IncreaseRate = null,
     long? IncreaseFixed = null, decimal? DiscountRate = null, long? DiscountFixed = null,
-    long? IncreasePiece = null, long? DiscountPiece = null);
+    long? IncreasePiece = null, long? DiscountPiece = null, string? IncreaseBy = null);
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
 /// <param name="PerPiece">An amount a piece, typed (the invoice's pieces times it is <paramref name="Amount"/>).</param>
+/// <param name="By">Who typed an increase (only to whoever may see increases).</param>
 public record DocumentChargeDto(string Kind, decimal? Rate, long? FixedAmount, long Amount, string? Label,
-    long? PerPiece = null);
+    long? PerPiece = null, string? By = null);
 
 /// <param name="SourceDocumentId">For a return: the invoice it reverses.</param>
 /// <param name="PreviousBalance">On a sales invoice (posted or waiting), for whoever may see the customer's
@@ -1613,3 +1614,14 @@ public record CommissionItemDto(
     long Amount, int PercentBp, long Commission);
 
 public record CommissionPayrollRequest(string RepId, int Year, int Month);
+
+/// <summary>One giver of increases in the increases report: how many invoices, and how much they added.</summary>
+public record IncreaseGiverDto(string Key, string Name, int? Code, int Invoices, long Amount);
+
+/// <summary>One invoice with increases: what was added on it, and by whom.</summary>
+public record IncreaseInvoiceDto(string Id, string Number, string IssueDate, string PartyName, string? RepName,
+    string? DepartmentName, long GrandTotal, long Amount, string[] By);
+
+/// <summary>The increases report (owner, 2026-11-20): who added to invoices in a period, and on which.</summary>
+public record IncreasesReportDto(string From, string To, string Currency, IncreaseGiverDto[] Rows,
+    IncreaseInvoiceDto[] Invoices, int Count, long Amount);

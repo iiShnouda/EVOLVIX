@@ -256,7 +256,12 @@ export const NAV_SECTIONS: NavSection[] = [
         labelKey: 'nav.analytics',
         icon: 'analytics',
         path: '/analytics',
-        anyOf: opens('reports', ['reports:print', 'reports:export', 'reports:commission']),
+        anyOf: opens('reports', [
+          'reports:print',
+          'reports:export',
+          'reports:commission',
+          'sales:see_increases',
+        ]),
       },
       {
         key: 'audit',

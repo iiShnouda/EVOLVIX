@@ -6,12 +6,15 @@ import {
   amountInWords,
   formatDateHM,
   formatMoney,
+  foldIncreases,
   formatNumber,
+  percentOf,
   type Permission,
   type SalesDocument,
   type TranslationKey,
 } from '@skb/shared';
 import { Badge, Button, Spinner } from './ui';
+import { IncreaseDetails, IncreasesToggle, useIncreaseView } from './Increases';
 import { Icon } from './Icon';
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../lib/i18n';
@@ -153,6 +156,8 @@ export function DocumentPreview({
   // Printing opens the setup first (the paper and what shows), then prints (or saves the PDF) from there.
   const [setup, setSetup] = useState<'print' | 'pdf' | null>(null);
   const [exchangePrint, setExchangePrint] = useState(false);
+  // What was added to it, and by whom: behind the eye, for whoever may see increases (owner, 2026-11-20).
+  const increases = useIncreaseView();
   useEffect(() => {
     if (autoPrint && ready && canPrint) setSetup('print');
   }, [autoPrint, ready, canPrint]);
@@ -177,6 +182,10 @@ export function DocumentPreview({
 
   const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
   const status = statusOf(doc);
+  const added =
+    increases.may &&
+    (doc.lines.some((l) => (l.increase ?? 0) > 0) ||
+      doc.charges.some((c) => c.kind === 'INCREASE'));
 
   return (
     <div className="flex h-full flex-col">
@@ -205,6 +214,7 @@ export function DocumentPreview({
             <span className="truncate text-sm font-semibold tnum">{doc.number}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {added && <IncreasesToggle on={increases.shown} onChange={increases.setShown} />}
             {/* The invoice on its own screen, every line, read-only until edited (owner, 2026-10-19). */}
             {doc.type === 'SALES_INVOICE' && (
               <Button
@@ -273,6 +283,11 @@ export function DocumentPreview({
         {action && <div className="flex flex-wrap items-center gap-1.5">{action}</div>}
       </div>
       <div className="flex-1 overflow-y-auto">
+        {added && increases.shown && (
+          <div data-noprint className="px-4 pt-3 sm:px-5">
+            <IncreaseDetails doc={doc} />
+          </div>
+        )}
         <InvoicePaper ref={paper} doc={doc} options={options} />
         <div className="px-4 pb-4 sm:px-5">
           <DocumentActivity id={doc.id} />
@@ -299,7 +314,7 @@ export function DocumentPreview({
  * Shown on screen exactly as it prints.
  */
 export function InvoicePaper({
-  doc,
+  doc: raw,
   options,
   ref,
 }: {
@@ -308,6 +323,8 @@ export function InvoicePaper({
   ref?: Ref<HTMLDivElement>;
 }) {
   const { t, locale } = useT();
+  // An increase never shows to the customer (owner, 2026-11-20): it is in the prices.
+  const doc = foldIncreases(raw);
   const { company, details } = useReportTools();
   const shows = options.shows;
   const isReturn = doc.type === 'SALES_RETURN' || doc.type === 'PURCHASE_RETURN';
@@ -322,10 +339,8 @@ export function InvoicePaper({
   const lineDiscounts = doc.lines.reduce((sum, l) => sum + l.discount, 0);
   // The discount column only when a line has one (owner, 2026-10-02).
   const anyLineDiscount = doc.lines.some((l) => l.discount > 0);
-  // …and the increase column only when a line has one (owner, 2026-11-19). A line shows without its
-  // share of the invoice's increase, which shows in the totals.
-  const anyLineIncrease = doc.lines.some((l) => (l.increase ?? 0) > 0);
-  const docIncreases = doc.lines.reduce((sum, l) => sum + (l.docIncrease ?? 0), 0);
+  // A percent shows beside the invoice's discount only where it is a percent of what the paper shows.
+  const shownItems = doc.lines.filter((l) => !l.isBonus).reduce((s, l) => s + l.lineTotal, 0);
   const approval = approvalText(doc.approvalNote, t);
   const money = (v: number) => formatMoney(v, doc.currency, locale);
   const delivery =
@@ -507,9 +522,6 @@ export function InvoicePaper({
                   <th className="p-2 text-start font-medium">{t('invoice.itemName')}</th>
                   <th className="p-2 text-end font-medium">{t('sales.unitPrice')}</th>
                   <th className="p-2 text-end font-medium">{t('sales.qty')}</th>
-                  {anyLineIncrease && (
-                    <th className="p-2 text-end font-medium">{t('col.increase')}</th>
-                  )}
                   {anyLineDiscount && (
                     <th className="p-2 text-end font-medium">{t('col.discount')}</th>
                   )}
@@ -555,11 +567,6 @@ export function InvoicePaper({
                         </span>
                       )}
                     </td>
-                    {anyLineIncrease && (
-                      <td className="p-2 text-end tnum">
-                        {(l.increase ?? 0) > 0 ? money(l.increase!) : ''}
-                      </td>
-                    )}
                     {anyLineDiscount && (
                       <td className="p-2 text-end tnum">
                         {l.discount > 0 ? money(l.discount) : ''}
@@ -571,7 +578,7 @@ export function InvoicePaper({
                           {t('invoice.bonus')}
                         </span>
                       ) : (
-                        money(l.lineTotal - (l.docIncrease ?? 0))
+                        money(l.lineTotal)
                       )}
                     </td>
                   </tr>
@@ -593,7 +600,7 @@ export function InvoicePaper({
       )}
       {shows('totals') && (
         <dl className="mt-2 space-y-1.5 text-sm">
-          <Row label={t('sales.subtotal')} value={money(doc.subtotal - docIncreases)} />
+          <Row label={t('sales.subtotal')} value={money(doc.subtotal)} />
           {lineDiscounts > 0 && <Row label={t('sales.discount')} value={money(-lineDiscounts)} />}
           {/* The invoice's own discounts and additions, in the order they applied; tax only when
               there is some (owner, 2026-10-02). */}
@@ -602,7 +609,7 @@ export function InvoicePaper({
             .map((c, i) => (
               <Row
                 key={i}
-                label={`${c.label ?? t(`charge.${c.kind}`)}${c.rate != null ? ` (${formatNumber(c.rate, locale)}%)` : ''}${
+                label={`${c.label ?? t(`charge.${c.kind}`)}${c.rate != null && (c.kind !== 'DISCOUNT' || percentOf(shownItems, c.rate) === c.amount) ? ` (${formatNumber(c.rate, locale)}%)` : ''}${
                   // An amount a piece: "(20.00 × 48 pieces)".
                   c.perPiece
                     ? ` (${t('charge.perPieceOf')

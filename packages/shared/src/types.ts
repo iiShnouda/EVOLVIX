@@ -104,6 +104,7 @@ export type Permission =
   | 'sales:increase_line_pct'
   | 'sales:increase_line_amount'
   | 'sales:discount_combined'
+  | 'sales:see_increases'
   | 'sales:bonus'
   | 'sales:change_tax'
   | 'sales:additions'
@@ -876,6 +877,8 @@ export interface DocumentLine {
   discountRate?: number | null;
   discountFixed?: number | null;
   discountPiece?: number | null;
+  /** Who gave the line's increase (only to whoever may see increases; owner, 2026-11-20). */
+  increaseBy?: string | null;
   /** Weighted-average cost of one base unit at posting time, minor units. */
   unitCost: number;
   /** Exact cost of the whole line, minor units. */
@@ -1483,6 +1486,39 @@ export interface ReturnsReport {
   value: number;
   sold?: number | null;
   rate?: number | null;
+}
+
+/** One giver of increases (owner, 2026-11-20): invoices they added to, and how much. `key` '' = not recorded. */
+export interface IncreaseGiver {
+  key: string;
+  name: string;
+  code?: number | null;
+  invoices: number;
+  amount: number;
+}
+
+/** One invoice with increases, and who added them. */
+export interface IncreaseInvoice {
+  id: string;
+  number: string;
+  issueDate: string;
+  partyName: string;
+  repName?: string | null;
+  departmentName?: string | null;
+  grandTotal: number;
+  amount: number;
+  by: string[];
+}
+
+/** GET /reports/increases: who added to the sales invoices of a period, and on which (`sales:see_increases`). */
+export interface IncreasesReport {
+  from: string;
+  to: string;
+  currency: string;
+  rows: IncreaseGiver[];
+  invoices: IncreaseInvoice[];
+  count: number;
+  amount: number;
 }
 
 export type IdleAction = 'LOCK' | 'SIGN_OUT';

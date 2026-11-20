@@ -82,6 +82,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = withNotifications({
     'sales:increase_line_pct',
     'sales:increase_line_amount',
     'sales:discount_combined',
+    'sales:see_increases',
     'sales:bonus',
     'sales:change_tax',
     'sales:additions',

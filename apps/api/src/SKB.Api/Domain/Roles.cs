@@ -163,6 +163,11 @@ public static class Permissions
     public const string SalesIncreaseLineAmount = "sales:increase_line_amount";
     /// <summary>Give one discount across a customer's combined invoices (خصم على الفواتير المجمعة).</summary>
     public const string SalesDiscountCombined = "sales:discount_combined";
+    /// <summary>
+    /// See the increases on an invoice, who gave each, and the increases report (owner, 2026-11-20). An
+    /// increase never shows to the customer: without this it is folded into the prices.
+    /// </summary>
+    public const string SalesSeeIncreases = "sales:see_increases";
     /// <summary>Add free goods (بونص) to a sale.</summary>
     public const string SalesBonus = "sales:bonus";
     /// <summary>Charge another tax rate than the company's, or another tax, on a sale.</summary>
@@ -825,7 +830,7 @@ public static class Permissions
         SalesReturn, SalesReturnCancel, ReturnsWriteOff, SalesChangePrice,
         SalesRaisePrice, SalesChoosePriceLevel, SalesPriceBasis, SalesOverrideFloor, SalesDiscountPct,
         SalesDiscountAmount, SalesDiscountLinePct, SalesDiscountLineAmount, SalesIncreasePct, SalesIncreaseAmount,
-        SalesIncreaseLinePct, SalesIncreaseLineAmount, SalesDiscountCombined, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
+        SalesIncreaseLinePct, SalesIncreaseLineAmount, SalesDiscountCombined, SalesSeeIncreases, SalesBonus, SalesChangeTax, SalesAdditions, SalesChangeShipping,
         DeliveryView, ShipmentsView, SettlementsView, DeliveryStatus, ShipmentsCreate, ShipmentsProgress,
         ShipmentsReturn, ShipmentsCancel, DeliverySettle, PurchasesView, PurchasesReturnsView, PurchasesPriceSheet,
         PurchasesPrint, PurchasesPdf, PurchasesCreate, PurchasesPhotos, PurchasesReturn, PurchasesReturnCancel,
@@ -920,7 +925,8 @@ public static class RolePermissions
             Permissions.SalesPriceBasis, Permissions.SalesOverrideFloor, Permissions.SalesDiscountPct,
             Permissions.SalesDiscountAmount, Permissions.SalesDiscountLinePct, Permissions.SalesDiscountLineAmount,
             Permissions.SalesIncreasePct, Permissions.SalesIncreaseAmount, Permissions.SalesIncreaseLinePct,
-            Permissions.SalesIncreaseLineAmount, Permissions.SalesDiscountCombined, Permissions.SalesBonus,
+            Permissions.SalesIncreaseLineAmount, Permissions.SalesDiscountCombined, Permissions.SalesSeeIncreases,
+            Permissions.SalesBonus,
             Permissions.SalesChangeTax, Permissions.SalesAdditions, Permissions.SalesChangeShipping,
             Permissions.DeliveryView, Permissions.ShipmentsView, Permissions.SettlementsView,
             Permissions.DeliveryStatus, Permissions.ShipmentsCreate, Permissions.ShipmentsProgress,

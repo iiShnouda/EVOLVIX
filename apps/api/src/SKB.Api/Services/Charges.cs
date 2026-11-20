@@ -37,11 +37,33 @@ public static class Charges
         "An invoice has one discount: change it instead of adding a second one.");
 
     /// <param name="PerPiece">An amount a piece (a sale's increase or discount), times the pieces.</param>
-    public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label, long? PerPiece = null);
+    /// <param name="ById">Who typed it (kept for an increase: whoever may see increases sees who gave it).</param>
+    public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label, long? PerPiece = null,
+        Guid? ById = null, string? ByName = null);
+
+    /// <summary>
+    /// Who gave each increase (owner, 2026-11-20): one as it was before keeps its giver; a new or
+    /// changed one is <paramref name="staffId"/>'s.
+    /// </summary>
+    public static List<Spec> Attribute(IEnumerable<Spec> specs, IEnumerable<DocumentCharge>? before, Guid staffId,
+        string? name)
+    {
+        var had = (before ?? []).Select(SpecOf).Where(h => h.Kind == ChargeKind.INCREASE).ToList();
+        return specs.Select(s =>
+        {
+            if (s.Kind != ChargeKind.INCREASE) return s;
+            var same = had.FirstOrDefault(h => h.RateBp == s.RateBp && h.Fixed == s.Fixed && h.PerPiece == s.PerPiece);
+            if (same is not null) had.Remove(same);
+            return same?.ById is not null
+                ? s with { ById = same.ById, ByName = same.ByName }
+                : s with { ById = staffId == Guid.Empty ? null : staffId, ByName = name };
+        }).ToList();
+    }
 
     /// <summary>A stored charge as it was typed (a percent, an amount, or an amount a piece).</summary>
     public static Spec SpecOf(DocumentCharge c) => new(c.Kind, c.RateBp,
-        c.RateBp is null && c.PieceFixed is null ? c.FixedAmount : null, c.Label, c.RateBp is null ? c.PieceFixed : null);
+        c.RateBp is null && c.PieceFixed is null ? c.FixedAmount : null, c.Label, c.RateBp is null ? c.PieceFixed : null,
+        c.ById, c.ByName);
 
     /// <summary>A stored charge asked for again, as typed.</summary>
     public static ChargeRequest RequestOf(DocumentCharge c)
@@ -219,9 +241,10 @@ public static class Charges
     private static DocumentCharge Row(Spec s, long amount, int count) => new()
     {
         Seq = count + 1, Kind = s.Kind, RateBp = s.RateBp, FixedAmount = s.Fixed, Amount = amount, Label = s.Label,
-        PieceFixed = s.PerPiece,
+        PieceFixed = s.PerPiece, ById = s.ById, ByName = s.ByName,
     };
 
     public static DocumentChargeDto ToDto(DocumentCharge c) => new(
-        c.Kind.ToString(), c.RateBp is int bp ? bp / 100m : null, c.FixedAmount, c.Amount, c.Label, c.PieceFixed);
+        c.Kind.ToString(), c.RateBp is int bp ? bp / 100m : null, c.FixedAmount, c.Amount, c.Label, c.PieceFixed,
+        c.Kind == ChargeKind.INCREASE ? c.ByName : null);
 }

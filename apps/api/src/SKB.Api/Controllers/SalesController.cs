@@ -567,6 +567,26 @@ public sealed class SalesController : ControllerBase
                 return InvoiceLines.Refuse(this, new("period_locked", "This invoice is in a locked period."));
         }
 
+        // Whoever may not see increases sees none (owner, 2026-11-20): the increases stay as they are.
+        if (!Increases.CanSee(User))
+        {
+            var now = InvoiceNow(doc);
+            invoice = invoice is null ? null : invoice with
+            {
+                IncreasePercent = now.IncreasePercent, IncreaseAmount = now.IncreaseAmount,
+                IncreasePerPiece = now.IncreasePerPiece,
+            };
+            lineAdjusts = lineAdjusts?.ToDictionary(x => x.Key, x =>
+            {
+                var had = LineNow(doc.Lines.First(l => l.Id == x.Key));
+                return x.Value with
+                {
+                    IncreasePercent = had.IncreasePercent, IncreaseAmount = had.IncreaseAmount,
+                    IncreasePerPiece = had.IncreasePerPiece,
+                };
+            });
+        }
+
         // Every box checked: percents between 0 and 100 with 2 decimals, amounts not negative nor too big.
         foreach (var pc in (lineAdjusts?.Values ?? []).SelectMany(x => new[] { x.DiscountPercent, x.IncreasePercent })
                      .Concat(new[] { invoice?.DiscountPercent, invoice?.IncreasePercent }))
@@ -664,6 +684,8 @@ public sealed class SalesController : ControllerBase
             return InvoiceLines.Refuse(this, new(missing, (missingOn is { Length: > 0 } ? $"{missingOn}: " : "") +
                 (missing.StartsWith("increase") ? "this increase" : "this discount") + " needs permission."));
 
+        Guid.TryParse(CurrentUser.Id(User), out var byId);
+        specs = Charges.Attribute(specs, doc.Charges, byId, CurrentUser.Name(User));
         var nets = lines.Select((l, i) => l.LineTotal - l.DocIncrease + l.Discount - l.Increase + raisedBy[i] - given[i]).ToList();
         var (charges, applyError) = Charges.Apply(nets, lines.Select(l => !l.IsBonus).ToList(), specs,
             lines.Select(l => (long)l.Quantity).ToList());
@@ -724,6 +746,12 @@ public sealed class SalesController : ControllerBase
             var basis = l.LineTotal - l.DocIncrease + l.Discount - l.Increase;
             l.Discount = given[i];
             (l.DiscountRateBp, l.DiscountFixed, l.DiscountPieceFixed) = typed[i];
+            // A changed increase is whoever changes it's (owner, 2026-11-20).
+            if ((l.IncreaseRateBp, l.IncreaseFixed, l.IncreasePieceFixed) != typedUp[i] || l.Increase != raisedBy[i])
+            {
+                l.IncreaseById = raisedBy[i] == 0 || byId == Guid.Empty ? null : byId;
+                l.IncreaseByName = raisedBy[i] == 0 ? null : CurrentUser.Name(User);
+            }
             l.Increase = raisedBy[i];
             (l.IncreaseRateBp, l.IncreaseFixed, l.IncreasePieceFixed) = typedUp[i];
             l.DocIncrease = charges.IncreaseAllocation[i];
@@ -1063,14 +1091,24 @@ public sealed class SalesController : ControllerBase
         }
         if ((req.Charges ?? []).Any(c => string.Equals(c.Kind, nameof(ChargeKind.EXTRA_DISCOUNT), StringComparison.OrdinalIgnoreCase)))
             return InvoiceLines.Refuse(this, Charges.ExtraDiscountRetired);
+        // Whoever may not see increases sees none (owner, 2026-11-20): the increases stay as they are.
+        var seeUp = Increases.CanSee(User);
         var lines = order.Lines.OrderBy(l => l.LineNo)
             .Select(l => adjusts.TryGetValue(l.Id, out var adj)
-                ? AdjustedLine(l, req.WarehouseId ?? l.WarehouseId?.ToString(), adj)
+                ? AdjustedLine(l, req.WarehouseId ?? l.WarehouseId?.ToString(), seeUp ? adj : adj with
+                {
+                    IncreasePercent = l.IncreaseRateBp / 100m, IncreaseAmount = l.IncreaseFixed,
+                    IncreasePerPiece = l.IncreasePieceFixed,
+                })
                 : StoredLine(l, req.WarehouseId ?? l.WarehouseId?.ToString(), lineDiscounts.GetValueOrDefault(l.Id)))
             .ToArray();
         var kept = order.Charges.OrderBy(c => c.Seq).Select(Charges.RequestOf).ToArray();
-        var charges = req.Invoice is { } inv
-            ? kept.Where(c => c.Kind is not (nameof(ChargeKind.DISCOUNT) or nameof(ChargeKind.INCREASE)))
+        var shownInvoice = req.Invoice is { } given && !seeUp
+            ? given with { IncreasePercent = null, IncreaseAmount = null, IncreasePerPiece = null }
+            : req.Invoice;
+        var charges = shownInvoice is { } inv
+            ? kept.Where(c => c.Kind is not (nameof(ChargeKind.DISCOUNT) or nameof(ChargeKind.INCREASE))
+                              || c.Kind == nameof(ChargeKind.INCREASE) && !seeUp)
                 .Concat(new ChargeRequest?[]
                 {
                     inv.IncreasePercent is > 0 ? new(nameof(ChargeKind.INCREASE), inv.IncreasePercent, null, null) : null,
@@ -1254,7 +1292,7 @@ public sealed class SalesController : ControllerBase
                 DriverId: order.DriverId?.ToString(), CarrierId: order.CarrierId?.ToString(),
                 DepartmentId: order.DepartmentId?.ToString());
             var result = await CreateCore(invoice, DocumentType.SALES_INVOICE, fromId: orderId, branch: order.BranchId,
-                discounts: DiscountMode.Trusted, approved: true, approvalNote: note, systemApproval: true);
+                discounts: DiscountMode.Trusted, baseline: order, approved: true, approvalNote: note, systemApproval: true);
             if (result.Result is ObjectResult { StatusCode: >= 400 }) continue;
             accepted++;
             await AuditAsync("auto_approve", "sales_order", order);
@@ -1616,6 +1654,38 @@ public sealed class SalesController : ControllerBase
             var baseCost = KeptUnitCost(product.Id, warehouse.Id) ?? _inventory.CostAt(product, warehouse);
             resolved.Add((line, product, unit!, baseQty, warehouse, baseCost));
         }
+        // Whoever may not see increases got the invoice with them folded into its prices (owner,
+        // 2026-11-20): what they send back keeps them as they were — a line at its shown price, with no
+        // increase typed on it, is the same line at its own price and increase, and the invoice's own
+        // increases stay unless they type new ones.
+        var previous = edited ?? baseline;
+        if (previous is not null && discounts is DiscountMode.Edit or DiscountMode.Keep && !Increases.CanSee(User))
+        {
+            var had = previous.Lines.Where(l => !l.IsBonus && l.Increase + l.DocIncrease != 0).ToList();
+            for (var i = 0; i < resolved.Count; i++)
+            {
+                var r = resolved[i];
+                var q = r.Req;
+                if (q.IsBonus || q.IncreasePercent is > 0 || q.IncreaseAmount is > 0 || q.IncreasePerPiece is > 0) continue;
+                var prior = had.FirstOrDefault(b => b.ProductId == r.Product.Id && b.UnitId == r.Unit.UnitId
+                    && q.UnitPrice == Increases.Shown(b.UnitPrice, b.LineTotal, b.Discount, b.Increase + b.DocIncrease,
+                        b.UnitQuantity > 0 ? b.UnitQuantity : b.Quantity, false));
+                if (prior is null) continue;
+                had.Remove(prior);
+                resolved[i] = r with
+                {
+                    Req = q with
+                    {
+                        UnitPrice = prior.UnitPrice, IncreasePercent = prior.IncreaseRateBp / 100m,
+                        IncreaseAmount = prior.IncreaseFixed, IncreasePerPiece = prior.IncreasePieceFixed,
+                    },
+                };
+            }
+            if (!specs!.Any(x => x.Kind == ChargeKind.INCREASE))
+                specs = previous.Charges.OrderBy(c => c.Seq).Where(c => c.Kind == ChargeKind.INCREASE)
+                    .Select(Charges.SpecOf).Concat(specs).ToList();
+        }
+
         // An invoice whose items are changed keeps the free goods it had (owner, 2026-10-24): no more of
         // an item than before without the permission.
         if (discounts is DiscountMode.Keep or DiscountMode.Edit && !Approved(Permissions.SalesBonus))
@@ -1763,6 +1833,8 @@ public sealed class SalesController : ControllerBase
 
         // ---- Work out the charges and each line's share of the invoice's increase and discount ----
         var nets = resolved.Select((r, i) => (long)r.Req.Quantity * r.Req.UnitPrice + increases[i] - lineDiscounts[i]).ToList();
+        // Who gave each of the invoice's increases: as before, else whoever makes this.
+        specs = Charges.Attribute(specs!, previous?.Charges, staffId, CurrentUser.Name(User));
         var (charges, applyError) = Charges.Apply(nets, resolved.Select(r => !r.Req.IsBonus).ToList(), specs!,
             resolved.Select(r => (long)r.BaseQty).ToList());
         if (applyError is not null) return BadRequest(new { message = applyError.Message, code = applyError.Code });
@@ -1915,6 +1987,14 @@ public sealed class SalesController : ControllerBase
             var lineTotal = (long)line.Quantity * line.UnitPrice + increases[i] + docIncrease - lineDiscounts[i];
             var docDiscount = charges.Allocation[i];
             var typed = Adjust.DiscountTyped(line);
+            // Who gave the line's increase: whoever gave the same one on it before, else whoever makes this.
+            var upBp = Adjust.Bp(line.IncreasePercent) is > 0 ? Adjust.Bp(line.IncreasePercent) : null;
+            var upFixed = line.IncreaseAmount is > 0 ? line.IncreaseAmount : null;
+            var upPiece = line.IncreasePerPiece is > 0 ? line.IncreasePerPiece : null;
+            var giver = increases[i] == 0 ? null
+                : previous?.Lines.FirstOrDefault(b => b.ProductId == product.Id && b.Increase > 0 && b.IncreaseById != null
+                                                      && b.IncreaseRateBp == upBp && b.IncreaseFixed == upFixed
+                                                      && b.IncreasePieceFixed == upPiece);
             doc.Lines.Add(new DocumentLine
             {
                 LineNo = doc.Lines.Count + 1,
@@ -1925,6 +2005,8 @@ public sealed class SalesController : ControllerBase
                 IncreaseRateBp = Adjust.Bp(line.IncreasePercent) is > 0 ? Adjust.Bp(line.IncreasePercent) : null,
                 IncreaseFixed = line.IncreaseAmount is > 0 ? line.IncreaseAmount : null,
                 IncreasePieceFixed = line.IncreasePerPiece is > 0 ? line.IncreasePerPiece : null,
+                IncreaseById = increases[i] == 0 ? null : giver?.IncreaseById ?? (staffId == Guid.Empty ? null : staffId),
+                IncreaseByName = increases[i] == 0 ? null : giver is not null ? giver.IncreaseByName : CurrentUser.Name(User),
                 DiscountRateBp = typed && Adjust.Bp(line.DiscountPercent) is > 0 ? Adjust.Bp(line.DiscountPercent) : null,
                 DiscountFixed = typed && line.DiscountAmount is > 0 ? line.DiscountAmount : null,
                 DiscountPieceFixed = typed && line.DiscountPerPiece is > 0 ? line.DiscountPerPiece : null,

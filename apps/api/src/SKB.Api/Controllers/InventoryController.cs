@@ -383,6 +383,7 @@ public sealed class InventoryController : ControllerBase
         bool Has(string permission) => User.HasClaim("permission", permission);
         var seeCosts = Costs.CanSee(User);
         var seeProfit = Costs.CanSeeProfit(User);
+        var seeIncreases = Increases.CanSee(User);
         var canBuy = Has(Permissions.ProductsCardPurchases);
         var canSell = Has(Permissions.ProductsCardSales);
         var canReturn = Has(Permissions.ProductsCardReturns);
@@ -399,7 +400,8 @@ public sealed class InventoryController : ControllerBase
                 l.Document.Party.Code, l.Warehouse!.Name, l.Document.Branch!.Name, l.Document.Staff!.FullName,
                 l.Quantity, l.UnitQuantity, l.Unit!.Name, l.UnitPrice, l.UnitFactor, l.Discount, l.DocDiscount,
                 l.LineTotal, l.UnitCost, l.LineProfit, l.IsBonus,
-                _db.InvoiceRevisions.Any(r => r.DocumentId == l.DocumentId && r.Kind == "EDIT"), l.Document.PartyId))
+                _db.InvoiceRevisions.Any(r => r.DocumentId == l.DocumentId && r.Kind == "EDIT"), l.Document.PartyId,
+                l.Increase + l.DocIncrease))
             .Take(MaxCardRows).ToListAsync();
 
         ItemLifeLineDto ToLine(LifeRow r)
@@ -412,7 +414,10 @@ public sealed class InventoryController : ControllerBase
             return new ItemLifeLineDto(r.DocumentId.ToString(), r.Number, r.Type.ToString(),
                 DateTime.SpecifyKind(r.IssueDate, DateTimeKind.Utc).ToString("o"),
                 r.Party, r.PartyCode, r.Warehouse, r.Branch, r.Staff, r.Quantity, r.UnitQuantity, r.Unit,
-                hidden ? null : (long)Math.Round((decimal)r.UnitPrice / factor), hidden ? null : r.Discount + r.DocDiscount,
+                // An increase is in the price for whoever may not see increases (owner, 2026-11-20).
+                hidden ? null : seeIncreases || r.Added == 0 ? (long)Math.Round((decimal)r.UnitPrice / factor)
+                    : (long)Math.Round((decimal)(r.LineTotal + r.Discount) / Math.Max(1, r.Quantity)),
+                hidden ? null : r.Discount + r.DocDiscount,
                 hidden ? null : perUnit,
                 seeCosts ? r.UnitCost : null, seeProfit ? r.LineProfit : null, r.IsBonus, r.Edited, r.PartyId.ToString());
         }
@@ -930,5 +935,5 @@ public sealed class InventoryController : ControllerBase
         Guid DocumentId, string Number, DocumentType Type, DateTime IssueDate, string Party, int PartyCode,
         string? Warehouse, string Branch, string Staff, int Quantity, int UnitQuantity, string? Unit, long UnitPrice,
         int UnitFactor, long Discount, long DocDiscount, long LineTotal, long UnitCost, long LineProfit, bool IsBonus,
-        bool Edited, Guid PartyId);
+        bool Edited, Guid PartyId, long Added = 0);
 }

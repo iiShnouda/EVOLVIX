@@ -158,12 +158,15 @@ const sellerStaff = ok(
     branchId: owner.user.branchId,
   }),
 );
-/** The seller holding exactly these of the eight (the role's own two increases taken away unless named). */
-const only = async (granted, extra = []) => {
+/**
+ * The seller holding exactly these of the eight (the role's own two increases taken away unless named),
+ * and seeing the increases unless `see` is false (owner, 2026-11-20: without it they are folded away).
+ */
+const only = async (granted, extra = [], see = true) => {
   ok(
     `only ${granted.join(', ') || 'none of them'}`,
     await owner.put(`/staff/${sellerStaff.id}/permissions`, {
-      granted: [...granted, ...extra],
+      granted: [...granted, ...extra, ...(see ? ['sales:see_increases'] : [])],
       revoked: ALL.filter((p) => !granted.includes(p)),
     }),
   );
@@ -1155,6 +1158,218 @@ eq(
     await accountant.post(`/sales/orders/${pend.id}/approve`, {}),
   );
   eq('…still 20.00 a piece: 3,840.00', [asIs.grandTotal, asIs.charges[0].perPiece], [384000, 2000]);
+}
+
+console.log('== an increase never shows to the customer (owner, 2026-11-20)');
+{
+  const buyer = ok(
+    'a customer',
+    await owner.post('/parties', { name: `Hidden ${tag}`, types: ['CUSTOMER'] }),
+  );
+  /** A dozen at 1,200.00 and 6 pieces at 100.00 for `buyer`, with these line boxes and charges. */
+  const hidden = (dozenBoxes = {}, charges = [], singles = 6) => ({
+    partyId: buyer.id,
+    warehouseId: wh.id,
+    taxPercent: 0,
+    charges,
+    lines: [
+      { productId: shirt.id, unitId: dozen.id, quantity: 1, unitPrice: 120000, ...dozenBoxes },
+      { productId: shirt.id, quantity: singles, unitPrice: 10000 },
+    ],
+  });
+  check(
+    'the accountant may see increases; a seller may not',
+    accountant.user.permissions.includes('sales:see_increases') &&
+      !karim.user.permissions.includes('sales:see_increases'),
+  );
+  const rep = await only(
+    ['sales:increase_line_amount', 'sales:increase_pct', 'sales:discount_pct'],
+    ['sales:edit'],
+    false,
+  );
+  check(
+    'the seller here does not see increases',
+    !rep.user.permissions.includes('sales:see_increases'),
+  );
+  const made = ok(
+    'the seller adds 5.00 on the dozen and 2% on the invoice',
+    await rep.post(
+      '/sales/invoices',
+      hidden({ increaseAmount: 500 }, [{ kind: 'INCREASE', percent: 2 }]),
+    ),
+  );
+  /** Whether a document shows no increase at all, and still adds up. */
+  const folded = (d, what) => {
+    check(
+      `${what}: no increase anywhere`,
+      d.lines.every(
+        (l) =>
+          !l.increase &&
+          !l.docIncrease &&
+          l.increaseRate == null &&
+          l.increaseFixed == null &&
+          l.increasePiece == null &&
+          l.increaseBy == null,
+      ) && d.charges.every((c) => c.kind !== 'INCREASE'),
+    );
+    eq(
+      `${what}: the lines add up to the total`,
+      [
+        d.lines.reduce((n, l) => n + l.lineTotal + l.discount, 0),
+        d.subtotal - d.discountTotal + d.taxTotal + d.additionTotal,
+      ],
+      [d.subtotal, d.grandTotal],
+    );
+    check(
+      `${what}: each price is its line over its quantity`,
+      d.lines.every(
+        (l) =>
+          Math.abs(l.unitPrice * (l.unitQuantity || l.quantity) - (l.lineTotal + l.discount)) <=
+          (l.unitQuantity || l.quantity) / 2,
+      ),
+    );
+  };
+  // 1,200 + 5 = 1,205 and 600; +2% of 1,805 = 36.10 → 1,841.10.
+  eq('…1,841.10', made.grandTotal, 184110);
+  folded(made, 'what the seller gets back');
+  const asOwner = ok('the owner reads it', await owner.get(`/sales/invoices/${made.id}`));
+  eq(
+    '…the owner sees the increases, and who gave them',
+    [
+      asOwner.lines[0].increase,
+      asOwner.lines[0].increaseBy,
+      asOwner.charges.map((c) => [c.kind, c.rate, c.amount, c.by]),
+    ],
+    [500, `Adj ${tag}`, [['INCREASE', 2, 3610, `Adj ${tag}`]]],
+  );
+  const asRep = ok('the seller reads it', await rep.get(`/sales/invoices/${made.id}`));
+  folded(asRep, 'the seller reading it');
+  eq(
+    '…the dozen at (1,205 + its 24.10 share) = 1,229.10, the piece at 102.00',
+    [asRep.lines.map((l) => l.unitPrice), asRep.grandTotal],
+    [[122910, 10200], 184110],
+  );
+  const listed = ok(
+    'the customer’s invoices, for the accountant',
+    await accountant.get(`/sales/customers/${buyer.id}/invoices`),
+  );
+  check(
+    '…(the accountant sees them there)',
+    listed.invoices.some((d) => d.charges.some((c) => c.kind === 'INCREASE')),
+  );
+  const repList = await rep.get(`/sales/customers/${buyer.id}/invoices`);
+  if (repList.status === 200)
+    for (const d of repList.data.invoices) folded(d, `the seller’s list: ${d.number}`);
+  const statement = ok(
+    'the customer’s statement with its items',
+    await owner.get(`/ledger/parties/${buyer.id}/statement?items=true`),
+  );
+  const items = statement.lines.flatMap((l) => l.items ?? []);
+  eq(
+    '…prices with the increase in them',
+    items.slice(0, 2).map((i) => i.unitPrice),
+    [122910, 10200],
+  );
+
+  console.log('  what someone who may not see them sends back keeps them');
+  const changed = ok(
+    'the seller changes the pieces to 8 from what they see',
+    await rep.put(`/sales/invoices/${made.id}`, {
+      ...hidden(
+        {},
+        asRep.charges.map((c) => ({ kind: c.kind, percent: c.rate ?? undefined })),
+      ),
+      lines: [
+        { productId: shirt.id, unitId: dozen.id, quantity: 1, unitPrice: asRep.lines[0].unitPrice },
+        { productId: shirt.id, quantity: 8, unitPrice: asRep.lines[1].unitPrice },
+      ],
+    }),
+  );
+  folded(changed, 'the changed invoice, for the seller');
+  const kept = ok('the owner reads it again', await owner.get(`/sales/invoices/${made.id}`));
+  eq(
+    '…its prices, the 5.00 and the 2% as they were, by the seller: 1,205 + 800 + 40.10',
+    [
+      kept.lines.map((l) => l.unitPrice),
+      kept.lines[0].increase,
+      kept.lines[0].increaseBy,
+      kept.charges.map((c) => [c.kind, c.rate, c.by]),
+      kept.grandTotal,
+    ],
+    [[120000, 10000], 500, `Adj ${tag}`, [['INCREASE', 2, `Adj ${tag}`]], 204510],
+  );
+  const counter = await only(['sales:discount_pct'], [], false);
+  const given = ok(
+    'someone who may not see them gives 5% off the invoice',
+    await counter.post(`/sales/invoices/${made.id}/adjust`, {
+      lines: [],
+      invoice: { discountPercent: 5 },
+    }),
+  );
+  folded(given, 'after the discount, for them');
+  const after = ok('the owner reads it', await owner.get(`/sales/invoices/${made.id}`));
+  eq(
+    '…the increases stay: +2% (40.10) −5% (100.25) on 2,005.00',
+    [after.charges.map((c) => [c.kind, c.amount]), after.lines[0].increase, after.grandTotal],
+    [
+      [
+        ['INCREASE', 4010],
+        ['DISCOUNT', 10025],
+      ],
+      500,
+      194485,
+    ],
+  );
+  const checker = await only([], ['sales:approve'], false);
+  const pend = ok(
+    'a pending invoice with +5.00 on the dozen',
+    await owner.post('/sales/orders', hidden({ increaseAmount: 500 })),
+  );
+  const pendSeen = ok(
+    '…read by an approver who may not see it',
+    await checker.get(`/sales/orders/${pend.id}`),
+  );
+  folded(pendSeen, 'the pending invoice, for them');
+  const approved = ok(
+    '…approved with the boxes as they see them',
+    await checker.post(`/sales/orders/${pend.id}/approve`, {
+      lines: pendSeen.lines.map((l) => ({ lineId: l.id })),
+      invoice: {},
+    }),
+  );
+  eq(
+    '…the increase stays (1,205 + 600)',
+    [
+      approved.grandTotal,
+      (await owner.get(`/sales/invoices/${approved.id}`)).data.lines[0].increase,
+    ],
+    [180500, 500],
+  );
+
+  console.log('  the increases report');
+  const rows = ok('the owner’s report', await owner.get('/reports/increases'));
+  const mine = rows.rows.find((r) => r.name === `Adj ${tag}`);
+  check('…the seller is a row', !!mine);
+  check(
+    '…with the invoice and what was added on it',
+    rows.invoices.some(
+      (i) => i.id === made.id && i.amount === 500 + 4010 && i.by.includes(`Adj ${tag}`),
+    ),
+  );
+  const theirs = ok(
+    '…narrowed to the seller',
+    await owner.get(`/reports/increases?by=${mine?.key ?? ''}`),
+  );
+  check(
+    '…only theirs',
+    theirs.rows.length === 1 && theirs.rows[0].key === mine?.key && theirs.invoices.length >= 1,
+  );
+  eq(
+    'someone who may not see increases may not',
+    (await (await login(sellerEmail, PASS)).get('/reports/increases')).status,
+    403,
+  );
+  ok('the accountant may', await accountant.get('/reports/increases'));
 }
 
 if (process.env.PGURL) {
