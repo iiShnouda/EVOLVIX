@@ -187,6 +187,10 @@
         {
           "ar": "رجعنا خانة «خصم على الحتة» في شاشة الفاتورة، وكمان «زيادة على الحتة» جنبها",
           "en": "The invoice screen has its \"discount per piece\" box back, with an \"increase per piece\" box beside it"
+        },
+        {
+          "ar": "لما البرنامج يكون في الخلفية، الإشعار الجديد يطلع كإشعار ويندوز؛ تدوس عليه يفتح البرنامج على الحاجة على طول (تطبيق ويندوز 1.9.0)",
+          "en": "When the app is in the background, a new notification appears as a Windows notification; clicking it brings the app to the front on that item (Windows app 1.9.0)"
         }
       ],
       "fixes": [
@@ -242,7 +246,11 @@
           "ar": "حد الخصم بقى على صافي الخصم بعد الزيادة",
           "en": "The discount limit counts the net discount after increases"
         }
-      ]
+      ],
+      "apps": {
+        "windows": "1.9.0",
+        "android": "1.4.0"
+      }
     },
     {
       "version": "1.13.0",
