@@ -60,7 +60,7 @@ export function IncreasesReportTab() {
   ];
   const invHead = [
     t('increasesReport.invoice'),
-    t('report.from'),
+    t('common.date'),
     t('increasesReport.customer'),
     t('increasesReport.rep'),
     t('increasesReport.giver'),
