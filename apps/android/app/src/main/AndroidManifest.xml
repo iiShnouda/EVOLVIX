@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Talking with the assistant; the phone asks the person the first time. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- System notifications while the app is in the background (Android 13+ asks the person). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- allowBackup=false: the signed-in session never leaves the phone in a backup. -->
     <application

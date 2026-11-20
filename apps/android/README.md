@@ -14,6 +14,12 @@ full-screen window.
   company's own server on the office network (e.g. `http://192.168.1.10:8080`); plain http://
   gets a warning, because it's for the office network only.
 - **Links:** only pages of that server open inside the app. Other links open in the browser.
+- **Notifications:** while the app is in the background, a new bell notification shows as a phone
+  notification (the app name and the kind only, channel "Evolvix"); tapping it brings the app to
+  the front and opens what it is about. Android 13+ asks the person once (from "Allow" in the bell's
+  settings, or when they are back in the app after the first notification).
+- **Security (bridge):** the page's bridge (`SKBApp`: print, save, microphone, notifications) only
+  answers the configured server's pages.
 - **Server unreachable:** a local page offers **Try again** / **Server address**.
 - **Files:** downloads and file uploads work.
 - **Back:** the Back button goes back.

@@ -3,12 +3,17 @@ package com.skb.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.print.PrintAttributes;
@@ -36,6 +41,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -50,13 +57,19 @@ import java.nio.file.Files;
  * {@link Bridge}, because a WebView can't print or save a file made in the page on its own; so does
  * the microphone for talking with the assistant (owner, 2026-10-11), because a page opened over
  * plain http (the office address) may not use the browser's own. Over https the page's own
- * microphone is allowed for the server's pages.
+ * microphone is allowed for the server's pages. System notifications while the app is in the
+ * background (owner, 2026-11-12) also go through it: only the app's name and the kind's title.
  */
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 1;
     private static final int SETTINGS_REQUEST = 2;
     private static final int SAVE_REQUEST = 3;
     private static final int MIC_REQUEST = 4;
+    private static final int NOTIFY_REQUEST = 5;
+    private static final String CHANNEL = "evolvix";
+    private static final String EXTRA_TAG = "com.skb.app.NOTIFICATION_TAG";
+    private static final String PREFS = "skb";
+    private static final String NOTIFY_ASKED = "notifyAsked";
     /** A recording for the assistant is at most this long. */
     private static final int MAX_RECORDING_MS = 60_000;
     /** A file the page asked to save is at most this big. */
@@ -73,6 +86,13 @@ public class MainActivity extends Activity {
     private volatile boolean micAsked;
     private volatile boolean micAnswered;
     private PermissionRequest pendingMic;
+    /** The page now showing (set as each page starts), so the bridge serves only the server's pages. */
+    private volatile String pageUrl;
+    /** The phone is asking the person whether the app may notify. */
+    private volatile boolean notifyAsking;
+    /** A notification came before the person was ever asked: ask when they are back in the app. */
+    private volatile boolean askNotifyOnResume;
+    private volatile boolean resumed;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -172,8 +192,25 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        // A notification was tapped: the page opens what it is about.
+        String tag = intent.getStringExtra(EXTRA_TAG);
+        if (tag != null && fromServer()) {
+            web.evaluateJavascript("window.dispatchEvent(new CustomEvent('skbapp:notification',{detail:"
+                    + JSONObject.quote(tag) + "}))", null);
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
+        if (askNotifyOnResume) {
+            askNotifyOnResume = false;
+            if (!notifyAsked()) askNotify();
+        }
         // The address may have been changed from the launcher shortcut.
         if (loadedServer != null && !loadedServer.equals(ServerConfig.get(this))) openServer();
     }
@@ -181,6 +218,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         CookieManager.getInstance().flush();
         // The microphone never listens with the app in the background.
         micCancel();
@@ -188,6 +226,10 @@ public class MainActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        if (request == NOTIFY_REQUEST) {
+            notifyAsking = false;
+            return;
+        }
         if (request != MIC_REQUEST) {
             super.onRequestPermissionsResult(request, permissions, results);
             return;
@@ -209,6 +251,76 @@ public class MainActivity extends Activity {
     private void askMic() {
         micAsked = true;
         runOnUiThread(() -> requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, MIC_REQUEST));
+    }
+
+    /** True when the page now showing is the configured server's (the bridge serves only it). */
+    private boolean fromServer() {
+        String url = pageUrl;
+        return url != null && ServerConfig.isServerUrl(this, Uri.parse(url));
+    }
+
+    // ---- System notifications ----
+
+    private boolean notifyAsked() {
+        return getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(NOTIFY_ASKED, false);
+    }
+
+    /** May the app notify: "granted", "default" (can be asked), "asking" or "denied". */
+    private String notifyState() {
+        if (notifyAsking) return "asking";
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        boolean permitted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        if (permitted) return nm != null && nm.areNotificationsEnabled() ? "granted" : "denied";
+        // Android 13+: ask once; once more if the phone still offers it; then only from the phone's settings.
+        if (!notifyAsked() || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) return "default";
+        return "denied";
+    }
+
+    /** Ask the person (Android 13+), from a tap in the bell's settings or once after a first notification. */
+    private void askNotify() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || notifyAsking) return;
+        notifyAsking = true;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(NOTIFY_ASKED, true).apply();
+        runOnUiThread(() -> requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIFY_REQUEST));
+    }
+
+    /** Post one: the app's name and the kind's title; the same tag replaces the earlier one. */
+    private void postNotification(String title, String tag) {
+        if (!"granted".equals(notifyState())) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notifyAsked()) {
+                if (resumed) askNotify();
+                else askNotifyOnResume = true;
+            }
+            return;
+        }
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        // Creating it again is harmless: it only updates the name (the phone's language may have changed).
+        nm.createNotificationChannel(new NotificationChannel(
+                CHANNEL, getString(R.string.app_name), NotificationManager.IMPORTANCE_DEFAULT));
+        String text = TextUtils.isEmpty(title) ? getString(R.string.app_name)
+                : title.length() > 120 ? title.substring(0, 120) : title;
+        String key = TextUtils.isEmpty(tag) ? "skb" : tag.length() > 100 ? tag.substring(0, 100) : tag;
+        Intent open = new Intent(this, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(EXTRA_TAG, key);
+        PendingIntent tap = PendingIntent.getActivity(this, key.hashCode(), open,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification n = new Notification.Builder(this, CHANNEL)
+                .setSmallIcon(R.drawable.ic_notify)
+                .setColor(0xFF4F46E5)
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText(text)
+                .setContentIntent(tap)
+                .setAutoCancel(true)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .build();
+        try {
+            nm.notify(key, 1, n);
+        } catch (SecurityException ignored) {
+            // The permission was taken back a moment ago.
+        }
     }
 
     /** Start a recording: "ok", "asking" (the phone is asking the person), "denied" or "error". */
@@ -413,6 +525,11 @@ public class MainActivity extends Activity {
 
     private final class Client extends WebViewClient {
         @Override
+        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            pageUrl = url;
+        }
+
+        @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri url = request.getUrl();
             if (ServerConfig.isServerUrl(MainActivity.this, url)) return false;
@@ -421,7 +538,13 @@ public class MainActivity extends Activity {
         }
 
         @Override
+        public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+            pageUrl = url;
+        }
+
+        @Override
         public void onPageFinished(WebView view, String url) {
+            pageUrl = url;
             // The server page (or the offline page) is now showing — drop the startup splash.
             hideSplash();
         }
@@ -471,7 +594,8 @@ public class MainActivity extends Activity {
 
     /**
      * Called from pages: the offline page's buttons (retry / open settings) and the server app's
-     * print, save and microphone. Only the configured server's pages load in this window.
+     * print, save, microphone and notifications. Only the configured server's pages load in this
+     * window, and all but the offline page's two buttons also check that the page calling is one.
      */
     private final class Bridge {
         @JavascriptInterface
@@ -486,22 +610,26 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void print(String title) {
+            if (!fromServer()) return;
             runOnUiThread(() -> MainActivity.this.print(title));
         }
 
         /** The microphone, for talking with the assistant (see {@link MainActivity#micStart}). */
         @JavascriptInterface
         public String micStart() {
+            if (!fromServer()) return "denied";
             return MainActivity.this.micStart();
         }
 
         @JavascriptInterface
         public double micLevel() {
+            if (!fromServer()) return 0;
             return MainActivity.this.micLevel();
         }
 
         @JavascriptInterface
         public String micStop() {
+            if (!fromServer()) return "";
             return MainActivity.this.micStop();
         }
 
@@ -513,6 +641,7 @@ public class MainActivity extends Activity {
         /** Save a file the page made: its name, type and contents (base64). */
         @JavascriptInterface
         public void saveFile(String name, String mime, String base64) {
+            if (!fromServer()) return;
             if (base64 == null || base64.length() > MAX_SAVE_BYTES / 3 * 4 + 4) return;
             final byte[] bytes;
             try {
@@ -524,6 +653,26 @@ public class MainActivity extends Activity {
             String fileName = safe.isEmpty() ? "SKB" : safe.length() > 120 ? safe.substring(0, 120) : safe;
             String type = mime != null && mime.matches("[a-z]+/[a-z0-9.+-]+") ? mime : "application/octet-stream";
             runOnUiThread(() -> save(fileName, type, bytes));
+        }
+
+        /** A system notification while the app is in the background: the kind's title and a tag. */
+        @JavascriptInterface
+        public void notify(String title, String tag) {
+            if (fromServer()) postNotification(title, tag);
+        }
+
+        /** "granted", "default", "asking" or "denied" (see {@link MainActivity#notifyState}). */
+        @JavascriptInterface
+        public String notifyState() {
+            return fromServer() ? MainActivity.this.notifyState() : "denied";
+        }
+
+        /** Ask whether the app may notify (from a tap); answers the state now, "asking" while asking. */
+        @JavascriptInterface
+        public String notifyAsk() {
+            if (!fromServer()) return "denied";
+            if ("default".equals(MainActivity.this.notifyState())) askNotify();
+            return MainActivity.this.notifyState();
         }
     }
 }
