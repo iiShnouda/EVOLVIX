@@ -257,6 +257,26 @@
         {
           "ar": "مفيش خصم تاني على فاتورة البيع؛ الخصم الإضافي القديم اتضم لخصم الفاتورة من غير ما الإجماليات تتغير",
           "en": "A sales invoice has one discount; old extra discounts were merged into it without changing any total"
+        },
+        {
+          "ar": "الفاتورة اللي في الاستبدال بقت بتتحسب مدفوعة باللي رجع، ومش بتفضل مفتوحة في الفواتير المفتوحة وأعمار الديون",
+          "en": "An exchange's invoice is paid by the goods brought back: it no longer stays open in open invoices and aging"
+        },
+        {
+          "ar": "عمولة التحصيل بقت بتطرح الفلوس اللي رجعت لما الفاتورة اتعدلت بالنقص، وبتحسب المرتجع في الاستبدال كتحصيل",
+          "en": "Commission on collections takes off money given back when an invoice is changed down, and counts an exchange's returned goods as collected"
+        },
+        {
+          "ar": "تعديل أمر الشراء واستلامه في نفس اللحظة مبقاش بيضيع اللي اتستلم",
+          "en": "Changing a purchase order while it is being received no longer loses what was received"
+        },
+        {
+          "ar": "المحاولات الغلط لفتح الشاشة المقفولة بتتحسب كلها حتى لو اتبعتت مع بعض، والخامسة بتطلعك",
+          "en": "Wrong tries to open a locked screen all count, even sent at once; the fifth signs out"
+        },
+        {
+          "ar": "الاستبدال اللي اترفض مبقاش بيبعت تنبيه، وكمية كبيرة جدًا في التالف بترجع رسالة واضحة",
+          "en": "A refused exchange no longer sends a notification, and too large a quantity of damaged goods gives a clear message"
         }
       ],
       "apps": {
