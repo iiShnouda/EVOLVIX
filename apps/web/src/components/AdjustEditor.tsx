@@ -9,7 +9,7 @@ import {
   toMinor,
   type ChargeInput,
   type InvoiceAdjustInput,
-  type LineAdjustInput,
+  type LineAdjustments,
   type SalesDocument,
   type TranslationKey,
 } from '@skb/shared';
@@ -170,7 +170,7 @@ export function adjustPreview(doc: SalesDocument, boxes: AdjustBoxes) {
 export function adjustPayload(
   doc: SalesDocument,
   boxes: AdjustBoxes,
-): { lines: LineAdjustInput[]; invoice: InvoiceAdjustInput } {
+): { lines: LineAdjustments[]; invoice: InvoiceAdjustInput } {
   return {
     lines: pricedLines(doc).map((l) => {
       const b = boxes.lines[l.id]!;

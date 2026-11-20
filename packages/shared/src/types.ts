@@ -3229,7 +3229,7 @@ export interface ApproveOrderInput {
   /** New invoice discounts (DISCOUNT only: an invoice has one; owner, 2026-11-20); left out = keep them. */
   charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
   /** Every box of these lines as the approver leaves them (in place of `lineDiscounts`). */
-  lines?: LineAdjustInput[];
+  lines?: LineAdjustments[];
   /** The invoice's own increase and discount as the approver leaves them (in place of `charges`). */
   invoice?: InvoiceAdjustInput;
   notes?: string;
@@ -3240,7 +3240,7 @@ export interface ApproveOrderInput {
  * A line's own increase and discount as the accountant leaves them (owner, 2026-11-20): every box
  * as typed — a percent, an amount for the line, an amount a piece (minor units; empty = none).
  */
-export interface LineAdjustInput {
+export interface LineAdjustments {
   lineId: string;
   discountPercent?: number;
   discountAmount?: number;
@@ -3263,7 +3263,7 @@ export interface InvoiceAdjustInput {
  * (and, with their permissions, the increases) in place; there is no second discount.
  */
 export interface SetAdjustmentsInput {
-  lines?: LineAdjustInput[];
+  lines?: LineAdjustments[];
   /** Left out = the invoice's own stay. */
   invoice?: InvoiceAdjustInput;
 }
