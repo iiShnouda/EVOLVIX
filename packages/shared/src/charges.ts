@@ -8,8 +8,10 @@
  *     what is left after them;
  *  4. TAX, OTHER_TAX and ADDITION on the discounted amount.
  * The increase, then the discount, is shared over the lines in proportion to their nets (bonus lines
- * take none), with the shares adding up exactly. Money is integer minor units; rates are percents
- * (2 decimals).
+ * take none), with the shares adding up exactly. A sale's increase or discount may be an amount a
+ * piece (owner, 2026-11-20): it comes to that times the invoice's pieces (each item's smallest unit,
+ * free goods aside), and each line takes exactly its own pieces times it. Money is integer minor
+ * units; rates are percents (2 decimals).
  */
 
 export type ChargeKind =
@@ -24,11 +26,13 @@ export const CHARGE_ORDER: ChargeKind[] = [
   'ADDITION',
 ];
 
-/** A charge as sent to the server: a percent or a fixed amount. */
+/** A charge as sent to the server: a percent, a fixed amount, or (a sale's increase or discount) an amount a piece. */
 export interface ChargeInput {
   kind: ChargeKind;
   percent?: number;
   amount?: number;
+  /** Minor units a piece, times the invoice's pieces. */
+  perPiece?: number;
   label?: string;
 }
 
@@ -38,13 +42,15 @@ export interface DocumentCharge {
   /** Percent (14 = 14%) when it is a rate. */
   rate?: number | null;
   fixedAmount?: number | null;
+  /** An amount a piece, as typed (minor units); `amount` is it times the invoice's pieces. */
+  perPiece?: number | null;
   /** What it came to, minor units. */
   amount: number;
   label?: string | null;
 }
 
 export interface ChargesOutcome {
-  rows: { kind: ChargeKind; amount: number; label?: string }[];
+  rows: { kind: ChargeKind; amount: number; perPiece?: number; label?: string }[];
   discount: number;
   tax: number;
   addition: number;
@@ -59,9 +65,18 @@ export interface ChargesOutcome {
 
 const isDiscount = (k: ChargeKind) => k === 'DISCOUNT' || k === 'EXTRA_DISCOUNT';
 
-function amountOf(c: ChargeInput, on: number): number {
+function amountOf(c: ChargeInput, on: number, pieces: number): number {
   if (c.percent !== undefined) return percentOf(on, c.percent);
+  if (c.perPiece !== undefined) return Math.max(0, Math.round(c.perPiece)) * pieces;
   return Math.max(0, Math.round(c.amount ?? 0));
+}
+
+/** A stored charge as typed again (a percent, an amount, or an amount a piece). */
+export function chargeInputOf(c: DocumentCharge): ChargeInput {
+  const label = c.label ?? undefined;
+  if (c.rate != null) return { kind: c.kind, percent: c.rate, label };
+  if (c.perPiece != null) return { kind: c.kind, perPiece: c.perPiece, label };
+  return { kind: c.kind, amount: c.fixedAmount ?? c.amount, label };
 }
 
 /** Share `total` over lines in proportion to their nets (largest remainder); null if nothing can take it. */
@@ -89,10 +104,14 @@ export function allocate(total: number, nets: number[], shares: boolean[]): numb
   return result;
 }
 
+/**
+ * @param pieces each line's pieces (its item's smallest unit), for an amount a piece.
+ */
 export function applyCharges(
   nets: number[],
   shares: boolean[],
   charges: ChargeInput[],
+  pieces: number[] = [],
 ): ChargesOutcome {
   const ordered = charges
     .map((c, i) => ({ c, i }))
@@ -100,6 +119,11 @@ export function applyCharges(
     .map((x) => x.c);
   let running = nets.reduce((s, n) => s + n, 0);
   const base = running; // what an increase's and the first discount's percents are of
+  // The pieces an amount a piece is times: those of the lines that take a share (not free goods).
+  const each = nets.map((_, i) => (shares[i] ? Math.max(0, pieces[i] ?? 0) : 0));
+  const allPieces = each.reduce((s, p) => s + p, 0);
+  let increasePiece = 0;
+  let discountPiece = 0;
   let discount = 0;
   let tax = 0;
   let addition = 0;
@@ -107,30 +131,40 @@ export function applyCharges(
   let error: ChargesOutcome['error'];
   const rows: ChargesOutcome['rows'] = [];
   for (const c of ordered.filter((c) => c.kind === 'INCREASE')) {
-    const amount = amountOf(c, base);
+    const amount = amountOf(c, base, allPieces);
     running += amount;
     increase += amount;
-    rows.push({ kind: c.kind, amount, label: c.label });
+    if (c.perPiece !== undefined) increasePiece += Math.max(0, Math.round(c.perPiece));
+    rows.push({ kind: c.kind, amount, perPiece: c.perPiece, label: c.label });
   }
-  const increaseAllocation = allocate(increase, nets, shares);
+  // An amount a piece goes on each line exactly by its pieces; the rest by the nets.
+  const increaseAllocation = allocate(increase - increasePiece * allPieces, nets, shares)?.map(
+    (x, i) => x + increasePiece * each[i]!,
+  );
   if (!increaseAllocation) error = 'discount_too_big';
   const raised = nets.map((n, i) => n + (increaseAllocation?.[i] ?? 0));
   for (const c of ordered.filter((c) => isDiscount(c.kind))) {
-    const amount = amountOf(c, c.kind === 'DISCOUNT' ? base : running);
+    const amount = amountOf(c, c.kind === 'DISCOUNT' ? base : running, allPieces);
     if (amount > running) error = 'discount_too_big';
     const taken = Math.min(amount, running);
     running -= taken;
     discount += taken;
-    rows.push({ kind: c.kind, amount: taken, label: c.label });
+    if (c.perPiece !== undefined && taken === amount)
+      discountPiece += Math.max(0, Math.round(c.perPiece));
+    rows.push({ kind: c.kind, amount: taken, perPiece: c.perPiece, label: c.label });
   }
   for (const c of ordered.filter((c) => !isDiscount(c.kind) && c.kind !== 'INCREASE')) {
-    const amount = amountOf(c, running);
+    const amount = amountOf(c, running, allPieces);
     if (c.kind === 'ADDITION') addition += amount;
     else tax += amount;
     rows.push({ kind: c.kind, amount, label: c.label });
   }
-  const allocation = allocate(discount, raised, shares);
+  const allocation = allocate(discount - discountPiece * allPieces, raised, shares)?.map(
+    (x, i) => x + discountPiece * each[i]!,
+  );
   if (!allocation) error = 'discount_too_big';
+  // A discount a piece can't take more off a line than it comes to.
+  if (allocation?.some((x, i) => x > raised[i]!)) error = 'discount_too_big';
   return {
     rows,
     discount,

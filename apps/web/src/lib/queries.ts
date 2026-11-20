@@ -643,13 +643,18 @@ export function useSetAdjustments() {
 
 /**
  * One discount on a customer's combined invoices: it becomes each one's own discount (a percent on
- * each, an amount shared by what their items come to; owner, 2026-11-20).
+ * each, an amount shared by what their items come to, an amount a piece times each one's pieces;
+ * owner, 2026-11-20).
  */
 export function useDiscountAll() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { invoiceIds: string[]; percent?: number; amount?: number }) =>
-      api.post<SalesDocument[]>('/sales/invoices/discount-all', input),
+    mutationFn: (input: {
+      invoiceIds: string[];
+      percent?: number;
+      amount?: number;
+      perPiece?: number;
+    }) => api.post<SalesDocument[]>('/sales/invoices/discount-all', input),
     onSuccess: () => invalidateAfterPosting(qc, 'sales'),
   });
 }

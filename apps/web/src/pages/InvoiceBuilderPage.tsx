@@ -11,6 +11,7 @@ import {
   toMinor,
   type ChargeInput,
   type ChargeKind,
+  chargeInputOf,
   type DeliveryMethod,
   type Party,
   type PriceBasis,
@@ -203,10 +204,10 @@ export function InvoiceBuilderPage({
     invoice: {
       iPct: can('sales:increase_pct'),
       iAmt: can('sales:increase_amount'),
-      iPc: false,
+      iPc: can('sales:increase_amount'),
       dPct: can('sales:discount_pct'),
       dAmt: can('sales:discount_amount'),
-      dPc: false,
+      dPc: can('sales:discount_amount'),
     },
   };
   // Order of the line columns, kept per person.
@@ -651,20 +652,29 @@ export function InvoiceBuilderPage({
   // Invoice charges, in the same order and with the same rounding as the server.
   const round2 = (v: string) => Math.round(Number(v) * 100) / 100;
   const chargeInputs: ChargeInput[] = [];
-  // The invoice's increase, then its discount, each a percent and/or an amount (in that order).
+  // The invoice's increase, then its discount, each a percent, an amount and an amount a piece (in
+  // that order); a piece's is times the invoice's pieces (owner, 2026-11-20).
   if (pctOf(invoiceAdj.iPct) > 0)
     chargeInputs.push({ kind: 'INCREASE', percent: pctOf(invoiceAdj.iPct) });
   if (amtOf(invoiceAdj.iAmt) > 0)
     chargeInputs.push({ kind: 'INCREASE', amount: amtOf(invoiceAdj.iAmt) });
+  if (amtOf(invoiceAdj.iPc) > 0)
+    chargeInputs.push({ kind: 'INCREASE', perPiece: amtOf(invoiceAdj.iPc) });
   if (pctOf(invoiceAdj.dPct) > 0)
     chargeInputs.push({ kind: 'DISCOUNT', percent: pctOf(invoiceAdj.dPct) });
   if (amtOf(invoiceAdj.dAmt) > 0)
     chargeInputs.push({ kind: 'DISCOUNT', amount: amtOf(invoiceAdj.dAmt) });
+  if (amtOf(invoiceAdj.dPc) > 0)
+    chargeInputs.push({ kind: 'DISCOUNT', perPiece: amtOf(invoiceAdj.dPc) });
   if (effTax > 0) chargeInputs.push({ kind: 'TAX', percent: round2(String(effTax)) });
+  // Each line's pieces (its item's smallest unit); free goods take no share.
+  const linePieces = pre.map((p) => p.line.quantity * p.factor);
+  const invoicePieces = pre.reduce((s, p, i) => s + (p.line.bonus ? 0 : linePieces[i]!), 0);
   const outcome = applyCharges(
     pre.map((p) => p.lineTotal),
     pre.map((p) => !p.line.bonus),
     chargeInputs,
+    linePieces,
   );
 
   const rows = pre.map((p, i) => {
@@ -962,17 +972,33 @@ export function InvoiceBuilderPage({
         carrierId: doc.carrierId ?? '',
       });
       setNotes(doc.notes ?? '');
-      // Its own increase and discount, each a percent and an amount.
-      const typed = (kind: ChargeKind, rate: boolean) => {
-        const c = doc.charges.find((x) => x.kind === kind && (x.rate != null) === rate);
-        return !c ? '' : rate ? String(c.rate) : asText(c.fixedAmount ?? c.amount, true);
+      // Its own increase and discount, each a percent, an amount and an amount a piece.
+      const typed = (kind: ChargeKind, way: 'rate' | 'amount' | 'piece') => {
+        const c = doc.charges
+          .map(chargeInputOf)
+          .find(
+            (x) =>
+              x.kind === kind &&
+              (way === 'rate'
+                ? x.percent !== undefined
+                : way === 'piece'
+                  ? x.perPiece !== undefined
+                  : x.percent === undefined && x.perPiece === undefined),
+          );
+        return !c
+          ? ''
+          : way === 'rate'
+            ? String(c.percent)
+            : asText((way === 'piece' ? c.perPiece : c.amount) ?? 0, true);
       };
       setInvoiceAdj({
         ...NO_ADJ,
-        iPct: typed('INCREASE', true),
-        iAmt: typed('INCREASE', false),
-        dPct: typed('DISCOUNT', true),
-        dAmt: typed('DISCOUNT', false),
+        iPct: typed('INCREASE', 'rate'),
+        iAmt: typed('INCREASE', 'amount'),
+        iPc: typed('INCREASE', 'piece'),
+        dPct: typed('DISCOUNT', 'rate'),
+        dAmt: typed('DISCOUNT', 'amount'),
+        dPc: typed('DISCOUNT', 'piece'),
       });
       // Free goods it already has stay on it (owner, 2026-10-24), though none are added here.
       const loaded = doc.lines.flatMap((l) => {
@@ -1464,25 +1490,35 @@ export function InvoiceBuilderPage({
     (may.line[k] && !readOnly) || lines.some((l) => !l.bonus && (l.adj?.[k] ?? '').trim() !== '');
 
   /**
-   * The invoice's increase (`i`) or discount (`d`) in the totals: what it comes to, and its percent
-   * and amount boxes for whoever holds each one's permission.
+   * The invoice's increase (`i`) or discount (`d`) in the totals: what it comes to, and its percent,
+   * amount and amount-a-piece boxes for whoever holds each one's permission.
    */
   const invoiceAdjRow = (kind: 'i' | 'd') => {
     const pk = kind === 'i' ? 'iPct' : 'dPct';
     const ak = kind === 'i' ? 'iAmt' : 'dAmt';
+    const ck = kind === 'i' ? 'iPc' : 'dPc';
     const amount =
       kind === 'i'
         ? outcome.increase
         : outcome.rows.filter((c) => c.kind === 'DISCOUNT').reduce((sum, c) => sum + c.amount, 0);
-    const boxes = readOnly ? [] : [pk, ak].filter((k) => may.invoice[k as keyof Adj]);
+    const boxes = readOnly ? [] : [pk, ak, ck].filter((k) => may.invoice[k as keyof Adj]);
     if (boxes.length === 0 && amount === 0) return null;
     const rate = pctOf(invoiceAdj[pk]);
+    const each = amtOf(invoiceAdj[ck]);
+    // "20.00 × 48 pieces": what an amount a piece comes to.
+    const perPiece =
+      each > 0
+        ? t('charge.perPieceOf')
+            .replace('{amount}', formatMoney(each, currency, locale))
+            .replace('{pieces}', formatNumber(invoicePieces, locale))
+        : '';
     return (
       <div>
         <div className="flex items-center justify-between gap-2">
           <dt className="min-w-0 text-muted">
             {t(kind === 'i' ? 'charge.INCREASE' : 'charge.DISCOUNT')}
             {boxes.length === 0 && rate > 0 ? ` (${formatNumber(rate, locale)}%)` : ''}
+            {perPiece && ` (${perPiece})`}
           </dt>
           <dd
             className={`tnum ${amount > 0 ? (kind === 'i' ? 'text-positive' : 'text-warning') : 'text-faint'}`}
@@ -1492,7 +1528,7 @@ export function InvoiceBuilderPage({
           </dd>
         </div>
         {boxes.length > 0 && (
-          <div className="mt-1 grid grid-cols-2 gap-2">
+          <div className="mt-1 grid grid-cols-3 gap-2">
             {boxes.map((k) => (
               <label key={k} className="flex min-w-0 items-center gap-1">
                 <input
@@ -1504,10 +1540,13 @@ export function InvoiceBuilderPage({
                   className={`${field} !h-8 min-w-0 tnum`}
                   aria-label={t(ADJ_LABEL[k as keyof Adj])}
                   placeholder="0"
+                  title={t(ADJ_LABEL[k as keyof Adj])}
                   value={invoiceAdj[k as keyof Adj]}
                   onChange={(e) => setInvoiceAdj((v) => ({ ...v, [k]: e.target.value }))}
                 />
-                <span className="shrink-0 text-xs text-muted">{k === pk ? '%' : currency}</span>
+                <span className="shrink-0 text-xs text-muted">
+                  {k === pk ? '%' : k === ck ? `${currency}/${t('invoice.perPiece')}` : currency}
+                </span>
               </label>
             ))}
           </div>

@@ -403,6 +403,92 @@ eq(
     ?.code,
   'charge_too_big',
 );
+// An amount a piece (owner, 2026-11-20): each invoice's own pieces times it, as its discount a piece.
+const perPiece = ok(
+  '0.50 off a piece on both',
+  await acc.post('/sales/invoices/discount-all', { invoiceIds: [a1.id, a2.id], perPiece: 50 }),
+);
+eq(
+  '…2 × 0.50 and 3 × 0.50: 19.00 and 28.50',
+  perPiece.map((d) => d.grandTotal),
+  [1900, 2850],
+);
+eq(
+  '…each one’s discount is 0.50 a piece, in place of the 10%',
+  perPiece.map((d) => d.charges.map((c) => [c.kind, c.rate ?? null, c.perPiece, c.amount])),
+  [[['DISCOUNT', null, 50, 100]], [['DISCOUNT', null, 50, 150]]],
+);
+eq('…the balance follows', await balance(c7.id), 1900 + 2850);
+const a3 = ok(
+  'a third invoice at 8.00 a piece',
+  await sale(owner, c7.id, 1, {
+    lines: [{ productId: item.id, quantity: 1, unitPrice: 800 }],
+  }),
+);
+eq(
+  '2.50 a piece on all three: the third would sell below cost — none is given',
+  (
+    await acc.post('/sales/invoices/discount-all', {
+      invoiceIds: [a1.id, a2.id, a3.id],
+      perPiece: 250,
+    })
+  ).data?.code,
+  'below_cost',
+);
+eq('…all or nothing', await balance(c7.id), 1900 + 2850 + 800);
+{
+  const email = `limpp.${tag}@skb.local`;
+  const staff = ok(
+    'someone with the combined discount and a 10% limit',
+    await owner.post('/staff', {
+      fullName: `LimPP ${tag}`,
+      email,
+      password: PASS,
+      role: 'SALES',
+      branchId: owner.user.branchId,
+    }),
+  );
+  ok(
+    '…the combined discount',
+    await owner.put(`/staff/${staff.id}/permissions`, {
+      granted: ['sales:discount_combined'],
+      revoked: [],
+    }),
+  );
+  ok(
+    '…the limit',
+    await owner.put(`/staff/${staff.id}/access`, {
+      allBranches: null,
+      branchIds: [],
+      warehouseIds: [],
+      moneyAccountIds: [],
+      maxDiscountPercent: 10,
+    }),
+  );
+  const limited = await login(email, PASS);
+  eq(
+    '1.00 a piece is 12.5% of the 8.00 one: over the limit, none is given',
+    (
+      await limited.post('/sales/invoices/discount-all', {
+        invoiceIds: [a1.id, a2.id, a3.id],
+        perPiece: 100,
+      })
+    ).data?.code,
+    'discount_over_limit',
+  );
+  const within = ok(
+    '0.80 a piece is within it on each',
+    await limited.post('/sales/invoices/discount-all', {
+      invoiceIds: [a1.id, a2.id, a3.id],
+      perPiece: 80,
+    }),
+  );
+  eq(
+    '…1.60, 2.40 and 0.80 off',
+    within.map((d) => d.discountTotal),
+    [160, 240, 80],
+  );
+}
 ok('the discount removed', await acc.post(`/sales/invoices/${a1.id}/discount`, {}));
 const pend = ok('a pending one', await sale(acc, (await customer('Lim9', 500)).id, 1));
 eq('it is pending', pend.type, 'SALES_ORDER');

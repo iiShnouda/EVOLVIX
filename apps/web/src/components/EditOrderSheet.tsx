@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatMoney, type SalesDocument } from '@skb/shared';
+import { chargeInputOf, formatMoney, type SalesDocument } from '@skb/shared';
 import { Sheet } from './Sheet';
 import { Button } from './ui';
 import { useT } from '../lib/i18n';
@@ -58,11 +58,8 @@ export function EditOrderSheet({
               isBonus: l.isBonus || undefined,
             };
           }),
-          charges: order.charges.map((c) =>
-            c.rate != null
-              ? { kind: c.kind, percent: c.rate, label: c.label ?? undefined }
-              : { kind: c.kind, amount: c.fixedAmount ?? c.amount, label: c.label ?? undefined },
-          ),
+          // An amount a piece stays one: it follows the quantities.
+          charges: order.charges.map(chargeInputOf),
           paidAmount: 0,
           overrideFloor: false,
           notes: notes.trim() || undefined,

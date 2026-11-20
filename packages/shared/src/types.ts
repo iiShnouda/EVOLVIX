@@ -3227,7 +3227,13 @@ export interface ApproveOrderInput {
   /** A line's new discount: an amount for the line, or a `percent` of it (each its own permission). */
   lineDiscounts?: { lineId: string; discount: number; percent?: number }[];
   /** New invoice discounts (DISCOUNT only: an invoice has one; owner, 2026-11-20); left out = keep them. */
-  charges?: { kind: ChargeKind; percent?: number; amount?: number; label?: string }[];
+  charges?: {
+    kind: ChargeKind;
+    percent?: number;
+    amount?: number;
+    perPiece?: number;
+    label?: string;
+  }[];
   /** Every box of these lines as the approver leaves them (in place of `lineDiscounts`). */
   lines?: LineAdjustments[];
   /** The invoice's own increase and discount as the approver leaves them (in place of `charges`). */
@@ -3250,12 +3256,17 @@ export interface LineAdjustments {
   increasePerPiece?: number;
 }
 
-/** The invoice's own increase and discount: a percent and an amount of each (empty = none). */
+/**
+ * The invoice's own increase and discount: a percent, an amount and an amount a piece of each (times
+ * the invoice's pieces; owner, 2026-11-20). Empty = none.
+ */
 export interface InvoiceAdjustInput {
   discountPercent?: number;
   discountAmount?: number;
+  discountPerPiece?: number;
   increasePercent?: number;
   increaseAmount?: number;
+  increasePerPiece?: number;
 }
 
 /**

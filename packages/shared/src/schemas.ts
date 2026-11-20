@@ -22,6 +22,8 @@ export const chargeSchema = z.object({
   kind: z.enum(['INCREASE', 'DISCOUNT', 'EXTRA_DISCOUNT', 'TAX', 'OTHER_TAX', 'ADDITION']),
   percent: z.number().min(0).max(100).optional(),
   amount: z.number().int().min(0).optional(),
+  /** A sale's increase or discount as an amount a piece (owner, 2026-11-20). */
+  perPiece: z.number().int().min(0).optional(),
   label: z.string().trim().max(60).optional(),
 });
 export type ChargeInputSchema = z.infer<typeof chargeSchema>;

@@ -816,6 +816,7 @@ export const en = {
   'charge.labelPlaceholder': 'e.g. Delivery',
   'charge.net': 'After discounts',
   'charge.tooBig': 'A discount can’t be more than the invoice.',
+  'charge.perPieceOf': '{amount} × {pieces} pieces',
   'charge.feeNotRefunded': 'Additions such as delivery are not refunded by a return.',
   'invoice.bonus': 'Bonus',
   'invoice.bonusHint': 'Free goods: no price, the cost still counts.',
@@ -2557,7 +2558,7 @@ export const en = {
   'together.applyAll': 'Apply to all',
   'together.editDiscounts': 'Discounts',
   'together.discountAllHint':
-    "It becomes each invoice's own discount (in place of the one it has): a percent on each, an amount shared by what their items come to.",
+    "It becomes each invoice's own discount (in place of the one it has): a percent on each, an amount shared by what their items come to, or an amount a piece times each invoice's pieces.",
   'together.discountAllEach': "Each invoice's discount",
   'together.increaseSeen': 'Increases (you may only see them)',
   'together.invoiceIncrease': 'Invoice increase',

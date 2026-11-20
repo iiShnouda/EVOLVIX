@@ -77,7 +77,9 @@ public record DocumentLineDto(
 
 /// <param name="Rate">Percent (14.00 = 14%) when the charge is a rate, else null.</param>
 /// <param name="Amount">What it came to, minor units.</param>
-public record DocumentChargeDto(string Kind, decimal? Rate, long? FixedAmount, long Amount, string? Label);
+/// <param name="PerPiece">An amount a piece, typed (the invoice's pieces times it is <paramref name="Amount"/>).</param>
+public record DocumentChargeDto(string Kind, decimal? Rate, long? FixedAmount, long Amount, string? Label,
+    long? PerPiece = null);
 
 /// <param name="SourceDocumentId">For a return: the invoice it reverses.</param>
 /// <param name="PreviousBalance">On a sales invoice (posted or waiting), for whoever may see the customer's
@@ -121,9 +123,13 @@ public record LineAdjustRequest(string? LineId, decimal? DiscountPercent = null,
     long? DiscountPerPiece = null, decimal? IncreasePercent = null, long? IncreaseAmount = null,
     long? IncreasePerPiece = null);
 
-/// <summary>The invoice's own increase and discount as the accountant leaves them: each a percent and an amount.</summary>
+/// <summary>
+/// The invoice's own increase and discount as the accountant leaves them: each a percent, an amount and
+/// an amount a piece (times the invoice's pieces; owner, 2026-11-20).
+/// </summary>
 public record InvoiceAdjustRequest(decimal? DiscountPercent = null, long? DiscountAmount = null,
-    decimal? IncreasePercent = null, long? IncreaseAmount = null);
+    decimal? IncreasePercent = null, long? IncreaseAmount = null, long? DiscountPerPiece = null,
+    long? IncreasePerPiece = null);
 
 /// <summary>
 /// The accountant changes an invoice's discounts (and, with their permissions, its increases) in place:
@@ -131,8 +137,12 @@ public record InvoiceAdjustRequest(decimal? DiscountPercent = null, long? Discou
 /// </summary>
 public record SetAdjustmentsRequest(LineAdjustRequest[]? Lines = null, InvoiceAdjustRequest? Invoice = null);
 
-/// <summary>One discount shared over several invoices of a customer.</summary>
-public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = null, long? Amount = null);
+/// <summary>
+/// One discount over several invoices of a customer: a percent on each, an amount shared out, or an
+/// amount a piece (<paramref name="PerPiece"/>: each one's pieces times it; owner, 2026-11-20).
+/// </summary>
+public record SetDiscountAllRequest(string[]? InvoiceIds, decimal? Percent = null, long? Amount = null,
+    long? PerPiece = null);
 
 /// <summary>Discounts on an invoice's items: each line named and its discount (0 = none).</summary>
 public record SetLineDiscountsRequest(LineDiscountRequest[]? Lines = null);
@@ -181,7 +191,9 @@ public record CreateInvoiceLineRequest(
 
 /// <param name="Percent">A rate (14 = 14%, up to 2 decimals); give this or Amount.</param>
 /// <param name="Amount">A fixed amount in minor units; give this or Percent.</param>
-public record ChargeRequest(string? Kind, decimal? Percent = null, long? Amount = null, string? Label = null);
+/// <param name="PerPiece">A sale's increase or discount as an amount a piece, times the invoice's pieces.</param>
+public record ChargeRequest(string? Kind, decimal? Percent = null, long? Amount = null, string? Label = null,
+    long? PerPiece = null);
 
 public record CreateSalesInvoiceRequest(
     string PartyId, CreateInvoiceLineRequest[] Lines,

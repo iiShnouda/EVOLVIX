@@ -817,6 +817,7 @@ export const ar: TranslationDictionary = {
   'charge.labelPlaceholder': 'مثال: توصيل',
   'charge.net': 'بعد الخصم',
   'charge.tooBig': 'لا يمكن أن يزيد الخصم عن قيمة الفاتورة.',
+  'charge.perPieceOf': '{amount} × {pieces} حتة',
   'charge.feeNotRefunded': 'الإضافات مثل التوصيل لا تُرد في المرتجع.',
   'invoice.bonus': 'بونص',
   'invoice.bonusHint': 'بضاعة مجانية: بدون سعر، والتكلفة تُحسب.',
@@ -2545,7 +2546,7 @@ export const ar: TranslationDictionary = {
   'together.applyAll': 'تطبيق على الكل',
   'together.editDiscounts': 'الخصومات',
   'together.discountAllHint':
-    'بيبقى خصم كل فاتورة بدل اللي عليها: النسبة على كل واحدة، والمبلغ بيتوزّع على قد أصناف كل فاتورة.',
+    'بيبقى خصم كل فاتورة بدل اللي عليها: النسبة على كل واحدة، والمبلغ بيتوزّع على قد أصناف كل فاتورة، وعلى الحتة بيتضرب في عدد حتت كل فاتورة.',
   'together.discountAllEach': 'خصم كل فاتورة',
   'together.increaseSeen': 'الزيادات (للعرض بس)',
   'together.invoiceIncrease': 'زيادة على الفاتورة',

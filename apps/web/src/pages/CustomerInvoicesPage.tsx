@@ -55,9 +55,9 @@ import { TableColumns } from '../components/TableColumns';
 const field =
   'h-9 rounded-[var(--radius-app)] border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand';
 
-/** A discount as typed: a percent or an amount in the currency. */
+/** A discount as typed: a percent, an amount in the currency, or an amount a piece. */
 interface DiscountDraft {
-  mode: 'percent' | 'amount';
+  mode: 'percent' | 'amount' | 'piece';
   value: string;
 }
 
@@ -135,7 +135,9 @@ export function CustomerInvoicesPage() {
         ? {}
         : all.mode === 'percent'
           ? { percent: Math.round(v * 100) / 100 }
-          : { amount: toMinor(v) }),
+          : all.mode === 'piece'
+            ? { perPiece: toMinor(v) }
+            : { amount: toMinor(v) }),
     });
   }
 
@@ -296,6 +298,10 @@ export function CustomerInvoicesPage() {
                               <span>
                                 {d.number}
                                 {x.percent != null && ` (${formatNumber(x.percent, locale)}%)`}
+                                {x.perPiece != null &&
+                                  ` (${t('charge.perPieceOf')
+                                    .replace('{amount}', money(x.perPiece))
+                                    .replace('{pieces}', formatNumber(x.pieces ?? 0, locale))})`}
                               </span>
                               <span className="text-warning">−{money(x.amount)}</span>
                             </li>
@@ -591,7 +597,7 @@ function DiscountInputs({
   value,
   onChange,
   currency,
-  modes = ['percent', 'amount'],
+  modes = ['percent', 'amount', 'piece'],
 }: {
   value: DiscountDraft;
   onChange: (v: DiscountDraft) => void;
@@ -614,13 +620,18 @@ function DiscountInputs({
         onChange={(e) => onChange({ ...value, value: e.target.value })}
       />
       <select
-        className={`${field} w-24 px-1.5`}
+        className={`${field} min-w-24 px-1.5`}
         aria-label={t('col.discount')}
         value={value.mode}
         onChange={(e) => onChange({ ...value, mode: e.target.value as DiscountDraft['mode'] })}
       >
         {modes.includes('percent') && <option value="percent">%</option>}
         {modes.includes('amount') && <option value="amount">{currency}</option>}
+        {modes.includes('piece') && (
+          <option value="piece">
+            {currency} {t('invoice.perPiece')}
+          </option>
+        )}
       </select>
     </span>
   );

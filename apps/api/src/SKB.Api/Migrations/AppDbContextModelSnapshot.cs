@@ -779,6 +779,9 @@ namespace SKB.Api.Migrations
                     b.Property<string>("Label")
                         .HasColumnType("text");
 
+                    b.Property<long?>("PieceFixed")
+                        .HasColumnType("bigint");
+
                     b.Property<int?>("RateBp")
                         .HasColumnType("integer");
 

@@ -7,6 +7,7 @@ import {
   percentOf,
   toMajor,
   toMinor,
+  chargeInputOf,
   type ChargeInput,
   type InvoiceAdjustInput,
   type LineAdjustments,
@@ -19,8 +20,8 @@ import { ItemLink } from './ItemLink';
 
 /**
  * The accountant sees the discounts an invoice has and changes them (owner, 2026-11-20): each item's
- * discount as a percent, an amount and an amount a piece, and the invoice's as a percent and an
- * amount — filled in with what is there. There is no second discount: what he types replaces it.
+ * discount as a percent, an amount and an amount a piece, and the invoice's as a percent, an amount
+ * and an amount a piece (times its pieces; owner, 2026-11-20) — filled in with what is there. There is no second discount: what he types replaces it.
  * Increases show too; they change only for whoever holds their permissions. Each box is its own
  * permission (a piece's is an amount); the server checks them, and the person's limit, again.
  */
@@ -36,12 +37,14 @@ export interface LineBoxes {
   iAmt: string;
   iPc: string;
 }
-/** The invoice's own boxes. */
+/** The invoice's own boxes (`Pc`: an amount a piece, times the invoice's pieces). */
 export interface InvoiceBoxes {
   dPct: string;
   dAmt: string;
+  dPc: string;
   iPct: string;
   iAmt: string;
+  iPc: string;
 }
 export interface AdjustBoxes {
   lines: Record<string, LineBoxes>;
@@ -72,15 +75,27 @@ export function boxesOf(doc: SalesDocument): AdjustBoxes {
       iPc: amtText(l.increasePiece),
     };
   }
-  const first = (kind: 'DISCOUNT' | 'INCREASE', rate: boolean) =>
-    doc.charges.find((c) => c.kind === kind && (c.rate != null && c.rate > 0) === rate);
+  const first = (kind: 'DISCOUNT' | 'INCREASE', way: 'rate' | 'amount' | 'piece') =>
+    doc.charges
+      .map(chargeInputOf)
+      .find(
+        (c) =>
+          c.kind === kind &&
+          (way === 'rate'
+            ? (c.percent ?? 0) > 0
+            : way === 'piece'
+              ? (c.perPiece ?? 0) > 0
+              : c.percent === undefined && c.perPiece === undefined),
+      );
   return {
     lines,
     invoice: {
-      dPct: pctText(first('DISCOUNT', true)?.rate),
-      dAmt: amtText(first('DISCOUNT', false)?.fixedAmount),
-      iPct: pctText(first('INCREASE', true)?.rate),
-      iAmt: amtText(first('INCREASE', false)?.fixedAmount),
+      dPct: pctText(first('DISCOUNT', 'rate')?.percent),
+      dAmt: amtText(first('DISCOUNT', 'amount')?.amount),
+      dPc: amtText(first('DISCOUNT', 'piece')?.perPiece),
+      iPct: pctText(first('INCREASE', 'rate')?.percent),
+      iAmt: amtText(first('INCREASE', 'amount')?.amount),
+      iPc: amtText(first('INCREASE', 'piece')?.perPiece),
     },
   };
 }
@@ -100,8 +115,10 @@ export function useAdjustRights() {
     invoice: {
       dPct: can('sales:discount_pct'),
       dAmt: can('sales:discount_amount'),
+      dPc: can('sales:discount_amount'),
       iPct: can('sales:increase_pct'),
       iAmt: can('sales:increase_amount'),
+      iPc: can('sales:increase_amount'),
     },
   };
 }
@@ -141,20 +158,17 @@ export function adjustPreview(doc: SalesDocument, boxes: AdjustBoxes) {
   const charges: ChargeInput[] = [
     ...(pctOf(inv.iPct) > 0 ? [{ kind: 'INCREASE' as const, percent: pctOf(inv.iPct) }] : []),
     ...(amtOf(inv.iAmt) > 0 ? [{ kind: 'INCREASE' as const, amount: amtOf(inv.iAmt) }] : []),
+    ...(amtOf(inv.iPc) > 0 ? [{ kind: 'INCREASE' as const, perPiece: amtOf(inv.iPc) }] : []),
     ...(pctOf(inv.dPct) > 0 ? [{ kind: 'DISCOUNT' as const, percent: pctOf(inv.dPct) }] : []),
     ...(amtOf(inv.dAmt) > 0 ? [{ kind: 'DISCOUNT' as const, amount: amtOf(inv.dAmt) }] : []),
-    ...doc.charges
-      .filter((c) => c.kind !== 'DISCOUNT' && c.kind !== 'INCREASE')
-      .map((c) =>
-        c.rate != null
-          ? { kind: c.kind, percent: c.rate }
-          : { kind: c.kind, amount: c.fixedAmount ?? c.amount },
-      ),
+    ...(amtOf(inv.dPc) > 0 ? [{ kind: 'DISCOUNT' as const, perPiece: amtOf(inv.dPc) }] : []),
+    ...doc.charges.filter((c) => c.kind !== 'DISCOUNT' && c.kind !== 'INCREASE').map(chargeInputOf),
   ];
   const outcome = applyCharges(
     lines.map((l) => l.net),
     doc.lines.map((l) => !l.isBonus),
     charges,
+    doc.lines.map((l) => l.quantity),
   );
   const items = lines.reduce((s, l) => s + l.net, 0);
   const tooBig = lines.some((l) => l.net < 0) || !!outcome.error;
@@ -187,8 +201,10 @@ export function adjustPayload(
     invoice: {
       discountPercent: some(pctOf(boxes.invoice.dPct)),
       discountAmount: some(amtOf(boxes.invoice.dAmt)),
+      discountPerPiece: some(amtOf(boxes.invoice.dPc)),
       increasePercent: some(pctOf(boxes.invoice.iPct)),
       increaseAmount: some(amtOf(boxes.invoice.iAmt)),
+      increasePerPiece: some(amtOf(boxes.invoice.iPc)),
     },
   };
 }
@@ -210,12 +226,26 @@ export function boxesChanged(doc: SalesDocument, boxes: AdjustBoxes) {
   );
 }
 
+/** An invoice's pieces (each item's smallest unit), free goods aside: what an amount a piece is times. */
+export const piecesOf = (doc: SalesDocument) =>
+  pricedLines(doc).reduce((s, l) => s + l.quantity, 0);
+
 /** Combined discount over several invoices, shown per invoice before it is given (as the server shares it). */
 export function combinedShares(
   docs: SalesDocument[],
-  mode: 'percent' | 'amount',
+  mode: 'percent' | 'amount' | 'piece',
   value: string,
-): { id: string; percent?: number; amount: number }[] {
+): { id: string; percent?: number; perPiece?: number; pieces?: number; amount: number }[] {
+  if (mode === 'piece') {
+    // An amount a piece is each one's, times its own pieces (owner, 2026-11-20).
+    const each = amtOf(value);
+    return docs.map((d) => ({
+      id: d.id,
+      perPiece: each,
+      pieces: piecesOf(d),
+      amount: each * piecesOf(d),
+    }));
+  }
   if (mode === 'percent') {
     // A percent is each one's, of its items' total (before its own increase), as on the invoice.
     const p = pctOf(value);
@@ -308,11 +338,22 @@ export function AdjustEditor({
   // Increases show where there are some, or for whoever may give them.
   const mayLineIncrease = rights.line.iPct || rights.line.iAmt;
   const lineIncreases = mayLineIncrease || lines.some((l) => (l.increase ?? 0) > 0);
+  const mayInvoiceIncrease = rights.invoice.iPct || rights.invoice.iAmt || rights.invoice.iPc;
   const invoiceIncrease =
-    rights.invoice.iPct ||
-    rights.invoice.iAmt ||
+    mayInvoiceIncrease ||
     value.invoice.iPct !== '' ||
-    value.invoice.iAmt !== '';
+    value.invoice.iAmt !== '' ||
+    value.invoice.iPc !== '';
+  const pieces = piecesOf(doc);
+  /** What an invoice box a piece comes to: "20.00 × 48 pieces". */
+  const pieceNote = (v: string) =>
+    amtOf(v) > 0 ? (
+      <p className="mt-0.5 text-[11px] text-muted tnum">
+        {t('charge.perPieceOf')
+          .replace('{amount}', formatMoney(amtOf(v), doc.currency, locale))
+          .replace('{pieces}', formatNumber(pieces, locale))}
+      </p>
+    ) : null;
   const setLine = (id: string, k: keyof LineBoxes, v: string) =>
     onChange({ ...value, lines: { ...value.lines, [id]: { ...value.lines[id]!, [k]: v } } });
   const setInvoice = (k: keyof InvoiceBoxes, v: string) =>
@@ -391,7 +432,7 @@ export function AdjustEditor({
               <span className="text-warning tnum">−{money(preview.outcome.discount)}</span>
             )}
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <Box
               label={t('col.discountPct')}
               value={value.invoice.dPct}
@@ -406,21 +447,28 @@ export function AdjustEditor({
               pct={false}
               onChange={(v) => setInvoice('dAmt', v)}
             />
+            <Box
+              label={t('col.discountPiece')}
+              value={value.invoice.dPc}
+              enabled={rights.invoice.dPc}
+              pct={false}
+              onChange={(v) => setInvoice('dPc', v)}
+            />
           </div>
+          {pieceNote(value.invoice.dPc)}
         </div>
         {invoiceIncrease && (
           <div>
             <p className="mb-1 flex justify-between text-xs font-medium text-muted">
               <span>
                 {t('together.invoiceIncrease')}
-                {!(rights.invoice.iPct || rights.invoice.iAmt) &&
-                  ` · ${t('together.increaseSeen')}`}
+                {!mayInvoiceIncrease && ` · ${t('together.increaseSeen')}`}
               </span>
               {preview.outcome.increase > 0 && (
                 <span className="text-positive tnum">+{money(preview.outcome.increase)}</span>
               )}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Box
                 label={t('col.increasePct')}
                 value={value.invoice.iPct}
@@ -435,7 +483,15 @@ export function AdjustEditor({
                 pct={false}
                 onChange={(v) => setInvoice('iAmt', v)}
               />
+              <Box
+                label={t('col.increasePiece')}
+                value={value.invoice.iPc}
+                enabled={rights.invoice.iPc}
+                pct={false}
+                onChange={(v) => setInvoice('iPc', v)}
+              />
             </div>
+            {pieceNote(value.invoice.iPc)}
           </div>
         )}
       </div>

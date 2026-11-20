@@ -1288,6 +1288,12 @@ public class DocumentCharge
     public int? RateBp { get; set; }
     /// <summary>The fixed amount typed (minor units), or null for a rate.</summary>
     public long? FixedAmount { get; set; }
+    /// <summary>
+    /// A sale's increase or discount typed as an amount a piece (minor units; owner, 2026-11-20): it
+    /// comes to that times the invoice's pieces (each item's smallest unit), so it follows the
+    /// quantities when the invoice changes. Null for a rate or a fixed amount.
+    /// </summary>
+    public long? PieceFixed { get; set; }
     /// <summary>What it came to (minor units, always ≥ 0; discounts are subtracted).</summary>
     public long Amount { get; set; }
     public string? Label { get; set; }

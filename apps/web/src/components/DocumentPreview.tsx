@@ -602,7 +602,17 @@ export function InvoicePaper({
             .map((c, i) => (
               <Row
                 key={i}
-                label={`${c.label ?? t(`charge.${c.kind}`)}${c.rate != null ? ` (${formatNumber(c.rate, locale)}%)` : ''}`}
+                label={`${c.label ?? t(`charge.${c.kind}`)}${c.rate != null ? ` (${formatNumber(c.rate, locale)}%)` : ''}${
+                  // An amount a piece: "(20.00 × 48 pieces)".
+                  c.perPiece
+                    ? ` (${t('charge.perPieceOf')
+                        .replace('{amount}', money(c.perPiece))
+                        .replace(
+                          '{pieces}',
+                          formatNumber(Math.round(c.amount / c.perPiece), locale),
+                        )})`
+                    : ''
+                }`}
                 value={money(
                   c.kind === 'DISCOUNT' || c.kind === 'EXTRA_DISCOUNT' ? -c.amount : c.amount,
                 )}

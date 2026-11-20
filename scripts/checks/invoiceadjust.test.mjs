@@ -1,5 +1,5 @@
 // A discount or an increase on the sales invoice screen (owner, 2026-11-19): on an item or on the
-// whole invoice, as a percent or as an amount (on an item, an amount a piece too) — each its own
+// whole invoice, as a percent, an amount or an amount a piece (the invoice's since 2026-11-20) — each its own
 // permission, on a new invoice, a changed one and a pending one. Nothing compounds (owner,
 // 2026-11-19): on an item both percents are of quantity × price, on the invoice both are of the
 // items' total, so an increase and a discount net out (+10% +2.00 −5% −1.00 on 200.00 = 211.00).
@@ -847,6 +847,315 @@ eq(
   [a3.lines[0].discount, a3.lines[0].discountPiece, a3.grandTotal, a3.charges.map((c) => c.kind)],
   [1000, 500, 18800, ['DISCOUNT']],
 );
+
+console.log('== the invoice’s discount and increase a piece (owner, 2026-11-20)');
+// "20.00 on every piece of the invoice": an amount a piece times the invoice's pieces (each item's
+// smallest unit, free goods aside); each line takes exactly its own pieces times it.
+const shirt = ok(
+  'a shirt at 100.00 a piece, sold by the dozen too',
+  await owner.post('/products', {
+    name: `Shirt ${tag}`,
+    categoryId: cat.id,
+    units: [
+      { unitId: piece.id, factor: 1 },
+      { unitId: dozen.id, factor: 12 },
+    ],
+    prices: [{ unitId: piece.id, priceLevelId: saleLevel.id, price: 10000 }],
+  }),
+);
+ok(
+  '600 bought at 60.00',
+  await owner.post('/purchases/invoices', {
+    partyId: supplier.id,
+    warehouseId: wh.id,
+    taxPercent: 0,
+    lines: [{ productId: shirt.id, quantity: 600, unitCost: 6000 }],
+  }),
+);
+/** A dozen at 1,200.00 (12 pieces) and `singles` pieces at 100.00, with these invoice charges. */
+const mixed = (charges, singles = 36, extra = {}) => ({
+  partyId: customer.id,
+  warehouseId: wh.id,
+  charges,
+  lines: [
+    { productId: shirt.id, unitId: dozen.id, quantity: 1, unitPrice: 120000 },
+    { productId: shirt.id, quantity: singles, unitPrice: 10000 },
+  ],
+  ...extra,
+});
+const pp = ok(
+  '20.00 off a piece on a dozen and 36 pieces (48 pieces)',
+  await owner.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: 2000 }])),
+);
+eq(
+  '…960.00 off 4,800.00 = 3,840.00',
+  [pp.charges.map((c) => [c.kind, c.perPiece, c.amount]), pp.grandTotal],
+  [[['DISCOUNT', 2000, 96000]], 384000],
+);
+eq(
+  '…the dozen takes 12 × 20.00, the pieces 36 × 20.00',
+  pp.lines.map((l) => l.docDiscount),
+  [24000, 72000],
+);
+const ppUp = ok(
+  '…and +5.00 a piece: +240.00',
+  await owner.post(
+    '/sales/invoices',
+    mixed([
+      { kind: 'INCREASE', perPiece: 500 },
+      { kind: 'DISCOUNT', perPiece: 2000 },
+    ]),
+  ),
+);
+eq(
+  '…shares +60.00 / +180.00, 4,080.00',
+  [ppUp.lines.map((l) => l.docIncrease), ppUp.charges.map((c) => c.amount), ppUp.grandTotal],
+  [[6000, 18000], [24000, 96000], 408000],
+);
+const odd = ok(
+  'exact by pieces, not by value: 3.33 a piece on a dozen at 1,300.00 and 7 pieces',
+  await owner.post('/sales/invoices', {
+    ...mixed([{ kind: 'DISCOUNT', perPiece: 333 }], 7),
+    lines: [
+      { productId: shirt.id, unitId: dozen.id, quantity: 1, unitPrice: 130000 },
+      { productId: shirt.id, quantity: 7, unitPrice: 10000 },
+    ],
+  }),
+);
+eq(
+  '…19 × 3.33 = 63.27: 12 × 3.33 and 7 × 3.33',
+  [odd.charges[0].amount, odd.lines.map((l) => l.docDiscount)],
+  [6327, [3996, 2331]],
+);
+const netted = ok(
+  'with 10% too: 480.00 by value + 960.00 by pieces',
+  await owner.post(
+    '/sales/invoices',
+    mixed([
+      { kind: 'DISCOUNT', percent: 10 },
+      { kind: 'DISCOUNT', perPiece: 2000 },
+    ]),
+  ),
+);
+eq(
+  '…shares 120 + 240 and 360 + 720; 3,360.00',
+  [netted.lines.map((l) => l.docDiscount), netted.discountTotal, netted.grandTotal],
+  [[36000, 108000], 144000, 336000],
+);
+const withFree = ok(
+  'free goods count no pieces',
+  await owner.post('/sales/invoices', {
+    ...mixed([{ kind: 'DISCOUNT', perPiece: 2000 }]),
+    lines: [
+      ...mixed([]).lines,
+      { productId: shirt.id, unitId: dozen.id, quantity: 1, unitPrice: 0, isBonus: true },
+    ],
+  }),
+);
+eq(
+  '…still 48 pieces: 960.00, none on the free dozen',
+  [withFree.charges[0].amount, withFree.lines.map((l) => l.docDiscount)],
+  [96000, [24000, 72000, 0]],
+);
+eq(
+  'more off a line than it comes to is refused',
+  (
+    await owner.post('/sales/invoices', {
+      ...mixed([{ kind: 'DISCOUNT', perPiece: 2000 }]),
+      lines: [
+        { productId: shirt.id, quantity: 1, unitPrice: 1000 },
+        { productId: shirt.id, quantity: 10, unitPrice: 10000 },
+      ],
+    })
+  ).data?.code,
+  'discount_too_big',
+);
+eq(
+  'a charge is a percent, an amount or an amount a piece: not two',
+  (await owner.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', percent: 5, perPiece: 100 }])))
+    .data?.code,
+  'bad_charge',
+);
+eq(
+  '…a negative one is refused',
+  (await owner.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: -1 }]))).data?.code,
+  'bad_charge',
+);
+eq(
+  '…nor a tax a piece',
+  (await owner.post('/sales/invoices', mixed([{ kind: 'TAX', perPiece: 100 }]))).data?.code,
+  'bad_charge',
+);
+eq(
+  '…nor on a purchase',
+  (
+    await owner.post('/purchases/invoices', {
+      partyId: supplier.id,
+      warehouseId: wh.id,
+      lines: [{ productId: shirt.id, quantity: 1, unitCost: 6000 }],
+      charges: [{ kind: 'DISCOUNT', perPiece: 100 }],
+    })
+  ).data?.code,
+  'bad_charge',
+);
+{
+  const pctOnly = await only(['sales:discount_pct', 'sales:increase_pct']);
+  eq(
+    'an invoice’s amount a piece is an amount: not with the percent alone',
+    (await pctOnly.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: 100 }]))).data
+      ?.code,
+    'discount_amount_not_allowed',
+  );
+  eq(
+    '…nor the increase',
+    (await pctOnly.post('/sales/invoices', mixed([{ kind: 'INCREASE', perPiece: 100 }]))).data
+      ?.code,
+    'increase_amount_not_allowed',
+  );
+  const amounts = await only(['sales:discount_amount', 'sales:increase_amount']);
+  const mine = ok(
+    'with the amount permissions, both',
+    await amounts.post(
+      '/sales/invoices',
+      mixed([
+        { kind: 'INCREASE', perPiece: 100 },
+        { kind: 'DISCOUNT', perPiece: 2000 },
+      ]),
+    ),
+  );
+  eq('…4,800 + 48 − 960 = 3,888.00', mine.grandTotal, 388800);
+  const changer = await only([], ['sales:edit']);
+  const fewer = ok(
+    'someone without them sells 24 pieces, not 36: the total follows the pieces',
+    await changer.put(
+      `/sales/invoices/${mine.id}`,
+      mixed(
+        [
+          { kind: 'INCREASE', perPiece: 100 },
+          { kind: 'DISCOUNT', perPiece: 2000 },
+        ],
+        24,
+      ),
+    ),
+  );
+  eq(
+    '…36 pieces: +36.00 −720.00, 2,916.00; the shares 240 / 480',
+    [fewer.charges.map((c) => c.amount), fewer.grandTotal, fewer.lines.map((l) => l.docDiscount)],
+    [[3600, 72000], 291600, [24000, 48000]],
+  );
+  eq(
+    '…not another amount a piece',
+    (
+      await changer.put(
+        `/sales/invoices/${mine.id}`,
+        mixed([{ kind: 'DISCOUNT', perPiece: 2100 }], 24),
+      )
+    ).data?.code,
+    'discount_amount_not_allowed',
+  );
+  await only(['sales:discount_amount']);
+  ok(
+    'a 10% limit',
+    await owner.put(`/staff/${sellerStaff.id}/access`, {
+      allBranches: null,
+      branchIds: [],
+      warehouseIds: [],
+      moneyAccountIds: [],
+      maxDiscountPercent: 10,
+    }),
+  );
+  const capped = await login(sellerEmail, PASS);
+  ok(
+    '10.00 a piece on 100.00 is within it',
+    await capped.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: 1000 }])),
+  );
+  eq(
+    '10.01 is not',
+    (await capped.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: 1001 }]))).data
+      ?.code,
+    'discount_over_limit',
+  );
+  ok(
+    'no limit again',
+    await owner.put(`/staff/${sellerStaff.id}/access`, {
+      allBranches: null,
+      branchIds: [],
+      warehouseIds: [],
+      moneyAccountIds: [],
+      maxDiscountPercent: null,
+    }),
+  );
+  const loose = await login(sellerEmail, PASS);
+  eq(
+    'below cost is refused (45.00 a piece off: 55.00 for 60.00)',
+    (await loose.post('/sales/invoices', mixed([{ kind: 'DISCOUNT', perPiece: 4500 }]))).data?.code,
+    'below_cost',
+  );
+}
+{
+  console.log('  the accountant’s boxes and the approval');
+  const plain = ok('a plain invoice', await owner.post('/sales/invoices', mixed([])));
+  const pctAcc = await only(['sales:discount_pct']);
+  eq(
+    'adjusting: the amount a piece needs the amount permission',
+    (
+      await pctAcc.post(`/sales/invoices/${plain.id}/adjust`, {
+        invoice: { discountPerPiece: 2000 },
+      })
+    ).data?.code,
+    'discount_amount_not_allowed',
+  );
+  const amtAcc = await only(['sales:discount_amount', 'sales:increase_amount']);
+  const before = (await owner.get(`/parties/${customer.id}`)).data.balance;
+  const adj = ok(
+    '20.00 off a piece and +1.00 a piece given on it',
+    await amtAcc.post(`/sales/invoices/${plain.id}/adjust`, {
+      invoice: { discountPerPiece: 2000, increasePerPiece: 100 },
+    }),
+  );
+  eq(
+    '…4,800 + 48 − 960 = 3,888.00, shares by pieces',
+    [
+      adj.grandTotal,
+      adj.charges.map((c) => [c.kind, c.perPiece, c.amount]),
+      adj.lines.map((l) => l.docDiscount),
+    ],
+    [
+      388800,
+      [
+        ['INCREASE', 100, 4800],
+        ['DISCOUNT', 2000, 96000],
+      ],
+      [24000, 72000],
+    ],
+  );
+  eq(
+    '…the customer owes 912.00 less',
+    before - (await owner.get(`/parties/${customer.id}`)).data.balance,
+    91200,
+  );
+  const order = ok('a pending invoice', await owner.post('/sales/orders', mixed([])));
+  const approved = ok(
+    'approved with 20.00 off a piece',
+    await accountant.post(`/sales/orders/${order.id}/approve`, {
+      invoice: { discountPerPiece: 2000 },
+    }),
+  );
+  eq(
+    '…3,840.00, kept as an amount a piece',
+    [approved.grandTotal, approved.charges.map((c) => c.perPiece)],
+    [384000, [2000]],
+  );
+  const pend = ok(
+    'a pending invoice saved with 20.00 off a piece',
+    await owner.post('/sales/orders', mixed([{ kind: 'DISCOUNT', perPiece: 2000 }])),
+  );
+  const asIs = ok(
+    '…approved as it is',
+    await accountant.post(`/sales/orders/${pend.id}/approve`, {}),
+  );
+  eq('…still 20.00 a piece: 3,840.00', [asIs.grandTotal, asIs.charges[0].perPiece], [384000, 2000]);
+}
 
 if (process.env.PGURL) {
   console.log('== an old second discount joins the invoice’s, nothing moves');

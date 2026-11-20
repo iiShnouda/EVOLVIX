@@ -22,6 +22,9 @@ namespace SKB.Api.Services;
 /// The total discount is shared out over the lines in proportion to their net amounts (bonus lines
 /// take none), so every line knows its real net: sales profit per item stays true, and on a purchase
 /// the discount comes off the goods' cost. The shares always add up to the discount exactly.
+/// A sale's increase or discount may also be an amount a piece (owner, 2026-11-20): it comes to that
+/// times the invoice's pieces (each item's smallest unit, free goods aside) and each line takes exactly
+/// its own pieces times it, with no rounding; the rest is shared by the nets as above.
 /// Taxes and additions are never revenue or cost. Money is minor units; rates are basis points.
 /// </summary>
 public static class Charges
@@ -33,7 +36,19 @@ public static class Charges
     public static readonly InvoiceLines.LineError ExtraDiscountRetired = new("extra_discount_retired",
         "An invoice has one discount: change it instead of adding a second one.");
 
-    public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label);
+    /// <param name="PerPiece">An amount a piece (a sale's increase or discount), times the pieces.</param>
+    public sealed record Spec(ChargeKind Kind, int? RateBp, long? Fixed, string? Label, long? PerPiece = null);
+
+    /// <summary>A stored charge as it was typed (a percent, an amount, or an amount a piece).</summary>
+    public static Spec SpecOf(DocumentCharge c) => new(c.Kind, c.RateBp,
+        c.RateBp is null && c.PieceFixed is null ? c.FixedAmount : null, c.Label, c.RateBp is null ? c.PieceFixed : null);
+
+    /// <summary>A stored charge asked for again, as typed.</summary>
+    public static ChargeRequest RequestOf(DocumentCharge c)
+    {
+        var s = SpecOf(c);
+        return new(c.Kind.ToString(), s.RateBp is int bp ? bp / 100m : null, s.Fixed, c.Label, s.PerPiece);
+    }
 
     /// <param name="Allocation">Each line's share of <paramref name="Discount"/>, in line order.</param>
     /// <param name="IncreaseAllocation">Each line's share of <paramref name="Increase"/>, in line order.</param>
@@ -67,8 +82,13 @@ public static class Charges
                 return (null, new("bad_charge", "Unknown kind of charge."));
             if (kind == ChargeKind.EXTRA_DISCOUNT && sales)
                 return (null, ExtraDiscountRetired);
-            if ((c.Percent is null) == (c.Amount is null))
+            if ((c.Percent is null ? 0 : 1) + (c.Amount is null ? 0 : 1) + (c.PerPiece is null ? 0 : 1) != 1)
                 return (null, new("bad_charge", "Give a charge either a percent or an amount."));
+            // An amount a piece is a sale's increase or discount only.
+            if (c.PerPiece is not null && !(sales && kind is ChargeKind.INCREASE or ChargeKind.DISCOUNT))
+                return (null, new("bad_charge", "Only an increase or a discount can be an amount a piece."));
+            if (c.PerPiece is long pp && (pp < 0 || pp > InvoiceLines.MaxPrice))
+                return (null, new("bad_charge", "An amount can't be negative."));
             int? rate = null;
             if (c.Percent is decimal pct)
             {
@@ -79,7 +99,8 @@ public static class Charges
             if (c.Amount is long amount && (amount < 0 || amount > InvoiceLines.MaxPrice))
                 return (null, new("bad_charge", "An amount can't be negative."));
             var label = c.Label?.Trim();
-            specs.Add(new(kind, rate, c.Amount, string.IsNullOrEmpty(label) ? null : label[..Math.Min(60, label.Length)]));
+            specs.Add(new(kind, rate, c.Amount, string.IsNullOrEmpty(label) ? null : label[..Math.Min(60, label.Length)],
+                c.PerPiece));
         }
         return (specs, null);
     }
@@ -99,51 +120,67 @@ public static class Charges
 
     /// <param name="nets">Each line's net amount (after its own discount), in line order.</param>
     /// <param name="shares">Whether a line takes a share of the invoice discount (bonus lines don't).</param>
+    /// <param name="pieces">Each line's pieces (its item's smallest unit), for an amount a piece.</param>
     public static (Outcome? Outcome, InvoiceLines.LineError? Error) Apply(
-        IReadOnlyList<long> nets, IReadOnlyList<bool> shares, IReadOnlyList<Spec> specs)
+        IReadOnlyList<long> nets, IReadOnlyList<bool> shares, IReadOnlyList<Spec> specs,
+        IReadOnlyList<long>? pieces = null)
     {
         var rows = new List<DocumentCharge>();
         var running = nets.Sum();
         var lines = running; // the base an increase's and the first discount's percents are of
-        long discount = 0, tax = 0, addition = 0, increase = 0;
+        // The pieces an amount a piece is times: those of the lines that take a share (not free goods).
+        var each = nets.Select((_, i) => shares[i] && pieces is not null ? Math.Max(0, pieces[i]) : 0L).ToArray();
+        var allPieces = each.Sum();
+        long discount = 0, tax = 0, addition = 0, increase = 0, increasePiece = 0, discountPiece = 0;
         var ordered = specs.Select((s, i) => (Spec: s, Index: i))
             .OrderBy(x => Order(x.Spec.Kind)).ThenBy(x => x.Index).Select(x => x.Spec).ToList();
 
         // Increases first, on the lines' total; each line takes its share (it is part of what it brings in).
         foreach (var s in ordered.Where(s => s.Kind == ChargeKind.INCREASE))
         {
-            var amount = Amount(s, lines);
+            var amount = Amount(s, lines, allPieces);
             running += amount;
             increase += amount;
+            if (s.PerPiece is not null) increasePiece += s.PerPiece.Value;
             rows.Add(Row(s, amount, rows.Count));
         }
-        var increased = Allocate(increase, nets, shares);
+        // An amount a piece goes on each line exactly by its pieces; the rest by the nets.
+        var increased = Allocate(increase - increasePiece * allPieces, nets, shares);
         if (increased is null)
             return (null, new("increase_nothing", "There is nothing on the invoice to increase."));
+        for (var i = 0; i < increased.Length; i++) increased[i] += increasePiece * each[i];
         var raised = nets.Select((n, i) => n + increased[i]).ToList();
 
         // Then discounts: the first's percent on the lines' total too, the second's on what is left.
         foreach (var s in ordered.Where(s => s.Kind is ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT))
         {
-            var amount = Amount(s, s.Kind == ChargeKind.DISCOUNT ? lines : running);
+            var amount = Amount(s, s.Kind == ChargeKind.DISCOUNT ? lines : running, allPieces);
             if (amount > running)
                 return (null, new("discount_too_big", "A discount can't be more than what is left of the invoice."));
             running -= amount;
             discount += amount;
+            if (s.PerPiece is not null) discountPiece += s.PerPiece.Value;
             rows.Add(Row(s, amount, rows.Count));
         }
         // Then taxes and additions, on the discounted amount.
         foreach (var s in ordered.Where(s => s.Kind is not (ChargeKind.DISCOUNT or ChargeKind.EXTRA_DISCOUNT
                                                  or ChargeKind.INCREASE)))
         {
-            var amount = Amount(s, running);
+            var amount = Amount(s, running, allPieces);
             if (s.Kind == ChargeKind.ADDITION) addition += amount; else tax += amount;
             rows.Add(Row(s, amount, rows.Count));
         }
 
-        var allocation = Allocate(discount, raised, shares);
+        var allocation = Allocate(discount - discountPiece * allPieces, raised, shares);
         if (allocation is null)
             return (null, new("discount_too_big", "There is nothing on the invoice to discount."));
+        for (var i = 0; i < allocation.Length; i++)
+        {
+            allocation[i] += discountPiece * each[i];
+            // A discount a piece can't take more off a line than it comes to.
+            if (allocation[i] > raised[i])
+                return (null, new("discount_too_big", "A discount can't be more than a line's amount."));
+        }
         return (new Outcome(rows, discount, tax, addition, allocation, increase, increased), null);
     }
 
@@ -175,15 +212,16 @@ public static class Charges
         return result;
     }
 
-    private static long Amount(Spec s, long onAmount) => s.RateBp is int bp
+    private static long Amount(Spec s, long onAmount, long pieces) => s.RateBp is int bp
         ? (long)decimal.Round((decimal)onAmount * bp / MaxRateBp, MidpointRounding.AwayFromZero)
-        : s.Fixed ?? 0;
+        : s.PerPiece is long pp ? pp * pieces : s.Fixed ?? 0;
 
     private static DocumentCharge Row(Spec s, long amount, int count) => new()
     {
         Seq = count + 1, Kind = s.Kind, RateBp = s.RateBp, FixedAmount = s.Fixed, Amount = amount, Label = s.Label,
+        PieceFixed = s.PerPiece,
     };
 
     public static DocumentChargeDto ToDto(DocumentCharge c) => new(
-        c.Kind.ToString(), c.RateBp is int bp ? bp / 100m : null, c.FixedAmount, c.Amount, c.Label);
+        c.Kind.ToString(), c.RateBp is int bp ? bp / 100m : null, c.FixedAmount, c.Amount, c.Label, c.PieceFixed);
 }
