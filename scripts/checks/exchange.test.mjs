@@ -623,6 +623,38 @@ eq('the shirts’ invoice part paid', await stateOf(src.id), ['PARTIAL', 3000]);
 const agingRow = async () =>
   (await owner.get('/analytics/aging')).data.rows.find((r) => r.partyId === c2.id);
 eq('aging: what is open is the balance', [(await agingRow()).total, await balance(c2)], [3500, 3500]);
+eq(
+  'the accountant is told of an exchange’s invoice',
+  (await mona.get('/notifications')).data.items.filter(
+    (n) => n.kind === 'INVOICE_NEW' && n.documentId === xb.invoice.id,
+  ).length,
+  1,
+);
+const emptyBox = ok(
+  'an empty cash box',
+  await owner.post('/money-accounts', {
+    branchId: owner.user.branchId,
+    name: `ExEmpty ${tag}`,
+    kind: 'CASH_BOX',
+    openingBalance: 0,
+  }),
+);
+const told0 = (await mona.get('/notifications')).data.total;
+const snap2 = [await balance(c2), (await owner.get('/sales/returns?pageSize=1')).data.total];
+const badRefund = await exchange(
+  owner,
+  exOf([line(shirt, 1)], [{ productId: socks.id, quantity: 1, unitPrice: 400 }], {
+    refund: 600,
+    refundAccountId: emptyBox.id,
+  }),
+);
+eq('paid back from an empty box: refused', badRefund.data?.code, 'insufficient_funds');
+eq(
+  '…nothing saved',
+  [await balance(c2), (await owner.get('/sales/returns?pageSize=1')).data.total],
+  snap2,
+);
+eq('…and nobody told', (await mona.get('/notifications')).data.total, told0);
 ok('the first exchange’s invoice is cancelled', await owner.post(`/sales/invoices/${xa.invoice.id}/cancel`, { reason: 'test' }));
 open2 = await openOf(c2);
 eq('its return credits the shirts’ invoice again', [open2[src.id], open2[xa.invoice.id]], [2000, undefined]);
