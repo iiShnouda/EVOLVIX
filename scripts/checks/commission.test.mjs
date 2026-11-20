@@ -386,7 +386,12 @@ console.log('== collected: an invoice changed down, an exchange');
 const R3 = await rep('Rafi');
 ok(
   'Rafi: 10% of what is collected',
-  await rule(mona, { repId: R3.id, basis: 'COLLECTIONS', percent: 10, startDate: addDays(today, -40) }),
+  await rule(mona, {
+    repId: R3.id,
+    basis: 'COLLECTIONS',
+    percent: 10,
+    startDate: addDays(today, -40),
+  }),
 );
 const walkIn = (await owner.get('/parties?code=0')).data.items[0];
 const cashSale = (quantity) => ({
@@ -399,8 +404,14 @@ const cashSale = (quantity) => ({
   paidAccountId: box.id,
   lines: [{ productId: IA.id, quantity, unitPrice: 1000 }],
 });
-const inv4 = ok('Rafi sells 3 to the cash customer (30.00 paid)', await owner.post('/sales/invoices', cashSale(3)));
-ok('changed down to 2: 10.00 goes back out', await owner.put(`/sales/invoices/${inv4.id}`, cashSale(2)));
+const inv4 = ok(
+  'Rafi sells 3 to the cash customer (30.00 paid)',
+  await owner.post('/sales/invoices', cashSale(3)),
+);
+ok(
+  'changed down to 2: 10.00 goes back out',
+  await owner.put(`/sales/invoices/${inv4.id}`, cashSale(2)),
+);
 const swap = ok(
   'an exchange: one back (10.00), two taken (20.00), 10.00 paid',
   await owner.post('/sales/exchanges', {
@@ -425,7 +436,9 @@ const rafi = ok(
   await mona.get(`/commission/report/${R3.id}/items?from=${today}&to=${today}`),
 );
 const collectedOn = (number) =>
-  rafi.filter((i) => i.kind === 'COLLECTION' && i.number === number).reduce((s, i) => s + i.amount, 0);
+  rafi
+    .filter((i) => i.kind === 'COLLECTION' && i.number === number)
+    .reduce((s, i) => s + i.amount, 0);
 eq('the changed invoice: 20.00 collected, not 30.00', collectedOn(inv4.number), 2000);
 eq(
   'the exchange’s invoice: the 10.00 paid and the 10.00 the goods brought back',

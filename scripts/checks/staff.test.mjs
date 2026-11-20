@@ -89,18 +89,49 @@ eq(
 );
 
 console.log('== per-person permissions');
-const parties = (await owner.get('/parties?pageSize=100')).data.items;
-const cust = parties.find((p) => p.types.includes('CUSTOMER'));
-const item = (await owner.get('/products?limit=50')).data.find(
-  (p) => p.stockOnHand > 5 && p.units.length && !p.modelId,
+// Its own customer and item, in stock in the seller's branch's store (any item in stock may sit in
+// a store the seller can't use).
+const cust = ok(
+  'a customer',
+  await owner.post('/parties', { name: `StaffCust ${tag}`, types: ['CUSTOMER'] }),
+);
+const store = (await owner.get('/warehouses')).data.find(
+  (w) => w.isDefault && w.branchId === branches[0].id,
+);
+const piece = (await owner.get('/units')).data.find((u) => ['قطعة', 'Piece'].includes(u.name));
+const saleLevel = (await owner.get('/price-levels')).data.find(
+  (l) => l.side === 'SALE' && l.isDefault,
+);
+const levelPrice = 1000;
+const item = ok(
+  'an item',
+  await owner.post('/products', {
+    name: `StaffItem ${tag}`,
+    categoryId: (await owner.get('/categories')).data[0].id,
+    units: [{ unitId: piece.id, factor: 1 }],
+    prices: [{ unitId: piece.id, priceLevelId: saleLevel.id, price: levelPrice }],
+  }),
+);
+const staffSupplier = ok(
+  'its supplier',
+  await owner.post('/parties', { name: `StaffSup ${tag}`, types: ['SUPPLIER'] }),
+);
+ok(
+  '…10 in the seller’s store',
+  await owner.post('/purchases/invoices', {
+    partyId: staffSupplier.id,
+    warehouseId: store.id,
+    taxPercent: 0,
+    lines: [{ productId: item.id, quantity: 10, unitCost: 500 }],
+  }),
 );
 const sale = (who, price) =>
   who.post('/sales/invoices', {
     partyId: cust.id,
+    warehouseId: store.id,
     taxPercent: 0,
     lines: [{ productId: item.id, quantity: 1, unitPrice: price }],
   });
-const levelPrice = item.units[0].prices.find((p) => p.source)?.price ?? item.salePrice;
 eq(
   'seller cannot lower a price yet',
   (await sale(s1, levelPrice - 1)).data?.code,

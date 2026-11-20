@@ -575,7 +575,10 @@ check(
 console.log('== the return pays the exchange’s invoice, not the invoices it came from');
 const openOf = async (party) =>
   Object.fromEntries(
-    (await owner.get(`/parties/${party.id}/open-invoices`)).data.map((o) => [o.documentId, o.outstanding]),
+    (await owner.get(`/parties/${party.id}/open-invoices`)).data.map((o) => [
+      o.documentId,
+      o.outstanding,
+    ]),
   );
 const stateOf = async (id) => {
   const d = (await owner.get(`/sales/invoices/${id}`)).data;
@@ -587,7 +590,11 @@ eq(
   [walkOpen[e4.invoice.id], walkOpen[e5.invoice.id]],
   [undefined, undefined],
 );
-eq('…paid', [(await stateOf(e4.invoice.id))[0], (await stateOf(e5.invoice.id))[0]], ['PAID', 'PAID']);
+eq(
+  '…paid',
+  [(await stateOf(e4.invoice.id))[0], (await stateOf(e5.invoice.id))[0]],
+  ['PAID', 'PAID'],
+);
 const c2 = ok(
   'a customer on account',
   await owner.post('/parties', { name: `ExCust2 ${tag}`, types: ['CUSTOMER'] }),
@@ -603,7 +610,10 @@ const exOf = (ret, take, extra = {}) => ({
 });
 const xa = ok(
   'a shirt back (10.00), trousers taken (15.00)',
-  await exchange(owner, exOf([line(shirt, 1)], [{ productId: pants.id, quantity: 1, unitPrice: 1500 }])),
+  await exchange(
+    owner,
+    exOf([line(shirt, 1)], [{ productId: pants.id, quantity: 1, unitPrice: 1500 }]),
+  ),
 );
 let open2 = await openOf(c2);
 eq(
@@ -632,7 +642,11 @@ eq('…paid', await stateOf(xb.invoice.id), ['PAID', 0]);
 eq('the shirts’ invoice part paid', await stateOf(src.id), ['PARTIAL', 3000]);
 const agingRow = async () =>
   (await owner.get('/analytics/aging')).data.rows.find((r) => r.partyId === c2.id);
-eq('aging: what is open is the balance', [(await agingRow()).total, await balance(c2)], [3500, 3500]);
+eq(
+  'aging: what is open is the balance',
+  [(await agingRow()).total, await balance(c2)],
+  [3500, 3500],
+);
 eq(
   'the accountant is told of an exchange’s invoice',
   (await mona.get('/notifications')).data.items.filter(
@@ -665,11 +679,21 @@ eq(
   snap2,
 );
 eq('…and nobody told', (await mona.get('/notifications')).data.total, told0);
-ok('the first exchange’s invoice is cancelled', await owner.post(`/sales/invoices/${xa.invoice.id}/cancel`, { reason: 'test' }));
+ok(
+  'the first exchange’s invoice is cancelled',
+  await owner.post(`/sales/invoices/${xa.invoice.id}/cancel`, { reason: 'test' }),
+);
 open2 = await openOf(c2);
-eq('its return credits the shirts’ invoice again', [open2[src.id], open2[xa.invoice.id]], [2000, undefined]);
+eq(
+  'its return credits the shirts’ invoice again',
+  [open2[src.id], open2[xa.invoice.id]],
+  [2000, undefined],
+);
 eq('…as the balance says', await balance(c2), 2000);
-ok('the second exchange’s return is cancelled', await owner.post(`/sales/returns/${xb.return.id}/cancel`, {}));
+ok(
+  'the second exchange’s return is cancelled',
+  await owner.post(`/sales/returns/${xb.return.id}/cancel`, {}),
+);
 open2 = await openOf(c2);
 eq(
   'its invoice is owed again; the shirts’ invoice loses its credit',
