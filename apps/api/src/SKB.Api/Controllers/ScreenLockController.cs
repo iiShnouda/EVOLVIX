@@ -106,18 +106,22 @@ public sealed partial class ScreenLockController : ControllerBase
 
         if (!ok)
         {
-            session.UnlockFailures++;
-            await _db.SaveChangesAsync();
+            // Counted in the database, so wrong tries sent at once each count (the loaded session keeps
+            // its old count: nothing here saves it).
+            var failures = (await _db.Database.SqlQuery<int>(
+                $"UPDATE \"Sessions\" SET \"UnlockFailures\" = \"UnlockFailures\" + 1 WHERE \"Id\" = {session.Id} RETURNING \"UnlockFailures\" AS \"Value\"")
+                .ToListAsync()).Single();
             await _audit.RecordAsync(staff.Id.ToString(), staff.FullName, "auth.unlock.failed", "auth",
-                staff.BranchId.ToString(), Ip, UserAgent, details: $"{session.UnlockFailures}/{MaxUnlockFailures}");
-            if (session.UnlockFailures >= MaxUnlockFailures)
+                staff.BranchId.ToString(), Ip, UserAgent, details: $"{failures}/{MaxUnlockFailures}");
+            if (failures >= MaxUnlockFailures)
             {
-                await SignOutAsync(session, "unlock_failed", "auth.unlock.signed_out");
+                // The try that reached the limit signs the device out; any sent with it are refused too.
+                if (failures == MaxUnlockFailures) await SignOutAsync(session, "unlock_failed", "auth.unlock.signed_out");
                 return Unauthorized(new { message = "Too many wrong tries: signed out.", code = "UNLOCK_SIGNED_OUT" });
             }
             return Unauthorized(new
             {
-                message = "Wrong password or PIN.", code = "WRONG_UNLOCK", left = MaxUnlockFailures - session.UnlockFailures,
+                message = "Wrong password or PIN.", code = "WRONG_UNLOCK", left = MaxUnlockFailures - failures,
             });
         }
 

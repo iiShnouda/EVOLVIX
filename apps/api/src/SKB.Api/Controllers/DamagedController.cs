@@ -108,10 +108,16 @@ public sealed class DamagedController : ControllerBase
         {
             if (!Guid.TryParse(l.ProductId, out var pid))
                 return BadRequest(new { message = "An item was not found.", code = "product_not_found" });
-            if (l.Quantity <= 0 || l.Quantity > 1_000_000_000)
+            if (l.Quantity <= 0 || l.Quantity > InvoiceLines.MaxQuantity)
                 return BadRequest(new { message = "Enter a quantity for every item.", code = "bad_qty" });
             wanted.Add((pid, l.Quantity));
         }
+        // An item on several lines: no more than one line may hold (summed wide, so it can't overflow).
+        if (wanted.GroupBy(w => w.ProductId).Any(g => g.Sum(x => (long)x.Quantity) > InvoiceLines.MaxQuantity))
+            return BadRequest(new
+            {
+                message = $"At most {InvoiceLines.MaxQuantity:N0} of an item at once.", code = "bad_qty",
+            });
         var notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim()[..Math.Min(300, req.Notes.Trim().Length)];
         Guid.TryParse(CurrentUser.Id(User), out var staffId);
 

@@ -210,7 +210,9 @@ public sealed class MoneyService
     /// What each return put on the party's account for each of these invoices (owner, 2026-11-10: a
     /// return may take items from several invoices): its lines' amounts with their tax, by the invoice
     /// each came from, out of what it left on the account (less any cash paid back). Old returns typed
-    /// without an invoice credit none.
+    /// without an invoice credit none. An exchange's return pays its own invoice first (owner,
+    /// 2026-11-18), as long as that invoice stands: up to what the invoice put on the account
+    /// (<see cref="ExchangeCredit"/>); only the rest credits the invoices its goods came from.
     /// </summary>
     public static async Task<List<(Guid Return, Guid Invoice, long Amount)>> ReturnCreditsAsync(AppDbContext db,
         IReadOnlyCollection<Guid> invoiceIds)
@@ -222,7 +224,19 @@ public sealed class MoneyService
                         && (l.Document!.Type == DocumentType.SALES_RETURN || l.Document.Type == DocumentType.PURCHASE_RETURN)
                         && l.Document.Status != DocumentStatus.CANCELLED
                         && db.DocumentLines.Any(s => s.Id == l.SourceLineId && ids.Contains(s.DocumentId)))
-            .Select(l => l.DocumentId).Distinct();
+            .Select(l => l.DocumentId)
+            .Union(db.SalesDocuments.Where(d => d.Type == DocumentType.SALES_RETURN && d.Status != DocumentStatus.CANCELLED
+                                                && d.ExchangeId != null && ids.Contains(d.ExchangeId.Value))
+                .Select(d => d.Id));
+        // Exchange returns among them, with the invoice they paid.
+        var exchanges = await (from r in db.SalesDocuments.AsNoTracking()
+                               where returnIds.Contains(r.Id) && r.Type == DocumentType.SALES_RETURN && r.ExchangeId != null
+                               join i in db.SalesDocuments on r.ExchangeId equals (Guid?)i.Id
+                               select new
+                               {
+                                   r.Id, Invoice = i.Id, OnAccount = r.GrandTotal - r.PaidAmount,
+                                   Used = i.Status == DocumentStatus.CANCELLED ? 0 : i.GrandTotal - i.PaidDirect,
+                               }).ToDictionaryAsync(x => x.Id);
         var rows = await (from l in db.DocumentLines.AsNoTracking()
                           where returnIds.Contains(l.DocumentId) && l.SourceLineId != null && !l.PricedApart
                           join s in db.DocumentLines on l.SourceLineId equals (Guid?)s.Id
@@ -233,9 +247,15 @@ public sealed class MoneyService
                               l.Document!.GrandTotal, l.Document.PaidAmount,
                           }).ToListAsync();
         var result = new List<(Guid, Guid, long)>();
+        foreach (var x in exchanges.Values)
+        {
+            var used = ExchangeCredit(x.OnAccount, x.Used);
+            if (used > 0 && ids.Contains(x.Invoice)) result.Add((x.Id, x.Invoice, used));
+        }
         foreach (var r in rows.GroupBy(x => x.Return))
         {
             var onAccount = r.First().GrandTotal - r.First().PaidAmount;
+            if (exchanges.TryGetValue(r.Key, out var x)) onAccount -= ExchangeCredit(x.OnAccount, x.Used);
             var parts = r.GroupBy(x => x.Invoice).Select(g => (Invoice: g.Key, Value: g.Sum(x => x.Value)))
                 .OrderBy(x => x.Invoice).ToList();
             var total = parts.Sum(p => p.Value);
@@ -251,6 +271,14 @@ public sealed class MoneyService
         }
         return result;
     }
+
+    /// <summary>
+    /// What an exchange's return pays on its own invoice: what the return left on the account, up to
+    /// what the invoice put on it (its total less the money paid at the counter); nothing once the
+    /// invoice is cancelled (<paramref name="invoiceUnpaid"/> is then 0).
+    /// </summary>
+    public static long ExchangeCredit(long returnOnAccount, long invoiceUnpaid) =>
+        Math.Max(0, Math.Min(returnOnAccount, invoiceUnpaid));
 
     /// <summary>Paid / part paid / unpaid after its paid amount changed; returned and cancelled stay.</summary>
     public static void RefreshPaidStatus(SalesDocument doc)
