@@ -4,7 +4,8 @@
  *  1. a sale's INCREASE on the lines' total (it is sales; owner, 2026-11-19);
  *  2. DISCOUNT off it. Nothing compounds (owner, 2026-11-19): INCREASE's and DISCOUNT's percents
  *     are both of the lines' total, so they net out (+10% +2.00 −5% −1.00 on 200.00 = 211.00);
- *  3. EXTRA_DISCOUNT (the second discount) on what is left after them;
+ *  3. EXTRA_DISCOUNT (a purchase's second discount; a sale has one discount, owner 2026-11-20) on
+ *     what is left after them;
  *  4. TAX, OTHER_TAX and ADDITION on the discounted amount.
  * The increase, then the discount, is shared over the lines in proportion to their nets (bonus lines
  * take none), with the shares adding up exactly. Money is integer minor units; rates are percents
